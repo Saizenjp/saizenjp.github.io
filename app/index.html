@@ -416,10 +416,10 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
     <div class="upload-grid" style="align-items:stretch">
       <div style="display:flex;flex-direction:column">
         <div class="upload-area" id="drop1" onclick="document.getElementById('inp1').click()" ondragover="onDrag(event,'drop1')" ondragleave="offDrag('drop1')" ondrop="onDrop(event,'res')" style="flex:1">
-          <input type="file" id="inp1" accept=".xlsx,.xls" style="display:none" onchange="loadFile(event,'res')">
+          <input type="file" id="inp1" accept=".xlsx,.xls" style="display:none" multiple onchange="loadFile(event,'res')">
           <div class="upload-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg></div>
           <div class="upload-title">예약 리스트</div>
-          <div class="upload-sub">예약리스트___.xlsx</div>
+          <div class="upload-sub">예약리스트___.xlsx · 여러 파일 동시 선택 가능 (500건 분할 시)</div>
         </div>
         <div class="file-status"><div class="file-dot empty" id="dot1"></div><div class="file-name" id="fname1">파일을 선택해주세요</div><div class="file-size" id="fsize1"></div></div>
       </div>
@@ -901,6 +901,7 @@ function getPassengerByRowEl(tr){
 // ── 전역 상태 ──────────────────────────────────────────────────
 let resData = null, ilhaengData = null, arrivalData = null;
 let ilhaengPending = 0, ilhaengMerged = [], ilhaengFileCount = 0;
+let resPending = 0, resMerged = [], resFileCount = 0;
 let processed = [];     // 예약 단위 (대표고객 기준)
 let localBookings = []; // ⑧ 現地予約 (운영 자동화 제외 대상)
 let passengers = [];    // 개인 단위 (APIS 기준)
@@ -1179,6 +1180,12 @@ function onDrop(e,type){
     ilhaengFileCount = files.length;
     ilhaengMerged = [];
     files.forEach(f => processFile(f, 'ilhaeng'));
+  } else if(type==='res'){
+    resData = null;
+    resPending = files.length;
+    resFileCount = files.length;
+    resMerged = [];
+    files.forEach(f => processFile(f, 'res'));
   } else {
     processFile(files[0], type);
   }
@@ -1193,6 +1200,15 @@ function loadFile(e,type){
     ilhaengFileCount = files.length;
     ilhaengMerged = [];
     files.forEach(f => processFile(f, 'ilhaeng'));
+  } else if(type==='res'){
+    const files = Array.from(e.target.files);
+    if(!files.length) return;
+    // 예약리스트도 누적 병합 (엠클릭 500건 분할 대응)
+    resData = null;
+    resPending = files.length;
+    resFileCount = files.length;
+    resMerged = [];
+    files.forEach(f => processFile(f, 'res'));
   } else {
     const f = e.target.files[0];
     if(f) processFile(f, type);
@@ -1212,7 +1228,20 @@ function processFile(file, type){
     const ws = wb.Sheets[wb.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json(ws);
     const idx = type==='res'?1:type==='ilhaeng'?2:type==='grpref'?3:4;
-    if(type==='res') resData=json;
+    if(type==='res'){
+      resMerged = resMerged.concat(json);
+      resPending--;
+      if(resPending <= 0){
+        resData = resMerged;
+        const totalRows = resData.length;
+        document.getElementById('dot1').classList.remove('empty');
+        document.getElementById('fname1').textContent = resFileCount > 1 ? `예약리스트 (${resFileCount}개 파일 병합)` : file.name;
+        document.getElementById('fsize1').textContent = resFileCount > 1 ? totalRows+'행 (병합)' : (file.size/1024).toFixed(0)+'KB · '+totalRows+'행';
+        document.getElementById('drop1').classList.add('uploaded');
+        checkReady();
+      }
+      return;
+    }
     else if(type==='ilhaeng'){
       ilhaengMerged = ilhaengMerged.concat(json);
       ilhaengPending--;
@@ -8266,7 +8295,7 @@ function toggleTheme(){
 
 function resetApp(){
   if(!confirm('초기화하면 업로드한 데이터와 수기 입력이 모두 삭제됩니다.\n그룹코드 참조테이블은 유지됩니다. 계속하시겠어요?')) return;
-  resData=null; ilhaengData=null; ilhaengMerged=[]; ilhaengPending=0; ilhaengFileCount=0; arrivalData=null; arrivalMap={}; processed=[]; localBookings=[]; passengers=[]; manualData={}; Object.keys(dragHistory).forEach(k=>delete dragHistory[k]);
+  resData=null; resMerged=[]; resPending=0; resFileCount=0; ilhaengData=null; ilhaengMerged=[]; ilhaengPending=0; ilhaengFileCount=0; arrivalData=null; arrivalMap={}; processed=[]; localBookings=[]; passengers=[]; manualData={}; Object.keys(dragHistory).forEach(k=>delete dragHistory[k]);
   ['inp1','inp2','inp4'].forEach(id=>{document.getElementById(id).value='';});
   ['dot1','dot2','dot4'].forEach(id=>document.getElementById(id).classList.add('empty'));
   ['drop1','drop2','drop4'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('uploaded');});
