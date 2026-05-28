@@ -143,7 +143,26 @@ body:not(.light) .logo-img-dark{display:block}
 .stat-sub{font-size:10px;color:var(--text2);margin-top:2px}
 
 /* TABLE */
-.table-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border)}
+.table-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border);scrollbar-width:thin}
+.table-wrap::-webkit-scrollbar{height:10px}
+.table-wrap::-webkit-scrollbar-track{background:var(--surface2);border-radius:0 0 8px 8px}
+.table-wrap::-webkit-scrollbar-thumb{background:var(--surface4);border-radius:5px}
+.table-wrap::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+/* 가로 스크롤 컨테이너 (래퍼) — 페이드 + 버튼 부모 */
+.table-scroll{position:relative}
+/* 좌우 페이드 — 더 스크롤할 내용이 있을 때 가장자리에 표시 */
+.table-scroll .table-fade{position:absolute;top:0;bottom:0;width:42px;pointer-events:none;z-index:5;opacity:0;transition:opacity .2s}
+.table-scroll .table-fade-l{left:0;background:linear-gradient(90deg,var(--surface) 0%,transparent 100%)}
+.table-scroll .table-fade-r{right:0;background:linear-gradient(270deg,var(--surface) 0%,transparent 100%)}
+.table-scroll.can-left  .table-fade-l{opacity:1}
+.table-scroll.can-right .table-fade-r{opacity:1}
+/* 좌우 이동 버튼 */
+.table-scroll .table-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;display:none;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.18);transition:background .15s,opacity .2s}
+.table-scroll .table-nav:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.table-scroll .table-nav-l{left:6px}
+.table-scroll .table-nav-r{right:6px}
+.table-scroll.can-left  .table-nav-l{display:flex}
+.table-scroll.can-right .table-nav-r{display:flex}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{background:var(--surface3);padding:8px 10px;text-align:left;color:var(--text2);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap;font-family:var(--mono);font-size:11px;letter-spacing:.03em}
 td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
@@ -1719,6 +1738,8 @@ function renderAll(){
   buildAircover();
   // 미등록 회원 카운트 배지 갱신
   if(typeof updatePendingCount === 'function') updatePendingCount();
+  // 표 가로 스크롤 페이드/버튼 갱신
+  if(typeof enhanceTableScroll === 'function') setTimeout(enhanceTableScroll, 50);
 }
 
 // ── ⑦ 現地精算表 빌드 ─────────────────────────────────────
@@ -5844,6 +5865,50 @@ function savePendingMember(btn){
   if(document.body) obs.observe(document.body, {childList:true});
   else document.addEventListener('DOMContentLoaded', ()=>obs.observe(document.body, {childList:true}));
 })();
+
+
+// ── 표 가로 스크롤 enhancement (페이드 + ◀▶ 버튼) ──────────────
+function enhanceTableScroll(){
+  document.querySelectorAll('.table-wrap').forEach(wrap => {
+    // 이미 처리된 것은 상태만 갱신
+    let scroll = wrap.closest('.table-scroll');
+    if(!scroll){
+      // .table-scroll 래퍼로 감싸기
+      scroll = document.createElement('div');
+      scroll.className = 'table-scroll';
+      wrap.parentNode.insertBefore(scroll, wrap);
+      scroll.appendChild(wrap);
+      // 페이드 2개
+      const fl = document.createElement('div'); fl.className = 'table-fade table-fade-l';
+      const fr = document.createElement('div'); fr.className = 'table-fade table-fade-r';
+      // 버튼 2개
+      const bl = document.createElement('button'); bl.className = 'table-nav table-nav-l'; bl.type='button'; bl.innerHTML = '&#10094;'; bl.title='왼쪽으로';
+      const br = document.createElement('button'); br.className = 'table-nav table-nav-r'; br.type='button'; br.innerHTML = '&#10095;'; br.title='오른쪽으로';
+      bl.addEventListener('click', ()=>{ wrap.scrollBy({left:-Math.round(wrap.clientWidth*0.7), behavior:'smooth'}); });
+      br.addEventListener('click', ()=>{ wrap.scrollBy({left: Math.round(wrap.clientWidth*0.7), behavior:'smooth'}); });
+      scroll.appendChild(fl); scroll.appendChild(fr); scroll.appendChild(bl); scroll.appendChild(br);
+      // 스크롤/리사이즈 시 상태 갱신
+      wrap.addEventListener('scroll', ()=>updateScrollState(scroll, wrap), {passive:true});
+    }
+    updateScrollState(scroll, wrap);
+  });
+}
+function updateScrollState(scroll, wrap){
+  const max = wrap.scrollWidth - wrap.clientWidth;
+  const x = wrap.scrollLeft;
+  // 1px 여유로 오차 흡수
+  scroll.classList.toggle('can-left',  x > 1);
+  scroll.classList.toggle('can-right', x < max - 1);
+}
+// 리사이즈 시 전체 갱신
+window.addEventListener('resize', ()=>{
+  document.querySelectorAll('.table-scroll').forEach(s=>{
+    const w = s.querySelector('.table-wrap'); if(w) updateScrollState(s, w);
+  });
+});
+// 표가 다시 그려질 수 있으므로 주기적으로 확인 (가벼운 안전장치)
+setInterval(enhanceTableScroll, 2000);
+document.addEventListener('DOMContentLoaded', enhanceTableScroll);
 
 
 function openLearnedMemberModal(){
