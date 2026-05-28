@@ -142,6 +142,13 @@ body:not(.light) .logo-img-dark{display:block}
 .stat-value{font-size:20px;font-weight:700;color:var(--text);font-family:var(--mono)}
 .stat-sub{font-size:10px;color:var(--text2);margin-top:2px}
 
+/* 상단 동기화 스크롤바 */
+.table-scroll .table-topscroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
+.table-scroll .table-topscroll-inner{height:1px}
+.table-scroll .table-topscroll::-webkit-scrollbar{height:10px}
+.table-scroll .table-topscroll::-webkit-scrollbar-track{background:var(--surface2);border-radius:5px}
+.table-scroll .table-topscroll::-webkit-scrollbar-thumb{background:var(--surface4);border-radius:5px}
+.table-scroll .table-topscroll::-webkit-scrollbar-thumb:hover{background:var(--accent)}
 /* TABLE */
 .table-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border);scrollbar-width:thin}
 .table-wrap::-webkit-scrollbar{height:10px}
@@ -1260,8 +1267,10 @@ function loadFile(e,type){
     const f = e.target.files[0];
     if(f) processFile(f, type);
   }
-  // 같은 파일 재선택 가능하도록 input value 초기화 (재등록 시 필요)
-  if(e.target && e.target.value !== undefined) e.target.value = '';
+  // 같은 파일 재선택 가능하도록 input value 초기화
+  // (files를 이미 Array.from으로 복사했으므로 비우기 안전. 단 다음 tick에 처리)
+  const inputEl = e.target;
+  setTimeout(()=>{ if(inputEl && inputEl.value !== undefined) inputEl.value = ''; }, 100);
 }
 
 function processFile(file, type){
@@ -5877,6 +5886,13 @@ function enhanceTableScroll(){
       scroll = document.createElement('div');
       scroll.className = 'table-scroll';
       wrap.parentNode.insertBefore(scroll, wrap);
+      // 상단 스크롤바 (본 표 위에 위치, 가로 스크롤 동기화)
+      const topbar = document.createElement('div');
+      topbar.className = 'table-topscroll';
+      const topinner = document.createElement('div');
+      topinner.className = 'table-topscroll-inner';
+      topbar.appendChild(topinner);
+      scroll.appendChild(topbar);
       scroll.appendChild(wrap);
       // 페이드 2개
       const fl = document.createElement('div'); fl.className = 'table-fade table-fade-l';
@@ -5887,8 +5903,18 @@ function enhanceTableScroll(){
       bl.addEventListener('click', ()=>{ wrap.scrollBy({left:-Math.round(wrap.clientWidth*0.7), behavior:'smooth'}); });
       br.addEventListener('click', ()=>{ wrap.scrollBy({left: Math.round(wrap.clientWidth*0.7), behavior:'smooth'}); });
       scroll.appendChild(fl); scroll.appendChild(fr); scroll.appendChild(bl); scroll.appendChild(br);
-      // 스크롤/리사이즈 시 상태 갱신
-      wrap.addEventListener('scroll', ()=>updateScrollState(scroll, wrap), {passive:true});
+      // 상단바 ↔ 본문 스크롤 양방향 동기화 (무한루프 방지 플래그)
+      let syncing = false;
+      topbar.addEventListener('scroll', ()=>{ if(syncing){syncing=false;return;} syncing=true; wrap.scrollLeft = topbar.scrollLeft; }, {passive:true});
+      wrap.addEventListener('scroll', ()=>{ if(syncing){syncing=false;return;} syncing=true; topbar.scrollLeft = wrap.scrollLeft; updateScrollState(scroll, wrap); }, {passive:true});
+    }
+    // 상단바 내부 너비를 본 표 콘텐츠 너비와 동기화
+    const topbar = scroll.querySelector('.table-topscroll');
+    const topinner = scroll.querySelector('.table-topscroll-inner');
+    if(topbar && topinner){
+      topinner.style.width = wrap.scrollWidth + 'px';
+      // 가로 스크롤 필요 없으면 상단바 숨김
+      topbar.style.display = (wrap.scrollWidth > wrap.clientWidth + 1) ? 'block' : 'none';
     }
     updateScrollState(scroll, wrap);
   });
