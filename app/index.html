@@ -242,21 +242,22 @@ tr:hover td{background:var(--surface2)}
 #golf-content table td:nth-child(16)    /* 操作 */
 { text-align: center; }
 
-/* ⑦ 정산표 [No, イベント番号, 区分, 会員権区分, 代表者名, 英文名, 出発日, 到着日, 泊数, 人数, 施設, 部屋タイプ, 料金, 宿泊費, 送迎費, 合計, 備考] */
+/* ⑦ 정산표 [No, イベント番号, 区分, 会員権区分, 代表者名, 出発地, 英文名, 出発日, 到着日, 泊数, 人数, 施設, 部屋タイプ, 料金, 宿泊費, 送迎費, 合計, 備考] */
 #settle-table td:nth-child(1),   /* No */
 #settle-table td:nth-child(2),   /* イベント番号 */
 #settle-table td:nth-child(3),   /* 区分 */
 #settle-table td:nth-child(4),   /* 会員権区分 */
-#settle-table td:nth-child(7),   /* 出発日 */
-#settle-table td:nth-child(8),   /* 到着日 */
-#settle-table td:nth-child(9),   /* 泊数 */
-#settle-table td:nth-child(10),  /* 人数 */
-#settle-table td:nth-child(11)   /* 施設 */
+#settle-table td:nth-child(6),   /* 出発地 */
+#settle-table td:nth-child(8),   /* 出発日 */
+#settle-table td:nth-child(9),   /* 到着日 */
+#settle-table td:nth-child(10),  /* 泊数 */
+#settle-table td:nth-child(11),  /* 人数 */
+#settle-table td:nth-child(12)   /* 施設 */
 { text-align: center; }
-#settle-table td:nth-child(13),  /* 料金 */
-#settle-table td:nth-child(14),  /* 宿泊費 */
-#settle-table td:nth-child(15),  /* 送迎費 */
-#settle-table td:nth-child(16)   /* 合計 */
+#settle-table td:nth-child(14),  /* 料金 */
+#settle-table td:nth-child(15),  /* 宿泊費 */
+#settle-table td:nth-child(16),  /* 送迎費 */
+#settle-table td:nth-child(17)   /* 合計 */
 { text-align: right; font-family: var(--mono); }
 /* 네임택 태그코드 열 너비 — 새 형식(예: DAあ-1Y, AA01-99Y) 최대 8자 + 배지 공간 */
 #nametag-content table td:nth-child(2),
@@ -749,7 +750,7 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
 // 수정은 여기 한 곳만 하면 양쪽이 자동으로 동일해짐
 // ════════════════════════════════════════════════════════════════
 const HDRS = {
-  SETTLE: ['No','イベント番号','区分','会員権区分','代表者名','英文名','出発日','到着日','泊数','人数','施設','部屋タイプ','料金(¥/人/泊)','宿泊費(¥)','送迎費(¥)','合計(¥)','備考'],
+  SETTLE: ['No','イベント番号','区分','会員権区分','代表者名','出発地','英文名','出発日','到着日','泊数','人数','施設','部屋タイプ','料金(¥/人/泊)','宿泊費(¥)','送迎費(¥)','合計(¥)','備考'],
   TRANSFER_IN:  ['No','イベント番号','タグコード','予約者(チーム)','氏名','英文名','人数','出発地','途中立寄り','到着地','操作'],
   TRANSFER_OUT: ['No','イベント番号','タグコード','予約者(チーム)','氏名','英文名','人数','出発地','途中立寄り','到着地','操作'],
   DINNER: ['No','イベント番号','タグコード','予約者(チーム)','滞在日次','英文名','人数','テーブルNo','チーム','外食','アップMenu','特別食','参考事項(特記事項)','操作'],
@@ -1775,6 +1776,29 @@ function toggleSettleFilter(accom){
   buildSettle();
 }
 
+// 정산표 출발지 코드(ICN/PUS/TAE) 산출 — passengers 표준화와 동일 기준
+function getSettleOrigin(r){
+  let raw = String(r.raw?.['출발지']||'').trim();
+  if(raw){
+    const u = raw.toUpperCase();
+    if(raw.includes('부산')||raw.includes('김해')||u==='PUS'||u==='BUS'||u==='PNS') return 'PUS';
+    if(raw.includes('인천')||u==='ICN'||u==='INC') return 'ICN';
+    if(raw.includes('대구')||u==='TAE'||u==='DGU') return 'TAE';
+  }
+  // 팀 대표 승객의 항공편으로 보완
+  const seq = String(r.eventSeq||'').trim();
+  const px = (typeof passengers !== 'undefined' ? passengers : []).find(p=>String(p.eventSeq||'').trim()===seq);
+  if(px){
+    if(px.origin==='부산') return 'PUS';
+    if(px.origin==='인천') return 'ICN';
+    if(px.origin==='대구') return 'TAE';
+    const df = String(px.depFlight||'');
+    if(df.startsWith('ZE')) return 'PUS';
+    if(df.startsWith('TW')) return 'ICN';
+  }
+  return '';
+}
+
 function buildSettle(){
   document.getElementById('settle-thead').innerHTML = hdrHtml(HDRS.SETTLE);
   const settl = processed.filter(r=>r.accom && settlePass(r.accom));
@@ -1820,7 +1844,7 @@ function buildSettle(){
       prevAccom=r.accom;
       const grpRows=sorted.filter(x=>x.accom===r.accom);
       const tot=grpRows.reduce((a,x)=>a+x.total,0);
-      header=`<tr class="tr-section"><td colspan="17">◎ ${r.accom} — ${grpRows.length}건 · ${grpRows.reduce((a,x)=>a+x.pax,0)}명 · ¥${tot.toLocaleString()}</td></tr>`;
+      header=`<tr class="tr-section"><td colspan="18">◎ ${r.accom} — ${grpRows.length}건 · ${grpRows.reduce((a,x)=>a+x.pax,0)}명 · ¥${tot.toLocaleString()}</td></tr>`;
     }
     const k=`settle_${r.eventSeq}`;
     const rem = (manualData[k]||{}).remarks||'';
@@ -1831,6 +1855,14 @@ function buildSettle(){
     const agencyBadge = r.isAgency ? `<span class="tag tag-agency" style="margin-left:4px">여행사</span>` : '';
     const teamBadgeHtml = r.teamName ? teamBadge(r.teamName) : '';
     const statusBadge = `<span class="tag tag-status-${r.status||'확정'}">${r.status||'확정'}</span>`;
+    const orig = getSettleOrigin(r);
+    const origColor = orig==='ICN' ? 'background:var(--accent-dim);color:var(--accent2)'
+      : orig==='PUS' ? 'background:var(--amber-dim);color:var(--amber2)'
+      : orig==='TAE' ? 'background:var(--green-dim);color:var(--green2)'
+      : 'background:var(--surface3);color:var(--text3)';
+    const originCell = orig
+      ? `<span class="tag" style="${origColor}">${orig}</span>`
+      : `<span style="color:var(--text3)">-</span>`;
     const isDraft = (r.status==='견적'||r.status==='대기');
     const rowStyle = isDraft ? ' style="opacity:.8"' : (r.isCity?' style="opacity:.6"':'');
     return header+`<tr class="draggable-row" data-eventseq="${r.eventSeq}"${rowStyle}>
@@ -1839,6 +1871,7 @@ function buildSettle(){
       <td>${statusBadge}</td>
       <td style="font-family:var(--mono);font-size:10px">${r.memberType||"-"}</td>
       <td>${r.repName}${agencyBadge}${teamBadgeHtml}</td>
+      <td style="text-align:center">${originCell}</td>
       <td style="font-family:var(--mono);font-size:10px">${getEngName(r.eventSeq)}</td>
       <td style="font-family:var(--mono);font-size:10px">${r.dep}</td>
       <td style="font-family:var(--mono);font-size:10px">${r.arr}</td>
@@ -1854,7 +1887,7 @@ function buildSettle(){
     </tr>`;
   }).join('');
   document.getElementById('settle-tbody').innerHTML = rows +
-    `<tr class="tr-total"><td colspan="13" style="text-align:right">合計 Total</td>
+    `<tr class="tr-total"><td colspan="14" style="text-align:right">合計 Total</td>
      <td class="num">¥${stayT.toLocaleString()}</td><td class="num">¥${transT.toLocaleString()}</td>
      <td class="num" style="font-size:13px">¥${total.toLocaleString()}</td><td></td></tr>`;
 
@@ -4306,9 +4339,9 @@ async function downloadSettle(){
   xlTotalRow(ws1,r,['合計','',settl.reduce((a,x)=>a+x.pax,0),settl.reduce((a,x)=>a+x.stay,0),settl.reduce((a,x)=>a+x.transport,0),settl.reduce((a,x)=>a+x.total,0)],COL);
 
   // ── 시트2: 精算明細 ──
-  const COL2 = 17;
+  const COL2 = 18;
   const ws2 = wb.addWorksheet('精算明細', { views:[{state:'frozen',ySplit:3}], pageSetup:A4L });
-  xlColWidths(ws2, [5,12,8,10,16,22,11,11,6,5,16,12,12,12,12,12,22]);
+  xlColWidths(ws2, [5,12,8,10,16,7,22,11,11,6,5,16,12,12,12,12,12,22]);
   xlTitle(ws2, 1, '現地精算表 — 明細  ' + today(), COL2);
   xlHeader(ws2, 2, HDRS.SETTLE);
   r=3;
@@ -4320,12 +4353,14 @@ async function downloadSettle(){
       prevAccom=rec.accom;
     }
     const k=`settle_${rec.eventSeq}`;
-    xlDataRow(ws2,r,[rec.no,rec.eventNo||'-',rec.status||'-',rec.memberType||'-',rec.repName,getEngName(rec.eventSeq),rec.dep,rec.arr,rec.nights,rec.pax,rec.accom,rec.roomType,rec.rate,rec.stay,rec.transport,rec.total,(manualData[k]||{}).remarks||''],COL2,i%2===0,{numCols:[9,10,13,14,15,16],numFmt:'#,##0',boldCols:[5]});
+    xlDataRow(ws2,r,[rec.no,rec.eventNo||'-',rec.status||'-',rec.memberType||'-',rec.repName,getSettleOrigin(rec)||'-',getEngName(rec.eventSeq),rec.dep,rec.arr,rec.nights,rec.pax,rec.accom,rec.roomType,rec.rate,rec.stay,rec.transport,rec.total,(manualData[k]||{}).remarks||''],COL2,i%2===0,{numCols:[10,11,14,15,16,17],numFmt:'#,##0',boldCols:[5]});
+    // 出発地 셀 가운데 정렬 (6번째 컬럼)
+    ws2.getCell(r,6).alignment={horizontal:'center',vertical:'middle'};
     // 구분 셀 색상 적용 (3번째 컬럼)
     { const sc=xlStatusColor(rec.status||'확정'); const sc2=ws2.getCell(r,3); sc2.font={bold:true,size:9,color:{argb:sc.fg},name:'Meiryo'}; sc2.fill={type:'pattern',pattern:'solid',fgColor:{argb:sc.bg}}; sc2.alignment={horizontal:'center',vertical:'middle'}; }
     r++;
   });
-  xlTotalRow(ws2,r,['','','','','合計','','','','',settl.reduce((a,x)=>a+x.pax,0),'','','',settl.reduce((a,x)=>a+x.stay,0),settl.reduce((a,x)=>a+x.transport,0),settl.reduce((a,x)=>a+x.total,0),''],COL2);
+  xlTotalRow(ws2,r,['','','','','合計','','','','','',settl.reduce((a,x)=>a+x.pax,0),'','','',settl.reduce((a,x)=>a+x.stay,0),settl.reduce((a,x)=>a+x.transport,0),settl.reduce((a,x)=>a+x.total,0),''],COL2);
 
   const fnSuffix = settleFilter.size === 0 ? '' : '_' + [...settleFilter].map(a=>accomEngName(a)).join('-');
   await xlSave(wb, `現地精算表${fnSuffix}_${today()}.xlsx`);
