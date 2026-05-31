@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -106,39 +106,46 @@
   .navlink:hover{background:rgba(0,0,0,.04)}
   .navlink.cur{background:var(--accentSoft,#e4ecd9);color:var(--accent,#3d5424);border-color:var(--accent,#3d5424)}
 </style>
+<link rel="stylesheet" href="../assets/saizen-ops.css">
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div class="brand">
-      <a href="../index.html" style="text-decoration:none;color:inherit"><h1>SaiZen Hub</h1></a>
-      <span class="step">STEP 1 · 데이터 적재</span>
-      <span class="sub">엠클릭 4종 → Supabase</span>
-      <nav style="display:flex;gap:4px;margin-top:8px">
-        <a class="navlink cur" href="step1.html">① 적재</a>
-        <a class="navlink" href="room.html">② 방배정</a>
+    <div class="brand so-bar" style="width:100%">
+      <a class="so-logo" href="../index.html" title="홈 / ホーム">
+        <img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen">
+      </a>
+      <span class="step" data-i18n="s1_step"></span>
+      <span class="sub" data-i18n="s1_sub"></span>
+      <span class="so-spacer"></span>
+      <div class="so-controls">
+        <div class="so-lang">
+          <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+          <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+        </div>
+        <button class="so-furi" id="so-furi" onclick="__so_toggleFuri()"></button>
+      </div>
+      <nav style="display:flex;gap:4px;margin-top:8px;flex-basis:100%">
+        <a class="navlink cur" href="step1.html" data-i18n="navStep1"></a>
+        <a class="navlink" href="room.html" data-i18n="navRoom"></a>
       </nav>
     </div>
-    <p class="lead">
-      기존 v13.4와 동일하게 4개 파일을 올리면, 파싱 후 Supabase에 적재합니다.
-      <b>event_seq</b> 기준 upsert이므로 같은 파일을 다시 올려도 중복되지 않습니다(멱등).
-      적재 순서: 예약리스트 → 일행별예약 → 현지도착 보완 → 그룹코드 → 운영 원장(guests/guest_members) 생성.
-    </p>
+    <p class="lead" data-i18n="s1_lead"></p>
   </header>
 
   <!-- ── Supabase 연결 ── -->
   <div class="conn">
-    <h2>① Supabase 연결</h2>
+    <h2 data-i18n="s1_h2conn"></h2>
     <div class="row">
-      <label for="sb-url">Project URL</label>
+      <label for="sb-url" data-i18n="s1_lblUrl"></label>
       <input id="sb-url" type="text" placeholder="https://xxxxxxxx.supabase.co" autocomplete="off">
-      <label for="sb-key">anon key</label>
+      <label for="sb-key" data-i18n="s1_lblKey"></label>
       <input id="sb-key" type="password" placeholder="eyJhbGciOi..." autocomplete="off">
-      <div class="hint">입력값은 이 브라우저(localStorage)에만 저장됩니다. anon 키는 RLS로 보호되며 공개돼도 안전한 키입니다.</div>
+      <div class="hint" data-i18n="s1_connHint"></div>
     </div>
     <div class="conn-bar">
-      <button class="btn ghost" id="btn-connect" type="button">연결 확인</button>
-      <span class="pill" id="conn-state">미연결</span>
+      <button class="btn ghost" id="btn-connect" type="button" data-i18n="btnConnect"></button>
+      <span class="pill" id="conn-state" data-i18n="connState_none"></span>
     </div>
   </div>
 
@@ -147,28 +154,26 @@
 
   <!-- ── 실행 ── -->
   <div class="actions">
-    <button class="btn" id="btn-run" type="button" disabled>Supabase에 적재</button>
-    <button class="btn ghost" id="btn-clear" type="button">초기화</button>
+    <button class="btn" id="btn-run" type="button" disabled data-i18n="s1_btnRun"></button>
+    <button class="btn ghost" id="btn-clear" type="button" data-i18n="s1_btnClear"></button>
     <span class="session" id="session-label"></span>
   </div>
 
   <!-- ── 결과 통계 ── -->
   <div class="panel" id="stats-panel" style="display:none">
-    <h2>적재 결과</h2>
+    <h2 data-i18n="s1_h2stats"></h2>
     <div class="stats" id="stats"></div>
-    <p class="note" style="padding:0 18px 14px">
-      guests(팀)·guest_members(개인)는 예약리스트+일행별+그룹코드 매칭으로 자동 생성됩니다.
-      태그코드는 v13.4 규칙(그룹코드-개인번호-숙소Pfx)을 그대로 따릅니다.
-    </p>
+    <p class="note" style="padding:0 18px 14px" data-i18n="s1_statsNote"></p>
   </div>
 
   <!-- ── 로그 ── -->
   <div class="panel">
-    <h2>처리 로그</h2>
-    <div class="log" id="log"><span class="l-dim">대기 중…</span></div>
+    <h2 data-i18n="s1_h2log"></h2>
+    <div class="log" id="log"><span class="l-dim" data-i18n="s1_logWait"></span></div>
   </div>
 </div>
 
+<script src="../assets/saizen-ops.js"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -182,11 +187,13 @@ let supa = null;
 
 // ── 파일 슬롯 정의 ──
 const SLOTS = [
-  {id:'res',     tag:'필수 · 마스터', name:'예약리스트',   desc:'팀/예약 단위 마스터. eventSeq·pax·금액·비고.', data:null, file:''},
-  {id:'ilhaeng', tag:'필수 · 개인명단', name:'일행별예약',   desc:'개인 단위. 영문명·생년월일·여권·항공편.',      data:null, file:''},
-  {id:'arrival', tag:'보완',          name:'현지도착',     desc:'영문명·회원번호 보완(없어도 진행 가능).',      data:null, file:''},
-  {id:'member',  tag:'참조',          name:'그룹코드',     desc:'회원 그룹코드 매칭 테이블(회원_배정_현황).',  data:null, file:''},
+  {id:'res',     data:null, file:''},
+  {id:'ilhaeng', data:null, file:''},
+  {id:'arrival', data:null, file:''},
+  {id:'member',  data:null, file:''},
 ];
+// 슬롯 표시 텍스트는 i18n 키로 조회 (데이터 식별은 id로만)
+function slotText(slot, kind){ return t('s1_slot_'+slot.id+'_'+kind); }
 
 // ── 로그 헬퍼 ──
 function clearLog(){ logEl.innerHTML=''; }
@@ -206,10 +213,10 @@ function renderDrops(){
     card.className = 'drop' + (slot.data?' done':'');
     card.innerHTML = `
       <span class="dot"></span>
-      <div class="tag">${slot.tag}</div>
-      <div class="name">${slot.name}</div>
-      <div class="desc">${slot.desc}</div>
-      <div class="file">${slot.file ? `<b>✓</b> ${slot.file} · ${slot.data.length.toLocaleString()}행` : '파일을 끌어다 놓거나 클릭'}</div>
+      <div class="tag">${slotText(slot,'tag')}</div>
+      <div class="name">${slotText(slot,'name')}</div>
+      <div class="desc">${slotText(slot,'desc')}</div>
+      <div class="file">${slot.file ? `<b>✓</b> ${slot.file} · ${slot.data.length.toLocaleString()}${t('s1_dyn_rows')}` : t('s1_dropEmpty')}</div>
       <input type="file" accept=".xlsx,.xls" data-slot="${slot.id}">`;
     const inp = card.querySelector('input');
     inp.addEventListener('change', e=>handleFile(slot.id, e.target.files[0]));
@@ -240,11 +247,11 @@ function handleFile(slotId, file){
         slot.data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
       }
       slot.file = file.name;
-      log(`📄 ${slot.name} 로드: ${slot.data.length.toLocaleString()}행`, 'ok');
+      log(`📄 ${slotText(slot,'name')} ${t('s1_dyn_load')}: ${slot.data.length.toLocaleString()}${t('s1_dyn_rows')}`, 'ok');
       renderDrops();
       detectSession();
     }catch(err){
-      log(`✗ ${slot.name} 읽기 실패: ${err.message}`, 'err');
+      log(`✗ ${slotText(slot,'name')} ${t('s1_dyn_readFail')}: ${err.message}`, 'err');
     }
   };
   reader.readAsArrayBuffer(file);
@@ -316,7 +323,7 @@ function loadCreds(){
 async function connect(){
   const url = $('#sb-url').value.trim();
   const key = $('#sb-key').value.trim();
-  if(!url || !key){ setConn('URL·key를 입력하세요','err'); return false; }
+  if(!url || !key){ setConn(t('s1_dyn_connNeedInput'),'err'); return false; }
   localStorage.setItem('saizen_sb_url', url);
   localStorage.setItem('saizen_sb_key', key);
   try{
@@ -324,13 +331,13 @@ async function connect(){
     // 가벼운 헤드 카운트로 연결 확인
     const {error} = await supa.from('bookings').select('event_seq',{count:'exact',head:true});
     if(error) throw error;
-    setConn('연결됨','ok');
-    log('🔗 Supabase 연결 성공','ok');
+    setConn(t('connState_ok'),'ok');
+    log('🔗 Supabase '+t('s1_dyn_connOk'),'ok');
     refreshRunBtn();
     return true;
   }catch(err){
-    setConn('연결 실패','err');
-    log(`✗ 연결 실패: ${err.message} (테이블이 없으면 01_schema.sql을 먼저 실행하세요)`, 'err');
+    setConn(t('connState_fail'),'err');
+    log(`✗ ${t('s1_dyn_connFail')}: ${err.message} (01_schema.sql)`, 'err');
     supa = null;
     refreshRunBtn();
     return false;
@@ -376,7 +383,7 @@ async function run(){
   const stat = {};
 
   try{
-    log(`▶ 적재 시작 · 세션 ${ym||'(미감지)'}`,'dim');
+    log(`▶ ${t('s1_dyn_runStart')} ${ym||t('s1_dyn_noDetect')}`,'dim');
 
     // ── 0) 그룹코드 참조 맵 (member_key → code) ──
     const codeMap = {}; const memberRows = [];
@@ -395,7 +402,7 @@ async function run(){
     if(memberRows.length){
       stat['member_codes'] = await upsertChunked('member_codes', memberRows, 'code,member_key');
       log(`✓ member_codes ${stat['member_codes']}건`,'ok');
-    } else log('· 그룹코드 파일 없음 — 매칭은 비회원 처리','warn');
+    } else log('· '+t('s1_dyn_grpMissing'),'warn');
 
     // ── 1) bookings (예약리스트 = 마스터) ──
     //   운영 대상만 추림: pax>0, 현지예약·항공조인·구마모토시내 제외, 숙소 4종 해당
@@ -575,7 +582,9 @@ $('#btn-run').addEventListener('click', run);
 $('#btn-clear').addEventListener('click', clearAll);
 loadCreds();
 renderDrops();
-log('대기 중… ① Supabase 연결 후 ② 파일을 올려주세요.','dim');
+log(t('s1_logWait'),'dim');
+// 언어 전환 시 동적 카드 다시 렌더
+window.onSaizenLangChange = function(){ try{ renderDrops(); }catch(e){} };
 </script>
 </body>
 </html>
