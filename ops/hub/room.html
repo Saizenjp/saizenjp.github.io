@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SaiZen Hub · 호텔 방배정</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    /* 사이젠 올리브 그린 기반 라이트 팔레트 (가독성 강화) */
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad;
+    --text:#1f2a18; --text2:#566049; --muted:#8a937c;   /* 본문 진하게, 보조도 읽히게 */
+    --accent:#3d5424; --accent2:#9a7322; --accentSoft:#e4ecd9;  /* 사이젠 올리브 / 골드 */
+    --accentDeep:#2c3d19;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    /* 숙소별 포인트색 (사이젠 앱 표준) */
+    --y:#1e3a8a; --k:#5b21b6; --g:#065f46; --s:#92400e;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background:linear-gradient(180deg,#f2f5ec 0%,var(--bg) 220px),var(--bg);
+    color:var(--text);line-height:1.55;min-height:100vh;
+  }
+  .topbar{
+    position:sticky;top:0;z-index:30;background:var(--surface);
+    border-bottom:3px solid var(--accent);padding:13px 22px;
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    box-shadow:0 1px 4px rgba(44,61,25,.06);
+  }
+  .topbar h1{font-size:19px;font-weight:800;color:var(--accent);letter-spacing:-.02em}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .topbar .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .btn.connected:hover{background:#266a45}
+
+  /* 연결 바 */
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+
+  /* 날짜 선택 */
+  .datebar{padding:10px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .datebar label{font-size:12px;color:var(--text2);font-weight:600}
+  .mode-toggle{display:inline-flex;border:1px solid var(--border2);border-radius:7px;overflow:hidden}
+  .mode-btn{font-family:inherit;font-size:12px;font-weight:700;padding:6px 13px;border:none;background:var(--surface);color:var(--text2);cursor:pointer;transition:.12s}
+  .mode-btn.active{background:var(--accent);color:#fff}
+  .mode-btn:not(.active):hover{background:var(--accentSoft)}
+  .datebar .legend{margin-left:auto;display:flex;gap:12px;font-size:11px;color:var(--text2);align-items:center}
+  .legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
+
+  /* 2단 레이아웃 */
+  .stage{display:grid;grid-template-columns:300px 1fr;gap:16px;padding:16px 20px;align-items:start}
+  @media(max-width:860px){.stage{grid-template-columns:1fr}}
+
+  .col{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(44,61,25,.04)}
+  .col > h2{font-size:14px;font-weight:800;padding:12px 16px;border-bottom:2px solid var(--accentSoft);background:var(--surface2);color:var(--accent);display:flex;align-items:center;gap:8px}
+  .col > h2 .cnt{font-size:12px;color:var(--text2);font-weight:700;margin-left:auto}
+  .col-body{padding:13px;min-height:120px}
+
+  /* 미배정 팀 카드 */
+  .team-card{
+    background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--muted);
+    border-radius:8px;padding:10px 12px;margin-bottom:9px;cursor:grab;transition:.12s;
+  }
+  .team-card:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(44,61,25,.1)}
+  .team-card.dragging{opacity:.4}
+  .team-card.acc-Y{border-left-color:var(--y)} .team-card.acc-K{border-left-color:var(--k)}
+  .team-card.acc-G{border-left-color:var(--g)} .team-card.acc-S{border-left-color:var(--s)}
+  .team-card .tag{font-family:var(--mono);font-weight:800;font-size:15px;color:var(--accent)}
+  .team-card .tag.none{color:var(--muted);font-weight:600}
+  .team-card .meta{font-size:13px;color:var(--text2);margin-top:3px}
+  .team-card .pax{display:inline-block;font-weight:700;color:var(--text)}
+  .team-card .rtype{font-size:12px;color:var(--accent2);font-weight:700;margin-top:4px}
+  .team-card .tag-row{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .team-card .roster{margin-top:7px;border-top:1px solid var(--border);padding-top:6px;display:flex;flex-direction:column;gap:3px}
+  .team-card .rmember{display:grid;grid-template-columns:62px 1fr;gap:6px;align-items:baseline;font-size:12px;line-height:1.35}
+  .team-card .rmember.rep{font-weight:700}
+  .team-card .rmember.dim{color:var(--muted);font-size:11px}
+  .team-card .rtag{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700}
+  .team-card .rname{color:var(--text)}
+  .team-card .rname .repbadge{display:inline-block;font-size:8.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:3px;padding:1px 4px;margin-left:5px;font-style:normal;vertical-align:middle}
+  .team-card .ren{grid-column:2;font-family:var(--mono);font-size:10.5px;color:var(--text2);margin-top:-1px}
+  /* 객실 칩: 그룹코드 헤더 + 사람 명단 */
+  .room .chip{flex-direction:column;align-items:stretch;gap:3px}
+  .room .chip .chip-head{display:flex;align-items:center;gap:6px}
+  .room .chip .cpeople{display:flex;flex-direction:column;gap:1px;padding-left:2px}
+  .room .chip .cperson{font-size:11px;color:var(--text2);line-height:1.3}
+  .room .chip .cperson b{color:var(--text);font-weight:700}
+
+  /* 시설 그룹 */
+  .fac{margin-bottom:22px}
+  .fac > h3{font-size:14.5px;font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .fac > h3 .dot{width:11px;height:11px;border-radius:2px}
+  .fac.f-Y h3 .dot{background:var(--y)} .fac.f-K h3 .dot{background:var(--k)}
+  .fac.f-G h3 .dot{background:var(--g)} .fac.f-S h3 .dot{background:var(--s)}
+  .fac > h3 .util{font-size:12px;color:var(--text2);font-weight:600;margin-left:auto}
+  .zone-label{font-size:13px;font-weight:700;color:var(--text);margin:14px 0 7px;padding-left:2px;display:flex;align-items:center;gap:10px}
+  .floorplan-btn{font-family:inherit;font-size:11px;font-weight:700;color:var(--accent);background:var(--accentSoft);border:1px solid #c4ddcc;border-radius:6px;padding:3px 11px;cursor:pointer;transition:.12s}
+  .floorplan-btn:hover{background:var(--accent);color:#fff}
+
+  .rooms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:11px}
+  .room{
+    background:var(--surface2);border:1px dashed var(--border2);border-radius:9px;
+    padding:11px 13px 12px;min-height:80px;transition:.12s;position:relative;
+  }
+  .room.over{border-color:var(--accent);border-style:solid;background:var(--accentSoft)}
+  .room.filled{border-style:solid;background:#fff;border-color:var(--accent);box-shadow:0 1px 4px rgba(44,61,25,.1)}
+  .room.inactive{opacity:.5;background:repeating-linear-gradient(45deg,#f0eee7,#f0eee7 6px,#e9e6dd 6px,#e9e6dd 12px)}
+  .room .rn{font-size:15px;font-weight:800}
+  .room .rt{font-size:12px;color:var(--text2);margin-top:1px}
+  .room .cap{position:absolute;top:9px;right:11px;font-size:12px;color:var(--muted);font-family:var(--mono);font-weight:600}
+    .room .lock{position:absolute;bottom:8px;right:10px;font-size:14px;cursor:pointer;opacity:.5;transition:.12s;user-select:none}
+  .room .lock:hover{opacity:1;transform:scale(1.15)}
+  .room .assigned{margin-top:8px;display:flex;flex-direction:column;gap:5px}
+  .room .chip{
+    display:flex;align-items:center;gap:6px;background:var(--accentSoft);border:1px solid #c4ddcc;
+    border-radius:6px;padding:4px 8px;font-size:12.5px;
+  }
+  .room .chip .ctag{font-family:var(--mono);font-weight:700;color:var(--accent)}
+  .room .chip .cx{margin-left:auto;cursor:pointer;color:var(--err);font-weight:700;padding:0 4px;font-size:13px}
+  .room .chip .cpax{color:var(--text2)}
+  .room .chip .cen{flex-basis:100%;font-size:10.5px;color:var(--text2);font-family:var(--mono);margin-top:2px;line-height:1.3}
+  .room.warn{border-color:var(--warn)}
+  .room .badge{position:absolute;bottom:8px;right:10px;font-size:10px;font-weight:700;color:var(--warn)}
+  .room .note{font-size:11px;color:var(--muted);margin-top:3px}
+
+  .empty-hint{font-size:12px;color:var(--muted);text-align:center;padding:24px 0}
+
+  /* 호텔동 원형 평면도 */
+  .floor-ring{position:relative;width:100%;max-width:560px;margin:6px auto 22px;aspect-ratio:1/0.92}
+  .ring-core{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);display:flex;gap:4px;z-index:1}
+  .ring-core span{background:var(--surface3);border:1px solid var(--border2);border-radius:4px;font-size:9px;color:var(--text2);padding:8px 9px;font-weight:700}
+  .ring-compass{position:absolute;left:50%;top:-4px;transform:translateX(-50%);font-size:10px;font-weight:700;color:var(--accent2)}
+  .ring-room{position:absolute;width:15%;min-width:74px;transform:translate(-50%,-50%);
+    background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:5px 4px 6px;
+    text-align:center;cursor:default;transition:.12s;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .ring-room.over{border-color:var(--accent);border-width:2px;background:var(--accentSoft)}
+  .ring-room.filled{box-shadow:0 2px 7px rgba(0,0,0,.12)}
+  .ring-room.inactive{opacity:.45;background:repeating-linear-gradient(45deg,#f0eee7,#f0eee7 5px,#e9e6dd 5px,#e9e6dd 10px)}
+  .ring-room.warn{border-color:var(--warn)}
+  .ring-room .rno{font-size:15px;font-weight:800;color:var(--text);line-height:1}
+  .ring-room .rno small{font-size:9px;font-weight:600;color:var(--muted)}
+  .ring-room .rtype{font-size:8.5px;font-weight:700;margin-top:1px;line-height:1.1}
+  .ring-room .rcap{font-size:9px;color:var(--muted);font-family:var(--mono);margin-top:1px}
+  .ring-room .rlock{position:absolute;top:2px;right:4px;font-size:9px;cursor:pointer}
+  .ring-room .rchips{display:flex;flex-direction:column;gap:2px;margin-top:3px}
+  .ring-room .rchip{font-size:9px;background:var(--accentSoft);border-radius:3px;padding:1px 3px;display:flex;align-items:center;gap:3px;justify-content:center}
+  .ring-room .rchip b{font-family:var(--mono);color:var(--accent);font-size:9px}
+  .ring-room .rcx{cursor:pointer;color:var(--err);font-weight:700;margin-left:auto}
+  /* 타입별 상단 색 띠 */
+  .ring-room.t-디럭스더블트윈{border-top:3px solid #b5862f}
+  .ring-room.t-디럭스트윈{border-top:3px solid #c9a44a}
+  .ring-room.t-트윈{border-top:3px solid #1e3a8a}
+  .ring-room.t-컴팩트트윈{border-top:3px solid #5b8ad4}
+  .ring-room.t-트리플{border-top:3px solid #5b21b6}
+  .ring-room.t-싱글{border-top:3px solid #6b7a90}
+  .ring-room.t-더블{border-top:3px solid #065f46}
+  .ring-empty-note{font-size:11px;color:var(--muted);text-align:center;margin-top:-12px}
+  @media(max-width:600px){.floor-ring{max-width:100%}.ring-room{min-width:58px;font-size:8px}}
+
+  /* 로그 토스트 */
+  #toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);animation:popUp .2s;text-align:center;min-width:200px}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+  @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
+
+  /* 호텔동 호실 입력 모달 */
+  .modal-bg{position:fixed;inset:0;background:rgba(40,39,34,.4);z-index:40;display:flex;align-items:center;justify-content:center;padding:20px}
+  .modal{background:var(--surface);border-radius:14px;max-width:520px;width:100%;max-height:86vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+  .modal h2{font-size:15px;font-weight:800;padding:16px 20px;border-bottom:1px solid var(--border)}
+  .modal .mbody{padding:18px 20px}
+  .modal .mrow{display:grid;grid-template-columns:1fr 90px;gap:10px;align-items:center;margin-bottom:10px}
+  .modal .mrow label{font-size:13px;font-weight:600}
+  .modal .mrow .desc{font-size:11px;color:var(--muted)}
+  .modal .mfoot{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+
+/* 개인 단위 배정 UI — 색은 사이젠 CSS 변수만 참조(HEX 하드코딩 금지) */
+.rmember{cursor:pointer;user-select:none;border-radius:6px}
+.rmember:hover{background:var(--surface3)}
+.rmember .mchk{margin:0;cursor:pointer;accent-color:var(--accent)}
+.rmember.sel{background:var(--accentSoft);outline:1px solid var(--accent)}
+.rmember.done{opacity:.5}
+.rmember.done .mchk{cursor:not-allowed}
+.rmember .rdone{font-size:10px;color:var(--accent);margin-left:auto;font-weight:600}
+#sel-bar .pill{background:var(--accent);color:#fff}
+.room{cursor:pointer;user-select:none;-webkit-user-select:none}
+.room.inactive{cursor:default}
+.chip-head .cx{margin-left:auto}
+.rmember[draggable="true"]{cursor:grab}
+.rmember.dragging{opacity:.5}
+  .navlink{font-size:12px;font-weight:700;padding:4px 11px;border-radius:99px;color:var(--text2);text-decoration:none;border:1px solid transparent}
+  .navlink:hover{background:var(--surface3)}
+  .navlink.cur{background:var(--accentSoft);color:var(--accent);border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a href="../index.html" style="text-decoration:none"><h1>SaiZen Hub</h1></a><span class="step">STEP 2 · 호텔 방배정</span>
+  <nav style="display:flex;gap:4px;margin-left:14px">
+    <a class="navlink" href="step1.html">① 적재</a>
+    <a class="navlink cur" href="room.html">② 방배정</a>
+  </nav>
+  <div class="grow"></div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="API key (publishable 또는 anon)" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint">연결 정보는 이 브라우저에만 저장됩니다.</span>
+</div>
+
+<div class="datebar">
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="mode-day" type="button">하루 보기</button>
+    <button class="mode-btn" id="mode-range" type="button">기간 보기</button>
+  </div>
+  <label id="lbl-from">날짜</label>
+  <input class="inp" id="date-pick" type="date">
+  <span id="range-extra" style="display:none;align-items:center;gap:8px">
+    <label>~</label><input class="inp" id="date-to" type="date">
+  </span>
+  <button class="btn sm" id="btn-load" type="button" disabled>불러오기</button>
+  <button class="btn ghost sm" id="btn-export" type="button" title="현재 배정 현황을 엑셀로 내보내기">📥 양식 내보내기</button>
+  <label class="btn ghost sm" id="btn-import-label" title="호수 채운 엑셀 올려 일괄 배정" style="cursor:pointer">📤 일괄 배정<input type="file" id="file-import" accept=".xlsx,.xls" style="display:none"></label>
+  <span class="hint" id="session-hint"></span>
+  <span id="sel-bar" style="display:none;align-items:center;gap:8px;margin-left:auto">
+    <span class="pill" id="sel-cnt">0명 선택됨</span>
+    <button class="btn ghost sm" id="btn-sel-clear" type="button">선택 해제</button>
+    <span class="hint" style="font-size:11px">→ 객실 카드를 클릭하면 한꺼번에 배정</span>
+  </span>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--y)"></span>야마나미</span>
+    <span><span class="sw" style="background:var(--k)"></span>쿠주힐즈</span>
+    <span><span class="sw" style="background:var(--g)"></span>간지호텔</span>
+    <span><span class="sw" style="background:var(--s)"></span>시즈노야도</span>
+  </div>
+</div>
+
+<div class="stage">
+  <!-- 좌: 미배정 팀 -->
+  <div class="col">
+    <h2>미배정 팀 <span class="cnt" id="unassigned-cnt">0팀</span></h2>
+    <div class="col-body" id="unassigned" data-drop="unassign">
+      <div class="empty-hint">날짜를 선택하고 [불러오기]를 누르세요.</div>
+    </div>
+  </div>
+  <!-- 우: 시설별 객실 -->
+  <div class="col">
+    <h2>객실 배정 <span class="cnt" id="assign-summary"></span></h2>
+    <div class="col-body" id="facilities"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════════
+//  SaiZen Hub — STEP 2 호텔 방배정 모듈
+//  · 좌: 그날 체크인 미배정 팀(guests)  · 우: 시설별 객실(room_inventory)
+//  · 드래그앤드롭 → rooms 기록. 1인실 추가요금(간지·시즈노야도 4,400/박) 자동 transactions.
+//  · 판매분류→현장등급 매핑은 ROOMTYPE_MAP 한 곳에서만 관리(예약정책 바뀌면 여기만 수정).
+// ════════════════════════════════════════════════════════════════════════
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+let _selInit=true;
+let supa=null;
+let state={ date:null, guests:[], rooms:[], inventory:[], assignMap:{}, members:{} }; // members: event_seq → [guest_members]
+
+// ── 숙소 prefix (v13.4 동일) ──
+const PFX={'야마나미리조트':'Y','쿠주힐즈':'K','간지호텔':'G','시즈노야도 료칸':'S'};
+const FEE_SINGLE={'간지호텔':4400,'시즈노야도 료칸':4400}; // 1인 사용 추가요금/박
+
+// ── 판매분류(booking roomType) → 야마나미 현장 등급 기본값 ──
+//   예약 정책이 '통합 리조트 숙박'으로 바뀌면 이 표만 수정하면 됨.
+//   ※ 현장 실제 타입(엑셀 기준): 디럭스더블트윈/디럭스트윈/트윈/컴팩트트윈/트리플/싱글/더블
+const ROOMTYPE_MAP={
+  '호텔 트윈':'트윈',          // 표준 트윈
+  '호텔 소형트윈':'컴팩트트윈', // 舊 SGL+SGL
+  '돔하우스':'트윈',          // 돔하우스 동
+  '관내별장':null,            // 소보/아소 현장 지정
+  '장기숙박전용':'2인1동',    // 쿠주
+  '호텔':'트윈',              // 간지
+  '료칸':'트윈',              // 시즈노야도
+};
+
+// ── 객실 타입 한글 → 영문 (외국인 직원용 병기) ──
+const TYPE_EN={
+  '디럭스더블트윈':'Deluxe Double Twin','디럭스트윈':'Deluxe Twin','트윈':'Twin',
+  '컴팩트트윈':'Compact Twin','트리플':'Triple','싱글':'Single','더블':'Double',
+  '4인실':'Quad Room','8인실':'Octa Room','2인1동':'Cottage (2p)',
+};
+function typeLabel(t){const en=TYPE_EN[t];return en?`${t} · ${en}`:t;}
+
+// ── 야마나미 호텔동 원형 배치 좌표 (단면도 ①~⑭ 기준, %). 4·13 결번 ──
+//   가운데 EV, 북(쿠쥬)=상단. 호수 끝 두 자리 = 위치 번호.
+const RING_POS={
+  3:{x:38,y:6}, 5:{x:62,y:6},
+  2:{x:22,y:18}, 6:{x:78,y:18},
+  1:{x:11,y:37}, 7:{x:89,y:37},
+  14:{x:11,y:60}, 8:{x:89,y:60},
+  12:{x:22,y:79}, 9:{x:78,y:79},
+  11:{x:38,y:91}, 10:{x:62,y:91},
+};
+
+function toast(msg,cls){
+  const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:'');
+  t.textContent=msg; $('#toast').appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);
+}
+function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
+
+// ── 연결 ──
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn('URL·key 필요','err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');
+  btn.textContent='연결 중…'; btn.disabled=true; btn.classList.remove('connected');
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {error}=await supa.from('room_inventory').select('id',{count:'exact',head:true});
+    if(error) throw error;
+    setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
+    btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
+    $('#btn-load').disabled=false;
+    await loadInventory();
+  }catch(e){
+    setConn('연결 실패','err');
+    toast('연결 실패: '+e.message+' (SQL 실행·키 확인)','err');
+    btn.textContent='연결 실패 · 재시도'; btn.classList.remove('connected'); btn.disabled=false;
+    supa=null; $('#btn-load').disabled=true;
+  }
+}
+
+// ── 객실 마스터 로드 ──
+async function loadInventory(){
+  const {data,error}=await supa.from('room_inventory').select('*').order('facility').order('sort_order');
+  if(error){toast('마스터 로드 실패: '+error.message,'err');return;}
+  state.inventory=data||[];
+}
+
+// ── 날짜 모드 (day/range) ──
+let dateMode='day';
+
+// ── 선택 범위에 점유 중인 팀 + 배정 로드 ──
+//   하루 모드: from=to=선택일 → 그날 머무는(dep<=날<arr) 모든 팀
+//   기간 모드: from~to → 그 기간에 한 번이라도 머무는 팀 (dep < to+1 AND arr > from)
+async function loadDay(){
+  const from=$('#date-pick').value;
+  const to = dateMode==='range' ? ($('#date-to').value||from) : from;
+  if(!from){toast('날짜를 선택하세요','warn');return;}
+  if(dateMode==='range' && to<from){toast('종료일이 시작일보다 빠릅니다','warn');return;}
+  state.from=from; state.to=to; state.date=from;
+
+  // 점유 판정: dep_date <= to(범위끝) AND arr_date > from(범위시작)
+  //   → 그 기간에 체크인~체크아웃이 한 번이라도 걸치는 팀
+  const {data:g,error:ge}=await supa
+    .from('guests')
+    .select('event_seq,team_tag,group_code,accom,accom_prefix,pax,check_status,bookings!inner(rep_name,dep_date,arr_date,product_name,member_type,remark)')
+    .lte('bookings.dep_date',to)
+    .gt('bookings.arr_date',from);
+  if(ge){toast('팀 로드 실패: '+ge.message,'err');return;}
+  state.guests=(g||[]).map(x=>({
+    event_seq:x.event_seq, team_tag:x.team_tag, group_code:x.group_code,
+    accom:x.accom, pfx:x.accom_prefix||PFX[x.accom]||'X', pax:x.pax,
+    rep:x.bookings?.rep_name||'', dep:x.bookings?.dep_date, arr:x.bookings?.arr_date,
+    member_type:x.bookings?.member_type||'',
+    remark:x.bookings?.remark||'',
+    isNewCheckin: x.bookings?.dep_date===from,   // 이 범위 시작일에 신규 체크인
+    sale_type:guessSaleType(x.bookings?.product_name, x.accom),
+  }));
+  // 기존 배정 rooms 로드
+  const seqs=state.guests.map(g=>g.event_seq);
+  state.rooms=[];
+  state.members={};
+  if(seqs.length){
+    const {data:r,error:re}=await supa.from('rooms').select('*').in('event_seq',seqs);
+    if(re){toast('배정 로드 실패: '+re.message,'err');return;}
+    state.rooms=r||[];
+    const {data:m,error:me}=await supa.from('guest_members')
+      .select('id,event_seq,seq_in_team,name_kr,name_en,is_rep').in('event_seq',seqs);
+    if(me){toast('명단 로드 실패: '+me.message,'warn');}
+    else (m||[]).forEach(x=>{(state.members[x.event_seq]=state.members[x.event_seq]||[]).push(x);});
+  }
+  state.sel=new Set();
+  rebuildAssignMap();
+  render();
+  const label = dateMode==='range' ? `${state.from}~${state.to}` : state.from;
+  toast(`${label} · 점유 ${state.guests.length}팀 로드`,'ok');
+}
+
+function guessSaleType(pname,accom){
+  const s=String(pname||'');
+  if(accom==='야마나미리조트'){
+    if(s.includes('소형트윈')) return '호텔 소형트윈';
+    if(s.includes('돔하우스')) return '돔하우스';
+    if(s.includes('별장')) return '관내별장';
+    return '호텔 트윈';
+  }
+  if(accom==='쿠주힐즈') return '장기숙박전용';
+  if(accom==='간지호텔') return '호텔';
+  if(accom==='시즈노야도 료칸') return '료칸';
+  return '';
+}
+
+function rebuildAssignMap(){
+  state.assignMap={};
+  state.rooms.forEach(r=>{
+    const k=r.inventory_id||('_free_'+r.id);
+    (state.assignMap[k]=state.assignMap[k]||[]).push(r);
+  });
+}
+
+// ── 렌더 ──
+function render(){
+  _tagMapCache=null;
+  renderUnassigned();
+  renderFacilities();
+  renderSummary();
+}
+
+function assignedSeqSet(){
+  return new Set(state.rooms.map(r=>r.event_seq));
+}
+
+function renderUnassigned(){
+  const box=$('#unassigned'); box.innerHTML='';
+  if(!state.sel) state.sel=new Set();
+  const done=assignedMemberSet();
+  // 미배정 인원이 한 명이라도 남은 팀만 표시
+  const list=state.guests.filter(g=>!teamFullyAssigned(g.event_seq));
+  const totalLeft=list.reduce((s,g)=>s+unassignedMembers(g.event_seq).length,0);
+  $('#unassigned-cnt').textContent=`${list.length}팀 · ${totalLeft}명`;
+  if(!list.length){box.innerHTML='<div class="empty-hint">모든 인원 배정 완료 🎉</div>';renderSelBar();return;}
+  list.forEach(g=>{
+    const roster=teamRoster(g.event_seq);
+    const leftN=unassignedMembers(g.event_seq).length;
+    const card=document.createElement('div');
+    card.className='team-card acc-'+g.pfx;
+    card.dataset.seq=g.event_seq;
+    const gcode=teamGroupCode(g.event_seq)||'(코드미정)';
+    const rosterHtml=roster.length? roster.map(m=>{
+      const isDone=done.has(m.id);
+      const checked=state.sel.has(m.id);
+      return `<div class="rmember${m.is_rep?' rep':''}${isDone?' done':''}${checked?' sel':''}" data-mid="${m.id}" ${isDone?'':'draggable="true"'}>
+        <input type="checkbox" class="mchk" data-mid="${m.id}" ${isDone?'disabled':''} ${checked?'checked':''}>
+        <span class="rtag">${m.tag||(m.num)}</span>
+        <span class="rname">${m.name_kr||'-'}${m.is_rep?'<i class="repbadge">REP</i>':''}</span>
+        <span class="ren">${m.name_en||''}</span>
+        ${isDone?'<span class="rdone">배정완료</span>':''}
+      </div>`;
+    }).join('') : '<div class="rmember dim">명단 정보 없음</div>';
+    card.innerHTML=`
+      <div class="tag-row">
+        <span class="tag">${gcode}</span>
+        <span class="meta"><span class="pax">${g.pax}명</span> · 잔여 ${leftN} · ${g.accom}</span>
+      </div>
+      <div class="rtype">${g.sale_type} → ${ROOMTYPE_MAP[g.sale_type]||'현장지정'}</div>
+      <div class="roster">${rosterHtml}</div>`;
+    // 행 선택 토글 (행 어디를 눌러도 1회 토글). 체크박스/행 클릭 일원화.
+    function setSel(mid,on,rowEl){
+      if(on) state.sel.add(mid); else state.sel.delete(mid);
+      if(rowEl){ rowEl.classList.toggle('sel',on);
+        const c=rowEl.querySelector('.mchk'); if(c) c.checked=on; }
+      renderSelBar();
+    }
+    card.querySelectorAll('.rmember[data-mid]').forEach(row=>{
+      if(row.classList.contains('done')) return; // 배정완료 행은 무시
+      const mid=parseInt(row.dataset.mid,10);
+      const chk=row.querySelector('.mchk');
+      // 행 클릭 = 토글 (체크박스를 직접 누른 경우는 기본동작이 이미 토글하므로 중복방지)
+      row.addEventListener('click',e=>{
+        if(e.target===chk) return; // 체크박스 직접 클릭은 아래 change 가 처리
+        const on=!state.sel.has(mid);
+        setSel(mid,on,row);
+      });
+      if(chk){
+        chk.addEventListener('change',()=>setSel(mid,chk.checked,row));
+      }
+      // 드래그 → 드롭 배정. 미선택이면 그 한 명 포함.
+      row.addEventListener('dragstart',e=>{
+        if(!state.sel.has(mid)) setSel(mid,true,row);
+        e.dataTransfer.setData('text/plain','member');
+        e.dataTransfer.effectAllowed='move';
+        row.classList.add('dragging');
+      });
+      row.addEventListener('dragend',()=>row.classList.remove('dragging'));
+    });
+    box.appendChild(card);
+  });
+  renderSelBar();
+}
+
+// 선택된 멤버들을 한 방에 한꺼번에 배정
+async function assignSelectedTo(inv){
+  const ids=[...(state.sel||[])];
+  if(!ids.length){toast('먼저 명단에서 인원을 선택하세요','warn');return;}
+  await assignMembers(ids, inv);
+}
+
+function renderFacilities(){
+  const box=$('#facilities'); box.innerHTML='';
+  const FACS=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
+  FACS.forEach(fac=>{
+    const pfx=PFX[fac];
+    const rooms=state.inventory.filter(r=>r.facility===fac);
+    if(!rooms.length && fac==='야마나미리조트'){
+      // 호텔동 미등록 안내
+    }
+    const facDiv=document.createElement('div');
+    facDiv.className='fac f-'+pfx;
+    // 가동률
+    const totalCap=rooms.filter(r=>r.active).reduce((s,r)=>s+r.capacity,0);
+    const used=state.rooms.filter(r=>{const inv=invById(r.inventory_id);return inv&&inv.facility===fac;}).reduce((s,r)=>s+(r.assigned_pax||0),0);
+    facDiv.innerHTML=`<h3><span class="dot"></span>${fac}<span class="util">${used}/${totalCap}명</span></h3>`;
+    // zone별 그룹 — 호텔동은 3층→12층 순 정렬, 별장 등은 등장 순
+    const zones=[...new Set(rooms.map(r=>r.zone||fac))].sort((a,b)=>{
+      const fa=a.match(/^(\d+)층$/), fb=b.match(/^(\d+)층$/);
+      if(fa&&fb) return (+fa[1])-(+fb[1]);   // 둘 다 층 → 숫자순(3→12)
+      if(fa) return -1; if(fb) return 1;     // 층을 앞으로
+      return 0;
+    });
+    zones.forEach(zone=>{
+      const zr=rooms.filter(r=>(r.zone||fac)===zone);
+      const isHotelFloor=/^\d+층$/.test(zone);
+      if(zones.length>1){
+        const zl=document.createElement('div'); zl.className='zone-label';
+        if(isHotelFloor){
+          // 층 라벨 + 단면도 보기 버튼
+          zl.innerHTML=`<span>— ${zone}</span>`;
+          const btn=document.createElement('button');
+          btn.className='floorplan-btn'; btn.type='button';
+          btn.textContent='평면도'; btn.title='단면도(원형 배치) 보기';
+          btn.addEventListener('click',()=>openFloorplanModal(zone,zr));
+          zl.appendChild(btn);
+        } else {
+          zl.textContent='— '+zone;
+        }
+        facDiv.appendChild(zl);
+      }
+      const grid=document.createElement('div'); grid.className='rooms-grid';
+      zr.forEach(inv=>grid.appendChild(renderRoom(inv)));
+      facDiv.appendChild(grid);
+    });
+    if(!rooms.length){
+      const e=document.createElement('div'); e.className='empty-hint';
+      e.innerHTML=fac==='야마나미리조트'
+        ?'호텔동 객실 미등록 — 05_room_inventory_real.sql을 실행하세요.'
+        :'등록된 객실이 없습니다.';
+      facDiv.appendChild(e);
+    }
+    box.appendChild(facDiv);
+  });
+}
+
+
+
+// ── 팀별 임시 그룹코드 부여 (회원 group_code 없으면 AA01, AA02… 순서대로) ──
+//   v13.4 방식: 대표 그룹코드 + 개인번호 + 숙소Pfx (예: AA01-1Y)
+let _tagMapCache=null;
+// ── 개인(멤버) 단위 헬퍼 ─────────────────────────────────────────────
+// rooms 1행 = 1명. member_id = guest_members.id. 화면 태그는 표시용.
+function assignedMemberSet(){
+  // 이번 세션에서 이미 방을 받은 member_id 집합
+  const s=new Set();
+  state.rooms.forEach(r=>{ if(r.member_id!=null) s.add(r.member_id); });
+  return s;
+}
+function unassignedMembers(seq){
+  // 해당 팀에서 아직 방 안 받은 멤버 목록(정렬+태그 포함)
+  const done=assignedMemberSet();
+  return teamRoster(seq).filter(m=>!done.has(m.id));
+}
+function teamFullyAssigned(seq){
+  return unassignedMembers(seq).length===0 && (state.members[seq]||[]).length>0;
+}
+function memberById(mid){
+  for(const seq in state.members){
+    const hit=(state.members[seq]||[]).find(m=>m.id===mid);
+    if(hit) return {...hit, event_seq:Number(seq)};
+  }
+  return null;
+}
+function selClear(){ state.sel=new Set(); }
+function selCount(){ return state.sel?state.sel.size:0; }
+function renderSelBar(){
+  const bar=$('#sel-bar'); if(!bar) return;
+  const n=selCount();
+  bar.style.display=n? 'flex':'none';
+  if(n) $('#sel-cnt').textContent=n+'명 선택됨';
+}
+
+function buildTagMap(){
+  const map={}; let idx=0;
+  // 팀 정렬: 숙소→대표자 (일관된 임시코드 부여)
+  const teams=[...state.guests].sort((a,b)=>(a.accom||'').localeCompare(b.accom||'')||(a.rep||'').localeCompare(b.rep||''));
+  teams.forEach(g=>{
+    let gcode=g.group_code;
+    if(!gcode){
+      // 임시코드 AA01, AA02 … (26*99 capacity)
+      const n=idx++;
+      const a=String.fromCharCode(65+Math.floor(n/26)%26);
+      const b=String.fromCharCode(65+n%26);
+      const num=String(Math.floor(n/676)+1);
+      gcode='A'+a+b.replace('A','A'); // 단순화: AA,AB,AC...
+      gcode='A'+String.fromCharCode(65+Math.floor(n/26)%26)+String(n%26+1).padStart(2,'0');
+    }
+    map[g.event_seq]={gcode, pfx:g.pfx||'Y'};
+  });
+  return map;
+}
+function personTag(seq, seqInTeam){
+  if(!_tagMapCache) _tagMapCache=buildTagMap();
+  const t=_tagMapCache[seq]; if(!t) return '';
+  return `${t.gcode}-${seqInTeam}${t.pfx}`;
+}
+function teamGroupCode(seq){
+  if(!_tagMapCache) _tagMapCache=buildTagMap();
+  return _tagMapCache[seq]?_tagMapCache[seq].gcode:'';
+}
+// 팀 명단 (정렬된 멤버 + 태그코드)
+function teamRoster(seq){
+  const ms=(state.members[seq]||[]).slice().sort((a,b)=>(a.seq_in_team||0)-(b.seq_in_team||0));
+  return ms.map((m,i)=>({
+    ...m,
+    num:m.seq_in_team||(i+1),
+    tag:personTag(seq, m.seq_in_team||(i+1)),
+  }));
+}
+
+// ── 팀의 영문명 목록 (객실 칩 표시용) ──
+function teamEnNames(seq){
+  const ms=(state.members[seq]||[]).filter(m=>m.name_en).map(m=>m.name_en);
+  if(!ms.length) return '';
+  return ms.slice(0,4).join(', ')+(ms.length>4?` 외 ${ms.length-4}`:'');
+}
+
+function invById(id){return state.inventory.find(i=>i.id===id);}
+
+function renderRoom(inv){
+  const div=document.createElement('div');
+  const assigned=state.rooms.filter(r=>r.inventory_id===inv.id);
+  const usedPax=assigned.reduce((s,r)=>s+(r.assigned_pax||0),0);
+  const cap=inv.max_capacity||inv.capacity;
+  div.className='room'+(inv.active?'':' inactive')+(assigned.length?' filled':'')+(usedPax>inv.capacity?' warn':'');
+  div.dataset.invId=inv.id;
+  let chips=assigned.map(r=>{
+    const m=r.member_id!=null?memberById(r.member_id):null;
+    const tag=m?personTag(r.event_seq,m.seq_in_team||1):(teamGroupCode(r.event_seq)||('팀'+r.event_seq));
+    const nameKr=m?(m.name_kr||'-'):'';
+    const nameEn=m?(m.name_en||''):teamEnNames(r.event_seq);
+    return `<div class="chip">
+      <div class="chip-head"><span class="ctag">${tag}</span><span class="cx" data-room-id="${r.id}" title="배정 취소">✕</span></div>
+      <div class="cpeople"><div class="cperson"><b>${nameKr}</b> ${nameEn}</div></div>
+    </div>`;
+  }).join('');
+  div.innerHTML=`
+    <span class="cap">${usedPax}/${inv.capacity}</span>
+    <span class="lock" data-inv-id="${inv.id}" title="${inv.active?'사용 가능 — 클릭하면 비활성':'비활성 — 클릭하면 사용 가능'}">${inv.active?'🔓':'🔒'}</span>
+    <div class="rn">${inv.room_no}</div>
+    <div class="rt">${typeLabel(inv.room_type)}</div>
+    ${inv.note?`<div class="note">${inv.note}</div>`:''}
+    <div class="assigned">${chips}</div>
+    ${usedPax>inv.capacity?'<span class="badge">초과</span>':''}`;
+  // 칩 삭제
+  div.querySelectorAll('.cx').forEach(x=>x.addEventListener('click',ev=>{ev.stopPropagation();unassign(x.dataset.roomId);}));
+  // 활성/비활성 토글
+  div.querySelector('.lock').addEventListener('click',ev=>{ev.stopPropagation();toggleActive(inv);});
+  // 카드 클릭 → 선택 인원 한꺼번에 배정 (칩✕·자물쇠 제외, 카드 어디든)
+  div.addEventListener('click',ev=>{
+    if(ev.target.closest('.cx')||ev.target.closest('.lock')) return;
+    if(window.getSelection) window.getSelection().removeAllRanges(); // 텍스트 파란선택 해제
+    if(!inv.active){toast(inv.room_no+': 비활성 객실','warn');return;}
+    assignSelectedTo(inv);
+  });
+  // 드롭
+  if(inv.active){
+    div.addEventListener('dragover',e=>{e.preventDefault();div.classList.add('over');});
+    div.addEventListener('dragleave',()=>div.classList.remove('over'));
+    div.addEventListener('drop',e=>{e.preventDefault();div.classList.remove('over');
+      assignSelectedTo(inv);});
+  }
+  return div;
+}
+
+// ── 객실 활성/비활성 토글 (담당자가 현장에서 켜고 끔) ──
+async function toggleActive(inv){
+  const next=!inv.active;
+  // 비활성으로 끄는데 배정이 들어있으면 확인
+  if(!next){
+    const assigned=state.rooms.filter(r=>r.inventory_id===inv.id);
+    if(assigned.length && !confirm(`${inv.room_no}에 배정된 팀이 있습니다. 그래도 비활성으로 바꿀까요?\n(기존 배정은 유지되지만 새 배정은 막힙니다)`)) return;
+  }
+  const {error}=await supa.from('room_inventory').update({active:next}).eq('id',inv.id);
+  if(error){toast('상태 변경 실패: '+error.message,'err');return;}
+  inv.active=next;
+  render();
+  toast(`${inv.room_no} → ${next?'사용 가능':'비활성'}`, next?'ok':'warn');
+}
+
+// ── 단면도(원형 평면도) 프리뷰 모달 ──
+function openFloorplanModal(zone, zoneRooms){
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  const m=document.createElement('div'); m.className='modal'; m.style.maxWidth='640px';
+  m.innerHTML=`<h2>${zone} 평면도 <span style="font-size:11px;font-weight:600;color:var(--text2);margin-left:8px">단면도 배치 · 드래그 배정 가능</span></h2>
+    <div class="mbody" id="fp-body" style="padding:10px 16px 18px"></div>
+    <div class="mfoot"><button class="btn ghost sm" id="fp-close" type="button">닫기</button></div>`;
+  bg.appendChild(m); document.body.appendChild(bg);
+  m.querySelector('#fp-body').appendChild(renderFloorRing(zoneRooms));
+  m.querySelector('#fp-close').addEventListener('click',()=>bg.remove());
+  bg.addEventListener('click',e=>{if(e.target===bg)bg.remove();});
+}
+
+// ── 야마나미 호텔동 층별 원형 평면도 (단면도 ①~⑭ 배치) ──
+function renderFloorRing(zoneRooms){
+  const wrap=document.createElement('div');
+  wrap.className='floor-ring';
+  // 가운데 EV/계단 표시
+  wrap.innerHTML=`<div class="ring-core"><span>EV</span><span>EV</span></div>
+    <div class="ring-compass">北 쿠쥬山</div>`;
+  zoneRooms.forEach(inv=>{
+    const pos=inv.room_no.match(/(\d+)호/);
+    const num=pos?parseInt(pos[1],10)%100:0;     // 끝 두 자리 = 위치 번호
+    const xy=RING_POS[num];
+    const node=document.createElement('div');
+    const assigned=state.rooms.filter(r=>r.inventory_id===inv.id);
+    const usedPax=assigned.reduce((s,r)=>s+(r.assigned_pax||0),0);
+    node.className='ring-room t-'+inv.room_type+(inv.active?'':' inactive')+(assigned.length?' filled':'')+(usedPax>inv.capacity?' warn':'');
+    if(xy){ node.style.left=xy.x+'%'; node.style.top=xy.y+'%'; }
+    else { node.style.position='relative'; node.style.display='inline-block'; } // 좌표 없으면 흐름배치
+    const chips=assigned.map(r=>{
+      const m=r.member_id!=null?memberById(r.member_id):null;
+      const tag=m?personTag(r.event_seq,m.seq_in_team||1):(teamGroupCode(r.event_seq)||('팀'+r.event_seq));
+      const nm=m?(m.name_kr||''):'';
+      return `<span class="rchip"><b>${tag}</b> ${nm}<span class="rcx" data-room-id="${r.id}">✕</span></span>`;
+    }).join('');
+    node.innerHTML=`
+      <span class="rlock" data-inv-id="${inv.id}" title="${inv.active?'사용 가능':'비활성'}">${inv.active?'':'🔒'}</span>
+      <div class="rno">${num}<small>호</small></div>
+      <div class="rtype" title="${typeLabel(inv.room_type)}">${TYPE_EN[inv.room_type]||inv.room_type}</div>
+      <div class="rcap">${usedPax}/${inv.capacity}</div>
+      <div class="rchips">${chips}</div>`;
+    // 이벤트
+    node.querySelectorAll('.rcx').forEach(x=>x.addEventListener('click',ev=>{ev.stopPropagation();unassign(x.dataset.roomId);}));
+    node.querySelector('.rlock').addEventListener('click',ev=>{ev.stopPropagation();toggleActive(inv);});
+    if(inv.active){
+      node.addEventListener('dragover',e=>{e.preventDefault();node.classList.add('over');});
+      node.addEventListener('dragleave',()=>node.classList.remove('over'));
+      node.addEventListener('drop',e=>{e.preventDefault();node.classList.remove('over');
+        assignSelectedTo(inv);});
+    }
+    wrap.appendChild(node);
+  });
+  return wrap;
+}
+
+function renderSummary(){
+  const total=state.guests.reduce((s,g)=>s+g.pax,0);
+  const done=state.rooms.reduce((s,r)=>s+(r.assigned_pax||0),0);
+  $('#assign-summary').textContent=`${done}/${total}명 배정`;
+}
+
+// ── 두 기간이 겹치는가 (체크인~체크아웃, 반개구간) ──
+function overlaps(dep1,arr1,dep2,arr2){ return dep1 < arr2 && dep2 < arr1; }
+
+// ── 배정 ──
+async function assignMembers(memberIds, inv){
+  if(!inv.active){toast(inv.room_no+': 비활성 객실','warn');return;}
+  const cap=inv.max_capacity||inv.capacity;
+  // 대상 멤버를 팀별로 모아 검증/삽입
+  const targets=[];
+  for(const mid of memberIds){
+    const m=memberById(mid); if(!m) continue;
+    if(assignedMemberSet().has(mid)) continue; // 이미 배정됨
+    targets.push(m);
+  }
+  if(!targets.length){toast('배정할 인원이 없습니다','warn');return;}
+
+  let ok=0, blocked=0; const blockMsg=[];
+  for(const m of targets){
+    const g=state.guests.find(x=>x.event_seq===m.event_seq);
+    if(!g){blocked++;continue;}
+    // 이 방에서 기간 겹치는 기존 배정만 정원 합산
+    const sameRoom=state.rooms.filter(r=>r.inventory_id===inv.id);
+    const overlapRows=sameRoom.filter(r=>overlaps(g.dep,g.arr,r.check_in,r.check_out));
+    const roomUsed=overlapRows.reduce((s,r)=>s+(r.assigned_pax||0),0);
+    if(roomUsed>=cap){
+      blocked++;
+      const others=[...new Set(overlapRows.map(r=>{
+        const og=state.guests.find(x=>x.event_seq===r.event_seq);
+        return og?(og.team_tag||og.rep||r.event_seq):r.event_seq;
+      }))].join(', ');
+      blockMsg.push(`${inv.room_no} 정원 ${cap} 초과(사용중: ${others||'-'})`);
+      break; // 더 넣어도 같은 방은 꽉 참
+    }
+    const row={
+      event_seq:m.event_seq, member_id:m.id, inventory_id:inv.id,
+      facility:inv.facility, room_type:inv.room_type, room_no:inv.room_no,
+      check_in:g.dep, check_out:g.arr, assigned_pax:1
+    };
+    const {data,error}=await supa.from('rooms').insert(row).select().single();
+    if(error){blocked++; blockMsg.push(`${m.name_kr||m.id}: ${error.message}`); continue;}
+    state.rooms.push(data);
+    if(state.sel) state.sel.delete(m.id);
+    ok++;
+    // 1인실 추가요금(간지·시즈노야도) — 사람 단위 1명이므로 그대로 적용
+    const nights=g.dep&&g.arr?Math.round((new Date(g.arr)-new Date(g.dep))/864e5):0;
+    if(FEE_SINGLE[inv.facility] && nights>0){
+      openSingleFeeModal(g, inv, nights, data.id, m);
+    }
+  }
+  rebuildAssignMap(); render();
+  if(ok)   toast(`${inv.room_no} ← ${ok}명 배정`+(blocked?` (${blocked}명 보류)`:''), blocked?'warn':'ok');
+  else     toast(blockMsg[0]||'배정 실패','warn');
+}
+
+// (구) 팀 단위 assign 은 호환용 래퍼 — 팀의 미배정자 전원을 한 방에 시도
+async function assign(seq,inv){
+  const ids=unassignedMembers(seq).map(m=>m.id);
+  if(!ids.length){toast('이미 전원 배정된 팀','warn');return;}
+  await assignMembers(ids, inv);
+}
+
+// ── 싱글차지 모달: 대상자 선택 + 메리트 선불 여부 ──
+function openSingleFeeModal(g, inv, nights, roomId, preMember){
+  const amount=FEE_SINGLE[inv.facility]*nights;
+  const members=(state.members[g.event_seq]||[]).slice().sort((a,b)=>(a.seq_in_team||0)-(b.seq_in_team||0));
+  const remark=g.remark||'';
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal">
+    <h2>싱글차지 — ${inv.facility} ${inv.room_no}</h2>
+    <div class="mbody">
+      <p style="font-size:13px;margin-bottom:6px">
+        1인 사용 추가요금 <b>¥${FEE_SINGLE[inv.facility].toLocaleString()} × ${nights}박 = ¥${amount.toLocaleString()}</b>
+      </p>
+      <div style="font-size:11.5px;color:var(--text2);background:var(--surface3);border-radius:7px;padding:8px 10px;margin-bottom:14px">
+        <b>비고 원문</b><br>${remark? remark.replace(/</g,'&lt;') : '(비고 없음)'}
+        <div style="color:var(--muted);margin-top:4px">※ 비고/카톡으로 "메리트 선불" 안내가 있으면 아래에서 선불로 표시하세요.</div>
+      </div>
+      <div class="mrow" style="grid-template-columns:1fr">
+        <div>
+          <label style="display:block;margin-bottom:5px">대상자 (누구의 싱글차지인가)</label>
+          <select class="inp" id="sf-member" style="width:100%">
+            ${members.length? members.map(m=>`<option value="${m.id}" ${preMember&&preMember.id===m.id?'selected':''}>${m.seq_in_team||''}. ${m.name_kr||'(이름없음)'}${m.is_rep?' · 대표':''}</option>`).join('')
+              : `<option value="">(명단 없음 — 팀 공통으로 기록)</option>`}
+          </select>
+        </div>
+      </div>
+      <div class="mrow" style="grid-template-columns:1fr;margin-top:10px">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">
+          <input type="checkbox" id="sf-prepaid" style="width:16px;height:16px">
+          메리트투어 선불 완료 (현장에서 받지 않음)
+        </label>
+      </div>
+    </div>
+    <div class="mfoot">
+      <button class="btn ghost sm" id="sf-skip" type="button">요금 없음(닫기)</button>
+      <button class="btn sm" id="sf-save" type="button">기록</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  bg.querySelector('#sf-skip').addEventListener('click',()=>bg.remove());
+  bg.querySelector('#sf-save').addEventListener('click',async()=>{
+    const memberId=bg.querySelector('#sf-member').value||null;
+    const prepaid=bg.querySelector('#sf-prepaid').checked;
+    const settle=prepaid?'prepaid_merit':'onsite';
+    const memberName=members.find(m=>m.id===memberId)?.name_kr||'';
+    const {error:te}=await supa.from('transactions').insert({
+      event_seq:g.event_seq, member_id:memberId, category:'single_charge',
+      description:`싱글차지 ${memberName?memberName+' ':''}(${inv.facility} ${inv.room_no}, ${nights}박)`,
+      qty:nights, unit_price:FEE_SINGLE[inv.facility], amount, currency:'JPY',
+      posted_by:'front', settle_status:settle
+    });
+    bg.remove();
+    if(te){toast('요금 기록 실패: '+te.message,'err');return;}
+    toast(prepaid?`싱글차지 ¥${amount.toLocaleString()} — 메리트 선불(표시만)`:`싱글차지 ¥${amount.toLocaleString()} — 현장청구 기록`,'ok');
+  });
+}
+
+async function unassign(roomId){
+  const row=state.rooms.find(r=>r.id===roomId);
+  const {error}=await supa.from('rooms').delete().eq('id',roomId);
+  if(error){toast('취소 실패: '+error.message,'err');return;}
+  // 연동 싱글차지도 정리(같은 팀·single_charge·해당 객실 설명 매칭)
+  if(row){
+    const inv=invById(row.inventory_id);
+    if(inv && FEE_SINGLE[inv.facility] && row.assigned_pax===1){
+      await supa.from('transactions').delete()
+        .eq('event_seq',row.event_seq).eq('category','single_charge')
+        .like('description',`%${inv.room_no}%`);
+    }
+  }
+  state.rooms=state.rooms.filter(r=>r.id!==roomId);
+  rebuildAssignMap(); render();
+  toast('배정 취소됨','ok');
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  야마나미 호텔동 호실 설정 모달
+// ════════════════════════════════════════════════════════════════════════
+function openHotelRoomsModal(){
+  if(!supa){toast('먼저 연결하세요','warn');return;}
+  const types=[
+    {key:'디럭스트윈',label:'디럭스 트윈',cap:2},
+    {key:'스탠다드트윈',label:'스탠다드 트윈',cap:2},
+    {key:'컴팩트트윈',label:'컴팩트 트윈',cap:2},
+    {key:'싱글',label:'싱글',cap:1},
+  ];
+  // 현재 호텔동(zone=호텔동) 등록 수
+  const cur={};
+  state.inventory.filter(r=>r.facility==='야마나미리조트'&&r.zone==='호텔동')
+    .forEach(r=>{cur[r.room_type]=(cur[r.room_type]||0)+1;});
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal">
+    <h2>🏨 야마나미 호텔동 호실 설정</h2>
+    <div class="mbody">
+      <p style="font-size:12px;color:var(--text2);margin-bottom:14px">
+        각 등급의 호실 수를 입력하면 객실 마스터에 등록됩니다. 기존 등록분은 현재 값으로 표시됩니다.
+        (관내별장·돔하우스·쿠주·간지·시즈노야도는 사전 등록되어 있습니다.)
+      </p>
+      ${types.map(t=>`<div class="mrow">
+        <div><label>${t.label}</label><div class="desc">정원 ${t.cap}명</div></div>
+        <input class="inp" type="number" min="0" max="99" data-type="${t.key}" value="${cur[t.key]||0}">
+      </div>`).join('')}
+    </div>
+    <div class="mfoot">
+      <button class="btn ghost sm" id="hr-cancel" type="button">취소</button>
+      <button class="btn sm" id="hr-save" type="button">저장</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  bg.querySelector('#hr-cancel').addEventListener('click',()=>bg.remove());
+  bg.querySelector('#hr-save').addEventListener('click',()=>saveHotelRooms(bg,types,cur));
+}
+
+async function saveHotelRooms(bg,types,cur){
+  const toInsert=[];
+  let order=0;
+  for(const t of types){
+    const want=parseInt(bg.querySelector(`input[data-type="${t.key}"]`).value,10)||0;
+    const have=cur[t.key]||0;
+    if(want>have){
+      for(let i=have+1;i<=want;i++){
+        toInsert.push({
+          facility:'야마나미리조트', zone:'호텔동',
+          room_no:`${t.label} ${i}`, room_type:t.key,
+          capacity:t.cap, max_capacity:t.cap, active:true, sort_order:order++
+        });
+      }
+    } else if(want<have){
+      toast(`${t.label} 축소는 화면에서 개별 비활성 처리하세요(데이터 보호)`,'warn');
+    }
+  }
+  if(!toInsert.length){toast('추가할 호실 없음','warn');bg.remove();return;}
+  const {error}=await supa.from('room_inventory').upsert(toInsert,{onConflict:'facility,room_no'});
+  if(error){toast('저장 실패: '+error.message,'err');return;}
+  await loadInventory();
+  bg.remove(); render();
+  toast(`호텔동 ${toInsert.length}실 등록`,'ok');
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+//  엑셀 일괄 배정 (내보내기 / 업로드)
+//  양식: eventSeq | 태그코드 | 대표자 | 인원 | 시설 | 호수
+//   · 현재 점유 팀을 내보내면 호수만 비어서 나옴 → 채워서 다시 올리면 일괄 배정
+//   · 매칭: eventSeq(1순위) → 객실은 시설+호수
+// ════════════════════════════════════════════════════════════════════════
+function exportAssignXlsx(){
+  if(!state.guests||!state.guests.length){toast('먼저 날짜를 불러오세요','warn');return;}
+  // 사람 1행씩 (v13.4 宿泊配置表 형태). member_id 로 배정 호수 매핑.
+  const roomByMember={};
+  state.rooms.forEach(r=>{ if(r.member_id!=null) (roomByMember[r.member_id]=roomByMember[r.member_id]||[]).push(r.room_no); });
+  const rows=[];
+  state.guests.forEach(g=>{
+    teamRoster(g.event_seq).forEach(m=>{
+      rows.push({
+        eventSeq:g.event_seq,
+        태그코드:m.tag||'',
+        대표자:g.rep||'',
+        성명:m.name_kr||'',
+        영문명:m.name_en||'',
+        시설:g.accom||'',
+        호수:(roomByMember[m.id]||[]).join(', ')
+      });
+    });
+  });
+  const ws=XLSX.utils.json_to_sheet(rows,{header:['eventSeq','태그코드','대표자','성명','영문명','시설','호수']});
+  ws['!cols']=[{wch:10},{wch:12},{wch:10},{wch:10},{wch:16},{wch:16},{wch:16}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'방배정');
+  const label=(state.from||'')+(state.to&&state.to!==state.from?'_'+state.to:'');
+  XLSX.writeFile(wb,`방배정양식_${label||'export'}.xlsx`);
+  toast('양식 내보내기 완료 — 호수 칸을 채워 다시 올리세요','ok');
+}
+
+async function importAssignXlsx(file){
+  if(!supa){toast('먼저 연결하세요','warn');return;}
+  if(!state.guests||!state.guests.length){toast('먼저 날짜를 불러오세요','warn');return;}
+  const buf=await file.arrayBuffer();
+  const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+  // 호수 → inventory 매핑 (시설+호수, 또는 호수만)
+  const invByRoom={};
+  state.inventory.forEach(i=>{
+    invByRoom[(i.facility+'|'+i.room_no)]=i;
+    invByRoom[i.room_no]=i; // 호수만으로도 (중복 거의 없음)
+  });
+  // 태그코드 → member 매핑 (개인 단위)
+  const memberByTag={};
+  state.guests.forEach(g=>{ teamRoster(g.event_seq).forEach(m=>{ if(m.tag) memberByTag[m.tag]=m; }); });
+  const doneSet=assignedMemberSet();
+  let ok=0,skip=0,fail=0; const msgs=[];
+  for(const row of rows){
+    const tag=String(row['태그코드']||'').trim();
+    const roomStr=String(row['호수']||'').trim();
+    if(!tag||!roomStr){skip++;continue;}
+    const m=memberByTag[tag];
+    if(!m){fail++; msgs.push(`태그 '${tag}' 명단에 없음`); continue;}
+    if(doneSet.has(m.id)){skip++;continue;} // 이미 배정됨
+    const rn=roomStr.split(/[,，]/)[0].trim(); // 한 사람은 한 방
+    const fac=String(row['시설']||'').trim();
+    const inv=invByRoom[fac+'|'+rn]||invByRoom[rn];
+    if(!inv){fail++; msgs.push(`${tag}: 호수 '${rn}' 못찾음`); continue;}
+    await assignMembers([m.id], inv);
+    doneSet.add(m.id);
+    ok++;
+  }
+  toast(`일괄 배정: 성공 ${ok} · 건너뜀 ${skip} · 실패 ${fail}`, fail?'warn':'ok');
+  if(msgs.length) console.warn(msgs.join('\n'));
+}
+
+// ── 부팅 ──
+$('#btn-connect').addEventListener('click',connect);
+$('#btn-load').addEventListener('click',loadDay);
+$('#btn-export').addEventListener('click',exportAssignXlsx);
+$('#btn-sel-clear')&&$('#btn-sel-clear').addEventListener('click',()=>{selClear();render();});
+$('#file-import').addEventListener('change',e=>{if(e.target.files[0]){importAssignXlsx(e.target.files[0]);e.target.value='';}});
+// 하루/기간 모드 토글
+$('#mode-day').addEventListener('click',()=>{
+  dateMode='day';
+  $('#mode-day').classList.add('active'); $('#mode-range').classList.remove('active');
+  $('#range-extra').style.display='none'; $('#lbl-from').textContent='날짜';
+});
+$('#mode-range').addEventListener('click',()=>{
+  dateMode='range';
+  $('#mode-range').classList.add('active'); $('#mode-day').classList.remove('active');
+  $('#range-extra').style.display='inline-flex'; $('#lbl-from').textContent='기간';
+});
+// 미배정 영역으로 다시 드롭하면 배정 취소(맨 마지막 룸 제거)
+$('#unassigned').addEventListener('dragover',e=>e.preventDefault());
+// 미배정 영역으로의 드롭은 사용하지 않음(취소는 객실 칩의 ✕ 로). 선택 해제만.
+$('#unassigned').addEventListener('drop',e=>{ e.preventDefault(); });
+loadCreds();
+</script>
+</body>
+</html>
