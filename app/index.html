@@ -737,6 +737,19 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
       </label>
       <span style="font-size:10.5px;color:var(--text3)">ON: 고객명단을 <strong>생년월일까지만</strong> 표기 (여권번호·전화번호 숨김) &nbsp;/&nbsp; OFF: 여권번호·전화번호 포함 전체 표기</span>
     </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:.6rem;align-items:center">
+      <input type="text" id="dispatch-search" placeholder="🔍 代表者名・イベント番号・タグコード 검색" oninput="onDispatchSearch(this.value)"
+        style="flex:0 1 290px;min-width:210px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;color:var(--text);font-family:var(--sans);outline:none">
+      <span style="font-size:10px;color:var(--text3);margin-left:4px">施設:</span>
+      <div id="dispatch-accom-filter" style="display:flex;gap:5px;flex-wrap:wrap">
+        <div class="date-chip active" data-accom="ALL" onclick="toggleDispatchAccom('ALL')">전체</div>
+        <div class="date-chip" data-accom="야마나미리조트" onclick="toggleDispatchAccom('야마나미리조트')">YAMANAMI</div>
+        <div class="date-chip" data-accom="쿠주힐즈" onclick="toggleDispatchAccom('쿠주힐즈')">KUJU HILLS</div>
+        <div class="date-chip" data-accom="간지호텔" onclick="toggleDispatchAccom('간지호텔')">GUERNSEY</div>
+        <div class="date-chip" data-accom="시즈노야도 료칸" onclick="toggleDispatchAccom('시즈노야도 료칸')">SHIZUNOYADO</div>
+      </div>
+    </div>
+    <div id="dispatch-date-filter" class="date-filter" style="margin-bottom:.75rem"></div>
     <div class="btn-row" style="margin-top:0;margin-bottom:.75rem">
       <button class="btn-dl" onclick="printDispatch()" style="background:var(--green-dim);color:var(--green2);border-color:var(--green)">🖨 전체 일괄 인쇄 (앞·뒤 양면)</button>
       <button class="btn-dl" onclick="downloadDispatchXlsx()">⬇ 現地手配書 다운로드 (xlsx)</button>
@@ -1108,7 +1121,7 @@ function switchSession(ym){
   if(ym === currentSession) return;
   activateSession(ym);
   // ファイルアップロード 탭으로 이동 + 안내 배너 표시
-  ['settle','transfer','dinner','golf','accom','nametag','aircover'].forEach(t =>
+  ['settle','transfer','dinner','golf','accom','nametag','aircover','dispatch'].forEach(t =>
     document.getElementById('nav-'+t).classList.add('locked')
   );
   gotoSection('upload');
@@ -8228,6 +8241,42 @@ function toggleDispatchMask(cb){
   try{ localStorage.setItem('saizen_dispatch_mask', dispatchMaskOn ? '1' : '0'); }catch(e){}
 }
 
+// ── 필터·검색 상태 (화면 표시분 = 일괄 인쇄·Excel 대상) ──
+let dispatchSearchQ = '';
+let dispatchAccomFilter = new Set();  // 빈 Set = 전체
+let dispatchDateFilter = new Set();   // 빈 Set = 전체 (출발일 기준)
+
+function onDispatchSearch(v){
+  dispatchSearchQ = String(v||'').trim().toLowerCase();
+  buildDispatch();
+}
+function toggleDispatchAccom(accom){
+  if(accom === 'ALL') dispatchAccomFilter.clear();
+  else {
+    if(dispatchAccomFilter.has(accom)) dispatchAccomFilter.delete(accom);
+    else dispatchAccomFilter.add(accom);
+  }
+  buildDispatch();
+}
+function toggleDispatchDate(d){
+  if(d === 'ALL') dispatchDateFilter.clear();
+  else {
+    if(dispatchDateFilter.has(d)) dispatchDateFilter.delete(d);
+    else dispatchDateFilter.add(d);
+  }
+  buildDispatch();
+}
+// 검색·필터 통과 판정
+function dispatchPass(d){
+  if(dispatchAccomFilter.size && !dispatchAccomFilter.has(d.rec.accom)) return false;
+  if(dispatchDateFilter.size && !dispatchDateFilter.has(d.rec.dep)) return false;
+  if(dispatchSearchQ){
+    const hay = `${d.rec.repName||''} ${d.rec.eventNo||''} ${d.tagCode||''} ${d.seq}`.toLowerCase();
+    if(!hay.includes(dispatchSearchQ)) return false;
+  }
+  return true;
+}
+
 // 시간 셀 표준화: SheetJS cellDates(Date) / 엑셀 시간분수 / 문자열 → 'HH:MM'
 function fmtTime(v){
   if(v === null || v === undefined || v === '') return '';
@@ -8296,8 +8345,19 @@ function collectDispatchData(){
     const retFlight = rep.retFlight || av.retFlight || '';
     const origin = rep.origin || String((rec.raw && rec.raw['출발지']) || '');
     const isPUS = String(origin||'').includes('부산') || depFlight.startsWith('ZE');
-    const roomCnt = (String(rec.roomType||'').includes('트윈') && rec.pax > 0)
+    // 수기 입력 병합: manualData['dispatch_seq'] = {teeoff:{date:time}, roomCnt, memo}
+    const dman = manualData['dispatch_' + seq] || {};
+    const autoRoom = (String(rec.roomType||'').includes('트윈') && rec.pax > 0)
       ? Math.ceil(rec.pax/2) + '室 (2人1室)' : '-';
+    const roomCnt = (dman.roomCnt && String(dman.roomCnt).trim()) ? String(dman.roomCnt).trim() : autoRoom;
+    // 티오프: 수배서 입력 > ⑥ 골프배정표 입력(golf_날짜_seq.teeoff) > 공란
+    const golf = dispatchGolfRows(rec, isPUS).map(g => ({
+      ...g,
+      tee: ((dman.teeoff && dman.teeoff[g.date]) || ((manualData['golf_'+g.date+'_'+seq]||{}).teeoff) || '').trim()
+    }));
+    const memo = String(dman.memo||'').trim();
+    const hasManual = !!((dman.teeoff && Object.values(dman.teeoff).some(v=>String(v||'').trim()))
+      || (dman.roomCnt && String(dman.roomCnt).trim()) || memo);
     return {
       rec, seq, no: i+1, paxList, tagCode,
       depFlight, retFlight,
@@ -8306,8 +8366,8 @@ function collectDispatchData(){
       retTime:    av.retTime    || '',
       port: isPUS ? 'PUS' : 'ICN',
       portName: isPUS ? '釜山(金海)' : 'ソウル(仁川)',
-      roomCnt,
-      golf: dispatchGolfRows(rec, isPUS),
+      roomCnt, memo, hasManual,
+      golf,
       prodName: String((rec.raw && rec.raw['상품명']) || ''),
       accomJp: dispatchAccomJp(rec.accom),
     };
@@ -8324,19 +8384,47 @@ function buildDispatch(){
   if(maskCb) maskCb.checked = dispatchMaskOn;
 
   const data = collectDispatchData();
+  const visible = data.filter(dispatchPass);
+
+  // 시설 필터 칩 active 상태
+  const accomWrap = document.getElementById('dispatch-accom-filter');
+  if(accomWrap){
+    accomWrap.querySelectorAll('.date-chip').forEach(ch => {
+      const a = ch.dataset.accom;
+      if(a === 'ALL') ch.classList.toggle('active', dispatchAccomFilter.size === 0);
+      else ch.classList.toggle('active', dispatchAccomFilter.has(a));
+    });
+  }
+  // 출발일 칩 렌더
+  const dateWrap = document.getElementById('dispatch-date-filter');
+  if(dateWrap){
+    const dates = [...new Set(data.map(d => d.rec.dep).filter(Boolean))].sort();
+    dateWrap.innerHTML = dates.length
+      ? '<span style="font-size:10px;color:var(--text3);margin-right:4px;line-height:28px">出発日:</span>' +
+        `<div class="date-chip${dispatchDateFilter.size===0?' active':''}" onclick="toggleDispatchDate('ALL')">전체</div>` +
+        dates.map(dd => `<div class="date-chip${dispatchDateFilter.has(dd)?' active':''}" onclick="toggleDispatchDate('${dd}')">${dd.slice(5)}${getWD(dd)}</div>`).join('')
+      : '';
+  }
+
   const cnt = document.getElementById('dispatch-count');
-  if(cnt) cnt.textContent = data.length ? `${data.length}件 × 양면 2페이지` : '';
+  if(cnt) cnt.textContent = data.length
+    ? `${visible.length}건 표시 / 전체 ${data.length}건 (일괄 인쇄·Excel은 표시분만)`
+    : '';
 
   if(!data.length){
     tbody.innerHTML = `<tr><td colspan="${HDRS.DISPATCH.length}" style="text-align:center;color:var(--text3);padding:24px">該当データなし</td></tr>`;
     return;
   }
-  tbody.innerHTML = data.map(d => `
+  if(!visible.length){
+    tbody.innerHTML = `<tr><td colspan="${HDRS.DISPATCH.length}" style="text-align:center;color:var(--text3);padding:24px">검색·필터 결과가 없습니다</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = visible.map(d => `
     <tr>
       <td style="text-align:center">${d.no}</td>
       <td style="text-align:center;font-family:var(--mono);font-weight:700">${d.tagCode}</td>
       <td style="text-align:center;font-family:var(--mono)">${d.rec.eventNo||'-'}</td>
-      <td style="font-weight:600">${d.rec.repName||'-'}</td>
+      <td style="font-weight:600">${d.rec.repName||'-'}${d.hasManual?' <span title="수기 입력 있음" style="font-size:10px">✏️</span>':''}</td>
       <td style="text-align:center;font-family:var(--mono)">${d.rec.dep||''}</td>
       <td style="text-align:center;font-family:var(--mono)">${d.rec.arr||''}</td>
       <td style="text-align:center">${d.rec.nights}泊</td>
@@ -8344,8 +8432,85 @@ function buildDispatch(){
       <td style="text-align:center">${accomEngName(d.rec.accom)}</td>
       <td>${d.rec.roomType||''}</td>
       <td style="text-align:center">${d.rec.memberType||'-'}</td>
-      <td style="text-align:center"><button class="btn-dl" style="font-size:10px;padding:3px 10px" onclick="printDispatch('${d.seq}')">🖨 個別</button></td>
+      <td style="text-align:center;white-space:nowrap">
+        <button class="btn-dl" style="font-size:10px;padding:3px 8px" onclick="openDispatchInputModal('${d.seq}')">📝 입력</button>
+        <button class="btn-dl" style="font-size:10px;padding:3px 8px" onclick="printDispatch('${d.seq}')">🖨</button>
+      </td>
     </tr>`).join('');
+}
+
+// ── 행사별 수기 입력 모달 (티오프·방수·현장메모) ──────────────
+function openDispatchInputModal(seq){
+  const d = collectDispatchData().find(x => x.seq === String(seq||'').trim());
+  if(!d){ alert('행사를 찾을 수 없습니다.'); return; }
+  const man = manualData['dispatch_' + d.seq] || {};
+
+  const existing = document.getElementById('dispatch-input-modal-bg');
+  if(existing) existing.remove();
+
+  const teeRows = d.golf.length ? d.golf.map(g => {
+    const golfTabVal = String(((manualData['golf_'+g.date+'_'+d.seq]||{}).teeoff) || '').trim();
+    const own = String((man.teeoff && man.teeoff[g.date]) || '').trim();
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-size:11px;width:118px;font-family:var(--mono);color:var(--text)">${g.date} ${getWD(g.date)}</span>
+      <span style="font-size:10px;color:var(--text3);width:118px">${g.course} ${g.holes}H</span>
+      <input type="text" class="dispatch-tee-inp" data-date="${g.date}" value="${own}"
+        placeholder="${golfTabVal ? golfTabVal + ' (골프표 연동)' : '07:30'}"
+        style="width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:11px;font-family:var(--mono);color:var(--text);outline:none">
+    </div>`;
+  }).join('') : '<div style="font-size:11px;color:var(--text3)">ラウンドなし</div>';
+
+  const bg = document.createElement('div');
+  bg.id = 'dispatch-input-modal-bg';
+  bg.className = 'dl-modal-bg';
+  bg.innerHTML = `
+    <div class="dl-modal" style="max-width:580px">
+      <div class="dl-modal-head">
+        <div class="dl-modal-title">📝 수배서 입력 — ${d.rec.repName||'-'} <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">(${d.tagCode} · ${d.rec.eventNo||'-'})</span></div>
+        <button onclick="document.getElementById('dispatch-input-modal-bg').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1;padding:2px 6px">✕</button>
+      </div>
+      <div class="dl-modal-body">
+        <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">⛳ ティーアップ 시간 <span style="font-size:10px;font-weight:400;color:var(--text3)">— 비워두면 ⑥ 골프배정표 입력값이 자동 적용됩니다</span></div>
+        <div style="margin-bottom:14px">${teeRows}</div>
+
+        <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">🏨 部屋数 <span style="font-size:10px;font-weight:400;color:var(--text3)">— 비워두면 자동 계산 (현재: ${d.roomCnt})</span></div>
+        <input type="text" id="dispatch-room-inp" value="${(man.roomCnt||'')}" placeholder="例: 3室 (2人1室) + 1室"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:6px 9px;font-size:11px;color:var(--text);outline:none;margin-bottom:14px">
+
+        <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">📝 現地メモ (특기사항 추가) <span style="font-size:10px;font-weight:400;color:var(--text3)">— 엠클릭 비고 아래에 함께 인쇄됩니다</span></div>
+        <textarea id="dispatch-memo-inp" rows="3" placeholder="例: レイトチェックアウト希望 / アレルギー: えび"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:6px 9px;font-size:11px;color:var(--text);outline:none;resize:vertical;font-family:var(--sans)">${(man.memo||'')}</textarea>
+
+        <div style="font-size:10px;color:var(--text3);margin-top:10px">💾 저장 시 현재 월 세션(localStorage)에 보관되며, 인쇄·Excel 모두 자동 반영됩니다.</div>
+      </div>
+      <div class="dl-modal-foot">
+        <button class="btn-dl" onclick="document.getElementById('dispatch-input-modal-bg').remove()" style="font-size:11px">취소</button>
+        <button class="btn-dl" onclick="saveDispatchInput('${d.seq}')" style="font-size:11px;border-color:var(--green);color:var(--green2);background:var(--green-dim)">💾 저장</button>
+      </div>
+    </div>`;
+  bg.addEventListener('click', e => { if(e.target === bg) bg.remove(); });
+  document.body.appendChild(bg);
+}
+
+function saveDispatchInput(seq){
+  const bg = document.getElementById('dispatch-input-modal-bg');
+  if(!bg) return;
+  const tee = {};
+  bg.querySelectorAll('.dispatch-tee-inp').forEach(inp => {
+    const v = String(inp.value||'').trim();
+    if(v) tee[inp.dataset.date] = v;
+  });
+  const roomCnt = String((bg.querySelector('#dispatch-room-inp')||{}).value||'').trim();
+  const memo = String((bg.querySelector('#dispatch-memo-inp')||{}).value||'').trim();
+  const key = 'dispatch_' + String(seq||'').trim();
+  if(Object.keys(tee).length || roomCnt || memo){
+    manualData[key] = { teeoff: tee, roomCnt, memo };
+  } else {
+    delete manualData[key];
+  }
+  saveManual();
+  bg.remove();
+  buildDispatch();
 }
 
 // ── 인쇄용 HTML 빌더 ──────────────────────────────────────────
@@ -8364,12 +8529,13 @@ function dispatchFrontHTML(d, masked){
   }).join('') : `<tr><td colspan="${colCount}" class="c" style="color:#777">名簿未登録 — 代表: ${r.repName||'-'} 計${r.pax}名</td></tr>`;
   const guestSizeCls = d.paxList.length > 16 ? ' g-xs' : d.paxList.length > 10 ? ' g-sm' : '';
 
-  // 라운딩 일정
+  // 라운딩 일정 (ティーアップ: 수배서 입력 > 골프표 연동값)
   const golfRows = d.golf.length ? d.golf.map(g =>
-    `<tr><td class="c">${g.course}</td><td class="c mono">${g.date} ${getWD(g.date)}</td><td></td><td class="c">${g.holes}</td><td class="c">${r.pax}</td><td>${g.note}</td></tr>`
+    `<tr><td class="c">${g.course}</td><td class="c mono">${g.date} ${getWD(g.date)}</td><td class="c mono">${g.tee||''}</td><td class="c">${g.holes}</td><td class="c">${r.pax}</td><td>${g.note}</td></tr>`
   ).join('') : '<tr><td colspan="6" class="c" style="color:#777">ラウンドなし</td></tr>';
 
   const remark = String((r.raw && r.raw['비고']) || '');
+  const memoFull = d.memo ? (remark ? remark + '\n' : '') + '【現地メモ】 ' + d.memo : remark;
 
   return `<div class="hp-page">
     <div class="hp-head">
@@ -8417,7 +8583,7 @@ function dispatchFrontHTML(d, masked){
     </table>
 
     <div class="hp-sec">📝 特記事項</div>
-    <div class="hp-memo">${remark}</div>
+    <div class="hp-memo">${memoFull}</div>
   </div>`;
 }
 
@@ -8459,6 +8625,7 @@ function printDispatch(seq){
   }
   let data = collectDispatchData();
   if(seq) data = data.filter(d => d.seq === String(seq).trim());
+  else data = data.filter(dispatchPass);  // 일괄 인쇄: 화면 표시분만
   if(!data.length){ alert('대상 행사가 없습니다.'); return; }
 
   const masked = dispatchMaskOn;
@@ -8521,8 +8688,8 @@ async function downloadDispatchXlsx(){
   if(!processed.length || !processed.some(r => r.accom)){
     alert('데이터가 없습니다. 먼저 파일을 분석해주세요.'); return;
   }
-  const data = collectDispatchData();
-  if(!data.length){ alert('대상 행사가 없습니다.'); return; }
+  const data = collectDispatchData().filter(dispatchPass);  // 화면 표시분만
+  if(!data.length){ alert('대상 행사가 없습니다. (검색·필터 확인)'); return; }
   const masked = dispatchMaskOn;
 
   const wb = new ExcelJS.Workbook();
@@ -8753,7 +8920,7 @@ async function downloadDispatchXlsx(){
         ws.getRow(r).height = 17; borderRow(ws, r, 1, 10);
         ws.mergeCells(r,1,r,3); put(ws, r, 1, g.course, {h:'center'});
         ws.mergeCells(r,4,r,5); put(ws, r, 4, `${g.date} ${getWD(g.date)}`, {h:'center'});
-        put(ws, r, 6, '', {h:'center'});
+        put(ws, r, 6, g.tee||'', {h:'center'});
         put(ws, r, 7, g.holes, {h:'center'});
         put(ws, r, 8, rec.pax, {h:'center'});
         ws.mergeCells(r,9,r,10); put(ws, r, 9, g.note||'');
@@ -8774,7 +8941,8 @@ async function downloadDispatchXlsx(){
     r++;
     ws.getRow(r).height = 42; borderRow(ws, r, 1, 10);
     ws.mergeCells(r,1,r,10);
-    put(ws, r, 1, String((rec.raw && rec.raw['비고']) || ''), {wrap:true});
+    const xlRemark = String((rec.raw && rec.raw['비고']) || '');
+    put(ws, r, 1, d.memo ? (xlRemark ? xlRemark + '\n' : '') + '【現地メモ】 ' + d.memo : xlRemark, {wrap:true});
 
     // ── 페이지 구분: 앞면 끝 ──
     ws.getRow(r).addPageBreak();
@@ -9172,7 +9340,7 @@ function resetApp(){
   // 그룹코드 상태 복원
 
   document.getElementById('btn-analyze').disabled=true;
-  ['settle','transfer','dinner','golf','accom','nametag','aircover'].forEach(t=>document.getElementById('nav-'+t).classList.add('locked'));
+  ['settle','transfer','dinner','golf','accom','nametag','aircover','dispatch'].forEach(t=>document.getElementById('nav-'+t).classList.add('locked'));
   gotoSection('upload');
   document.getElementById('nav-upload').classList.add('active');
 }
