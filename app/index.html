@@ -2417,9 +2417,31 @@ function renderDinner(date){
   const stayingSeqs = new Set(stayingTeams.map(r => String(r.eventSeq||'').trim()));
   const seqAccomMap = {};
   stayingTeams.forEach(r => { seqAccomMap[String(r.eventSeq||'').trim()] = r.accom; });
-  let paxList = passengers
-    .filter(p => stayingSeqs.has(String(p.eventSeq||'').trim()))
-    .map(p => ({ ...p, accom: seqAccomMap[String(p.eventSeq||'').trim()] || p.accom }));
+
+  // 명단(passengers) 중 대표자만 추출 → eventSeq별 매칭용
+  const repBySeq = {};
+  passengers
+    .filter(p => p.isRep && stayingSeqs.has(String(p.eventSeq||'').trim()))
+    .forEach(p => { repBySeq[String(p.eventSeq||'').trim()] = p; });
+
+  // ★ 식사 대표 행은 "체류팀(예약)" 기준으로 생성한다.
+  //   명단이 있으면 명단 대표자 정보를 쓰고, 없으면 예약 대표고객으로 행을 만든다.
+  //   → 명단 미입력 팀도 누락되지 않으며, 인원 합계는 항상 예약 pax 합과 일치한다.
+  let paxList = stayingTeams.map(r => {
+    const seq = String(r.eventSeq||'').trim();
+    const rep = repBySeq[seq];
+    if(rep){
+      return { ...rep, accom: r.accom, isRep: true };
+    }
+    return {
+      eventSeq: seq,
+      name: r.repName,
+      repName: r.repName,
+      isRep: true,
+      accom: r.accom,
+      _noRoster: true
+    };
+  });
 
   // 추가 명단 병합
   const extras = getExtras('dinner', date);
@@ -2456,7 +2478,17 @@ function renderDinner(date){
   // 명단 관리 바
   const extraCount = extras.length;
   const excludedCount = paxList.filter(p => p._excluded).length;
-  const activeCount = paxList.filter(p => !p._excluded && (p.isRep || p.isExtra)).length;
+  // eventSeq → 예약 pax 맵 (체류팀 기준, 인원 합계는 항상 예약 pax 합)
+  const seqPaxMap = {};
+  stayingTeams.forEach(r => { seqPaxMap[String(r.eventSeq||'').trim()] = Number(r.pax)||0; });
+  // 인원 합계 = 제외되지 않은 대표 행들의 예약 pax 합 + 추가명단 pax
+  const sumPax = (arr) => arr.reduce((s,p) => {
+    if(p._excluded) return s;
+    if(p.isExtra) return s + (Number(p.pax)||1);
+    if(p.isRep)   return s + (seqPaxMap[String(p.eventSeq||'').trim()]||0);
+    return s;
+  }, 0);
+  const activeCount = sumPax(paxList);
   const mgmtBar = `
     <div style="margin-bottom:.75rem;padding:8px 12px;background:var(--surface2);border:1px dashed var(--border);border-radius:7px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:11px">
       <span style="color:var(--text3)">📋 명단 관리:</span>
@@ -2483,7 +2515,7 @@ function renderDinner(date){
     html += `<div style="margin-bottom:1.5rem">
       <div style="font-size:11px;font-weight:700;padding:7px 12px;background:var(--surface3);border-radius:6px;margin-bottom:.5rem;display:flex;align-items:center;gap:8px">
         <span class="tag ${tag||''}">${accomEngName(accom)||accom}</span>
-        <span style="color:var(--text2)">${accomTeams.length}팀 · <strong style="color:var(--accent2)">${list.filter(p=>!p._excluded).length}名</strong></span>
+        <span style="color:var(--text2)">${accomTeams.length}팀 · <strong style="color:var(--accent2)">${sumPax(list)}名</strong></span>
       </div>
       <div class="table-wrap"><table id="${tid}"><thead>${hdrHtml(HDRS.DINNER)}</thead><tbody>`;
 
@@ -2521,7 +2553,7 @@ function renderDinner(date){
         ? (p.addType === 'join'
             ? `<span style="color:var(--text3);font-size:10px">↳ ${p.name}</span>${extraBadge}`
             : `<strong>${p.repName||p.name}</strong>${extraBadge}`)
-        : `<strong>${p.repName}</strong>${agencyBadge}${teamBadgeHtml}`;
+        : `<strong>${p.repName}</strong>${agencyBadge}${teamBadgeHtml}${p._noRoster?`<span class="tag" style="background:var(--surface3);color:var(--text3);margin-left:4px;font-size:9px" title="개인 명단 미입력 — 대표 1행으로 표시">名簿無</span>`:''}`;
 
       // 滞在日次 계산: 입국일 = 1日目
       let stayDayLabel = '-';
@@ -4603,7 +4635,20 @@ async function _downloadDinner(selectedDates, selectedAccoms){
     const stayingTeams=processed.filter(r=>r.accom && (!_accomSet || _accomSet.has(r.accom))&&r.dep<=d&&r.arr>d);
     const stayingSeqs=new Set(stayingTeams.map(r=>String(r.eventSeq||'').trim()));
     const seqAccomMap={}; stayingTeams.forEach(r=>{seqAccomMap[String(r.eventSeq||'').trim()]=r.accom;});
-    const basePax=passengers.filter(p=>stayingSeqs.has(String(p.eventSeq||'').trim())).map(p=>({...p,accom:seqAccomMap[String(p.eventSeq||'').trim()]||p.accom}));
+    // 명단 대표자 매칭용
+    const repBySeqDl={};
+    passengers.filter(p=>p.isRep && stayingSeqs.has(String(p.eventSeq||'').trim()))
+      .forEach(p=>{ repBySeqDl[String(p.eventSeq||'').trim()]=p; });
+    // ★ 체류팀(예약) 기준 대표 행 — 명단 없으면 예약 대표고객으로 생성
+    const basePax=stayingTeams.map(r=>{
+      const seq=String(r.eventSeq||'').trim();
+      const rep=repBySeqDl[seq];
+      if(rep) return {...rep, accom:r.accom, isRep:true};
+      return { eventSeq:seq, name:r.repName, repName:r.repName, isRep:true, accom:r.accom, _noRoster:true };
+    });
+    // eventSeq → 예약 pax (인원 표기용)
+    const accomPaxSum=(ac)=>stayingTeams.filter(r=>r.accom===ac).reduce((s,r)=>s+(Number(r.pax)||0),0);
+    const totalPaxSum=stayingTeams.reduce((s,r)=>s+(Number(r.pax)||0),0);
 
     // DOM 순서 반영: 현재 표시 중인 날짜면 DOM 순서 사용
     const accomOrder = ['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
@@ -4617,7 +4662,7 @@ async function _downloadDinner(selectedDates, selectedAccoms){
         }).filter(Boolean);
         paxList.push(...domPax);
       } else {
-        paxList.push(...basePax.filter(p=>p.accom===ac).sort((a,b)=>a.repName.localeCompare(b.repName)||(b.isRep?1:0)-(a.isRep?1:0)||a.name.localeCompare(b.name)));
+        paxList.push(...basePax.filter(p=>p.accom===ac).sort((a,b)=>(a.repName||'').localeCompare(b.repName||'')));
       }
     });
 
@@ -4626,7 +4671,7 @@ async function _downloadDinner(selectedDates, selectedAccoms){
     xlColWidths(ws, COLW);
 
     let r=1;
-    xlTitle(ws,r,`夕食名前版  ${d}${getWD(d)}  ${stayingTeams.length}チーム · ${paxList.filter(p=>p.isRep).length}テーブル`,COL); r++;
+    xlTitle(ws,r,`夕食名前版  ${d}${getWD(d)}  ${stayingTeams.length}チーム · ${totalPaxSum}名`,COL); r++;
     ws.getRow(r).height=6; r++; // spacer
     xlHeader(ws,r,HDR); r++;
 
@@ -4637,7 +4682,7 @@ async function _downloadDinner(selectedDates, selectedAccoms){
       if(p.accom!==prevAccom){
         const c=xlAccomColor(p.accom);
         const teamCnt = repPaxList.filter(x=>x.accom===p.accom).length;
-        const paxCnt  = paxList.filter(x=>x.accom===p.accom).length;
+        const paxCnt  = accomPaxSum(p.accom);
         xlSection(ws,r,'▌ '+p.accom+`  ${teamCnt}チーム · ${paxCnt}名`,COL,c.fg,c.bg); r++;
         prevAccom=p.accom;
       }
@@ -7489,7 +7534,17 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
     const stayingTeams = processed.filter(r => r.accom && (!_accomSet || _accomSet.has(r.accom)) && r.dep <= date && r.arr > date);
     const stayingSeqs = new Set(stayingTeams.map(r=>String(r.eventSeq||'').trim()));
     const seqAccomMap = {}; stayingTeams.forEach(r=>{ seqAccomMap[String(r.eventSeq||'').trim()]=r.accom; });
-    const basePax = passengers.filter(p=>stayingSeqs.has(String(p.eventSeq||'').trim())).map(p=>({...p,accom:seqAccomMap[String(p.eventSeq||'').trim()]||p.accom}));
+    // 명단 대표자 매칭용
+    const repBySeqA3 = {};
+    passengers.filter(p=>p.isRep && stayingSeqs.has(String(p.eventSeq||'').trim()))
+      .forEach(p=>{ repBySeqA3[String(p.eventSeq||'').trim()]=p; });
+    // ★ 체류팀(예약) 기준 대표 행 — 명단 없으면 예약 대표고객으로 생성
+    const basePax = stayingTeams.map(r=>{
+      const seq=String(r.eventSeq||'').trim();
+      const rep=repBySeqA3[seq];
+      if(rep) return {...rep, accom:r.accom, isRep:true};
+      return { eventSeq:seq, name:r.repName, repName:r.repName, isRep:true, accom:r.accom, _noRoster:true };
+    });
 
     // 추가 명단 병합
     const extras = getExtras('dinner', date).filter(e => !_accomSet || _accomSet.has(e.accom) || !e.accom);
@@ -7896,8 +7951,8 @@ function generateAndPrintAircover(selectedDates, originFilter, selectedAccoms){
 
         <!-- ④ 항공편/시간/날짜 (가까이서 확인하는 보조정보) -->
         <div class="ac-info">
-          <div class="ac-row"><div class="ac-label">入　 国</div><div class="ac-value"><b>${c.inFlight}</b><span class="ac-time"> ${c.inTime}</span><span class="ac-nights">  (${c.inDate})</span></div></div>
-          <div class="ac-row"><div class="ac-label">帰　 国</div><div class="ac-value"><b>${c.outFlight}</b><span class="ac-time"> ${c.outTime}</span><span class="ac-nights">  (${c.outDate})</span></div></div>
+          <div class="ac-row"><div class="ac-label">入　 国</div><div class="ac-value"><b>${c.inFlight}</b><span class="ac-time"> ${c.inTime}</span><span class="ac-nights">  ${c.inDate}</span></div></div>
+          <div class="ac-row"><div class="ac-label">帰　 国</div><div class="ac-value"><b>${c.outFlight}</b><span class="ac-time"> ${c.outTime}</span><span class="ac-nights">  ${c.outDate}</span></div></div>
           <div class="ac-row ac-row-last"><div class="ac-label">施　 設</div><div class="ac-value ac-accom">${c.accomLabel}</div></div>
         </div>
       </div>
@@ -7939,7 +7994,7 @@ function generateAndPrintAircover(selectedDates, originFilter, selectedAccoms){
     border-radius: 3mm;
     display: grid;
     /* 태그코드(가장 큼) · 出発地+番号 히어로 띠 · 항공편 보조정보 */
-    grid-template-rows: 52mm 40mm 1fr;
+    grid-template-rows: 44mm 38mm 1fr;
     overflow: hidden;
   }
   /* ① 태그코드 — 멀리서 식별 1순위 */
@@ -7985,22 +8040,22 @@ function generateAndPrintAircover(selectedDates, originFilter, selectedAccoms){
   }
   .ac-hero-pax .ac-pax-num { color: #c0392b; }
   .ac-han { font-size: 26pt; font-weight: 700; margin: 0 1pt; }
-  /* ④ 항공편/시간/날짜 — 보조정보 */
-  .ac-info { display: grid; grid-template-rows: repeat(3, 1fr); }
-  .ac-row { display: grid; grid-template-columns: 32mm 1fr; align-items: center; border-bottom: 0.75pt solid #ccc; }
+  /* ④ 항공편/시간/날짜 — 入国·帰国 크게, 施設 작게 */
+  .ac-info { display: grid; grid-template-rows: 1.35fr 1.35fr 0.75fr; }
+  .ac-row { display: grid; grid-template-columns: 30mm 1fr; align-items: center; border-bottom: 0.75pt solid #ccc; }
   .ac-row-last { border-bottom: none; }
   .ac-label {
-    color: #6b7a90; font-size: 14pt; font-weight: 600;
+    color: #6b7a90; font-size: 15pt; font-weight: 600;
     text-align: center; height: 100%; display: flex; align-items: center; justify-content: center;
     letter-spacing: 2pt;
     border-right: 0.75pt solid #ccc;
   }
   .ac-value {
-    padding-left: 6mm; font-size: 22pt; font-weight: 600; color: #1a2540;
+    padding-left: 5mm; font-size: 30pt; font-weight: 700; color: #1a2540;
   }
-  .ac-value.ac-accom { font-size: 18pt; font-weight: 700; letter-spacing: 1pt; }
-  .ac-time { font-size: 19pt; font-weight: 500; color: #1a2540; font-family: 'Consolas', monospace; }
-  .ac-nights { font-size: 14pt; color: #6b7a90; font-weight: 500; }
+  .ac-value.ac-accom { font-size: 15pt; font-weight: 700; letter-spacing: 1pt; color: #6b7a90; }
+  .ac-time { font-size: 28pt; font-weight: 700; color: #1a2540; font-family: 'Consolas', monospace; }
+  .ac-nights { font-size: 22pt; color: #c0392b; font-weight: 700; }
   @media print {
     html, body { background: #fff; }
     .ac-toolbar { display: none; }
