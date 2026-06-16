@@ -14,28 +14,28 @@
    쿨 뉴트럴(약간 그린 기운) 배경, 차콜 텍스트 #3A4A3A 계열 */
 :root{
   --bg:#F4F6F2;--surface:#FFFFFF;--surface2:#F7F9F5;--surface3:#EFF2EC;--surface4:#E6EBE1;
-  --border:#D2D8CC;--border2:#B2BAA8;
+  --border:#D2D8CC;--border2:#9AA48C;
   --accent:#647548;--accent2:#4F5E38;--accent3:#3A4628;--accent-dim:#EDF0E2;
   --green:#4F6B30;--green2:#3D5526;--green-dim:#E6EEDA;
-  --amber:#A06E1C;--amber2:#7A5414;--amber-dim:#F4EDD9;
+  --amber:#8A5E16;--amber2:#7A5414;--amber-dim:#F4EDD9;
   --red:#B0432E;--red2:#8A3322;--red-dim:#F6E2DC;
   --purple:#6A578F;--purple2:#524274;--purple-dim:#EAE6F0;
   --teal:#3D7A70;--teal2:#2E5F57;--teal-dim:#DFEDEA;
-  --text:#262F26;--text2:#525B50;--text3:#7C8479;
+  --text:#262F26;--text2:#525B50;--text3:#5C655B;
   --mono:'JetBrains Mono',monospace;
   --sans:'Noto Sans KR',sans-serif;
 }
 /* light 클래스 호환: :root와 동일 값으로 라이트 고정 */
 body.light{
   --bg:#F4F6F2;--surface:#FFFFFF;--surface2:#F7F9F5;--surface3:#EFF2EC;--surface4:#E6EBE1;
-  --border:#D2D8CC;--border2:#B2BAA8;
+  --border:#D2D8CC;--border2:#9AA48C;
   --accent:#647548;--accent2:#4F5E38;--accent3:#3A4628;--accent-dim:#EDF0E2;
   --green:#4F6B30;--green2:#3D5526;--green-dim:#E6EEDA;
-  --amber:#A06E1C;--amber2:#7A5414;--amber-dim:#F4EDD9;
+  --amber:#8A5E16;--amber2:#7A5414;--amber-dim:#F4EDD9;
   --red:#B0432E;--red2:#8A3322;--red-dim:#F6E2DC;
   --purple:#6A578F;--purple2:#524274;--purple-dim:#EAE6F0;
   --teal:#3D7A70;--teal2:#2E5F57;--teal-dim:#DFEDEA;
-  --text:#262F26;--text2:#525B50;--text3:#7C8479;
+  --text:#262F26;--text2:#525B50;--text3:#5C655B;
 }
 body.light tr:hover td{background:var(--accent-dim)}
 tr:hover td{background:var(--accent-dim)}
@@ -375,7 +375,7 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
     <div class="logo-sub">Yamanami 운영 통합 시스템</div>
   </div>
   <div class="header-right">
-    <span class="badge">v14.0</span>
+    <span class="badge">v14.1</span>
     <button class="ghost-btn" onclick="resetApp()">초기화</button>
   </div>
 </div>
@@ -1577,7 +1577,7 @@ function analyze(){
     // 여행사: T-1 패턴 또는 상품명에 '여행사' 포함
     const isAgency = name.includes('여행사') || /^T-\d+$/i.test(rawGroup0);
 
-    const rawRemark = String(r['비고']||'');
+    const rawRemark = [r['비고'], r['현지 비고'], r['기타 비고']].map(x=>String(x||'')).filter(Boolean).join(' / ');
     const {accom, roomType, course, nights, rate} = parseProduct(name);
 
     // 4개 숙소(간지호텔·시즈노야도 료칸·쿠주힐즈·야마나미리조트) 미해당 → 완전 제외
@@ -8332,6 +8332,50 @@ function fmtTime(v){
   return m ? m[1].padStart(2,'0')+':'+m[2] : s;
 }
 
+// ── 現地手配書 特記事項: 비고 3컬럼(비고·현지 비고·기타 비고) 통합 + 현지 중요내용 굵게 ──
+// 현지에서 중요할 수 있는 키워드 — '비고' 칸에서 이 단어 포함 구절을 굵게 표기
+const DISPATCH_BOLD_KW = ['체크인','체크아웃','얼리','레이트','알러지','알레르기','채식','비건','휠체어','거동','픽업','송영','차량','룸업','업그레이드','생일','기념일','캐디','카트','vip','귀빈','추가','별도','요청'];
+
+// 비고 텍스트 → [{t, b}] 세그먼트 (b=굵게). 줄바꿈·슬래시 단위로 나눠 키워드 구절만 굵게.
+// alwaysBold=true 이면 전 구절 굵게(현지 비고 전용 칸)
+function bigoSegments(text, alwaysBold){
+  if(!text) return [];
+  return String(text).split(/(\n|\/)/).map(seg => {
+    if(seg === '\n' || seg === '/') return {t:seg, b:false};
+    if(alwaysBold) return {t:seg, b: seg.trim() !== ''};
+    const low = seg.toLowerCase();
+    const hit = DISPATCH_BOLD_KW.some(kw => low.includes(kw));
+    return {t:seg, b: hit && seg.trim() !== ''};
+  });
+}
+
+// rec(raw 3컬럼) + 현지메모 → 特記事項 세그먼트 배열 (HTML/Excel 공용)
+// 순서: 현지 비고(전체 굵게) → 비고(키워드 굵게) → 기타 비고(일반) → 【現地メモ】(수기)
+function dispatchNoteSegments(rec, memo){
+  const raw = (rec && rec.raw) || {};
+  const hyeonji = String(raw['현지 비고']||'').trim();
+  const bigo    = String(raw['비고']||'').trim();
+  const gita    = String(raw['기타 비고']||'').trim();
+  const segs = [];
+  const nl = () => { if(segs.length) segs.push({t:'\n', b:false}); };
+  if(hyeonji){ nl(); segs.push(...bigoSegments(hyeonji, true)); }
+  if(bigo){    nl(); segs.push(...bigoSegments(bigo, false)); }
+  if(gita){    nl(); segs.push({t:gita, b:false}); }
+  if(memo){    nl(); segs.push({t:'【現地メモ】 ', b:true}, {t:String(memo), b:false}); }
+  while(segs.length && segs[0].t === '\n') segs.shift();
+  return segs;
+}
+// 세그먼트 → HTML (hp-memo는 white-space:pre-wrap이라 \n이 줄바꿈)
+function dispatchNotesHTML(rec, memo){
+  return dispatchNoteSegments(rec, memo).map(s => s.b ? `<b>${s.t}</b>` : s.t).join('');
+}
+
+// 행사 골프 코스 요약 (일자별 라운드 대신 코스명만) — '야마나미CC ・ 九重高原CC'
+function dispatchCourseSummary(d){
+  const courses = [...new Set((d.golf||[]).map(g => g.course).filter(Boolean))];
+  return courses.length ? courses.join(' ・ ') : 'ラウンドなし';
+}
+
 // 숙박시설 일본어 표기
 function dispatchAccomJp(accom){
   if(accom === '야마나미리조트')  return '阿蘇やまなみリゾート';
@@ -8573,13 +8617,10 @@ function dispatchFrontHTML(d, masked){
   }).join('') : `<tr><td colspan="${colCount}" class="c" style="color:#777">名簿未登録 — 代表: ${r.repName||'-'} 計${r.pax}名</td></tr>`;
   const guestSizeCls = d.paxList.length > 16 ? ' g-xs' : d.paxList.length > 10 ? ' g-sm' : '';
 
-  // 라운딩 일정 (ティーアップ: 수배서 입력 > 골프표 연동값)
-  const golfRows = d.golf.length ? d.golf.map(g =>
-    `<tr><td class="c">${g.course}</td><td class="c mono">${g.date} ${getWD(g.date)}</td><td class="c mono">${g.tee||''}</td><td class="c">${g.holes}</td><td class="c">${r.pax}</td><td>${g.note}</td></tr>`
-  ).join('') : '<tr><td colspan="6" class="c" style="color:#777">ラウンドなし</td></tr>';
-
-  const remark = String((r.raw && r.raw['비고']) || '');
-  const memoFull = d.memo ? (remark ? remark + '\n' : '') + '【現地メモ】 ' + d.memo : remark;
+  // 골프 코스 요약 (일자별 라운드 테이블 → 코스명만; 상세 일정은 향후 별도 골프 수배서)
+  const courseStr = dispatchCourseSummary(d);
+  // 特記事項: 비고 3컬럼 + 현지메모 (현지 비고/키워드 굵게)
+  const notesHTML = dispatchNotesHTML(r, d.memo);
 
   return `<div class="hp-page">
     <div class="hp-head">
@@ -8620,14 +8661,13 @@ function dispatchFrontHTML(d, masked){
     <div class="hp-sec">👤 顧客情報${masked ? ' <span class="hp-mask">🔒 個人情報保護 — 生年月日まで表記</span>' : ''}</div>
     <table class="hp-t${guestSizeCls}">${guestHead}${guestRows}</table>
 
-    <div class="hp-sec">⛳ ラウンド情報</div>
+    <div class="hp-sec">⛳ ゴルフ情報</div>
     <table class="hp-t">
-      <tr><th style="width:24%">ゴルフ場</th><th style="width:20%">日付</th><th style="width:14%">ティーアップ</th><th style="width:9%">ホール</th><th style="width:9%">人数</th><th>備考</th></tr>
-      ${golfRows}
+      <tr><th style="width:24%">ゴルフ場</th><td class="c"><b>${courseStr}</b></td></tr>
     </table>
 
     <div class="hp-sec">📝 特記事項</div>
-    <div class="hp-memo">${memoFull}</div>
+    <div class="hp-memo">${notesHTML}</div>
   </div>`;
 }
 
@@ -8698,7 +8738,7 @@ function printDispatch(seq){
   .hp-t.g-sm{font-size:8.3pt} .hp-t.g-sm th, .hp-t.g-sm td{padding:1mm 1.4mm}
   .hp-t.g-xs{font-size:7.4pt} .hp-t.g-xs th, .hp-t.g-xs td{padding:.7mm 1.2mm}
   .c{text-align:center} .mono{font-family:Consolas,Menlo,monospace}
-  .hp-memo{border:1px solid #555;min-height:15mm;padding:2mm;font-size:9.5pt;white-space:pre-wrap}
+  .hp-memo{border:1px solid #555;min-height:30mm;padding:2mm;font-size:9.5pt;white-space:pre-wrap}
   .hp-legend{font-size:9.5pt;margin-bottom:2mm;padding:1.6mm 2.5mm;background:#f0f2f6;border:1px solid #bbb}
   .hp-form .hp-fill td{height:12.5mm}
   .hp-cat{font-size:8.5pt;letter-spacing:.5px;color:#555}
@@ -8946,36 +8986,15 @@ async function downloadDispatchXlsx(){
     }
     r++;
 
-    // 라운딩 정보
+    // 골프 정보 (코스만; 일자별 라운드 상세는 향후 별도 골프 수배서)
     ws.getRow(r).height = 16;
     ws.mergeCells(r,1,r,10);
-    put(ws, r, 1, '⛳ ラウンド情報', {b:true, sz:10, fg:'FF1E3A5F', noBorder:true});
+    put(ws, r, 1, '⛳ ゴルフ情報', {b:true, sz:10, fg:'FF1E3A5F', noBorder:true});
     r++;
-    ws.getRow(r).height = 16; borderRow(ws, r, 1, 10);
+    ws.getRow(r).height = 17; borderRow(ws, r, 1, 10);
     ws.mergeCells(r,1,r,3); put(ws, r, 1, 'ゴルフ場', {th:true});
-    ws.mergeCells(r,4,r,5); put(ws, r, 4, '日付', {th:true});
-    put(ws, r, 6, 'ティーアップ', {th:true, sz:7.5});
-    put(ws, r, 7, 'ホール', {th:true});
-    put(ws, r, 8, '人数', {th:true});
-    ws.mergeCells(r,9,r,10); put(ws, r, 9, '備考', {th:true});
+    ws.mergeCells(r,4,r,10); put(ws, r, 4, dispatchCourseSummary(d), {b:true});
     r++;
-    if(d.golf.length){
-      d.golf.forEach(g => {
-        ws.getRow(r).height = 17; borderRow(ws, r, 1, 10);
-        ws.mergeCells(r,1,r,3); put(ws, r, 1, g.course, {h:'center'});
-        ws.mergeCells(r,4,r,5); put(ws, r, 4, `${g.date} ${getWD(g.date)}`, {h:'center'});
-        put(ws, r, 6, g.tee||'', {h:'center'});
-        put(ws, r, 7, g.holes, {h:'center'});
-        put(ws, r, 8, rec.pax, {h:'center'});
-        ws.mergeCells(r,9,r,10); put(ws, r, 9, g.note||'');
-        r++;
-      });
-    } else {
-      ws.getRow(r).height = 17; borderRow(ws, r, 1, 10);
-      ws.mergeCells(r,1,r,10);
-      put(ws, r, 1, 'ラウンドなし', {h:'center', fg:'FF777777'});
-      r++;
-    }
     r++;
 
     // 特記事項
@@ -8983,10 +9002,12 @@ async function downloadDispatchXlsx(){
     ws.mergeCells(r,1,r,10);
     put(ws, r, 1, '📝 特記事項', {b:true, sz:10, fg:'FF1E3A5F', noBorder:true});
     r++;
-    ws.getRow(r).height = 42; borderRow(ws, r, 1, 10);
+    ws.getRow(r).height = 56; borderRow(ws, r, 1, 10);
     ws.mergeCells(r,1,r,10);
-    const xlRemark = String((rec.raw && rec.raw['비고']) || '');
-    put(ws, r, 1, d.memo ? (xlRemark ? xlRemark + '\n' : '') + '【現地メモ】 ' + d.memo : xlRemark, {wrap:true});
+    const noteSegs = dispatchNoteSegments(rec, d.memo);
+    put(ws, r, 1, noteSegs.length
+      ? { richText: noteSegs.map(s => ({ text:s.t, font:{name:FONT, size:9, bold:s.b, color:{argb:'FF1A2030'}} })) }
+      : '', {wrap:true});
 
     // ── 페이지 구분: 앞면 끝 ──
     ws.getRow(r).addPageBreak();
