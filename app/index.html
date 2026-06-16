@@ -116,7 +116,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .section.active{display:block}
 
 /* UPLOAD */
-.upload-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem;margin-bottom:1.25rem}
+.upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.25rem}
 .upload-area{border:1.5px dashed var(--border2);border-radius:12px;padding:2.75rem 2rem;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface2)}
 .upload-area:hover,.upload-area.drag{border-color:var(--accent);background:var(--accent-dim)}
 .upload-area.uploaded{border-color:var(--green);border-style:solid;background:var(--green-dim)}
@@ -375,7 +375,7 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
     <div class="logo-sub">Yamanami 운영 통합 시스템</div>
   </div>
   <div class="header-right">
-    <span class="badge">v13.4</span>
+    <span class="badge">v14.0</span>
     <button class="ghost-btn" onclick="resetApp()">초기화</button>
   </div>
 </div>
@@ -442,15 +442,6 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
           <div class="upload-sub">일행별예약___.xlsx · 여러 파일 동시 선택 가능 (500건 분할 시)</div>
         </div>
         <div class="file-status"><div class="file-dot empty" id="dot2"></div><div class="file-name" id="fname2">파일을 선택해주세요</div><div class="file-size" id="fsize2"></div></div>
-      </div>
-      <div style="display:flex;flex-direction:column">
-        <div class="upload-area" id="drop4" onclick="document.getElementById('inp4').click()" ondragover="onDrag(event,'drop4')" ondragleave="offDrag('drop4')" ondrop="onDrop(event,'arrival')" style="flex:1">
-          <input type="file" id="inp4" accept=".xlsx,.xls" style="display:none" multiple onchange="loadFile(event,'arrival')">
-          <div class="upload-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
-          <div class="upload-title">현지도착</div>
-          <div class="upload-sub">현지도착___.xlsx · 여러 파일 동시 선택 가능 (500건 분할 시)</div>
-        </div>
-        <div class="file-status"><div class="file-dot empty" id="dot4"></div><div class="file-name" id="fname4">파일을 선택해주세요</div><div class="file-size" id="fsize4"></div></div>
       </div>
     </div>
 
@@ -1342,10 +1333,11 @@ function processFile(file, type){
         arrivalData = arrivalMerged;
         buildArrivalMap();
         const totalRows = arrivalData.length;
-        document.getElementById('dot4').classList.remove('empty');
-        document.getElementById('fname4').textContent = arrivalFileCount > 1 ? `현지도착 (${arrivalFileCount}개 파일 병합)` : file.name;
-        document.getElementById('fsize4').textContent = arrivalFileCount > 1 ? totalRows+'행 (병합)' : (file.size/1024).toFixed(0)+'KB · '+totalRows+'행';
-        document.getElementById('drop4').classList.add('uploaded');
+        // 현지도착 업로드 카드는 v14.0에서 제거됨(2파일 체계). 레거시 호출 대비 가드.
+        const _d4=document.getElementById('dot4');   if(_d4) _d4.classList.remove('empty');
+        const _f4=document.getElementById('fname4'); if(_f4) _f4.textContent = arrivalFileCount > 1 ? `현지도착 (${arrivalFileCount}개 파일 병합)` : file.name;
+        const _s4=document.getElementById('fsize4'); if(_s4) _s4.textContent = arrivalFileCount > 1 ? totalRows+'행 (병합)' : (file.size/1024).toFixed(0)+'KB · '+totalRows+'행';
+        const _r4=document.getElementById('drop4');  if(_r4) _r4.classList.add('uploaded');
         checkReady();
       }
       return;
@@ -1691,11 +1683,12 @@ function analyze(){
     const bday = fmtDate(r['생년월일']);
 
 
-    // 출발지: 예약리스트 originMap 우선, 없으면 항공편으로 추정
+    // 출발지: 일행별예약 개인 출발지 우선 → 예약리스트 originMap → 항공편 추정
+    // (혼합팀 대응: 같은 행사 안에서 인천/김해가 갈리는 경우 개인 단위로 정확)
     // → 다양한 표기('김해', 'PUS', 'BUS' 등)를 '부산'/'인천'으로 표준화
     const depFlight = String(r['출발편']||'').trim();
     const retFlight = String(r['귀국편']||'').trim();
-    let originRaw = originMap[seq] || '';
+    let originRaw = String(r['출발지']||'').trim() || originMap[seq] || '';
     if(originRaw){
       const u = originRaw.toUpperCase();
       if(originRaw.includes('부산')||originRaw.includes('김해')||u==='PUS'||u==='BUS'||u==='PNS'){
@@ -1716,6 +1709,13 @@ function analyze(){
       bday, passport: String(r['여권번호']||'').trim(),
       gender: r['성별']||'', phone: r['휴대번호']||'',
       depFlight, retFlight,
+      airline: String(r['항공사']||'').trim(),
+      pnr:     String(r['PNR']||'').trim(),
+      dest:    String(r['도착지']||'').trim(),
+      depTime:    fmtTime(r['한국출발']),   // 往路 한국 출발 시각
+      locArrTime: fmtTime(r['현지도착']),   // 往路 현지(구마모토) 도착 시각
+      retDepTime: fmtTime(r['현지출발']),   // 復路 현지(구마모토) 출발 시각
+      korArrTime: fmtTime(r['한국도착']),   // 復路 한국 도착 시각
       depDate: fmtDate(r['출발일자']), arrDate: fmtDate(r['도착일자']),
       origin,
       repName,
@@ -8403,9 +8403,11 @@ function collectDispatchData(){
     return {
       rec, seq, no: i+1, paxList, tagCode,
       depFlight, retFlight,
-      depTime:    av.depTime    || '',
-      locArrTime: av.locArrTime || '',
-      retTime:    av.retTime    || '',
+      depTime:    rep.depTime    || av.depTime    || '',
+      locArrTime: rep.locArrTime || av.locArrTime || '',
+      retTime:    rep.retDepTime || av.retTime    || '',
+      korArrTime: rep.korArrTime || '',
+      airline:    rep.airline    || '',
       port: isPUS ? 'PUS' : 'ICN',
       portName: isPUS ? '釜山(金海)' : 'ソウル(仁川)',
       roomCnt, memo, hasManual,
@@ -8606,7 +8608,7 @@ function dispatchFrontHTML(d, masked){
     <table class="hp-t">
       <tr><th style="width:10%">区分</th><th style="width:13%">便名</th><th style="width:17%">日付</th><th style="width:13%">出発時間</th><th style="width:17%">出発地</th><th style="width:17%">到着地</th><th style="width:13%">到着時間</th></tr>
       <tr><td class="c">往路</td><td class="c mono"><b>${d.depFlight||'-'}</b></td><td class="c mono">${r.dep||''}</td><td class="c mono">${d.depTime}</td><td class="c">${d.portName}</td><td class="c">熊本(KMJ)</td><td class="c mono">${d.locArrTime}</td></tr>
-      <tr><td class="c">復路</td><td class="c mono"><b>${d.retFlight||'-'}</b></td><td class="c mono">${r.arr||''}</td><td class="c mono">${d.retTime}</td><td class="c">熊本(KMJ)</td><td class="c">${d.portName}</td><td class="c"></td></tr>
+      <tr><td class="c">復路</td><td class="c mono"><b>${d.retFlight||'-'}</b></td><td class="c mono">${r.arr||''}</td><td class="c mono">${d.retTime}</td><td class="c">熊本(KMJ)</td><td class="c">${d.portName}</td><td class="c mono">${d.korArrTime||''}</td></tr>
     </table>
 
     <div class="hp-sec">🏨 宿泊情報</div>
@@ -8859,7 +8861,7 @@ async function downloadDispatchXlsx(){
     ws.mergeCells(r,9,r,10); put(ws, r, 9, '到着時間', {th:true});
     r++;
     [['往路', d.depFlight||'-', rec.dep||'', d.depTime, d.portName, '熊本(KMJ)', d.locArrTime],
-     ['復路', d.retFlight||'-', rec.arr||'', d.retTime, '熊本(KMJ)', d.portName, '']].forEach(row => {
+     ['復路', d.retFlight||'-', rec.arr||'', d.retTime, '熊本(KMJ)', d.portName, d.korArrTime||'']].forEach(row => {
       ws.getRow(r).height = 17; borderRow(ws, r, 1, 10);
       ws.mergeCells(r,1,r,2); put(ws, r, 1, row[0], {h:'center'});
       put(ws, r, 3, row[1], {h:'center', b:true});
@@ -9370,15 +9372,13 @@ document.body.classList.add('light');
 function resetApp(){
   if(!confirm('초기화하면 업로드한 데이터와 수기 입력이 모두 삭제됩니다.\n그룹코드 참조테이블은 유지됩니다. 계속하시겠어요?')) return;
   resData=null; resMerged=[]; resPending=0; resFileCount=0; ilhaengData=null; ilhaengMerged=[]; ilhaengPending=0; ilhaengFileCount=0; arrivalData=null; arrivalMerged=[]; arrivalPending=0; arrivalFileCount=0; arrivalMap={}; processed=[]; localBookings=[]; passengers=[]; manualData={}; Object.keys(dragHistory).forEach(k=>delete dragHistory[k]);
-  ['inp1','inp2','inp4'].forEach(id=>{document.getElementById(id).value='';});
-  ['dot1','dot2','dot4'].forEach(id=>document.getElementById(id).classList.add('empty'));
-  ['drop1','drop2','drop4'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('uploaded');});
+  ['inp1','inp2'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['dot1','dot2'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.add('empty');});
+  ['drop1','drop2'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('uploaded');});
   document.getElementById('fname1').textContent='파일을 선택해주세요';
   document.getElementById('fname2').textContent='파일을 선택해주세요';
-  document.getElementById('fname4').textContent='파일을 선택해주세요 (선택사항)';
   document.getElementById('fsize1').textContent='';
   document.getElementById('fsize2').textContent='';
-  document.getElementById('fsize4').textContent='';
   // 그룹코드 상태 복원
 
   document.getElementById('btn-analyze').disabled=true;
