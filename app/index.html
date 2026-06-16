@@ -375,7 +375,7 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
     <div class="logo-sub">Yamanami 운영 통합 시스템</div>
   </div>
   <div class="header-right">
-    <span class="badge">v14.1</span>
+    <span class="badge">v14.2</span>
     <button class="ghost-btn" onclick="resetApp()">초기화</button>
   </div>
 </div>
@@ -8522,7 +8522,7 @@ function buildDispatch(){
       <td style="text-align:center">${d.rec.memberType||'-'}</td>
       <td style="text-align:center;white-space:nowrap">
         <button class="btn-dl" style="font-size:10px;padding:3px 8px" onclick="openDispatchInputModal('${d.seq}')">📝 입력</button>
-        <button class="btn-dl" style="font-size:10px;padding:3px 8px" onclick="printDispatch('${d.seq}')">🖨</button>
+        <button class="btn-dl" style="font-size:10px;padding:3px 8px" onclick="printDispatch('${d.seq}')">🖨 미리보기</button>
       </td>
     </tr>`).join('');
 }
@@ -8536,18 +8536,6 @@ function openDispatchInputModal(seq){
   const existing = document.getElementById('dispatch-input-modal-bg');
   if(existing) existing.remove();
 
-  const teeRows = d.golf.length ? d.golf.map(g => {
-    const golfTabVal = String(((manualData['golf_'+g.date+'_'+d.seq]||{}).teeoff) || '').trim();
-    const own = String((man.teeoff && man.teeoff[g.date]) || '').trim();
-    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <span style="font-size:11px;width:118px;font-family:var(--mono);color:var(--text)">${g.date} ${getWD(g.date)}</span>
-      <span style="font-size:10px;color:var(--text3);width:118px">${g.course} ${g.holes}H</span>
-      <input type="text" class="dispatch-tee-inp" data-date="${g.date}" value="${own}"
-        placeholder="${golfTabVal ? golfTabVal + ' (골프표 연동)' : '07:30'}"
-        style="width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:11px;font-family:var(--mono);color:var(--text);outline:none">
-    </div>`;
-  }).join('') : '<div style="font-size:11px;color:var(--text3)">ラウンドなし</div>';
-
   const bg = document.createElement('div');
   bg.id = 'dispatch-input-modal-bg';
   bg.className = 'dl-modal-bg';
@@ -8558,9 +8546,6 @@ function openDispatchInputModal(seq){
         <button onclick="document.getElementById('dispatch-input-modal-bg').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1;padding:2px 6px">✕</button>
       </div>
       <div class="dl-modal-body">
-        <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">⛳ ティーアップ 시간 <span style="font-size:10px;font-weight:400;color:var(--text3)">— 비워두면 ⑦ 골프배정표 입력값이 자동 적용됩니다</span></div>
-        <div style="margin-bottom:14px">${teeRows}</div>
-
         <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">🏨 部屋数 <span style="font-size:10px;font-weight:400;color:var(--text3)">— 비워두면 자동 계산 (현재: ${d.roomCnt})</span></div>
         <input type="text" id="dispatch-room-inp" value="${(man.roomCnt||'')}" placeholder="例: 3室 (2人1室) + 1室"
           style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:6px 9px;font-size:11px;color:var(--text);outline:none;margin-bottom:14px">
@@ -8583,16 +8568,12 @@ function openDispatchInputModal(seq){
 function saveDispatchInput(seq){
   const bg = document.getElementById('dispatch-input-modal-bg');
   if(!bg) return;
-  const tee = {};
-  bg.querySelectorAll('.dispatch-tee-inp').forEach(inp => {
-    const v = String(inp.value||'').trim();
-    if(v) tee[inp.dataset.date] = v;
-  });
   const roomCnt = String((bg.querySelector('#dispatch-room-inp')||{}).value||'').trim();
   const memo = String((bg.querySelector('#dispatch-memo-inp')||{}).value||'').trim();
   const key = 'dispatch_' + String(seq||'').trim();
-  if(Object.keys(tee).length || roomCnt || memo){
-    manualData[key] = { teeoff: tee, roomCnt, memo };
+  const teeoff = (manualData[key] && manualData[key].teeoff) || {};  // 기존 티오프 보존 (모달 입력 제거됨)
+  if(Object.keys(teeoff).length || roomCnt || memo){
+    manualData[key] = { teeoff, roomCnt, memo };
   } else {
     delete manualData[key];
   }
