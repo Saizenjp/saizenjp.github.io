@@ -189,7 +189,6 @@ let supa = null;
 const SLOTS = [
   {id:'res',     data:null, file:''},
   {id:'ilhaeng', data:null, file:''},
-  {id:'arrival', data:null, file:''},
   {id:'member',  data:null, file:''},
 ];
 // 슬롯 표시 텍스트는 i18n 키로 조회 (데이터 식별은 id로만)
@@ -217,14 +216,14 @@ function renderDrops(){
       <div class="name">${slotText(slot,'name')}</div>
       <div class="desc">${slotText(slot,'desc')}</div>
       <div class="file">${slot.file ? `<b>✓</b> ${slot.file} · ${slot.data.length.toLocaleString()}${t('s1_dyn_rows')}` : t('s1_dropEmpty')}</div>
-      <input type="file" accept=".xlsx,.xls" data-slot="${slot.id}">`;
+      <input type="file" accept=".xlsx,.xls" multiple data-slot="${slot.id}">`;
     const inp = card.querySelector('input');
-    inp.addEventListener('change', e=>handleFile(slot.id, e.target.files[0]));
+    inp.addEventListener('change', e=>handleFile(slot.id, e.target.files));
     card.addEventListener('dragover', e=>{e.preventDefault();card.classList.add('over');});
     card.addEventListener('dragleave', ()=>card.classList.remove('over'));
     card.addEventListener('drop', e=>{
       e.preventDefault();card.classList.remove('over');
-      if(e.dataTransfer.files[0]) handleFile(slot.id, e.dataTransfer.files[0]);
+      if(e.dataTransfer.files.length) handleFile(slot.id, e.dataTransfer.files);
     });
     grid.appendChild(card);
   });
@@ -232,29 +231,39 @@ function renderDrops(){
 }
 
 // ── 파일 읽기(SheetJS) ──
-function handleFile(slotId, file){
-  if(!file) return;
+function handleFile(slotId, fileList){
+  const files = (fileList && fileList.length!==undefined) ? Array.from(fileList) : (fileList ? [fileList] : []);
+  if(!files.length) return;
   const slot = SLOTS.find(s=>s.id===slotId);
-  const reader = new FileReader();
-  reader.onload = e=>{
-    try{
-      const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true});
-      if(slotId==='member'){
-        // 그룹코드: '회원_배정_현황' 시트 우선
-        const sheetName = wb.SheetNames.includes('회원_배정_현황') ? '회원_배정_현황' : wb.SheetNames[0];
-        slot.data = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {defval:''});
-      } else {
-        slot.data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
+  let pending = files.length, merged = [];
+  files.forEach(file=>{
+    const reader = new FileReader();
+    reader.onload = e=>{
+      try{
+        const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true});
+        let rows;
+        if(slotId==='member'){
+          // 그룹코드: '회원_배정_현황' 시트 우선
+          const sheetName = wb.SheetNames.includes('회원_배정_현황') ? '회원_배정_현황' : wb.SheetNames[0];
+          rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {defval:''});
+        } else {
+          rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
+        }
+        merged = merged.concat(rows);
+      }catch(err){
+        log(`✗ ${slotText(slot,'name')} ${t('s1_dyn_readFail')}: ${err.message}`, 'err');
       }
-      slot.file = file.name;
-      log(`📄 ${slotText(slot,'name')} ${t('s1_dyn_load')}: ${slot.data.length.toLocaleString()}${t('s1_dyn_rows')}`, 'ok');
-      renderDrops();
-      detectSession();
-    }catch(err){
-      log(`✗ ${slotText(slot,'name')} ${t('s1_dyn_readFail')}: ${err.message}`, 'err');
-    }
-  };
-  reader.readAsArrayBuffer(file);
+      if(--pending<=0){
+        slot.data = merged;
+        slot.file = files.length>1 ? `${files.length}${t('s1_dyn_filesMerged')}` : files[0].name;
+        if(slotId==='member'){ try{ localStorage.setItem('saizen_hub_membercodes', JSON.stringify(slot.data)); }catch(e){} }
+        log(`📄 ${slotText(slot,'name')} ${t('s1_dyn_load')}: ${slot.data.length.toLocaleString()}${t('s1_dyn_rows')}${files.length>1?' ('+files.length+t('s1_dyn_filesMerged')+')':''}`, 'ok');
+        renderDrops();
+        detectSession();
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 // ── 세션(YYYY-MM) 자동 감지: 예약리스트 출발일자 최솟값 ──
@@ -378,7 +387,6 @@ async function run(){
   const ym = window._sessionYM || null;
   const res = SLOTS.find(s=>s.id==='res').data;
   const ilh = SLOTS.find(s=>s.id==='ilhaeng').data;
-  const arr = SLOTS.find(s=>s.id==='arrival').data || [];
   const mem = SLOTS.find(s=>s.id==='member').data || [];
   const stat = {};
 
@@ -434,6 +442,8 @@ async function run(){
         sales_amount:Number(r['판매금액']||0),
         unpaid_amount:Number(r['미수금액']||0),
         remark:remark||null,
+        remark_local:String(r['현지 비고']||'').trim()||null,
+        remark_etc:String(r['기타 비고']||'').trim()||null,
         team_label:parseTeam(remark),
         session_ym:ym
       });
@@ -447,17 +457,8 @@ async function run(){
     // 적재된 event_seq 집합(자식 FK 보호용)
     const validSeq = new Set(bookingRows.map(b=>b.event_seq));
 
-    // ── 2) passengers (일행별예약) + 현지도착 보완 ──
-    // 현지도착 맵: eventSeq → {engFull, memberNo}
-    const arrMap = {};
-    arr.forEach(r=>{
-      const seq = parseInt(String(r['eventSeq']||'').trim(),10);
-      if(!seq) return;
-      arrMap[seq] = {
-        engFull:String(r['영문명']||'').replace('/',' ').trim(),
-        memberNo:String(r['회원번호']||'').trim()
-      };
-    });
+    // ── 2) passengers (일행별예약) ──
+    // 영문명·항공편 등 모두 일행별예약에 포함 (현지도착 파일 폐지, v14.2)
     const paxRows = [];
     ilh.forEach(r=>{
       const id = parseInt(String(r['pkgPsgrSeq']||'').trim(),10);
@@ -465,12 +466,11 @@ async function run(){
       if(!id || !seq || !validSeq.has(seq)) return;  // FK 보호: 적재된 booking만
       const nameKr = String(r['고객명']||'').trim();
       const enFull = [String(r['영문성']||'').trim(), String(r['영문이름']||'').trim()].filter(Boolean).join(' ');
-      const a = arrMap[seq] || {};
       paxRows.push({
         id, event_seq:seq,
         seq_in_team:Number(r['No']||0)||null,
         name_kr:nameKr||null,
-        name_en:(enFull || a.engFull || '') || null,
+        name_en:enFull || null,
         gender:String(r['성별']||'').trim()||null,
         birth:birthISO(r['생년월일']),
         birth_yymmdd:birthYYMMDD(r['생년월일'])||null,
@@ -479,7 +479,17 @@ async function run(){
         phone:String(r['휴대번호']||'').trim()||null,
         dep_flight:String(r['출발편']||'').trim()||null,
         ret_flight:String(r['귀국편']||'').trim()||null,
-        member_no:a.memberNo||null
+        origin:String(r['출발지']||'').trim()||null,
+        airline:String(r['항공사']||'').trim()||null,
+        pnr:String(r['PNR']||'').trim()||null,
+        dest:String(r['도착지']||'').trim()||null,
+        dep_time:String(r['한국출발']||'').trim()||null,
+        loc_arr_time:String(r['현지도착']||'').trim()||null,
+        ret_dep_time:String(r['현지출발']||'').trim()||null,
+        kor_arr_time:String(r['한국도착']||'').trim()||null,
+        pre_seat:String(r['사전좌석']||'').trim()||null,
+        air_included:String(r['항공포함']||'').trim()||null,
+        member_no:null
       });
     });
     stat['passengers'] = await upsertChunked('passengers', paxRows, 'id');
@@ -573,7 +583,18 @@ function clearAll(){
   $('#session-label').textContent='';
   $('#stats-panel').style.display='none';
   clearLog(); log('초기화됨','dim');
+  loadMemberCache();
   renderDrops();
+}
+
+// ── 그룹코드 캐시: 한번 등록하면 유지 ──
+function loadMemberCache(){
+  const slot = SLOTS.find(s=>s.id==='member');
+  if(slot.data && slot.data.length) return;
+  try{
+    const cached = JSON.parse(localStorage.getItem('saizen_hub_membercodes')||'[]');
+    if(cached.length){ slot.data = cached; slot.file = t('s1_dyn_memberCached'); }
+  }catch(e){}
 }
 
 // ── 부팅 ──
@@ -581,6 +602,7 @@ $('#btn-connect').addEventListener('click', connect);
 $('#btn-run').addEventListener('click', run);
 $('#btn-clear').addEventListener('click', clearAll);
 loadCreds();
+loadMemberCache();
 renderDrops();
 log(t('s1_logWait'),'dim');
 // 언어 전환 시 동적 카드 다시 렌더
