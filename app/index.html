@@ -375,7 +375,7 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
     <div class="logo-sub">Yamanami 운영 통합 시스템</div>
   </div>
   <div class="header-right">
-    <span class="badge">v14.3</span>
+    <span class="badge">v14.4</span>
     <button class="ghost-btn" onclick="resetApp()">초기화</button>
   </div>
 </div>
@@ -7501,20 +7501,17 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
       return !excluded.includes(key);
     });
 
-    // 숙박지순 → 대표자명순 정렬 (DOM 순서 반영)
+    // 입국일(빠른 순) → 숙박지순 → 대표자명순 정렬
     const accomOrder = ['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
-    let sorted = [];
-    accomOrder.forEach(ac => {
-      const tid = `dinner-tbl-${date}-${ac.replace(/[\s]/g,'')}`;
-      const domTbl = document.getElementById(tid);
-      if(domTbl){
-        const domPax = [...domTbl.querySelectorAll('tbody tr.draggable-row')].map(tr =>
-          paxList.find(p => !p.isExtra && String(p.eventSeq||'').trim()===String(tr.dataset.eventseq||'').trim())
-        ).filter(Boolean);
-        sorted.push(...domPax);
-      } else {
-        sorted.push(...paxList.filter(p=>!p.isExtra && p.accom===ac).sort((a,b)=>(a.repName||'').localeCompare(b.repName||'')));
-      }
+    const accIdx = (ac)=>{ const i=accomOrder.indexOf(ac); return i===-1?99:i; };
+    const seqDepMap = {}; stayingTeams.forEach(r=>{ seqDepMap[String(r.eventSeq||'').trim()] = r.dep||''; });
+    let sorted = [...paxList.filter(p=>!p.isExtra)].sort((a,b)=>{
+      const da = seqDepMap[String(a.eventSeq||'').trim()]||'';
+      const db = seqDepMap[String(b.eventSeq||'').trim()]||'';
+      if(da !== db) return da < db ? -1 : 1;               // 입국일 빠른 순(오름차순)
+      const ai=accIdx(a.accom), bi=accIdx(b.accom);
+      if(ai !== bi) return ai - bi;                         // 숙박지순
+      return (a.repName||'').localeCompare(b.repName||''); // 대표자명순
     });
     // 추가 명단은 뒤에
     sorted.push(...paxList.filter(p=>p.isExtra));
