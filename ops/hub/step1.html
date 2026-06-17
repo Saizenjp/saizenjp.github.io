@@ -106,7 +106,7 @@
   .navlink:hover{background:rgba(0,0,0,.04)}
   .navlink.cur{background:var(--accentSoft,#e6eeda);color:var(--accent,#647548);border-color:var(--accent,#647548)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.4">
 </head>
 <body>
 <div class="wrap">
@@ -125,10 +125,6 @@
         </div>
         <button class="so-furi" id="so-furi" onclick="__so_toggleFuri()"></button>
       </div>
-      <nav style="display:flex;gap:4px;margin-top:8px;flex-basis:100%">
-        <a class="navlink cur" href="step1.html" data-i18n="navStep1"></a>
-        <a class="navlink" href="room.html" data-i18n="navRoom"></a>
-      </nav>
     </div>
     <p class="lead" data-i18n="s1_lead"></p>
   </header>
@@ -148,6 +144,9 @@
       <span class="pill" id="conn-state" data-i18n="connState_none"></span>
     </div>
   </div>
+
+  <!-- ── 등록 상태 안내 ── -->
+  <div id="reg-status" style="display:none;margin:0 0 6px;padding:12px 16px;border:1px solid var(--accent);border-left:4px solid var(--accent);border-radius:10px;background:var(--accentSoft);color:var(--text);font-size:13px"></div>
 
   <!-- ── 업로드 파일 ── -->
   <div class="grid" id="drop-grid"></div>
@@ -196,7 +195,7 @@
   </div>
 </div>
 
-<script src="../assets/saizen-ops.js"></script>
+<script src="../assets/saizen-ops.js?v=14.4"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -687,6 +686,12 @@ async function loadHistory(){
         return `<div>· <b>${ts}</b> · ${r.uploaded_by||'-'} · ${r.session_ym||''} · ${r.files||''}${cnt}</div>`;
       }).join('');
     }
+    // 등록 상태 안내 + 등록 결과 복원 (최근 등록분)
+    const rs = $('#reg-status');
+    if(rows.length && rows[0].counts){
+      try{ showStats(rows[0].counts); }catch(e){}
+      if(rs){ rs.innerHTML = '\u2713 '+t('s1_regStatusDone')+' ('+(rows[0].session_ym||'')+(rows[0].uploaded_by?' · '+rows[0].uploaded_by:'')+'). '+t('s1_regStatusHint'); rs.style.display='block'; }
+    } else if(rs){ rs.style.display='none'; }
     $('#history-panel').style.display='block';
   } catch(e){}
 }
@@ -702,6 +707,8 @@ loadMemberCache();
 try{ const u=localStorage.getItem('saizen_hub_uploader'); if(u){ const el=$('#uploader'); if(el) el.value=u; } }catch(e){}
 renderDrops();
 log(t('s1_logWait'),'dim');
+// 저장된 키가 있으면 자동 연결 (재진입 시 연결 상태·변경이력 복원)
+if($('#sb-url').value.trim() && $('#sb-key').value.trim()) connect();
 // 언어 전환 시 동적 카드 다시 렌더
 window.onSaizenLangChange = function(){ try{ renderDrops(); }catch(e){} };
 </script>
