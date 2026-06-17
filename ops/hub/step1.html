@@ -496,17 +496,48 @@ async function run(){
     log(`✓ ${t('s1_dyn_log_pax')} ${stat['passengers']}${t('s1_dyn_cases')}`,'ok');
 
     // ── 3) guests (팀 운영 원장) — procMap 기준 ──
-    // 팀별 대표자 member_key로 그룹코드 매칭(회원). 미매칭은 group_code 공란(비회원 코드는 추후 모듈에서).
+    // 팀별 대표자 member_key로 그룹코드 매칭(회원). 미매칭 팀은 비회원 F풀 코드를 자동 배정.
     const guestRows = [];
     // 대표자 생년월일은 passengers(일행별)에서 (event_seq, name_kr=repName)로 조회
     const birthByKey = {};
     paxRows.forEach(p=>{ if(p.name_kr) birthByKey[p.event_seq+'|'+p.name_kr] = p.birth_yymmdd; });
+
+    // ── 비회원 F풀 태그코드 (회원 미매칭 팀 자동 배정) ──
+    // 18 prefix × 33 가나 = 594개/연도. eventSeq별 영속 · 연도 범위는 session_ym로 충돌 회피.
+    const NM_PREFIX = ['FA','FB','FF','FG','FH','FJ','FK','FL','FM','FO','FP','FR','FS','FT','FW','FX','FY','FZ'];
+    const NM_KANA   = ['あ','ウ','カ','キ','コ','サ','す','セ','た','ち','テ','と','な','ニ','ネ','の','は','ヒ','ふ','ホ','マ','み','ム','め','モ','ヤ','ヨ','ラ','リ','ル','れ','ロ','わ'];
+    const NM_POOL   = NM_PREFIX.length * NM_KANA.length;  // 594
+    const nmYear    = String(ym||'').slice(0,4) || String(new Date().getFullYear());
+    const nmAssigned = {};  // event_seq → code (그 해 기존 배정 — 영속)
+    const nmUsed = new Set();
+    try {
+      const { data: ex } = await supa.from('guests')
+        .select('event_seq, group_code')
+        .like('session_ym', nmYear+'-%')
+        .like('group_code', 'F%');
+      (ex||[]).forEach(g=>{ if(g.group_code){ nmAssigned[g.event_seq]=g.group_code; nmUsed.add(g.group_code); } });
+    } catch(e){}
+    function assignNonMemberCode(seq){
+      if(nmAssigned[seq]) return nmAssigned[seq];               // 영속: 같은 행사는 같은 코드 유지
+      const nextIdx = Object.keys(nmAssigned).length;
+      for(let off=0; off<NM_POOL; off++){
+        const idx  = nextIdx + off;
+        const code = NM_PREFIX[idx % NM_PREFIX.length] + NM_KANA[idx % NM_KANA.length];
+        if(!nmUsed.has(code)){ nmAssigned[seq]=code; nmUsed.add(code); return code; }
+      }
+      return null;  // 풀 소진 (594개)
+    }
+
+    let nmCnt = 0, memCnt = 0, nmFull = 0;
     Object.keys(procMap).forEach(seqStr=>{
       const seq = parseInt(seqStr,10);
       const info = procMap[seq];
       const b = birthByKey[seq+'|'+info.repName] || '';
       const mkey = info.repName + b;
-      const gcode = (b && codeMap[mkey]) ? codeMap[mkey] : null;  // 회원 매칭 성공 시만
+      const memberCode = (b && codeMap[mkey]) ? codeMap[mkey] : null;  // 회원 매칭
+      let gcode = memberCode;
+      if(memberCode){ memCnt++; }
+      else { gcode = assignNonMemberCode(seq); if(gcode) nmCnt++; else nmFull++; }
       guestRows.push({
         event_seq:seq,
         team_tag: gcode ? `${gcode}-${info.accomPfx}` : null,
@@ -520,8 +551,7 @@ async function run(){
     });
     stat['guests'] = await upsertChunked('guests', guestRows, 'event_seq');
     log(`✓ ${t('s1_dyn_log_guests')} ${stat['guests']}${t('s1_dyn_teams')}`,'ok');
-    const memberMatched = guestRows.filter(g=>g.group_code).length;
-    log(`  └ 회원 그룹코드 매칭 ${memberMatched}팀 / 비회원·미매칭 ${guestRows.length-memberMatched}팀`,'dim');
+    log(`  └ 회원 ${memCnt}팀 · 비회원 F풀 ${nmCnt}팀${nmFull?` · 풀소진 ${nmFull}팀`:''}`,'dim');
 
     // ── 4) guest_members (개인) — 운영대상 팀의 passengers로 생성 ──
     const guestSeqSet = new Set(guestRows.map(g=>g.event_seq));
@@ -538,7 +568,7 @@ async function run(){
       list.forEach((p,idx)=>{
         const num = idx+1;
         const pfx = g.accom_prefix||'X';
-        const personTag = g.group_code ? `${g.group_code}-${num}${pfx}` : null;  // 비회원 코드는 추후
+        const personTag = g.group_code ? `${g.group_code}-${num}${pfx}` : null;  // 회원·비회원 모두 group_code 보유
         gmRows.push({
           event_seq:seq,
           passenger_id:p.id,
