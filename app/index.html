@@ -7602,6 +7602,14 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
   const tagMap = buildTagCodeMap();
   const todayStr = today();
 
+  // 팀별 출발지(부산 여부) — 대표 승객 origin 우선 → 일반 승객 origin 보완
+  //  · 부산편(ZE)은 늦은 시간대 → 입국일 점심 없음 / 귀국일은 점심 먹고 출발
+  //  · 서울편(TW)은 이른 시간대 → 입국일 점심(가츠카레) / 귀국일 점심 없음
+  const seqIsPus = {};
+  const _isPus = (o) => { const u=String(o||'').toUpperCase(); return String(o||'').includes('부산')||String(o||'').includes('김해')||u==='PUS'||u==='BUS'||u==='PNS'; };
+  passengers.filter(p=>p.isRep).forEach(p=>{ const seq=String(p.eventSeq||'').trim(); if(seq) seqIsPus[seq]=_isPus(p.origin); });
+  passengers.forEach(p=>{ const seq=String(p.eventSeq||'').trim(); if(seq && !(seq in seqIsPus)) seqIsPus[seq]=_isPus(p.origin); });
+
   // MM/DD 형식
   const fmtMD = (s) => {
     if(!s) return '';
@@ -7667,10 +7675,13 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
         if(days >= 1 && days <= totalDays) stayDay = `${days}日目`;
       }
       const repName = p.isExtra ? (p.repName||p.name||'') : (p.repName||'');
+      const rowPus = p.isExtra ? false : !!seqIsPus[String(p.eventSeq||'').trim()];
+      const originCode = p.isExtra ? '' : (rowPus ? 'PUS' : 'ICN');
       return `<tr>
         <td class="c">${no}</td>
         <td class="c date-c">${depD}</td>
         <td class="c date-c">${arrD}</td>
+        <td class="c orig ${rowPus?'pus':'icn'}">${originCode}</td>
         <td class="kor">${repName}</td>
         <td class="eng">${engShow}</td>
         <td class="c grp">${grpCode}</td>
@@ -7691,10 +7702,24 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
 
     // 그 날짜의 조식·중식 인원 합계
     //  · 조식(朝食) = 전날 밤 묵은 인원(그 날 아침 식사자, 출발일 손님 포함)  dep < date && arr >= date
-    //  · 중식(昼食) = 그 날 체류 인원(입·퇴실일 포함)                         dep <= date && arr >= date
+    //  · 중식(昼食) = 출발지·방향별로 분리 집계(아래 규칙)
+    //     - 중간 체류일      : 점심 O
+    //     - 입국일 서울(ICN) : 점심 O(가츠카레)  → lunchArrICN 로 분리
+    //     - 입국일 부산(PUS) : 점심 X(저녁부터)  → 제외
+    //     - 귀국일 부산(PUS) : 점심 O(먹고 출발) → 継続에 합산
+    //     - 귀국일 서울(ICN) : 점심 X(오전 출발) → 제외
     const sumPax = (rs) => rs.reduce((s,r)=>s+(parseInt(r.pax,10)||0),0);
     const breakfastN = sumPax(processed.filter(r => r.accom && (!_accomSet || _accomSet.has(r.accom)) && r.dep <  date && r.arr >= date));
-    const lunchN     = sumPax(processed.filter(r => r.accom && (!_accomSet || _accomSet.has(r.accom)) && r.dep <= date && r.arr >= date));
+    let lunchContinue = 0, lunchArrICN = 0;
+    processed.forEach(r => {
+      if(!r.accom || (_accomSet && !_accomSet.has(r.accom))) return;
+      const pax = parseInt(r.pax,10)||0; if(!pax) return;
+      const isPus = !!seqIsPus[String(r.eventSeq||'').trim()];
+      if(r.dep < date && r.arr > date) lunchContinue += pax;        // 중간 체류일
+      else if(r.dep === date){ if(!isPus) lunchArrICN += pax; }     // 입국일: 서울만 점심(가츠카레)
+      else if(r.arr === date){ if(isPus)  lunchContinue += pax; }   // 귀국일: 부산만 점심
+    });
+    const lunchN = lunchContinue + lunchArrICN;
     // 일본 고객(비지터) 수기 식수 (날짜별 저장)
     const dv = manualData['dinnerVisitors_'+date] || {};
     const dvB = parseInt(dv.b,10)||0, dvL = parseInt(dv.l,10)||0, dvD = parseInt(dv.d,10)||0;
@@ -7710,22 +7735,23 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
           <th style="width:3%">No</th>
           <th style="width:5%">入国</th>
           <th style="width:5%">帰国</th>
-          <th style="width:13%">名前</th>
+          <th style="width:5%">出発地</th>
+          <th style="width:8%">名前</th>
           <th style="width:16%">英文名</th>
           <th style="width:9%">Group</th>
           <th style="width:8%">場所</th>
           <th style="width:5%">人数</th>
           <th style="width:6%">日次</th>
-          <th style="width:6%">単価</th>
+          <th style="width:5%">単価</th>
           <th style="width:9%">料理</th>
-          <th style="width:15%">備考</th>
+          <th style="width:16%">備考</th>
         </tr></thead>
         <tbody>${trHTML}</tbody>
       </table>
       <table class="do-mealsum">
         <thead><tr><th class="ms-rowh"></th><th>朝食</th><th>昼食</th><th>夕食</th></tr></thead>
         <tbody>
-          <tr class="ms-resv"><td class="ms-rowh">予約</td><td>${breakfastN}</td><td>${lunchN}</td><td>${paxCnt}</td></tr>
+          <tr class="ms-resv"><td class="ms-rowh">予約</td><td>${breakfastN}</td><td>${lunchN}${lunchArrICN?`<span class="ms-sub">継続${lunchContinue} ／ 入国${lunchArrICN}</span>`:''}</td><td>${paxCnt}</td></tr>
           <tr class="ms-jp"><td class="ms-rowh">日本</td><td>${dvB||''}</td><td>${dvL||''}</td><td>${dvD||''}</td></tr>
           <tr class="ms-total"><td class="ms-rowh">合計</td><td>${breakfastN+dvB}</td><td>${lunchN+dvL}</td><td>${paxCnt+dvD}</td></tr>
         </tbody>
@@ -7780,6 +7806,9 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
   .do-table td.kor { font-weight: 700; font-size: 14pt; }
   .do-table td.eng { font-size: 11pt; color: #333; }
   .do-table td.date-c { font-size: 11pt; color: #1A4D8F; font-weight: 600; font-family: 'Consolas', monospace; }
+  .do-table td.orig { font-family: 'Consolas', monospace; font-size: 11pt; font-weight: 800; letter-spacing: 0.5pt; }
+  .do-table td.orig.icn { color: #1A4D8F; }
+  .do-table td.orig.pus { color: #B45309; }
   .do-table td.grp { font-family: 'Consolas', monospace; font-size: 11pt; font-weight: 700; }
   .do-table tbody tr:nth-child(even) td { background: #f4f6fa; }
   .do-mealsum { margin-top: 5mm; border-collapse: collapse; }
@@ -7787,6 +7816,7 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
   .do-mealsum th { font-size: 15pt; font-weight: 800; color: #fff; background: #1A2540; letter-spacing: 2pt; }
   .do-mealsum td { font-size: 19pt; font-weight: 700; color: #1A2540; }
   .do-mealsum .ms-rowh { font-size: 14pt; font-weight: 800; background: #f4f6fa; letter-spacing: 2pt; }
+  .do-mealsum .ms-sub { display: block; font-size: 10pt; font-weight: 700; color: #B45309; letter-spacing: 0.5pt; margin-top: 1mm; }
   .do-mealsum .ms-jp td { color: #1A4D8F; }
   .do-mealsum .ms-total td { font-size: 30pt; font-weight: 800; color: #1A4D8F; background: #eaf0fa; }
   .do-mealsum .ms-total .ms-rowh { color: #1A2540; background: #dde6f5; font-size: 18pt; }
