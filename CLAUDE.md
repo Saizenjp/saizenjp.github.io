@@ -41,7 +41,7 @@
   **`/ops/`는 다중 페이지 + 공유 asset** — 공통 변경은 `saizen-ops.js/css`에서.
 - **설계 먼저 제안 → 확인 → 구현.** Min은 짧고 직접적인 한국어로 결정하며, 제안을 중간에 멈추기도 한다("그냥 진행하지말아주세요"). 긴 설명보다 간결한 결정을 선호.
 - **데이터 저장 (네임스페이스)**:
-  - `/app/` localStorage: `manualData`(월별 수기입력 — `saveManual()`/`loadManual()`), `memberMasterMap`·`memberMasterMeta`·`memberMasterFile`·`memberMasterCount`, `learnedMasterMap`·`learnedMasterMeta`, `tagCodeManualMap`, `saizen_dispatch_mask`(송영 마스킹), 언어/후리가나 설정.
+  - `/app/` localStorage: `manualData`(월별 수기입력 — `saveManual()`/`loadManual()`), `memberMasterMap`·`memberMasterMeta`·`memberMasterFile`·`memberMasterCount`, `learnedMasterMap`·`learnedMasterMeta`, `tagCodeManualMap`, `saizen_dispatch_mask`(송영 마스킹), `saizen_lang`(화면 언어 ja/ko/en — `/ops/`와 공유).
   - `/ops/` Supabase 접속정보 localStorage: `saizen_sb_url` / `saizen_sb_key`.
 
 ## 4. 검증 (납품 전 필수)
@@ -103,7 +103,7 @@
 - anon key + RLS(`04_rls_anon.sql`). **`member_codes` 는 기본 1000행 제한** → `range()` **페이지네이션 필수**.
 
 ## 10. i18n / 후리가나
-- **일본어 기본** + 한국어 + 영어(EN) 토글 + 후리가나(루비) 토글. 엔진: `data-i18n` / `data-i18n-html` / `data-i18n-title` + `{ja:{}, ko:{}, en:{}}` 사전. *(영어는 `/ops/`에만 — `/app/`은 별도.)* 후리가나 버튼은 일본어일 때만 노출.
+- **일본어 기본** + 한국어 + 영어(EN) 토글 + 후리가나(루비) 토글. 엔진: `data-i18n` / `data-i18n-html` / `data-i18n-title` + `{ja:{}, ko:{}, en:{}}` 사전. *(영어 토글: `/ops/` 전체 + `/app/` 화면 chrome(헤더·nav·업로드·WIP) — `/app/` **인쇄 산출물은 일본어 유지**. 두 축 `saizen_lang` localStorage 공유. `/app/` 동적 UI(버튼·alert 등)는 미번역 — 후속.)* 후리가나는 `/ops/`만, 일본어일 때만 노출.
 - ⚠ **`t()`는 미존재 키를 키 문자열 그대로 반환** → 사전에 없는 키를 `data-i18n`에 쓰면 화면에 키가 노출된다. **키 존재를 확인하거나 정적 텍스트**를 쓴다.
 - 일본어 번역 시 한자 뒤 괄호 후리가나(예 `飛行機(ひこうき)`), HTML 출력엔 루비 태그.
 
