@@ -811,14 +811,12 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
     <div class="btn-row" style="margin-top:0;margin-bottom:.75rem">
       <button class="btn-dl" onclick="downloadAircover()">⬇ 航空カバー置き場 다운로드 (xlsx)</button>
       <button class="btn-dl" onclick="openAircoverPrintModal()" style="background:var(--green-dim);color:var(--green2);border-color:var(--green)">🖨 航空カバー置き場 인쇄</button>
-      <button class="btn-dl" onclick="openPnrGuide()" style="background:var(--teal-dim);color:var(--teal2);border-color:var(--teal)">🎫 항공사·PNR 안내</button>
     </div>
     <div id="aircover-filter" class="date-filter" style="margin-bottom:.75rem"></div>
     <div id="aircover-content"></div>
     <div class="btn-row">
       <button class="btn-dl" onclick="downloadAircover()">⬇ 航空カバー置き場 다운로드 (xlsx)</button>
       <button class="btn-dl" onclick="openAircoverPrintModal()" style="background:var(--green-dim);color:var(--green2);border-color:var(--green)">🖨 航空カバー置き場 인쇄</button>
-      <button class="btn-dl" onclick="openPnrGuide()" style="background:var(--teal-dim);color:var(--teal2);border-color:var(--teal)">🎫 항공사·PNR 안내</button>
     </div>
   </div>
 </div>
@@ -7915,106 +7913,6 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
     <button class="do-close" onclick="window.close()">✕ 닫기</button>
   </div>
   <div class="do-container">${pagesHTML}</div>
-</body></html>`;
-
-  const w = window.open('', '_blank');
-  if(!w){ alert('팝업이 차단되었습니다. 팝업 차단을 해제해주세요.'); return; }
-  w.document.write(fullHTML);
-  w.document.close();
-}
-// ════════════════════════════════════════════════════════════════
-// 🎫 항공사·PNR 안내 — 인별 항공사/편명/PNR 묶음 (항공예약번호 안내용)
-function openPnrGuide(){
-  if(typeof passengers === 'undefined' || !passengers.length){ alert('데이터가 없습니다. 먼저 파일을 업로드하세요.'); return; }
-  const todayStr = (typeof today === 'function') ? today() : '';
-  const rows = [...passengers].sort((a,b)=>{
-    const sa=String(a.eventSeq||''), sb=String(b.eventSeq||'');
-    if(sa!==sb) return sa<sb?-1:1;
-    if(a.isRep!==b.isRep) return a.isRep?-1:1;
-    return String(a.name||'').localeCompare(String(b.name||''));
-  });
-  let no=0, prevSeq=null;
-  const trHTML = rows.map(p=>{
-    no++;
-    const seq=String(p.eventSeq||'');
-    const newTeam = seq!==prevSeq; prevSeq=seq;
-    const isPus = String(p.origin||'').includes('부산');
-    const originCode = p.origin ? (isPus?'PUS':'ICN') : '';
-    const team = (newTeam && p.teamName) ? `<span class="tm">팀:${p.teamName}</span>` : '';
-    return `<tr class="${newTeam?'newteam':''}">
-      <td class="c">${no}</td>
-      <td class="kor">${p.name||''}${p.isRep?' <span class="rep">代表</span>':''}${team}</td>
-      <td class="eng">${p.engFull||''}</td>
-      <td class="c orig ${isPus?'pus':'icn'}">${originCode}</td>
-      <td class="al">${p.airline||''}</td>
-      <td class="c f">${p.depFlight||''}</td>
-      <td class="c f">${p.retFlight||''}</td>
-      <td class="c pnr">${p.pnr||''}</td>
-    </tr>`;
-  }).join('');
-
-  const fullHTML = `<!DOCTYPE html>
-<html lang="ko"><head><meta charset="UTF-8">
-<title>항공사·PNR 안내 — ${todayStr}</title>
-<style>
-  @page { size: A4 portrait; margin: 10mm; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { font-family: 'Malgun Gothic','Meiryo',sans-serif; background:#f5f5f5; color:#1A2540; }
-  .pg-toolbar { position: sticky; top:0; background:#fff; padding:14px 20px; box-shadow:0 2px 8px rgba(0,0,0,.1); display:flex; align-items:center; gap:16px; z-index:100; }
-  .pg-toolbar h1 { font-size:16px; font-weight:700; }
-  .pg-toolbar .meta { font-size:11px; color:#666; }
-  .pg-toolbar button { padding:8px 20px; background:#0E7490; color:#fff; border:none; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer; }
-  .pg-toolbar .pg-close { background:#999; }
-  .pg-container { padding:20px; }
-  .pg-page { width:190mm; margin:0 auto; background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.08); padding:8mm; }
-  .pg-head { display:flex; align-items:baseline; justify-content:space-between; border-bottom:2.5pt solid #1A2540; padding-bottom:3mm; margin-bottom:4mm; }
-  .pg-title { font-size:20pt; font-weight:800; letter-spacing:2pt; color:#1A2540; }
-  .pg-meta { font-size:10pt; color:#555; }
-  table { width:100%; border-collapse:collapse; table-layout:fixed; }
-  th { background:#1A2540; color:#fff; font-size:10pt; font-weight:700; padding:2.4mm 1mm; border:0.4pt solid #1A2540; }
-  td { font-size:10.5pt; padding:1.9mm 1.6mm; border:0.4pt solid #b8c0d0; color:#1A2540; line-height:1.2; }
-  td.c { text-align:center; }
-  td.kor { font-weight:700; }
-  td.kor .rep { font-size:8pt; color:#0E7490; font-weight:700; }
-  td.kor .tm { font-size:8pt; color:#9a7322; font-weight:700; margin-left:4px; }
-  td.eng { font-size:9pt; color:#333; }
-  td.al { font-size:9.5pt; }
-  td.f { font-family:'Consolas',monospace; font-size:9.5pt; font-weight:600; color:#1A4D8F; }
-  td.pnr { font-family:'Consolas',monospace; font-size:11pt; font-weight:800; letter-spacing:0.5pt; }
-  td.orig { font-family:'Consolas',monospace; font-weight:800; font-size:9.5pt; }
-  td.orig.icn { color:#1A4D8F; } td.orig.pus { color:#B45309; }
-  tr.newteam td { border-top:1.4pt solid #1A2540; }
-  @media print {
-    html, body { background:#fff; }
-    .pg-toolbar { display:none; }
-    .pg-container { padding:0; }
-    .pg-page { box-shadow:none; width:100%; padding:0; }
-    th { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  }
-</style></head>
-<body>
-  <div class="pg-toolbar">
-    <h1>🎫 항공사·PNR 안내</h1>
-    <div class="meta">${rows.length}名 · ${todayStr}</div>
-    <button onclick="window.print()">🖨 인쇄</button>
-    <button class="pg-close" onclick="window.close()">✕ 닫기</button>
-  </div>
-  <div class="pg-container"><div class="pg-page">
-    <div class="pg-head"><div class="pg-title">航空会社・予約番号 案内</div><div class="pg-meta">${rows.length}名 · ${todayStr}</div></div>
-    <table>
-      <thead><tr>
-        <th style="width:5%">No</th>
-        <th style="width:17%">お名前</th>
-        <th style="width:18%">英文名</th>
-        <th style="width:7%">出発地</th>
-        <th style="width:17%">航空会社</th>
-        <th style="width:11%">入国便</th>
-        <th style="width:11%">帰国便</th>
-        <th style="width:14%">PNR</th>
-      </tr></thead>
-      <tbody>${trHTML}</tbody>
-    </table>
-  </div></div>
 </body></html>`;
 
   const w = window.open('', '_blank');
