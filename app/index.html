@@ -811,12 +811,14 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
     <div class="btn-row" style="margin-top:0;margin-bottom:.75rem">
       <button class="btn-dl" onclick="downloadAircover()">⬇ 航空カバー置き場 다운로드 (xlsx)</button>
       <button class="btn-dl" onclick="openAircoverPrintModal()" style="background:var(--green-dim);color:var(--green2);border-color:var(--green)">🖨 航空カバー置き場 인쇄</button>
+      <button class="btn-dl" onclick="openPnrGuide()" style="background:var(--teal-dim);color:var(--teal2);border-color:var(--teal)">🎫 항공사·PNR 안내</button>
     </div>
     <div id="aircover-filter" class="date-filter" style="margin-bottom:.75rem"></div>
     <div id="aircover-content"></div>
     <div class="btn-row">
       <button class="btn-dl" onclick="downloadAircover()">⬇ 航空カバー置き場 다운로드 (xlsx)</button>
       <button class="btn-dl" onclick="openAircoverPrintModal()" style="background:var(--green-dim);color:var(--green2);border-color:var(--green)">🖨 航空カバー置き場 인쇄</button>
+      <button class="btn-dl" onclick="openPnrGuide()" style="background:var(--teal-dim);color:var(--teal2);border-color:var(--teal)">🎫 항공사·PNR 안내</button>
     </div>
   </div>
 </div>
@@ -834,6 +836,7 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
         🔒 개인정보 마스킹
       </label>
       <span style="font-size:10.5px;color:var(--text3)">ON: 고객명단을 <strong>생년월일까지만</strong> 표기 (여권번호·전화번호 숨김) &nbsp;/&nbsp; OFF: 여권번호·전화번호 포함 전체 표기</span>
+      <button class="btn-dl" onclick="openTeamTagModal()" style="font-size:11px;margin-left:auto;background:var(--purple-dim);color:var(--purple2);border-color:var(--purple)">🏷 현장 팀 묶기</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:.6rem;align-items:center">
       <input type="text" id="dispatch-search" placeholder="🔍 代表者名・イベント番号・タグコード 검색" oninput="onDispatchSearch(this.value)"
@@ -1702,8 +1705,10 @@ function analyze(){
     const dep = fmtDate(r['출발일자']);
     const arr = fmtDate(r['도착일자']);
 
-    // 팀명 파싱 (비고 원문 기반)
-    const teamName = parseTeamName(group, rawRemark);
+    // 팀명 파싱 (비고 원문 기반) — 현장 팀 태그(앱 내 수기)가 있으면 그게 우선
+    const _teamParsed = parseTeamName(group, rawRemark);
+    const _seqK = String(r['eventSeq']||'').trim();
+    const teamName = ((manualData.teamTags && manualData.teamTags[_seqK]) || _teamParsed) || null;
 
     processed.push({
       no:0, group, repName: r['대표고객']||'', dep, arr, nights, pax,
@@ -1711,7 +1716,7 @@ function analyze(){
       stay: accom ? pax*nights*rate : 0,
       transport: accom ? pax*6000 : 0,
       total: accom ? pax*nights*rate+pax*6000 : 0,
-      isCity, isAgency, teamName,
+      isCity, isAgency, teamName, _teamParsed,
       memberType: String(r['회원권구분']||'').trim() || '-',
       eventNo: String(r['행사번호']||'').trim() || '-',
       status: String(r['구분']||'').trim(),
@@ -2924,6 +2929,79 @@ function parseTeamName(rawGroup, rawRemark){
   const src = String(rawRemark||'') + ' ' + String(rawGroup||'');
   const m = src.match(/팀\s*[:：]\s*([^\s\/,·\|]+)/i);
   return m ? m[1].trim() : null;
+}
+
+// ── 현장 팀 태그(앱 내 수기 팀 묶기) ─────────────────────────
+// 그룹코드·엑셀을 건드리지 않고 현장에서 임의 팀을 묶어 전 탭에 같은 색 배지로 표시.
+// 저장: manualData.teamTags = { [eventSeq]: '팀라벨' } (월 세션 localStorage)
+function getTeamTags(){ if(!manualData.teamTags) manualData.teamTags = {}; return manualData.teamTags; }
+function applyTeamTags(){
+  const tags = getTeamTags();
+  processed.forEach(r => {
+    const seq = String(r.eventSeq||'').trim();
+    r.teamName = tags[seq] || r._teamParsed || null;
+  });
+  const bySeq = {};
+  processed.forEach(r => { bySeq[String(r.eventSeq||'').trim()] = r.teamName; });
+  if(typeof passengers !== 'undefined') passengers.forEach(p => {
+    const t = bySeq[String(p.eventSeq||'').trim()];
+    if(t !== undefined) p.teamName = t;
+  });
+}
+function openTeamTagModal(){
+  if(!processed || !processed.length){ alert('데이터가 없습니다. 먼저 파일을 업로드하세요.'); return; }
+  const tags = getTeamTags();
+  const seen = new Set(); const list = [];
+  processed.filter(r=>r.accom).forEach(r=>{
+    const seq=String(r.eventSeq||'').trim();
+    if(seq && !seen.has(seq)){ seen.add(seq); list.push(r); }
+  });
+  const existing = document.getElementById('teamtag-modal-bg');
+  if(existing) existing.remove();
+  const bg = document.createElement('div');
+  bg.id = 'teamtag-modal-bg';
+  bg.className = 'dl-modal-bg';
+  const rowsHtml = list.map(r=>{
+    const seq = String(r.eventSeq||'').trim();
+    const cur = (tags[seq] || '').replace(/"/g,'&quot;');
+    const ph  = r._teamParsed ? `비고: 팀:${r._teamParsed}` : '현장 팀명 입력';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:0 0 160px;font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.repName||'-'}<span style="color:var(--text3);font-weight:400;font-size:10px;margin-left:5px">${accomEngName(r.accom)}</span></div>
+      <input type="text" class="teamtag-inp" data-seq="${seq}" value="${cur}" placeholder="${ph}"
+        style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:5px 9px;font-size:12px;color:var(--text);font-family:var(--sans);outline:none">
+    </div>`;
+  }).join('');
+  bg.innerHTML = `
+    <div class="dl-modal" style="max-width:580px">
+      <div class="dl-modal-head">
+        <div class="dl-modal-title">🏷 현장 팀 묶기</div>
+        <button onclick="document.getElementById('teamtag-modal-bg').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1;padding:2px 6px">✕</button>
+      </div>
+      <div class="dl-modal-body">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.55">
+          같은 팀명을 입력한 행사끼리 <strong>같은 색 배지</strong>로 묶여 전 탭(송영·정산·저녁·골프·숙박)에 표시됩니다.
+          그룹코드·엑셀은 건드리지 않으며 이번 달 세션에 저장됩니다. 비우면 비고의 <code>팀:</code> 값으로 돌아갑니다.
+        </div>
+        <div style="max-height:50vh;overflow-y:auto">${rowsHtml || '<div style="color:var(--text3);font-size:12px;padding:10px">행사가 없습니다.</div>'}</div>
+        <div class="btn-row" style="margin-top:12px;justify-content:flex-end">
+          <button class="btn-dl" onclick="document.getElementById('teamtag-modal-bg').remove()" style="font-size:11px;background:var(--surface3);color:var(--text2);border-color:var(--border)">취소</button>
+          <button class="btn-dl" onclick="saveTeamTags()" style="font-size:11px">저장</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(bg);
+}
+function saveTeamTags(){
+  const tags = {};
+  document.querySelectorAll('#teamtag-modal-bg .teamtag-inp').forEach(inp=>{
+    const seq = inp.dataset.seq; const v = String(inp.value||'').trim();
+    if(seq && v) tags[seq] = v;
+  });
+  manualData.teamTags = tags;
+  if(typeof saveManual === 'function') saveManual();
+  applyTeamTags();
+  if(typeof renderAll === 'function') renderAll();
+  const bg = document.getElementById('teamtag-modal-bg'); if(bg) bg.remove();
 }
 
 function isNonWorkday(date){ return isWeekend(date) || isJpHoliday(date); }
@@ -7837,6 +7915,106 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
     <button class="do-close" onclick="window.close()">✕ 닫기</button>
   </div>
   <div class="do-container">${pagesHTML}</div>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if(!w){ alert('팝업이 차단되었습니다. 팝업 차단을 해제해주세요.'); return; }
+  w.document.write(fullHTML);
+  w.document.close();
+}
+// ════════════════════════════════════════════════════════════════
+// 🎫 항공사·PNR 안내 — 인별 항공사/편명/PNR 묶음 (항공예약번호 안내용)
+function openPnrGuide(){
+  if(typeof passengers === 'undefined' || !passengers.length){ alert('데이터가 없습니다. 먼저 파일을 업로드하세요.'); return; }
+  const todayStr = (typeof today === 'function') ? today() : '';
+  const rows = [...passengers].sort((a,b)=>{
+    const sa=String(a.eventSeq||''), sb=String(b.eventSeq||'');
+    if(sa!==sb) return sa<sb?-1:1;
+    if(a.isRep!==b.isRep) return a.isRep?-1:1;
+    return String(a.name||'').localeCompare(String(b.name||''));
+  });
+  let no=0, prevSeq=null;
+  const trHTML = rows.map(p=>{
+    no++;
+    const seq=String(p.eventSeq||'');
+    const newTeam = seq!==prevSeq; prevSeq=seq;
+    const isPus = String(p.origin||'').includes('부산');
+    const originCode = p.origin ? (isPus?'PUS':'ICN') : '';
+    const team = (newTeam && p.teamName) ? `<span class="tm">팀:${p.teamName}</span>` : '';
+    return `<tr class="${newTeam?'newteam':''}">
+      <td class="c">${no}</td>
+      <td class="kor">${p.name||''}${p.isRep?' <span class="rep">代表</span>':''}${team}</td>
+      <td class="eng">${p.engFull||''}</td>
+      <td class="c orig ${isPus?'pus':'icn'}">${originCode}</td>
+      <td class="al">${p.airline||''}</td>
+      <td class="c f">${p.depFlight||''}</td>
+      <td class="c f">${p.retFlight||''}</td>
+      <td class="c pnr">${p.pnr||''}</td>
+    </tr>`;
+  }).join('');
+
+  const fullHTML = `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8">
+<title>항공사·PNR 안내 — ${todayStr}</title>
+<style>
+  @page { size: A4 portrait; margin: 10mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { font-family: 'Malgun Gothic','Meiryo',sans-serif; background:#f5f5f5; color:#1A2540; }
+  .pg-toolbar { position: sticky; top:0; background:#fff; padding:14px 20px; box-shadow:0 2px 8px rgba(0,0,0,.1); display:flex; align-items:center; gap:16px; z-index:100; }
+  .pg-toolbar h1 { font-size:16px; font-weight:700; }
+  .pg-toolbar .meta { font-size:11px; color:#666; }
+  .pg-toolbar button { padding:8px 20px; background:#0E7490; color:#fff; border:none; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer; }
+  .pg-toolbar .pg-close { background:#999; }
+  .pg-container { padding:20px; }
+  .pg-page { width:190mm; margin:0 auto; background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.08); padding:8mm; }
+  .pg-head { display:flex; align-items:baseline; justify-content:space-between; border-bottom:2.5pt solid #1A2540; padding-bottom:3mm; margin-bottom:4mm; }
+  .pg-title { font-size:20pt; font-weight:800; letter-spacing:2pt; color:#1A2540; }
+  .pg-meta { font-size:10pt; color:#555; }
+  table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  th { background:#1A2540; color:#fff; font-size:10pt; font-weight:700; padding:2.4mm 1mm; border:0.4pt solid #1A2540; }
+  td { font-size:10.5pt; padding:1.9mm 1.6mm; border:0.4pt solid #b8c0d0; color:#1A2540; line-height:1.2; }
+  td.c { text-align:center; }
+  td.kor { font-weight:700; }
+  td.kor .rep { font-size:8pt; color:#0E7490; font-weight:700; }
+  td.kor .tm { font-size:8pt; color:#9a7322; font-weight:700; margin-left:4px; }
+  td.eng { font-size:9pt; color:#333; }
+  td.al { font-size:9.5pt; }
+  td.f { font-family:'Consolas',monospace; font-size:9.5pt; font-weight:600; color:#1A4D8F; }
+  td.pnr { font-family:'Consolas',monospace; font-size:11pt; font-weight:800; letter-spacing:0.5pt; }
+  td.orig { font-family:'Consolas',monospace; font-weight:800; font-size:9.5pt; }
+  td.orig.icn { color:#1A4D8F; } td.orig.pus { color:#B45309; }
+  tr.newteam td { border-top:1.4pt solid #1A2540; }
+  @media print {
+    html, body { background:#fff; }
+    .pg-toolbar { display:none; }
+    .pg-container { padding:0; }
+    .pg-page { box-shadow:none; width:100%; padding:0; }
+    th { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  }
+</style></head>
+<body>
+  <div class="pg-toolbar">
+    <h1>🎫 항공사·PNR 안내</h1>
+    <div class="meta">${rows.length}名 · ${todayStr}</div>
+    <button onclick="window.print()">🖨 인쇄</button>
+    <button class="pg-close" onclick="window.close()">✕ 닫기</button>
+  </div>
+  <div class="pg-container"><div class="pg-page">
+    <div class="pg-head"><div class="pg-title">航空会社・予約番号 案内</div><div class="pg-meta">${rows.length}名 · ${todayStr}</div></div>
+    <table>
+      <thead><tr>
+        <th style="width:5%">No</th>
+        <th style="width:17%">お名前</th>
+        <th style="width:18%">英文名</th>
+        <th style="width:7%">出発地</th>
+        <th style="width:17%">航空会社</th>
+        <th style="width:11%">入国便</th>
+        <th style="width:11%">帰国便</th>
+        <th style="width:14%">PNR</th>
+      </tr></thead>
+      <tbody>${trHTML}</tbody>
+    </table>
+  </div></div>
 </body></html>`;
 
   const w = window.open('', '_blank');
