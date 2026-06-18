@@ -212,6 +212,11 @@
   .navlink{font-size:12px;font-weight:700;padding:4px 11px;border-radius:99px;color:var(--text2);text-decoration:none;border:1px solid transparent}
   .navlink:hover{background:var(--surface3)}
   .navlink.cur{background:var(--accentSoft);color:var(--accent);border-color:var(--accent)}
+  /* 층별 통계 + 팀카드 날짜 */
+  .zone-label .zstat{margin-left:auto;font-size:11.5px;color:var(--text2);font-weight:600}
+  .zone-label .zstat .zwarn{color:var(--warn);font-weight:700}
+  .team-card .cdates{font-size:11.5px;color:var(--text2);margin-top:3px;font-weight:600}
+  .team-card .cdates .cnew{color:var(--accent);background:var(--accentSoft);border-radius:4px;padding:1px 5px;font-size:10px;margin-left:4px}
 </style>
 <link rel="stylesheet" href="../assets/saizen-ops.css?v=14.6">
 </head>
@@ -247,7 +252,10 @@
     <button class="mode-btn" id="mode-range" type="button" data-i18n="rm_modeRange"></button>
   </div>
   <label id="lbl-from" data-i18n="rm_lblFrom"></label>
+  <button class="btn ghost sm" id="date-prev" type="button" title="하루 전" style="padding:5px 9px">◀</button>
   <input class="inp" id="date-pick" type="date">
+  <button class="btn ghost sm" id="date-next" type="button" title="하루 후" style="padding:5px 9px">▶</button>
+  <button class="btn ghost sm" id="date-today" type="button" title="오늘로 이동">오늘</button>
   <span id="range-extra" style="display:none;align-items:center;gap:8px">
     <label>~</label><input class="inp" id="date-to" type="date">
   </span>
@@ -340,6 +348,21 @@ function toast(msg,cls){
   setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);
 }
 function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
+
+// ── 날짜/통계 헬퍼 ──
+function isoToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function isoShift(iso,delta){const d=new Date((iso||isoToday())+'T00:00:00');d.setDate(d.getDate()+delta);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function fmtMD(iso){const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${+m[2]}/${+m[3]}`:'-';}
+function teamNights(g){if(!g.dep||!g.arr)return 0;return Math.max(0,Math.round((new Date(g.arr)-new Date(g.dep))/864e5));}
+function roomUsedPax(inv){return state.rooms.filter(r=>r.inventory_id===inv.id).reduce((s,r)=>s+(r.assigned_pax||0),0);}
+function shiftDate(delta){
+  const cur=$('#date-pick').value||isoToday();
+  const iso=isoShift(cur,delta);
+  $('#date-pick').value=iso;
+  if(dateMode==='range'){const to=$('#date-to');if(!to.value||to.value<iso)to.value=iso;}
+  if(supa)loadDay();
+}
+function gotoToday(){$('#date-pick').value=isoToday();if(dateMode==='range'){const to=$('#date-to');if(!to.value||to.value<$('#date-pick').value)to.value=$('#date-pick').value;}if(supa)loadDay();}
 
 // ── 연결 ──
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
@@ -490,6 +513,7 @@ function renderUnassigned(){
         <span class="mbadge ${isNonMem?'mb-non':'mb-mem'}">${isNonMem?t('rm_nonmember'):t('rm_member')}</span>
         <span class="meta"><span class="pax">${g.pax}명</span> · 잔여 ${leftN} · ${g.accom}</span>
       </div>
+      <div class="cdates">🛏 ${fmtMD(g.dep)} → ${fmtMD(g.arr)} · ${teamNights(g)}박${g.isNewCheckin?'<b class="cnew">오늘 체크인</b>':''}</div>
       <div class="rtype">${g.sale_type} → ${ROOMTYPE_MAP[g.sale_type]||'현장지정'}</div>
       <div class="roster">${rosterHtml}</div>`;
     // 행 선택 토글 (행 어디를 눌러도 1회 토글). 체크박스/행 클릭 일원화.
@@ -560,17 +584,22 @@ function renderFacilities(){
       const isHotelFloor=/^\d+층$/.test(zone);
       if(zones.length>1){
         const zl=document.createElement('div'); zl.className='zone-label';
+        zl.innerHTML=`<span>— ${zone}</span>`;
         if(isHotelFloor){
           // 층 라벨 + 단면도 보기 버튼
-          zl.innerHTML=`<span>— ${zone}</span>`;
           const btn=document.createElement('button');
           btn.className='floorplan-btn'; btn.type='button';
           btn.textContent='평면도'; btn.title='단면도(원형 배치) 보기';
           btn.addEventListener('click',()=>openFloorplanModal(zone,zr));
           zl.appendChild(btn);
-        } else {
-          zl.textContent='— '+zone;
         }
+        // 층별 통계: 사용 실수/총실 · 인원 · 정원미만(트윈 1명 등)
+        const act=zr.filter(r=>r.active);
+        const usedRooms=act.filter(inv=>roomUsedPax(inv)>0).length;
+        const ppl=act.reduce((s,inv)=>s+roomUsedPax(inv),0);
+        const under=act.filter(inv=>{const u=roomUsedPax(inv);return u>0&&u<inv.capacity;}).length;
+        zl.insertAdjacentHTML('beforeend',
+          `<span class="zstat">사용 ${usedRooms}/${act.length}실 · ${ppl}명${under?` · <span class="zwarn">⚠정원미만 ${under}실</span>`:''}</span>`);
         facDiv.appendChild(zl);
       }
       const grid=document.createElement('div'); grid.className='rooms-grid';
@@ -1067,6 +1096,9 @@ async function importAssignXlsx(file){
 // ── 부팅 ──
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-load').addEventListener('click',loadDay);
+$('#date-prev').addEventListener('click',()=>shiftDate(-1));
+$('#date-next').addEventListener('click',()=>shiftDate(1));
+$('#date-today').addEventListener('click',gotoToday);
 $('#btn-export').addEventListener('click',exportAssignXlsx);
 $('#btn-sel-clear')&&$('#btn-sel-clear').addEventListener('click',()=>{selClear();render();});
 $('#file-import').addEventListener('change',e=>{if(e.target.files[0]){importAssignXlsx(e.target.files[0]);e.target.value='';}});
