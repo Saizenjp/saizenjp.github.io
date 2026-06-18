@@ -9596,6 +9596,8 @@ function shzNormGender(g){
   if(/남|男/.test(g) || /^m/i.test(g)) return '男';
   return '';
 }
+/* 半角数字 → 全角(志津の宿 予約表 서식: 숫자는 전각 표기) */
+function shzZen(v){ return String(v).replace(/[0-9]/g, d => '０１２３４５６７８９'[+d]); }
 
 /* ── 데이터 수집 ──────────────────────────────────────── */
 function shzProductMap(){
@@ -9678,9 +9680,9 @@ function shzMF(occ){
   let m=0,f=0,u=0;
   occ.forEach(g => { const x=shzGender(g); if(x==='男')m++; else if(x==='女')f++; else u++; });
   const parts=[];
-  if(m) parts.push('男　'+m);
-  if(f) parts.push('女　'+f);
-  if(u) parts.push('（未）'+u);
+  if(m) parts.push('男　'+shzZen(m));
+  if(f) parts.push('女　'+shzZen(f));
+  if(u) parts.push('（未）'+shzZen(u));
   return parts.join('　　');
 }
 function shzRoomOver(room){
@@ -9872,19 +9874,19 @@ function shzRenderPreview(){
       return {
         name: shzName(rep)+'様',
         mf: shzMF(occ),
-        stay: `${rn.length}連泊 ${rn.indexOf(date)+1}`,
-        cnt: occ.length
+        stay: `${shzZen(rn.length)}連泊 ${shzZen(rn.indexOf(date)+1)}`,
+        cnt: shzZen(occ.length)
       };
     });
     let note = s.note[date];
-    if(note==null) note = Object.values(notes).filter(x=>x.c>0).map(x=>`${x.nm}様${x.c}名`).join('　');
+    if(note==null) note = Object.values(notes).filter(x=>x.c>0).map(x=>`${x.nm}様${shzZen(x.c)}名`).join('　');
     html += `<table class="shz-pv">
-      <tr class="shz-pv-hd"><th class="shz-pv-dt">${d.getMonth()+1}/${d.getDate()}<br><span>${SHZ_DOW[d.getDay()]}</span></th>${SHZ_ROOMS.map(r=>`<th>${r}</th>`).join('')}<th class="shz-pv-k">合計</th></tr>
+      <tr class="shz-pv-hd"><th class="shz-pv-dt">${shzZen(d.getMonth()+1)}／${shzZen(d.getDate())}<br><span>${SHZ_DOW[d.getDay()]}</span></th>${SHZ_ROOMS.map(r=>`<th>${r}</th>`).join('')}<th class="shz-pv-k">合計</th></tr>
       <tr><td class="shz-pv-lb">お名前</td>${cells.map(c=>`<td class="shz-pv-nm">${c.name}</td>`).join('')}<td></td></tr>
-      <tr><td class="shz-pv-lb">大人</td>${cells.map(c=>`<td>${c.mf}</td>`).join('')}<td class="shz-pv-k">大 ${tot} 名</td></tr>
-      <tr><td class="shz-pv-lb">合計人数</td>${cells.map(c=>`<td>${c.cnt}</td>`).join('')}<td class="shz-pv-k">計 ${tot} 名</td></tr>
-      <tr><td class="shz-pv-lb">連泊</td>${cells.map(c=>`<td>${c.stay}</td>`).join('')}<td class="shz-pv-k">男${tm} 女${tf}</td></tr>
-      <tr><td class="shz-pv-lb">到着/메모</td><td colspan="8" class="shz-pv-note" contenteditable="true" spellcheck="false" onblur="shzSetNote('${date}',this.textContent)">${note}</td></tr>
+      <tr><td class="shz-pv-lb">大人</td>${cells.map(c=>`<td>${c.mf}</td>`).join('')}<td class="shz-pv-k">大 ${shzZen(tot)} 名</td></tr>
+      <tr><td class="shz-pv-lb">合計人数</td>${cells.map(c=>`<td>${c.cnt}</td>`).join('')}<td class="shz-pv-k">計 ${shzZen(tot)} 名</td></tr>
+      <tr><td class="shz-pv-lb">連泊</td>${cells.map(c=>`<td>${c.stay}</td>`).join('')}<td class="shz-pv-k">男${shzZen(tm)} 女${shzZen(tf)}</td></tr>
+      <tr><td class="shz-pv-lb">到着/メモ</td><td colspan="8" class="shz-pv-note" contenteditable="true" spellcheck="false" onblur="shzSetNote('${date}',this.textContent)">${note}</td></tr>
     </table>`;
   });
   wrap.innerHTML = html;
@@ -9898,6 +9900,13 @@ async function shzDownload(){
   const s = shzState();
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('予約表', { views:[{ showGridLines:false }] });
+  // 인쇄 여백·용지(A4 세로, 가로 1페이지 맞춤) — 회사 PC 인쇄 서식 일치
+  ws.pageSetup = {
+    paperSize: 9, orientation: 'portrait',
+    fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+    horizontalCentered: true,
+    margins: { left:0.39, right:0.39, top:0.55, bottom:0.55, header:0.31, footer:0.31 }
+  };
   const FONT = '游ゴシック';
   const FILL = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFDDEBF7' } };
   const thin = { style:'thin' }, med = { style:'medium' };
@@ -9929,7 +9938,7 @@ async function shzDownload(){
     // 날짜/요일 (off1~off5 병합)
     ws.mergeCells(r0+1,1,r0+5,1);
     ws.mergeCells(r0+1,2,r0+5,2);
-    const dc=ws.getCell(r0+1,1); dc.value=`${d.getMonth()+1}/${d.getDate()}`; dc.font={name:FONT,size:14,bold:true}; dc.alignment={horizontal:'center',vertical:'middle'};
+    const dc=ws.getCell(r0+1,1); dc.value=`${shzZen(d.getMonth()+1)}／${shzZen(d.getDate())}`; dc.font={name:FONT,size:14,bold:true}; dc.alignment={horizontal:'center',vertical:'middle'};
     const wc=ws.getCell(r0+1,2); wc.value=SHZ_DOW[d.getDay()]; wc.font={name:FONT,size:12,bold:true}; wc.alignment={horizontal:'center',vertical:'middle'};
 
     // C열 라벨
@@ -9948,9 +9957,9 @@ async function shzDownload(){
       const rep=occ[0];
       const nc=ws.getCell(r0+1,col); nc.value=shzName(rep)+'様'; nc.font={name:FONT,size:11}; nc.alignment={horizontal:'right',vertical:'middle'};
       const ac=ws.getCell(r0+2,col); ac.value=shzMF(occ); ac.font={name:FONT,size:11}; ac.alignment={vertical:'middle'};
-      const sc=ws.getCell(r0+4,col); sc.value=occ.length; sc.font={name:FONT,size:11}; sc.alignment={horizontal:'center',vertical:'middle'};
+      const sc=ws.getCell(r0+4,col); sc.value=shzZen(occ.length); sc.font={name:FONT,size:11}; sc.alignment={horizontal:'center',vertical:'middle'};
       const rn=shzNights(rep);
-      const pc=ws.getCell(r0+5,col); pc.value=`${rn.length}連泊　${rn.indexOf(date)+1}`; pc.font={name:FONT,size:11}; pc.alignment={horizontal:'center',vertical:'middle'};
+      const pc=ws.getCell(r0+5,col); pc.value=`${shzZen(rn.length)}連泊　${shzZen(rn.indexOf(date)+1)}`; pc.font={name:FONT,size:11}; pc.alignment={horizontal:'center',vertical:'middle'};
       tot+=occ.length;
       occ.forEach(g=>{ const x=shzGender(g); if(x==='男')tm++; else if(x==='女')tf++; });
       const sq={}; occ.forEach(g=>sq[g.seq]=(sq[g.seq]||0)+1);
@@ -9959,18 +9968,18 @@ async function shzDownload(){
 
     // K열 합계
     const kN=ws.getCell(r0+1,11); kN.value='合計'; kN.font={name:FONT,size:11,bold:true}; kN.alignment={horizontal:'center',vertical:'middle'};
-    const kA=ws.getCell(r0+2,11); kA.value=`大　${tot}　名`; kA.font={name:FONT,size:11}; kA.alignment={horizontal:'right',vertical:'middle'};
+    const kA=ws.getCell(r0+2,11); kA.value=`大　${shzZen(tot)}　名`; kA.font={name:FONT,size:11}; kA.alignment={horizontal:'right',vertical:'middle'};
     const kC=ws.getCell(r0+3,11); kC.value='子　　　名'; kC.font={name:FONT,size:11};
-    const kS=ws.getCell(r0+4,11); kS.value=`計　${tot}　名`; kS.font={name:FONT,size:11,bold:true}; kS.alignment={horizontal:'center',vertical:'middle'};
-    const kM=ws.getCell(r0+5,11); kM.value=`男${tm}　女${tf}`; kM.font={name:FONT,size:11}; kM.alignment={horizontal:'center',vertical:'middle'};
+    const kS=ws.getCell(r0+4,11); kS.value=`計　${shzZen(tot)}　名`; kS.font={name:FONT,size:11,bold:true}; kS.alignment={horizontal:'center',vertical:'middle'};
+    const kM=ws.getCell(r0+5,11); kM.value=`男${shzZen(tm)}　女${shzZen(tf)}`; kM.font={name:FONT,size:11}; kM.alignment={horizontal:'center',vertical:'middle'};
 
     // off6: 到着予定時刻 + 메모
     ws.mergeCells(r0+6,1,r0+6,2);
     const ar=ws.getCell(r0+6,1); ar.value='到着予定時刻'; ar.font={name:FONT,size:12}; ar.alignment={horizontal:'center',vertical:'middle'};
     ws.mergeCells(r0+6,3,r0+6,11);
     let note=s.note[date];
-    if(note==null) note=Object.values(notes).filter(x=>x.c>0).map(x=>`${x.nm}様${x.c}名`).join('　');
-    const nt=ws.getCell(r0+6,3); nt.value=note; nt.font={name:FONT,size:11,bold:true}; nt.alignment={horizontal:'center',vertical:'middle'};
+    if(note==null) note=Object.values(notes).filter(x=>x.c>0).map(x=>`${x.nm}様${shzZen(x.c)}名`).join('　');
+    const nt=ws.getCell(r0+6,3); nt.value=note; nt.font={name:FONT,size:11,bold:true}; nt.alignment={horizontal:'left',vertical:'middle',indent:1};
 
     // 테두리: 블록 전체 thin + 외곽 medium
     for(let rr=r0; rr<=r0+6; rr++){
