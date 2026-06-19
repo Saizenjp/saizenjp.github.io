@@ -296,14 +296,13 @@
 </div>
 
 <div class="datebar">
-  <label id="lbl-from">기간</label>
-  <input class="inp" id="date-pick" type="date">
-  <label>~</label>
-  <input class="inp" id="date-to" type="date">
-  <button class="btn ghost sm" id="date-prev" type="button" title="하루 전(범위 같이 이동)" style="padding:5px 9px">◀</button>
-  <button class="btn ghost sm" id="date-next" type="button" title="하루 후(범위 같이 이동)" style="padding:5px 9px">▶</button>
-  <button class="btn ghost sm" id="date-today" type="button" title="오늘 하루로">오늘</button>
+  <label id="lbl-from">월</label>
+  <button class="btn ghost sm" id="date-prev" type="button" title="이전 달" style="padding:5px 9px">◀</button>
+  <input class="inp" id="month-pick" type="month" style="width:140px">
+  <button class="btn ghost sm" id="date-next" type="button" title="다음 달" style="padding:5px 9px">▶</button>
+  <button class="btn ghost sm" id="date-today" type="button" title="이번 달·오늘">오늘</button>
   <button class="btn sm" id="btn-load" type="button" disabled data-i18n="rm_btnLoad"></button>
+  <input type="date" id="date-pick" hidden><input type="date" id="date-to" hidden>
   <button class="btn sm" id="btn-auto" type="button" disabled title="회원→디럭스 우선, 일반→예약종류. 예약순·기존 수기배정 보호" style="background:var(--accent2);border-color:var(--accent2)">🪄 자동배정</button>
   <button class="btn ghost sm" id="btn-clear-all" type="button" disabled title="불러온 범위의 모든 배정 해제(수기·자동 전부)" style="color:var(--err);border-color:#e3bdb4">🧹 전체 비우기</button>
   <button class="btn ghost sm" id="btn-export" type="button" data-i18n-title="rm_btnExportTitle" data-i18n="rm_btnExport"></button>
@@ -413,15 +412,23 @@ function roomOccAt(invId, d){
   return state.rooms.filter(r=>r.inventory_id===invId && (!d || (r.check_in<=d && d<r.check_out)));
 }
 function roomUsedPax(inv){return roomOccAt(inv.id, state.focus||state.from).reduce((s,r)=>s+(r.assigned_pax||0),0);}
-function shiftDate(delta){
-  // 시작·종료를 함께 ±1일 (범위 통째로 슬라이드, 단일일이면 다음 날로)
-  const from=$('#date-pick').value||isoToday();
-  const to=$('#date-to').value||from;
-  $('#date-pick').value=isoShift(from,delta);
-  $('#date-to').value=isoShift(to,delta);
-  if(supa)loadDay();
+// ── 월 선택: 그 달 1일~말일을 범위로, 일별 칩은 그 달 전체 ──
+function lastDayOfMonth(ym){ const [y,m]=ym.split('-').map(Number); return `${ym}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`; }
+async function loadMonth(ym, focusDay){
+  if(!ym) return;
+  $('#month-pick').value=ym;
+  $('#date-pick').value=ym+'-01';
+  $('#date-to').value=lastDayOfMonth(ym);
+  if(supa){ await loadDay(); }            // loadDay 가 state.focus=시작일로 설정
+  if(focusDay){ state.focus=focusDay; render(); }
 }
-function gotoToday(){const t=isoToday();$('#date-pick').value=t;$('#date-to').value=t;if(supa)loadDay();}
+function shiftMonth(delta){
+  const ym=$('#month-pick').value||isoToday().slice(0,7);
+  const [y,m]=ym.split('-').map(Number);
+  const d=new Date(y, m-1+delta, 1);
+  loadMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+}
+function gotoToday(){ const t=isoToday(); loadMonth(t.slice(0,7), t); }
 
 // ── 연결 ──
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
@@ -439,6 +446,7 @@ async function connect(){
     btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
     $('#btn-load').disabled=false; $('#btn-auto').disabled=false; $('#btn-clear-all').disabled=false;
     await loadInventory();
+    if($('#month-pick').value){ await loadDay(); }   // 연결 후 이번 달 자동 로드
   }catch(e){
     setConn('연결 실패','err');
     toast('연결 실패: '+e.message+' (SQL 실행·키 확인)','err');
@@ -1482,9 +1490,10 @@ async function importAssignXlsx(file){
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-load').addEventListener('click',loadDay);
 $('#btn-auto').addEventListener('click',autoAssign);
-$('#date-prev').addEventListener('click',()=>shiftDate(-1));
-$('#date-next').addEventListener('click',()=>shiftDate(1));
+$('#date-prev').addEventListener('click',()=>shiftMonth(-1));
+$('#date-next').addEventListener('click',()=>shiftMonth(1));
 $('#date-today').addEventListener('click',gotoToday);
+$('#month-pick').addEventListener('change',e=>loadMonth(e.target.value));
 $('#btn-export').addEventListener('click',exportAssignXlsx);
 $('#btn-sel-clear')&&$('#btn-sel-clear').addEventListener('click',()=>{selClear();render();});
 // 보기 토글 (카드 / 타임라인)
@@ -1526,10 +1535,9 @@ $('#unassigned').addEventListener('dragover',e=>e.preventDefault());
 // 미배정 영역으로의 드롭은 사용하지 않음(취소는 객실 칩의 ✕ 로). 선택 해제만.
 $('#unassigned').addEventListener('drop',e=>{ e.preventDefault(); });
 
-// 날짜 기본값(오늘 하루) + 저장된 연결정보로 자동 연결
+// 월 기본값(이번 달) + 저장된 연결정보로 자동 연결·자동 로드
 loadCreds();
-if(!$('#date-pick').value){ const t=isoToday(); $('#date-pick').value=t; $('#date-to').value=t; }
-if(!$('#date-to').value) $('#date-to').value=$('#date-pick').value;
+(function(){ const m=isoToday().slice(0,7); $('#month-pick').value=m; $('#date-pick').value=m+'-01'; $('#date-to').value=lastDayOfMonth(m); })();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
 // 언어 전환 시 현재 화면 다시 그리기(로드된 데이터가 있으면)
