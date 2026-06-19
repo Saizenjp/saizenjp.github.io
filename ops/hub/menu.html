@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 메뉴 관리</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad;
+    --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#3d5424; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#2c3d19;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+    --c-라운딩:#1e3a8a; --c-식음:#92400e; --c-숙박:#5b21b6; --c-골프샵:#065f46; --c-기타:#6b7280;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:linear-gradient(180deg,#f2f5ec 0%,var(--bg) 220px),var(--bg);color:var(--text);line-height:1.5;min-height:100vh;}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(44,61,25,.06);}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .topbar .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select,textarea{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 15px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.danger{border-color:var(--err);background:transparent;color:var(--err)}
+  .btn.danger:hover{background:#fbeeeb}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+
+  .wrap{padding:16px 20px 90px;max-width:1180px;margin:0 auto}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(44,61,25,.04)}
+  .panel > h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:11px;display:flex;align-items:center;gap:8px}
+  .panel > h3 .cnt{font-size:12px;color:var(--text2);font-weight:700;margin-left:auto}
+  .formgrid{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .formgrid .f{display:flex;flex-direction:column;gap:3px}
+  .formgrid .f label{font-size:10.5px;font-weight:700;color:var(--text2)}
+  .formgrid .f .inp{min-width:90px}
+
+  table.menu{width:100%;border-collapse:collapse;font-size:13px}
+  table.menu th{position:sticky;top:0;text-align:left;font-size:11px;color:#fff;background:var(--accent);font-weight:700;padding:7px 8px;white-space:nowrap}
+  table.menu td{padding:5px 7px;border-bottom:1px solid var(--border);vertical-align:middle}
+  table.menu tr.inactive{opacity:.5}
+  table.menu .inp{width:100%;min-width:60px}
+  table.menu .inp.code{width:62px} table.menu .inp.price{width:92px;text-align:right;font-family:var(--mono)}
+  table.menu .inp.sort{width:56px;text-align:center}
+  .venue-h{font-size:13px;font-weight:800;color:var(--accent2);background:var(--surface2);padding:8px 10px;border-top:2px solid var(--accentSoft)}
+  .stbadge{font-size:9.5px;font-weight:700;border-radius:4px;padding:2px 6px;white-space:nowrap}
+  .st-kitchen{color:#fff;background:var(--c-식음)} .st-bar{color:#fff;background:var(--c-라운딩)} .st-none{color:var(--text2);background:var(--surface3);border:1px solid var(--border2)}
+  .rowbtns{display:flex;gap:5px;white-space:nowrap}
+  .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
+  details.bulk summary{cursor:pointer;font-size:13px;font-weight:800;color:var(--accent)}
+  details.bulk textarea{width:100%;min-height:120px;margin-top:10px;padding:10px;border:1px solid var(--border2);border-radius:8px;font-family:var(--mono);font-size:12px;line-height:1.5}
+  .bulk .fmt{font-size:11.5px;color:var(--text2);margin-top:8px;line-height:1.6}
+  .bulk .fmt code{font-family:var(--mono);background:var(--surface3);padding:1px 5px;border-radius:4px}
+
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.11">
+</head>
+<body>
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム">
+    <img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen">
+  </a>
+  <span class="step" data-i18n="me_step"></span>
+  <a class="navhome" href="../index.html" data-i18n="navHome" style="margin-left:14px"></a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+    <button class="so-furi" id="so-furi" onclick="__so_toggleFuri()"></button>
+  </div>
+  <span class="pill" id="conn-state" data-i18n="connState_none"></span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" data-i18n-ph="rm_keyPlaceholder" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button" data-i18n="btnConnectShort"></button>
+  <span class="hint" data-i18n="st_connHint"></span>
+</div>
+
+<datalist id="venue-list">
+  <option value="restaurant"></option><option value="banquet"></option>
+  <option value="proshop"></option><option value="etc"></option>
+</datalist>
+
+<div class="wrap">
+  <!-- 새 메뉴 추가 -->
+  <div class="panel">
+    <h3 data-i18n="me_addTitle"></h3>
+    <div class="formgrid">
+      <div class="f"><label data-i18n="me_code"></label><input class="inp code" id="n-code" type="text" placeholder="B1"></div>
+      <div class="f"><label data-i18n="me_nameJa"></label><input class="inp" id="n-ja" type="text" placeholder="生ビール"></div>
+      <div class="f"><label data-i18n="me_nameKo"></label><input class="inp" id="n-ko" type="text" placeholder="생맥주"></div>
+      <div class="f"><label data-i18n="me_cat"></label>
+        <select class="inp" id="n-cat"><option>라운딩</option><option selected>식음</option><option>숙박</option><option>골프샵</option><option>기타</option></select></div>
+      <div class="f"><label data-i18n="me_venue"></label><input class="inp" id="n-venue" list="venue-list" value="restaurant"></div>
+      <div class="f"><label data-i18n="me_station"></label>
+        <select class="inp" id="n-station"><option value="kitchen">kitchen (주방)</option><option value="bar">bar (드링크바)</option><option value="none">none</option></select></div>
+      <div class="f"><label data-i18n="me_price"></label><input class="inp price" id="n-price" type="number" min="0" step="100" value="0"></div>
+      <div class="f"><label data-i18n="me_sort"></label><input class="inp sort" id="n-sort" type="number" value="0"></div>
+      <div class="f"><label>&nbsp;</label><button class="btn sm" id="btn-add" type="button" disabled data-i18n="me_add"></button></div>
+    </div>
+  </div>
+
+  <!-- 일괄 붙여넣기 -->
+  <div class="panel">
+    <details class="bulk">
+      <summary data-i18n="me_bulkTitle"></summary>
+      <div class="fmt" data-i18n="me_bulkFmt"></div>
+      <textarea id="bulk-text" placeholder="生ビール, 생맥주, 식음, restaurant, bar, 800, B1&#10;定食, 정식, 식음, restaurant, kitchen, 1800, M1"></textarea>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+        <button class="btn sm" id="btn-bulk" type="button" disabled data-i18n="me_bulkAdd"></button>
+        <span class="hint" id="bulk-hint" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+    </details>
+  </div>
+
+  <!-- 메뉴 목록 -->
+  <div class="panel">
+    <h3><span data-i18n="me_listTitle"></span> <span class="cnt" id="list-cnt"></span></h3>
+    <div style="overflow:auto">
+      <table class="menu" id="menu-table">
+        <thead><tr>
+          <th data-i18n="me_code"></th><th data-i18n="me_nameJa"></th><th data-i18n="me_nameKo"></th>
+          <th data-i18n="me_cat"></th><th data-i18n="me_venue"></th><th data-i18n="me_station"></th>
+          <th class="num" data-i18n="me_price"></th><th data-i18n="me_sort"></th><th data-i18n="me_active"></th><th></th>
+        </tr></thead>
+        <tbody id="menu-body"><tr><td colspan="10" class="empty-hint" data-i18n="me_connectFirst"></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="../assets/saizen-ops.js?v=14.11"></script>
+<script>
+// ════════════════════════════════════════════════════════════════════════
+//  SaiZen Hub — 메뉴 관리(menu_items CRUD)  · POS/KDS 단가·station 마스터
+//  · station: kitchen(주방행 티켓) / bar(드링크바 즉석) / none(골프샵 등)
+//  · 기존 charges 는 발생 시점 단가를 스냅샷 저장 → 메뉴 삭제해도 과거 청구 안전.
+// ════════════════════════════════════════════════════════════════════════
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+let supa=null;
+const CATS=['라운딩','식음','숙박','골프샵','기타'];
+const STATIONS=['kitchen','bar','none'];
+let state={ items:[] };
+
+function toast(msg,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.textContent=msg;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn('URL·key 필요','err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.textContent='연결 중…'; btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {error}=await supa.from('menu_items').select('id',{count:'exact',head:true});
+    if(error) throw error;
+    setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
+    btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
+    $('#btn-add').disabled=false; $('#btn-bulk').disabled=false;
+    await load();
+  }catch(e){
+    setConn('연결 실패','err');
+    toast('연결 실패: '+e.message+' (10·11 SQL 실행·키 확인)','err');
+    btn.textContent='연결 실패 · 재시도'; btn.disabled=false; supa=null;
+  }
+}
+
+async function load(){
+  const {data,error}=await supa.from('menu_items').select('*').order('venue').order('sort_order').order('id');
+  if(error){toast('로드 실패: '+error.message,'err');return;}
+  state.items=data||[];
+  render();
+}
+
+function render(){
+  const body=$('#menu-body'); body.innerHTML='';
+  $('#list-cnt').textContent=`${state.items.length}${t('me_cntItem')}`;
+  if(!state.items.length){ body.innerHTML='<tr><td colspan="10" class="empty-hint">'+t('me_empty')+'</td></tr>'; return; }
+  let lastVenue=null;
+  state.items.forEach(m=>{
+    const venue=m.venue||'etc';
+    if(venue!==lastVenue){
+      lastVenue=venue;
+      const vr=document.createElement('tr');
+      vr.innerHTML=`<td colspan="10" class="venue-h">${esc(venue)}</td>`;
+      body.appendChild(vr);
+    }
+    const tr=document.createElement('tr');
+    if(!m.active) tr.className='inactive';
+    tr.dataset.id=m.id;
+    const catOpts=CATS.map(c=>`<option ${c===m.category?'selected':''}>${c}</option>`).join('');
+    const stOpts=STATIONS.map(s=>`<option value="${s}" ${s===m.station?'selected':''}>${s}</option>`).join('');
+    tr.innerHTML=`
+      <td><input class="inp code" data-f="code" value="${esc(m.code)}"></td>
+      <td><input class="inp" data-f="name_ja" value="${esc(m.name_ja)}"></td>
+      <td><input class="inp" data-f="name_ko" value="${esc(m.name_ko)}"></td>
+      <td><select class="inp" data-f="category">${catOpts}</select></td>
+      <td><input class="inp" data-f="venue" list="venue-list" value="${esc(venue)}"></td>
+      <td><select class="inp" data-f="station">${stOpts}</select></td>
+      <td><input class="inp price" data-f="unit_price" type="number" min="0" step="100" value="${Number(m.unit_price||0)}"></td>
+      <td><input class="inp sort" data-f="sort_order" type="number" value="${Number(m.sort_order||0)}"></td>
+      <td style="text-align:center"><input type="checkbox" data-f="active" ${m.active?'checked':''}></td>
+      <td><div class="rowbtns">
+        <button class="btn sm" data-save="${m.id}" data-i18n="me_save"></button>
+        <button class="btn sm danger" data-del="${m.id}" data-i18n="me_del"></button>
+      </div></td>`;
+    body.appendChild(tr);
+  });
+  body.querySelectorAll('[data-save]').forEach(b=>b.addEventListener('click',()=>saveRow(b.dataset.save)));
+  body.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>delRow(b.dataset.del)));
+  if(window.SaizenOps) window.SaizenOps.apply();
+}
+
+function rowPatch(tr){
+  const g=f=>tr.querySelector(`[data-f="${f}"]`);
+  return {
+    code:g('code').value.trim()||null,
+    name_ja:g('name_ja').value.trim(),
+    name_ko:g('name_ko').value.trim()||null,
+    category:g('category').value,
+    venue:g('venue').value.trim()||'etc',
+    station:g('station').value,
+    unit_price:Math.round(Number(g('unit_price').value||0)),
+    sort_order:Math.round(Number(g('sort_order').value||0)),
+    active:g('active').checked,
+  };
+}
+async function saveRow(id){
+  const tr=$(`tr[data-id="${id}"]`); if(!tr) return;
+  const patch=rowPatch(tr);
+  if(!patch.name_ja){toast('日本語名は必須','warn');return;}
+  const {error}=await supa.from('menu_items').update(patch).eq('id',id);
+  if(error){toast('저장 실패: '+error.message,'err');return;}
+  toast('저장됨','ok'); await load();
+}
+async function delRow(id){
+  if(!confirm('이 메뉴를 삭제할까요? (과거 청구 기록은 영향 없음)')) return;
+  const {error}=await supa.from('menu_items').delete().eq('id',id);
+  if(error){toast('삭제 실패: '+error.message,'err');return;}
+  toast('삭제됨','warn'); await load();
+}
+
+async function addOne(){
+  const row={
+    code:$('#n-code').value.trim()||null,
+    name_ja:$('#n-ja').value.trim(),
+    name_ko:$('#n-ko').value.trim()||null,
+    category:$('#n-cat').value,
+    venue:$('#n-venue').value.trim()||'etc',
+    station:$('#n-station').value,
+    unit_price:Math.round(Number($('#n-price').value||0)),
+    sort_order:Math.round(Number($('#n-sort').value||0)),
+  };
+  if(!row.name_ja){toast('日本語名을 입력하세요','warn');return;}
+  const {error}=await supa.from('menu_items').insert(row);
+  if(error){toast('추가 실패: '+error.message,'err');return;}
+  toast('메뉴 추가됨','ok');
+  ['n-code','n-ja','n-ko'].forEach(id=>$('#'+id).value=''); $('#n-price').value=0;
+  await load();
+}
+
+// 일괄: 한 줄 = name_ja, name_ko, category, venue, station, unit_price[, code]
+async function addBulk(){
+  const lines=$('#bulk-text').value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  if(!lines.length){toast('붙여넣은 내용이 없습니다','warn');return;}
+  const rows=[]; const errs=[];
+  lines.forEach((line,i)=>{
+    const c=line.split(/\t|,/).map(s=>s.trim());
+    const name_ja=c[0]||'';
+    if(!name_ja){errs.push(`${i+1}행: 이름 없음`);return;}
+    let category=c[2]||'식음'; if(!CATS.includes(category)) category='식음';
+    let station=(c[4]||'kitchen').toLowerCase(); if(!STATIONS.includes(station)) station='kitchen';
+    rows.push({
+      name_ja, name_ko:c[1]||null, category,
+      venue:c[3]||'restaurant', station,
+      unit_price:Math.round(Number((c[5]||'0').replace(/[^\d.-]/g,''))||0),
+      code:c[6]||null, sort_order:i*10,
+    });
+  });
+  if(!rows.length){toast('유효한 행이 없습니다: '+errs.join(' / '),'err');return;}
+  const {error}=await supa.from('menu_items').insert(rows);
+  if(error){toast('일괄 추가 실패: '+error.message,'err');return;}
+  $('#bulk-hint').textContent='';
+  toast(`${rows.length}건 추가됨${errs.length?` · ${errs.length}행 건너뜀`:''}`, errs.length?'warn':'ok');
+  $('#bulk-text').value=''; await load();
+}
+
+// ── 부팅 ──
+$('#btn-connect').addEventListener('click',connect);
+$('#btn-add').addEventListener('click',addOne);
+$('#btn-bulk').addEventListener('click',addBulk);
+loadCreds();
+window.onSaizenLangChange=function(){ try{ render(); }catch(e){} };
+</script>
+</body>
+</html>
