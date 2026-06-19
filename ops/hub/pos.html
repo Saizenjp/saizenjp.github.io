@@ -124,7 +124,7 @@
   @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.10">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.11">
 </head>
 <body>
 <div class="topbar so-bar">
@@ -196,7 +196,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.10"></script>
+<script src="../assets/saizen-ops.js?v=14.11"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -205,12 +205,12 @@
 // ════════════════════════════════════════════════════════════════════════
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
-const TAX_RATE=0.10;
+const TAX_RATE=0.10;   // 内税: 메뉴가=최종가(税込). 단가에서 소비세를 빼내 표시(더하지 않음)
 const VENUE_LABEL={restaurant:'レストラン / 레스토랑',banquet:'宴会場 / 연회장',proshop:'ゴルフショップ / 골프샵',etc:'その他 / 기타'};
 let state={ date:'', teams:[], menu:[], venue:'__all__', team:null, folioId:null, runningGross:0, cart:[] };
 
 function yen(n){ return '¥'+Number(n||0).toLocaleString('ja-JP'); }
-function taxOf(a){ return Math.round(Number(a||0)*TAX_RATE); }
+function taxOf(gross){ gross=Number(gross||0); return gross - Math.round(gross/(1+TAX_RATE)); }  // 内税(포함된 소비세)
 function isoToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function ymOf(iso){ return String(iso||'').slice(0,7); }
 function toast(msg,cls){
@@ -380,11 +380,11 @@ function renderCart(){
   body.querySelectorAll('[data-minus]').forEach(b=>b.addEventListener('click',()=>changeQty(b.dataset.minus,-1)));
   body.querySelectorAll('[data-plus]').forEach(b=>b.addEventListener('click',()=>changeQty(b.dataset.plus,1)));
   body.querySelectorAll('[data-rm]').forEach(b=>b.addEventListener('click',()=>removeLine(b.dataset.rm)));
-  const sub=state.cart.reduce((s,l)=>s+l.unit_price*l.qty,0);
-  const tax=state.cart.reduce((s,l)=>s+taxOf(l.unit_price*l.qty),0);
-  $('#cart-sub').textContent=yen(sub);
+  const gross=state.cart.reduce((s,l)=>s+l.unit_price*l.qty,0);   // 메뉴가 합계(税込=최종가)
+  const tax=state.cart.reduce((s,l)=>s+taxOf(l.unit_price*l.qty),0);  // 内税(포함분)
+  $('#cart-sub').textContent=yen(gross-tax);   // 세전 소계
   $('#cart-tax').textContent=yen(tax);
-  $('#cart-total').textContent=yen(sub+tax);
+  $('#cart-total').textContent=yen(gross);     // 합계 = 메뉴가 그대로
   $('#btn-send').disabled=!state.cart.length;
 }
 
@@ -410,10 +410,11 @@ async function sendCart(){
     const folioId=await ensureFolio();
     const by=localStorage.getItem('saizen_op_name')||'pos';
     const rows=state.cart.map(l=>{
-      const amount=l.unit_price*l.qty;
+      const gross=l.unit_price*l.qty;          // 메뉴가(税込)
+      const tax=taxOf(gross);                  // 内税(포함분)
       return { folio_id:folioId, event_seq:state.team.event_seq, member_id:null,
         category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:''),
-        qty:l.qty, unit_price:l.unit_price, amount, tax:taxOf(amount), service_charge:0,
+        qty:l.qty, unit_price:l.unit_price, amount:gross-tax, tax, service_charge:0,
         source_ref:'menu:'+l.id, created_by:by };
     });
     const {error}=await supa.from('charges').insert(rows);

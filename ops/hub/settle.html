@@ -133,7 +133,7 @@
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
   @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.10">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.11">
 </head>
 <body>
 <div class="topbar so-bar">
@@ -189,7 +189,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.10"></script>
+<script src="../assets/saizen-ops.js?v=14.11"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -199,7 +199,7 @@
 // ════════════════════════════════════════════════════════════════════════
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
-const TAX_RATE=0.10;                                  // 소비세 10% 별도(세전 입력)
+const TAX_RATE=0.10;                                  // 内税: 단가=최종가(税込). 소비세를 빼내 표시(더하지 않음)
 const CATEGORIES=['라운딩','식음','숙박','골프샵','기타']; // 고정 5종(Min 확정)
 const METHODS=['현금','카드'];                         // 결제수단(Min 확정)
 const STATUS_LABEL={open:'열림',closed:'마감',settled:'결제완료'};
@@ -207,7 +207,7 @@ const STATUS_LABEL={open:'열림',closed:'마감',settled:'결제완료'};
 let state={ ym:'', folios:[], selId:null, charges:[], payments:[], bookings:[] };
 
 function yen(n){ return '¥'+Number(n||0).toLocaleString('ja-JP'); }
-function taxOf(amount){ return Math.round(Number(amount||0)*TAX_RATE); }
+function taxOf(gross){ gross=Number(gross||0); return gross - Math.round(gross/(1+TAX_RATE)); }  // 内税(포함된 소비세)
 function nowYM(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
 function toast(msg,cls){
   const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:'');
@@ -361,7 +361,7 @@ function renderDetail(){
         <select class="inp" id="ch-cat">${catOpts}</select>
         <input class="inp desc" id="ch-desc" type="text" data-i18n-ph="st_phDesc">
         <input class="inp" id="ch-qty" type="number" min="0" step="1" value="1" style="width:72px">
-        <input class="inp" id="ch-unit" type="number" min="0" step="100" value="0" style="width:110px" placeholder="단가(세전)">
+        <input class="inp" id="ch-unit" type="number" min="0" step="100" value="0" style="width:110px" placeholder="단가(税込·최종가)">
         <span class="calc" id="ch-calc"></span>
         <button class="btn sm" id="btn-add-charge" type="button" data-i18n="st_add"></button>
       </div>
@@ -404,7 +404,7 @@ function renderDetail(){
     const recalc=()=>{
       const q=Number($('#ch-qty').value||0), u=Number($('#ch-unit').value||0);
       const amt=Math.round(q*u);
-      $('#ch-calc').textContent=`소계 ${yen(amt)} + 세 ${yen(taxOf(amt))} = ${yen(amt+taxOf(amt))}`;
+      $('#ch-calc').textContent=`합계(税込) ${yen(amt)} · 세전 ${yen(amt-taxOf(amt))} + 内税 ${yen(taxOf(amt))}`;
     };
     $('#ch-qty').addEventListener('input',recalc); $('#ch-unit').addEventListener('input',recalc); recalc();
     $('#btn-add-charge').addEventListener('click',addCharge);
@@ -419,11 +419,12 @@ async function addCharge(){
   const description=$('#ch-desc').value.trim();
   const qty=Number($('#ch-qty').value||0);
   const unit=Number($('#ch-unit').value||0);
-  const amount=Math.round(qty*unit);
-  if(amount<=0){toast('단가·수량을 입력하세요','warn');return;}
+  const gross=Math.round(qty*unit);   // 단가=税込(최종가)
+  if(gross<=0){toast('단가·수량을 입력하세요','warn');return;}
+  const tax=taxOf(gross);             // 内税(포함분)
   const row={ folio_id:f.folio_id, event_seq:f.event_seq, member_id:f.member_id||null,
     category, source:'frontdesk', description, qty, unit_price:unit,
-    amount, tax:taxOf(amount), service_charge:0,
+    amount:gross-tax, tax, service_charge:0,
     created_by:localStorage.getItem('saizen_op_name')||null };
   const {error}=await supa.from('charges').insert(row);
   if(error){toast('청구 추가 실패: '+error.message,'err');return;}
@@ -595,7 +596,7 @@ async function exportStatement(f){
   const paid=state.payments.filter(p=>!p.voided).reduce((s,p)=>s+Number(p.amount||0),0);
   const bal=grand-paid;
   r++;
-  const totRows=[['小計(税抜)',subTotal],['消費税(10%)',taxTotal],['御請求合計',grand],['入金',paid],['残額',bal]];
+  const totRows=[['小計(税抜)',subTotal],['うち消費税(10%·内税)',taxTotal],['御請求合計',grand],['入金',paid],['残額',bal]];
   totRows.forEach((tr,i)=>{
     ws.mergeCells(`E${r}:F${r}`);
     const lab=ws.getCell(`E${r}`); lab.value=tr[0]; lab.alignment={horizontal:'right'};
