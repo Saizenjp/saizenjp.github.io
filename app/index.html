@@ -225,6 +225,10 @@ tr:hover td{background:var(--surface2)}
 #dinner-content table td:nth-child(8),   /* テーブルNo */
 #dinner-content table td:nth-child(10)   /* 操作 */
 { text-align: center; }
+/* テーブルNo 칸은 좁게, 参考事項 칸은 넓게 (Min 요청) */
+#dinner-content table td:nth-child(8) .editable,
+#dinner-content table th:nth-child(8){ min-width:44px; width:56px; }
+#dinner-content table td:nth-child(9) .editable{ min-width:320px; }
 
 /* ⑥ 골프 [No, イベント番号, タグコード, 予約者, 英文名, 人数, ゴルフ場, コース, チーム, ティーオフ, 9H無料, 9H追加, EVカート, 台数, 備考, 操作] */
 #golf-content table td:nth-child(1),    /* No */
@@ -7525,12 +7529,14 @@ function generateAndPrintRestaurants(selectedDates, selectedAccoms){
     dinnerTeams.forEach(team => {
       const tc = tagMap[String(team.eventSeq||'').trim()] || {};
       const engName = getEngName(team.eventSeq);
+      const md = manualData['dinner_'+date+'_'+String(team.eventSeq||'').trim()] || {};
       cards.push({
         repName: (team.repName||'').trim(),
         engName: (engName && engName !== '(미등록)') ? engName : '',
         pax: team.pax || 0,
         period: `${fmtJP(team.dep)} 〜 ${fmtJP(team.arr)}`,
         tagCode: makeTagCodeSafe(tc.teamIdx||0, 0, tc.accomPfx, tc.memberCode, tc.manualCode, tc.pendingMember, tc.eventSeq, tc.year),
+        tableNo: (md.table||'').trim(),
         date
       });
     });
@@ -7561,6 +7567,9 @@ function generateAndPrintRestaurants(selectedDates, selectedAccoms){
       else if(nameLen <= 10) nameSize = '54pt';
       else                   nameSize = '42pt';
     }
+    // テーブルNo → 하단에 "T-10" 형식 (입력값의 T-/T 접두 정규화)
+    const tnRaw = (c.tableNo||'').replace(/^t-?/i,'').trim();
+    const tableHTML = tnRaw ? `<div class="rn-table">T-${tnRaw}</div>` : `<div class="rn-table"></div>`;
     return `<div class="rn-card">
       <div class="rn-r1" style="font-size:${nameSize}">${repName}<span class="rn-honorific">님</span></div>
       <div class="rn-r1b">${c.engName || ''}</div>
@@ -7568,6 +7577,7 @@ function generateAndPrintRestaurants(selectedDates, selectedAccoms){
       <div class="rn-r3">${c.pax}名</div>
       <div class="rn-r4">${c.period}</div>
       <div class="rn-r5">${c.tagCode}</div>
+      ${tableHTML}
     </div>`;
   };
   const pagesHTML = pages.map(pg=>`<div class="rn-page">${pg.map(cellHTML).join('')}</div>`).join('');
@@ -7603,7 +7613,7 @@ function generateAndPrintRestaurants(selectedDates, selectedAccoms){
     border-radius: 4mm;
     padding: 4mm 4mm;
     display: grid;
-    grid-template-rows: 50mm 10mm 38mm 30mm 12mm 26mm;
+    grid-template-rows: 48mm 10mm 36mm 28mm 12mm 24mm 18mm;
     align-items: center;
     text-align: center;
     overflow: hidden;
@@ -7617,6 +7627,8 @@ function generateAndPrintRestaurants(selectedDates, selectedAccoms){
   .rn-r3 { font-size: 50pt; font-weight: 700; line-height: 1; }
   .rn-r4 { font-size: 18pt; font-weight: 500; color: #333; line-height: 1; letter-spacing: 2pt; }
   .rn-r5 { font-size: 54pt; font-weight: 700; line-height: 1; font-family: 'Arial', 'Meiryo', sans-serif; letter-spacing: 3pt; color: #000; }
+  .rn-table { font-size: 34pt; font-weight: 800; line-height: 1; font-family: 'Arial', 'Meiryo', sans-serif; letter-spacing: 2pt; color: #1A2540; border-top: 1.5pt solid #1A2540; padding-top: 3mm; margin: 0 8mm; }
+  .rn-table:empty { border-top: none; }
   @media print {
     html, body { background: #fff; }
     .rn-toolbar { display: none; }
@@ -7744,12 +7756,12 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
         <td class="kor">${repName}</td>
         <td class="eng">${engShow}</td>
         <td class="c grp">${grpCode}</td>
-        <td class="c"></td>
+        <td class="c">${md.table||''}</td>
         <td class="c"><strong>${pax}</strong></td>
         <td class="c">${stayDay}</td>
         <td></td>
         <td></td>
-        <td></td>
+        <td>${md.remarks||''}</td>
       </tr>`;
     }).join('');
 
@@ -7798,12 +7810,12 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
           <th style="width:8%">名前</th>
           <th style="width:16%">英文名</th>
           <th style="width:9%">Group</th>
-          <th style="width:8%">場所</th>
+          <th style="width:6%">テーブルNo</th>
           <th style="width:5%">人数</th>
           <th style="width:6%">日次</th>
           <th style="width:5%">単価</th>
           <th style="width:9%">料理</th>
-          <th style="width:16%">備考</th>
+          <th style="width:18%">参考事項</th>
         </tr></thead>
         <tbody>${trHTML}</tbody>
       </table>
