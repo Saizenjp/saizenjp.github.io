@@ -377,7 +377,8 @@ let state={ date:null, guests:[], rooms:[], inventory:[], assignMap:{}, members:
 
 // ── 숙소 prefix (v13.4 동일) ──
 const PFX={'야마나미리조트':'Y','쿠주힐즈':'K','간지호텔':'G','시즈노야도 료칸':'S'};
-const FEE_SINGLE={'간지호텔':4400,'시즈노야도 료칸':4400}; // 1인 사용 추가요금/박
+const FEE_SINGLE={'간지호텔':4400}; // 1인 사용 추가요금/박
+const BYEOLCHE_FEE=2000;           // 시즈노야도 별채 사전희망 추가요금/박/인
 
 // ── 판매분류(booking roomType) → 야마나미 현장 등급 기본값 ──
 //   예약 정책이 '통합 리조트 숙박'으로 바뀌면 이 표만 수정하면 됨.
@@ -1149,10 +1150,19 @@ async function assignMembers(memberIds, inv){
     state.rooms.push(data);
     if(state.sel) state.sel.delete(m.id);
     ok++;
-    // 1인실 추가요금(간지·시즈노야도) — 사람 단위 1명이므로 그대로 적용
+    // 1인실 추가요금(간지) — 사람 단위 1명이므로 그대로 적용
     const nights=g.dep&&g.arr?Math.round((new Date(g.arr)-new Date(g.dep))/864e5):0;
     if(FEE_SINGLE[inv.facility] && nights>0){
       openSingleFeeModal(g, inv, nights, data.id, m);
+    }
+    // 시즈노야도 별채 사전희망 추가요금 2,000/박 (별채로 이동 = 희망 → 자동 기록)
+    if(inv.facility==='시즈노야도 료칸' && inv.zone==='별채' && nights>0){
+      try{ await supa.from('transactions').insert({
+        event_seq:g.event_seq, member_id:m.id, category:'byeolche_charge',
+        description:`별채 사전희망 추가요금 (${inv.room_no}, ${nights}박)`,
+        qty:nights, unit_price:BYEOLCHE_FEE, amount:BYEOLCHE_FEE*nights, currency:'JPY',
+        posted_by:'front', settle_status:'onsite'
+      }); toast(`별채 추가요금 ¥${(BYEOLCHE_FEE*nights).toLocaleString()} 기록(${m.name_kr||''})`,'ok'); }catch(e){}
     }
   }
   rebuildAssignMap(); render();
@@ -1205,7 +1215,7 @@ function autoRoute(g){
   }
   if(ac==='쿠주힐즈')        return {fac:ac, any:true, deluxe:false};
   if(ac==='간지호텔')        return {fac:ac, any:true, deluxe:false};
-  if(ac==='시즈노야도 료칸') return {fac:ac, any:true, deluxe:false};
+  if(ac==='시즈노야도 료칸') return {fac:ac, zone:'본관', deluxe:false};   // 자동=본관만(예약순·회원순). 별채는 사전희망 시 수기 이동
   return null;
 }
 
@@ -1433,12 +1443,17 @@ async function unassign(roomId){
   const row=state.rooms.find(r=>r.id===roomId);
   const {error}=await supa.from('rooms').delete().eq('id',roomId);
   if(error){toast('취소 실패: '+error.message,'err');return;}
-  // 연동 싱글차지도 정리(같은 팀·single_charge·해당 객실 설명 매칭)
+  // 연동 추가요금 정리(같은 팀·해당 객실 설명 매칭)
   if(row){
     const inv=invById(row.inventory_id);
     if(inv && FEE_SINGLE[inv.facility] && row.assigned_pax===1){
       await supa.from('transactions').delete()
         .eq('event_seq',row.event_seq).eq('category','single_charge')
+        .like('description',`%${inv.room_no}%`);
+    }
+    if(inv && inv.facility==='시즈노야도 료칸' && inv.zone==='별채'){
+      await supa.from('transactions').delete()
+        .eq('event_seq',row.event_seq).eq('category','byeolche_charge')
         .like('description',`%${inv.room_no}%`);
     }
   }
