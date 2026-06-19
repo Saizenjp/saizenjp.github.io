@@ -321,6 +321,7 @@
   <input type="date" id="date-pick" hidden><input type="date" id="date-to" hidden>
   <button class="btn sm" id="btn-auto" type="button" disabled title="회원→디럭스 우선, 일반→예약종류. 예약순·기존 수기배정 보호" style="background:var(--accent2);border-color:var(--accent2)">🪄 자동배정</button>
   <button class="btn ghost sm" id="btn-clear-all" type="button" disabled title="불러온 범위의 모든 배정 해제(수기·자동 전부)" style="color:var(--err);border-color:#e3bdb4">🧹 전체 비우기</button>
+  <button class="btn ghost sm" id="btn-local-shizu" type="button" disabled title="시즈노야도 현지(일본) 직접 예약을 추가하고 본관(별채 희망 시 별채)에 즉시 배정" style="border-color:var(--s)">🏯 시즈노야도 현지예약</button>
   <button class="btn ghost sm" id="btn-export" type="button" data-i18n-title="rm_btnExportTitle" data-i18n="rm_btnExport"></button>
   <span class="hint" id="session-hint"></span>
   <span id="sel-bar" style="display:none;align-items:center;gap:8px;margin-left:auto">
@@ -465,7 +466,7 @@ async function connect(){
     if(error) throw error;
     setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
     btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
-    $('#btn-load').disabled=false; $('#btn-auto').disabled=false; $('#btn-clear-all').disabled=false;
+    $('#btn-load').disabled=false; $('#btn-auto').disabled=false; $('#btn-clear-all').disabled=false; $('#btn-local-shizu').disabled=false;
     await loadInventory();
     if($('#month-pick').value){ await loadDay(); }   // 연결 후 이번 달 자동 로드
   }catch(e){
@@ -1528,6 +1529,130 @@ async function saveHotelRooms(bg,types,cur){
 
 
 // ════════════════════════════════════════════════════════════════════════
+//  시즈노야도 현지예약(일본 현지 직접 부킹) 추가
+//   · 메리트투어 송객이 아닌 현장 직접 예약 → bookings/guests/guest_members 직접 생성.
+//   · event_seq 는 9,000,000+ 예약전용 대역(엠클릭 번호와 충돌 회피).
+//   · 본관 기본 · 별채 희망 시 별채 우선 배정(+2,000엔/박 자동 기록, assignMembers 가 처리).
+// ════════════════════════════════════════════════════════════════════════
+const LOCAL_SEQ_BASE=9000000;   // 현지예약 event_seq 시작 대역
+
+function openLocalShizuModal(){
+  if(!supa){toast('먼저 연결하세요','warn');return;}
+  const today=new Date().toISOString().slice(0,10);
+  const ci=$('#date-pick').value||state.from||today;
+  const co=(()=>{ const d=new Date(ci+'T00:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal">
+    <h2>🏯 시즈노야도 현지예약 추가</h2>
+    <div class="mbody">
+      <p style="font-size:12px;color:var(--text2);margin-bottom:14px">
+        메리트투어 송객이 아닌 <b>현지(일본) 직접 예약</b>을 등록합니다. 본관 1박 1인 ¥17,000,
+        별채는 사전희망 시 +¥2,000/박(=¥19,000)입니다. 등록 후 본관(별채 희망 시 별채)에 자동 배정됩니다.
+      </p>
+      <div class="mrow" style="grid-template-columns:1fr"><div><label>예약자명 *</label><input class="inp" id="ls-name" type="text" placeholder="예: 山田太郎" style="width:100%;margin-top:4px"></div></div>
+      <div class="mrow" style="grid-template-columns:1fr"><div><label>연락처</label><input class="inp" id="ls-tel" type="text" placeholder="전화/메일(선택)" style="width:100%;margin-top:4px"></div></div>
+      <div class="mrow"><div><label>인원 *</label></div><input class="inp" id="ls-pax" type="number" min="1" max="20" value="2"></div>
+      <div class="mrow"><div><label>체크인 *</label></div><input class="inp" id="ls-ci" type="date" value="${ci}"></div>
+      <div class="mrow"><div><label>체크아웃 *</label></div><input class="inp" id="ls-co" type="date" value="${co}"></div>
+      <div class="mrow" style="grid-template-columns:1fr"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+        <input id="ls-byeolche" type="checkbox" style="width:16px;height:16px">별채 희망 <span class="desc">(吉祥·瑞雲·馬酔木 — +¥2,000/박)</span></label></div>
+      <div class="mrow" style="grid-template-columns:1fr"><div><label>메모</label><input class="inp" id="ls-memo" type="text" placeholder="현지 비고(선택)" style="width:100%;margin-top:4px"></div></div>
+    </div>
+    <div class="mfoot">
+      <button class="btn ghost sm" id="ls-cancel" type="button">취소</button>
+      <button class="btn sm" id="ls-save" type="button">등록·배정</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  bg.querySelector('#ls-cancel').addEventListener('click',()=>bg.remove());
+  bg.addEventListener('click',e=>{if(e.target===bg)bg.remove();});
+  bg.querySelector('#ls-save').addEventListener('click',()=>saveLocalShizu(bg));
+}
+
+async function saveLocalShizu(bg){
+  const name=bg.querySelector('#ls-name').value.trim();
+  const tel=bg.querySelector('#ls-tel').value.trim();
+  const pax=parseInt(bg.querySelector('#ls-pax').value,10)||0;
+  const ci=bg.querySelector('#ls-ci').value;
+  const co=bg.querySelector('#ls-co').value;
+  const byeolche=bg.querySelector('#ls-byeolche').checked;
+  const memo=bg.querySelector('#ls-memo').value.trim();
+  if(!name){toast('예약자명을 입력하세요','warn');return;}
+  if(pax<1){toast('인원을 확인하세요','warn');return;}
+  if(!ci||!co){toast('체크인·체크아웃 날짜를 입력하세요','warn');return;}
+  if(co<=ci){toast('체크아웃은 체크인 다음 날 이후여야 합니다','warn');return;}
+  const saveBtn=bg.querySelector('#ls-save'); saveBtn.disabled=true; saveBtn.textContent='등록 중…';
+  try{
+    // 1) event_seq 채번 (9,000,000 대역 — 엠클릭 번호와 충돌 회피)
+    const {data:mx}=await supa.from('bookings').select('event_seq').gte('event_seq',LOCAL_SEQ_BASE).order('event_seq',{ascending:false}).limit(1);
+    const seq=(mx&&mx[0]?mx[0].event_seq:LOCAL_SEQ_BASE)+1;
+    const localNo=seq-LOCAL_SEQ_BASE;
+    const ym=ci.slice(0,7);
+    const gcode='現'+String(localNo).padStart(3,'0');
+    const remarkParts=[];
+    if(byeolche) remarkParts.push('★별채희망');
+    if(tel) remarkParts.push('☎'+tel);
+    if(memo) remarkParts.push(memo);
+    const remark='[현지예약] '+remarkParts.join(' / ');
+    // 2) bookings
+    let r=await supa.from('bookings').insert({
+      event_seq:seq, event_no:'現地'+localNo, status:'현지예약', rep_name:name,
+      dep_date:ci, arr_date:co, product_name:'시즈노야도 현지예약',
+      pax, remark, session_ym:ym
+    });
+    if(r.error) throw r.error;
+    // 3) guests (팀 원장)
+    r=await supa.from('guests').insert({
+      event_seq:seq, team_tag:gcode+'-S', group_code:gcode,
+      accom:'시즈노야도 료칸', accom_prefix:'S', pax, check_status:'체크인전', session_ym:ym
+    });
+    if(r.error) throw r.error;
+    // 4) guest_members (개인 — 1번=예약자, 나머지=동행N · 현지=일반)
+    const gm=[];
+    for(let i=1;i<=pax;i++){
+      gm.push({
+        event_seq:seq, passenger_id:null, person_tag:`${gcode}-${i}S`, seq_in_team:i,
+        name_kr:(i===1?name:`동행${i}`), name_en:null, is_rep:(i===1), member_grade:'일반고객'
+      });
+    }
+    r=await supa.from('guest_members').insert(gm);
+    if(r.error) throw r.error;
+    bg.remove();
+    toast(`🏯 ${name} ${pax}명 현지예약 등록 (${ci}~${co})`,'ok');
+    // 5) 이 예약이 보이도록 날짜 범위 맞추고 로드 → 자동 배정
+    $('#date-pick').value=ci; $('#date-to').value=co;
+    state.from=ci; state.to=co;
+    await loadDay();
+    await autoFillShizu(seq, byeolche?'별채':'본관');
+  }catch(e){
+    toast('등록 실패: '+(e.message||e),'err');
+    saveBtn.disabled=false; saveBtn.textContent='등록·배정';
+  }
+}
+
+// 새 현지예약을 시즈노야도 지정 zone(본관/별채) 객실에 채워 배정.
+//   · 2인/실(capacity) 기준 · 정원·기간겹침 검증은 assignMembers 가 수행.
+//   · 별채면 assignMembers 가 +2,000엔/박을 자동 기록.
+async function autoFillShizu(seq, zone){
+  const g=state.guests.find(x=>x.event_seq===seq);
+  if(!g){toast('등록은 됐지만 현재 날짜 범위에 없어 자동배정은 생략','warn');return;}
+  const rooms=state.inventory
+    .filter(r=>r.facility==='시즈노야도 료칸' && (r.zone||'')===zone && r.active)
+    .sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+  const left=()=>teamRoster(seq).map(m=>m.id).filter(id=>!assignedMemberSet().has(id));
+  for(const inv of rooms){
+    const ids=left(); if(!ids.length) break;
+    const used=state.rooms.filter(r=>r.inventory_id===inv.id && overlaps(g.dep,g.arr,r.check_in,r.check_out)).reduce((s,r)=>s+(r.assigned_pax||0),0);
+    const free=(inv.capacity||2)-used;
+    if(free<=0) continue;
+    await assignMembers(ids.slice(0,free), inv);   // state.rooms 갱신 → 다음 루프 left() 재계산
+  }
+  const rest=left();
+  if(rest.length) toast(`${rest.length}명은 ${zone} 빈 객실이 부족 — 수기 배정하세요`,'warn');
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
 //  엑셀 일괄 배정 (내보내기 / 업로드)
 //  양식: eventSeq | 태그코드 | 대표자 | 인원 | 시설 | 호수
 //   · 현재 점유 팀을 내보내면 호수만 비어서 나옴 → 채워서 다시 올리면 일괄 배정
@@ -1618,6 +1743,7 @@ function setView(m){
 $('#view-card').addEventListener('click',()=>setView('card'));
 $('#view-timeline').addEventListener('click',()=>setView('timeline'));
 $('#btn-clear-all').addEventListener('click',clearAllAssignments);
+$('#btn-local-shizu').addEventListener('click',openLocalShizuModal);
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') cancelSplit(); });
 // 일별 칩: 타임라인=복수선택 토글, 카드=하루 단일선택. 재조회 없음
 $('#day-strip').addEventListener('click',e=>{
