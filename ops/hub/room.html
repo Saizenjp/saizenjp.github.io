@@ -137,6 +137,9 @@
   }
   .room .chip .ctag{font-family:var(--mono);font-weight:700;color:var(--accent)}
   .room .chip .cx{margin-left:auto;cursor:pointer;color:var(--err);font-weight:700;padding:0 4px;font-size:13px}
+  .room .chip .csplit{margin-left:auto;cursor:pointer;color:var(--accent2);font-weight:700;padding:0 3px;font-size:12px}
+  .room .chip .csplit:hover{color:var(--accentDeep)}
+  .room .chip .csplit + .cx{margin-left:4px}
   .room .chip .cpax{color:var(--text2)}
   .room .chip .cen{flex-basis:100%;font-size:10.5px;color:var(--text2);font-family:var(--mono);margin-top:2px;line-height:1.3}
   .room.warn{border-color:var(--warn)}
@@ -472,7 +475,7 @@ async function loadDay(){
   let to = $('#date-to').value || from;     // 종료 비우면 단일일
   if(!from){toast('날짜를 선택하세요','warn');return;}
   if(to<from) to=from;                       // 종료<시작이면 단일일로 보정
-  state.from=from; state.to=to; state.date=from; state.focus=from; state.days=new Set();   // 기준일=시작, 일별선택 초기화
+  state.from=from; state.to=to; state.date=from; state.focus=from; state.days=new Set(); state.splitPending=null;   // 기준일=시작, 일별선택·분할모드 초기화
 
   // 점유 판정: dep_date <= to(범위끝) AND arr_date > from(범위시작)
   //   → 그 기간에 체크인~체크아웃이 한 번이라도 걸치는 팀
@@ -745,6 +748,13 @@ function teamMatch(g){ return teamSel.size===0 || teamPlaceKeys(g).some(k=>teamS
 
 function renderFacilities(){
   const box=$('#facilities'); box.innerHTML='';
+  if(state.splitPending){
+    const b=document.createElement('div');
+    b.style.cssText='font-size:12.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:10px';
+    b.innerHTML=`✂ 분할 모드 — <b>${state.splitPending.name||''}</b> ${state.splitPending.from}~${state.splitPending.to} 배정할 방을 클릭하세요 <button class="btn ghost sm" id="split-cancel" type="button" style="margin-left:auto;color:#fff;border-color:#fff">취소</button>`;
+    box.appendChild(b);
+    b.querySelector('#split-cancel').addEventListener('click',cancelSplit);
+  }
   if(state.from && state.to && state.from!==state.to){
     const h=document.createElement('div');
     h.style.cssText='font-size:12px;color:var(--text2);background:var(--surface3);border-radius:7px;padding:7px 12px;margin-bottom:10px';
@@ -912,7 +922,7 @@ function renderRoom(inv){
     const nameKr=m?(m.name_kr||'-'):'';
     const nameEn=m?(m.name_en||''):teamEnNames(r.event_seq);
     return `<div class="chip">
-      <div class="chip-head"><span class="ctag">${tag}</span><span class="cx" data-room-id="${r.id}" title="배정 취소">✕</span></div>
+      <div class="chip-head"><span class="ctag">${tag}</span>${m?`<span class="csplit" data-room-id="${r.id}" title="기준일부터 다른 방으로 분할">✂</span>`:''}<span class="cx" data-room-id="${r.id}" title="배정 취소">✕</span></div>
       <div class="cpeople"><div class="cperson"><b>${nameKr}</b> ${nameEn}</div></div>
     </div>`;
   }).join('');
@@ -926,13 +936,16 @@ function renderRoom(inv){
     ${usedPax>inv.capacity?'<span class="badge">초과</span>':''}`;
   // 칩 삭제
   div.querySelectorAll('.cx').forEach(x=>x.addEventListener('click',ev=>{ev.stopPropagation();unassign(x.dataset.roomId);}));
+  // 분할(✂): 기준일부터 다른 방으로
+  div.querySelectorAll('.csplit').forEach(x=>x.addEventListener('click',ev=>{ev.stopPropagation();startSplit(x.dataset.roomId);}));
   // 활성/비활성 토글
   div.querySelector('.lock').addEventListener('click',ev=>{ev.stopPropagation();toggleActive(inv);});
-  // 카드 클릭 → 선택 인원 한꺼번에 배정 (칩✕·자물쇠 제외, 카드 어디든)
+  // 카드 클릭 → 분할 모드면 이 방으로 뒷부분 이동, 아니면 선택 인원 배정
   div.addEventListener('click',ev=>{
-    if(ev.target.closest('.cx')||ev.target.closest('.lock')) return;
+    if(ev.target.closest('.cx')||ev.target.closest('.lock')||ev.target.closest('.csplit')) return;
     if(window.getSelection) window.getSelection().removeAllRanges(); // 텍스트 파란선택 해제
     if(!inv.active){toast(inv.room_no+': 비활성 객실','warn');return;}
+    if(state.splitPending){ commitSplit(inv); return; }
     assignSelectedTo(inv);
   });
   // 드롭
@@ -944,6 +957,44 @@ function renderRoom(inv){
   }
   return div;
 }
+
+// ── 분할 체류(✂): 기준일부터 뒷부분을 다른 방으로 ──
+//   · 원래 배정 행을 [체크인~기준일]로 단축, 뒷부분[기준일~체크아웃]을 새 방에 수기 배정
+//   · 빈 앞/뒷날엔 다른 팀을 넣을 수 있음. 표시는 타임라인·일별 카드가 자동 처리.
+function startSplit(roomId){
+  const row=state.rooms.find(r=>r.id===roomId);
+  if(!row || row.member_id==null){toast('분할은 개인 배정에서만 됩니다','warn');return;}
+  const D=state.focus||state.from;
+  if(!(row.check_in < D && D < row.check_out)){
+    toast('체류 중간 날에서만 분할됩니다. 위 일별 칩에서 옮길 첫 날을 고르세요.','warn');
+    return;
+  }
+  const m=memberById(row.member_id);
+  state.splitPending={ srcId:row.id, member_id:row.member_id, event_seq:row.event_seq, from:D, to:row.check_out, name:(m?m.name_kr:'') };
+  render();
+  toast(`✂ ${state.splitPending.name||''} ${D}~${row.check_out} 옮길 방을 클릭하세요 (Esc=취소)`,'ok');
+}
+async function commitSplit(inv){
+  const sp=state.splitPending; if(!sp) return;
+  const srcRow=state.rooms.find(r=>r.id===sp.srcId);
+  if(srcRow && srcRow.inventory_id===inv.id){ toast('같은 방입니다 — 다른 방을 클릭하세요','warn'); return; }
+  const cap=inv.max_capacity||inv.capacity;
+  const used=state.rooms.filter(r=>r.inventory_id===inv.id && r.id!==sp.srcId && overlaps(sp.from,sp.to,r.check_in,r.check_out)).reduce((s,r)=>s+(r.assigned_pax||0),0);
+  if(used+1>cap){ toast(`${inv.room_no}: ${sp.from}~${sp.to} 정원 초과`,'warn'); return; }
+  // 1) 원래 행을 앞부분으로 단축(수기 표시)
+  const {error:e1}=await supa.from('rooms').update({check_out:sp.from, assign_source:'manual'}).eq('id',sp.srcId);
+  if(e1){toast('분할 실패(원행 수정): '+e1.message,'err');return;}
+  // 2) 뒷부분을 새 방에 수기 배정
+  const newRow={ event_seq:sp.event_seq, member_id:sp.member_id, inventory_id:inv.id, facility:inv.facility, room_type:inv.room_type, room_no:inv.room_no, check_in:sp.from, check_out:sp.to, assigned_pax:1, assign_source:'manual' };
+  const {data,error:e2}=await supa.from('rooms').insert(newRow).select().single();
+  if(e2){toast('분할 실패(새 행): '+e2.message,'err');return;}
+  const src=state.rooms.find(r=>r.id===sp.srcId); if(src){ src.check_out=sp.from; src.assign_source='manual'; }
+  state.rooms.push(data);
+  state.splitPending=null;
+  rebuildAssignMap(); render();
+  toast(`✂ 분할 완료 — ${sp.from}부터 ${inv.room_no}`,'ok');
+}
+function cancelSplit(){ if(state.splitPending){ state.splitPending=null; render(); } }
 
 // ── 객실 활성/비활성 토글 (담당자가 현장에서 켜고 끔) ──
 async function toggleActive(inv){
@@ -1514,6 +1565,7 @@ function setView(m){
 $('#view-card').addEventListener('click',()=>setView('card'));
 $('#view-timeline').addEventListener('click',()=>setView('timeline'));
 $('#btn-clear-all').addEventListener('click',clearAllAssignments);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') cancelSplit(); });
 // 일별 칩: 다중 선택 토글(타임라인 펼침) + 마지막 클릭일=카드 기준. 재조회 없음
 $('#day-strip').addEventListener('click',e=>{
   const b=e.target.closest('.day-chip'); if(!b) return;
