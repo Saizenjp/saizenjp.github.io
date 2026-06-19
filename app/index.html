@@ -383,6 +383,10 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
 .shz-room{border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:6px;min-height:120px;transition:.15s}
 .shz-room.over{border-color:var(--red);background:var(--red-dim)}
 .shz-room-h{font-size:14px;font-weight:700;color:var(--accent2);text-align:center;padding:2px 0 7px;border-bottom:1px solid var(--border)}
+.shz-zone{display:block;font-size:9px;font-weight:700;color:var(--text3);letter-spacing:.03em;margin-top:2px}
+.shz-room.byeolche{border-color:var(--purple)}
+.shz-room.byeolche .shz-room-h{color:var(--purple2);border-bottom-color:var(--purple)}
+.shz-room.byeolche .shz-zone{color:var(--purple2)}
 .shz-room-body,.shz-pool-body{display:flex;flex-direction:column;gap:5px;margin-top:6px}
 .shz-chip{background:var(--surface);border:1px solid var(--border2);border-radius:7px;padding:5px 7px;cursor:grab;font-size:11px;line-height:1.4;box-shadow:0 1px 2px rgba(0,0,0,.04)}
 .shz-chip:active{cursor:grabbing}
@@ -403,6 +407,10 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
 .shz-pv{border-collapse:collapse;margin-bottom:14px;width:100%;min-width:900px;font-size:11px}
 .shz-pv th,.shz-pv td{border:1px solid var(--border2);padding:3px 6px;text-align:center;vertical-align:middle}
 .shz-pv-hd th{background:var(--accent-dim);font-weight:700;color:var(--accent3)}
+.shz-pv-zone th{background:var(--surface3);font-weight:800;color:var(--accent3);font-size:11px;letter-spacing:.04em}
+.shz-pv-zone th small{font-weight:600;color:var(--text3)}
+.shz-pv-zone th.bz,.shz-pv-hd th.bz{color:var(--purple2)}
+.shz-pv-zone th.bz{background:var(--purple-dim)}
 .shz-pv-dt{background:var(--surface3)!important;font-size:13px;font-weight:700}
 .shz-pv-dt span{font-size:10px;color:var(--text3)}
 .shz-pv-lb{background:var(--surface3);font-weight:700;color:var(--text2);width:78px}
@@ -1318,7 +1326,7 @@ function parseProduct(name){
     accom='간지호텔'; roomType='호텔'; course='간지호텔'; rate=16000;
   }
   else if(name.includes('시즈노야도')||name.includes('료칸')){
-    accom='시즈노야도 료칸'; roomType='료칸'; course='야마나미CC'; rate=16000;
+    accom='시즈노야도 료칸'; roomType='료칸'; course='야마나미CC'; rate=17000; // 本館 기준(別棟 사전희망 +2,000 = 현장 추가요금, 별개)
   }
 
   const m = name.match(/(\d+)박/);
@@ -1933,7 +1941,7 @@ function buildSettle(){
 
   const types = [
     {key:'간지호텔',cls:'ganji',rate:16000},
-    {key:'시즈노야도 료칸',cls:'shiz',rate:16000},
+    {key:'시즈노야도 료칸',cls:'shiz',rate:17000},
     {key:'쿠주힐즈',cls:'kuzu',rate:14000},
     {key:'야마나미리조트',cls:'yama',rate:14000}
   ];
@@ -9664,6 +9672,10 @@ function resetApp(){
    - 영속: manualData._shizu + saveManual() (월 세션)
    ═══════════════════════════════════════════════════════════════ */
 const SHZ_ROOMS = ['志津','合歓','北條','山法師','吉祥','瑞雲','馬酔木'];
+// 本館 4실(¥17,000) · 別棟 3실(사전희망 시 +¥2,000 = ¥19,000)
+const SHZ_BYEOLCHE = ['吉祥','瑞雲','馬酔木'];
+const SHZ_ZONE = r => SHZ_BYEOLCHE.includes(r) ? '別棟' : '本館';
+const SHZ_RATE = r => SHZ_BYEOLCHE.includes(r) ? 19000 : 17000;
 const SHZ_DOW   = ['日','月','火','水','木','金','土'];
 const SHZ = { guests: [], from: '', to: '' };
 let SHZ_SEL = null;  // 클릭 배정용: 선택된 손님 id
@@ -9922,8 +9934,10 @@ function shzRender(){
   SHZ_ROOMS.forEach(room => {
     const chips = SHZ.guests.filter(g => s.assign[g.id]===room);
     const over = shzRoomOver(room);
-    html += `<div class="shz-room${over?' over':''}${chips.length>=2&&!over?' full':''}${SHZ_SEL?' pickmode':''}" ondragover="event.preventDefault()" ondrop="shzDrop(event,'${room}')" onclick="shzPlaceTo('${room}')">
-      <div class="shz-room-h">${room} <span class="shz-cap${over?' over':''}">${chips.length}/2名</span>${over?' <span class="shz-warn">3名以上</span>':''}</div>
+    const isByeolche = SHZ_BYEOLCHE.includes(room);
+    html += `<div class="shz-room${over?' over':''}${chips.length>=2&&!over?' full':''}${SHZ_SEL?' pickmode':''}${isByeolche?' byeolche':''}" ondragover="event.preventDefault()" ondrop="shzDrop(event,'${room}')" onclick="shzPlaceTo('${room}')">
+      <div class="shz-room-h">${room} <span class="shz-cap${over?' over':''}">${chips.length}/2名</span>${over?' <span class="shz-warn">3名以上</span>':''}
+        <small class="shz-zone">${SHZ_ZONE(room)} · ¥${SHZ_RATE(room).toLocaleString()}</small></div>
       <div class="shz-room-body">${chips.map(shzChipHTML).join('')}</div>
     </div>`;
   });
@@ -9985,7 +9999,8 @@ function shzRenderPreview(){
     let note = s.note[date];
     if(note==null) note = Object.values(notes).filter(x=>x.c>0).map(x=>`${x.nm}様${shzZen(x.c)}名`).join('　');
     html += `<table class="shz-pv">
-      <tr class="shz-pv-hd"><th class="shz-pv-dt">${shzZen(d.getMonth()+1)}／${shzZen(d.getDate())}<br><span>${SHZ_DOW[d.getDay()]}</span></th>${SHZ_ROOMS.map(r=>`<th>${r}</th>`).join('')}<th class="shz-pv-k">合計</th></tr>
+      <tr class="shz-pv-zone"><th></th><th colspan="4">本館 <small>¥17,000</small></th><th colspan="3" class="bz">別棟 <small>¥19,000</small></th><th></th></tr>
+      <tr class="shz-pv-hd"><th class="shz-pv-dt">${shzZen(d.getMonth()+1)}／${shzZen(d.getDate())}<br><span>${SHZ_DOW[d.getDay()]}</span></th>${SHZ_ROOMS.map(r=>`<th${SHZ_BYEOLCHE.includes(r)?' class="bz"':''}>${r}</th>`).join('')}<th class="shz-pv-k">合計</th></tr>
       <tr><td class="shz-pv-lb">お名前</td>${cells.map(c=>`<td class="shz-pv-nm">${c.name}</td>`).join('')}<td></td></tr>
       <tr><td class="shz-pv-lb">大人</td>${cells.map(c=>`<td>${c.mf}</td>`).join('')}<td class="shz-pv-k">大 ${shzZen(tot)} 名</td></tr>
       <tr><td class="shz-pv-lb">合計人数</td>${cells.map(c=>`<td>${c.cnt}</td>`).join('')}<td class="shz-pv-k">計 ${shzZen(tot)} 名</td></tr>
