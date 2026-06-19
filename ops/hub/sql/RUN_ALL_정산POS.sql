@@ -5,6 +5,7 @@
 --  모두 멱등(여러 번 실행해도 안전). 기존 01~08(예약·방배정) + 10_member_grade 이후.
 --  ※ 10_member_grade.sql(방배정 회원등급)은 방배정 쪽 마이그레이션이라 여기 미포함.
 --  구버전 테이블이 있어도 누락 컬럼을 자동 보강합니다. 실행 후 00_VERIFY.sql 로 확인.
+--  ⚠ 세금: 内税(税込, 단가=최종가). 청구 합계 = 메뉴가 그대로(소비세 빼서 표시만).
 -- ============================================================================
 
 
@@ -29,7 +30,7 @@
 --
 --  Min 확정값 (2026-06 결정 — 명세서·계산식에 반영)
 --   · 결제수단: 현금 / 카드
---   · 세금: 소비세 10% "별도"(세전 단가 입력 → tax = round(amount*0.10)) · 봉사료 없음
+--   · 세금: 소비세 10% 内税(税込·단가=최종가). amount=税抜 소계, tax=内税(gross−round(gross/1.1)) · 봉사료 없음
 --   · folio 단위: 팀(행사) 기본 + 개인 허용
 --   · 카테고리(고정 5종): 라운딩 · 식음 · 숙박 · 골프샵 · 기타
 --
@@ -95,8 +96,8 @@ create trigger trg_folios_updated before update on folios
 
 
 -- ── 2) charges : 통합 청구 원장 (모든 서브시스템의 연동 지점) ────────────────
---  · amount = 세전 소계(qty*unit_price 등) 를 직접 저장(정합성).
---  · tax = 소비세(별도). service_charge = 0(봉사료 미부과 정책). 둘 다 직접 저장.
+--  · amount = 税抜 소계(= 청구 gross − 内税) 를 직접 저장(정합성).
+--  · tax = 内税(포함된 소비세). service_charge = 0(봉사료 미부과 정책). 둘 다 직접 저장.
 --  · voided = 취소 처리(삭제 대신 무효화 → 금전 감사 추적).
 create table if not exists charges (
   id             uuid          primary key default gen_random_uuid(),
@@ -106,9 +107,9 @@ create table if not exists charges (
   source         text,                                  -- banquet/restaurant/golf/proshop/room/frontdesk
   description    text,
   qty            numeric(12,2) not null default 1,
-  unit_price     numeric(14,0) not null default 0,      -- 세전 단가(JPY)
-  amount         numeric(14,0) not null default 0,      -- 세전 소계(합산 대상)
-  tax            numeric(14,0) not null default 0,      -- 소비세(별도 10%)
+  unit_price     numeric(14,0) not null default 0,      -- 단가(JPY) — POS는 税込(최종가)
+  amount         numeric(14,0) not null default 0,      -- 税抜 소계(합산 대상)
+  tax            numeric(14,0) not null default 0,      -- 소비세 内税(포함 10%)
   service_charge numeric(14,0) not null default 0,      -- 봉사료(현 정책 0)
   member_id      uuid          references guest_members(id) on delete set null,
   source_ref     text,                                  -- 서브시스템 행 id(레스토랑/연회 등)
@@ -296,7 +297,7 @@ create table if not exists menu_items (
   name_ko     text,                                 -- 직원 보조 표기(한국어)
   category    text          not null,               -- 라운딩/식음/숙박/골프샵/기타 (charges 와 동일)
   venue       text,                                 -- restaurant/banquet/proshop/etc → charges.source
-  unit_price  numeric(14,0) not null default 0,     -- 세전 단가(JPY). 소비세는 청구 시 별도 10%.
+  unit_price  numeric(14,0) not null default 0,     -- 단가(JPY, 税込·최종가). 소비세는 内税(청구 시 빼냄).
   sort_order  int           not null default 0,
   active      boolean       not null default true,
   created_at  timestamptz   not null default now(),
