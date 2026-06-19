@@ -15,7 +15,7 @@
 --
 --  Min 확정값 (2026-06 결정 — 명세서·계산식에 반영)
 --   · 결제수단: 현금 / 카드
---   · 세금: 소비세 10% "별도"(세전 단가 입력 → tax = round(amount*0.10)) · 봉사료 없음
+--   · 세금: 소비세 10% 内税(税込·단가=최종가). amount=税抜 소계, tax=内税(gross−round(gross/1.1)) · 봉사료 없음
 --   · folio 단위: 팀(행사) 기본 + 개인 허용
 --   · 카테고리(고정 5종): 라운딩 · 식음 · 숙박 · 골프샵 · 기타
 --
@@ -81,8 +81,8 @@ create trigger trg_folios_updated before update on folios
 
 
 -- ── 2) charges : 통합 청구 원장 (모든 서브시스템의 연동 지점) ────────────────
---  · amount = 세전 소계(qty*unit_price 등) 를 직접 저장(정합성).
---  · tax = 소비세(별도). service_charge = 0(봉사료 미부과 정책). 둘 다 직접 저장.
+--  · amount = 税抜 소계(= 청구 gross − 内税) 를 직접 저장(정합성).
+--  · tax = 内税(포함된 소비세). service_charge = 0(봉사료 미부과 정책). 둘 다 직접 저장.
 --  · voided = 취소 처리(삭제 대신 무효화 → 금전 감사 추적).
 create table if not exists charges (
   id             uuid          primary key default gen_random_uuid(),
@@ -92,9 +92,9 @@ create table if not exists charges (
   source         text,                                  -- banquet/restaurant/golf/proshop/room/frontdesk
   description    text,
   qty            numeric(12,2) not null default 1,
-  unit_price     numeric(14,0) not null default 0,      -- 세전 단가(JPY)
-  amount         numeric(14,0) not null default 0,      -- 세전 소계(합산 대상)
-  tax            numeric(14,0) not null default 0,      -- 소비세(별도 10%)
+  unit_price     numeric(14,0) not null default 0,      -- 단가(JPY) — POS는 税込(최종가)
+  amount         numeric(14,0) not null default 0,      -- 税抜 소계(합산 대상)
+  tax            numeric(14,0) not null default 0,      -- 소비세 内税(포함 10%)
   service_charge numeric(14,0) not null default 0,      -- 봉사료(현 정책 0)
   member_id      uuid          references guest_members(id) on delete set null,
   source_ref     text,                                  -- 서브시스템 행 id(레스토랑/연회 등)

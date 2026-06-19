@@ -21,7 +21,7 @@ create table if not exists menu_items (
   name_ko     text,                                 -- 직원 보조 표기(한국어)
   category    text          not null,               -- 라운딩/식음/숙박/골프샵/기타 (charges 와 동일)
   venue       text,                                 -- restaurant/banquet/proshop/etc → charges.source
-  unit_price  numeric(14,0) not null default 0,     -- 세전 단가(JPY). 소비세는 청구 시 별도 10%.
+  unit_price  numeric(14,0) not null default 0,     -- 단가(JPY, 税込·최종가). 소비세는 内税(청구 시 빼냄).
   sort_order  int           not null default 0,
   active      boolean       not null default true,
   created_at  timestamptz   not null default now(),
