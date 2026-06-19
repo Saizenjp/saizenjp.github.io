@@ -1086,12 +1086,15 @@ function renderFloorRing(zoneRooms){
 }
 
 function renderSummary(){
-  const total=state.guests.reduce((s,g)=>s+g.pax,0);
-  const done=assignedMemberSet().size;   // 분할돼도 1명으로 셈
-  const el=$('#assign-summary'); const allDone=(total>0 && done>=total);
-  el.textContent = allDone ? `✓ 전원 ${done}명 배정` : `${done}/${total}명 배정`;
-  el.style.color = allDone ? 'var(--ok)' : '';
-  el.style.fontWeight = allDone ? '800' : '';
+  // 기준일(그날 밤) 기준: 그날 묵는 인원 vs 그날 방 배정된 인원 (한 달 누적이 아니라 하룻밤)
+  const d=state.focus||state.from;
+  let stay=0; state.guests.forEach(g=>{ if(g.dep<=d && d<g.arr) stay+=(g.pax||0); });
+  let asg=0;  state.rooms.forEach(r=>{ if(r.check_in<=d && d<r.check_out) asg+=(r.assigned_pax||0); });
+  const left=stay-asg, el=$('#assign-summary');
+  el.innerHTML = `📅 ${fmtMD(d)} <b style="color:${(left<=0&&stay>0)?'var(--ok)':'inherit'}">${asg}/${stay}명</b>`
+    + (left>0 ? ` <span style="color:var(--err);font-weight:700">· 미배정 ${left}</span>`
+             : (stay>0 ? ' <span style="color:var(--ok);font-weight:700">✓ 완료</span>' : ''));
+  el.style.color=''; el.style.fontWeight='';
 }
 
 // ── 두 기간이 겹치는가 (체크인~체크아웃, 반개구간) ──
