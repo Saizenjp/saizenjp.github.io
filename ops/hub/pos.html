@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 주문 입력(간이 POS)</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad;
+    --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#3d5424; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#2c3d19;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+    --c-라운딩:#1e3a8a; --c-식음:#92400e; --c-숙박:#5b21b6; --c-골프샵:#065f46; --c-기타:#6b7280;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background:linear-gradient(180deg,#f2f5ec 0%,var(--bg) 220px),var(--bg);
+    color:var(--text);line-height:1.5;min-height:100vh;
+  }
+  .topbar{
+    position:sticky;top:0;z-index:30;background:var(--surface);
+    border-bottom:3px solid var(--accent);padding:13px 22px;
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(44,61,25,.06);
+  }
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .topbar .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:8px 12px;border:1px solid var(--border2);border-radius:7px;background:var(--surface);color:var(--text);font-size:14px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:14px;font-weight:700;border-radius:8px;padding:9px 18px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:13px;padding:6px 13px}
+  .btn.big{font-size:17px;padding:14px 26px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+
+  .toolbar{padding:10px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .toolbar label{font-size:12px;color:var(--text2);font-weight:600}
+  .toolbar .hint{font-size:11px;color:var(--muted)}
+
+  .wrap{padding:14px 20px 90px}
+  .sec-title{font-size:15px;font-weight:800;color:var(--accent);margin-bottom:12px;display:flex;align-items:center;gap:10px}
+  .sec-title .cnt{font-size:12px;color:var(--text2);font-weight:700}
+
+  /* 팀 선택 큰 버튼 */
+  .team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+  .team-btn{
+    text-align:left;background:var(--surface);border:1px solid var(--border);border-left:5px solid var(--accent);
+    border-radius:12px;padding:16px 16px 14px;cursor:pointer;transition:.12s;box-shadow:0 1px 3px rgba(44,61,25,.05);
+  }
+  .team-btn:hover{border-color:var(--accent);box-shadow:0 4px 14px rgba(44,61,25,.12);transform:translateY(-2px)}
+  .team-btn .ttag{font-family:var(--mono);font-weight:800;font-size:18px;color:var(--accent)}
+  .team-btn .trep{font-size:15px;font-weight:700;margin-top:3px}
+  .team-btn .tmeta{font-size:12.5px;color:var(--text2);margin-top:5px}
+
+  /* 주문 뷰 */
+  .order-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:14px}
+  .order-head .ot{font-size:20px;font-weight:800}
+  .order-head .ot .otag{font-family:var(--mono);color:var(--accent)}
+  .order-head .orun{margin-left:auto;font-size:13px;color:var(--text2);font-weight:700}
+  .order-head .orun b{font-family:var(--mono);color:var(--text);font-size:16px}
+
+  .order-stage{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+  @media(max-width:880px){.order-stage{grid-template-columns:1fr}}
+
+  .venue-tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+  .venue-tab{font-size:13px;font-weight:700;padding:7px 15px;border-radius:99px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer;transition:.12s}
+  .venue-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .venue-tab:not(.active):hover{background:var(--accentSoft);color:var(--accent)}
+
+  .menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:11px}
+  .menu-btn{
+    position:relative;text-align:left;background:var(--surface);border:1px solid var(--border);
+    border-radius:11px;padding:14px 13px 12px;cursor:pointer;transition:.1s;min-height:92px;
+    display:flex;flex-direction:column;justify-content:space-between;
+  }
+  .menu-btn:hover{border-color:var(--accent);box-shadow:0 3px 10px rgba(44,61,25,.12)}
+  .menu-btn:active{transform:scale(.97)}
+  .menu-btn .mcode{position:absolute;top:9px;right:11px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--muted)}
+  .menu-btn .mja{font-size:15.5px;font-weight:800;line-height:1.25}
+  .menu-btn .mko{font-size:12px;color:var(--text2);margin-top:1px}
+  .menu-btn .mprice{font-family:var(--mono);font-size:14px;font-weight:800;color:var(--accent);margin-top:8px}
+  .menu-btn .mcat{position:absolute;top:9px;left:11px;width:8px;height:8px;border-radius:2px}
+  .cat-라운딩{background:var(--c-라운딩)} .cat-식음{background:var(--c-식음)} .cat-숙박{background:var(--c-숙박)}
+  .cat-골프샵{background:var(--c-골프샵)} .cat-기타{background:var(--c-기타)}
+
+  /* 카트 */
+  .cart{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;position:sticky;top:74px}
+  .cart > h3{font-size:14px;font-weight:800;padding:12px 15px;border-bottom:2px solid var(--accentSoft);background:var(--surface2);color:var(--accent)}
+  .cart-body{padding:11px 13px;max-height:46vh;overflow:auto}
+  .cart-line{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
+  .cart-line .cl-name{font-size:13.5px;font-weight:700}
+  .cart-line .cl-price{font-family:var(--mono);font-size:11.5px;color:var(--text2)}
+  .cart-line .qtybox{display:flex;align-items:center;gap:6px}
+  .qbtn{width:30px;height:30px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);font-size:17px;font-weight:800;color:var(--accent);cursor:pointer;line-height:1}
+  .qbtn:hover{background:var(--accentSoft)}
+  .cart-line .qn{font-family:var(--mono);font-weight:800;min-width:22px;text-align:center}
+  .cart-line .cl-rm{cursor:pointer;color:var(--err);font-weight:700;border:none;background:none;font-size:15px;padding:0 4px}
+  .cart-empty{font-size:13px;color:var(--muted);text-align:center;padding:26px 0}
+  .cart-foot{padding:13px 15px;border-top:1px solid var(--border);background:var(--surface2)}
+  .cart-foot .tr{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}
+  .cart-foot .tr.grand{font-weight:800;font-size:16px;color:var(--accent);border-top:2px solid var(--accent);margin-top:5px;padding-top:7px}
+  .cart-foot .tr .v{font-family:var(--mono)}
+  .cart-foot .btn{width:100%;margin-top:11px}
+
+  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:11px 20px;font-size:14px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);animation:popUp .2s;text-align:center;min-width:220px}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+  @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
+  .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.8">
+</head>
+<body>
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム">
+    <img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen">
+  </a>
+  <span class="step" data-i18n="po_step"></span>
+  <a class="navhome" href="../index.html" data-i18n="navHome" style="margin-left:14px"></a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+    <button class="so-furi" id="so-furi" onclick="__so_toggleFuri()"></button>
+  </div>
+  <span class="pill" id="conn-state" data-i18n="connState_none"></span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" data-i18n-ph="rm_keyPlaceholder" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button" data-i18n="btnConnectShort"></button>
+  <span class="hint" data-i18n="st_connHint"></span>
+</div>
+
+<div class="toolbar">
+  <label data-i18n="po_dateLabel"></label>
+  <input class="inp" id="date-pick" type="date">
+  <button class="btn sm" id="btn-load" type="button" disabled data-i18n="po_btnLoad"></button>
+  <button class="btn ghost sm" id="btn-back" type="button" style="display:none" data-i18n="po_btnBack"></button>
+  <span class="hint" data-i18n="st_taxHint"></span>
+</div>
+
+<div class="wrap">
+  <!-- 1단계: 팀 선택 -->
+  <div id="team-view">
+    <div class="sec-title"><span data-i18n="po_pickTeam"></span> <span class="cnt" id="team-cnt"></span></div>
+    <div class="team-grid" id="team-grid">
+      <div class="empty-hint" data-i18n="po_emptyTeams"></div>
+    </div>
+  </div>
+
+  <!-- 2단계: 주문 입력 -->
+  <div id="order-view" style="display:none">
+    <div class="order-head">
+      <div class="ot"><span class="otag" id="oh-tag"></span> <span id="oh-rep"></span></div>
+      <div class="orun"><span data-i18n="po_runningTotal"></span> <b id="oh-run">¥0</b></div>
+    </div>
+    <div class="order-stage">
+      <div>
+        <div class="venue-tabs" id="venue-tabs"></div>
+        <div class="menu-grid" id="menu-grid"></div>
+      </div>
+      <div class="cart">
+        <h3 data-i18n="po_cart"></h3>
+        <div class="cart-body" id="cart-body"><div class="cart-empty" data-i18n="po_cartEmpty"></div></div>
+        <div class="cart-foot">
+          <div class="tr"><span data-i18n="po_subtotal"></span><span class="v" id="cart-sub">¥0</span></div>
+          <div class="tr"><span data-i18n="po_tax"></span><span class="v" id="cart-tax">¥0</span></div>
+          <div class="tr grand"><span data-i18n="po_total"></span><span class="v" id="cart-total">¥0</span></div>
+          <button class="btn big" id="btn-send" type="button" disabled data-i18n="po_send"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="../assets/saizen-ops.js?v=14.8"></script>
+<script>
+// ════════════════════════════════════════════════════════════════════════
+//  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
+//  · 팀 선택(오늘 체크인 목록 탭) → 메뉴 그리드 탭 → 카트 → 전송 → folio charges 적재.
+//  · 외부 POS 연동 없음. v1: charges 직접 적재(restaurant_orders 생략).
+// ════════════════════════════════════════════════════════════════════════
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+let supa=null;
+const TAX_RATE=0.10;
+const VENUE_LABEL={restaurant:'レストラン / 레스토랑',banquet:'宴会場 / 연회장',proshop:'ゴルフショップ / 골프샵',etc:'その他 / 기타'};
+let state={ date:'', teams:[], menu:[], venue:'__all__', team:null, folioId:null, runningGross:0, cart:[] };
+
+function yen(n){ return '¥'+Number(n||0).toLocaleString('ja-JP'); }
+function taxOf(a){ return Math.round(Number(a||0)*TAX_RATE); }
+function isoToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function ymOf(iso){ return String(iso||'').slice(0,7); }
+function toast(msg,cls){
+  const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:'');
+  t.textContent=msg; $('#toast').appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);
+}
+function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
+
+// ── 연결 ──
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn('URL·key 필요','err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.textContent='연결 중…'; btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {error}=await supa.from('menu_items').select('id',{count:'exact',head:true});
+    if(error) throw error;
+    setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
+    btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
+    $('#btn-load').disabled=false;
+    await loadMenu();
+    await loadTeams();
+  }catch(e){
+    setConn('연결 실패','err');
+    toast('연결 실패: '+e.message+' (09·10 SQL 실행·키 확인)','err');
+    btn.textContent='연결 실패 · 재시도'; btn.classList.remove('connected'); btn.disabled=false;
+    supa=null; $('#btn-load').disabled=true;
+  }
+}
+
+async function loadMenu(){
+  const {data,error}=await supa.from('menu_items').select('*').eq('active',true).order('venue').order('sort_order');
+  if(error){toast('메뉴 로드 실패: '+error.message,'err');return;}
+  state.menu=data||[];
+}
+
+// ── 오늘 체크인(체류) 팀 로드 (room.html loadDay 패턴) ──
+async function loadTeams(){
+  if(!supa){toast('먼저 연결하세요','warn');return;}
+  const d=$('#date-pick').value||isoToday(); state.date=d; $('#date-pick').value=d;
+  const {data,error}=await supa.from('guests')
+    .select('event_seq,team_tag,group_code,accom,pax,session_ym,bookings!inner(rep_name,dep_date,arr_date)')
+    .lte('bookings.dep_date',d).gt('bookings.arr_date',d);
+  if(error){toast('팀 로드 실패: '+error.message,'err');return;}
+  state.teams=(data||[]).map(x=>({
+    event_seq:x.event_seq, team_tag:x.team_tag, group_code:x.group_code, accom:x.accom, pax:x.pax,
+    session_ym:x.session_ym||ymOf(d), rep:x.bookings?.rep_name||'',
+  })).sort((a,b)=>(a.accom||'').localeCompare(b.accom||'')||(a.rep||'').localeCompare(b.rep||''));
+  backToTeams();
+  toast(`${d} · 체류 ${state.teams.length}팀`,'ok');
+}
+
+function backToTeams(){
+  state.team=null; state.folioId=null; state.cart=[];
+  $('#order-view').style.display='none';
+  $('#team-view').style.display='';
+  $('#btn-back').style.display='none';
+  renderTeams();
+}
+
+function renderTeams(){
+  const box=$('#team-grid'); box.innerHTML='';
+  $('#team-cnt').textContent=`${state.teams.length}${t('po_cntTeam')}`;
+  if(!state.teams.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
+  state.teams.forEach(tm=>{
+    const b=document.createElement('button'); b.type='button'; b.className='team-btn';
+    const tag=tm.team_tag||tm.group_code||('팀'+tm.event_seq);
+    b.innerHTML=`<div class="ttag">${tag}</div>
+      <div class="trep">${tm.rep||''}</div>
+      <div class="tmeta">${tm.accom||''} · ${tm.pax}${t('po_cntPpl')} · #${tm.event_seq}</div>`;
+    b.addEventListener('click',()=>selectTeam(tm));
+    box.appendChild(b);
+  });
+}
+
+// ── 팀 선택 → 주문 뷰 ──
+async function selectTeam(tm){
+  state.team=tm; state.cart=[]; state.venue='__all__'; state.folioId=null;
+  // 이 팀의 열린 folio 누적(있으면) 표시
+  state.runningGross=0;
+  const {data}=await supa.from('v_folio_balance').select('folio_id,gross_total,status')
+    .eq('event_seq',tm.event_seq).eq('subject','team');
+  if(data&&data.length){
+    const open=data.find(f=>f.status==='open')||data[0];
+    state.folioId=open.folio_id; state.runningGross=Number(open.gross_total||0);
+  }
+  $('#team-view').style.display='none';
+  $('#order-view').style.display='';
+  $('#btn-back').style.display='';
+  $('#oh-tag').textContent=tm.team_tag||tm.group_code||('팀'+tm.event_seq);
+  $('#oh-rep').textContent=tm.rep||'';
+  $('#oh-run').textContent=yen(state.runningGross);
+  renderVenueTabs(); renderMenu(); renderCart();
+}
+
+function renderVenueTabs(){
+  const box=$('#venue-tabs'); box.innerHTML='';
+  const venues=[...new Set(state.menu.map(m=>m.venue||'etc'))];
+  const tabs=[['__all__',t('po_allVenues')]].concat(venues.map(v=>[v,VENUE_LABEL[v]||v]));
+  tabs.forEach(([v,label])=>{
+    const b=document.createElement('button'); b.type='button';
+    b.className='venue-tab'+(state.venue===v?' active':'');
+    b.textContent=label;
+    b.addEventListener('click',()=>{state.venue=v;renderVenueTabs();renderMenu();});
+    box.appendChild(b);
+  });
+}
+
+function renderMenu(){
+  const box=$('#menu-grid'); box.innerHTML='';
+  const list=state.menu.filter(m=>state.venue==='__all__'||(m.venue||'etc')===state.venue);
+  if(!list.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyMenu')+'</div>'; return; }
+  list.forEach(m=>{
+    const b=document.createElement('button'); b.type='button'; b.className='menu-btn';
+    b.innerHTML=`<span class="mcat cat-${m.category}"></span>
+      ${m.code?`<span class="mcode">${m.code}</span>`:''}
+      <div><div class="mja">${m.name_ja||''}</div>${m.name_ko?`<div class="mko">${m.name_ko}</div>`:''}</div>
+      <div class="mprice">${Number(m.unit_price)>0?yen(m.unit_price):t('po_manualPrice')}</div>`;
+    b.addEventListener('click',()=>addToCart(m));
+    box.appendChild(b);
+  });
+}
+
+// ── 카트 ──
+function addToCart(m){
+  let price=Number(m.unit_price||0), desc=m.name_ja||m.name_ko||'';
+  if(price<=0){ // 기타(수동) — 금액·내역 직접 입력
+    const v=prompt('금액(엔, 세전)을 입력하세요','');
+    if(v===null) return;
+    price=Math.round(Number(v)||0);
+    if(price<=0){toast('금액을 입력하세요','warn');return;}
+    const d=prompt('내역을 입력하세요',desc); if(d) desc=d;
+  }
+  const key=m.id+'|'+price+'|'+desc;
+  const exist=state.cart.find(l=>l.key===key);
+  if(exist) exist.qty+=1;
+  else state.cart.push({key, id:m.id, category:m.category, venue:m.venue||'etc', name_ja:desc, name_ko:(price===Number(m.unit_price)?m.name_ko:''), unit_price:price, qty:1});
+  renderCart();
+}
+function changeQty(key,delta){
+  const l=state.cart.find(x=>x.key===key); if(!l) return;
+  l.qty+=delta; if(l.qty<=0) state.cart=state.cart.filter(x=>x.key!==key);
+  renderCart();
+}
+function removeLine(key){ state.cart=state.cart.filter(x=>x.key!==key); renderCart(); }
+
+function renderCart(){
+  const body=$('#cart-body'); body.innerHTML='';
+  if(!state.cart.length){ body.innerHTML='<div class="cart-empty">'+t('po_cartEmpty')+'</div>'; }
+  else state.cart.forEach(l=>{
+    const row=document.createElement('div'); row.className='cart-line';
+    row.innerHTML=`<div>
+        <div class="cl-name">${l.name_ja}${l.name_ko?` <span style="color:var(--text2);font-weight:400">${l.name_ko}</span>`:''}</div>
+        <div class="cl-price">${yen(l.unit_price)} × ${l.qty} = ${yen(l.unit_price*l.qty)}</div>
+      </div>
+      <div class="qtybox">
+        <button class="qbtn" data-minus="${l.key}">−</button>
+        <span class="qn">${l.qty}</span>
+        <button class="qbtn" data-plus="${l.key}">＋</button>
+        <button class="cl-rm" data-rm="${l.key}">✕</button>
+      </div>`;
+    body.appendChild(row);
+  });
+  body.querySelectorAll('[data-minus]').forEach(b=>b.addEventListener('click',()=>changeQty(b.dataset.minus,-1)));
+  body.querySelectorAll('[data-plus]').forEach(b=>b.addEventListener('click',()=>changeQty(b.dataset.plus,1)));
+  body.querySelectorAll('[data-rm]').forEach(b=>b.addEventListener('click',()=>removeLine(b.dataset.rm)));
+  const sub=state.cart.reduce((s,l)=>s+l.unit_price*l.qty,0);
+  const tax=state.cart.reduce((s,l)=>s+taxOf(l.unit_price*l.qty),0);
+  $('#cart-sub').textContent=yen(sub);
+  $('#cart-tax').textContent=yen(tax);
+  $('#cart-total').textContent=yen(sub+tax);
+  $('#btn-send').disabled=!state.cart.length;
+}
+
+// ── 전송: folio 확보 후 charges 적재 ──
+async function ensureFolio(){
+  if(state.folioId) return state.folioId;
+  const tm=state.team;
+  // 혹시 동시간대 다른 단말이 이미 열었을 수 있으니 재조회
+  const {data:ex}=await supa.from('folios').select('id').eq('event_seq',tm.event_seq)
+    .eq('subject','team').eq('status','open').limit(1);
+  if(ex&&ex.length){ state.folioId=ex[0].id; return state.folioId; }
+  const {data,error}=await supa.from('folios').insert({
+    event_seq:tm.event_seq, subject:'team', status:'open', session_ym:tm.session_ym,
+    created_by:localStorage.getItem('saizen_op_name')||'pos'
+  }).select('id').single();
+  if(error) throw error;
+  state.folioId=data.id; return state.folioId;
+}
+async function sendCart(){
+  if(!state.cart.length||!state.team) return;
+  $('#btn-send').disabled=true;
+  try{
+    const folioId=await ensureFolio();
+    const by=localStorage.getItem('saizen_op_name')||'pos';
+    const rows=state.cart.map(l=>{
+      const amount=l.unit_price*l.qty;
+      return { folio_id:folioId, event_seq:state.team.event_seq, member_id:null,
+        category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:''),
+        qty:l.qty, unit_price:l.unit_price, amount, tax:taxOf(amount), service_charge:0,
+        source_ref:'menu:'+l.id, created_by:by };
+    });
+    const {error}=await supa.from('charges').insert(rows);
+    if(error) throw error;
+    const total=rows.reduce((s,r)=>s+r.amount+r.tax,0);
+    toast(`${state.team.team_tag||('#'+state.team.event_seq)} 에 ${rows.length}건 · ${yen(total)} 전송됨`,'ok');
+    state.runningGross+=total; $('#oh-run').textContent=yen(state.runningGross);
+    state.cart=[]; renderCart();
+  }catch(e){
+    toast('전송 실패: '+e.message,'err'); $('#btn-send').disabled=false;
+  }
+}
+
+// ── 부팅 ──
+$('#btn-connect').addEventListener('click',connect);
+$('#btn-load').addEventListener('click',loadTeams);
+$('#btn-back').addEventListener('click',backToTeams);
+$('#btn-send').addEventListener('click',sendCart);
+$('#date-pick').value=isoToday();
+loadCreds();
+
+window.onSaizenLangChange=function(){
+  try{ if(state.team){ renderVenueTabs(); renderMenu(); renderCart(); } else renderTeams(); }catch(e){}
+};
+</script>
+</body>
+</html>
