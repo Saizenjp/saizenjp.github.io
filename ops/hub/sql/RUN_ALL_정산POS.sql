@@ -3,7 +3,7 @@
 -- ----------------------------------------------------------------------------
 --  이 파일 하나만 SQL Editor에 붙여넣고 Run 하면 정산·POS·KDS·메뉴가 전부 준비됩니다.
 --  모두 멱등(여러 번 실행해도 안전). 기존 01~08(예약·방배정)이 먼저 있어야 합니다.
---  실행 후 00_VERIFY.sql 로 설치 상태를 확인하세요.
+--  구버전 테이블이 있어도 누락 컬럼을 자동 보강합니다. 실행 후 00_VERIFY.sql 로 확인.
 -- ============================================================================
 
 
@@ -68,6 +68,16 @@ create index if not exists idx_folios_event   on folios(event_seq);
 create index if not exists idx_folios_session on folios(session_ym);
 create index if not exists idx_folios_status  on folios(status);
 
+-- 구버전 folios 테이블 누락 컬럼 보강(멱등)
+alter table folios add column if not exists subject    text          not null default 'team';
+alter table folios add column if not exists member_id  uuid;
+alter table folios add column if not exists status     text          not null default 'open';
+alter table folios add column if not exists session_ym text;
+alter table folios add column if not exists opened_at  timestamptz   not null default now();
+alter table folios add column if not exists closed_at  timestamptz;
+alter table folios add column if not exists note       text;
+alter table folios add column if not exists created_by text;
+
 do $$
 begin
   if not exists (select 1 from pg_constraint where conname='folios_subject_chk') then
@@ -113,6 +123,24 @@ create index if not exists idx_charges_event    on charges(event_seq);
 create index if not exists idx_charges_category on charges(category);
 create index if not exists idx_charges_charged  on charges(charged_at);
 
+-- 구버전 charges 테이블이 이미 있을 경우 누락 컬럼 보강(멱등). 아래 뷰가 참조하는 컬럼 보장.
+alter table charges add column if not exists event_seq      bigint;
+alter table charges add column if not exists source         text;
+alter table charges add column if not exists description    text;
+alter table charges add column if not exists qty            numeric(12,2) not null default 1;
+alter table charges add column if not exists unit_price     numeric(14,0) not null default 0;
+alter table charges add column if not exists amount         numeric(14,0) not null default 0;
+alter table charges add column if not exists tax            numeric(14,0) not null default 0;
+alter table charges add column if not exists service_charge numeric(14,0) not null default 0;
+alter table charges add column if not exists member_id      uuid;
+alter table charges add column if not exists source_ref     text;
+alter table charges add column if not exists charged_at     timestamptz   not null default now();
+alter table charges add column if not exists created_by     text;
+alter table charges add column if not exists note           text;
+alter table charges add column if not exists voided         boolean       not null default false;
+alter table charges add column if not exists created_at     timestamptz   not null default now();
+alter table charges add column if not exists updated_at     timestamptz   not null default now();
+
 do $$
 begin
   if not exists (select 1 from pg_constraint where conname='charges_category_chk') then
@@ -139,6 +167,14 @@ create table if not exists payments (
   created_at  timestamptz   not null default now()
 );
 create index if not exists idx_payments_folio on payments(folio_id);
+
+-- 구버전 payments 테이블 누락 컬럼 보강(멱등)
+alter table payments add column if not exists amount      numeric(14,0) not null default 0;
+alter table payments add column if not exists paid_at     timestamptz   not null default now();
+alter table payments add column if not exists received_by text;
+alter table payments add column if not exists note        text;
+alter table payments add column if not exists voided      boolean       not null default false;
+alter table payments add column if not exists created_at  timestamptz   not null default now();
 
 do $$
 begin
