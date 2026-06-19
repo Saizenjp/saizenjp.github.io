@@ -224,6 +224,13 @@
   .vbtn.active{background:var(--accent);color:#fff}
   .vbtn:not(.active):hover{background:var(--accentSoft)}
 
+  /* 숙소별 필터 */
+  .fac-filter{display:flex;gap:6px;flex-wrap:wrap;padding:10px 13px 2px}
+  .ffbtn{font-family:inherit;font-size:12px;font-weight:700;padding:5px 12px;border:1px solid var(--border2);border-radius:99px;background:var(--surface);color:var(--text2);cursor:pointer;transition:.12s;display:inline-flex;align-items:center;gap:5px}
+  .ffbtn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .ffbtn:not(.active):hover{background:var(--accentSoft)}
+  .ffbtn .fdot{width:9px;height:9px;border-radius:2px;display:inline-block}
+
   /* 타임라인(테이프 차트): 객실×날짜 */
   #timeline{overflow:auto;max-height:74vh}
   table.tl{border-collapse:separate;border-spacing:0;font-size:11px;white-space:nowrap}
@@ -286,6 +293,7 @@
   <button class="btn ghost sm" id="date-today" type="button" title="오늘 하루로">오늘</button>
   <button class="btn sm" id="btn-load" type="button" disabled data-i18n="rm_btnLoad"></button>
   <button class="btn sm" id="btn-auto" type="button" disabled title="회원→디럭스 우선, 일반→예약종류. 예약순·기존 수기배정 보호" style="background:var(--accent2);border-color:var(--accent2)">🪄 자동배정</button>
+  <button class="btn ghost sm" id="btn-clear-all" type="button" disabled title="불러온 범위의 모든 배정 해제(수기·자동 전부)" style="color:var(--err);border-color:#e3bdb4">🧹 전체 비우기</button>
   <button class="btn ghost sm" id="btn-export" type="button" data-i18n-title="rm_btnExportTitle" data-i18n="rm_btnExport"></button>
   <span class="hint" id="session-hint"></span>
   <span id="sel-bar" style="display:none;align-items:center;gap:8px;margin-left:auto">
@@ -317,6 +325,13 @@
         <button class="vbtn" id="view-timeline" type="button" title="객실×날짜 점유 한눈에">📅 타임라인</button>
       </span>
     </h2>
+    <div class="fac-filter" id="fac-filter">
+      <button class="ffbtn active" type="button" data-fac="전체">전체</button>
+      <button class="ffbtn" type="button" data-fac="야마나미리조트"><span class="fdot" style="background:var(--y)"></span>야마나미</button>
+      <button class="ffbtn" type="button" data-fac="쿠주힐즈"><span class="fdot" style="background:var(--k)"></span>쿠주힐즈</button>
+      <button class="ffbtn" type="button" data-fac="간지호텔"><span class="fdot" style="background:var(--g)"></span>간지호텔</button>
+      <button class="ffbtn" type="button" data-fac="시즈노야도 료칸"><span class="fdot" style="background:var(--s)"></span>시즈노야도</button>
+    </div>
     <div class="col-body" id="facilities"></div>
     <div class="col-body" id="timeline" style="display:none"></div>
   </div>
@@ -410,7 +425,7 @@ async function connect(){
     if(error) throw error;
     setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
     btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
-    $('#btn-load').disabled=false; $('#btn-auto').disabled=false;
+    $('#btn-load').disabled=false; $('#btn-auto').disabled=false; $('#btn-clear-all').disabled=false;
     await loadInventory();
   }catch(e){
     setConn('연결 실패','err');
@@ -524,7 +539,7 @@ function renderTimeline(){
   if(!state.from){ box.innerHTML='<div class="empty-hint">날짜를 불러오세요</div>'; return; }
   const dates=dateRangeList(state.from,state.to);
   const WD=['일','월','화','수','목','금','토'];
-  const rooms=[...state.inventory].filter(r=>r.active)
+  const rooms=[...state.inventory].filter(r=>r.active && (facFilter==='전체' || r.facility===facFilter))
     .sort((a,b)=>(a.facility||'').localeCompare(b.facility||'')||(a.sort_order||0)-(b.sort_order||0));
   let html='<div class="tl-legend">'
     +'<span><span class="sw" style="background:#ecddb5"></span>디럭스</span>'
@@ -649,9 +664,11 @@ async function assignSelectedTo(inv){
   await assignMembers(ids, inv);
 }
 
+let facFilter='전체';   // '전체' | 시설명
 function renderFacilities(){
   const box=$('#facilities'); box.innerHTML='';
-  const FACS=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
+  const FACS=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸']
+    .filter(f=> facFilter==='전체' || f===facFilter);
   FACS.forEach(fac=>{
     const pfx=PFX[fac];
     const rooms=state.inventory.filter(r=>r.facility===fac);
@@ -1150,6 +1167,24 @@ async function clearZone(fac,zone){
   toast(`${zone} ${ids.length}건 해제`,'ok');
 }
 
+// ── 전체 배정 비우기 (불러온 범위의 모든 배정 · 수기+자동) ──
+async function clearAllAssignments(){
+  if(!supa){toast('먼저 연결하세요','warn');return;}
+  // 숙소필터가 걸려 있으면 그 시설만, 아니면 전부
+  const target = (facFilter==='전체')
+    ? state.rooms.slice()
+    : state.rooms.filter(r=>{const inv=invById(r.inventory_id);return inv&&inv.facility===facFilter;});
+  if(!target.length){toast('비울 배정이 없습니다','warn');return;}
+  const scope = facFilter==='전체' ? '불러온 범위 전체' : facFilter;
+  if(!confirm(`${scope}의 배정 ${target.length}건을 모두 뺄까요?\n(수기·자동 배정 전부 해제됩니다)`)) return;
+  const ids=target.map(r=>r.id);
+  const {error}=await supa.from('rooms').delete().in('id',ids);
+  if(error){toast('전체 비우기 실패: '+error.message,'err');return;}
+  state.rooms=state.rooms.filter(r=>!ids.includes(r.id));
+  rebuildAssignMap(); render();
+  toast(`${ids.length}건 배정 해제`,'ok');
+}
+
 // ── 싱글차지 모달: 대상자 선택 + 메리트 선불 여부 ──
 function openSingleFeeModal(g, inv, nights, roomId, preMember){
   const amount=FEE_SINGLE[inv.facility]*nights;
@@ -1378,6 +1413,14 @@ function setView(m){
 }
 $('#view-card').addEventListener('click',()=>setView('card'));
 $('#view-timeline').addEventListener('click',()=>setView('timeline'));
+$('#btn-clear-all').addEventListener('click',clearAllAssignments);
+// 숙소별 필터
+$('#fac-filter').addEventListener('click',e=>{
+  const b=e.target.closest('.ffbtn'); if(!b) return;
+  facFilter=b.dataset.fac;
+  $$('#fac-filter .ffbtn').forEach(x=>x.classList.toggle('active',x===b));
+  render();
+});
 // 미배정 영역으로 다시 드롭하면 배정 취소(맨 마지막 룸 제거)
 $('#unassigned').addEventListener('dragover',e=>e.preventDefault());
 // 미배정 영역으로의 드롭은 사용하지 않음(취소는 객실 칩의 ✕ 로). 선택 해제만.
