@@ -88,6 +88,7 @@
   .team-card .mbadge.mb-mem{color:var(--surface);background:var(--accent)}
   .team-card .mbadge.mb-non{color:var(--text2);background:var(--surface3);border:1px solid var(--border2)}
   .team-card .meta{font-size:13px;color:var(--text2);margin-top:3px}
+  .team-card .evno{font-size:10px;font-weight:700;color:var(--accent2);background:var(--surface3);border:1px solid var(--border2);border-radius:4px;padding:1px 5px;font-family:var(--mono);white-space:nowrap}
   .team-card .pax{display:inline-block;font-weight:700;color:var(--text)}
   .team-card .rtype{font-size:12px;color:var(--accent2);font-weight:700;margin-top:4px}
   .team-card .tag-row{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
@@ -157,7 +158,8 @@
   .ring-core span{background:var(--surface3);border:1px solid var(--border2);border-radius:4px;font-size:9px;color:var(--text2);padding:8px 9px;font-weight:700}
   .ring-compass{position:absolute;font-size:11px;font-weight:800;color:var(--accent2);z-index:2;letter-spacing:.02em}
   .ring-compass.c-n{left:50%;top:-7px;transform:translateX(-50%)}
-  .ring-compass.c-s{left:50%;bottom:-7px;transform:translateX(-50%)}
+  .ring-compass.c-s{left:50%;bottom:-9px;transform:translateX(-50%);text-align:center;line-height:1}
+  .ring-compass.c-s small{display:block;font-size:8px;font-weight:700;color:var(--text2)}
   .ring-compass.c-e{right:-9px;top:50%;transform:translateY(-50%)}
   .ring-compass.c-w{left:-9px;top:50%;transform:translateY(-50%)}
   .ring-room{position:absolute;width:15%;min-width:74px;transform:translate(-50%,-50%);
@@ -496,7 +498,7 @@ async function loadDay(){
   //   → 그 기간에 체크인~체크아웃이 한 번이라도 걸치는 팀
   const {data:g,error:ge}=await supa
     .from('guests')
-    .select('event_seq,team_tag,group_code,accom,accom_prefix,pax,check_status,bookings!inner(rep_name,dep_date,arr_date,product_name,member_type,remark)')
+    .select('event_seq,team_tag,group_code,accom,accom_prefix,pax,check_status,bookings!inner(event_no,rep_name,dep_date,arr_date,product_name,member_type,remark)')
     .lte('bookings.dep_date',to)
     .gt('bookings.arr_date',from);
   if(ge){toast('팀 로드 실패: '+ge.message,'err');return;}
@@ -504,6 +506,7 @@ async function loadDay(){
     event_seq:x.event_seq, team_tag:x.team_tag, group_code:x.group_code,
     accom:x.accom, pfx:x.accom_prefix||PFX[x.accom]||'X', pax:x.pax,
     rep:x.bookings?.rep_name||'', dep:x.bookings?.dep_date, arr:x.bookings?.arr_date,
+    event_no:x.bookings?.event_no||'',   // 행사번호(예약순 표시·우선순위)
     member_type:x.bookings?.member_type||'',
     remark:x.bookings?.remark||'',
     isNewCheckin: x.bookings?.dep_date===from,   // 이 범위 시작일에 신규 체크인
@@ -683,6 +686,7 @@ function renderUnassigned(){
       <div class="tag-row">
         <span class="tag">${gcode}</span>
         <span class="mbadge ${isNonMem?'mb-non':'mb-mem'}">${isNonMem?t('rm_nonmember'):t('rm_member')}</span>
+        ${g.event_no?`<span class="evno" title="행사번호(예약순 — 빠를수록 좋은 객실 우선)">🎫${g.event_no}</span>`:''}
         <span class="meta"><span class="pax">${g.pax}명</span> · 잔여 ${leftN} · ${g.accom}</span>
       </div>
       <div class="cdates">🛏 ${fmtMD(g.dep)} → ${fmtMD(g.arr)} · ${teamNights(g)}박${g.isNewCheckin?'<b class="cnew">오늘 체크인</b>':''}</div>
@@ -1053,7 +1057,7 @@ function renderFloorRing(zoneRooms){
   wrap.className='floor-ring';
   // 가운데 EV/계단 표시
   wrap.innerHTML=`<div class="ring-core"><span>EV</span><span>EV</span></div>
-    <div class="ring-compass c-n">N</div><div class="ring-compass c-s">S</div>
+    <div class="ring-compass c-n">N</div><div class="ring-compass c-s">S<small>🚪입구</small></div>
     <div class="ring-compass c-e">E</div><div class="ring-compass c-w">W</div>`;
   zoneRooms.forEach(inv=>{
     const pos=inv.room_no.match(/(\d+)호/);
@@ -1206,19 +1210,24 @@ function autoRoute(g){
 }
 
 // 라우팅+종류 → 후보 객실 풀(활성, 우선순위 정렬)
+// 층 번호(3~12). 비호텔/별장 등은 0. 정렬에서 '높은 층 우선·3층 맨 뒤'에 사용.
+function floorOf(r){ const m=String(r.zone||'').match(/^(\d+)층$/); return m?+m[1]:0; }
 function roomPool(route, kind){
   let rooms=state.inventory.filter(r=>r.facility===route.fac && r.active);
   if(route.floorOnly)      rooms=rooms.filter(r=>/^\d+층$/.test(r.zone||''));
   else if(route.zone)      rooms=rooms.filter(r=>(r.zone||'')===route.zone);
+  // 공통 1순위: 높은 층 우선(3층=기피층이라 맨 뒤). 예약 빠른 팀이 먼저 좋은 층을 받음.
+  const byFloorDesc=(a,b)=>floorOf(b)-floorOf(a);
   if(kind==='deluxe'){
     rooms=rooms.filter(r=>DELUXE_TYPES.includes(r.room_type));
-    rooms.sort((a,b)=>DELUXE_TYPES.indexOf(a.room_type)-DELUXE_TYPES.indexOf(b.room_type)
+    rooms.sort((a,b)=>byFloorDesc(a,b)
+                      || (DELUXE_TYPES.indexOf(a.room_type)-DELUXE_TYPES.indexOf(b.room_type))
                       || (a.sort_order||0)-(b.sort_order||0));
   }else{
     if(route.genTypes){
       rooms=rooms.filter(r=>route.genTypes.includes(r.room_type));
-      // 예약종류 우선순위(genTypes 순) → 같은 종류 내 sort_order
-      rooms.sort((a,b)=>route.genTypes.indexOf(a.room_type)-route.genTypes.indexOf(b.room_type)
+      rooms.sort((a,b)=>byFloorDesc(a,b)
+                        || (route.genTypes.indexOf(a.room_type)-route.genTypes.indexOf(b.room_type))
                         || (a.sort_order||0)-(b.sort_order||0));
     }else{
       rooms=rooms.filter(r=>(r.max_capacity||r.capacity)>=2); // 비호텔: 2인 이상 방
