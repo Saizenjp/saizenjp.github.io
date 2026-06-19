@@ -142,7 +142,10 @@
   .room .chip .csplit + .cx{margin-left:4px}
   .room .chip .cpax{color:var(--text2)}
   .room .chip .cen{flex-basis:100%;font-size:10.5px;color:var(--text2);font-family:var(--mono);margin-top:2px;line-height:1.3}
-  .room.warn{border-color:var(--warn)}
+  .room.warn{border-color:var(--err)!important;background:#fbeeeb!important;box-shadow:0 0 0 1px var(--err)}  /* 초과=위험(빨강) */
+  .room.full{border-color:var(--ok)!important;background:#edf6ee!important}                                   /* 정원 꽉참=깔끔(초록) */
+  .room.partial{border-color:var(--warn)!important;background:#fbf6e9!important}                              /* 정원 미달=주의(앰버) */
+  .room.full .cap{color:var(--ok);font-weight:700} .room.partial .cap{color:var(--warn);font-weight:700} .room.warn .cap{color:var(--err);font-weight:700}
   .room .badge{position:absolute;bottom:8px;right:10px;font-size:10px;font-weight:700;color:var(--warn)}
   .room .note{font-size:11px;color:var(--muted);margin-top:3px}
 
@@ -232,11 +235,15 @@
   .day-strip:empty{display:none}
   .day-chip{flex:0 0 auto;font-family:inherit;font-size:12px;font-weight:700;line-height:1.1;text-align:center;padding:5px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;transition:.1s;min-width:42px}
   .day-chip small{display:block;font-size:9px;color:var(--muted);font-weight:600}
-  .day-chip.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .day-chip.active{background:var(--accent);color:#fff;border-color:var(--accentDeep);box-shadow:0 0 0 2px var(--accentSoft);transform:translateY(-1px)}
   .day-chip.active small{color:#e7efdc}
   .day-chip.we:not(.active){color:var(--err)}
   .day-chip:not(.active):hover{background:var(--accentSoft)}
   .day-chip .dcnt{display:block;font-size:9px;font-weight:700;color:var(--accent2)}
+  .day-chip.ds-all{background:var(--surface2);border-style:dashed;min-width:54px}
+  .day-chip.ds-all.active{background:var(--accent2);border-color:var(--accent2);border-style:solid}
+  .ds-lbl{font-size:11px;color:var(--text2);font-weight:700;flex:0 0 auto;margin-right:2px}
+  .ds-lbl small{font-weight:600;color:var(--muted)}
   .day-chip.active .dcnt{color:#fff}
 
   /* 숙소별 필터 */
@@ -415,6 +422,10 @@ function roomOccAt(invId, d){
   return state.rooms.filter(r=>r.inventory_id===invId && (!d || (r.check_in<=d && d<r.check_out)));
 }
 function roomUsedPax(inv){return roomOccAt(inv.id, state.focus||state.from).reduce((s,r)=>s+(r.assigned_pax||0),0);}
+// 한 사람의 배정 객실(분할이면 여러 개) · 라벨 · 일괄 해제
+function memberRooms(mid){return state.rooms.filter(r=>r.member_id===mid);}
+function memberRoomLabel(mid){const rs=memberRooms(mid);return rs.length?[...new Set(rs.map(r=>r.room_no))].join(', '):'배정완료';}
+async function unassignMember(mid){const rs=memberRooms(mid);for(const r of rs){await unassign(r.id);}}
 // ── 월 선택: 그 달 1일~말일을 범위로, 일별 칩은 그 달 전체 ──
 function lastDayOfMonth(ym){ const [y,m]=ym.split('-').map(Number); return `${ym}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`; }
 async function loadMonth(ym, focusDay){
@@ -546,28 +557,30 @@ function render(){
   renderSummary();
 }
 
-// ── 일별 선택 칩 (다중 선택 토글) ──
-//   · 선택 비움 = 전체 날짜 · 여러 날 켜면 타임라인이 그 날짜들만 펼쳐 보임
-//   · 카드 보기는 마지막 클릭한 날(state.focus) 기준
+// ── 일별 칩 ──
+//   · 카드 보기 = 하루만(단일 선택). 보고 있는 날만 하이라이트.
+//   · 타임라인 보기 = 복수 선택. '전체'면 모든 날짜가 켜진 것처럼 표시. 빈 선택=전체.
 function renderDayStrip(){
   const box=$('#day-strip'); if(!box) return;
   if(!state.from){ box.innerHTML=''; return; }
   const dates=dateRangeList(state.from,state.to);
   if(dates.length<=1){ box.innerHTML=''; return; }
   if(!state.days) state.days=new Set();
-  const noneSel=state.days.size===0;
   const WD=['일','월','화','수','목','금','토'];
-  const inByDate={};
-  state.guests.forEach(g=>{ if(g.dep) inByDate[g.dep]=(inByDate[g.dep]||0)+1; });
-  box.innerHTML='<span style="font-size:11px;color:var(--text2);font-weight:700;flex:0 0 auto;margin-right:2px">📅 일별</span>'
-    +`<button class="day-chip${noneSel?' active':''}" data-d="전체" type="button" title="전체 날짜">전체</button>`
-    + dates.map(d=>{
-        const wd=WD[new Date(d+'T00:00:00').getDay()];
-        const we=(wd==='토'||wd==='일');
-        const cin=inByDate[d]||0;
-        const on = state.days.has(d) || (noneSel && viewMode==='card' && d===state.focus);
-        return `<button class="day-chip${on?' active':''}${we?' we':''}" data-d="${d}" title="${d} · 체크인 ${cin}팀">${fmtMD(d)}<small>${wd}</small>${cin?`<span class="dcnt">+${cin}</span>`:''}</button>`;
-      }).join('');
+  const inByDate={}; state.guests.forEach(g=>{ if(g.dep) inByDate[g.dep]=(inByDate[g.dep]||0)+1; });
+  const chip=(d,active)=>{
+    const wd=WD[new Date(d+'T00:00:00').getDay()]; const we=(wd==='토'||wd==='일'); const cin=inByDate[d]||0;
+    return `<button class="day-chip${active?' active':''}${we?' we':''}" data-d="${d}" title="${d} · 체크인 ${cin}팀">${fmtMD(d)}<small>${wd}</small>${cin?`<span class="dcnt">+${cin}</span>`:''}</button>`;
+  };
+  if(viewMode==='timeline'){
+    const all=state.days.size===0;
+    box.innerHTML='<span class="ds-lbl">📅 타임라인 일자 <small>복수 선택</small></span>'
+      +`<button class="day-chip ds-all${all?' active':''}" data-d="전체" title="모든 날짜">${all?'✓ ':''}전체</button>`
+      + dates.map(d=>chip(d, all || state.days.has(d))).join('');   // 전체면 전부 하이라이트
+  } else {
+    box.innerHTML='<span class="ds-lbl">📅 날짜 <small>하루씩</small></span>'
+      + dates.map(d=>chip(d, d===(state.focus||state.from))).join('');
+  }
 }
 
 // ── 타임라인(테이프 차트): 객실(행) × 날짜(열) 점유 한눈에 ──
@@ -658,7 +671,7 @@ function renderUnassigned(){
         <span class="rtag">${m.tag||(m.num)}</span>
         <span class="rname">${m.name_kr||'-'}${m.is_rep?'<i class="repbadge">REP</i>':''}<i class="gbadge" style="display:inline-block;font-size:8.5px;font-weight:700;border-radius:3px;padding:1px 5px;margin-left:5px;vertical-align:middle;${isMember(m.member_grade)?'color:#fff;background:var(--accent2)':'color:var(--text2);background:var(--surface3);border:1px solid var(--border2)'}">${gradeLabel(m.member_grade)}</i></span>
         <span class="ren">${m.name_en||''}</span>
-        ${isDone?'<span class="rdone">배정완료</span>':''}
+        ${isDone?`<span class="rdone" title="배정된 객실">🛏${memberRoomLabel(m.id)} <button class="runassign" data-mid="${m.id}" title="배정 해제 → 명단으로">✕해제</button></span>`:''}
       </div>`;
     }).join('') : '<div class="rmember dim">명단 정보 없음</div>';
     const isNonMem=(g.group_code||'').startsWith('F');
@@ -700,6 +713,8 @@ function renderUnassigned(){
       });
       row.addEventListener('dragend',()=>row.classList.remove('dragging'));
     });
+    // 배정완료 행의 ✕해제 → 그 사람 배정 전부 풀어 명단으로
+    card.querySelectorAll('.runassign').forEach(btn=>btn.addEventListener('click',ev=>{ev.stopPropagation();unassignMember(btn.dataset.mid);}));
     box.appendChild(card);
   });
   renderSelBar();
@@ -914,16 +929,19 @@ function renderRoom(inv){
   const assigned=roomOccAt(inv.id, state.focus||state.from);   // 기준일 하룻밤 점유만
   const usedPax=assigned.reduce((s,r)=>s+(r.assigned_pax||0),0);
   const cap=inv.max_capacity||inv.capacity;
-  div.className='room'+(inv.active?'':' inactive')+(assigned.length?' filled':'')+(usedPax>inv.capacity?' warn':'');
+  // 상태색: 초과=빨강(위험) · 정원 꽉참=초록(깔끔) · 정원 미달=앰버(주의)
+  const stCls = usedPax>inv.capacity ? ' warn' : (usedPax>0 && usedPax>=inv.capacity ? ' full' : (usedPax>0 ? ' partial' : ''));
+  div.className='room'+(inv.active?'':' inactive')+(assigned.length?' filled':'')+stCls;
   div.dataset.invId=inv.id;
   let chips=assigned.map(r=>{
     const m=r.member_id!=null?memberById(r.member_id):null;
     const tag=m?personTag(r.event_seq,m.seq_in_team||1):(teamGroupCode(r.event_seq)||('팀'+r.event_seq));
     const nameKr=m?(m.name_kr||'-'):'';
     const nameEn=m?(m.name_en||''):teamEnNames(r.event_seq);
+    const gb=m?`<i class="gbadge" style="display:inline-block;font-size:8px;font-weight:700;border-radius:3px;padding:0 4px;margin-left:4px;vertical-align:middle;${isMember(m.member_grade)?'color:#fff;background:var(--accent2)':'color:var(--text2);background:var(--surface3);border:1px solid var(--border2)'}">${gradeLabel(m.member_grade)}</i>`:'';
     return `<div class="chip">
       <div class="chip-head"><span class="ctag">${tag}</span>${m?`<span class="csplit" data-room-id="${r.id}" title="기준일부터 다른 방으로 분할">✂</span>`:''}<span class="cx" data-room-id="${r.id}" title="배정 취소">✕</span></div>
-      <div class="cpeople"><div class="cperson"><b>${nameKr}</b> ${nameEn}</div></div>
+      <div class="cpeople"><div class="cperson"><b>${nameKr}</b> ${nameEn}${gb}</div></div>
     </div>`;
   }).join('');
   div.innerHTML=`
@@ -1036,7 +1054,7 @@ function renderFloorRing(zoneRooms){
     const num=pos?parseInt(pos[1],10)%100:0;     // 끝 두 자리 = 위치 번호
     const xy=RING_POS[num];
     const node=document.createElement('div');
-    const assigned=state.rooms.filter(r=>r.inventory_id===inv.id);
+    const assigned=roomOccAt(inv.id, state.focus||state.from);   // 평면도도 기준일 하룻밤만
     const usedPax=assigned.reduce((s,r)=>s+(r.assigned_pax||0),0);
     node.className='ring-room t-'+inv.room_type+(inv.active?'':' inactive')+(assigned.length?' filled':'')+(usedPax>inv.capacity?' warn':'');
     if(xy){ node.style.left=xy.x+'%'; node.style.top=xy.y+'%'; }
@@ -1069,8 +1087,11 @@ function renderFloorRing(zoneRooms){
 
 function renderSummary(){
   const total=state.guests.reduce((s,g)=>s+g.pax,0);
-  const done=state.rooms.reduce((s,r)=>s+(r.assigned_pax||0),0);
-  $('#assign-summary').textContent=`${done}/${total}명 배정`;
+  const done=assignedMemberSet().size;   // 분할돼도 1명으로 셈
+  const el=$('#assign-summary'); const allDone=(total>0 && done>=total);
+  el.textContent = allDone ? `✓ 전원 ${done}명 배정` : `${done}/${total}명 배정`;
+  el.style.color = allDone ? 'var(--ok)' : '';
+  el.style.fontWeight = allDone ? '800' : '';
 }
 
 // ── 두 기간이 겹치는가 (체크인~체크아웃, 반개구간) ──
@@ -1566,13 +1587,17 @@ $('#view-card').addEventListener('click',()=>setView('card'));
 $('#view-timeline').addEventListener('click',()=>setView('timeline'));
 $('#btn-clear-all').addEventListener('click',clearAllAssignments);
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') cancelSplit(); });
-// 일별 칩: 다중 선택 토글(타임라인 펼침) + 마지막 클릭일=카드 기준. 재조회 없음
+// 일별 칩: 타임라인=복수선택 토글, 카드=하루 단일선택. 재조회 없음
 $('#day-strip').addEventListener('click',e=>{
   const b=e.target.closest('.day-chip'); if(!b) return;
   const d=b.dataset.d;
   if(!state.days) state.days=new Set();
-  if(d==='전체'){ state.days.clear(); state.focus=state.from; }
-  else { state.days.has(d)?state.days.delete(d):state.days.add(d); state.focus=d; }
+  if(viewMode==='timeline'){
+    if(d==='전체') state.days.clear();                       // 전체 = 모든 날짜
+    else state.days.has(d)?state.days.delete(d):state.days.add(d);
+  } else {
+    if(d!=='전체') state.focus=d;                            // 카드 = 그날 단일
+  }
   render();
 });
 // 숙소별 다중 필터 (객실 배정 = placeSel · 미배정 팀 = teamSel)
