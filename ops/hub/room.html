@@ -224,6 +224,18 @@
   .vbtn.active{background:var(--accent);color:#fff}
   .vbtn:not(.active):hover{background:var(--accentSoft)}
 
+  /* 일별 선택 칩 (불러온 범위의 날짜를 하루씩) */
+  .day-strip{display:flex;gap:5px;overflow-x:auto;padding:4px 20px 10px;align-items:center}
+  .day-strip:empty{display:none}
+  .day-chip{flex:0 0 auto;font-family:inherit;font-size:12px;font-weight:700;line-height:1.1;text-align:center;padding:5px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;transition:.1s;min-width:42px}
+  .day-chip small{display:block;font-size:9px;color:var(--muted);font-weight:600}
+  .day-chip.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .day-chip.active small{color:#e7efdc}
+  .day-chip.we:not(.active){color:var(--err)}
+  .day-chip:not(.active):hover{background:var(--accentSoft)}
+  .day-chip .dcnt{display:block;font-size:9px;font-weight:700;color:var(--accent2)}
+  .day-chip.active .dcnt{color:#fff}
+
   /* 숙소별 필터 */
   .fac-filter{display:flex;gap:6px;flex-wrap:wrap;padding:10px 13px 2px}
   .ffbtn{font-family:inherit;font-size:12px;font-weight:700;padding:5px 12px;border:1px solid var(--border2);border-radius:99px;background:var(--surface);color:var(--text2);cursor:pointer;transition:.12s;display:inline-flex;align-items:center;gap:5px}
@@ -308,6 +320,7 @@
     <span><span class="sw" style="background:var(--s)"></span><span data-i18n="rm_legS"></span></span>
   </div>
 </div>
+<div class="day-strip" id="day-strip"></div>
 
 <div class="stage">
   <!-- 좌: 미배정 팀 -->
@@ -404,7 +417,7 @@ function teamNights(g){if(!g.dep||!g.arr)return 0;return Math.max(0,Math.round((
 function roomOccAt(invId, d){
   return state.rooms.filter(r=>r.inventory_id===invId && (!d || (r.check_in<=d && d<r.check_out)));
 }
-function roomUsedPax(inv){return roomOccAt(inv.id, state.from).reduce((s,r)=>s+(r.assigned_pax||0),0);}
+function roomUsedPax(inv){return roomOccAt(inv.id, state.focus||state.from).reduce((s,r)=>s+(r.assigned_pax||0),0);}
 function shiftDate(delta){
   // 시작·종료를 함께 ±1일 (범위 통째로 슬라이드, 단일일이면 다음 날로)
   const from=$('#date-pick').value||isoToday();
@@ -456,7 +469,7 @@ async function loadDay(){
   let to = $('#date-to').value || from;     // 종료 비우면 단일일
   if(!from){toast('날짜를 선택하세요','warn');return;}
   if(to<from) to=from;                       // 종료<시작이면 단일일로 보정
-  state.from=from; state.to=to; state.date=from;
+  state.from=from; state.to=to; state.date=from; state.focus=from;   // 카드 기준일=시작일
 
   // 점유 판정: dep_date <= to(범위끝) AND arr_date > from(범위시작)
   //   → 그 기간에 체크인~체크아웃이 한 번이라도 걸치는 팀
@@ -521,9 +534,28 @@ function rebuildAssignMap(){
 let viewMode='card';   // 'card' | 'timeline'
 function render(){
   _tagMapCache=null;
+  renderDayStrip();
   renderUnassigned();
   if(viewMode==='timeline'){ renderTimeline(); } else { renderFacilities(); }
   renderSummary();
+}
+
+// ── 일별 선택 칩 (불러온 범위의 날짜를 하루씩 클릭) ──
+function renderDayStrip(){
+  const box=$('#day-strip'); if(!box) return;
+  if(viewMode==='timeline' || !state.from){ box.innerHTML=''; return; }
+  const dates=dateRangeList(state.from,state.to);
+  if(dates.length<=1){ box.innerHTML=''; return; }   // 하루면 칩 불필요
+  const WD=['일','월','화','수','목','금','토'];
+  const inByDate={};
+  state.guests.forEach(g=>{ if(g.dep) inByDate[g.dep]=(inByDate[g.dep]||0)+1; });
+  box.innerHTML='<span style="font-size:11px;color:var(--text2);font-weight:700;flex:0 0 auto;margin-right:2px">📅 일별</span>'
+    + dates.map(d=>{
+        const wd=WD[new Date(d+'T00:00:00').getDay()];
+        const we=(wd==='토'||wd==='일');
+        const cin=inByDate[d]||0;
+        return `<button class="day-chip${d===state.focus?' active':''}${we?' we':''}" data-d="${d}" title="${d} · 체크인 ${cin}팀">${fmtMD(d)}<small>${wd}</small>${cin?`<span class="dcnt">+${cin}</span>`:''}</button>`;
+      }).join('');
 }
 
 // ── 타임라인(테이프 차트): 객실(행) × 날짜(열) 점유 한눈에 ──
@@ -674,7 +706,7 @@ function renderFacilities(){
   if(state.from && state.to && state.from!==state.to){
     const h=document.createElement('div');
     h.style.cssText='font-size:12px;color:var(--text2);background:var(--surface3);border-radius:7px;padding:7px 12px;margin-bottom:10px';
-    h.innerHTML=`📅 카드는 <b>${state.from}</b> 하룻밤 기준 현황이에요. 기간 전체 점유는 우측 <b>📅 타임라인</b> 으로 보세요 (◀▶ 로 날짜 이동).`;
+    h.innerHTML=`📅 카드는 <b>${state.focus||state.from}</b> 하룻밤 기준이에요. 위 <b>일별</b> 칩으로 날짜를 바꾸고, 기간 전체 점유는 <b>📅 타임라인</b> 으로 보세요.`;
     box.appendChild(h);
   }
   const FACS=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸']
@@ -830,7 +862,7 @@ function invById(id){return state.inventory.find(i=>i.id===id);}
 
 function renderRoom(inv){
   const div=document.createElement('div');
-  const assigned=roomOccAt(inv.id, state.from);   // 기준일 하룻밤 점유만
+  const assigned=roomOccAt(inv.id, state.focus||state.from);   // 기준일 하룻밤 점유만
   const usedPax=assigned.reduce((s,r)=>s+(r.assigned_pax||0),0);
   const cap=inv.max_capacity||inv.capacity;
   div.className='room'+(inv.active?'':' inactive')+(assigned.length?' filled':'')+(usedPax>inv.capacity?' warn':'');
@@ -1442,6 +1474,11 @@ function setView(m){
 $('#view-card').addEventListener('click',()=>setView('card'));
 $('#view-timeline').addEventListener('click',()=>setView('timeline'));
 $('#btn-clear-all').addEventListener('click',clearAllAssignments);
+// 일별 칩 클릭 → 그날 기준으로 카드 갱신(재조회 없음)
+$('#day-strip').addEventListener('click',e=>{
+  const b=e.target.closest('.day-chip'); if(!b) return;
+  state.focus=b.dataset.d; render();
+});
 // 숙소별 필터
 $('#fac-filter').addEventListener('click',e=>{
   const b=e.target.closest('.ffbtn'); if(!b) return;
