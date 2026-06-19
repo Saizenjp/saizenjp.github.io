@@ -124,7 +124,7 @@
   @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.9">
 </head>
 <body>
 <div class="topbar so-bar">
@@ -196,7 +196,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.8"></script>
+<script src="../assets/saizen-ops.js?v=14.9"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -350,7 +350,7 @@ function addToCart(m){
   const key=m.id+'|'+price+'|'+desc;
   const exist=state.cart.find(l=>l.key===key);
   if(exist) exist.qty+=1;
-  else state.cart.push({key, id:m.id, category:m.category, venue:m.venue||'etc', name_ja:desc, name_ko:(price===Number(m.unit_price)?m.name_ko:''), unit_price:price, qty:1});
+  else state.cart.push({key, id:m.id, category:m.category, venue:m.venue||'etc', station:m.station||'kitchen', name_ja:desc, name_ko:(price===Number(m.unit_price)?m.name_ko:''), unit_price:price, qty:1});
   renderCart();
 }
 function changeQty(key,delta){
@@ -418,8 +418,16 @@ async function sendCart(){
     });
     const {error}=await supa.from('charges').insert(rows);
     if(error) throw error;
+    // 주방행(station=kitchen) 항목만 KDS 티켓 발행 — charges(돈)와 분리된 조리 큐
+    const tickets=state.cart.filter(l=>l.station==='kitchen').map(l=>({
+      folio_id:folioId, event_seq:state.team.event_seq, team_tag:state.team.team_tag||('#'+state.team.event_seq),
+      station:'kitchen', item_name:l.name_ja, qty:l.qty, created_by:by }));
+    if(tickets.length){
+      const {error:te}=await supa.from('kitchen_tickets').insert(tickets);
+      if(te) toast('주방 티켓 발행 실패(청구는 완료): '+te.message,'warn');
+    }
     const total=rows.reduce((s,r)=>s+r.amount+r.tax,0);
-    toast(`${state.team.team_tag||('#'+state.team.event_seq)} 에 ${rows.length}건 · ${yen(total)} 전송됨`,'ok');
+    toast(`${state.team.team_tag||('#'+state.team.event_seq)} 에 ${rows.length}건 · ${yen(total)} 전송됨${tickets.length?` · 주방 ${tickets.length}건`:''}`,'ok');
     state.runningGross+=total; $('#oh-run').textContent=yen(state.runningGross);
     state.cart=[]; renderCart();
   }catch(e){
