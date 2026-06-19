@@ -476,6 +476,19 @@ async function run(){
         procMap[seq] = {accom, accomPfx:accomPrefix(accom), pax, repName:String(r['대표고객']||'').trim()};
       }
     });
+
+    // ── 수정이력용: 업로드 전 그 달 기존 상태 스냅샷 (upsert 전에 떠야 추가/삭제 구분 가능) ──
+    const _oldBk = {};   // event_seq -> rep_name
+    const _oldPx = {};   // event_seq -> { 이름+생년6: {name, grade} }
+    try {
+      let pg=0;
+      while(true){ const {data,error}=await supa.from('bookings').select('event_seq,rep_name').eq('session_ym',ym).range(pg,pg+999);
+        if(error||!data||!data.length) break; data.forEach(b=>{_oldBk[b.event_seq]=b.rep_name||'';}); if(data.length<1000) break; pg+=1000; }
+      pg=0;
+      while(true){ const {data,error}=await supa.from('passengers').select('event_seq,name_kr,birth_yymmdd,member_grade,bookings!inner(session_ym)').eq('bookings.session_ym',ym).range(pg,pg+999);
+        if(error||!data||!data.length) break; data.forEach(p=>{const k=(p.name_kr||'')+(p.birth_yymmdd||''); (_oldPx[p.event_seq]=_oldPx[p.event_seq]||{})[k]={name:p.name_kr,grade:p.member_grade};}); if(data.length<1000) break; pg+=1000; }
+    } catch(e){ log('· 수정이력 스냅샷 실패(무시): '+e.message,'dim'); }
+
     stat['bookings'] = await upsertChunked('bookings', bookingRows, 'event_seq');
     log(`✓ ${t('s1_dyn_log_booking')} ${stat['bookings']}${t('s1_dyn_cases')} (${t('s1_dyn_cntTarget')} ${Object.keys(procMap).length}${t('s1_dyn_teams')})`,'ok');
 
@@ -655,11 +668,28 @@ async function run(){
 
     log('■ 적재 완료. 운영층 rooms/rounds/dining/transactions는 2단계 모듈에서 채웁니다.','ok');
     showStats(stat);
-    // ── 변경이력 기록 (누가·언제·무슨 파일·건수) ──
+    // ── 수정이력 diff 계산 (이름+생년6자리 = 사람 단위) ──
+    const changes = { teams_added:[], teams_removed:[], persons_added:[], persons_removed:[], grade_changed:[] };
+    try {
+      const newPx={};
+      paxRows.forEach(p=>{ const k=(p.name_kr||'')+(p.birth_yymmdd||''); (newPx[p.event_seq]=newPx[p.event_seq]||{})[k]={name:p.name_kr,grade:p.member_grade}; });
+      const newSeqs=new Set(bookingRows.map(b=>b.event_seq));
+      const oldSeqs=new Set(Object.keys(_oldBk).map(Number));
+      newSeqs.forEach(s=>{ if(!oldSeqs.has(s)) changes.teams_added.push(s); });
+      oldSeqs.forEach(s=>{ if(!newSeqs.has(s)) changes.teams_removed.push({seq:s, rep:_oldBk[s], n:Object.keys(_oldPx[s]||{}).length}); });
+      newSeqs.forEach(s=>{ if(!oldSeqs.has(s)) return;     // 신규팀은 위에서
+        const o=_oldPx[s]||{}, n=newPx[s]||{};
+        Object.keys(n).forEach(k=>{ if(!(k in o)) changes.persons_added.push({seq:s,name:n[k].name});
+          else if((o[k].grade||'')!==(n[k].grade||'')) changes.grade_changed.push({seq:s,name:n[k].name,from:o[k].grade||'-',to:n[k].grade||'-'}); });
+        Object.keys(o).forEach(k=>{ if(!(k in n)) changes.persons_removed.push({seq:s,name:o[k].name}); });
+      });
+    } catch(e){}
+    // ── 변경이력 기록 (누가·언제·무슨 파일·건수 + diff) ──
     try {
       const by = ($('#uploader')?.value||'').trim();
       const files = SLOTS.filter(s=>s.file).map(s=>s.file).join(', ');
-      await supa.from('import_log').insert({ session_ym: ym, uploaded_by: by||null, files, counts: stat });
+      const { data: logRow } = await supa.from('import_log').insert({ session_ym: ym, uploaded_by: by||null, files, counts: stat }).select().single();
+      if(logRow){ try{ await supa.from('import_log').update({ changes }).eq('id', logRow.id); }catch(e){} }  // changes 컬럼 없으면 무시
       if(by){ try{ localStorage.setItem('saizen_hub_uploader', by); }catch(e){} }
       await loadHistory();
     } catch(e){ log('· '+t('s1_dyn_histFail')+': '+e.message, 'warn'); }
@@ -712,12 +742,27 @@ function loadMemberCache(){
   }catch(e){}
 }
 
+// ── 수정이력(diff) 표시: 취소·추가팀 / 일행 빠짐·추가·등급변경 (이름+생년 기준) ──
+function fmtChanges(ch){
+  if(!ch || typeof ch!=='object') return '';
+  const ta=(ch.teams_added||[]), tr=(ch.teams_removed||[]), pa=(ch.persons_added||[]), pr=(ch.persons_removed||[]), gc=(ch.grade_changed||[]);
+  if(!(ta.length+tr.length+pa.length+pr.length+gc.length)) return '';
+  const sum=[]; if(tr.length)sum.push(`❌취소 ${tr.length}팀`); if(ta.length)sum.push(`➕추가 ${ta.length}팀`);
+  if(pr.length)sum.push(`➖빠짐 ${pr.length}`); if(pa.length)sum.push(`➕일행 ${pa.length}`); if(gc.length)sum.push(`🔄등급 ${gc.length}`);
+  let d='';
+  tr.forEach(t=>d+=`<div style="margin-left:20px;color:var(--err)">❌ 취소 ${t.seq} ${t.rep||''}(${t.n||0}명)</div>`);
+  ta.forEach(s=>d+=`<div style="margin-left:20px;color:var(--ok)">➕ 신규팀 ${s}</div>`);
+  pr.forEach(x=>d+=`<div style="margin-left:20px">➖ ${x.seq} <b>${x.name||''}</b> 빠짐</div>`);
+  pa.forEach(x=>d+=`<div style="margin-left:20px">➕ ${x.seq} <b>${x.name||''}</b> 추가</div>`);
+  gc.forEach(x=>d+=`<div style="margin-left:20px">🔄 ${x.seq} ${x.name||''} 등급 ${x.from}→${x.to}</div>`);
+  return `<div style="margin-left:14px;color:var(--accent2);font-weight:700">↳ ${sum.join(' · ')}</div>${d}`;
+}
 // ── 변경이력 로드 (import_log) ──
 async function loadHistory(){
   if(!supa) return;
   try {
     const { data } = await supa.from('import_log')
-      .select('session_ym,uploaded_by,files,counts,uploaded_at')
+      .select('*')
       .order('uploaded_at',{ascending:false}).limit(12);
     const rows = data||[];
     const names = [...new Set(rows.map(r=>r.uploaded_by).filter(Boolean))];
@@ -730,7 +775,7 @@ async function loadHistory(){
         const ts = `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
         const c = r.counts||{};
         const cnt = (c.bookings!=null) ? ` · ${c.bookings}/${c.passengers}/${c.guests}` : '';
-        return `<div>· <b>${ts}</b> · ${r.uploaded_by||'-'} · ${r.session_ym||''} · ${r.files||''}${cnt}</div>`;
+        return `<div>· <b>${ts}</b> · ${r.uploaded_by||'-'} · ${r.session_ym||''} · ${r.files||''}${cnt}</div>${fmtChanges(r.changes)}`;
       }).join('');
     }
     // 등록 상태 안내 + 등록 결과 복원 (최근 등록분)
