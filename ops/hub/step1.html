@@ -290,14 +290,14 @@ function handleFile(slotId, fileList){
   });
 }
 
-// ── 세션(YYYY-MM) 자동 감지: 예약리스트 출발일자 최솟값 ──
+// ── 세션(YYYY-MM) 자동 감지: 예약리스트 출발월 (여러 달이면 모두 표시) ──
 function detectSession(){
   const res = SLOTS.find(s=>s.id==='res').data;
   if(!res) return;
-  const dates = res.map(r=>fmtDate(r['출발일자'])).filter(Boolean).sort();
-  if(dates.length){
-    window._sessionYM = dates[0].slice(0,7);
-    $('#session-label').innerHTML = `세션 <b>${window._sessionYM}</b>`;
+  const months = [...new Set(res.map(r=>(fmtDate(r['출발일자'])||'').slice(0,7)).filter(Boolean))].sort();
+  if(months.length){
+    window._sessionYM = months[0];   // 폴백용 최솟값
+    $('#session-label').innerHTML = `세션 <b>${months.join(', ')}</b>`;
   }
 }
 
@@ -441,6 +441,7 @@ async function run(){
     //   운영 대상만 추림: pax>0, 현지예약·항공조인·구마모토시내 제외, 숙소 4종 해당
     const procMap = {};   // event_seq → {accom, accomPfx, pax, repName}
     const bookingRows = [];
+    const ymBySeq = {};   // event_seq → 'YYYY-MM' (팀별 출발월 — 여러 달 동시 업로드 대응)
     res.forEach(r=>{
       const status = String(r['구분']||'').trim();
       if(!['견적','대기','확정','정산'].includes(status)) return;
@@ -451,6 +452,7 @@ async function run(){
       if(pname.includes('현지예약')||pname.includes('항공조인')||pname.includes('구마모토 시내')) return;
       const accom = detectAccom(pname);
       const remark = String(r['비고']||'').trim();
+      const rowYm = (birthISO(r['출발일자'])||'').slice(0,7) || ym;   // 팀별 출발월
       bookingRows.push({
         event_seq:seq,
         event_no:String(r['행사번호']||'').trim()||null,
@@ -470,22 +472,27 @@ async function run(){
         remark_local:String(r['현지 비고']||'').trim()||null,
         remark_etc:String(r['기타 비고']||'').trim()||null,
         team_label:parseTeam(remark),
-        session_ym:ym
+        session_ym:rowYm
       });
+      ymBySeq[seq]=rowYm;
       if(pax>0 && accom){
         procMap[seq] = {accom, accomPfx:accomPrefix(accom), pax, repName:String(r['대표고객']||'').trim()};
       }
     });
+
+    // 이 업로드에 포함된 월(여러 달일 수 있음) — 동기화·스냅샷·이력 범위
+    const fileMonths = [...new Set(Object.values(ymBySeq))].filter(Boolean).sort();
+    if(fileMonths.length){ $('#session-label').innerHTML = '세션 <b>'+fileMonths.join(', ')+'</b>'; }
 
     // ── 수정이력용: 업로드 전 그 달 기존 상태 스냅샷 (upsert 전에 떠야 추가/삭제 구분 가능) ──
     const _oldBk = {};   // event_seq -> rep_name
     const _oldPx = {};   // event_seq -> { 이름+생년6: {name, grade} }
     try {
       let pg=0;
-      while(true){ const {data,error}=await supa.from('bookings').select('event_seq,rep_name').eq('session_ym',ym).range(pg,pg+999);
+      while(true){ const {data,error}=await supa.from('bookings').select('event_seq,rep_name').in('session_ym',fileMonths).range(pg,pg+999);
         if(error||!data||!data.length) break; data.forEach(b=>{_oldBk[b.event_seq]=b.rep_name||'';}); if(data.length<1000) break; pg+=1000; }
       pg=0;
-      while(true){ const {data,error}=await supa.from('passengers').select('event_seq,name_kr,birth_yymmdd,member_grade,bookings!inner(session_ym)').eq('bookings.session_ym',ym).range(pg,pg+999);
+      while(true){ const {data,error}=await supa.from('passengers').select('event_seq,name_kr,birth_yymmdd,member_grade,bookings!inner(session_ym)').in('bookings.session_ym',fileMonths).range(pg,pg+999);
         if(error||!data||!data.length) break; data.forEach(p=>{const k=(p.name_kr||'')+(p.birth_yymmdd||''); (_oldPx[p.event_seq]=_oldPx[p.event_seq]||{})[k]={name:p.name_kr,grade:p.member_grade};}); if(data.length<1000) break; pg+=1000; }
     } catch(e){ log('· 수정이력 스냅샷 실패(무시): '+e.message,'dim'); }
 
@@ -588,7 +595,7 @@ async function run(){
         accom_prefix:info.accomPfx,
         pax:info.pax,
         check_status:'체크인전',
-        session_ym:ym
+        session_ym:ymBySeq[seq]||ym
       });
     });
     stat['guests'] = await upsertChunked('guests', guestRows, 'event_seq');
@@ -632,10 +639,10 @@ async function run(){
     try {
       const fileSeqs = new Set();
       res.forEach(r=>{ const s=parseInt(String(r['eventSeq']||'').trim(),10); if(s) fileSeqs.add(s); });
-      if(fileSeqs.size){
+      if(fileSeqs.size && fileMonths.length){
         let exB=[], pg=0;
-        while(true){   // 1000행 한계 → 페이지네이션
-          const { data, error } = await supa.from('bookings').select('event_seq').eq('session_ym', ym).range(pg, pg+999);
+        while(true){   // 1000행 한계 → 페이지네이션 · 이 파일에 포함된 모든 달
+          const { data, error } = await supa.from('bookings').select('event_seq').in('session_ym', fileMonths).range(pg, pg+999);
           if(error || !data || !data.length) break;
           exB = exB.concat(data);
           if(data.length<1000) break;
@@ -644,7 +651,7 @@ async function run(){
         const orphans = exB.map(r=>r.event_seq).filter(s=>!fileSeqs.has(s));
         if(orphans.length){
           const go = confirm(
-            `이번 파일에 없는 ${ym} 팀 ${orphans.length}개가 DB에 남아 있습니다.\n\n`+
+            `이번 파일에 없는 ${fileMonths.join('·')} 팀 ${orphans.length}개가 DB에 남아 있습니다.\n\n`+
             `정리(삭제)할까요?\n`+
             `· 해당 팀의 명단·방배정·현장기록도 함께 삭제됩니다.\n`+
             `· 다른 달 데이터는 영향 없습니다.\n\n`+
@@ -658,7 +665,7 @@ async function run(){
               if(error){ log('· 잔존 정리 실패: '+error.message,'warn'); break; }
               del += chunk.length;
             }
-            log(`✓ ${ym} 잔존 팀 ${del}개 정리 — 파일 기준 최신화`,'ok');
+            log(`✓ ${fileMonths.join('·')} 잔존 팀 ${del}개 정리 — 파일 기준 최신화`,'ok');
           } else {
             log(`· 잔존 팀 ${orphans.length}개 — 정리 건너뜀(사용자 취소)`,'dim');
           }
@@ -688,7 +695,7 @@ async function run(){
     try {
       const by = ($('#uploader')?.value||'').trim();
       const files = SLOTS.filter(s=>s.file).map(s=>s.file).join(', ');
-      const { data: logRow } = await supa.from('import_log').insert({ session_ym: ym, uploaded_by: by||null, files, counts: stat }).select().single();
+      const { data: logRow } = await supa.from('import_log').insert({ session_ym: (fileMonths.length?fileMonths.join(', '):ym), uploaded_by: by||null, files, counts: stat }).select().single();
       if(logRow){ try{ await supa.from('import_log').update({ changes }).eq('id', logRow.id); }catch(e){} }  // changes 컬럼 없으면 무시
       if(by){ try{ localStorage.setItem('saizen_hub_uploader', by); }catch(e){} }
       await loadHistory();
