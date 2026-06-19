@@ -613,6 +613,46 @@ async function run(){
     stat['guest_members'] = await upsertChunked('guest_members', gmRows, 'event_seq,seq_in_team');
     log(`✓ ${t('s1_dyn_log_members')} ${stat['guest_members']}${t('s1_dyn_cntPpl')}`,'ok');
 
+    // ── 월 단위 동기화: 이번 파일에 없는 그 달 팀 정리(잔존 데이터 제거) ──
+    //   · 파일(예약리스트)에 있는 event_seq 기준. 다른 달(session_ym)은 안 건드림.
+    //   · bookings 삭제 → passengers/guests/guest_members/rooms/transactions cascade 정리.
+    try {
+      const fileSeqs = new Set();
+      res.forEach(r=>{ const s=parseInt(String(r['eventSeq']||'').trim(),10); if(s) fileSeqs.add(s); });
+      if(fileSeqs.size){
+        let exB=[], pg=0;
+        while(true){   // 1000행 한계 → 페이지네이션
+          const { data, error } = await supa.from('bookings').select('event_seq').eq('session_ym', ym).range(pg, pg+999);
+          if(error || !data || !data.length) break;
+          exB = exB.concat(data);
+          if(data.length<1000) break;
+          pg += 1000;
+        }
+        const orphans = exB.map(r=>r.event_seq).filter(s=>!fileSeqs.has(s));
+        if(orphans.length){
+          const go = confirm(
+            `이번 파일에 없는 ${ym} 팀 ${orphans.length}개가 DB에 남아 있습니다.\n\n`+
+            `정리(삭제)할까요?\n`+
+            `· 해당 팀의 명단·방배정·현장기록도 함께 삭제됩니다.\n`+
+            `· 다른 달 데이터는 영향 없습니다.\n\n`+
+            `[취소] 누르면 그대로 둡니다(누적).`
+          );
+          if(go){
+            let del=0;
+            for(let i=0;i<orphans.length;i+=50){
+              const chunk=orphans.slice(i,i+50);
+              const { error } = await supa.from('bookings').delete().in('event_seq',chunk);
+              if(error){ log('· 잔존 정리 실패: '+error.message,'warn'); break; }
+              del += chunk.length;
+            }
+            log(`✓ ${ym} 잔존 팀 ${del}개 정리 — 파일 기준 최신화`,'ok');
+          } else {
+            log(`· 잔존 팀 ${orphans.length}개 — 정리 건너뜀(사용자 취소)`,'dim');
+          }
+        }
+      }
+    } catch(e){ log('· 월 단위 동기화 점검 실패: '+e.message,'warn'); }
+
     log('■ 적재 완료. 운영층 rooms/rounds/dining/transactions는 2단계 모듈에서 채웁니다.','ok');
     showStats(stat);
     // ── 변경이력 기록 (누가·언제·무슨 파일·건수) ──
