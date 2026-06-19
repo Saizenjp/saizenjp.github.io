@@ -5400,7 +5400,8 @@ function accomEngName(accom){
 //   - 풀 capacity: 18 × 33 = 594개 / 연도
 //   - 연도별 자동 리셋 (depDate 연도 기준) → 연 1,500팀 기준 다소 부족하니 운영 중 보완 가능
 // 배정 방식 (옵션 B — 최대 분산):
-//   - N번째 그룹: prefix = PREFIXES[N % 18], kana = KANAS[N % 33]
+//   - N번째 그룹: prefix = PREFIXES[N % 18], kana = KANAS[floor(N/18) % 33]
+//     (kana=N%33 은 gcd(18,33)=3 으로 198개만 생성되는 버그 → floor(N/18) 로 594개 전부 사용)
 //   - 같은 그룹은 영구히 같은 코드 (eventSeq 기준 영속)
 //   - 사용된 코드는 다음 배정에서 제외 (중복 방지)
 // ─────────────────────────────────────────────────────────────
@@ -5437,8 +5438,10 @@ function assignNonMemberCode(eventSeq, year){
 
   for(let offset = 0; offset < NONMEMBER_POOL_SIZE; offset++){
     const idx = nextIdx + offset;
+    // idx 를 (prefix, kana) 로 분해 — kana 는 18개마다 1칸 진행해야 594개 전부 생성.
+    //   (prefix=idx%18, kana=idx%33 으로 하면 gcd(18,33)=3 때문에 198개만 생성되는 버그)
     const prefix = NONMEMBER_PREFIXES[idx % NONMEMBER_PREFIXES.length];
-    const kana   = NONMEMBER_KANAS[idx % NONMEMBER_KANAS.length];
+    const kana   = NONMEMBER_KANAS[Math.floor(idx / NONMEMBER_PREFIXES.length) % NONMEMBER_KANAS.length];
     const code = prefix + kana;
     if(!used.has(code)){
       assignments[eventSeq] = code;

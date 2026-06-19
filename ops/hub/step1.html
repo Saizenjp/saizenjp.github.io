@@ -514,7 +514,9 @@ async function run(){
         kor_arr_time:String(r['한국도착']||'').trim()||null,
         pre_seat:String(r['사전좌석']||'').trim()||null,
         air_included:String(r['항공포함']||'').trim()||null,
-        member_no:null
+        member_no:null,
+        // 개인 단위 회원권 구분(고객등급 → 추후 회원권구분). 원문 그대로 저장.
+        member_grade:String(r['고객등급']||r['회원권구분']||'').trim()||null
       });
     });
     stat['passengers'] = await upsertChunked('passengers', paxRows, 'id');
@@ -547,7 +549,9 @@ async function run(){
       const nextIdx = Object.keys(nmAssigned).length;
       for(let off=0; off<NM_POOL; off++){
         const idx  = nextIdx + off;
-        const code = NM_PREFIX[idx % NM_PREFIX.length] + NM_KANA[idx % NM_KANA.length];
+        // kana 는 18개(prefix 수)마다 1칸 진행해야 594개 전부 생성됨
+        //   (idx%33 으로 하면 gcd(18,33)=3 때문에 198개만 생성되는 버그)
+        const code = NM_PREFIX[idx % NM_PREFIX.length] + NM_KANA[Math.floor(idx / NM_PREFIX.length) % NM_KANA.length];
         if(!nmUsed.has(code)){ nmAssigned[seq]=code; nmUsed.add(code); return code; }
       }
       return null;  // 풀 소진 (594개)
@@ -601,7 +605,8 @@ async function run(){
           seq_in_team:num,
           name_kr:p.name_kr,
           name_en:p.name_en,
-          is_rep:(num===1)
+          is_rep:(num===1),
+          member_grade:p.member_grade||null   // 개인 단위 등급 (room.html 자동배정용)
         });
       });
     });
