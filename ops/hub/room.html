@@ -247,22 +247,16 @@
 </div>
 
 <div class="datebar">
-  <div class="mode-toggle">
-    <button class="mode-btn active" id="mode-day" type="button" data-i18n="rm_modeDay"></button>
-    <button class="mode-btn" id="mode-range" type="button" data-i18n="rm_modeRange"></button>
-  </div>
-  <label id="lbl-from" data-i18n="rm_lblFrom"></label>
-  <button class="btn ghost sm" id="date-prev" type="button" title="하루 전" style="padding:5px 9px">◀</button>
+  <label id="lbl-from">기간</label>
   <input class="inp" id="date-pick" type="date">
-  <button class="btn ghost sm" id="date-next" type="button" title="하루 후" style="padding:5px 9px">▶</button>
-  <button class="btn ghost sm" id="date-today" type="button" title="오늘로 이동">오늘</button>
-  <span id="range-extra" style="display:none;align-items:center;gap:8px">
-    <label>~</label><input class="inp" id="date-to" type="date">
-  </span>
+  <label>~</label>
+  <input class="inp" id="date-to" type="date">
+  <button class="btn ghost sm" id="date-prev" type="button" title="하루 전(범위 같이 이동)" style="padding:5px 9px">◀</button>
+  <button class="btn ghost sm" id="date-next" type="button" title="하루 후(범위 같이 이동)" style="padding:5px 9px">▶</button>
+  <button class="btn ghost sm" id="date-today" type="button" title="오늘 하루로">오늘</button>
   <button class="btn sm" id="btn-load" type="button" disabled data-i18n="rm_btnLoad"></button>
   <button class="btn sm" id="btn-auto" type="button" disabled title="회원→디럭스 우선, 일반→예약종류. 예약순·기존 수기배정 보호" style="background:var(--accent2);border-color:var(--accent2)">🪄 자동배정</button>
   <button class="btn ghost sm" id="btn-export" type="button" data-i18n-title="rm_btnExportTitle" data-i18n="rm_btnExport"></button>
-  <label class="btn ghost sm" id="btn-import-label" data-i18n-title="rm_btnImportTitle" style="cursor:pointer"><span data-i18n="rm_btnImport"></span><input type="file" id="file-import" accept=".xlsx,.xls" style="display:none"></label>
   <span class="hint" id="session-hint"></span>
   <span id="sel-bar" style="display:none;align-items:center;gap:8px;margin-left:auto">
     <span class="pill" id="sel-cnt"></span>
@@ -357,13 +351,14 @@ function fmtMD(iso){const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/);re
 function teamNights(g){if(!g.dep||!g.arr)return 0;return Math.max(0,Math.round((new Date(g.arr)-new Date(g.dep))/864e5));}
 function roomUsedPax(inv){return state.rooms.filter(r=>r.inventory_id===inv.id).reduce((s,r)=>s+(r.assigned_pax||0),0);}
 function shiftDate(delta){
-  const cur=$('#date-pick').value||isoToday();
-  const iso=isoShift(cur,delta);
-  $('#date-pick').value=iso;
-  if(dateMode==='range'){const to=$('#date-to');if(!to.value||to.value<iso)to.value=iso;}
+  // 시작·종료를 함께 ±1일 (범위 통째로 슬라이드, 단일일이면 다음 날로)
+  const from=$('#date-pick').value||isoToday();
+  const to=$('#date-to').value||from;
+  $('#date-pick').value=isoShift(from,delta);
+  $('#date-to').value=isoShift(to,delta);
   if(supa)loadDay();
 }
-function gotoToday(){$('#date-pick').value=isoToday();if(dateMode==='range'){const to=$('#date-to');if(!to.value||to.value<$('#date-pick').value)to.value=$('#date-pick').value;}if(supa)loadDay();}
+function gotoToday(){const t=isoToday();$('#date-pick').value=t;$('#date-to').value=t;if(supa)loadDay();}
 
 // ── 연결 ──
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
@@ -397,16 +392,15 @@ async function loadInventory(){
 }
 
 // ── 날짜 모드 (day/range) ──
-let dateMode='day';
 
 // ── 선택 범위에 점유 중인 팀 + 배정 로드 ──
 //   하루 모드: from=to=선택일 → 그날 머무는(dep<=날<arr) 모든 팀
 //   기간 모드: from~to → 그 기간에 한 번이라도 머무는 팀 (dep < to+1 AND arr > from)
 async function loadDay(){
   const from=$('#date-pick').value;
-  const to = dateMode==='range' ? ($('#date-to').value||from) : from;
+  let to = $('#date-to').value || from;     // 종료 비우면 단일일
   if(!from){toast('날짜를 선택하세요','warn');return;}
-  if(dateMode==='range' && to<from){toast('종료일이 시작일보다 빠릅니다','warn');return;}
+  if(to<from) to=from;                       // 종료<시작이면 단일일로 보정
   state.from=from; state.to=to; state.date=from;
 
   // 점유 판정: dep_date <= to(범위끝) AND arr_date > from(범위시작)
@@ -442,7 +436,7 @@ async function loadDay(){
   state.sel=new Set();
   rebuildAssignMap();
   render();
-  const label = dateMode==='range' ? `${state.from}~${state.to}` : state.from;
+  const label = (state.from===state.to) ? state.from : `${state.from}~${state.to}`;
   toast(`${label} · 점유 ${state.guests.length}팀 로드`,'ok');
 }
 
@@ -1276,23 +1270,16 @@ $('#date-next').addEventListener('click',()=>shiftDate(1));
 $('#date-today').addEventListener('click',gotoToday);
 $('#btn-export').addEventListener('click',exportAssignXlsx);
 $('#btn-sel-clear')&&$('#btn-sel-clear').addEventListener('click',()=>{selClear();render();});
-$('#file-import').addEventListener('change',e=>{if(e.target.files[0]){importAssignXlsx(e.target.files[0]);e.target.value='';}});
-// 하루/기간 모드 토글
-$('#mode-day').addEventListener('click',()=>{
-  dateMode='day';
-  $('#mode-day').classList.add('active'); $('#mode-range').classList.remove('active');
-  $('#range-extra').style.display='none'; $('#lbl-from').textContent='날짜';
-});
-$('#mode-range').addEventListener('click',()=>{
-  dateMode='range';
-  $('#mode-range').classList.add('active'); $('#mode-day').classList.remove('active');
-  $('#range-extra').style.display='inline-flex'; $('#lbl-from').textContent='기간';
-});
 // 미배정 영역으로 다시 드롭하면 배정 취소(맨 마지막 룸 제거)
 $('#unassigned').addEventListener('dragover',e=>e.preventDefault());
 // 미배정 영역으로의 드롭은 사용하지 않음(취소는 객실 칩의 ✕ 로). 선택 해제만.
 $('#unassigned').addEventListener('drop',e=>{ e.preventDefault(); });
+
+// 날짜 기본값(오늘 하루) + 저장된 연결정보로 자동 연결
 loadCreds();
+if(!$('#date-pick').value){ const t=isoToday(); $('#date-pick').value=t; $('#date-to').value=t; }
+if(!$('#date-to').value) $('#date-to').value=$('#date-pick').value;
+if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
 // 언어 전환 시 현재 화면 다시 그리기(로드된 데이터가 있으면)
 window.onSaizenLangChange = function(){ try{ if(typeof render==='function' && state && state.guests) render(); }catch(e){} try{ renderSelBar(); }catch(e){} };
