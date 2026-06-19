@@ -217,6 +217,36 @@
   .zone-label .zstat .zwarn{color:var(--warn);font-weight:700}
   .team-card .cdates{font-size:11.5px;color:var(--text2);margin-top:3px;font-weight:600}
   .team-card .cdates .cnew{color:var(--accent);background:var(--accentSoft);border-radius:4px;padding:1px 5px;font-size:10px;margin-left:4px}
+
+  /* 보기 토글 (카드 / 타임라인) */
+  .view-toggle{margin-left:auto;display:inline-flex;border:1px solid var(--border2);border-radius:7px;overflow:hidden}
+  .vbtn{font-family:inherit;font-size:11.5px;font-weight:700;padding:4px 11px;border:none;background:var(--surface);color:var(--text2);cursor:pointer;transition:.12s}
+  .vbtn.active{background:var(--accent);color:#fff}
+  .vbtn:not(.active):hover{background:var(--accentSoft)}
+
+  /* 타임라인(테이프 차트): 객실×날짜 */
+  #timeline{overflow:auto;max-height:74vh}
+  table.tl{border-collapse:separate;border-spacing:0;font-size:11px;white-space:nowrap}
+  .tl th,.tl td{border-right:1px solid var(--border);border-bottom:1px solid var(--border);height:25px;box-sizing:border-box}
+  .tl thead th{position:sticky;top:0;z-index:2;background:var(--surface2);color:var(--text2);font-size:9px;font-weight:700;min-width:30px;padding:2px 0;text-align:center}
+  .tl thead th small{display:block;font-size:8px;color:var(--muted);font-weight:600}
+  .tl .tl-room{position:sticky;left:0;z-index:1;background:var(--surface2);min-width:128px;max-width:128px;text-align:left;padding:2px 8px;white-space:nowrap;overflow:hidden}
+  .tl thead .tl-room{z-index:3}
+  .tl .tl-room b{font-size:12px;color:var(--text)}
+  .tl .tl-room span{display:block;font-size:8.5px;color:var(--muted);line-height:1.1}
+  .tl .tl-room .tl-fac{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:4px;vertical-align:middle}
+  .tl td.tl-c{min-width:30px;text-align:center;padding:0}
+  .tl td.tl-we{background:#f3eee2}                 /* 주말 열 */
+  .tl td.occ{position:relative}
+  .tl td.occ.t-dlx{background:#ecddb5}             /* 디럭스 계열 */
+  .tl td.occ.t-twin{background:#d6e2f2}            /* 트윈 */
+  .tl td.occ.t-cmp{background:#e6eef7}             /* 컴팩트 */
+  .tl td.occ.t-etc{background:var(--accentSoft)}   /* 기타 시설 */
+  .tl td.occ.tl-over{box-shadow:inset 0 0 0 2px var(--err)}
+  .tl td.occ .tl-bar{display:inline-block;font-family:var(--mono);font-size:8.5px;font-weight:800;color:var(--accentDeep);padding:0 2px;max-width:100%;overflow:hidden}
+  .tl td.occ.t-dlx .tl-bar{color:#6b4e12}
+  .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
+  .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
 <link rel="stylesheet" href="../assets/saizen-ops.css?v=14.6">
 </head>
@@ -281,8 +311,14 @@
   </div>
   <!-- 우: 시설별 객실 -->
   <div class="col">
-    <h2><span data-i18n="rm_colRooms"></span> <span class="cnt" id="assign-summary"></span></h2>
+    <h2><span data-i18n="rm_colRooms"></span> <span class="cnt" id="assign-summary"></span>
+      <span class="view-toggle">
+        <button class="vbtn active" id="view-card" type="button">🏠 카드</button>
+        <button class="vbtn" id="view-timeline" type="button" title="객실×날짜 점유 한눈에">📅 타임라인</button>
+      </span>
+    </h2>
     <div class="col-body" id="facilities"></div>
+    <div class="col-body" id="timeline" style="display:none"></div>
   </div>
 </div>
 
@@ -463,11 +499,72 @@ function rebuildAssignMap(){
 }
 
 // ── 렌더 ──
+let viewMode='card';   // 'card' | 'timeline'
 function render(){
   _tagMapCache=null;
   renderUnassigned();
-  renderFacilities();
+  if(viewMode==='timeline'){ renderTimeline(); } else { renderFacilities(); }
   renderSummary();
+}
+
+// ── 타임라인(테이프 차트): 객실(행) × 날짜(열) 점유 한눈에 ──
+function dateRangeList(from,to){
+  const out=[]; let d=from, guard=0;
+  while(d<=to && guard<400){ out.push(d); d=isoShift(d,1); guard++; }
+  return out;
+}
+function tlTypeClass(rt){
+  if(DELUXE_TYPES.includes(rt)) return 't-dlx';
+  if(rt==='트윈') return 't-twin';
+  if(rt==='컴팩트트윈') return 't-cmp';
+  return 't-etc';
+}
+function renderTimeline(){
+  const box=$('#timeline'); if(!box) return;
+  if(!state.from){ box.innerHTML='<div class="empty-hint">날짜를 불러오세요</div>'; return; }
+  const dates=dateRangeList(state.from,state.to);
+  const WD=['일','월','화','수','목','금','토'];
+  const rooms=[...state.inventory].filter(r=>r.active)
+    .sort((a,b)=>(a.facility||'').localeCompare(b.facility||'')||(a.sort_order||0)-(b.sort_order||0));
+  let html='<div class="tl-legend">'
+    +'<span><span class="sw" style="background:#ecddb5"></span>디럭스</span>'
+    +'<span><span class="sw" style="background:#d6e2f2"></span>트윈</span>'
+    +'<span><span class="sw" style="background:#e6eef7"></span>컴팩트</span>'
+    +'<span><span class="sw" style="background:var(--accentSoft)"></span>기타시설</span>'
+    +'<span style="margin-left:auto;color:var(--muted)">막대에 커서 → 팀·인원·기간</span></div>';
+  html+='<table class="tl"><thead><tr><th class="tl-room">객실 ('+rooms.length+')</th>';
+  dates.forEach(d=>{
+    const wd=WD[new Date(d+'T00:00:00').getDay()];
+    html+=`<th class="${(wd==='토'||wd==='일')?'tl-we':''}">${fmtMD(d)}<small>${wd}</small></th>`;
+  });
+  html+='</tr></thead><tbody>';
+  rooms.forEach(inv=>{
+    const cap=inv.max_capacity||inv.capacity;
+    const pfx=(PFX[inv.facility]||'X').toLowerCase();
+    html+=`<tr><td class="tl-room" title="${inv.facility} · ${typeLabel(inv.room_type)}">`
+      +`<span class="tl-fac" style="background:var(--${pfx})"></span>`
+      +`<b>${inv.room_no}</b><span>${inv.room_type}</span></td>`;
+    const rr=state.rooms.filter(r=>r.inventory_id===inv.id);
+    dates.forEach(d=>{
+      const wd=WD[new Date(d+'T00:00:00').getDay()];
+      const we=(wd==='토'||wd==='일');
+      const occ=rr.filter(r=> r.check_in<=d && d<r.check_out);
+      if(occ.length){
+        const used=occ.reduce((s,x)=>s+(x.assigned_pax||0),0);
+        const r0=occ[0];
+        const tag=teamGroupCode(r0.event_seq)||('팀'+r0.event_seq);
+        const names=[...new Set(occ.map(x=>{const m=x.member_id!=null?memberById(x.member_id):null;return m?m.name_kr:'';}).filter(Boolean))].join(', ');
+        html+=`<td class="tl-c occ ${tlTypeClass(inv.room_type)}${used>cap?' tl-over':''}" `
+          +`title="${tag} · ${names} · ${r0.check_in}~${r0.check_out} (${used}/${cap})">`
+          +`${r0.check_in===d?`<span class="tl-bar">${tag}</span>`:''}</td>`;
+      }else{
+        html+=`<td class="tl-c${we?' tl-we':''}"></td>`;
+      }
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+  box.innerHTML=html;
 }
 
 function assignedSeqSet(){
@@ -1270,6 +1367,17 @@ $('#date-next').addEventListener('click',()=>shiftDate(1));
 $('#date-today').addEventListener('click',gotoToday);
 $('#btn-export').addEventListener('click',exportAssignXlsx);
 $('#btn-sel-clear')&&$('#btn-sel-clear').addEventListener('click',()=>{selClear();render();});
+// 보기 토글 (카드 / 타임라인)
+function setView(m){
+  viewMode=m;
+  $('#view-card').classList.toggle('active',m==='card');
+  $('#view-timeline').classList.toggle('active',m==='timeline');
+  $('#facilities').style.display = (m==='card')?'':'none';
+  $('#timeline').style.display   = (m==='timeline')?'':'none';
+  render();
+}
+$('#view-card').addEventListener('click',()=>setView('card'));
+$('#view-timeline').addEventListener('click',()=>setView('timeline'));
 // 미배정 영역으로 다시 드롭하면 배정 취소(맨 마지막 룸 제거)
 $('#unassigned').addEventListener('dragover',e=>e.preventDefault());
 // 미배정 영역으로의 드롭은 사용하지 않음(취소는 객실 칩의 ✕ 로). 선택 해제만.
