@@ -326,6 +326,7 @@
   <!-- 좌: 미배정 팀 -->
   <div class="col">
     <h2><span data-i18n="rm_colUnassigned"></span> <span class="cnt" id="unassigned-cnt"></span></h2>
+    <div class="fac-filter" id="team-filter"></div>
     <div class="col-body" id="unassigned" data-drop="unassign">
       <div class="empty-hint" data-i18n="rm_emptyHint"></div>
     </div>
@@ -338,13 +339,7 @@
         <button class="vbtn" id="view-timeline" type="button" title="객실×날짜 점유 한눈에">📅 타임라인</button>
       </span>
     </h2>
-    <div class="fac-filter" id="fac-filter">
-      <button class="ffbtn active" type="button" data-fac="전체">전체</button>
-      <button class="ffbtn" type="button" data-fac="야마나미리조트"><span class="fdot" style="background:var(--y)"></span>야마나미</button>
-      <button class="ffbtn" type="button" data-fac="쿠주힐즈"><span class="fdot" style="background:var(--k)"></span>쿠주힐즈</button>
-      <button class="ffbtn" type="button" data-fac="간지호텔"><span class="fdot" style="background:var(--g)"></span>간지호텔</button>
-      <button class="ffbtn" type="button" data-fac="시즈노야도 료칸"><span class="fdot" style="background:var(--s)"></span>시즈노야도</button>
-    </div>
+    <div class="fac-filter" id="fac-filter"></div>
     <div class="col-body" id="facilities"></div>
     <div class="col-body" id="timeline" style="display:none"></div>
   </div>
@@ -575,7 +570,7 @@ function renderTimeline(){
   if(!state.from){ box.innerHTML='<div class="empty-hint">날짜를 불러오세요</div>'; return; }
   const dates=dateRangeList(state.from,state.to);
   const WD=['일','월','화','수','목','금','토'];
-  const rooms=[...state.inventory].filter(r=>r.active && (facFilter==='전체' || r.facility===facFilter))
+  const rooms=[...state.inventory].filter(r=>r.active && roomMatch(r))
     .sort((a,b)=>(a.facility||'').localeCompare(b.facility||'')||(a.sort_order||0)-(b.sort_order||0));
   let html='<div class="tl-legend">'
     +'<span><span class="sw" style="background:#ecddb5"></span>디럭스</span>'
@@ -626,8 +621,8 @@ function renderUnassigned(){
   const box=$('#unassigned'); box.innerHTML='';
   if(!state.sel) state.sel=new Set();
   const done=assignedMemberSet();
-  // 미배정 인원이 한 명이라도 남은 팀만 표시
-  const list=state.guests.filter(g=>!teamFullyAssigned(g.event_seq));
+  // 미배정 인원이 한 명이라도 남은 팀만 표시 (+ 숙소 필터)
+  const list=state.guests.filter(g=>!teamFullyAssigned(g.event_seq) && teamMatch(g));
   const totalLeft=list.reduce((s,g)=>s+unassignedMembers(g.event_seq).length,0);
   $('#unassigned-cnt').textContent=`${list.length}${t('rm_cntTeam')} · ${totalLeft}${t('rm_cntPpl')}`;
   if(!list.length){box.innerHTML='<div class="empty-hint">'+t('rm_allAssigned')+'</div>';renderSelBar();return;}
@@ -700,7 +695,40 @@ async function assignSelectedTo(inv){
   await assignMembers(ids, inv);
 }
 
-let facFilter='전체';   // '전체' | 시설명
+// ── 숙소(장소) 다중 필터 — 야마나미를 골프텔/돔하우스/소보별장/아소별장으로 분리 ──
+const PLACE_ITEMS=['골프텔','관내별장','소보별장','아소별장','돔하우스','쿠주힐즈','간지호텔','시즈노야도'];
+const PLACE_COLOR={골프텔:'y',관내별장:'y',소보별장:'y',아소별장:'y',돔하우스:'y',쿠주힐즈:'k',간지호텔:'g',시즈노야도:'s'};
+let placeSel=new Set();   // 객실 배정 필터(비면 전체)
+let teamSel=new Set();    // 미배정 팀 필터(비면 전체)
+function roomPlaceKeys(r){
+  if(r.facility==='야마나미리조트'){
+    const z=r.zone||'';
+    if(/^\d+층$/.test(z)) return ['골프텔'];
+    if(z==='돔하우스')   return ['돔하우스'];
+    if(z==='소보별장')   return ['소보별장','관내별장'];
+    if(z==='아소별장')   return ['아소별장','관내별장'];
+    return ['골프텔'];
+  }
+  if(r.facility==='쿠주힐즈')        return ['쿠주힐즈'];
+  if(r.facility==='간지호텔')        return ['간지호텔'];
+  if(r.facility==='시즈노야도 료칸') return ['시즈노야도'];
+  return [];
+}
+function roomMatch(r){ return placeSel.size===0 || roomPlaceKeys(r).some(k=>placeSel.has(k)); }
+function teamPlaceKeys(g){
+  const st=g.sale_type, ac=g.accom;
+  if(ac==='야마나미리조트'){
+    if(st==='관내별장') return ['관내별장'];
+    if(st==='돔하우스') return ['돔하우스'];
+    return ['골프텔'];                    // 호텔 트윈/소형트윈 등
+  }
+  if(ac==='쿠주힐즈')        return ['쿠주힐즈'];
+  if(ac==='간지호텔')        return ['간지호텔'];
+  if(ac==='시즈노야도 료칸') return ['시즈노야도'];
+  return [];
+}
+function teamMatch(g){ return teamSel.size===0 || teamPlaceKeys(g).some(k=>teamSel.has(k)); }
+
 function renderFacilities(){
   const box=$('#facilities'); box.innerHTML='';
   if(state.from && state.to && state.from!==state.to){
@@ -709,14 +737,11 @@ function renderFacilities(){
     h.innerHTML=`📅 카드는 <b>${state.focus||state.from}</b> 하룻밤 기준이에요. 위 <b>일별</b> 칩으로 날짜를 바꾸고, 기간 전체 점유는 <b>📅 타임라인</b> 으로 보세요.`;
     box.appendChild(h);
   }
-  const FACS=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸']
-    .filter(f=> facFilter==='전체' || f===facFilter);
+  const FACS=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
   FACS.forEach(fac=>{
     const pfx=PFX[fac];
-    const rooms=state.inventory.filter(r=>r.facility===fac);
-    if(!rooms.length && fac==='야마나미리조트'){
-      // 호텔동 미등록 안내
-    }
+    const rooms=state.inventory.filter(r=>r.facility===fac && roomMatch(r));
+    if(!rooms.length && placeSel.size>0) return;   // 필터로 걸러진 시설은 숨김
     const facDiv=document.createElement('div');
     facDiv.className='fac f-'+pfx;
     // 가동률
@@ -1230,12 +1255,12 @@ async function clearZone(fac,zone){
 // ── 전체 배정 비우기 (불러온 범위의 모든 배정 · 수기+자동) ──
 async function clearAllAssignments(){
   if(!supa){toast('먼저 연결하세요','warn');return;}
-  // 숙소필터가 걸려 있으면 그 시설만, 아니면 전부
-  const target = (facFilter==='전체')
+  // 숙소필터가 걸려 있으면 그 장소만, 아니면 전부
+  const target = (placeSel.size===0)
     ? state.rooms.slice()
-    : state.rooms.filter(r=>{const inv=invById(r.inventory_id);return inv&&inv.facility===facFilter;});
+    : state.rooms.filter(r=>{const inv=invById(r.inventory_id);return inv&&roomMatch(inv);});
   if(!target.length){toast('비울 배정이 없습니다','warn');return;}
-  const scope = facFilter==='전체' ? '불러온 범위 전체' : facFilter;
+  const scope = placeSel.size===0 ? '불러온 범위 전체' : [...placeSel].join('·');
   if(!confirm(`${scope}의 배정 ${target.length}건을 모두 뺄까요?\n(수기·자동 배정 전부 해제됩니다)`)) return;
   const ids=target.map(r=>r.id);
   const error=await deleteRoomsByIds(ids);
@@ -1479,13 +1504,23 @@ $('#day-strip').addEventListener('click',e=>{
   const b=e.target.closest('.day-chip'); if(!b) return;
   state.focus=b.dataset.d; render();
 });
-// 숙소별 필터
-$('#fac-filter').addEventListener('click',e=>{
+// 숙소별 다중 필터 (객실 배정 = placeSel · 미배정 팀 = teamSel)
+function buildFilterBar(sel,set){
+  const box=$(sel); if(!box) return;
+  box.innerHTML=`<button class="ffbtn${set.size===0?' active':''}" data-k="전체" type="button">전체</button>`
+    + PLACE_ITEMS.map(k=>`<button class="ffbtn${set.has(k)?' active':''}" data-k="${k}" type="button"><span class="fdot" style="background:var(--${PLACE_COLOR[k]})"></span>${k}</button>`).join('');
+}
+function onFilterClick(e,set,sel){
   const b=e.target.closest('.ffbtn'); if(!b) return;
-  facFilter=b.dataset.fac;
-  $$('#fac-filter .ffbtn').forEach(x=>x.classList.toggle('active',x===b));
-  render();
-});
+  const k=b.dataset.k;
+  if(k==='전체') set.clear();
+  else { set.has(k)?set.delete(k):set.add(k); }   // 다중 선택 토글
+  buildFilterBar(sel,set); render();
+}
+$('#fac-filter').addEventListener('click',e=>onFilterClick(e,placeSel,'#fac-filter'));
+$('#team-filter').addEventListener('click',e=>onFilterClick(e,teamSel,'#team-filter'));
+buildFilterBar('#fac-filter',placeSel);
+buildFilterBar('#team-filter',teamSel);
 // 미배정 영역으로 다시 드롭하면 배정 취소(맨 마지막 룸 제거)
 $('#unassigned').addEventListener('dragover',e=>e.preventDefault());
 // 미배정 영역으로의 드롭은 사용하지 않음(취소는 객실 칩의 ✕ 로). 선택 해제만.
