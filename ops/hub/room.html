@@ -1110,7 +1110,7 @@ async function autoAssign(){
     // 1) 기존 auto 배정 제거(재실행=재정렬, 수기 배정 보호)
     const autoIds=state.rooms.filter(r=>r.assign_source==='auto').map(r=>r.id);
     if(autoIds.length){
-      const {error}=await supa.from('rooms').delete().in('id',autoIds);
+      const error=await deleteRoomsByIds(autoIds);
       if(error){toast('기존 자동배정 정리 실패: '+error.message,'err');return;}
       state.rooms=state.rooms.filter(r=>r.assign_source!=='auto');
     }
@@ -1144,13 +1144,31 @@ async function autoAssign(){
     }
 
     if(!pending.length){ toast(holds.length?`자동배정 대상 없음 · 보류 ${holds.length}건`:'자동배정할 미배정 인원이 없습니다','warn'); return; }
-    const {data,error}=await supa.from('rooms').insert(pending).select();
+    const {data,error}=await insertRoomsChunked(pending);
     if(error){toast('자동배정 저장 실패: '+error.message,'err');return;}
     (data||[]).forEach(r=>state.rooms.push(r));
     rebuildAssignMap(); render();
     toast(`🪄 자동배정 ${pending.length}명 완료${holds.length?` · 보류 ${holds.length}건(콘솔)`:''}`, holds.length?'warn':'ok');
     if(holds.length) console.warn('[자동배정 보류 '+holds.length+'건]\n'+holds.join('\n'));
   }finally{ btn.disabled=false; btn.textContent=old; }
+}
+
+// ── rooms 대량 삭제/삽입은 청크로 (in() URL 길이·body 한계 회피) ──
+async function deleteRoomsByIds(ids){
+  for(let i=0;i<ids.length;i+=50){
+    const {error}=await supa.from('rooms').delete().in('id',ids.slice(i,i+50));
+    if(error) return error;
+  }
+  return null;
+}
+async function insertRoomsChunked(rows){
+  const out=[];
+  for(let i=0;i<rows.length;i+=200){
+    const {data,error}=await supa.from('rooms').insert(rows.slice(i,i+200)).select();
+    if(error) return {error};
+    if(data) out.push(...data);
+  }
+  return {data:out};
 }
 
 // ── 층(zone) 전체 배정 해제 ──
@@ -1160,7 +1178,7 @@ async function clearZone(fac,zone){
   if(!targets.length){toast(`${zone}: 배정 없음`,'warn');return;}
   if(!confirm(`${zone}의 배정 ${targets.length}건을 모두 뺄까요?`)) return;
   const ids=targets.map(r=>r.id);
-  const {error}=await supa.from('rooms').delete().in('id',ids);
+  const error=await deleteRoomsByIds(ids);
   if(error){toast('층 비우기 실패: '+error.message,'err');return;}
   state.rooms=state.rooms.filter(r=>!ids.includes(r.id));
   rebuildAssignMap(); render();
@@ -1178,7 +1196,7 @@ async function clearAllAssignments(){
   const scope = facFilter==='전체' ? '불러온 범위 전체' : facFilter;
   if(!confirm(`${scope}의 배정 ${target.length}건을 모두 뺄까요?\n(수기·자동 배정 전부 해제됩니다)`)) return;
   const ids=target.map(r=>r.id);
-  const {error}=await supa.from('rooms').delete().in('id',ids);
+  const error=await deleteRoomsByIds(ids);
   if(error){toast('전체 비우기 실패: '+error.message,'err');return;}
   state.rooms=state.rooms.filter(r=>!ids.includes(r.id));
   rebuildAssignMap(); render();
