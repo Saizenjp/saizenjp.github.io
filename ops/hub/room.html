@@ -472,7 +472,7 @@ async function loadDay(){
   let to = $('#date-to').value || from;     // 종료 비우면 단일일
   if(!from){toast('날짜를 선택하세요','warn');return;}
   if(to<from) to=from;                       // 종료<시작이면 단일일로 보정
-  state.from=from; state.to=to; state.date=from; state.focus=from;   // 카드 기준일=시작일
+  state.from=from; state.to=to; state.date=from; state.focus=from; state.days=new Set();   // 기준일=시작, 일별선택 초기화
 
   // 점유 판정: dep_date <= to(범위끝) AND arr_date > from(범위시작)
   //   → 그 기간에 체크인~체크아웃이 한 번이라도 걸치는 팀
@@ -543,21 +543,27 @@ function render(){
   renderSummary();
 }
 
-// ── 일별 선택 칩 (불러온 범위의 날짜를 하루씩 클릭) ──
+// ── 일별 선택 칩 (다중 선택 토글) ──
+//   · 선택 비움 = 전체 날짜 · 여러 날 켜면 타임라인이 그 날짜들만 펼쳐 보임
+//   · 카드 보기는 마지막 클릭한 날(state.focus) 기준
 function renderDayStrip(){
   const box=$('#day-strip'); if(!box) return;
-  if(viewMode==='timeline' || !state.from){ box.innerHTML=''; return; }
+  if(!state.from){ box.innerHTML=''; return; }
   const dates=dateRangeList(state.from,state.to);
-  if(dates.length<=1){ box.innerHTML=''; return; }   // 하루면 칩 불필요
+  if(dates.length<=1){ box.innerHTML=''; return; }
+  if(!state.days) state.days=new Set();
+  const noneSel=state.days.size===0;
   const WD=['일','월','화','수','목','금','토'];
   const inByDate={};
   state.guests.forEach(g=>{ if(g.dep) inByDate[g.dep]=(inByDate[g.dep]||0)+1; });
   box.innerHTML='<span style="font-size:11px;color:var(--text2);font-weight:700;flex:0 0 auto;margin-right:2px">📅 일별</span>'
+    +`<button class="day-chip${noneSel?' active':''}" data-d="전체" type="button" title="전체 날짜">전체</button>`
     + dates.map(d=>{
         const wd=WD[new Date(d+'T00:00:00').getDay()];
         const we=(wd==='토'||wd==='일');
         const cin=inByDate[d]||0;
-        return `<button class="day-chip${d===state.focus?' active':''}${we?' we':''}" data-d="${d}" title="${d} · 체크인 ${cin}팀">${fmtMD(d)}<small>${wd}</small>${cin?`<span class="dcnt">+${cin}</span>`:''}</button>`;
+        const on = state.days.has(d) || (noneSel && viewMode==='card' && d===state.focus);
+        return `<button class="day-chip${on?' active':''}${we?' we':''}" data-d="${d}" title="${d} · 체크인 ${cin}팀">${fmtMD(d)}<small>${wd}</small>${cin?`<span class="dcnt">+${cin}</span>`:''}</button>`;
       }).join('');
 }
 
@@ -576,7 +582,7 @@ function tlTypeClass(rt){
 function renderTimeline(){
   const box=$('#timeline'); if(!box) return;
   if(!state.from){ box.innerHTML='<div class="empty-hint">날짜를 불러오세요</div>'; return; }
-  const dates=dateRangeList(state.from,state.to);
+  const dates=(state.days && state.days.size) ? [...state.days].sort() : dateRangeList(state.from,state.to);
   const WD=['일','월','화','수','목','금','토'];
   const rooms=[...state.inventory].filter(r=>r.active && roomMatch(r))
     .sort((a,b)=>(a.facility||'').localeCompare(b.facility||'')||(a.sort_order||0)-(b.sort_order||0));
@@ -1508,10 +1514,14 @@ function setView(m){
 $('#view-card').addEventListener('click',()=>setView('card'));
 $('#view-timeline').addEventListener('click',()=>setView('timeline'));
 $('#btn-clear-all').addEventListener('click',clearAllAssignments);
-// 일별 칩 클릭 → 그날 기준으로 카드 갱신(재조회 없음)
+// 일별 칩: 다중 선택 토글(타임라인 펼침) + 마지막 클릭일=카드 기준. 재조회 없음
 $('#day-strip').addEventListener('click',e=>{
   const b=e.target.closest('.day-chip'); if(!b) return;
-  state.focus=b.dataset.d; render();
+  const d=b.dataset.d;
+  if(!state.days) state.days=new Set();
+  if(d==='전체'){ state.days.clear(); state.focus=state.from; }
+  else { state.days.has(d)?state.days.delete(d):state.days.add(d); state.focus=d; }
+  render();
 });
 // 숙소별 다중 필터 (객실 배정 = placeSel · 미배정 팀 = teamSel)
 function buildFilterBar(sel,set){
