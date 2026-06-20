@@ -129,5 +129,5 @@
 - **기타**: `/app/` 로고 → `/ops/` 링크. 「초기화」 버튼 명확화(/app/=「입력 비우기」=localStorage, step1=「화면 비우기」=폼만). saizen-ops `?v=14.13`.
 
 ---
-*최종 검증 시점: app v14.8 / Hub asset `?v=14.15` / SQL 01~16(정산 09·11~13 / 방배정 02·05·06·10·15 / 14 이력 / 16 팀 운영 주석 `event_notes`) / ops 중립 캔버스 리프레시 + **담당자 식별 필드**(saizen-ops.js 가 전 페이지 상단바 `.so-controls`에 주입, `saizen_ops_user` localStorage 공유 — 인증 아님, 수정이력 기록용) / `ops/hub/notes.html`(팀 운영 메모) / `/app/` 활성·선택 상태 강조(칩/탭 = 풀 accent 배경+흰 글자).
+*최종 검증 시점: app v14.8 / Hub asset `?v=14.16` / SQL 01~16(정산 09·11~13 / 방배정 02·05·06·10·15 / 14 이력 / 16 팀 운영 주석 `event_notes`) / ops 중립 캔버스 리프레시 + **담당자 식별 필드**(saizen-ops.js 가 전 페이지 상단바 `.so-controls`에 주입, `saizen_ops_user` localStorage 공유 — 인증 아님, 수정이력 기록용. [입력+저장]→"○○○ 님 반갑습니다"+[변경]) / `ops/hub/notes.html`(팀 운영 메모) / `/app/` 활성·선택 상태 강조(칩/탭 = 풀 accent 배경+흰 글자) / **POS 개인 분할**(pos.html 팀 라벨=그룹코드+#행사번호 통일, 팀 클릭→명단 표시→팀공통/특정1인/N분의1 → charges.member_id + 개인 folio(subject='member') 자동 생성. 주방 티켓은 분할 무관 풀수량·팀단위).
 이 문서가 코드와 어긋나면 코드가 정답이다.*
