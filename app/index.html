@@ -375,6 +375,13 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
 .shz-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:1rem}
 .shz-toolbar label{font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px}
 .shz-toolbar input[type=date]{font-family:var(--mono);font-size:11px;padding:5px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text)}
+.shz-datechips{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 10px}
+.shz-dchip{font-family:var(--mono);font-size:11px;padding:4px 9px;border:1px solid var(--border2);border-radius:7px;background:var(--surface);color:var(--text2);cursor:pointer;font-weight:700;display:flex;align-items:center;gap:3px;line-height:1.2}
+.shz-dchip small{font-size:9px;color:var(--text3);font-weight:600}
+.shz-dchip .dc{font-size:9px;color:var(--accent2);font-weight:700}
+.shz-dchip.we{color:var(--red2)}
+.shz-dchip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.shz-dchip.on small,.shz-dchip.on .dc{color:#fff}
 .shz-board{display:grid;grid-template-columns:200px 1fr;gap:12px;margin-top:.5rem}
 .shz-pool{border:1px solid var(--border2);border-radius:10px;background:var(--surface2);padding:8px;min-height:120px}
 .shz-pool-h{font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px;display:flex;justify-content:space-between}
@@ -771,6 +778,7 @@ tr.draggable-row td:first-child::before{content:'⠿';color:var(--text3);margin-
       <div class="shz-step"><div class="n">3</div><div class="tx" data-i18n="shz_step3"><b>ダウンロード</b>予約表をテンプレート書式そのまま出力します。</div></div>
     </div>
     <div class="shz-tip" data-i18n="shz_tip">💡 <b>クリック割当</b>：お客様カードをクリック→客室をクリックで配置（ドラッグでもOK）。現地予約は性別ボタン（男/女）を押してください。</div>
+    <div class="shz-tip" style="background:var(--purple-dim);border-color:var(--purple)"><b style="color:var(--purple2)">♨ 別棟（吉祥·瑞雲·馬酔木）</b>：客室料金は本館と同じ <b>¥17,000</b>。個人温泉は<b>事前申請制</b>で、申請時のみ現地で温泉のお湯を準備します（事前申請費 ¥2,000）。</div>
     <div class="shz-toolbar">
       <label>期間 <input type="date" id="shz-from" onchange="shzSetPeriod()"> ~ <input type="date" id="shz-to" onchange="shzSetPeriod()"></label>
       <button class="btn-dl" onclick="shzAutoAssign()">⚡ 自動割当</button>
@@ -9680,7 +9688,7 @@ const SHZ_ZONE = r => SHZ_BYEOLCHE.includes(r) ? '別棟' : '本館';
 const SHZ_BASE  = 17000;   // 本館·別棟 공통 기본요금
 const SHZ_ONSEN = 2000;    // 別棟 개인온천 — 사전신청 시에만 추가
 const SHZ_DOW   = ['日','月','火','水','木','金','土'];
-const SHZ = { guests: [], from: '', to: '' };
+const SHZ = { guests: [], from: '', to: '', focus: '' };  // focus: 보드에서 보고 있는 하룻밤(날짜별 분류)
 let SHZ_SEL = null;  // 클릭 배정용: 선택된 손님 id
 
 /* ── 상태(영속) ───────────────────────────────────────── */
@@ -9843,8 +9851,11 @@ function shzSetPeriod(){
   if(typeof document === 'undefined') return;
   SHZ.from = document.getElementById('shz-from').value || '';
   SHZ.to   = document.getElementById('shz-to').value || '';
+  SHZ.focus = '';   // 기간 바뀌면 첫 날로 재설정
   shzRender();
 }
+/* 보드 날짜(하룻밤) 선택 — 그날 묵는 인원만 객실에 표시(몰아넣기 방지) */
+function shzSetFocus(d){ SHZ.focus = d; if(typeof document !== 'undefined') shzRender(); }
 function shzClearAll(){
   if(typeof confirm === 'function' && !confirm('배정을 모두 해제할까요?')) return;
   shzState().assign = {};
@@ -9926,22 +9937,35 @@ function shzRender(){
     <div class="stat"><div class="stat-label">現地予約</div><div class="stat-value">${localN}</div><div class="stat-sub">性別要入力</div></div>
     <div class="stat"><div class="stat-label">期間</div><div class="stat-value" style="font-size:13px">${shzMD(SHZ.from||min)}~${shzMD(SHZ.to||max)}</div><div class="stat-sub">予約表</div></div>`;
 
-  // 보드: 미배치 풀 + 7객실
-  const unassigned = SHZ.guests.filter(g => !s.assign[g.id]);
-  let html = `<div class="shz-board">
+  // 날짜별 분류: 보드는 선택한 '하룻밤' 기준으로 그날 묵는 인원만 표시(객실 몰아넣기 방지)
+  const axis = shzAxis();
+  const focus = (SHZ.focus && axis.includes(SHZ.focus)) ? SHZ.focus : (axis[0] || '');
+  SHZ.focus = focus;
+  const inNight = g => !focus || shzNights(g).includes(focus);
+  const WD = ['日','月','火','水','木','金','土'];
+  const chipStrip = axis.length > 1 ? `<div class="shz-datechips">${axis.map(d => {
+      const dt = shzParseISO(d); const stay = SHZ.guests.filter(g => shzNights(g).includes(d)).length;
+      const we = dt && (dt.getDay()===0 || dt.getDay()===6);
+      return `<button class="shz-dchip${d===focus?' on':''}${we?' we':''}" onclick="shzSetFocus('${d}')">${shzZen(dt.getMonth()+1)}/${shzZen(dt.getDate())}<small>${WD[dt.getDay()]}</small><span class="dc">${stay}名</span></button>`;
+    }).join('')}</div>` : '';
+
+  // 보드: 미배치 풀 + 7객실 (focus 하룻밤 기준)
+  const unassigned = SHZ.guests.filter(g => !s.assign[g.id] && inNight(g));
+  const poolEmpty = focus ? 'この日の未配置なし' : '全員配置済み';
+  let html = chipStrip + `<div class="shz-board">
     <div class="shz-pool${SHZ_SEL?' pickmode':''}" ondragover="event.preventDefault()" ondrop="shzDrop(event,'')" onclick="shzPlaceTo('')">
-      <div class="shz-pool-h">未配置 <span>${unassigned.length}</span></div>
-      <div class="shz-pool-body">${unassigned.map(shzChipHTML).join('') || '<div class="shz-empty">全員配置済み</div>'}</div>
+      <div class="shz-pool-h">未配置${focus?` <small style="font-weight:600;color:var(--text3)">${shzMD(focus)}</small>`:''} <span>${unassigned.length}</span></div>
+      <div class="shz-pool-body">${unassigned.map(shzChipHTML).join('') || `<div class="shz-empty">${poolEmpty}</div>`}</div>
     </div>
     <div class="shz-rooms">`;
   SHZ_ROOMS.forEach(room => {
-    const chips = SHZ.guests.filter(g => s.assign[g.id]===room);
-    const over = shzRoomOver(room);
+    const chips = SHZ.guests.filter(g => s.assign[g.id]===room && inNight(g));
+    const over = chips.length > 2;             // 그날 밤 3명 이상
     const isByeolche = SHZ_BYEOLCHE.includes(room);
     html += `<div class="shz-room${over?' over':''}${chips.length>=2&&!over?' full':''}${SHZ_SEL?' pickmode':''}${isByeolche?' byeolche':''}" ondragover="event.preventDefault()" ondrop="shzDrop(event,'${room}')" onclick="shzPlaceTo('${room}')">
       <div class="shz-room-h">${room} <span class="shz-cap${over?' over':''}">${chips.length}/2名</span>${over?' <span class="shz-warn">3名以上</span>':''}
-        <small class="shz-zone">${SHZ_ZONE(room)} · ¥${SHZ_BASE.toLocaleString()}${isByeolche?'<i class="shz-onsen">♨ 사전신청 +¥'+SHZ_ONSEN.toLocaleString()+'</i>':''}</small></div>
-      <div class="shz-room-body">${chips.map(shzChipHTML).join('')}</div>
+        <small class="shz-zone">${SHZ_ZONE(room)} · ¥${SHZ_BASE.toLocaleString()}${isByeolche?'<i class="shz-onsen">♨ 온천 사전신청제</i>':''}</small></div>
+      <div class="shz-room-body">${chips.map(shzChipHTML).join('') || '<div class="shz-empty">空室</div>'}</div>
     </div>`;
   });
   html += `</div></div>`;
@@ -10002,7 +10026,7 @@ function shzRenderPreview(){
     let note = s.note[date];
     if(note==null) note = Object.values(notes).filter(x=>x.c>0).map(x=>`${x.nm}様${shzZen(x.c)}名`).join('　');
     html += `<table class="shz-pv">
-      <tr class="shz-pv-zone"><th></th><th colspan="4">本館 <small>¥17,000</small></th><th colspan="3" class="bz">別棟 <small>¥17,000 ♨사전신청+¥2,000</small></th><th></th></tr>
+      <tr class="shz-pv-zone"><th></th><th colspan="4">本館 <small>¥17,000</small></th><th colspan="3" class="bz">別棟 <small>¥17,000 ♨온천 사전신청제</small></th><th></th></tr>
       <tr class="shz-pv-hd"><th class="shz-pv-dt">${shzZen(d.getMonth()+1)}／${shzZen(d.getDate())}<br><span>${SHZ_DOW[d.getDay()]}</span></th>${SHZ_ROOMS.map(r=>`<th${SHZ_BYEOLCHE.includes(r)?' class="bz"':''}>${r}</th>`).join('')}<th class="shz-pv-k">合計</th></tr>
       <tr><td class="shz-pv-lb">お名前</td>${cells.map(c=>`<td class="shz-pv-nm">${c.name}</td>`).join('')}<td></td></tr>
       <tr><td class="shz-pv-lb">大人</td>${cells.map(c=>`<td>${c.mf}</td>`).join('')}<td class="shz-pv-k">大 ${shzZen(tot)} 名</td></tr>
