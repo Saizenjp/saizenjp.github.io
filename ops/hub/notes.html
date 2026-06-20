@@ -83,7 +83,7 @@
   .hist .old{color:var(--err)}
   .hist .new{color:var(--ok);font-weight:700}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.14">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.15">
 </head>
 <body>
 <div class="topbar so-bar">
@@ -119,10 +119,7 @@
   <button class="btn ghost sm" id="date-today" type="button" title="이번 달">오늘</button>
   <button class="btn sm" id="btn-load" type="button" disabled>불러오기</button>
   <span class="hint" id="session-hint"></span>
-  <span class="user-wrap">
-    <label>담당자</label>
-    <input class="inp" id="user" type="text" placeholder="이름(수정이력에 기록)" style="width:150px">
-  </span>
+  <span class="hint" style="margin-left:auto">담당자는 우측 상단 👤에서 설정 — 모든 수정이 그 이름으로 기록됩니다.</span>
 </div>
 
 <main>
@@ -136,7 +133,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.14"></script>
+<script src="../assets/saizen-ops.js?v=14.15"></script>
 <script>
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
@@ -241,8 +238,8 @@ async function onEdit(e){
   const cur=state.notes[seq]||{ event_seq:seq };
   const old=cur[field]!=null?String(cur[field]):'';
   if(old===val) return;
-  const user=($('#user').value.trim())||getUser()||'미상';
-  setUser($('#user').value.trim());
+  const user=getUser()||'미상';
+  if(user==='미상'){ toast('우측 상단 👤 담당자명을 먼저 입력하세요','warn'); }
   const row=Object.assign({}, cur, { event_seq:seq, session_ym:state.ym, [field]:val, updated_by:user });
   delete row.updated_at; delete row.created_at;
   const { data, error }=await supa.from('event_notes').upsert(row,{ onConflict:'event_seq' }).select().single();
@@ -278,7 +275,6 @@ function openModal(title, bodyHtml){
 
 /* ── init ── */
 loadCreds();
-$('#user').value=getUser();
 $('#month-pick').value=isoToday().slice(0,7);
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-load').addEventListener('click',loadData);
@@ -286,7 +282,6 @@ $('#date-prev').addEventListener('click',()=>shiftMonth(-1));
 $('#date-next').addEventListener('click',()=>shiftMonth(1));
 $('#date-today').addEventListener('click',gotoToday);
 $('#month-pick').addEventListener('change',()=>{ if(supa) loadData(); });
-$('#user').addEventListener('change',ev=>setUser(ev.target.value.trim()));
 window.onSaizenLangChange=function(){};
 if($('#sb-url').value && $('#sb-key').value){ connect(); }
 </script>
