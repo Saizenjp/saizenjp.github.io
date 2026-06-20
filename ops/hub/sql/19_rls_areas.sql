@@ -2,10 +2,11 @@
 --  SaiZen Hub — 19 카드별 RLS (영역 권한 기반)
 -- ----------------------------------------------------------------------------
 --  17의 "로그인=전권(_auth_all)" 정책을 영역(card) 기반으로 교체한다.
---  · 쓰기(ins/upd/del): 해당 카드 영역 권한자만(admin·manager는 무조건 통과)
+--  · 쓰기(ins/upd/del): 해당 카드 영역 권한자만(admin=마스터는 무조건 통과)
 --  · 읽기(select):
 --      - 일반 운영 테이블 = 로그인 사용자 전체(페이지 간 참조 필요)
---      - 민감(돈·정산) = 정산·POS 권한자만   · 회원PII(member_codes) = admin/manager만
+--      - 민감(돈·정산) = 정산·POS 권한자만   · 회원PII(member_codes) = admin(마스터)만
+--  ※ manager(관리담당)는 더 이상 자동 전권 아님 — 부여한 카드(areas)로만 접근.
 --  → 수정 차단 + 민감 데이터 열람 차단까지 DB 차원 enforce.
 --
 --  카드→테이블(쓰기) 매핑:
@@ -22,13 +23,14 @@
 --  ⚠ 실행 전 본인이 role='admin' 인지 반드시 확인(아니면 본인 쓰기·읽기도 잠김).
 -- ============================================================================
 
--- 여러 영역 중 하나라도 가지면 true. admin·manager는 무조건 true. 빈 배열=admin/manager 전용.
+-- 여러 영역 중 하나라도 가지면 true. admin(마스터)만 무조건 true.
+-- manager·staff는 areas(체크한 카드)로 판정. 빈 배열(member_codes 등)=admin 전용.
 create or replace function has_any_area(p_areas text[])
 returns boolean language sql security definer set search_path = public stable as $$
   select exists(
     select 1 from user_access
     where user_id = auth.uid()
-      and (role in ('admin','manager') or areas && p_areas)
+      and (role = 'admin' or areas && p_areas)
   );
 $$;
 grant execute on function has_any_area(text[]) to authenticated;
@@ -46,7 +48,7 @@ begin
       ('guests',          array['step1'],           true),
       ('guest_members',   array['step1'],           true),
       ('import_log',      array['step1'],           true),
-      ('member_codes',    array[]::text[],          false),  -- admin/manager 전용(읽기·쓰기)
+      ('member_codes',    array[]::text[],          false),  -- admin(마스터) 전용(읽기·쓰기)
       ('room_inventory',  array['room'],            true),
       ('rooms',           array['room'],            true),
       ('event_notes',     array['notes'],           true),

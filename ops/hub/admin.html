@@ -89,8 +89,8 @@
 <div class="wrap">
   <div class="panel">
     <h3>담당자 권한 관리</h3>
-    <div class="desc">각 계정의 <b>역할</b>(마스터·관리담당·일반)과, 일반 담당자가 들어갈 수 있는 <b>카드</b>를 지정합니다.
-      마스터·관리담당은 전 카드 접근입니다. 기본값은 <b>일반·권한 없음</b>입니다.</div>
+    <div class="desc">각 계정의 <b>역할</b>(마스터·관리담당·일반)과 들어갈 수 있는 <b>카드</b>를 지정합니다.
+      마스터는 전 카드. <b>관리담당·일반은 체크한 카드만</b>(전부 주려면 모두 체크). 기본값은 <b>일반·권한 없음</b>입니다.</div>
     <div id="users"><div class="deny" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
   </div>
 </div>
@@ -147,15 +147,15 @@ function render(){
   const box=$('#users');
   if(!rows.length){ box.innerHTML='<div class="deny" style="color:var(--muted)">계정이 없습니다.</div>'; return; }
   const myId=(window.__so_meId||'');
-  let html='<table class="users"><thead><tr><th>담당자</th><th>역할</th><th>접근 카드(일반 담당자만)</th><th></th></tr></thead><tbody>';
+  let html='<table class="users"><thead><tr><th>담당자</th><th>역할</th><th>접근 카드(관리담당·일반)</th><th></th></tr></thead><tbody>';
   rows.forEach(u=>{
     const roleOpts=['admin','manager','staff'].map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_LABEL[r]}</option>`).join('');
-    const isStaff=u.role==='staff';
+    const showAreas=u.role!=='admin';
     const areaBoxes=AREAS.map(([k,lab])=>`<label><input type="checkbox" data-area="${k}" ${(u.areas||[]).includes(k)?'checked':''}> ${lab}</label>`).join('');
     html+=`<tr data-id="${u.user_id}">
       <td><div class="uname">${esc(u.name||'(이름 미설정)')}</div><div class="uemail">${esc(u.email||'')}</div></td>
       <td><select class="inp rolesel" data-f="role">${roleOpts}</select></td>
-      <td><div class="areas${isStaff?'':' dim'}" data-areas>${isStaff?areaBoxes:'<span class="allnote">전 카드 접근(역할 권한)</span>'}</div></td>
+      <td><div class="areas${showAreas?'':' dim'}" data-areas>${showAreas?areaBoxes:'<span class="allnote">전 카드 접근(마스터)</span>'}</div></td>
       <td><button class="btn sm" data-save>저장</button></td>
     </tr>`;
   });
@@ -165,11 +165,13 @@ function render(){
   box.querySelectorAll('select[data-f="role"]').forEach(sel=>{
     sel.addEventListener('change',()=>{
       const tr=sel.closest('tr'); const ar=tr.querySelector('[data-areas]');
-      if(sel.value==='staff'){
+      if(sel.value!=='admin'){
         ar.classList.remove('dim');
-        ar.innerHTML=AREAS.map(([k,lab])=>`<label><input type="checkbox" data-area="${k}"> ${lab}</label>`).join('');
+        if(!ar.querySelector('[data-area]')){   // allnote 상태면 체크박스 생성(기존 체크는 보존)
+          ar.innerHTML=AREAS.map(([k,lab])=>`<label><input type="checkbox" data-area="${k}"> ${lab}</label>`).join('');
+        }
       }else{
-        ar.classList.add('dim'); ar.innerHTML='<span class="allnote">전 카드 접근(역할 권한)</span>';
+        ar.classList.add('dim'); ar.innerHTML='<span class="allnote">전 카드 접근(마스터)</span>';
       }
     });
   });
@@ -179,7 +181,7 @@ function render(){
 async function saveRow(tr){
   const id=tr.dataset.id;
   const role=tr.querySelector('select[data-f="role"]').value;
-  const areas=role==='staff'
+  const areas=role!=='admin'
     ? [...tr.querySelectorAll('[data-area]')].filter(c=>c.checked).map(c=>c.dataset.area)
     : [];
   const {error}=await supa.rpc('admin_set_access',{p_user:id,p_role:role,p_areas:areas});
