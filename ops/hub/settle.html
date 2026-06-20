@@ -83,6 +83,19 @@
 
   .empty-hint{font-size:12px;color:var(--muted);text-align:center;padding:24px 0}
 
+  /* 팀 그룹(개인 분할이 있는 팀: 팀 folio + 개인 folio 묶음) */
+  .folio-group{border:1px solid var(--border2);border-radius:10px;margin-bottom:11px;overflow:hidden;background:var(--surface2)}
+  .fg-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:8px 11px;background:var(--accentSoft);border-bottom:1px solid var(--border)}
+  .fg-head .fg-tag{font-family:var(--mono);font-weight:800;font-size:13px;color:var(--accent)}
+  .fg-head .fg-rep{font-size:12.5px;font-weight:700;color:var(--text)}
+  .fg-head .fg-split{font-size:9.5px;font-weight:700;color:var(--accent2);background:#fbf3e2;border:1px solid #e6cf95;border-radius:4px;padding:2px 6px;line-height:1}
+  .fg-head .fg-bal{margin-left:auto;font-family:var(--mono);font-weight:800;font-size:12.5px}
+  .fg-head .fg-bal.zero{color:var(--ok)} .fg-head .fg-bal.due{color:var(--err)}
+  .fg-body{padding:8px 8px 2px}
+  .fg-body .folio-card{margin-bottom:7px}
+  .fg-body .folio-card.member{margin-left:16px;border-left-width:3px;border-left-color:var(--accent2)}
+  .fg-body .folio-card.member .ftag{font-size:11px;color:var(--muted);font-weight:700}
+
   /* 정산 상세 */
   .det-head{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;padding:4px 4px 12px;border-bottom:1px solid var(--border);margin-bottom:12px}
   .det-head .dt{font-size:18px;font-weight:800}
@@ -133,7 +146,7 @@
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
   @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.16">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.18">
 </head>
 <body>
 <div class="topbar so-bar">
@@ -189,7 +202,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.16"></script>
+<script src="../assets/saizen-ops.js?v=14.18"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -255,29 +268,66 @@ async function loadSession(){
   toast(`${ym} · 정산계정 ${state.folios.length}건 로드`,'ok');
 }
 
+// folio 카드 1장 생성(팀/개인 공통). member=개인 folio면 대표자 대신 개인명 강조.
+function folioCard(f){
+  const card=document.createElement('div');
+  const isMember=f.subject==='member';
+  card.className='folio-card'+(isMember?' member':'')+(f.folio_id===state.selId?' sel':'');
+  card.dataset.id=f.folio_id;
+  const tag=f.team_tag||('팀'+f.event_seq);
+  const bal=Number(f.balance||0);
+  const balCls=bal<=0?'zero':'due';
+  // 개인 folio: 작은 팀태그 + 개인명 강조 / 팀 folio: 팀태그 + 대표자
+  const head=isMember
+    ? `<span class="ftag">${tag}</span>
+       <span class="frep">${f.member_name||f.rep_name||''}</span>
+       <span class="sbadge s-${f.status}">${STATUS_LABEL[f.status]||f.status}</span>
+       <span class="sbadge s-member">개인</span>`
+    : `<span class="ftag">${tag}</span>
+       <span class="frep">${f.rep_name||''}</span>
+       <span class="sbadge s-${f.status}">${STATUS_LABEL[f.status]||f.status}</span>`;
+  card.innerHTML=`
+    <div class="fh">${head}</div>
+    <div class="fmeta">청구 ${f.charge_count||0}건 · 합계 ${yen(f.gross_total)} · 결제 ${yen(f.paid_total)}</div>
+    <div class="fbal ${balCls}">잔액 ${yen(bal)}</div>`;
+  card.addEventListener('click',()=>selectFolio(f.folio_id));
+  return card;
+}
+
 function renderFolioList(){
   const box=$('#folio-list'); box.innerHTML='';
   $('#folio-cnt').textContent=`${state.folios.length}건`;
   if(!state.folios.length){ box.innerHTML='<div class="empty-hint">'+t('st_emptyFolios')+'</div>'; return; }
+  // 팀(event_seq)별 그룹화 — 원래 정렬(opened_at) 순서로 그룹 등장순 유지
+  const order=[], groups=new Map();
   state.folios.forEach(f=>{
-    const card=document.createElement('div');
-    card.className='folio-card'+(f.folio_id===state.selId?' sel':'');
-    card.dataset.id=f.folio_id;
-    const tag=f.team_tag||('팀'+f.event_seq);
-    const bal=Number(f.balance||0);
-    const balCls=bal<=0?'zero':'due';
-    const subj=f.subject==='member'?`<span class="sbadge s-member">개인 ${f.member_name||''}</span>`:'';
-    card.innerHTML=`
-      <div class="fh">
-        <span class="ftag">${tag}</span>
-        <span class="frep">${f.rep_name||''}</span>
-        <span class="sbadge s-${f.status}">${STATUS_LABEL[f.status]||f.status}</span>
-        ${subj}
-      </div>
-      <div class="fmeta">청구 ${f.charge_count||0}건 · 합계 ${yen(f.gross_total)} · 결제 ${yen(f.paid_total)}</div>
-      <div class="fbal ${balCls}">잔액 ${yen(bal)}</div>`;
-    card.addEventListener('click',()=>selectFolio(f.folio_id));
-    box.appendChild(card);
+    if(!groups.has(f.event_seq)){ groups.set(f.event_seq,[]); order.push(f.event_seq); }
+    groups.get(f.event_seq).push(f);
+  });
+  order.forEach(seq=>{
+    const list=groups.get(seq);
+    // 팀 folio 먼저, 개인 folio 나중
+    list.sort((a,b)=>(a.subject==='team'?0:1)-(b.subject==='team'?0:1));
+    const members=list.filter(f=>f.subject==='member');
+    // 분할(개인 folio)이 없는 단일 팀은 그대로 카드 1장 — 묶음 헤더 없이
+    if(!members.length){ list.forEach(f=>box.appendChild(folioCard(f))); return; }
+    // 개인 분할이 있는 팀 → 묶음(헤더 = 팀 전체 합계)
+    const teamF=list.find(f=>f.subject==='team')||list[0];
+    const tag=teamF.team_tag||('팀'+seq);
+    const gGross=list.reduce((s,f)=>s+Number(f.gross_total||0),0);
+    const gPaid =list.reduce((s,f)=>s+Number(f.paid_total||0),0);
+    const gBal=gGross-gPaid; const gCls=gBal<=0?'zero':'due';
+    const grp=document.createElement('div'); grp.className='folio-group';
+    grp.innerHTML=`
+      <div class="fg-head">
+        <span class="fg-tag">${tag}</span>
+        <span class="fg-rep">${teamF.rep_name||''}</span>
+        <span class="fg-split">개인 분할 ${members.length}명</span>
+        <span class="fg-bal ${gCls}">팀 합계 잔액 ${yen(gBal)}</span>
+      </div>`;
+    const body=document.createElement('div'); body.className='fg-body';
+    list.forEach(f=>body.appendChild(folioCard(f)));
+    grp.appendChild(body); box.appendChild(grp);
   });
 }
 
@@ -425,7 +475,7 @@ async function addCharge(){
   const row={ folio_id:f.folio_id, event_seq:f.event_seq, member_id:f.member_id||null,
     category, source:'frontdesk', description, qty, unit_price:unit,
     amount:gross-tax, tax, service_charge:0,
-    created_by:localStorage.getItem('saizen_op_name')||null };
+    created_by:(window.__so_getUser&&__so_getUser())||null };
   const {error}=await supa.from('charges').insert(row);
   if(error){toast('청구 추가 실패: '+error.message,'err');return;}
   toast('청구 추가됨','ok');
@@ -519,7 +569,7 @@ async function openFolioModal(){
 }
 async function openFolio(event_seq){
   const row={ event_seq, subject:'team', status:'open', session_ym:state.ym,
-    created_by:localStorage.getItem('saizen_op_name')||null };
+    created_by:(window.__so_getUser&&__so_getUser())||null };
   const {data,error}=await supa.from('folios').insert(row).select('id').single();
   if(error){toast('계정 열기 실패: '+error.message,'err');return;}
   toast('정산 계정 열림 (#'+event_seq+')','ok');

@@ -692,7 +692,10 @@
     return html.replace(/<rt>.*?<\/rt>/g, '').replace(/<\/?ruby>/g, '').replace(/<[^>]+>/g, '');
   }
 
-  function applyLang() {
+  // fireHook=true 일 때만 페이지의 onSaizenLangChange 훅을 호출한다.
+  // (페이지가 동적 DOM 번역용으로 apply()를 부를 때 훅을 다시 호출하면
+  //  render()→apply()→onSaizenLangChange()→render() 무한 루프가 되므로 분리.)
+  function applyLang(fireHook) {
     document.documentElement.lang = LANG;
     document.querySelectorAll('[data-i18n]').forEach(function (el) {
       el.innerHTML = t(el.getAttribute('data-i18n'));
@@ -715,14 +718,15 @@
       fb.classList.toggle('on', FURI);
     }
     document.body.classList.toggle('furi-on', FURI && LANG === 'ja');
-    // 페이지가 동적 갱신 훅을 등록했으면 호출
-    if (typeof global.onSaizenLangChange === 'function') {
+    // 언어/후리가나가 실제로 바뀐 경우에만(=fireHook) 페이지 동적 갱신 훅 호출.
+    // 페이지 render() 안에서 부르는 apply()는 fireHook 없이 들어와 루프를 막는다.
+    if (fireHook && typeof global.onSaizenLangChange === 'function') {
       try { global.onSaizenLangChange(LANG); } catch (e) {}
     }
   }
 
-  function setLang(l) { LANG = l; localStorage.setItem('saizen_lang', l); applyLang(); }
-  function toggleFuri() { FURI = !FURI; localStorage.setItem('saizen_furi', FURI ? '1' : '0'); applyLang(); }
+  function setLang(l) { LANG = l; localStorage.setItem('saizen_lang', l); applyLang(true); }
+  function toggleFuri() { FURI = !FURI; localStorage.setItem('saizen_furi', FURI ? '1' : '0'); applyLang(true); }
 
   // 외부에서 현재 언어/번역 접근용
   var API = {
@@ -787,7 +791,68 @@
     try { inp.focus(); } catch (e) {}
   }
 
-  function boot() { mountUser(); applyLang(); }
+  // ── 로그인(Supabase Auth) — Stage 1: 비차단 로그인/로그아웃 컨트롤 ──
+  //    RLS 강화(17_rls_harden.sql) 후엔 비로그인 시 데이터 접근이 막히므로
+  //    여기서 로그인 수단을 제공한다. 페이지 사용 자체를 막지는 않는다(비차단).
+  //    페이지의 supabase 클라이언트와 같은 origin·storageKey 라 로그인 세션을 공유한다.
+  var _authClient = null;
+  function authClient() {
+    if (_authClient) return _authClient;
+    if (!global.supabase) return null;
+    var url = localStorage.getItem('saizen_sb_url') || '';
+    var key = localStorage.getItem('saizen_sb_key') || '';
+    if (!url || !key) return null;
+    try { _authClient = global.supabase.createClient(url, key); } catch (e) { return null; }
+    return _authClient;
+  }
+  function mountAuth() {
+    var box = document.querySelector('.so-controls');
+    if (!box || document.getElementById('so-auth')) return;
+    var c = authClient();
+    if (!c) return;   // supabase 미로드/접속정보 없음(랜딩 등) → 표시 안 함
+    var wrap = document.createElement('div');
+    wrap.className = 'so-auth'; wrap.id = 'so-auth';
+    box.insertBefore(wrap, box.firstChild);
+    c.auth.getSession().then(function (res) {
+      var u = res && res.data && res.data.session ? res.data.session.user : null;
+      renderAuth(wrap, u);
+    }).catch(function () { renderAuth(wrap, null); });
+  }
+  function renderAuth(wrap, user) {
+    if (user) {
+      wrap.innerHTML = '<span class="so-auth-ic">🔐</span>'
+        + '<span class="so-auth-email">' + escU(user.email || '로그인됨') + '</span>'
+        + '<button type="button" class="so-user-btn" id="so-auth-out">로그아웃</button>';
+      wrap.querySelector('#so-auth-out').addEventListener('click', authLogout);
+    } else {
+      wrap.innerHTML = '<button type="button" class="so-user-btn save" id="so-auth-in">로그인</button>';
+      wrap.querySelector('#so-auth-in').addEventListener('click', function () { authForm(wrap); });
+    }
+  }
+  function authForm(wrap) {
+    wrap.innerHTML =
+        '<input id="so-auth-em" class="so-user-in" type="email" placeholder="이메일" autocomplete="username" style="width:128px">'
+      + '<input id="so-auth-pw" class="so-user-in" type="password" placeholder="비밀번호" autocomplete="current-password" style="width:104px">'
+      + '<button type="button" class="so-user-btn save" id="so-auth-go">로그인</button>';
+    var em = wrap.querySelector('#so-auth-em'), pw = wrap.querySelector('#so-auth-pw');
+    function go() { authLogin(em.value.trim(), pw.value); }
+    wrap.querySelector('#so-auth-go').addEventListener('click', go);
+    pw.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+    try { em.focus(); } catch (e) {}
+  }
+  function authLogin(email, password) {
+    var c = authClient(); if (!c || !email || !password) return;
+    c.auth.signInWithPassword({ email: email, password: password }).then(function (res) {
+      if (res && res.error) { alert('로그인 실패: ' + res.error.message); return; }
+      location.reload();
+    }).catch(function (e) { alert('로그인 오류: ' + e.message); });
+  }
+  function authLogout() {
+    var c = authClient(); if (!c) return;
+    c.auth.signOut().then(function () { location.reload(); }).catch(function () { location.reload(); });
+  }
+
+  function boot() { mountUser(); mountAuth(); applyLang(); }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
   } else {
