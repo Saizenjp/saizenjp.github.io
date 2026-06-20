@@ -7,6 +7,16 @@
 (function (global) {
   'use strict';
 
+  // ── Supabase 접속정보 내장(어느 PC든 자동 연결) ──
+  //    publishable key 라 공개 안전(RLS로 잠겨 로그인 없이는 데이터 접근 불가).
+  //    ⚠ sb_secret_ 키는 절대 여기 넣지 않는다.
+  var SB_URL_DEFAULT = 'https://wzfmloivrolpwpiuyhbs.supabase.co';
+  var SB_KEY_DEFAULT = 'sb_publishable_W76Uh3D9gRPjPoxHwl-LYw_dR9BIj6L';
+  try {
+    if (!localStorage.getItem('saizen_sb_url')) localStorage.setItem('saizen_sb_url', SB_URL_DEFAULT);
+    if (!localStorage.getItem('saizen_sb_key')) localStorage.setItem('saizen_sb_key', SB_KEY_DEFAULT);
+  } catch (e) {}
+
   var LANG = localStorage.getItem('saizen_lang') || 'ja';   // 기본 일본어
   var FURI = localStorage.getItem('saizen_furi') === '1';   // 기본 OFF
 
@@ -887,7 +897,53 @@
     }).catch(function (e) { alert('이름 저장 오류: ' + e.message); });
   }
 
-  function boot() { mountUser(); mountAuth(); applyLang(); }
+  // ── 접근 권한(me_access) 조회 — 캐시. {role, areas} 또는 null(미로그인). ──
+  var _meP = null;
+  function meAccess() {
+    if (_meP) return _meP;
+    var c = authClient();
+    if (!c) { _meP = Promise.resolve(null); return _meP; }
+    _meP = c.auth.getSession().then(function (r) {
+      if (!r || !r.data || !r.data.session) return null;
+      return c.rpc('me_access').then(function (rr) {
+        if (rr.error || !rr.data || !rr.data[0]) return { role: 'staff', areas: [] };
+        return { role: rr.data[0].role, areas: rr.data[0].areas || [] };
+      }).catch(function () { return { role: 'staff', areas: [] }; });
+    }).catch(function () { return null; });
+    return _meP;
+  }
+  global.__so_meAccess = meAccess;
+  global.__so_authClient = authClient;
+
+  // ── 페이지 가드 — <body data-so-area="settle"> 선언 시, 권한 없으면 차단 오버레이. ──
+  function showGuard(kind) {
+    if (document.getElementById('so-guard')) return;
+    var d = document.createElement('div');
+    d.id = 'so-guard';
+    d.setAttribute('style', 'position:fixed;inset:0;z-index:25;background:rgba(238,241,234,.97);display:flex;align-items:center;justify-content:center;text-align:center;padding:24px');
+    var inner = (kind === 'login')
+      ? '<div style="font-size:18px;font-weight:800;color:#3d5424">로그인이 필요합니다</div>'
+        + '<div style="margin-top:10px;color:#566049;font-size:13.5px">상단 우측 <b>[로그인]</b> 으로 로그인하세요.</div>'
+      : '<div style="font-size:18px;font-weight:800;color:#b13b2c">접근 권한이 없습니다</div>'
+        + '<div style="margin-top:10px;color:#566049;font-size:13.5px">이 페이지 권한이 없습니다. 마스터(관리자)에게 문의하세요.</div>'
+        + '<div style="margin-top:16px"><a href="../index.html" style="color:#3d5424;font-weight:700;text-decoration:none">← 홈으로</a></div>';
+    d.innerHTML = '<div>' + inner + '</div>';
+    document.body.appendChild(d);
+  }
+  function guardPage() {
+    var area = document.body.getAttribute('data-so-area');
+    if (!area) return;
+    if (!authClient()) return;   // 접속정보 없음(이론상 내장으로 항상 있음)
+    meAccess().then(function (acc) {
+      if (!acc) { showGuard('login'); return; }                 // 미로그인
+      if (area === 'admin') { if (acc.role === 'admin') return; showGuard('deny'); return; }
+      if (acc.role === 'admin' || acc.role === 'manager') return; // 전 접근
+      if ((acc.areas || []).indexOf(area) >= 0) return;          // 허용 영역
+      showGuard('deny');
+    });
+  }
+
+  function boot() { mountUser(); mountAuth(); applyLang(); guardPage(); }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
   } else {

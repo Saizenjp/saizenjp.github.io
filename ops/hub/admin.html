@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 권한 관리(마스터)</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad;
+    --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#3d5424; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#2c3d19;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh;}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06);}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .topbar .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 15px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{padding:16px 20px 90px;max-width:1100px;margin:0 auto}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel > h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:6px}
+  .panel .desc{font-size:12px;color:var(--text2);margin-bottom:11px}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+
+  table.users{width:100%;border-collapse:collapse;font-size:13px}
+  table.users th{text-align:left;font-size:11px;color:#fff;background:var(--accent);font-weight:700;padding:8px;white-space:nowrap}
+  table.users td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top}
+  table.users tr.me{background:var(--accentSoft)}
+  .uname{font-weight:700}
+  .uemail{font-size:11.5px;color:var(--muted);font-family:var(--mono)}
+  .rolesel{min-width:108px}
+  .areas{display:flex;flex-wrap:wrap;gap:8px 12px;max-width:360px}
+  .areas label{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);white-space:nowrap}
+  .areas.dim{opacity:.4;pointer-events:none}
+  .areas .allnote{font-size:11.5px;color:var(--accent2);font-weight:700}
+  .rbadge{font-size:9.5px;font-weight:800;border-radius:4px;padding:2px 7px;white-space:nowrap}
+  .rb-admin{color:#fff;background:var(--accent2)} .rb-manager{color:#fff;background:var(--accent)} .rb-staff{color:var(--text2);background:var(--surface3);border:1px solid var(--border2)}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.21">
+</head>
+<body data-so-area="admin">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム">
+    <img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen">
+  </a>
+  <span class="step">권한 관리 · 마스터</span>
+  <a class="navhome" href="../index.html" style="margin-left:14px">← 홈</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key (sb_publishable_…)" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint">로그인 후 마스터(admin)만 사용할 수 있습니다.</span>
+</div>
+
+<div class="wrap">
+  <div class="panel">
+    <h3>담당자 권한 관리</h3>
+    <div class="desc">각 계정의 <b>역할</b>(마스터·관리담당·일반)과, 일반 담당자가 들어갈 수 있는 <b>카드</b>를 지정합니다.
+      마스터·관리담당은 전 카드 접근입니다. 기본값은 <b>일반·권한 없음</b>입니다.</div>
+    <div id="users"><div class="deny" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-ops.js?v=14.21"></script>
+<script>
+// ════════════════════════════════════════════════════════════════════════
+//  SaiZen Hub — 권한 관리(마스터 전용). 18_access_control.sql 의 RPC를 호출.
+// ════════════════════════════════════════════════════════════════════════
+const $=s=>document.querySelector(s);
+let supa=null, myRole=null, rows=[];
+const AREAS=[['step1','데이터등록'],['room','방배정'],['settle','정산'],['notes','팀메모'],['pos','POS'],['kitchen','주방'],['menu','메뉴']];
+const ROLE_LABEL={admin:'마스터',manager:'관리담당',staff:'일반'};
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(msg,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.textContent=msg;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn('URL·key 필요','err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
+      $('#users').innerHTML='<div class="deny">로그인이 필요합니다.<small>상단 우측 [로그인]으로 마스터 계정 로그인 후 다시 연결하세요.</small></div>'; return; }
+    const {data:acc,error}=await supa.rpc('me_access');
+    if(error) throw error;
+    myRole=(acc&&acc[0]&&acc[0].role)||'staff';
+    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.classList.add('connected');btn.disabled=false;
+    if(myRole!=='admin'){
+      $('#users').innerHTML='<div class="deny">마스터(관리자) 전용 페이지입니다.<small>현재 역할: '+esc(ROLE_LABEL[myRole]||myRole)+' · 접근 권한이 없습니다.</small></div>';
+      return;
+    }
+    await load();
+  }catch(e){
+    setConn('연결 실패','err'); btn.textContent='연결 · 재시도';btn.disabled=false; supa=null;
+    toast('연결 실패: '+e.message+' (18_access_control.sql 실행·로그인 확인)','err');
+  }
+}
+
+async function load(){
+  const {data,error}=await supa.rpc('admin_list_users');
+  if(error){toast('목록 로드 실패: '+error.message,'err');return;}
+  rows=data||[];
+  render();
+}
+
+function render(){
+  const box=$('#users');
+  if(!rows.length){ box.innerHTML='<div class="deny" style="color:var(--muted)">계정이 없습니다.</div>'; return; }
+  const myId=(window.__so_meId||'');
+  let html='<table class="users"><thead><tr><th>담당자</th><th>역할</th><th>접근 카드(일반 담당자만)</th><th></th></tr></thead><tbody>';
+  rows.forEach(u=>{
+    const roleOpts=['admin','manager','staff'].map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_LABEL[r]}</option>`).join('');
+    const isStaff=u.role==='staff';
+    const areaBoxes=AREAS.map(([k,lab])=>`<label><input type="checkbox" data-area="${k}" ${(u.areas||[]).includes(k)?'checked':''}> ${lab}</label>`).join('');
+    html+=`<tr data-id="${u.user_id}">
+      <td><div class="uname">${esc(u.name||'(이름 미설정)')}</div><div class="uemail">${esc(u.email||'')}</div></td>
+      <td><select class="inp rolesel" data-f="role">${roleOpts}</select></td>
+      <td><div class="areas${isStaff?'':' dim'}" data-areas>${isStaff?areaBoxes:'<span class="allnote">전 카드 접근(역할 권한)</span>'}</div></td>
+      <td><button class="btn sm" data-save>저장</button></td>
+    </tr>`;
+  });
+  html+='</tbody></table>';
+  box.innerHTML=html;
+  // 역할 변경 시 카드 영역 활성/비활성 토글
+  box.querySelectorAll('select[data-f="role"]').forEach(sel=>{
+    sel.addEventListener('change',()=>{
+      const tr=sel.closest('tr'); const ar=tr.querySelector('[data-areas]');
+      if(sel.value==='staff'){
+        ar.classList.remove('dim');
+        ar.innerHTML=AREAS.map(([k,lab])=>`<label><input type="checkbox" data-area="${k}"> ${lab}</label>`).join('');
+      }else{
+        ar.classList.add('dim'); ar.innerHTML='<span class="allnote">전 카드 접근(역할 권한)</span>';
+      }
+    });
+  });
+  box.querySelectorAll('button[data-save]').forEach(b=>b.addEventListener('click',()=>saveRow(b.closest('tr'))));
+}
+
+async function saveRow(tr){
+  const id=tr.dataset.id;
+  const role=tr.querySelector('select[data-f="role"]').value;
+  const areas=role==='staff'
+    ? [...tr.querySelectorAll('[data-area]')].filter(c=>c.checked).map(c=>c.dataset.area)
+    : [];
+  const {error}=await supa.rpc('admin_set_access',{p_user:id,p_role:role,p_areas:areas});
+  if(error){toast('저장 실패: '+error.message,'err');return;}
+  toast('저장됨','ok');
+  await load();
+}
+
+$('#btn-connect').addEventListener('click',connect);
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
