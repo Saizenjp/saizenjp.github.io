@@ -741,23 +741,50 @@
   global.__so_toggleFuri = toggleFuri;
 
   // ── 담당자(식별 라벨) — 모든 ops 페이지 상단바에 주입. 인증 아님(수정이력 기록용).
-  //    saizen_ops_user localStorage 1곳에 저장 → 전 페이지 공유. 비어 있으면 골드 링으로 입력 안내.
+  //    saizen_ops_user localStorage 1곳 공유. [입력+저장] → "○○○ 님 반갑습니다" + [변경].
   function getUser() { return localStorage.getItem('saizen_ops_user') || ''; }
   global.__so_getUser = getUser;
+  function escU(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function mountUser() {
     var box = document.querySelector('.so-controls');
     if (!box || document.getElementById('so-user')) return;
     var wrap = document.createElement('div');
     wrap.className = 'so-user';
+    wrap.id = 'so-user';
     wrap.title = '담당자 — 모든 변경이 이 이름으로 수정이력에 기록됩니다(인증 아님).';
-    wrap.innerHTML = '<span class="so-user-ic">👤</span>'
-      + '<input id="so-user" class="so-user-in" type="text" placeholder="담당자" autocomplete="off" spellcheck="false">';
     box.insertBefore(wrap, box.firstChild);
-    var inp = wrap.querySelector('#so-user');
-    inp.value = getUser();
-    function refl() { wrap.classList.toggle('empty', !inp.value.trim()); }
-    inp.addEventListener('input', function () { localStorage.setItem('saizen_ops_user', inp.value.trim()); refl(); });
-    refl();
+    renderUser(wrap);
+  }
+  function renderUser(wrap) {
+    wrap = wrap || document.getElementById('so-user');
+    if (!wrap) return;
+    var name = getUser();
+    if (name) {
+      wrap.classList.remove('empty');
+      wrap.innerHTML = '<span class="so-user-ic">👤</span>'
+        + '<span class="so-user-greet"><b>' + escU(name) + '</b> 님 반갑습니다</span>'
+        + '<button type="button" class="so-user-btn" id="so-user-edit">변경</button>';
+      wrap.querySelector('#so-user-edit').addEventListener('click', function () { editUser(wrap, name); });
+    } else {
+      editUser(wrap, '');
+    }
+  }
+  function editUser(wrap, cur) {
+    wrap.classList.add('empty');
+    wrap.innerHTML = '<span class="so-user-ic">👤</span>'
+      + '<input id="so-user-in" class="so-user-in" type="text" placeholder="담당자명" autocomplete="off" spellcheck="false">'
+      + '<button type="button" class="so-user-btn save" id="so-user-save">저장</button>';
+    var inp = wrap.querySelector('#so-user-in');
+    inp.value = cur || '';
+    function save() {
+      var v = inp.value.trim();
+      if (!v) { inp.focus(); return; }
+      localStorage.setItem('saizen_ops_user', v);
+      renderUser(wrap);
+    }
+    wrap.querySelector('#so-user-save').addEventListener('click', save);
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+    try { inp.focus(); } catch (e) {}
   }
 
   function boot() { mountUser(); applyLang(); }
