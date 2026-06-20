@@ -79,7 +79,7 @@
   `member_key` = 이름+생년6자리(예 `황보관현590611`), `member_class` = 등급(다이아몬드/다이아몬드Ⅱ/골드/특별/EWRC/EWRCⅡ/EWRC이용권).
   **승객 이름+생년6자리 ↔ `member_key` 매칭으로 개인별 회원 여부·등급을 판정한다.** 같은 팀에 회원·비회원이 섞일 수 있고, `is_rep`(대표)는 회원 보장이 아니다.
 - **비고 파싱**: `팀:xxx` 형식으로 팀 구분.
-- **Supabase 스키마(요약)**: `bookings`(팀)·`passengers`(개인+항공)·`guests`(팀 태그/숙소)·`guest_members`(개인 태그, rooms FK 대상)·`member_codes`(회원 마스터)·`room_inventory`(객실)·`rooms`(배정 **1행=1명**, `member_id`=guest_members.id uuid)·`import_log`. 마이그레이션 `01~08`.
+- **Supabase 스키마(요약)**: `bookings`(팀)·`passengers`(개인+항공)·`guests`(팀 태그/숙소)·`guest_members`(개인 태그, rooms FK 대상)·`member_codes`(회원 마스터)·`room_inventory`(객실)·`rooms`(배정 **1행=1명**, `member_id`=guest_members.id uuid)·`import_log`·`event_notes`(팀 운영 주석, event_seq PK·bookings cascade)·`event_note_log`(주석 수정이력). 마이그레이션 `01~16`.
 
 ## 7. 화면·섹션 구조 (코드 기준이 유일한 정답)
 - **`/app/` 탭** (`id="nav-*"` / `id="sec-*"`, ①~⑥ 활성 · ⑦~⑨ 준비중):
@@ -129,5 +129,5 @@
 - **기타**: `/app/` 로고 → `/ops/` 링크. 「초기화」 버튼 명확화(/app/=「입력 비우기」=localStorage, step1=「화면 비우기」=폼만). saizen-ops `?v=14.13`.
 
 ---
-*최종 검증 시점: app v14.6 / Hub asset `?v=14.13` / SQL 01~08·10(+정산 09·11~13 공유) / 방배정 자동화·분할·타임라인 구현(§13).
+*최종 검증 시점: app v14.7 / Hub asset `?v=14.14` / SQL 01~16(정산 09·11~13 / 방배정 02·05·06·10·15 / 14 이력 / 16 팀 운영 주석 `event_notes`) / ops 중립 캔버스 리프레시(saizen-ops.css :root) / `ops/hub/notes.html`(팀 운영 메모 — 월별 주석·수정이력, 시즈노 타임라인) 구현.
 이 문서가 코드와 어긋나면 코드가 정답이다.*

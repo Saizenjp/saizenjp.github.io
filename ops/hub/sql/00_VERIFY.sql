@@ -62,6 +62,10 @@ from (
   -- ── 15 시즈노야도 실제 객실명 ──
   union all select 15,'15 시즈노','志津(실제명 적용)',          case when exists(select 1 from room_inventory where facility='시즈노야도 료칸' and room_no='志津')    then '✅ 적용됨' else '❌ 미적용 (15)' end
   union all select 15,'15 시즈노','구 placeholder(본관 1호)',  case when exists(select 1 from room_inventory where facility='시즈노야도 료칸' and room_no='본관 1호') then '⚠ 잔존 → 15 재실행' else '✅ 없음' end
+
+  -- ── 16 팀 운영 주석 ──
+  union all select 16,'16 운영주석','event_notes',    case when to_regclass('public.event_notes')    is not null then '✅ 있음' else '❌ 없음 (16)' end
+  union all select 16,'16 운영주석','event_note_log', case when to_regclass('public.event_note_log') is not null then '✅ 있음' else '❌ 없음 (16)' end
 ) t
 order by ord, 항목;
 
