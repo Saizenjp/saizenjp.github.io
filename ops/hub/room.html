@@ -128,6 +128,9 @@
   .room.inactive{opacity:.5;background:repeating-linear-gradient(45deg,#f0eee7,#f0eee7 6px,#e9e6dd 6px,#e9e6dd 12px)}
   .room .rn{font-size:15px;font-weight:800}
   .room .rt{font-size:12px;color:var(--text2);margin-top:1px}
+  /* 본관/별채 등 zone을 약하게(실제 객실명 옆 작은 muted 라벨) */
+  .zone-pin{font-size:9px;font-weight:600;color:var(--muted);margin-left:5px;vertical-align:middle;letter-spacing:.02em}
+  .zone-pin.bz{color:var(--s)}
   .room .cap{position:absolute;top:9px;right:11px;font-size:12px;color:var(--muted);font-family:var(--mono);font-weight:600}
     .room .lock{position:absolute;bottom:8px;right:10px;font-size:14px;cursor:pointer;opacity:.5;transition:.12s;user-select:none}
   .room .lock:hover{opacity:1;transform:scale(1.15)}
@@ -401,6 +404,13 @@ const TYPE_EN={
   '4인실':'Quad Room','8인실':'Octa Room','2인1동':'Cottage (2p)',
 };
 function typeLabel(t){const en=TYPE_EN[t];return en?`${t} · ${en}`:t;}
+// 시즈노야도 등 본관/별채 zone 을 객실명 옆에 약하게 표기(실제 객실명이 주, zone 은 보조).
+function zonePin(inv){
+  const z=inv&&inv.zone;
+  if(inv&&inv.facility==='시즈노야도 료칸'&&(z==='본관'||z==='별채'))
+    return `<small class="zone-pin${z==='별채'?' bz':''}">${z}</small>`;
+  return '';
+}
 
 // ── 야마나미 호텔동 원형 배치 좌표 (단면도 ①~⑭ 기준, %). 4·13 결번 ──
 //   가운데 EV, 북(쿠쥬)=상단. 호수 끝 두 자리 = 위치 번호.
@@ -628,7 +638,7 @@ function renderTimeline(){
     const pfx=(PFX[inv.facility]||'X').toLowerCase();
     html+=`<tr><td class="tl-room" title="${inv.facility} · ${typeLabel(inv.room_type)}">`
       +`<span class="tl-fac" style="background:var(--${pfx})"></span>`
-      +`<b>${inv.room_no}</b><span>${inv.room_type}</span></td>`;
+      +`<b>${inv.room_no}</b>${zonePin(inv)}<span>${inv.room_type}</span></td>`;
     const rr=state.rooms.filter(r=>r.inventory_id===inv.id);
     dates.forEach(d=>{
       const wd=WD[new Date(d+'T00:00:00').getDay()];
@@ -958,7 +968,7 @@ function renderRoom(inv){
   div.innerHTML=`
     <span class="cap">${usedPax}/${inv.capacity}</span>
     <span class="lock" data-inv-id="${inv.id}" title="${inv.active?'사용 가능 — 클릭하면 비활성':'비활성 — 클릭하면 사용 가능'}">${inv.active?'🔓':'🔒'}</span>
-    <div class="rn">${inv.room_no}</div>
+    <div class="rn">${inv.room_no}${zonePin(inv)}</div>
     <div class="rt">${typeLabel(inv.room_type)}</div>
     ${inv.note?`<div class="note">${inv.note}</div>`:''}
     <div class="assigned">${chips}</div>
@@ -1112,7 +1122,9 @@ function renderSummary(){
 function overlaps(dep1,arr1,dep2,arr2){ return dep1 < arr2 && dep2 < arr1; }
 
 // ── 배정 ──
-async function assignMembers(memberIds, inv){
+//  opts.byeolcheAdvance=true → 별채 온천 사전신청이 확정된 경로(현지예약 별채희망)에서
+//    +2,000/박을 바로 기록. 그 외(수기 배정)는 사전신청 여부를 모달로 확인한다.
+async function assignMembers(memberIds, inv, opts={}){
   if(!inv.active){toast(inv.room_no+': 비활성 객실','warn');return;}
   const cap=inv.max_capacity||inv.capacity;
   // 대상 멤버를 팀별로 모아 검증/삽입
@@ -1124,7 +1136,7 @@ async function assignMembers(memberIds, inv){
   }
   if(!targets.length){toast('배정할 인원이 없습니다','warn');return;}
 
-  let ok=0, blocked=0; const blockMsg=[];
+  let ok=0, blocked=0; const blockMsg=[]; const byeolcheList=[];
   for(const m of targets){
     const g=state.guests.find(x=>x.event_seq===m.event_seq);
     if(!g){blocked++;continue;}
@@ -1156,19 +1168,65 @@ async function assignMembers(memberIds, inv){
     if(FEE_SINGLE[inv.facility] && nights>0){
       openSingleFeeModal(g, inv, nights, data.id, m);
     }
-    // 시즈노야도 별채 사전희망 추가요금 2,000/박 (별채로 이동 = 희망 → 자동 기록)
+    // 시즈노야도 별채 = 객실은 본관과 동일 ¥17,000. 온천 사전신청 시에만 +2,000/박(별도).
+    //   → 여기서 자동 청구하지 않고 모아뒀다가, 루프 후 경로에 따라 처리.
     if(inv.facility==='시즈노야도 료칸' && inv.zone==='별채' && nights>0){
-      try{ await supa.from('transactions').insert({
-        event_seq:g.event_seq, member_id:m.id, category:'byeolche_charge',
-        description:`별채 사전희망 추가요금 (${inv.room_no}, ${nights}박)`,
-        qty:nights, unit_price:BYEOLCHE_FEE, amount:BYEOLCHE_FEE*nights, currency:'JPY',
-        posted_by:'front', settle_status:'onsite'
-      }); toast(`별채 추가요금 ¥${(BYEOLCHE_FEE*nights).toLocaleString()} 기록(${m.name_kr||''})`,'ok'); }catch(e){}
+      byeolcheList.push({g, m, nights});
     }
   }
   rebuildAssignMap(); render();
   if(ok)   toast(`${inv.room_no} ← ${ok}명 배정`+(blocked?` (${blocked}명 보류)`:''), blocked?'warn':'ok');
   else     toast(blockMsg[0]||'배정 실패','warn');
+  // 별채 온천 사전신청 추가요금: 확정 경로면 바로 기록, 수기 배정이면 모달로 확인
+  if(byeolcheList.length){
+    if(opts.byeolcheAdvance){ for(const x of byeolcheList) await recordByeolche(x.g, inv, x.nights, x.m); }
+    else openByeolcheModal(inv, byeolcheList);
+  }
+}
+
+// 별채 온천 사전신청 추가요금(¥2,000/박/인) 1건 기록
+async function recordByeolche(g, inv, nights, m){
+  if(!(nights>0)) return;
+  try{ await supa.from('transactions').insert({
+    event_seq:g.event_seq, member_id:m.id, category:'byeolche_charge',
+    description:`별채 온천 사전신청 추가요금 (${inv.room_no}, ${nights}박)`,
+    qty:nights, unit_price:BYEOLCHE_FEE, amount:BYEOLCHE_FEE*nights, currency:'JPY',
+    posted_by:'front', settle_status:'onsite'
+  }); toast(`별채 온천 사전신청 +¥${(BYEOLCHE_FEE*nights).toLocaleString()} 기록(${m.name_kr||''})`,'ok'); }catch(e){}
+}
+
+// 수기로 별채에 배정했을 때: 온천 사전신청 인원만 골라 +2,000/박 기록(체크 안 하면 미기록)
+function openByeolcheModal(inv, list){
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal">
+    <h2>♨ 별채 온천 사전신청 — ${inv.room_no}</h2>
+    <div class="mbody">
+      <p style="font-size:12.5px;color:var(--text2);margin-bottom:10px">
+        별채(${inv.room_no})는 객실 자체는 본관과 동일한 <b>¥17,000/박</b>입니다.
+        <b>개인온천을 사전신청</b>한 경우에만 <b>+¥2,000/박/인</b>이 별도로 붙습니다.
+        사전신청한 인원만 체크하세요.
+      </p>
+      <div class="mrow" style="grid-template-columns:1fr"><div>
+        ${list.map((x,i)=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer">
+          <input type="checkbox" class="bz-chk" data-i="${i}" style="width:16px;height:16px">
+          ${x.m.name_kr||'(이름없음)'} <span class="desc">· ${x.nights}박 → +¥${(BYEOLCHE_FEE*x.nights).toLocaleString()}</span></label>`).join('')}
+      </div></div>
+    </div>
+    <div class="mfoot">
+      <button class="btn ghost sm" id="bz-skip" type="button">사전신청 없음(닫기)</button>
+      <button class="btn sm" id="bz-save" type="button">선택 인원 기록</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  const close=()=>bg.remove();
+  bg.querySelector('#bz-skip').addEventListener('click',close);
+  bg.addEventListener('click',e=>{if(e.target===bg)close();});
+  bg.querySelector('#bz-save').addEventListener('click',async()=>{
+    const picks=[...bg.querySelectorAll('.bz-chk:checked')].map(c=>list[+c.dataset.i]);
+    close();
+    for(const x of picks) await recordByeolche(x.g, inv, x.nights, x.m);
+    if(!picks.length) toast('온천 사전신청 없음 — 추가요금 미기록','ok');
+  });
 }
 
 // (구) 팀 단위 assign 은 호환용 래퍼 — 팀의 미배정자 전원을 한 방에 시도
@@ -1546,8 +1604,9 @@ function openLocalShizuModal(){
     <h2>🏯 시즈노야도 현지예약 추가</h2>
     <div class="mbody">
       <p style="font-size:12px;color:var(--text2);margin-bottom:14px">
-        메리트투어 송객이 아닌 <b>현지(일본) 직접 예약</b>을 등록합니다. 본관 1박 1인 ¥17,000,
-        별채는 사전희망 시 +¥2,000/박(=¥19,000)입니다. 등록 후 본관(별채 희망 시 별채)에 자동 배정됩니다.
+        메리트투어 송객이 아닌 <b>현지(일본) 직접 예약</b>을 등록합니다. 객실 기본요금은
+        본관·별채 모두 1박 1인 <b>¥17,000</b>이고, 별채는 <b>온천 사전신청 시에만 +¥2,000/박</b>이 별도로 붙습니다.
+        등록 후 본관(별채 사전신청 시 별채)에 자동 배정됩니다.
       </p>
       <div class="mrow" style="grid-template-columns:1fr"><div><label>예약자명 *</label><input class="inp" id="ls-name" type="text" placeholder="예: 山田太郎" style="width:100%;margin-top:4px"></div></div>
       <div class="mrow" style="grid-template-columns:1fr"><div><label>연락처</label><input class="inp" id="ls-tel" type="text" placeholder="전화/메일(선택)" style="width:100%;margin-top:4px"></div></div>
@@ -1555,7 +1614,7 @@ function openLocalShizuModal(){
       <div class="mrow"><div><label>체크인 *</label></div><input class="inp" id="ls-ci" type="date" value="${ci}"></div>
       <div class="mrow"><div><label>체크아웃 *</label></div><input class="inp" id="ls-co" type="date" value="${co}"></div>
       <div class="mrow" style="grid-template-columns:1fr"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
-        <input id="ls-byeolche" type="checkbox" style="width:16px;height:16px">별채 희망 <span class="desc">(吉祥·瑞雲·馬酔木 — +¥2,000/박)</span></label></div>
+        <input id="ls-byeolche" type="checkbox" style="width:16px;height:16px">별채 온천 사전신청 <span class="desc">(吉祥·瑞雲·馬酔木 — 온천 +¥2,000/박)</span></label></div>
       <div class="mrow" style="grid-template-columns:1fr"><div><label>메모</label><input class="inp" id="ls-memo" type="text" placeholder="현지 비고(선택)" style="width:100%;margin-top:4px"></div></div>
     </div>
     <div class="mfoot">
@@ -1590,7 +1649,7 @@ async function saveLocalShizu(bg){
     const ym=ci.slice(0,7);
     const gcode='現'+String(localNo).padStart(3,'0');
     const remarkParts=[];
-    if(byeolche) remarkParts.push('★별채희망');
+    if(byeolche) remarkParts.push('★별채·온천사전신청');
     if(tel) remarkParts.push('☎'+tel);
     if(memo) remarkParts.push(memo);
     const remark='[현지예약] '+remarkParts.join(' / ');
@@ -1645,7 +1704,7 @@ async function autoFillShizu(seq, zone){
     const used=state.rooms.filter(r=>r.inventory_id===inv.id && overlaps(g.dep,g.arr,r.check_in,r.check_out)).reduce((s,r)=>s+(r.assigned_pax||0),0);
     const free=(inv.capacity||2)-used;
     if(free<=0) continue;
-    await assignMembers(ids.slice(0,free), inv);   // state.rooms 갱신 → 다음 루프 left() 재계산
+    await assignMembers(ids.slice(0,free), inv, {byeolcheAdvance: zone==='별채'});   // 별채=현지 사전신청 → 자동 기록. state.rooms 갱신
   }
   const rest=left();
   if(rest.length) toast(`${rest.length}명은 ${zone} 빈 객실이 부족 — 수기 배정하세요`,'warn');
