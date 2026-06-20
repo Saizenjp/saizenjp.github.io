@@ -115,6 +115,18 @@
   .cart-foot .tr.grand{font-weight:800;font-size:16px;color:var(--accent);border-top:2px solid var(--accent);margin-top:5px;padding-top:7px}
   .cart-foot .tr .v{font-family:var(--mono)}
   .cart-foot .btn{width:100%;margin-top:11px}
+  /* 결제 주체(payer) — 팀 공통 / 개인·N분의1 */
+  .payer{padding:9px 13px;border-bottom:1px solid var(--border);background:var(--surface2)}
+  .payer-mode{display:flex;gap:6px;margin-bottom:7px}
+  .pm{flex:1;font-family:inherit;font-size:11.5px;font-weight:700;padding:6px 8px;border:1px solid var(--border2);border-radius:7px;background:var(--surface);color:var(--text2);cursor:pointer;transition:.12s}
+  .pm.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .payer-roster{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}
+  .pchip{font-family:inherit;font-size:12px;font-weight:600;padding:4px 9px;border:1px solid var(--border2);border-radius:20px;background:var(--surface);color:var(--text2);cursor:pointer;transition:.12s}
+  .pchip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .pchip .mbadge{background:var(--accent2);color:#fff;border-radius:8px;padding:0 4px;font-size:9px;margin-left:3px;font-weight:700}
+  .payer-hint{font-size:11px;color:var(--muted)}
+  .payer-act{display:flex;gap:6px;margin-top:5px}
+  .payer-act button{font-family:inherit;font-size:10.5px;font-weight:700;padding:2px 8px;border:1px solid var(--border2);border-radius:5px;background:var(--surface);color:var(--text2);cursor:pointer}
 
   #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
   .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:11px 20px;font-size:14px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);animation:popUp .2s;text-align:center;min-width:220px}
@@ -182,6 +194,7 @@
       </div>
       <div class="cart">
         <h3 data-i18n="po_cart"></h3>
+        <div class="payer" id="payer"></div>
         <div class="cart-body" id="cart-body"><div class="cart-empty" data-i18n="po_cartEmpty"></div></div>
         <div class="cart-foot">
           <div class="tr"><span data-i18n="po_subtotal"></span><span class="v" id="cart-sub">¥0</span></div>
@@ -207,7 +220,10 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
 const TAX_RATE=0.10;   // 内税: 메뉴가=최종가(税込). 단가에서 소비세를 빼내 표시(더하지 않음)
 const VENUE_LABEL={restaurant:'レストラン / 레스토랑',banquet:'宴会場 / 연회장',proshop:'ゴルフショップ / 골프샵',etc:'その他 / 기타'};
-let state={ date:'', teams:[], menu:[], venue:'__all__', team:null, folioId:null, runningGross:0, cart:[] };
+let state={ date:'', teams:[], menu:[], venue:'__all__', team:null, folioId:null, runningGross:0, cart:[],
+  roster:[], payerMode:'team', payerSel:new Set(), memberFolio:{} };
+// 주문 기록 담당자 = 공유 상단바 담당자(saizen_ops_user). 없으면 폴백.
+function opBy(){ return (window.__so_getUser && __so_getUser()) || localStorage.getItem('saizen_op_name') || 'pos'; }
 
 function yen(n){ return '¥'+Number(n||0).toLocaleString('ja-JP'); }
 function taxOf(gross){ gross=Number(gross||0); return gross - Math.round(gross/(1+TAX_RATE)); }  // 内税(포함된 소비세)
@@ -255,12 +271,12 @@ async function loadTeams(){
   if(!supa){toast('먼저 연결하세요','warn');return;}
   const d=$('#date-pick').value||isoToday(); state.date=d; $('#date-pick').value=d;
   const {data,error}=await supa.from('guests')
-    .select('event_seq,team_tag,group_code,accom,pax,session_ym,bookings!inner(rep_name,dep_date,arr_date)')
+    .select('event_seq,team_tag,group_code,accom,pax,session_ym,bookings!inner(event_no,rep_name,dep_date,arr_date)')
     .lte('bookings.dep_date',d).gt('bookings.arr_date',d);
   if(error){toast('팀 로드 실패: '+error.message,'err');return;}
   state.teams=(data||[]).map(x=>({
     event_seq:x.event_seq, team_tag:x.team_tag, group_code:x.group_code, accom:x.accom, pax:x.pax,
-    session_ym:x.session_ym||ymOf(d), rep:x.bookings?.rep_name||'',
+    session_ym:x.session_ym||ymOf(d), rep:x.bookings?.rep_name||'', event_no:x.bookings?.event_no||'',
   })).sort((a,b)=>(a.accom||'').localeCompare(b.accom||'')||(a.rep||'').localeCompare(b.rep||''));
   backToTeams();
   toast(`${d} · 체류 ${state.teams.length}팀`,'ok');
@@ -280,33 +296,82 @@ function renderTeams(){
   if(!state.teams.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
   state.teams.forEach(tm=>{
     const b=document.createElement('button'); b.type='button'; b.className='team-btn';
-    const tag=tm.team_tag||tm.group_code||('팀'+tm.event_seq);
-    b.innerHTML=`<div class="ttag">${tag}</div>
+    b.innerHTML=`<div class="ttag">${teamTag(tm)}</div>
       <div class="trep">${tm.rep||''}</div>
-      <div class="tmeta">${tm.accom||''} · ${tm.pax}${t('po_cntPpl')} · #${tm.event_seq}</div>`;
+      <div class="tmeta">${tm.accom||''} · ${tm.pax}${t('po_cntPpl')} · #${teamNo(tm)}</div>`;
     b.addEventListener('click',()=>selectTeam(tm));
     box.appendChild(b);
   });
 }
+// 팀 라벨 통일: 상단 = 그룹코드, # 뒤 = 행사번호(event_no)
+function teamTag(tm){ return tm.group_code||tm.team_tag||('팀'+tm.event_seq); }
+function teamNo(tm){ return tm.event_no||tm.event_seq; }
+function escP(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 // ── 팀 선택 → 주문 뷰 ──
 async function selectTeam(tm){
-  state.team=tm; state.cart=[]; state.venue='__all__'; state.folioId=null;
-  // 이 팀의 열린 folio 누적(있으면) 표시
+  state.team=tm; state.cart=[]; state.venue='__all__';
+  state.folioId=null; state.memberFolio={}; state.payerMode='team'; state.payerSel=new Set();
+  // 이 팀의 모든 folio(팀+개인) 누적 = 러닝 합계. 팀/개인 열린 folio id 캐시.
   state.runningGross=0;
-  const {data}=await supa.from('v_folio_balance').select('folio_id,gross_total,status')
-    .eq('event_seq',tm.event_seq).eq('subject','team');
-  if(data&&data.length){
-    const open=data.find(f=>f.status==='open')||data[0];
-    state.folioId=open.folio_id; state.runningGross=Number(open.gross_total||0);
-  }
+  const {data}=await supa.from('v_folio_balance').select('folio_id,gross_total,status,subject,member_id')
+    .eq('event_seq',tm.event_seq);
+  (data||[]).forEach(f=>{
+    state.runningGross+=Number(f.gross_total||0);
+    if(f.status==='open' && f.subject==='team' && !state.folioId) state.folioId=f.folio_id;
+    if(f.status==='open' && f.subject==='member' && f.member_id) state.memberFolio[f.member_id]=f.folio_id;
+  });
+  // 개인 분할용 명단(guest_members) 로드
+  const {data:gm}=await supa.from('guest_members')
+    .select('id,seq_in_team,name_kr,name_en,is_rep,member_grade')
+    .eq('event_seq',tm.event_seq).order('seq_in_team',{ascending:true});
+  state.roster=gm||[];
   $('#team-view').style.display='none';
   $('#order-view').style.display='';
   $('#btn-back').style.display='';
-  $('#oh-tag').textContent=tm.team_tag||tm.group_code||('팀'+tm.event_seq);
-  $('#oh-rep').textContent=tm.rep||'';
+  $('#oh-tag').textContent=teamTag(tm);
+  $('#oh-rep').textContent=(tm.rep||'')+'  ·  #'+teamNo(tm);
   $('#oh-run').textContent=yen(state.runningGross);
-  renderVenueTabs(); renderMenu(); renderCart();
+  renderVenueTabs(); renderMenu(); renderPayer(); renderCart();
+}
+
+// ── 결제 주체(payer): 팀 공통 / 개인·N분의1 ──
+function renderPayer(){
+  const box=$('#payer'); if(!box) return;
+  const mode=state.payerMode;
+  let h=`<div class="payer-mode">
+    <button type="button" class="pm${mode==='team'?' on':''}" data-pm="team">팀 공통</button>
+    <button type="button" class="pm${mode==='split'?' on':''}" data-pm="split">개인 지정 / N분의1</button>
+  </div>`;
+  if(mode==='split'){
+    if(!state.roster.length){
+      h+='<div class="payer-hint">개인 명단이 없습니다 — step1에서 일행별 명단을 등록하세요.</div>';
+    } else {
+      const chips=state.roster.map(m=>{
+        const on=state.payerSel.has(String(m.id));
+        const isMem=(m.member_grade==='회원권');
+        return `<button type="button" class="pchip${on?' on':''}" data-mid="${m.id}">`
+          +`${m.seq_in_team!=null?m.seq_in_team+'. ':''}${escP(m.name_kr||m.name_en||'-')}`
+          +`${isMem?'<span class="mbadge">회</span>':''}</button>`;
+      }).join('');
+      const k=state.payerSel.size;
+      const hint=k===0?'결제할 인원을 선택하세요':(k===1?'선택 1명이 전액 부담':k+'명이 N분의 1로 분할');
+      h+=`<div class="payer-roster">${chips}</div>`
+        +`<div class="payer-act"><button type="button" id="pa-all">전체</button><button type="button" id="pa-none">해제</button></div>`
+        +`<div class="payer-hint">${hint}</div>`;
+    }
+  }
+  box.innerHTML=h;
+  box.querySelectorAll('[data-pm]').forEach(b=>b.addEventListener('click',()=>{
+    state.payerMode=b.dataset.pm; if(state.payerMode==='team') state.payerSel.clear(); renderPayer();
+  }));
+  box.querySelectorAll('[data-mid]').forEach(b=>b.addEventListener('click',()=>{
+    const id=String(b.dataset.mid);
+    state.payerSel.has(id)?state.payerSel.delete(id):state.payerSel.add(id); renderPayer();
+  }));
+  const all=box.querySelector('#pa-all'), none=box.querySelector('#pa-none');
+  if(all) all.addEventListener('click',()=>{ state.roster.forEach(m=>state.payerSel.add(String(m.id))); renderPayer(); });
+  if(none) none.addEventListener('click',()=>{ state.payerSel.clear(); renderPayer(); });
 }
 
 function renderVenueTabs(){
@@ -398,37 +463,77 @@ async function ensureFolio(){
   if(ex&&ex.length){ state.folioId=ex[0].id; return state.folioId; }
   const {data,error}=await supa.from('folios').insert({
     event_seq:tm.event_seq, subject:'team', status:'open', session_ym:tm.session_ym,
-    created_by:localStorage.getItem('saizen_op_name')||'pos'
+    created_by:opBy()
   }).select('id').single();
   if(error) throw error;
   state.folioId=data.id; return state.folioId;
+}
+// 개인(guest_members.id) 열린 folio 확보(없으면 생성)
+async function ensureMemberFolio(memberId){
+  memberId=String(memberId);
+  if(state.memberFolio[memberId]) return state.memberFolio[memberId];
+  const tm=state.team;
+  const {data:ex}=await supa.from('folios').select('id')
+    .eq('event_seq',tm.event_seq).eq('subject','member').eq('member_id',memberId).eq('status','open').limit(1);
+  if(ex&&ex.length){ state.memberFolio[memberId]=ex[0].id; return ex[0].id; }
+  const {data,error}=await supa.from('folios').insert({
+    event_seq:tm.event_seq, subject:'member', member_id:memberId, status:'open', session_ym:tm.session_ym, created_by:opBy()
+  }).select('id').single();
+  if(error) throw error;
+  state.memberFolio[memberId]=data.id; return data.id;
 }
 async function sendCart(){
   if(!state.cart.length||!state.team) return;
   $('#btn-send').disabled=true;
   try{
-    const folioId=await ensureFolio();
-    const by=localStorage.getItem('saizen_op_name')||'pos';
-    const rows=state.cart.map(l=>{
-      const gross=l.unit_price*l.qty;          // 메뉴가(税込)
-      const tax=taxOf(gross);                  // 内税(포함분)
-      return { folio_id:folioId, event_seq:state.team.event_seq, member_id:null,
-        category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:''),
-        qty:l.qty, unit_price:l.unit_price, amount:gross-tax, tax, service_charge:0,
-        source_ref:'menu:'+l.id, created_by:by };
-    });
+    const by=opBy();
+    let rows=[];
+    if(state.payerMode==='split'){
+      const mids=[...state.payerSel];
+      if(!mids.length){ toast('결제할 인원을 선택하세요','warn'); $('#btn-send').disabled=false; return; }
+      const folioOf={};
+      for(const mid of mids){ folioOf[mid]=await ensureMemberFolio(mid); }
+      const k=mids.length;
+      state.cart.forEach(l=>{
+        const gross=l.unit_price*l.qty;
+        if(k===1){
+          const mid=mids[0], tax=taxOf(gross);
+          rows.push({ folio_id:folioOf[mid], event_seq:state.team.event_seq, member_id:mid,
+            category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:''),
+            qty:l.qty, unit_price:l.unit_price, amount:gross-tax, tax, service_charge:0, source_ref:'menu:'+l.id, created_by:by });
+        } else {
+          const base=Math.floor(gross/k); let rem=gross-base*k;   // 잔돈은 앞 인원부터 +1엔
+          mids.forEach((mid,i)=>{
+            const share=base+(i<rem?1:0); if(share<=0) return;
+            const tax=taxOf(share);
+            rows.push({ folio_id:folioOf[mid], event_seq:state.team.event_seq, member_id:mid,
+              category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:'')+` (${k}인 분할)`,
+              qty:1, unit_price:share, amount:share-tax, tax, service_charge:0, source_ref:'menu:'+l.id, created_by:by });
+          });
+        }
+      });
+    } else {
+      const folioId=await ensureFolio();
+      state.cart.forEach(l=>{
+        const gross=l.unit_price*l.qty, tax=taxOf(gross);
+        rows.push({ folio_id:folioId, event_seq:state.team.event_seq, member_id:null,
+          category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:''),
+          qty:l.qty, unit_price:l.unit_price, amount:gross-tax, tax, service_charge:0, source_ref:'menu:'+l.id, created_by:by });
+      });
+    }
     const {error}=await supa.from('charges').insert(rows);
     if(error) throw error;
-    // 주방행(station=kitchen) 항목만 KDS 티켓 발행 — charges(돈)와 분리된 조리 큐
+    // 주방행(station=kitchen)만 KDS 티켓 — 조리는 분할과 무관하게 풀 수량(팀 단위)
     const tickets=state.cart.filter(l=>l.station==='kitchen').map(l=>({
-      folio_id:folioId, event_seq:state.team.event_seq, team_tag:state.team.team_tag||('#'+state.team.event_seq),
+      folio_id:state.folioId||null, event_seq:state.team.event_seq, team_tag:teamTag(state.team),
       station:'kitchen', item_name:l.name_ja, qty:l.qty, created_by:by }));
     if(tickets.length){
       const {error:te}=await supa.from('kitchen_tickets').insert(tickets);
       if(te) toast('주방 티켓 발행 실패(청구는 완료): '+te.message,'warn');
     }
     const total=rows.reduce((s,r)=>s+r.amount+r.tax,0);
-    toast(`${state.team.team_tag||('#'+state.team.event_seq)} 에 ${rows.length}건 · ${yen(total)} 전송됨${tickets.length?` · 주방 ${tickets.length}건`:''}`,'ok');
+    const who=state.payerMode==='split'?`개인 ${state.payerSel.size}명`:'팀 공통';
+    toast(`${teamTag(state.team)} · ${who} · ${state.cart.length}품목 ${yen(total)} 전송됨${tickets.length?` · 주방 ${tickets.length}건`:''}`,'ok');
     state.runningGross+=total; $('#oh-run').textContent=yen(state.runningGross);
     state.cart=[]; renderCart();
   }catch(e){
@@ -446,7 +551,7 @@ loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
 window.onSaizenLangChange=function(){
-  try{ if(state.team){ renderVenueTabs(); renderMenu(); renderCart(); } else renderTeams(); }catch(e){}
+  try{ if(state.team){ renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); } else renderTeams(); }catch(e){}
 };
 </script>
 </body>
