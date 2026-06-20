@@ -83,7 +83,9 @@ language plpgsql security definer set search_path = public as $$
 begin
   if not is_admin() then raise exception '권한 없음(관리자 전용)'; end if;
   return query
-    select ua.user_id, u.email::text, ua.name, ua.role, ua.areas
+    select ua.user_id, u.email::text,
+           coalesce(u.raw_user_meta_data->>'name', ua.name) as name,   -- 로그인 시 설정한 이름 우선
+           ua.role, ua.areas
     from user_access ua join auth.users u on u.id = ua.user_id
     order by case ua.role when 'admin' then 0 when 'manager' then 1 else 2 end, u.email;
 end $$;
