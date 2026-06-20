@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 팀 운영 메모</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    /* 중립 회색 캔버스(디자인 리프레시) — accent 등은 saizen-ops.css 가 통일 */
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
+    --border:#e3e6ea; --border2:#cdd2d8;
+    --text:#1f2937; --text2:#525b66; --muted:#8b919b;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh;
+  }
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);
+    padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none}
+  .navhome:hover{text-decoration:underline}
+  .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .btn.xs{font-size:12px;padding:3px 9px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .hint{font-size:11px;color:var(--muted)}
+  .datebar{padding:10px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+  .datebar label{font-size:12px;color:var(--text2);font-weight:600}
+  .datebar .user-wrap{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .datebar .user-wrap label{color:var(--text2)}
+
+  main{padding:16px 20px 60px;max-width:1280px;margin:0 auto}
+  .intro{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent2);border-radius:10px;padding:12px 16px;font-size:12.5px;color:var(--text2);margin-bottom:14px}
+  .intro b{color:var(--text)}
+  .empty{padding:40px 16px;text-align:center;color:var(--muted);font-size:13px}
+
+  table.nt{width:100%;border-collapse:separate;border-spacing:0;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .nt th,.nt td{border-bottom:1px solid var(--border);padding:8px 10px;text-align:left;font-size:12.5px;vertical-align:top}
+  .nt thead th{position:sticky;top:0;background:var(--surface2);color:var(--text2);font-size:11px;font-weight:800;z-index:1;white-space:nowrap}
+  .nt tbody tr:last-child td{border-bottom:none}
+  .nt tbody tr:hover{background:var(--surface2)}
+  .nt .mono{font-family:var(--mono);font-size:11.5px;color:var(--text2);white-space:nowrap}
+  .nt .ctr{text-align:center}
+  .nt .ref{display:block;font-size:10.5px;color:var(--muted);margin-top:2px;max-width:200px;white-space:normal;overflow:hidden;text-overflow:ellipsis}
+  .ntin{width:100%;min-width:110px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12.5px;font-family:inherit}
+  .ntin:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft);background:#fff}
+  .ntin.saved{border-color:var(--ok);box-shadow:0 0 0 2px var(--accentSoft)}
+  .ntin::placeholder{color:#c2c7cf}
+
+  #toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);min-width:200px;text-align:center}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+
+  .modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px}
+  .modal{background:var(--surface);border-radius:14px;max-width:760px;width:100%;max-height:84vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .modal h2{font-size:15px;font-weight:800;color:var(--accent);padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+  .modal .mbody{padding:14px 18px}
+  table.hist{width:100%;border-collapse:collapse;font-size:12px}
+  .hist th,.hist td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:left}
+  .hist th{color:var(--text2);font-size:11px;font-weight:800}
+  .hist .old{color:var(--err)}
+  .hist .new{color:var(--ok);font-weight:700}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.14">
+</head>
+<body>
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム">
+    <img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen">
+  </a>
+  <span class="step">STEP · 팀 운영 메모 / 運営メモ</span>
+  <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+    <button class="so-furi" id="so-furi" onclick="__so_toggleFuri()"></button>
+  </div>
+  <span class="pill" id="conn-state" data-i18n="connState_none">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="anon key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint">연결 정보는 이 브라우저에만 저장됩니다.</span>
+</div>
+
+<div class="datebar">
+  <label>월</label>
+  <button class="btn ghost sm" id="date-prev" type="button" title="이전 달" style="padding:5px 9px">◀</button>
+  <input class="inp" id="month-pick" type="month" style="width:140px">
+  <button class="btn ghost sm" id="date-next" type="button" title="다음 달" style="padding:5px 9px">▶</button>
+  <button class="btn ghost sm" id="date-today" type="button" title="이번 달">오늘</button>
+  <button class="btn sm" id="btn-load" type="button" disabled>불러오기</button>
+  <span class="hint" id="session-hint"></span>
+  <span class="user-wrap">
+    <label>담당자</label>
+    <input class="inp" id="user" type="text" placeholder="이름(수정이력에 기록)" style="width:150px">
+  </span>
+</div>
+
+<main>
+  <div class="intro">
+    🗒 <b>팀 운영 메모</b> — 월별 팀(행사)에 <b>팀 라벨·야마나미 코스·비고·메모</b>를 남깁니다.
+    여러 담당자가 같은 DB를 공유하며, 모든 수정은 <b>누가·언제·이전→이후</b>로 이력에 남습니다(📜).
+    값은 입력 후 <b>포커스를 벗어나면 자동 저장</b>됩니다.
+  </div>
+  <div id="notes"><div class="empty">상단에서 Supabase 연결 후 월을 선택해 <b>불러오기</b> 하세요.</div></div>
+</main>
+
+<div id="toast"></div>
+
+<script src="../assets/saizen-ops.js?v=14.14"></script>
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+let supa=null;
+const state={ ym:'', rows:[], notes:{} };
+const FIELD_LABEL={ team_label:'팀 라벨', yama_course:'야마나미 코스', remarks:'비고', memo:'메모' };
+function fieldLabel(f){ return FIELD_LABEL[f]||f; }
+
+/* ── 헬퍼 ── */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function isoToday(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function lastDayOfMonth(ym){ const [y,m]=ym.split('-').map(Number); return `${ym}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`; }
+function fmtMD(iso){ const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m?`${+m[2]}/${+m[3]}`:'-'; }
+function fmtDT(iso){ if(!iso) return '-'; const d=new Date(iso); if(isNaN(d)) return String(iso);
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+function setConn(txt,cls){ const e=$('#conn-state'); e.textContent=txt; e.className='pill'+(cls?' '+cls:''); }
+function setMsg(txt){ $('#session-hint').textContent=txt||''; }
+function toast(msg,cls){ const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.textContent=msg;
+  $('#toast').appendChild(t); setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); },2400); }
+function getUser(){ return localStorage.getItem('saizen_ops_user')||''; }
+function setUser(v){ localStorage.setItem('saizen_ops_user', v||''); }
+
+/* ── 연결 ── */
+function loadCreds(){ $('#sb-url').value=localStorage.getItem('saizen_sb_url')||''; $('#sb-key').value=localStorage.getItem('saizen_sb_key')||''; }
+async function connect(){
+  const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
+  if(!url||!key){ setConn('URL·key 필요','err'); return; }
+  localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.disabled=true; btn.textContent='연결 중…'; btn.classList.remove('connected');
+  try{
+    supa=window.supabase.createClient(url,key);
+    const { error }=await supa.from('bookings').select('event_seq',{count:'exact',head:true});
+    if(error) throw error;
+    setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
+    btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
+    $('#btn-load').disabled=false;
+    if($('#month-pick').value) await loadData();
+  }catch(e){
+    setConn('연결 실패','err'); toast('연결 실패: '+e.message+' (SQL·키 확인)','err');
+    btn.textContent='연결 실패 · 재시도'; btn.classList.remove('connected'); btn.disabled=false; supa=null; $('#btn-load').disabled=true;
+  }
+}
+
+/* ── 월 선택 ── */
+function shiftMonth(delta){
+  const ym=$('#month-pick').value||isoToday().slice(0,7);
+  const [y,m]=ym.split('-').map(Number); const d=new Date(y, m-1+delta, 1);
+  $('#month-pick').value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  if(supa) loadData();
+}
+function gotoToday(){ $('#month-pick').value=isoToday().slice(0,7); if(supa) loadData(); }
+
+/* ── 데이터 로드: 그 달 팀(bookings) + 주석(event_notes) ── */
+async function loadData(){
+  if(!supa) return;
+  const ym=$('#month-pick').value; if(!ym){ setMsg('월을 선택하세요'); return; }
+  state.ym=ym; setMsg('불러오는 중…');
+  const { data:bk, error:be }=await supa.from('bookings')
+    .select('event_seq,event_no,rep_name,dep_date,arr_date,pax,team_label,remark,session_ym')
+    .eq('session_ym',ym).order('dep_date',{ascending:true}).order('event_seq',{ascending:true});
+  if(be){ toast('예약 로드 실패: '+be.message,'err'); setMsg('로드 실패'); return; }
+  state.rows=bk||[]; state.notes={};
+  const { data:nt, error:ne }=await supa.from('event_notes').select('*').eq('session_ym',ym);
+  if(ne){ toast('주석 로드 실패(16번 SQL 실행?): '+ne.message,'err'); }
+  (nt||[]).forEach(n=>{ state.notes[n.event_seq]=n; });
+  render();
+  setMsg(`${state.rows.length}팀 · ${ym}`);
+}
+
+/* ── 렌더 ── */
+function render(){
+  const box=$('#notes');
+  if(!state.rows.length){ box.innerHTML='<div class="empty">해당 월에 등록된 팀이 없습니다. step1에서 데이터를 먼저 등록하세요.</div>'; return; }
+  const cell=(seq,field,val)=>`<td><input class="ntin" data-seq="${seq}" data-f="${field}" value="${esc(val)}" placeholder="—"></td>`;
+  let h='<table class="nt"><thead><tr>'
+    +'<th>행사번호</th><th>대표</th><th>기간</th><th>인원</th>'
+    +'<th>팀 라벨</th><th>야마나미 코스</th><th>비고(운영)</th><th>메모</th><th>이력</th>'
+    +'</tr></thead><tbody>';
+  state.rows.forEach(r=>{
+    const n=state.notes[r.event_seq]||{};
+    const ref=r.remark? `<span class="ref" title="${esc(r.remark)}">📋 ${esc(r.remark)}</span>` : '';
+    h+='<tr>'
+      +`<td class="mono">${esc(r.event_no||r.event_seq)}</td>`
+      +`<td>${esc(r.rep_name||'')}${ref}</td>`
+      +`<td class="mono">${fmtMD(r.dep_date)}~${fmtMD(r.arr_date)}</td>`
+      +`<td class="ctr">${r.pax||0}</td>`
+      +cell(r.event_seq,'team_label', n.team_label!=null?n.team_label:'')
+      +cell(r.event_seq,'yama_course', n.yama_course!=null?n.yama_course:'')
+      +cell(r.event_seq,'remarks', n.remarks!=null?n.remarks:'')
+      +cell(r.event_seq,'memo', n.memo!=null?n.memo:'')
+      +`<td class="ctr"><button class="btn ghost xs" data-hist="${r.event_seq}" title="수정 이력">📜</button></td>`
+      +'</tr>';
+  });
+  h+='</tbody></table>';
+  box.innerHTML=h;
+  box.querySelectorAll('.ntin').forEach(inp=>inp.addEventListener('change',onEdit));
+  box.querySelectorAll('[data-hist]').forEach(b=>b.addEventListener('click',()=>showHistory(b.dataset.hist)));
+}
+
+/* ── 저장(포커스 아웃 시) + 이력 기록 ── */
+async function onEdit(e){
+  const inp=e.target, seq=Number(inp.dataset.seq), field=inp.dataset.f, val=inp.value.trim();
+  const cur=state.notes[seq]||{ event_seq:seq };
+  const old=cur[field]!=null?String(cur[field]):'';
+  if(old===val) return;
+  const user=($('#user').value.trim())||getUser()||'미상';
+  setUser($('#user').value.trim());
+  const row=Object.assign({}, cur, { event_seq:seq, session_ym:state.ym, [field]:val, updated_by:user });
+  delete row.updated_at; delete row.created_at;
+  const { data, error }=await supa.from('event_notes').upsert(row,{ onConflict:'event_seq' }).select().single();
+  if(error){ toast('저장 실패: '+error.message,'err'); return; }
+  state.notes[seq]=data;
+  const { error:le }=await supa.from('event_note_log')
+    .insert({ event_seq:seq, field, old_value:old||null, new_value:val||null, changed_by:user });
+  if(le) console.warn('log insert', le.message);
+  inp.classList.add('saved'); setTimeout(()=>inp.classList.remove('saved'),900);
+  toast(`저장됨 · ${fieldLabel(field)}`,'ok');
+}
+
+/* ── 수정 이력 모달 ── */
+async function showHistory(seq){
+  if(!supa) return;
+  const { data, error }=await supa.from('event_note_log').select('*')
+    .eq('event_seq',Number(seq)).order('changed_at',{ascending:false}).limit(80);
+  if(error){ toast('이력 로드 실패: '+error.message,'err'); return; }
+  const rows=(data||[]).map(l=>
+    `<tr><td class="mono">${fmtDT(l.changed_at)}</td><td>${esc(l.changed_by||'')}</td><td>${esc(fieldLabel(l.field))}</td>`
+    +`<td class="old">${esc(l.old_value||'—')}</td><td>→</td><td class="new">${esc(l.new_value||'—')}</td></tr>`
+  ).join('') || '<tr><td colspan="6" class="empty">변경 이력이 없습니다.</td></tr>';
+  openModal(`수정 이력 — 행사 ${esc(seq)}`,
+    `<table class="hist"><thead><tr><th>시각</th><th>담당자</th><th>항목</th><th>이전</th><th></th><th>이후</th></tr></thead><tbody>${rows}</tbody></table>`);
+}
+function openModal(title, bodyHtml){
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal"><h2>${esc(title)}<button class="btn ghost xs" id="mclose">✕</button></h2><div class="mbody">${bodyHtml}</div></div>`;
+  bg.addEventListener('click',ev=>{ if(ev.target===bg) bg.remove(); });
+  bg.querySelector('#mclose').addEventListener('click',()=>bg.remove());
+  document.body.appendChild(bg);
+}
+
+/* ── init ── */
+loadCreds();
+$('#user').value=getUser();
+$('#month-pick').value=isoToday().slice(0,7);
+$('#btn-connect').addEventListener('click',connect);
+$('#btn-load').addEventListener('click',loadData);
+$('#date-prev').addEventListener('click',()=>shiftMonth(-1));
+$('#date-next').addEventListener('click',()=>shiftMonth(1));
+$('#date-today').addEventListener('click',gotoToday);
+$('#month-pick').addEventListener('change',()=>{ if(supa) loadData(); });
+$('#user').addEventListener('change',ev=>setUser(ev.target.value.trim()));
+window.onSaizenLangChange=function(){};
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
