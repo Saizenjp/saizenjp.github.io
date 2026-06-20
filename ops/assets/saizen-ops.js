@@ -740,9 +740,30 @@
   global.__so_setLang = setLang;
   global.__so_toggleFuri = toggleFuri;
 
+  // ── 담당자(식별 라벨) — 모든 ops 페이지 상단바에 주입. 인증 아님(수정이력 기록용).
+  //    saizen_ops_user localStorage 1곳에 저장 → 전 페이지 공유. 비어 있으면 골드 링으로 입력 안내.
+  function getUser() { return localStorage.getItem('saizen_ops_user') || ''; }
+  global.__so_getUser = getUser;
+  function mountUser() {
+    var box = document.querySelector('.so-controls');
+    if (!box || document.getElementById('so-user')) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'so-user';
+    wrap.title = '담당자 — 모든 변경이 이 이름으로 수정이력에 기록됩니다(인증 아님).';
+    wrap.innerHTML = '<span class="so-user-ic">👤</span>'
+      + '<input id="so-user" class="so-user-in" type="text" placeholder="담당자" autocomplete="off" spellcheck="false">';
+    box.insertBefore(wrap, box.firstChild);
+    var inp = wrap.querySelector('#so-user');
+    inp.value = getUser();
+    function refl() { wrap.classList.toggle('empty', !inp.value.trim()); }
+    inp.addEventListener('input', function () { localStorage.setItem('saizen_ops_user', inp.value.trim()); refl(); });
+    refl();
+  }
+
+  function boot() { mountUser(); applyLang(); }
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', applyLang);
+    document.addEventListener('DOMContentLoaded', boot);
   } else {
-    applyLang();
+    boot();
   }
 })(window);

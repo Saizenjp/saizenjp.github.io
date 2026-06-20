@@ -129,5 +129,5 @@
 - **기타**: `/app/` 로고 → `/ops/` 링크. 「초기화」 버튼 명확화(/app/=「입력 비우기」=localStorage, step1=「화면 비우기」=폼만). saizen-ops `?v=14.13`.
 
 ---
-*최종 검증 시점: app v14.7 / Hub asset `?v=14.14` / SQL 01~16(정산 09·11~13 / 방배정 02·05·06·10·15 / 14 이력 / 16 팀 운영 주석 `event_notes`) / ops 중립 캔버스 리프레시(saizen-ops.css :root) / `ops/hub/notes.html`(팀 운영 메모 — 월별 주석·수정이력, 시즈노 타임라인) 구현.
+*최종 검증 시점: app v14.8 / Hub asset `?v=14.15` / SQL 01~16(정산 09·11~13 / 방배정 02·05·06·10·15 / 14 이력 / 16 팀 운영 주석 `event_notes`) / ops 중립 캔버스 리프레시 + **담당자 식별 필드**(saizen-ops.js 가 전 페이지 상단바 `.so-controls`에 주입, `saizen_ops_user` localStorage 공유 — 인증 아님, 수정이력 기록용) / `ops/hub/notes.html`(팀 운영 메모) / `/app/` 활성·선택 상태 강조(칩/탭 = 풀 accent 배경+흰 글자).
 이 문서가 코드와 어긋나면 코드가 정답이다.*
