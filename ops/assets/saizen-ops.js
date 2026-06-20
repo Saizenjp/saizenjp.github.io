@@ -744,9 +744,11 @@
   global.__so_setLang = setLang;
   global.__so_toggleFuri = toggleFuri;
 
-  // ── 담당자(식별 라벨) — 모든 ops 페이지 상단바에 주입. 인증 아님(수정이력 기록용).
-  //    saizen_ops_user localStorage 1곳 공유. [입력+저장] → "○○○ 님 반갑습니다" + [변경].
-  function getUser() { return localStorage.getItem('saizen_ops_user') || ''; }
+  // ── 담당자(식별 라벨) — 모든 ops 페이지 상단바에 주입. 수정이력 기록용.
+  //    로그인 세션이 있으면 그 이름(가입 시 입력)을 우선 사용 → 로그인=담당자 통합.
+  //    로그인 안 했으면 수기 위젯값(saizen_ops_user)을 사용.
+  var _sessionName = '';
+  function getUser() { return _sessionName || localStorage.getItem('saizen_ops_user') || ''; }
   global.__so_getUser = getUser;
   function escU(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function mountUser() {
@@ -805,6 +807,13 @@
     try { _authClient = global.supabase.createClient(url, key); } catch (e) { return null; }
     return _authClient;
   }
+  function metaName(user) {   // 계정에 저장된 이름만(이메일 폴백 없음)
+    var m = (user && user.user_metadata) || {};
+    return m.name || m.full_name || '';
+  }
+  function sessionNameOf(user) {   // 표시·기록용(이름 없으면 이메일)
+    return metaName(user) || (user && user.email) || '';
+  }
   function mountAuth() {
     var box = document.querySelector('.so-controls');
     if (!box || document.getElementById('so-auth')) return;
@@ -815,13 +824,29 @@
     box.insertBefore(wrap, box.firstChild);
     c.auth.getSession().then(function (res) {
       var u = res && res.data && res.data.session ? res.data.session.user : null;
+      if (u) {
+        // 로그인=담당자 통합: 세션 이름을 담당자로 채택하고 수기 이름 위젯은 숨김.
+        _sessionName = sessionNameOf(u);
+        var su = document.getElementById('so-user');
+        if (su) su.style.display = 'none';
+      }
       renderAuth(wrap, u);
     }).catch(function () { renderAuth(wrap, null); });
   }
   function renderAuth(wrap, user) {
-    if (user) {
+    if (user && !metaName(user)) {
+      // 초대받아 첫 로그인 — 이름(담당자명)을 1회 설정해 계정에 저장.
       wrap.innerHTML = '<span class="so-auth-ic">🔐</span>'
-        + '<span class="so-auth-email">' + escU(user.email || '로그인됨') + '</span>'
+        + '<input id="so-auth-nm" class="so-user-in" type="text" placeholder="이름(담당자명)" autocomplete="name" style="width:108px">'
+        + '<button type="button" class="so-user-btn save" id="so-auth-nm-go">저장</button>';
+      var nm = wrap.querySelector('#so-auth-nm');
+      var go = function () { authSetName(nm.value.trim()); };
+      wrap.querySelector('#so-auth-nm-go').addEventListener('click', go);
+      nm.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+      try { nm.focus(); } catch (e) {}
+    } else if (user) {
+      wrap.innerHTML = '<span class="so-auth-ic">🔐</span>'
+        + '<span class="so-auth-email"><b>' + escU(sessionNameOf(user)) + '</b> 님</span>'
         + '<button type="button" class="so-user-btn" id="so-auth-out">로그아웃</button>';
       wrap.querySelector('#so-auth-out').addEventListener('click', authLogout);
     } else {
@@ -850,6 +875,16 @@
   function authLogout() {
     var c = authClient(); if (!c) return;
     c.auth.signOut().then(function () { location.reload(); }).catch(function () { location.reload(); });
+  }
+
+  // ── 첫 로그인 이름 설정 — 초대받은 계정이 담당자명을 1회 저장(user_metadata.name). ──
+  function authSetName(name) {
+    var c = authClient(); if (!c) return;
+    if (!name) return;
+    c.auth.updateUser({ data: { name: name } }).then(function (res) {
+      if (res && res.error) { alert('이름 저장 실패: ' + res.error.message); return; }
+      location.reload();
+    }).catch(function (e) { alert('이름 저장 오류: ' + e.message); });
   }
 
   function boot() { mountUser(); mountAuth(); applyLang(); }
