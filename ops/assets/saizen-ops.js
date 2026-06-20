@@ -744,9 +744,11 @@
   global.__so_setLang = setLang;
   global.__so_toggleFuri = toggleFuri;
 
-  // ── 담당자(식별 라벨) — 모든 ops 페이지 상단바에 주입. 인증 아님(수정이력 기록용).
-  //    saizen_ops_user localStorage 1곳 공유. [입력+저장] → "○○○ 님 반갑습니다" + [변경].
-  function getUser() { return localStorage.getItem('saizen_ops_user') || ''; }
+  // ── 담당자(식별 라벨) — 모든 ops 페이지 상단바에 주입. 수정이력 기록용.
+  //    로그인 세션이 있으면 그 이름(가입 시 입력)을 우선 사용 → 로그인=담당자 통합.
+  //    로그인 안 했으면 수기 위젯값(saizen_ops_user)을 사용.
+  var _sessionName = '';
+  function getUser() { return _sessionName || localStorage.getItem('saizen_ops_user') || ''; }
   global.__so_getUser = getUser;
   function escU(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function mountUser() {
@@ -805,6 +807,10 @@
     try { _authClient = global.supabase.createClient(url, key); } catch (e) { return null; }
     return _authClient;
   }
+  function sessionNameOf(user) {
+    var m = (user && user.user_metadata) || {};
+    return m.name || m.full_name || (user && user.email) || '';
+  }
   function mountAuth() {
     var box = document.querySelector('.so-controls');
     if (!box || document.getElementById('so-auth')) return;
@@ -815,18 +821,26 @@
     box.insertBefore(wrap, box.firstChild);
     c.auth.getSession().then(function (res) {
       var u = res && res.data && res.data.session ? res.data.session.user : null;
+      if (u) {
+        // 로그인=담당자 통합: 세션 이름을 담당자로 채택하고 수기 이름 위젯은 숨김.
+        _sessionName = sessionNameOf(u);
+        var su = document.getElementById('so-user');
+        if (su) su.style.display = 'none';
+      }
       renderAuth(wrap, u);
     }).catch(function () { renderAuth(wrap, null); });
   }
   function renderAuth(wrap, user) {
     if (user) {
       wrap.innerHTML = '<span class="so-auth-ic">🔐</span>'
-        + '<span class="so-auth-email">' + escU(user.email || '로그인됨') + '</span>'
+        + '<span class="so-auth-email"><b>' + escU(sessionNameOf(user)) + '</b> 님</span>'
         + '<button type="button" class="so-user-btn" id="so-auth-out">로그아웃</button>';
       wrap.querySelector('#so-auth-out').addEventListener('click', authLogout);
     } else {
-      wrap.innerHTML = '<button type="button" class="so-user-btn save" id="so-auth-in">로그인</button>';
+      wrap.innerHTML = '<button type="button" class="so-user-btn save" id="so-auth-in">로그인</button>'
+        + '<button type="button" class="so-user-btn" id="so-auth-su">회원가입</button>';
       wrap.querySelector('#so-auth-in').addEventListener('click', function () { authForm(wrap); });
+      wrap.querySelector('#so-auth-su').addEventListener('click', authSignupModal);
     }
   }
   function authForm(wrap) {
@@ -850,6 +864,65 @@
   function authLogout() {
     var c = authClient(); if (!c) return;
     c.auth.signOut().then(function () { location.reload(); }).catch(function () { location.reload(); });
+  }
+
+  // ── 회원가입(셀프) — 가입코드(서버 검증) + 이름·이메일·비번. 이름=담당자로 사용. ──
+  function authSignupModal() {
+    var c = authClient();
+    if (!c) { alert('먼저 Supabase 접속정보를 입력·연결하세요.'); return; }
+    if (document.getElementById('so-su-bg')) return;
+    var bg = document.createElement('div');
+    bg.id = 'so-su-bg';
+    bg.setAttribute('style', 'position:fixed;inset:0;background:rgba(31,42,24,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px');
+    var fieldCss = 'width:100%;padding:9px 11px;border:1px solid var(--border2,#bcc4ad);border-radius:7px;font-size:14px;font-family:inherit';
+    bg.innerHTML =
+        '<div role="dialog" style="background:#fff;border-radius:14px;max-width:340px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.25);overflow:hidden">'
+      + '<div style="font-size:15px;font-weight:800;padding:15px 18px;border-bottom:1px solid var(--border,#d6dccb);color:var(--accent,#3d5424)">담당자 회원가입</div>'
+      + '<div style="padding:16px 18px;display:flex;flex-direction:column;gap:9px">'
+      + '<input id="so-su-name" placeholder="이름(담당자명)" autocomplete="name" style="' + fieldCss + '">'
+      + '<input id="so-su-em" type="email" placeholder="이메일" autocomplete="username" style="' + fieldCss + '">'
+      + '<input id="so-su-pw" type="password" placeholder="비밀번호(6자 이상)" autocomplete="new-password" style="' + fieldCss + '">'
+      + '<input id="so-su-code" placeholder="가입코드(현장 공유)" autocomplete="off" style="' + fieldCss + '">'
+      + '<div id="so-su-msg" style="font-size:12px;color:var(--err,#b13b2c);min-height:14px"></div>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:2px">'
+      + '<button type="button" id="so-su-cancel" class="so-user-btn">취소</button>'
+      + '<button type="button" id="so-su-go" class="so-user-btn save">가입</button>'
+      + '</div></div></div>';
+    document.body.appendChild(bg);
+    var close = function () { bg.remove(); };
+    bg.addEventListener('click', function (e) { if (e.target === bg) close(); });
+    document.getElementById('so-su-cancel').addEventListener('click', close);
+    document.getElementById('so-su-go').addEventListener('click', function () {
+      authSignup(
+        document.getElementById('so-su-name').value.trim(),
+        document.getElementById('so-su-em').value.trim(),
+        document.getElementById('so-su-pw').value,
+        document.getElementById('so-su-code').value.trim()
+      );
+    });
+    try { document.getElementById('so-su-name').focus(); } catch (e) {}
+  }
+  function authSignup(name, email, password, code) {
+    var c = authClient(); if (!c) return;
+    var msg = document.getElementById('so-su-msg');
+    var setMsg = function (s) { if (msg) msg.textContent = s || ''; };
+    if (!name || !email || !password || !code) { setMsg('모든 항목을 입력하세요.'); return; }
+    if (password.length < 6) { setMsg('비밀번호는 6자 이상이어야 합니다.'); return; }
+    setMsg('가입코드 확인 중…');
+    c.rpc('verify_signup_code', { p_code: code }).then(function (r) {
+      if (r.error) { setMsg('가입코드 확인 실패: ' + r.error.message + ' (18_signup_code.sql 실행 확인)'); return; }
+      if (!r.data) { setMsg('가입코드가 올바르지 않습니다.'); return; }
+      setMsg('계정 생성 중…');
+      c.auth.signUp({ email: email, password: password, options: { data: { name: name } } }).then(function (r2) {
+        if (r2.error) { setMsg('가입 실패: ' + r2.error.message); return; }
+        if (r2.data && r2.data.session) {
+          location.reload();           // 이메일 확인 OFF → 바로 로그인됨
+        } else {
+          alert('가입 완료. 확인 메일이 발송되었으면 인증 후 로그인하세요.');
+          location.reload();
+        }
+      }).catch(function (e) { setMsg('가입 오류: ' + e.message); });
+    }).catch(function (e) { setMsg('가입코드 확인 오류: ' + e.message); });
   }
 
   function boot() { mountUser(); mountAuth(); applyLang(); }
