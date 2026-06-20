@@ -136,7 +136,7 @@
   @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.21">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.22">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -207,9 +207,19 @@
   </div>
 </div>
 
+<!-- 주문 현황 — 주방 접수/완료를 프론트가 실시간 확인(오늘 전체) -->
+<div class="wrap" id="ko-status" style="display:none;margin-top:6px">
+  <div class="sec-title" style="display:flex;align-items:center;gap:10px">
+    <span>🍳 注文状況 · 주문 현황</span>
+    <span class="pill" id="ko-meta"></span>
+    <button class="btn ghost sm" id="ko-refresh" type="button" style="margin-left:auto">↻</button>
+  </div>
+  <div id="ko-list"></div>
+</div>
+
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.21"></script>
+<script src="../assets/saizen-ops.js?v=14.22"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -252,6 +262,7 @@ async function connect(){
     $('#btn-load').disabled=false;
     await loadMenu();
     await loadTeams();
+    $('#ko-status').style.display=''; koRefresh(); startKoPoll();
   }catch(e){
     setConn('연결 실패','err');
     toast('연결 실패: '+e.message+' (정산 SQL 09·11·12 실행·키 확인)','err');
@@ -536,9 +547,46 @@ async function sendCart(){
     toast(`${teamTag(state.team)} · ${who} · ${state.cart.length}품목 ${yen(total)} 전송됨${tickets.length?` · 주방 ${tickets.length}건`:''}`,'ok');
     state.runningGross+=total; $('#oh-run').textContent=yen(state.runningGross);
     state.cart=[]; renderCart();
+    if(tickets.length) koRefresh();   // 방금 보낸 주문이 현황에 바로 뜨도록
   }catch(e){
     toast('전송 실패: '+e.message,'err'); $('#btn-send').disabled=false;
   }
+}
+
+// ── 주문 현황(주방 접수/완료 확인) — 오늘 전체, 폴링 ──
+let koTimer=null;
+function startKoPoll(){ stopKoPoll(); koTimer=setInterval(koRefresh,7000); }
+function stopKoPoll(){ if(koTimer){clearInterval(koTimer);koTimer=null;} }
+async function koRefresh(){
+  if(!supa) return;
+  const {data,error}=await supa.from('kitchen_tickets').select('*')
+    .gte('created_at', isoToday()+'T00:00:00').order('created_at',{ascending:true});
+  if(error) return;
+  koRender(data||[]);
+}
+function koBadge(st){
+  if(st==='accepted') return `<span class="pill" style="background:var(--accent2);color:#fff;border-color:var(--accent2)">🍳 ${t('ki_cooking')}</span>`;
+  if(st==='done')     return `<span class="pill ok">✓ ${t('ki_done')}</span>`;
+  return `<span class="pill" style="background:#f6e8c8;color:#7a5a16;border-color:#e6d3a3">${t('ki_waiting')}</span>`;
+}
+function koRender(rows){
+  const list=$('#ko-list');
+  if(!rows.length){ list.innerHTML='<div class="empty-hint" style="padding:10px">'+t('ki_empty')+'</div>'; $('#ko-meta').textContent=''; return; }
+  const nNew=rows.filter(r=>r.status==='new').length, nAcc=rows.filter(r=>r.status==='accepted').length;
+  $('#ko-meta').textContent=`${t('ki_waiting')} ${nNew} · 🍳 ${nAcc}`;
+  const groups={};
+  rows.forEach(r=>{ const k=r.team_tag||('#'+r.event_seq); (groups[k]=groups[k]||[]).push(r); });
+  let html='';
+  Object.keys(groups).forEach(team=>{
+    html+=`<div style="margin:8px 0;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface)">
+      <div style="font-weight:800;color:var(--accent);font-family:var(--mono);margin-bottom:5px">${team}</div>`;
+    groups[team].forEach(r=>{
+      html+=`<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px">
+        <span style="flex:1">${r.item_name} <b style="color:var(--accent2)">×${Number(r.qty)}</b></span>${koBadge(r.status)}</div>`;
+    });
+    html+='</div>';
+  });
+  list.innerHTML=html;
 }
 
 // ── 부팅 ──
@@ -546,12 +594,13 @@ $('#btn-connect').addEventListener('click',connect);
 $('#btn-load').addEventListener('click',loadTeams);
 $('#btn-back').addEventListener('click',backToTeams);
 $('#btn-send').addEventListener('click',sendCart);
+$('#ko-refresh').addEventListener('click',koRefresh);
 $('#date-pick').value=isoToday();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
 window.onSaizenLangChange=function(){
-  try{ if(state.team){ renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); } else renderTeams(); }catch(e){}
+  try{ if(state.team){ renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); } else renderTeams(); if(supa) koRefresh(); }catch(e){}
 };
 </script>
 </body>

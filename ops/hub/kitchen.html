@@ -59,6 +59,8 @@
   }
   .ticket.aged{border-top-color:var(--warn)}
   .ticket.old{border-top-color:var(--err)}
+  .ticket.accepted{border-top-color:var(--accent2);background:#fbf6ea}
+  .ticket .cooking{font-size:12px;font-weight:800;color:var(--accent2);display:flex;align-items:center;gap:5px}
   .ticket .th{display:flex;align-items:baseline;gap:8px}
   .ticket .tteam{font-family:var(--mono);font-weight:800;font-size:16px;color:var(--accent)}
   .ticket .tage{margin-left:auto;font-size:12px;font-weight:700;color:var(--text2)}
@@ -68,6 +70,8 @@
   .ticket .tnote{font-size:12px;color:var(--text2)}
   .ticket .done{margin-top:2px;width:100%;font-size:15px;padding:11px;border-radius:9px;border:1px solid var(--ok);background:var(--ok);color:#fff;font-weight:800;cursor:pointer}
   .ticket .done:hover{background:#266a45}
+  .ticket .accept{margin-top:2px;width:100%;font-size:15px;padding:11px;border-radius:9px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-weight:800;cursor:pointer}
+  .ticket .accept:hover{background:var(--accentDeep)}
   .empty{grid-column:1/-1;text-align:center;color:var(--muted);font-size:15px;padding:60px 0}
 
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
@@ -76,7 +80,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.21">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.22">
 </head>
 <body data-so-area="kitchen">
 <div class="topbar so-bar">
@@ -122,7 +126,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.21"></script>
+<script src="../assets/saizen-ops.js?v=14.22"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 주방 화면(KDS)  · docs 정산명세(04) Phase 3
@@ -169,11 +173,13 @@ async function connect(){
 
 async function refresh(){
   if(!supa) return;
-  let q=supa.from('kitchen_tickets').select('*').eq('status','new').order('created_at');
+  let q=supa.from('kitchen_tickets').select('*').in('status',['new','accepted']).order('created_at');
   if(state.station!=='__all__') q=q.eq('station',state.station);
   const {data,error}=await q;
   if(error){toast('로드 실패: '+error.message,'err');return;}
-  state.tickets=data||[];
+  // 신규(new) 먼저, 그다음 조리중(accepted) — 각각 시간순
+  state.tickets=(data||[]).sort((a,b)=>
+    (a.status==='new'?0:1)-(b.status==='new'?0:1) || new Date(a.created_at)-new Date(b.created_at));
   render();
   const now=new Date();
   $('#updated').textContent=t('ki_updated')+' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
@@ -181,15 +187,20 @@ async function refresh(){
 
 function render(){
   const box=$('#board'); box.innerHTML='';
-  $('#pending').textContent=t('ki_waiting')+' '+state.tickets.length;
+  const newCnt=state.tickets.filter(x=>x.status==='new').length;
+  $('#pending').textContent=t('ki_waiting')+' '+newCnt;
   if(!state.tickets.length){ box.innerHTML='<div class="empty">'+t('ki_empty')+'</div>'; return; }
   const now=Date.now();
   state.tickets.forEach(tk=>{
     const sec=Math.max(0,Math.floor((now-new Date(tk.created_at).getTime())/1000));
     const ageCls=sec>=AGE_OLD?'old':(sec>=AGE_WARN?'aged':'');
     const ageTxtCls=sec>=AGE_OLD?'err':(sec>=AGE_WARN?'warn':'');
+    const accepted=tk.status==='accepted';
     const card=document.createElement('div');
-    card.className='ticket '+ageCls;
+    card.className='ticket '+(accepted?'accepted ':'')+ageCls;
+    const action=accepted
+      ? `<div class="cooking">🍳 ${t('ki_cooking')}</div><button class="done" data-done="${tk.id}">✓ ${t('ki_done')}</button>`
+      : `<button class="accept" data-accept="${tk.id}">${t('ki_accept')}</button>`;
     card.innerHTML=`
       <div class="th">
         <span class="tteam">${tk.team_tag||('#'+tk.event_seq)}</span>
@@ -197,10 +208,20 @@ function render(){
       </div>
       <div class="titem">${tk.item_name} <span class="tqty">×${Number(tk.qty)}</span></div>
       ${tk.note?`<div class="tnote">${tk.note}</div>`:''}
-      <button class="done" data-done="${tk.id}">✓ ${t('ki_done')}</button>`;
-    card.querySelector('[data-done]').addEventListener('click',()=>markDone(tk.id));
+      ${action}`;
+    const ab=card.querySelector('[data-accept]'); if(ab) ab.addEventListener('click',()=>markAccept(tk.id));
+    const db=card.querySelector('[data-done]'); if(db) db.addEventListener('click',()=>markDone(tk.id));
     box.appendChild(card);
   });
+}
+
+async function markAccept(id){
+  // 낙관적: 상태만 변경(목록에 남김) 후 서버 반영
+  const tk=state.tickets.find(x=>x.id===id); if(tk){ tk.status='accepted'; render(); }
+  const by=(window.__so_getUser&&window.__so_getUser())||'';
+  const {error}=await supa.from('kitchen_tickets')
+    .update({status:'accepted',accepted_at:new Date().toISOString(),accepted_by:by}).eq('id',id);
+  if(error){toast('접수 처리 실패: '+error.message,'err'); refresh();}
 }
 
 async function markDone(id){
