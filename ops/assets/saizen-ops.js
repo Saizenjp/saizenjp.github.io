@@ -692,7 +692,10 @@
     return html.replace(/<rt>.*?<\/rt>/g, '').replace(/<\/?ruby>/g, '').replace(/<[^>]+>/g, '');
   }
 
-  function applyLang() {
+  // fireHook=true 일 때만 페이지의 onSaizenLangChange 훅을 호출한다.
+  // (페이지가 동적 DOM 번역용으로 apply()를 부를 때 훅을 다시 호출하면
+  //  render()→apply()→onSaizenLangChange()→render() 무한 루프가 되므로 분리.)
+  function applyLang(fireHook) {
     document.documentElement.lang = LANG;
     document.querySelectorAll('[data-i18n]').forEach(function (el) {
       el.innerHTML = t(el.getAttribute('data-i18n'));
@@ -715,14 +718,15 @@
       fb.classList.toggle('on', FURI);
     }
     document.body.classList.toggle('furi-on', FURI && LANG === 'ja');
-    // 페이지가 동적 갱신 훅을 등록했으면 호출
-    if (typeof global.onSaizenLangChange === 'function') {
+    // 언어/후리가나가 실제로 바뀐 경우에만(=fireHook) 페이지 동적 갱신 훅 호출.
+    // 페이지 render() 안에서 부르는 apply()는 fireHook 없이 들어와 루프를 막는다.
+    if (fireHook && typeof global.onSaizenLangChange === 'function') {
       try { global.onSaizenLangChange(LANG); } catch (e) {}
     }
   }
 
-  function setLang(l) { LANG = l; localStorage.setItem('saizen_lang', l); applyLang(); }
-  function toggleFuri() { FURI = !FURI; localStorage.setItem('saizen_furi', FURI ? '1' : '0'); applyLang(); }
+  function setLang(l) { LANG = l; localStorage.setItem('saizen_lang', l); applyLang(true); }
+  function toggleFuri() { FURI = !FURI; localStorage.setItem('saizen_furi', FURI ? '1' : '0'); applyLang(true); }
 
   // 외부에서 현재 언어/번역 접근용
   var API = {
