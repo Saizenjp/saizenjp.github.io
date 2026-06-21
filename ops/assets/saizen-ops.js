@@ -68,32 +68,32 @@
       ix_c5H: r('現場','げんば')+r('精算','せいさん')+'（'+r('御','ご')+r('請求','せいきゅう')+r('書','しょ')+'）',
       ix_c5Cd: 'お'+r('客様','きゃくさま')+'の'+r('追加','ついか')+r('料金','りょうきん')+'（'+r('宴会','えんかい')+'・レストラン・'+r('追加','ついか')+'ラウンド・'+r('部屋','へや')+'など）を'+r('精算','せいさん')+r('口座','こうざ')+'にまとめ、チェックアウト'+r('時','じ')+'に'+r('御','ご')+r('請求','せいきゅう')+r('書','しょ')+'を'+r('作','つく')+'ります。B2B'+r('精算','せいさん')+'とは'+r('別','べつ')+'レイヤー。',
       ix_c6H: r('注文','ちゅうもん')+r('入力','にゅうりょく')+'（'+r('簡易','かんい')+'POS）',
-      ix_posRest: '🍽 レストラン・'+r('宴会','えんかい')+' POS',
+      ix_posRest: 'レストラン・'+r('宴会','えんかい')+' POS',
       ix_posRestCd: r('飲食','いんしょく')+'・'+r('宴会','えんかい')+'の'+r('注文','ちゅうもん')+'を'+r('該当','がいとう')+r('チーム','')+'に'+r('付','つ')+'けます。'+r('厨房','ちゅうぼう')+r('行','ゆ')+'きは'+r('厨房','ちゅうぼう')+r('画面','がめん')+'へ。',
-      ix_posFront: '🛎 フロント'+r('売店','ばいてん')+' POS',
+      ix_posFront: 'フロント'+r('売店','ばいてん')+' POS',
       ix_posFrontCd: r('変換','へんかん')+'プラグ・'+r('飲料','いんりょう')+'・'+r('シングル','')+r('追加','ついか')+'など、フロントの'+r('雑貨','ざっか')+'・'+r('追加','ついか')+r('料金','りょうきん')+'を'+r('精算','せいさん')+'に'+r('反映','はんえい')+'。',
-      ix_posGolf: '🏌 ゴルフショップ POS',
+      ix_posGolf: 'ゴルフショップ POS',
       ix_posGolfCd: r('手袋','てぶくろ')+'・ボール・'+r('帽子','ぼうし')+'など'+r('売店','ばいてん')+r('販売','はんばい')+'。9'+r('ホール','')+r('追加','ついか')+'も'+r('同','おな')+'じ'+r('精算','せいさん')+'に'+r('合算','がっさん')+'。',
       ix_c6Cd: 'レストラン・'+r('宴会場','えんかいじょう')+'・ゴルフショップで、'+r('係員','かかりいん')+'がタブレットでメニューをタップし'+r('該当','がいとう')+'チームに'+r('直接','ちょくせつ')+r('注文','ちゅうもん')+'を'+r('付','つ')+'けます。'+r('合計','ごうけい')+'は'+r('精算','せいさん')+r('口座','こうざ')+'に'+r('自動','じどう')+'で'+r('反映','はんえい')+'。',
       ix_c7H: r('厨房','ちゅうぼう')+r('画面','がめん')+'（KDS）',
       ix_c7Cd: r('注文','ちゅうもん')+r('入力','にゅうりょく')+'から'+r('厨房','ちゅうぼう')+r('行','ゆ')+'きの'+r('料理','りょうり')+'だけが'+r('厨房','ちゅうぼう')+r('画面','がめん')+'に'+r('即時','そくじ')+r('表示','ひょうじ')+'。'+r('作','つく')+'り'+r('終','お')+'えたら['+r('完了','かんりょう')+']でリストから'+r('消','け')+'します。',
-      ix_kdsBar: '🍸 バー・フロント'+r('画面','がめん'),
+      ix_kdsBar: 'バー・フロント'+r('画面','がめん'),
       ix_kdsBarCd: r('厨房','ちゅうぼう')+'への'+r('料理','りょうり')+'と'+r('バー','')+r('飲料','いんりょう')+'を'+r('両方','りょうほう')+r('表示','ひょうじ')+'。フロントが'+r('注文','ちゅうもん')+r('全体','ぜんたい')+'を'+r('把握','はあく')+'します。',
-      ix_cBoard: '📢 '+r('部署','ぶしょ')+r('連絡','れんらく')+'・'+r('今日','きょう')+r('要約','ようやく'),
+      ix_cBoard: ''+r('部署','ぶしょ')+r('連絡','れんらく')+'・'+r('今日','きょう')+r('要約','ようやく'),
       ix_cBoardCd: r('全部署','ぜんぶしょ')+'の'+r('連絡','れんらく')+' + '+r('今日','きょう')+'のチェックイン・'+r('注文','ちゅうもん')+'・'+r('売上','うりあげ')+r('自動','じどう')+r('要約','ようやく')+'。('+r('作成','さくせい')+'=マスター・'+r('管理','かんり')+r('担当','たんとう')+')',
-      ix_cNotes: '🗒 '+r('運営','うんえい')+'メモ',
+      ix_cNotes: ''+r('運営','うんえい')+'メモ',
       ix_cNotesCd: 'チーム'+r('別','べつ')+'ラベル・'+r('山並','やまなみ')+'コース・'+r('備考','びこう')+'・メモを'+r('複数','ふくすう')+r('担当','たんとう')+'で'+r('共有','きょうゆう')+r('管理','かんり')+'('+r('変更','へんこう')+r('履歴','りれき')+r('含','ふく')+'む)。',
-      ix_deptBoard: '📢 '+r('部署','ぶしょ')+r('連絡','れんらく'),
+      ix_deptBoard: ''+r('部署','ぶしょ')+r('連絡','れんらく'),
       ix_gAdmin: r('管理','かんり')+'・マスター',
-      ix_cAdmin: '🔐 '+r('権限','けんげん')+r('管理','かんり'),
+      ix_cAdmin: ''+r('権限','けんげん')+r('管理','かんり'),
       ix_cAdminCd: r('担当者','たんとうしゃ')+'アカウントの'+r('役割','やくわり')+'(マスター・'+r('管理','かんり')+r('担当','たんとう')+'・'+r('一般','いっぱん')+')と'+r('アクセス','')+'カードを'+r('指定','してい')+'します。',
-      ix_cGroup: '🪪 グループコード・'+r('会員','かいいん')+'マスター',
+      ix_cGroup: 'グループコード・'+r('会員','かいいん')+'マスター',
       ix_cGroupCd: r('会員','かいいん')+'グループコード('+r('氏名','しめい')+'+'+r('生年','せいねん')+'・'+r('等級','とうきゅう')+')を'+r('直接','ちょくせつ')+r('登録','とうろく')+'・'+r('検索','けんさく')+'・'+r('修正','しゅうせい')+'。'+r('個人','こじん')+r('情報','じょうほう')+'のためマスターのみ。',
-      ix_annTag: '📢 お'+r('知','し')+'らせ',
+      ix_annTag: 'お'+r('知','し')+'らせ',
       ix_boardOpen: 'ボードを'+r('開','ひら')+'く →',
       ix_loginH: 'ログインが'+r('必要','ひつよう')+'です',
       ix_loginP: r('右上','みぎうえ')+'の<b>[ログイン]</b>から'+r('入','はい')+'ってください。<br>アカウントはマスターが'+r('発行','はっこう')+'します。',
-      ix_golfCart: '🛺 カート'+r('配車','はいしゃ')+r('表','ひょう'),
+      ix_golfCart: 'カート'+r('配車','はいしゃ')+r('表','ひょう'),
       ix_golfCartCd: r('組','くみ')+r('別','べつ')+'カートの'+r('割','わ')+'り'+r('当','あ')+'て・'+r('管理','かんり')+'（'+r('準備','じゅんび')+r('中','ちゅう')+'）',
       ix_c8H: 'メニュー'+r('管理','かんり'),
       ix_c8Cd: 'POS・'+r('厨房','ちゅうぼう')+r('画面','がめん')+'で'+r('使','つか')+'うメニュー・'+r('単価','たんか')+'・station を'+r('登録','とうろく')+r('編集','へんしゅう')+'します。メニュー'+r('表','ひょう')+'を'+r('一括','いっかつ')+r('貼','は')+'り'+r('付','つ')+'けで'+r('入力','にゅうりょく')+'も'+r('可能','かのう')+'。',
@@ -116,14 +116,14 @@
       bd_phBody: r('内容','ないよう'),
       bd_deptLabel: r('部署','ぶしょ'),
       bd_allDept: r('全社','ぜんしゃ')+'('+r('共通','きょうつう')+')',
-      bd_pin: '📌 '+r('上部','じょうぶ')+r('固定','こてい'),
+      bd_pin: ''+r('上部','じょうぶ')+r('固定','こてい'),
       bd_post: r('連絡','れんらく')+r('登録','とうろく'),
-      bd_annH: '📢 '+r('お知らせ','おしらせ'),
+      bd_annH: ''+r('お知らせ','おしらせ'),
       bd_chipAll: r('全体','ぜんたい'),
       bd_emptyConn: r('接続','せつぞく')+r('後','ご')+'に'+r('表示','ひょうじ')+'されます。',
       bd_empty: r('登録','とうろく')+'された'+r('連絡','れんらく')+'がありません。',
       bd_unpin: r('固定','こてい')+r('解除','かいじょ'),
-      bd_doPin: '📌 '+r('固定','こてい'),
+      bd_doPin: ''+r('固定','こてい'),
       bd_del: r('削除','さくじょ'),
       bd_today: r('今日','きょう')+r('要約','ようやく'),
       bd_ciTeam: 'チェックイン'+r('チーム',''),
@@ -207,9 +207,9 @@
       rm_modeRange: r('期間','きかん')+r('表示','ひょうじ'),
       rm_lblFrom: r('日付','ひづけ'),
       rm_btnLoad: r('読','よ')+'み'+r('込','こ')+'み',
-      rm_btnExport: '📥 '+r('様式','ようしき')+r('書','か')+'き'+r('出','だ')+'し',
+      rm_btnExport: ''+r('様式','ようしき')+r('書','か')+'き'+r('出','だ')+'し',
       rm_btnExportTitle: r('現在','げんざい')+'の'+r('配置','はいち')+r('状況','じょうきょう')+'をエクセルに'+r('書','か')+'き'+r('出','だ')+'し',
-      rm_btnImport: '📤 '+r('一括','いっかつ')+r('配置','はいち'),
+      rm_btnImport: ''+r('一括','いっかつ')+r('配置','はいち'),
       rm_btnImportTitle: r('号室','ごうしつ')+'を'+r('記入','きにゅう')+'したエクセルをアップロードして'+r('一括','いっかつ')+r('配置','はいち'),
       rm_selClear: r('選択','せんたく')+r('解除','かいじょ'),
       rm_selHint: '→ '+r('客室','きゃくしつ')+'カードをクリックすると'+r('一括','いっかつ')+r('配置','はいち'),
@@ -223,7 +223,7 @@
       rm_cntTeam: 'チーム',
       rm_cntPpl: r('名','めい'),
       rm_selectedSuffix: r('名','めい')+r('選択','せんたく'),
-      rm_allAssigned: r('全','すべ')+'ての'+r('人員','じんいん')+r('配置','はいち')+r('完了','かんりょう')+' 🎉',
+      rm_allAssigned: r('全','すべ')+'ての'+r('人員','じんいん')+r('配置','はいち')+r('完了','かんりょう')+' ',
 
       /* settle (현장 정산) */
       st_step: r('精算','せいさん')+' · '+r('御','ご')+r('請求','せいきゅう'),
@@ -289,7 +289,7 @@
       ki_refresh: r('更新','こうしん'),
       ki_updated: r('更新','こうしん'),
       ki_connectFirst: r('接続','せつぞく')+'してください。',
-      ki_empty: r('注文','ちゅうもん')+'はありません 🎉',
+      ki_empty: r('注文','ちゅうもん')+'はありません ',
       ki_done: r('完了','かんりょう'),
       ki_accept: r('受付','うけつけ'),
       ki_cooking: r('調理中','ちょうりちゅう'),
@@ -300,7 +300,7 @@
       /* menu (메뉴 관리) */
       me_step: 'メニュー'+r('管理','かんり'),
       me_addTitle: '＋ '+r('新','あたら')+'しいメニュー',
-      me_bulkTitle: '📋 '+r('一括','いっかつ')+r('貼','は')+'り'+r('付','つ')+'け（メニュー'+r('表','ひょう')+'をまとめて'+r('入力','にゅうりょく')+'）',
+      me_bulkTitle: ''+r('一括','いっかつ')+r('貼','は')+'り'+r('付','つ')+'け（メニュー'+r('表','ひょう')+'をまとめて'+r('入力','にゅうりょく')+'）',
       me_bulkFmt: '1'+r('行','ぎょう')+'＝ <code>'+r('日本語名','にほんごめい')+', '+r('韓国語名','かんこくごめい')+', '+r('区分','くぶん')+', '+r('場所','ばしょ')+', station, '+r('単価','たんか')+', code</code> （カンマ/タブ'+r('区切','くぎ')+'り・'+r('後半','こうはん')+'は'+r('省略','しょうりゃく')+'可）。station = kitchen / bar / none。',
       me_bulkAdd: r('一括','いっかつ')+r('追加','ついか'),
       me_listTitle: 'メニュー'+r('一覧','いちらん'),
@@ -359,32 +359,32 @@
       ix_c5H: '현장 정산 (체크아웃 명세서)',
       ix_c5Cd: '손님 추가요금(연회·레스토랑·추가 라운딩·룸 등)을 정산 계정에 모아 체크아웃 시 명세서(御請求書)를 만듭니다. B2B 정산과 별개 레이어.',
       ix_c6H: '주문 입력 (간이 POS)',
-      ix_posRest: '🍽 레스토랑·연회 POS',
+      ix_posRest: '레스토랑·연회 POS',
       ix_posRestCd: '식음·연회 주문을 해당 팀에 답니다. 주방행은 주방 화면으로. 합계는 정산에 자동 반영.',
-      ix_posFront: '🛎 프론트 매점 POS',
+      ix_posFront: '프론트 매점 POS',
       ix_posFrontCd: '110V 변환 어댑터(돼지코)·음료·싱글룸 추가 등 프론트 잡화·추가요금을 정산에 반영합니다.',
-      ix_posGolf: '🏌 골프샵 POS',
+      ix_posGolf: '골프샵 POS',
       ix_posGolfCd: '장갑·볼·모자 등 매점 판매. 9홀 추가도 같은 정산에 합산됩니다.',
       ix_c6Cd: '레스토랑·연회장·골프샵에서 직원이 태블릿으로 메뉴를 탭해 해당 팀에 바로 주문을 답니다. 합계는 정산 계정에 자동 반영됩니다.',
       ix_c7H: '주방 화면 (KDS)',
       ix_c7Cd: '주문 입력에서 주방행 음식만 주방 화면에 즉시 표시됩니다. 다 만들면 [완료]로 목록에서 지웁니다. 자동 새로고침.',
-      ix_kdsBar: '🍸 바·프론트 화면',
+      ix_kdsBar: '바·프론트 화면',
       ix_kdsBarCd: '주방 음식 + 바 음료를 함께 표시. 레스토랑 프론트가 주문 전체를 확인합니다.',
-      ix_cBoard: '📢 부서 공지 · 오늘 요약',
+      ix_cBoard: '부서 공지 · 오늘 요약',
       ix_cBoardCd: '전 부서 공지사항 + 오늘 체크인·주문·매출 자동 요약. (공지 작성=마스터·관리담당)',
-      ix_cNotes: '🗒 팀 운영 메모',
+      ix_cNotes: '팀 운영 메모',
       ix_cNotesCd: '팀별 라벨·야마나미 코스·비고·메모를 여러 담당자가 공유 관리(수정이력 포함).',
-      ix_deptBoard: '📢 부서 공지',
+      ix_deptBoard: '부서 공지',
       ix_gAdmin: '관리 · 마스터',
-      ix_cAdmin: '🔐 권한 관리',
+      ix_cAdmin: '권한 관리',
       ix_cAdminCd: '담당자 계정의 역할(마스터·관리담당·일반)과 접근 카드를 지정합니다.',
-      ix_cGroup: '🪪 그룹코드 · 회원 마스터',
+      ix_cGroup: '그룹코드 · 회원 마스터',
       ix_cGroupCd: '회원 그룹코드(성명+생년·등급)를 직접 등록·검색·수정합니다. 개인정보라 마스터만 사용.',
-      ix_annTag: '📢 공지',
+      ix_annTag: '공지',
       ix_boardOpen: '보드 열기 →',
       ix_loginH: '로그인이 필요합니다',
       ix_loginP: '상단 우측 <b>[로그인]</b> 으로 로그인하세요.<br>계정은 마스터(관리자)가 발급합니다.',
-      ix_golfCart: '🛺 카트 배정표',
+      ix_golfCart: '카트 배정표',
       ix_golfCartCd: '조별 카트 배정·관리 (준비중)',
       ix_c8H: '메뉴 관리',
       ix_c8Cd: 'POS·주방 화면에서 쓰는 메뉴·단가·station을 등록/편집합니다. 메뉴판을 일괄 붙여넣기로 한 번에 입력할 수 있습니다.',
@@ -407,14 +407,14 @@
       bd_phBody: '내용',
       bd_deptLabel: '부서',
       bd_allDept: '전사(공통)',
-      bd_pin: '📌 상단 고정',
+      bd_pin: '상단 고정',
       bd_post: '공지 등록',
-      bd_annH: '📢 공지사항',
+      bd_annH: '공지사항',
       bd_chipAll: '전체',
       bd_emptyConn: '연결 후 표시됩니다.',
       bd_empty: '등록된 공지가 없습니다.',
       bd_unpin: '고정 해제',
-      bd_doPin: '📌 고정',
+      bd_doPin: '고정',
       bd_del: '삭제',
       bd_today: '오늘 요약',
       bd_ciTeam: '체크인 팀',
@@ -494,9 +494,9 @@
       rm_modeRange: '기간 보기',
       rm_lblFrom: '날짜',
       rm_btnLoad: '불러오기',
-      rm_btnExport: '📥 양식 내보내기',
+      rm_btnExport: '양식 내보내기',
       rm_btnExportTitle: '현재 배정 현황을 엑셀로 내보내기',
-      rm_btnImport: '📤 일괄 배정',
+      rm_btnImport: '일괄 배정',
       rm_btnImportTitle: '호수 채운 엑셀 올려 일괄 배정',
       rm_selClear: '선택 해제',
       rm_selHint: '→ 객실 카드를 클릭하면 한꺼번에 배정',
@@ -510,7 +510,7 @@
       rm_cntTeam: '팀',
       rm_cntPpl: '명',
       rm_selectedSuffix: '명 선택됨',
-      rm_allAssigned: '모든 인원 배정 완료 🎉',
+      rm_allAssigned: '모든 인원 배정 완료 ',
 
       /* settle (현장 정산) */
       st_step: '정산 · 청구서',
@@ -576,7 +576,7 @@
       ki_refresh: '새로고침',
       ki_updated: '갱신',
       ki_connectFirst: '연결하세요.',
-      ki_empty: '주문 없음 🎉',
+      ki_empty: '주문 없음 ',
       ki_done: '완료',
       ki_accept: '접수',
       ki_cooking: '조리중',
@@ -587,7 +587,7 @@
       /* menu (메뉴 관리) */
       me_step: '메뉴 관리',
       me_addTitle: '＋ 새 메뉴',
-      me_bulkTitle: '📋 일괄 붙여넣기 (메뉴판을 한 번에 입력)',
+      me_bulkTitle: '일괄 붙여넣기 (메뉴판을 한 번에 입력)',
       me_bulkFmt: '한 줄 = <code>일본어명, 한국어명, 구분, 장소, station, 단가, code</code> (콤마/탭 구분 · 뒤쪽은 생략 가능). station = kitchen(주방) / bar(드링크바) / none.',
       me_bulkAdd: '일괄 추가',
       me_listTitle: '메뉴 목록',
@@ -648,32 +648,32 @@
       ix_c5H: 'Field Settlement (Checkout)',
       ix_c5Cd: 'Collects guest extra charges (banquet, restaurant, extra rounds, room, etc.) into a folio and produces a checkout invoice. A separate layer from B2B settlement.',
       ix_c6H: 'Order Entry (Mini POS)',
-      ix_posRest: '🍽 Restaurant·Banquet POS',
+      ix_posRest: 'Restaurant·Banquet POS',
       ix_posRestCd: 'Charge food & banquet orders to the right team. Kitchen items go to the kitchen display. Totals flow into the folio.',
-      ix_posFront: '🛎 Front Store POS',
+      ix_posFront: 'Front Store POS',
       ix_posFrontCd: 'Front-desk sundries & extras — plug adapters, drinks, single-room add-ons — posted to the folio.',
-      ix_posGolf: '🏌 Pro Shop POS',
+      ix_posGolf: 'Pro Shop POS',
       ix_posGolfCd: 'Shop sales — gloves, balls, caps. Extra 9 holes settle into the same folio too.',
       ix_c6Cd: 'At the restaurant, banquet hall, or pro shop, staff tap menu items on a tablet to charge them directly to the right team. Totals flow automatically into the folio.',
       ix_c7H: 'Kitchen Display (KDS)',
       ix_c7Cd: 'Food items routed to the kitchen appear instantly on the kitchen screen. Tap [Done] to clear them once cooked. Auto-refreshing.',
-      ix_kdsBar: '🍸 Bar·Front Display',
+      ix_kdsBar: 'Bar·Front Display',
       ix_kdsBarCd: 'Shows kitchen food + bar drinks together, so the restaurant front sees the whole order.',
-      ix_cBoard: '📢 Dept Notices · Today',
+      ix_cBoard: 'Dept Notices · Today',
       ix_cBoardCd: 'All-dept notices + today’s check-ins, orders, sales auto-summary. (Post = master/manager)',
-      ix_cNotes: '🗒 Team Ops Memo',
+      ix_cNotes: 'Team Ops Memo',
       ix_cNotesCd: 'Shared team labels, Yamanami course, remarks & memos across staff (with change history).',
-      ix_deptBoard: '📢 Dept notices',
+      ix_deptBoard: 'Dept notices',
       ix_gAdmin: 'Admin · Master',
-      ix_cAdmin: '🔐 Access Control',
+      ix_cAdmin: 'Access Control',
       ix_cAdminCd: 'Assign each account’s role (master/manager/staff) and accessible cards.',
-      ix_cGroup: '🪪 Group Codes · Members',
+      ix_cGroup: 'Group Codes · Members',
       ix_cGroupCd: 'Register, search, and edit member group codes (name+birth, grade). Master only (personal data).',
-      ix_annTag: '📢 Notice',
+      ix_annTag: 'Notice',
       ix_boardOpen: 'Open board →',
       ix_loginH: 'Login required',
       ix_loginP: 'Log in via <b>[Login]</b> at top right.<br>Accounts are issued by the master.',
-      ix_golfCart: '🛺 Cart Assignment',
+      ix_golfCart: 'Cart Assignment',
       ix_golfCartCd: 'Cart assignment & management per group (soon)',
       ix_c8H: 'Menu Admin',
       ix_c8Cd: 'Register and edit the menu items, prices, and station used by the POS and kitchen display. Bulk-paste lets you enter a whole menu at once.',
@@ -696,14 +696,14 @@
       bd_phBody: 'Body',
       bd_deptLabel: 'Dept',
       bd_allDept: 'All (company-wide)',
-      bd_pin: '📌 Pin to top',
+      bd_pin: 'Pin to top',
       bd_post: 'Post notice',
-      bd_annH: '📢 Notices',
+      bd_annH: 'Notices',
       bd_chipAll: 'All',
       bd_emptyConn: 'Shown after connecting.',
       bd_empty: 'No notices yet.',
       bd_unpin: 'Unpin',
-      bd_doPin: '📌 Pin',
+      bd_doPin: 'Pin',
       bd_del: 'Delete',
       bd_today: 'Today summary',
       bd_ciTeam: 'Check-in teams',
@@ -785,9 +785,9 @@
       rm_modeRange: 'Range view',
       rm_lblFrom: 'Date',
       rm_btnLoad: 'Load',
-      rm_btnExport: '📥 Export template',
+      rm_btnExport: 'Export template',
       rm_btnExportTitle: 'Export the current assignment status to Excel',
-      rm_btnImport: '📤 Bulk assign',
+      rm_btnImport: 'Bulk assign',
       rm_btnImportTitle: 'Upload an Excel with room numbers filled in to bulk-assign',
       rm_selClear: 'Clear selection',
       rm_selHint: '→ Click a room card to bulk-assign',
@@ -801,7 +801,7 @@
       rm_cntTeam: 'teams',
       rm_cntPpl: 'people',
       rm_selectedSuffix: 'selected',
-      rm_allAssigned: 'All guests assigned 🎉',
+      rm_allAssigned: 'All guests assigned ',
 
       /* settle (현장 정산) */
       st_step: 'Settlement · Invoice',
@@ -867,7 +867,7 @@
       ki_refresh: 'Refresh',
       ki_updated: 'Updated',
       ki_connectFirst: 'Please connect.',
-      ki_empty: 'No orders 🎉',
+      ki_empty: 'No orders ',
       ki_done: 'Done',
       ki_accept: 'Accept',
       ki_cooking: 'Cooking',
@@ -878,7 +878,7 @@
       /* menu (메뉴 관리) */
       me_step: 'Menu Admin',
       me_addTitle: '＋ New item',
-      me_bulkTitle: '📋 Bulk paste (enter the whole menu at once)',
+      me_bulkTitle: 'Bulk paste (enter the whole menu at once)',
       me_bulkFmt: 'One line = <code>name_ja, name_ko, category, venue, station, price, code</code> (comma/tab separated · trailing fields optional). station = kitchen / bar / none.',
       me_bulkAdd: 'Add all',
       me_listTitle: 'Menu list',
@@ -969,10 +969,10 @@
   //    로그인 안 했으면 수기 위젯값(saizen_ops_user)을 사용.
   // ── 부서 키↔라벨(전 페이지 공유) — 권한·공지·작성자 프로필 공통 ──
   var SO_DEPTS = [
-    ['front', '🛎 프론트·객실'],
-    ['fnb',   '🍽 식음'],
-    ['golf',  '🏌 골프'],
-    ['acct',  '💴 회계']
+    ['front', '프론트·객실'],
+    ['fnb',   '식음'],
+    ['golf',  '골프'],
+    ['acct',  '회계']
   ];
   var _deptMap = {}; SO_DEPTS.forEach(function (d) { _deptMap[d[0]] = d[1]; });
   function deptLabelOf(k) { return k ? (_deptMap[k] || k) : ''; }
@@ -999,7 +999,7 @@
     var name = getUser();
     if (name) {
       wrap.classList.remove('empty');
-      wrap.innerHTML = '<span class="so-user-ic">👤</span>'
+      wrap.innerHTML = '<span class="so-user-ic"></span>'
         + '<span class="so-user-greet"><b>' + escU(name) + '</b> 님 반갑습니다</span>'
         + '<button type="button" class="so-user-btn" id="so-user-edit">변경</button>';
       wrap.querySelector('#so-user-edit').addEventListener('click', function () { editUser(wrap, name); });
@@ -1009,7 +1009,7 @@
   }
   function editUser(wrap, cur) {
     wrap.classList.add('empty');
-    wrap.innerHTML = '<span class="so-user-ic">👤</span>'
+    wrap.innerHTML = '<span class="so-user-ic"></span>'
       + '<input id="so-user-in" class="so-user-in" type="text" placeholder="담당자명" autocomplete="off" spellcheck="false">'
       + '<button type="button" class="so-user-btn save" id="so-user-save">저장</button>';
     var inp = wrap.querySelector('#so-user-in');
@@ -1073,7 +1073,7 @@
   function renderAuth(wrap, user, acc, knownName) {
     if (user && !knownName) {
       // 마스터가 이름 미지정 + 본인 메타도 없음 → 이름(담당자명)을 1회 설정.
-      wrap.innerHTML = '<span class="so-auth-ic">🔐</span>'
+      wrap.innerHTML = '<span class="so-auth-ic"></span>'
         + '<input id="so-auth-nm" class="so-user-in" type="text" placeholder="이름(담당자명)" autocomplete="name" style="width:108px">'
         + '<button type="button" class="so-user-btn save" id="so-auth-nm-go">저장</button>';
       var nm = wrap.querySelector('#so-auth-nm');
@@ -1085,7 +1085,7 @@
       var sub = (acc && (acc.dept || acc.title))
         ? ' <span class="so-auth-sub" style="font-size:11px;color:var(--muted,#8a937c)">(' + escU([deptLabelOf(acc.dept), acc.title].filter(Boolean).join('·')) + ')</span>'
         : '';
-      wrap.innerHTML = '<span class="so-auth-ic">🔐</span>'
+      wrap.innerHTML = '<span class="so-auth-ic"></span>'
         + '<span class="so-auth-email"><b>' + escU(knownName) + '</b> 님' + sub + '</span>'
         + '<button type="button" class="so-user-btn" id="so-auth-out">로그아웃</button>';
       wrap.querySelector('#so-auth-out').addEventListener('click', authLogout);
@@ -1195,7 +1195,7 @@
       var box = document.querySelector('.so-controls');
       if (box) {
         var b = document.createElement('button');
-        b.type = 'button'; b.className = 'so-user-btn'; b.textContent = '🔌';
+        b.type = 'button'; b.className = 'so-user-btn'; b.textContent = '';
         b.title = 'Supabase 연결 정보'; b.addEventListener('click', toggle);
         box.appendChild(b);
       }
