@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 그룹코드 관리(마스터)</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad; --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#3d5424; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#2c3d19;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --mono:'SFMono-Regular',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .topbar .grow{flex:1}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.danger{border-color:#e3bdb4;color:var(--err);background:transparent}
+  .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{max-width:960px;margin:0 auto;padding:16px 20px 90px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:10px}
+  .panel .desc{font-size:12px;color:var(--text2);margin-bottom:11px}
+  .form-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .form-row .inp{flex:0 0 auto}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+  table.gc{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  table.gc th{text-align:left;font-size:11px;color:#fff;background:var(--accent);font-weight:700;padding:7px 8px;white-space:nowrap}
+  table.gc td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+  table.gc .mono{font-family:var(--mono)}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.25">
+</head>
+<body>
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step">그룹코드 관리 · 마스터</span>
+  <a class="navhome" href="../index.html">← 홈</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint">회원 마스터(PII) — 마스터(admin)만 사용. 그룹코드 xlsx 없이 여기서 직접 관리.</span>
+</div>
+
+<div class="wrap" id="content">
+  <div class="panel"><div class="deny" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-ops.js?v=14.25"></script>
+<script>
+const $=s=>document.querySelector(s);
+let supa=null;
+const CLASSES=['다이아몬드','다이아몬드Ⅱ','골드','특별','EWRC','EWRCⅡ','EWRC이용권',''];
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn('URL·key 필요','err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">로그인이 필요합니다.<small>상단 [로그인] 후 다시 연결하세요.</small></div></div>'; return; }
+    const acc=(window.__so_meAccess)?await __so_meAccess():null;
+    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.disabled=false;
+    if(!acc || acc.role!=='admin'){
+      $('#content').innerHTML='<div class="panel"><div class="deny">마스터(관리자) 전용입니다.<small>회원 마스터는 개인정보라 마스터만 관리합니다.</small></div></div>';
+      return;
+    }
+    renderUI();
+  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결·재시도';btn.disabled=false; supa=null; toast('연결 실패: '+e.message,'err'); }
+}
+
+function renderUI(){
+  const clsOpts=CLASSES.map(c=>`<option value="${c}">${c||'(등급 없음)'}</option>`).join('');
+  $('#content').innerHTML=`
+    <div class="panel">
+      <h3>회원 추가 / 수정</h3>
+      <div class="desc">키 = <b>성명 + 생년6자리</b>(예: 황보관현590611). 같은 키면 덮어씁니다(수정).</div>
+      <div class="form-row">
+        <input class="inp" id="f-name" placeholder="성명" style="width:130px">
+        <input class="inp" id="f-birth" placeholder="생년6(590611)" maxlength="6" style="width:120px">
+        <input class="inp" id="f-code" placeholder="그룹코드(DAあ)" style="width:120px">
+        <select class="inp" id="f-class" style="width:140px">${clsOpts}</select>
+        <button class="btn" id="f-save" type="button">저장</button>
+        <button class="btn ghost sm" id="f-clear" type="button">비우기</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>검색 <span class="cnt" id="gc-cnt"></span></h3>
+      <div class="form-row" style="margin-bottom:8px">
+        <input class="inp" id="q" placeholder="성명·그룹코드·키로 검색" style="width:260px">
+        <button class="btn sm" id="btn-search" type="button">검색</button>
+        <span class="cnt">※ 최대 200건 표시</span>
+      </div>
+      <div id="gc-list"></div>
+    </div>`;
+  $('#f-save').addEventListener('click',saveMember);
+  $('#f-clear').addEventListener('click',()=>{['f-name','f-birth','f-code'].forEach(id=>$('#'+id).value='');$('#f-class').value='';});
+  $('#btn-search').addEventListener('click',search);
+  $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
+}
+
+async function saveMember(){
+  const name=$('#f-name').value.trim(), birth=$('#f-birth').value.trim(), code=$('#f-code').value.trim(), cls=$('#f-class').value;
+  if(!name||!birth){ toast('성명·생년6자리는 필수','err'); return; }
+  if(!/^\d{6}$/.test(birth)){ toast('생년은 6자리 숫자(590611)','err'); return; }
+  if(!code){ toast('그룹코드를 입력하세요','err'); return; }
+  const member_key=name+birth;
+  const {error}=await supa.from('member_codes').upsert({code,member_key,name_kr:name,member_class:cls||null,is_learned:false},{onConflict:'code,member_key'});
+  if(error){ toast('저장 실패: '+error.message,'err'); return; }
+  toast('저장됨: '+member_key,'ok'); search();
+}
+
+async function search(){
+  const q=$('#q').value.trim();
+  let query=supa.from('member_codes').select('*').order('name_kr').limit(200);
+  if(q) query=query.or(`name_kr.ilike.%${q}%,member_key.ilike.%${q}%,code.ilike.%${q}%`);
+  const {data,error}=await query;
+  if(error){ toast('검색 실패: '+error.message,'err'); return; }
+  renderList(data||[]);
+}
+function renderList(rows){
+  $('#gc-cnt').textContent=rows.length?`(${rows.length}건)`:'';
+  const box=$('#gc-list');
+  if(!rows.length){ box.innerHTML='<div class="deny" style="color:var(--muted);padding:24px">결과 없음 (검색어를 입력해 보세요)</div>'; return; }
+  box.innerHTML='<table class="gc"><thead><tr><th>그룹코드</th><th>성명</th><th>키(member_key)</th><th>등급</th><th></th></tr></thead><tbody>'
+    + rows.map(r=>`<tr data-code="${esc(r.code)}" data-key="${esc(r.member_key)}">
+        <td class="mono"><b>${esc(r.code)}</b></td>
+        <td>${esc(r.name_kr||'')}</td>
+        <td class="mono" style="font-size:11px;color:var(--muted)">${esc(r.member_key)}</td>
+        <td>${esc(r.member_class||'')}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn sm ghost" data-edit>수정</button>
+          <button class="btn sm danger" data-del>삭제</button>
+        </td></tr>`).join('')
+    + '</tbody></table>';
+  box.querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click',e=>{
+    const tr=e.target.closest('tr'); const r=rows.find(x=>x.code===tr.dataset.code&&x.member_key===tr.dataset.key);
+    if(!r) return;
+    $('#f-name').value=r.name_kr||''; $('#f-birth').value=(r.member_key||'').slice(-6);
+    $('#f-code').value=r.code; $('#f-class').value=CLASSES.includes(r.member_class)?r.member_class:'';
+    window.scrollTo({top:0,behavior:'smooth'});
+  }));
+  box.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',e=>{
+    const tr=e.target.closest('tr'); delMember(tr.dataset.code,tr.dataset.key);
+  }));
+}
+async function delMember(code,key){
+  if(!confirm(`삭제할까요?\n${code} · ${key}`)) return;
+  const {error}=await supa.from('member_codes').delete().eq('code',code).eq('member_key',key);
+  if(error){ toast('삭제 실패: '+error.message,'err'); return; }
+  toast('삭제됨','ok'); search();
+}
+
+$('#btn-connect').addEventListener('click',connect);
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
