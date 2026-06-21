@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 키택 바인딩</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad; --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#3d5424; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#2c3d19;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --mono:'SFMono-Regular',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input{font-family:inherit}
+  .inp{padding:8px 11px;border:1px solid var(--border2);border-radius:7px;background:var(--surface);color:var(--text);font-size:14px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:8px 15px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .btn:hover:not(:disabled){background:var(--accentDeep)} .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.danger{border-color:#e3bdb4;color:var(--err);background:transparent}
+  .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{max-width:1000px;margin:0 auto;padding:16px 20px 90px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:10px}
+  .panel .desc{font-size:12px;color:var(--text2);margin-bottom:11px}
+  .row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+  .tlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-top:10px;max-height:280px;overflow:auto}
+  .tbtn{text-align:left;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:9px 11px;cursor:pointer}
+  .tbtn:hover{background:var(--accentSoft)} .tbtn.on{background:var(--accentSoft);border-color:var(--accent)}
+  .tbtn .tt{font-family:var(--mono);font-weight:800;color:var(--accent)}
+  .tbtn .tr{font-size:12.5px;color:var(--text2)}
+  .sel{font-weight:800;color:var(--accent2)}
+  table.bind{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  table.bind th{text-align:left;font-size:11px;color:#fff;background:var(--accent);padding:7px 8px;white-space:nowrap}
+  table.bind td{padding:6px 8px;border-bottom:1px solid var(--border)}
+  table.bind .mono{font-family:var(--mono)}
+  .labels{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:12px}
+  .label{border:1px dashed var(--border2);border-radius:8px;padding:10px;text-align:center;background:#fff}
+  .label canvas{width:120px;height:120px}
+  .label .lc{font-family:var(--mono);font-weight:800;font-size:14px;margin-top:5px}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  @media print{
+    body *{visibility:hidden}
+    #print-area, #print-area *{visibility:visible}
+    #print-area{position:absolute;left:0;top:0;width:100%;padding:10px}
+    .label{break-inside:avoid}
+  }
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.33">
+</head>
+<body data-so-area="room">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step">🔑 키택 바인딩 · 체크인</span>
+  <a class="navhome" href="../index.html">← 홈</a>
+  <div class="grow so-spacer" style="flex:1"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint">체크인 때 팀과 키홀더(QR)를 연결합니다.</span>
+</div>
+
+<div class="wrap" id="content">
+  <div class="panel">
+    <h3>① 팀 선택 <span class="pill" id="day-pill" style="margin-left:6px"></span></h3>
+    <div class="desc">체크인일 기준 체류 팀을 불러옵니다. 그룹코드·대표자로 검색하세요.</div>
+    <div class="row">
+      <input class="inp" id="day" type="date">
+      <button class="btn sm" id="btn-load" type="button">불러오기</button>
+      <input class="inp" id="tq" placeholder="그룹코드·대표자 검색" style="flex:1;min-width:200px">
+    </div>
+    <div class="tlist" id="tlist"></div>
+  </div>
+
+  <div class="panel">
+    <h3>② 키홀더 연결</h3>
+    <div class="desc">선택한 팀: <span class="sel" id="sel-team">(없음)</span></div>
+    <div class="row">
+      <input class="inp" id="fob" placeholder="키홀더 번호(예 K001)" style="width:200px" autocomplete="off">
+      <button class="btn" id="btn-bind" type="button" disabled>연결(바인딩)</button>
+      <span class="hint" style="font-size:11.5px;color:var(--muted)">키홀더에 인쇄된 번호를 입력(또는 스캐너로 찍기)</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>③ 현재 바인딩 <span class="pill" id="bind-cnt"></span> <button class="btn ghost sm" id="btn-refresh" type="button" style="float:right">↻</button></h3>
+    <div id="bind-list"><div class="desc">연결 후 표시됩니다.</div></div>
+  </div>
+
+  <div class="panel">
+    <h3>④ 키홀더 QR 라벨 출력 (최초 1회)</h3>
+    <div class="desc">물리 키홀더에 붙일 QR 라벨을 만듭니다. 접두 + 시작번호 + 개수로 생성 → 인쇄.</div>
+    <div class="row">
+      <input class="inp" id="lp-prefix" value="K" style="width:70px" maxlength="4">
+      <input class="inp" id="lp-start" type="number" value="1" min="1" style="width:90px" placeholder="시작">
+      <input class="inp" id="lp-count" type="number" value="20" min="1" max="200" style="width:90px" placeholder="개수">
+      <button class="btn sm" id="btn-gen" type="button">생성</button>
+      <button class="btn ghost sm" id="btn-print" type="button" disabled>🖨 인쇄</button>
+    </div>
+    <div id="print-area"><div class="labels" id="labels"></div></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-ops.js?v=14.33"></script>
+<script>
+const $=s=>document.querySelector(s);
+let supa=null, teams=[], teamMap={}, sel=null, tq='';
+const FOB_PREFIX='SZK:';   // QR 페이로드 접두(다른 QR과 구분)
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+function isoToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function opBy(){ return (window.__so_getUser&&__so_getUser())||''; }
+function teamTag(tm){ return tm.group_code||tm.team_tag||('팀'+tm.event_seq); }
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn('URL·key 필요','err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {error}=await supa.from('key_bindings').select('id',{count:'exact',head:true});
+    if(error) throw error;
+    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.disabled=false;
+    await loadTeams(); await loadBindings();
+  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결·재시도';btn.disabled=false; supa=null; toast('연결 실패: '+e.message+' (27 SQL 실행 확인)','err'); }
+}
+
+async function loadTeams(){
+  const d=$('#day').value||isoToday(); $('#day').value=d;
+  const {data,error}=await supa.from('guests')
+    .select('event_seq,team_tag,group_code,accom,pax,session_ym,bookings!inner(event_no,rep_name,dep_date,arr_date)')
+    .lte('bookings.dep_date',d).gt('bookings.arr_date',d);
+  if(error){toast('팀 로드 실패: '+error.message,'err');return;}
+  teams=(data||[]).map(x=>({event_seq:x.event_seq,team_tag:x.team_tag,group_code:x.group_code,accom:x.accom,pax:x.pax,
+    session_ym:x.session_ym||d.slice(0,7),rep:x.bookings?.rep_name||'',event_no:x.bookings?.event_no||''}))
+    .sort((a,b)=>(a.group_code||'').localeCompare(b.group_code||''));
+  teamMap={}; teams.forEach(t=>teamMap[t.event_seq]=t);
+  $('#day-pill').textContent=`${d} · ${teams.length}팀`;
+  renderTeams();
+}
+function renderTeams(){
+  const box=$('#tlist'); const q=tq.trim().toLowerCase();
+  const list=q?teams.filter(tm=>((tm.group_code||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')).toLowerCase().includes(q)):teams;
+  box.innerHTML=list.map(tm=>`<button type="button" class="tbtn${sel&&sel.event_seq===tm.event_seq?' on':''}" data-seq="${tm.event_seq}">
+    <div class="tt">${esc(teamTag(tm))}</div><div class="tr">${esc(tm.rep||'')} · #${esc(tm.event_no||tm.event_seq)} · ${esc(tm.accom||'')}</div></button>`).join('')
+    || '<div class="desc">팀이 없습니다(날짜 확인).</div>';
+  box.querySelectorAll('[data-seq]').forEach(b=>b.addEventListener('click',()=>{
+    sel=teamMap[b.dataset.seq]; $('#sel-team').textContent=teamTag(sel)+' · '+(sel.rep||'');
+    $('#btn-bind').disabled=false; renderTeams();
+  }));
+}
+
+async function doBind(){
+  const fob=$('#fob').value.trim(); if(!fob){toast('키홀더 번호를 입력하세요','err');return;}
+  if(!sel){toast('팀을 먼저 선택하세요','err');return;}
+  $('#btn-bind').disabled=true;
+  try{
+    // 같은 키홀더의 기존 활성 바인딩 해제 → 새로 연결
+    await supa.from('key_bindings').update({active:false,unbound_at:new Date().toISOString()}).eq('fob_code',fob).eq('active',true);
+    const {error}=await supa.from('key_bindings').insert({fob_code:fob,event_seq:sel.event_seq,session_ym:sel.session_ym,bound_by:opBy(),active:true});
+    if(error) throw error;
+    toast(`${fob} → ${teamTag(sel)} 연결됨`,'ok'); $('#fob').value=''; $('#btn-bind').disabled=false;
+    loadBindings();
+  }catch(e){ toast('연결 실패: '+e.message,'err'); $('#btn-bind').disabled=false; }
+}
+
+async function loadBindings(){
+  const {data,error}=await supa.from('key_bindings').select('id,fob_code,event_seq,bound_at,bound_by').eq('active',true).order('fob_code');
+  if(error){toast('바인딩 로드 실패: '+error.message,'err');return;}
+  const rows=data||[];
+  $('#bind-cnt').textContent=rows.length+'건';
+  // 팀 정보 보강(오늘 목록 밖이면 조회)
+  const need=[...new Set(rows.map(r=>r.event_seq).filter(s=>s&&!teamMap[s]))];
+  if(need.length){
+    const {data:gs}=await supa.from('guests').select('event_seq,group_code,bookings(rep_name)').in('event_seq',need);
+    (gs||[]).forEach(g=>{ teamMap[g.event_seq]=teamMap[g.event_seq]||{event_seq:g.event_seq,group_code:g.group_code,rep:g.bookings?.rep_name||''}; });
+  }
+  const box=$('#bind-list');
+  if(!rows.length){ box.innerHTML='<div class="desc">활성 바인딩이 없습니다.</div>'; return; }
+  box.innerHTML='<table class="bind"><thead><tr><th>키홀더</th><th>팀</th><th>연결시각</th><th></th></tr></thead><tbody>'
+    +rows.map(r=>{ const tm=teamMap[r.event_seq]||{}; const tg=tm.group_code?teamTag(tm):('#'+r.event_seq);
+      return `<tr><td class="mono"><b>${esc(r.fob_code)}</b></td><td>${esc(tg)}${tm.rep?(' · '+esc(tm.rep)):''}</td>
+        <td style="font-size:11px;color:var(--muted)">${esc(String(r.bound_at||'').slice(5,16).replace('T',' '))}</td>
+        <td style="text-align:right"><button class="btn sm danger" data-unbind="${r.id}">해제</button></td></tr>`; }).join('')
+    +'</tbody></table>';
+  box.querySelectorAll('[data-unbind]').forEach(b=>b.addEventListener('click',()=>unbind(b.dataset.unbind)));
+}
+async function unbind(id){
+  if(!confirm('이 키홀더 연결을 해제할까요? (체크아웃)')) return;
+  const {error}=await supa.from('key_bindings').update({active:false,unbound_at:new Date().toISOString()}).eq('id',id);
+  if(error){toast('해제 실패: '+error.message,'err');return;}
+  toast('해제됨','ok'); loadBindings();
+}
+
+// ── QR 라벨 출력 ──
+function genLabels(){
+  const pfx=$('#lp-prefix').value.trim(); const start=parseInt($('#lp-start').value,10)||1; const cnt=Math.min(200,parseInt($('#lp-count').value,10)||1);
+  const box=$('#labels'); box.innerHTML='';
+  for(let i=0;i<cnt;i++){
+    const num=start+i; const code=pfx+String(num).padStart(3,'0');
+    const d=document.createElement('div'); d.className='label';
+    const cv=document.createElement('canvas'); d.appendChild(cv);
+    const cap=document.createElement('div'); cap.className='lc'; cap.textContent=code; d.appendChild(cap);
+    box.appendChild(d);
+    QRCode.toCanvas(cv, FOB_PREFIX+code, {width:120,margin:1}, err=>{ if(err) cap.textContent=code+' (QR오류)'; });
+  }
+  $('#btn-print').disabled=!cnt;
+}
+
+$('#btn-connect').addEventListener('click',connect);
+$('#btn-load').addEventListener('click',()=>loadTeams());
+$('#tq').addEventListener('input',e=>{tq=e.target.value;renderTeams();});
+$('#btn-bind').addEventListener('click',doBind);
+$('#fob').addEventListener('keydown',e=>{if(e.key==='Enter')doBind();});
+$('#btn-refresh').addEventListener('click',loadBindings);
+$('#btn-gen').addEventListener('click',genLabels);
+$('#btn-print').addEventListener('click',()=>window.print());
+$('#day').value=isoToday();
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
