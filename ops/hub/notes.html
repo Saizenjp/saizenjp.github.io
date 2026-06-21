@@ -185,19 +185,31 @@ function shiftMonth(delta){
 }
 function gotoToday(){ $('#month-pick').value=isoToday().slice(0,7); if(supa) loadData(); }
 
+// Supabase 기본 1000행 제한 회피 — 쿼리(빌더 팩토리)를 전 행 로드
+async function pagedQuery(buildFn){
+  let out=[], pg=0;
+  while(true){
+    const {data,error}=await buildFn().range(pg,pg+999);
+    if(error) return {error};
+    out=out.concat(data||[]);
+    if(!data || data.length<1000) break;
+    pg+=1000;
+  }
+  return {data:out};
+}
 /* ── 데이터 로드: 그 달 팀(bookings) + 주석(event_notes) ── */
 async function loadData(){
   if(!supa) return;
   const ym=$('#month-pick').value; if(!ym){ setMsg('월을 선택하세요'); return; }
   state.ym=ym; setMsg('불러오는 중…');
-  const { data:bk, error:be }=await supa.from('bookings')
+  const bkres=await pagedQuery(()=>supa.from('bookings')
     .select('event_seq,event_no,rep_name,dep_date,arr_date,pax,team_label,remark,session_ym')
-    .eq('session_ym',ym).order('dep_date',{ascending:true}).order('event_seq',{ascending:true});
-  if(be){ toast('예약 로드 실패: '+be.message,'err'); setMsg('로드 실패'); return; }
-  state.rows=bk||[]; state.notes={};
-  const { data:nt, error:ne }=await supa.from('event_notes').select('*').eq('session_ym',ym);
-  if(ne){ toast('주석 로드 실패(16번 SQL 실행?): '+ne.message,'err'); }
-  (nt||[]).forEach(n=>{ state.notes[n.event_seq]=n; });
+    .eq('session_ym',ym).order('dep_date',{ascending:true}).order('event_seq',{ascending:true}));
+  if(bkres.error){ toast('예약 로드 실패: '+bkres.error.message,'err'); setMsg('로드 실패'); return; }
+  state.rows=bkres.data||[]; state.notes={};
+  const ntres=await pagedQuery(()=>supa.from('event_notes').select('*').eq('session_ym',ym).order('event_seq'));
+  if(ntres.error){ toast('주석 로드 실패(16번 SQL 실행?): '+ntres.error.message,'err'); }
+  (ntres.data||[]).forEach(n=>{ state.notes[n.event_seq]=n; });
   render();
   setMsg(`${state.rows.length}팀 · ${ym}`);
 }

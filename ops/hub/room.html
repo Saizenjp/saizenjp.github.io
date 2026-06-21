@@ -511,6 +511,18 @@ async function pagedInSeq(table, sel, seqs){
   }
   return {data:out};
 }
+// 임의 쿼리(빌더 팩토리)를 1000행 제한 없이 전부 로드. buildFn()은 매번 새 쿼리(.order 포함) 반환.
+async function pagedQuery(buildFn){
+  let out=[], pg=0;
+  while(true){
+    const {data,error}=await buildFn().range(pg,pg+999);
+    if(error) return {error};
+    out=out.concat(data||[]);
+    if(!data || data.length<1000) break;
+    pg+=1000;
+  }
+  return {data:out};
+}
 async function loadDay(){
   const from=$('#date-pick').value;
   let to = $('#date-to').value || from;     // 종료 비우면 단일일
@@ -520,12 +532,14 @@ async function loadDay(){
 
   // 점유 판정: dep_date <= to(범위끝) AND arr_date > from(범위시작)
   //   → 그 기간에 체크인~체크아웃이 한 번이라도 걸치는 팀
-  const {data:g,error:ge}=await supa
+  const gres=await pagedQuery(()=>supa
     .from('guests')
     .select('event_seq,team_tag,group_code,accom,accom_prefix,pax,check_status,bookings!inner(event_no,rep_name,dep_date,arr_date,product_name,member_type,remark)')
     .lte('bookings.dep_date',to)
-    .gt('bookings.arr_date',from);
-  if(ge){toast('팀 로드 실패: '+ge.message,'err');return;}
+    .gt('bookings.arr_date',from)
+    .order('event_seq'));
+  if(gres.error){toast('팀 로드 실패: '+gres.error.message,'err');return;}
+  const g=gres.data;
   state.guests=(g||[]).map(x=>({
     event_seq:x.event_seq, team_tag:x.team_tag, group_code:x.group_code,
     accom:x.accom, pfx:x.accom_prefix||PFX[x.accom]||'X', pax:x.pax,
