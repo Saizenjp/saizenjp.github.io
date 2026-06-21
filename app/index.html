@@ -431,6 +431,14 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
 .shz-room.byeolche .shz-room-h{color:var(--purple2);border-bottom-color:var(--purple)}
 .shz-room.byeolche .shz-zone{color:var(--purple2)}
 .shz-room-body,.shz-pool-body{display:flex;flex-direction:column;gap:5px;margin-top:6px}
+/* 미배정 팀 그룹(ops 방배정처럼 같은 팀 구분) */
+.shz-team{border-left:3px solid #bbb;background:var(--surface2);border-radius:7px;padding:5px 7px}
+.shz-team-h{font-size:11px;font-weight:800;color:var(--text2);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.shz-team-h small{font-weight:700;color:var(--accent2)}
+.shz-team-chips{display:flex;flex-direction:column;gap:5px}
+.shz-tlocal{font-size:9px;font-weight:700;color:#fff;background:var(--purple2);border-radius:4px;padding:1px 5px}
+.shz-team.t0{border-left-color:#2f5fa6}.shz-team.t1{border-left-color:#b5642a}.shz-team.t2{border-left-color:#2e7d5b}
+.shz-team.t3{border-left-color:#6d4ea6}.shz-team.t4{border-left-color:#a23b72}.shz-team.t5{border-left-color:#3d7a8a}
 .shz-chip{background:var(--surface);border:1px solid var(--border2);border-radius:7px;padding:5px 7px;cursor:grab;font-size:11px;line-height:1.4;box-shadow:0 1px 2px rgba(0,0,0,.04)}
 .shz-chip:active{cursor:grabbing}
 .shz-chip.local{background:var(--amber-dim);border-color:var(--amber)}
@@ -9985,6 +9993,21 @@ function shzChipHTML(g){
     <span class="shz-meta">${shzMD(g.ci)}~${shzMD(g.co)} · ${nights}泊${g.mixed?' · <span class="shz-warn">混在要確認</span>':''}</span>
   </div>`;
 }
+/* 미배정 풀 — 팀(eventSeq) 단위로 묶어 표시(ops 방배정처럼 같은 팀 구분) */
+function shzPoolByTeam(list){
+  const byTeam = {};
+  list.forEach(g => { (byTeam[g.seq] = byTeam[g.seq] || []).push(g); });
+  const order = Object.keys(byTeam).sort((a,b) => (byTeam[a][0].ci||'').localeCompare(byTeam[b][0].ci||'') || String(a).localeCompare(String(b)));
+  return order.map((seq,i) => {
+    const team = byTeam[seq];
+    const rep = team[0].rep || team[0].defName || '';
+    const head = (rep ? rep+'様' : '#'+seq) + (team[0].local ? ' <span class="shz-tlocal">現地</span>' : '');
+    return `<div class="shz-team t${i%6}">
+      <div class="shz-team-h">${head} <small>${team.length}名</small></div>
+      <div class="shz-team-chips">${team.map(shzChipHTML).join('')}</div>
+    </div>`;
+  }).join('');
+}
 function shzRender(){
   if(typeof document === 'undefined') return;
   SHZ.guests = shzCollect();
@@ -10037,7 +10060,7 @@ function shzRender(){
     html += `<div class="shz-board">
       <div class="shz-pool${SHZ_SEL?' pickmode':''}" ondragover="event.preventDefault()" ondrop="shzDrop(event,'')" onclick="shzPlaceTo('')">
         <div class="shz-pool-h">未配置${focus?` <small style="font-weight:600;color:var(--text3)">${shzMD(focus)}</small>`:''} <span>${unassigned.length}</span></div>
-        <div class="shz-pool-body">${unassigned.map(shzChipHTML).join('') || `<div class="shz-empty">${poolEmpty}</div>`}</div>
+        <div class="shz-pool-body">${unassigned.length ? shzPoolByTeam(unassigned) : `<div class="shz-empty">${poolEmpty}</div>`}</div>
       </div>
       <div class="shz-rooms">`;
     SHZ_ROOMS.forEach(room => {
