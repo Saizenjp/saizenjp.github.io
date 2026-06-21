@@ -1117,6 +1117,41 @@
     c.auth.signOut().then(function () { location.reload(); }).catch(function () { location.reload(); });
   }
 
+  // ── 가운데 정식 로그인 카드 — 게이트(랜딩·페이지 가드) 공용. 이메일·비번 칸을 처음부터 노출. ──
+  function loginCard() {
+    var I = 'padding:11px 13px;border:1px solid var(--border2,#bcc4ad);border-radius:9px;font-size:14px;font-family:inherit;background:var(--surface,#fff);color:var(--text,#1f2a18);width:100%';
+    var card = document.createElement('div');
+    card.className = 'so-login-card';
+    card.setAttribute('style', 'background:var(--surface,#fff);border:1px solid var(--border2,#bcc4ad);border-radius:14px;box-shadow:0 12px 44px rgba(31,42,24,.16);padding:30px 28px;width:330px;max-width:92vw;text-align:center');
+    card.innerHTML =
+        '<div style="font-size:20px;font-weight:800;color:var(--accent,#647548);letter-spacing:-.01em">로그인</div>'
+      + '<div style="margin-top:6px;color:var(--text2,#566049);font-size:12.5px">Yamanami 운영 관리 시스템</div>'
+      + '<input id="so-lc-em" type="email" placeholder="이메일" autocomplete="username" spellcheck="false" style="margin-top:18px;' + I + '">'
+      + '<input id="so-lc-pw" type="password" placeholder="비밀번호" autocomplete="current-password" style="margin-top:10px;' + I + '">'
+      + '<div id="so-lc-err" style="display:none;margin-top:10px;color:#b13b2c;font-size:12.5px;font-weight:600"></div>'
+      + '<button type="button" id="so-lc-go" style="margin-top:16px;width:100%;padding:11px;border:1px solid var(--accent,#647548);background:var(--accent,#647548);color:#fff;font-weight:800;font-size:14.5px;border-radius:9px;cursor:pointer;font-family:inherit">로그인</button>'
+      + '<div style="margin-top:14px;color:var(--muted,#8a937c);font-size:11.5px">계정은 마스터(관리자)가 발급합니다.</div>';
+    var em = card.querySelector('#so-lc-em'), pw = card.querySelector('#so-lc-pw'),
+        err = card.querySelector('#so-lc-err'), btn = card.querySelector('#so-lc-go');
+    function fail(msg) { err.textContent = msg; err.style.display = 'block'; btn.disabled = false; btn.textContent = '로그인'; }
+    function go() {
+      var c = authClient(); var e = em.value.trim(), p = pw.value;
+      if (!c) { fail('연결 정보가 없습니다.'); return; }
+      if (!e || !p) { fail('이메일과 비밀번호를 입력하세요.'); return; }
+      err.style.display = 'none'; btn.disabled = true; btn.textContent = '로그인 중…';
+      c.auth.signInWithPassword({ email: e, password: p }).then(function (res) {
+        if (res && res.error) { fail('로그인 실패: ' + res.error.message); return; }
+        location.reload();
+      }).catch(function (ex) { fail('로그인 오류: ' + ex.message); });
+    }
+    btn.addEventListener('click', go);
+    pw.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+    em.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); pw.focus(); } });
+    setTimeout(function () { try { em.focus(); } catch (e) {} }, 40);
+    return card;
+  }
+  global.__so_loginCard = loginCard;
+
   // ── 첫 로그인 이름 설정 — 초대받은 계정이 담당자명을 1회 저장(user_metadata.name). ──
   function authSetName(name) {
     var c = authClient(); if (!c) return;
@@ -1152,13 +1187,15 @@
     var d = document.createElement('div');
     d.id = 'so-guard';
     d.setAttribute('style', 'position:fixed;inset:0;z-index:25;background:rgba(238,241,234,.97);display:flex;align-items:center;justify-content:center;text-align:center;padding:24px');
-    var inner = (kind === 'login')
-      ? '<div style="font-size:18px;font-weight:800;color:#3d5424">로그인이 필요합니다</div>'
-        + '<div style="margin-top:10px;color:#566049;font-size:13.5px">상단 우측 <b>[로그인]</b> 으로 로그인하세요.</div>'
-      : '<div style="font-size:18px;font-weight:800;color:#b13b2c">접근 권한이 없습니다</div>'
+    if (kind === 'login') {
+      d.appendChild(loginCard());   // 미로그인 → 가운데 정식 로그인 카드
+    } else {
+      var wrap = document.createElement('div');
+      wrap.innerHTML = '<div style="font-size:18px;font-weight:800;color:#b13b2c">접근 권한이 없습니다</div>'
         + '<div style="margin-top:10px;color:#566049;font-size:13.5px">이 페이지 권한이 없습니다. 마스터(관리자)에게 문의하세요.</div>'
         + '<div style="margin-top:16px"><a href="../index.html" style="color:#3d5424;font-weight:700;text-decoration:none">← 홈으로</a></div>';
-    d.innerHTML = '<div>' + inner + '</div>';
+      d.appendChild(wrap);
+    }
     document.body.appendChild(d);
   }
   function guardPage() {
@@ -1202,7 +1239,7 @@
     }
   }
 
-  function boot() { mountUser(); mountAuth(); applyLang(); guardPage(); mountConnToggle(); }
+  function boot() { mountAuth(); applyLang(); guardPage(); mountConnToggle(); }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
   } else {
