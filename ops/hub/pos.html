@@ -65,6 +65,12 @@
   .team-btn .ttag{font-family:var(--mono);font-weight:800;font-size:18px;color:var(--accent)}
   .team-btn .trep{font-size:15px;font-weight:700;margin-top:3px}
   .team-btn .tmeta{font-size:12.5px;color:var(--text2);margin-top:5px}
+  /* 팀 검색 + 주문중 우선 */
+  .team-search{display:flex;gap:10px;align-items:center;margin-bottom:13px;flex-wrap:wrap}
+  .team-search .inp{flex:1;min-width:240px;max-width:440px;font-size:16px;padding:12px 15px}
+  .team-search .cnt{font-size:12.5px;color:var(--accent2);font-weight:800;white-space:nowrap}
+  .team-btn.active-team{border-left-color:var(--accent2);background:linear-gradient(180deg,#fff 0%,#fbf6ea 100%)}
+  .team-btn .tactive{display:inline-block;margin-left:7px;font-size:10px;font-weight:800;color:#fff;background:var(--accent2);border-radius:99px;padding:1px 8px;vertical-align:middle}
 
   /* 주문 뷰 */
   .order-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:14px}
@@ -136,7 +142,7 @@
   @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.31">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.32">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -177,6 +183,10 @@
   <!-- 1단계: 팀 선택 -->
   <div id="team-view">
     <div class="sec-title"><span data-i18n="po_pickTeam"></span> <span class="cnt" id="team-cnt"></span></div>
+    <div class="team-search">
+      <input class="inp" id="team-q" type="search" data-i18n-ph="po_teamSearch" autocomplete="off">
+      <span class="cnt" id="active-cnt"></span>
+    </div>
     <div class="team-grid" id="team-grid">
       <div class="empty-hint" data-i18n="po_emptyTeams"></div>
     </div>
@@ -220,7 +230,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.31"></script>
+<script src="../assets/saizen-ops.js?v=14.32"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -240,7 +250,7 @@ const OUTLETS={
 const _outletParam=new URLSearchParams(location.search).get('outlet')||'';
 let state={ date:'', teams:[], menu:[], venue:'__all__', team:null, folioId:null, runningGross:0, cart:[],
   roster:[], payerMode:'team', payerSel:new Set(), memberFolio:{},
-  outlet:(OUTLETS[_outletParam]?_outletParam:null) };
+  outlet:(OUTLETS[_outletParam]?_outletParam:null), teamQ:'', activeSeqs:new Set() };
 // 이 매장이 다루는 venue 목록(없으면 전 매장)
 function outletVenues(){ return state.outlet ? OUTLETS[state.outlet].venues : null; }
 // 주문 기록 담당자 = 공유 상단바 담당자(saizen_ops_user). 없으면 폴백.
@@ -300,8 +310,20 @@ async function loadTeams(){
     event_seq:x.event_seq, team_tag:x.team_tag, group_code:x.group_code, accom:x.accom, pax:x.pax,
     session_ym:x.session_ym||ymOf(d), rep:x.bookings?.rep_name||'', event_no:x.bookings?.event_no||'',
   })).sort((a,b)=>(a.accom||'').localeCompare(b.accom||'')||(a.rep||'').localeCompare(b.rep||''));
+  await loadActive();   // 주문중(folio 발생) 팀 표시·우선정렬용
   backToTeams();
   toast(`${d} · 체류 ${state.teams.length}팀`,'ok');
+}
+
+// 이번 체류에 이미 주문이 있는(=진행중) 팀 event_seq 집합
+async function loadActive(){
+  state.activeSeqs=new Set();
+  const seqs=state.teams.map(x=>x.event_seq);
+  if(!seqs.length||!supa) return;
+  try{
+    const {data}=await supa.from('v_folio_balance').select('event_seq,gross_total').in('event_seq',seqs);
+    (data||[]).forEach(f=>{ if(Number(f.gross_total||0)>0) state.activeSeqs.add(f.event_seq); });
+  }catch(e){}
 }
 
 function backToTeams(){
@@ -314,11 +336,18 @@ function backToTeams(){
 
 function renderTeams(){
   const box=$('#team-grid'); box.innerHTML='';
-  $('#team-cnt').textContent=`${state.teams.length}${t('po_cntTeam')}`;
-  if(!state.teams.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
-  state.teams.forEach(tm=>{
-    const b=document.createElement('button'); b.type='button'; b.className='team-btn';
-    b.innerHTML=`<div class="ttag">${teamTag(tm)}</div>
+  const q=(state.teamQ||'').trim().toLowerCase();
+  let list=state.teams;
+  if(q) list=list.filter(tm=>((tm.group_code||'')+' '+(tm.team_tag||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')+' '+(tm.accom||'')).toLowerCase().includes(q));
+  // 주문중(active) 팀을 맨 위로(기존 정렬은 안정 유지)
+  list=list.slice().sort((a,b)=>(state.activeSeqs.has(b.event_seq)?1:0)-(state.activeSeqs.has(a.event_seq)?1:0));
+  $('#team-cnt').textContent=`${list.length}/${state.teams.length}${t('po_cntTeam')}`;
+  const ac=$('#active-cnt'); if(ac) ac.textContent=state.activeSeqs.size?('🔥 '+t('po_active')+' '+state.activeSeqs.size):'';
+  if(!list.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
+  list.forEach(tm=>{
+    const act=state.activeSeqs.has(tm.event_seq);
+    const b=document.createElement('button'); b.type='button'; b.className='team-btn'+(act?' active-team':'');
+    b.innerHTML=`<div class="ttag">${teamTag(tm)}${act?`<span class="tactive">${t('po_active')}</span>`:''}</div>
       <div class="trep">${tm.rep||''}</div>
       <div class="tmeta">${tm.accom||''} · ${tm.pax}${t('po_cntPpl')} · #${teamNo(tm)}</div>`;
     b.addEventListener('click',()=>selectTeam(tm));
@@ -627,6 +656,7 @@ function applyOutlet(){
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-load').addEventListener('click',loadTeams);
 $('#btn-back').addEventListener('click',backToTeams);
+$('#team-q') && $('#team-q').addEventListener('input',e=>{ state.teamQ=e.target.value; renderTeams(); });
 $('#btn-send').addEventListener('click',sendCart);
 $('#ko-refresh').addEventListener('click',koRefresh);
 $('#date-pick').value=isoToday();
