@@ -949,7 +949,30 @@
     });
   }
 
-  function boot() { mountUser(); mountAuth(); applyLang(); guardPage(); }
+  // ── 연결 바 접기 — 키 내장 자동연결이라 평소엔 숨기고, 상태 칩 클릭으로 펼침/수정 ──
+  function mountConnToggle() {
+    var conn = document.querySelector('.conn');
+    if (!conn || conn.getAttribute('data-so-collapsed')) return;
+    conn.setAttribute('data-so-collapsed', '1');
+    conn.style.display = 'none';
+    var toggle = function () { conn.style.display = (conn.style.display === 'none') ? '' : 'none'; };
+    var pill = document.getElementById('conn-state');
+    if (pill) {
+      pill.style.cursor = 'pointer';
+      pill.title = '클릭: 연결 정보 보기/수정';
+      pill.addEventListener('click', toggle);
+    } else {
+      var box = document.querySelector('.so-controls');
+      if (box) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'so-user-btn'; b.textContent = '🔌';
+        b.title = 'Supabase 연결 정보'; b.addEventListener('click', toggle);
+        box.appendChild(b);
+      }
+    }
+  }
+
+  function boot() { mountUser(); mountAuth(); applyLang(); guardPage(); mountConnToggle(); }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
   } else {
