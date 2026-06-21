@@ -61,6 +61,8 @@
   .ticket.old{border-top-color:var(--err)}
   .ticket.accepted{border-top-color:var(--accent2);background:#fbf6ea}
   .ticket .cooking{font-size:12px;font-weight:800;color:var(--accent2);display:flex;align-items:center;gap:5px}
+  @keyframes ktflash{0%,100%{box-shadow:0 2px 8px rgba(15,23,42,.08)}50%{box-shadow:0 0 0 5px var(--accent2)}}
+  .ticket.flash{animation:ktflash .7s ease 5}
   .ticket .th{display:flex;align-items:baseline;gap:8px}
   .ticket .tteam{font-family:var(--mono);font-weight:800;font-size:16px;color:var(--accent)}
   .ticket .tage{margin-left:auto;font-size:12px;font-weight:700;color:var(--text2)}
@@ -116,6 +118,7 @@
     <button data-station="__all__" data-i18n="ki_stAll"></button>
   </div>
   <label><input type="checkbox" id="auto" checked> <span data-i18n="ki_auto"></span></label>
+  <label title="신규 주문 알림음"><input type="checkbox" id="snd" checked> 🔔</label>
   <button class="btn ghost sm" id="btn-refresh" type="button" data-i18n="ki_refresh"></button>
   <span class="hint" id="updated"></span>
 </div>
@@ -139,6 +142,26 @@ const POLL_MS=7000;
 const AGE_WARN=600, AGE_OLD=1200;   // 10분 경과 주의 · 20분 경과 지연(초)
 let state={ station:'kitchen', tickets:[] };
 let pollTimer=null;
+let seenNew=new Set(), firstLoad=true, flashIds=new Set(), audioCtx=null, reconnecting=false;
+
+// ── 알림음(Web Audio, 외부 파일 없음): 신규 주문 "딩동" ──
+function initAudio(){
+  try{ if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+       if(audioCtx.state==='suspended') audioCtx.resume(); }catch(e){}
+}
+function chime(){
+  if(!audioCtx || !$('#snd').checked) return;
+  const t0=audioCtx.currentTime;
+  [880,1320].forEach((f,i)=>{
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type='sine'; o.frequency.value=f; o.connect(g); g.connect(audioCtx.destination);
+    const ts=t0+i*0.16;
+    g.gain.setValueAtTime(0.0001,ts);
+    g.gain.exponentialRampToValueAtTime(0.35,ts+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,ts+0.32);
+    o.start(ts); o.stop(ts+0.36);
+  });
+}
 
 function toast(msg,cls){
   const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:'');
@@ -155,6 +178,7 @@ function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
   if(!url||!key){setConn('URL·key 필요','err');return;}
+  initAudio();   // 연결 클릭=사용자 제스처 → 알림음 언락
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
   const btn=$('#btn-connect'); btn.textContent='연결 중…'; btn.disabled=true;
   try{
@@ -176,10 +200,17 @@ async function refresh(){
   let q=supa.from('kitchen_tickets').select('*').in('status',['new','accepted']).order('created_at');
   if(state.station!=='__all__') q=q.eq('station',state.station);
   const {data,error}=await q;
-  if(error){toast('로드 실패: '+error.message,'err');return;}
+  if(error){ handleConnLoss(error); return; }
+  reconnecting=false;
   // 신규(new) 먼저, 그다음 조리중(accepted) — 각각 시간순
   state.tickets=(data||[]).sort((a,b)=>
     (a.status==='new'?0:1)-(b.status==='new'?0:1) || new Date(a.created_at)-new Date(b.created_at));
+  // 신규 주문 감지 → 알림음 + 점멸
+  const curNew=state.tickets.filter(x=>x.status==='new').map(x=>x.id);
+  const fresh=curNew.filter(id=>!seenNew.has(id));
+  seenNew=new Set(curNew);
+  if(!firstLoad && fresh.length){ chime(); flashIds=new Set(fresh); setTimeout(()=>{flashIds=new Set();},4000); }
+  firstLoad=false;
   render();
   const now=new Date();
   $('#updated').textContent=t('ki_updated')+' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
@@ -197,7 +228,7 @@ function render(){
     const ageTxtCls=sec>=AGE_OLD?'err':(sec>=AGE_WARN?'warn':'');
     const accepted=tk.status==='accepted';
     const card=document.createElement('div');
-    card.className='ticket '+(accepted?'accepted ':'')+ageCls;
+    card.className='ticket '+(accepted?'accepted ':'')+(flashIds.has(tk.id)?'flash ':'')+ageCls;
     const action=accepted
       ? `<div class="cooking">🍳 ${t('ki_cooking')}</div><button class="done" data-done="${tk.id}">✓ ${t('ki_done')}</button>`
       : `<button class="accept" data-accept="${tk.id}">${t('ki_accept')}</button>`;
@@ -236,6 +267,11 @@ function startPoll(){
   if($('#auto').checked) pollTimer=setInterval(refresh,POLL_MS);
 }
 function stopPoll(){ if(pollTimer){clearInterval(pollTimer);pollTimer=null;} }
+function handleConnLoss(err){
+  // 연결 끊김 → 끊고 워치독이 자동 재연결. 재연결 후 기존 큐로 알림 안 울리게 firstLoad 리셋.
+  if(reconnecting) return; reconnecting=true;
+  setConn('재연결 중…','err'); supa=null; stopPoll(); firstLoad=true;
+}
 
 // ── 부팅 ──
 $('#btn-connect').addEventListener('click',connect);
@@ -246,6 +282,9 @@ $('#station-seg').querySelectorAll('button').forEach(b=>b.addEventListener('clic
   $('#station-seg').querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));
   refresh();
 }));
+window.addEventListener('pointerdown',initAudio);   // 첫 터치/클릭에 알림음 언락
+// 연결 끊김 자동 재연결(10초마다 점검)
+setInterval(()=>{ if(!supa && $('#sb-url').value && $('#sb-key').value){ connect(); } }, 10000);
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
