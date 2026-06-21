@@ -136,7 +136,7 @@
   @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.28">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.29">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -220,7 +220,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.28"></script>
+<script src="../assets/saizen-ops.js?v=14.29"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -448,8 +448,9 @@ function addToCart(m){
   const exist=state.cart.find(l=>l.key===key);
   if(exist) exist.qty+=1;
   else { const vv=m.venue||'etc';
-    // 주방행 판정: 명시 station 우선, 없으면 매장 추정(프론트·골프샵=카운터→주방티켓 없음)
-    const st=m.station||((vv==='front'||vv==='proshop')?'counter':'kitchen');
+    // station: 메뉴 지정값 우선. 단 프론트·골프샵 매점은 주방/바로 보내지 않음(none).
+    let st=m.station||'kitchen';
+    if(vv==='front'||vv==='proshop') st='none';
     state.cart.push({key, id:m.id, category:m.category, venue:vv, station:st, name_ja:desc, name_ko:(price===Number(m.unit_price)?m.name_ko:''), unit_price:price, qty:1}); }
   renderCart();
 }
@@ -558,10 +559,11 @@ async function sendCart(){
     }
     const {error}=await supa.from('charges').insert(rows);
     if(error) throw error;
-    // 주방행(station=kitchen)만 KDS 티켓 — 조리는 분할과 무관하게 풀 수량(팀 단위)
-    const tickets=state.cart.filter(l=>l.station==='kitchen').map(l=>({
+    // 주방(kitchen)·바(bar)행 모두 KDS 티켓 발행(none=매점은 미발행).
+    //  주방 화면=kitchen만 / 바·프론트 화면=kitchen+bar 전부. 조리는 분할 무관 풀 수량(팀 단위).
+    const tickets=state.cart.filter(l=>l.station==='kitchen'||l.station==='bar').map(l=>({
       folio_id:state.folioId||null, event_seq:state.team.event_seq, team_tag:teamTag(state.team),
-      station:'kitchen', item_name:l.name_ja, qty:l.qty, created_by:by }));
+      station:l.station, item_name:l.name_ja, qty:l.qty, created_by:by }));
     if(tickets.length){
       const {error:te}=await supa.from('kitchen_tickets').insert(tickets);
       if(te) toast('주방 티켓 발행 실패(청구는 완료): '+te.message,'warn');
