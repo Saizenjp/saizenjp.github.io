@@ -42,8 +42,13 @@
   }
   .group > h3::after{content:"";flex:1;height:1px;background:var(--border)}
   .group .desc{font-size:12px;color:var(--text2);font-weight:600;text-transform:none;letter-spacing:0}
-  .deptboard{order:9;margin-left:8px;font-size:11px;font-weight:700;color:var(--accent2);text-decoration:none;text-transform:none;letter-spacing:0;white-space:nowrap}
-  .deptboard:hover{text-decoration:underline}
+  /* 부서 공지 — 섹터 제목 바로 옆에 붙여 잘 보이게(우측 라인 앞) */
+  .deptboard{margin-left:10px;font-size:11px;font-weight:700;color:var(--accent2);text-decoration:none;text-transform:none;letter-spacing:0;white-space:nowrap;background:#fdfbf3;border:1px solid #e6d3a3;border-radius:99px;padding:2px 10px}
+  .deptboard:hover{background:#f5ead0}
+  /* 새 정보 N 뱃지 */
+  .nbadge{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;padding:0 4px;margin-left:5px;font-size:9.5px;font-weight:800;color:#fff;background:#d8392b;border-radius:99px;line-height:1;vertical-align:middle;box-shadow:0 0 0 2px #fff}
+  @keyframes nbpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+  .nbadge{animation:nbpulse 1.6s ease-in-out infinite}
 
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:14px}
   .card{
@@ -292,6 +297,7 @@
           if(r.data&&r.data[0]){ var st=document.getElementById('ann-strip'); st.style.display='flex'; document.getElementById('ann-strip-t').textContent=r.data[0].title; }
         }).catch(function(){});
       }
+      markNewBadges();   // 부서 공지 새 글 N 표시
       var all=(acc.role==='admin'||acc.role==='manager');
       document.querySelectorAll('.card[data-area]').forEach(function(card){
         var area=card.getAttribute('data-area');
@@ -309,6 +315,34 @@
       });
     });
   }
+  // ── 부서 공지 "새 글" N 뱃지 ──
+  function boardSeen(){ try{ return JSON.parse(localStorage.getItem('saizen_board_seen')||'{}'); }catch(e){ return {}; } }
+  function setBoardSeen(key){ var s=boardSeen(); s[key]=new Date().toISOString(); localStorage.setItem('saizen_board_seen',JSON.stringify(s)); }
+  function toggleN(el,on){
+    if(!el) return; var b=el.querySelector(':scope > .nbadge');
+    if(on){ if(!b){ b=document.createElement('span'); b.className='nbadge'; b.textContent='N'; el.appendChild(b); } b.style.display=''; }
+    else if(b){ b.style.display='none'; }
+  }
+  function markNewBadges(){
+    if(!window.__so_authClient) return; var c=__so_authClient(); if(!c) return;
+    c.from('announcements').select('dept,created_at').then(function(r){
+      if(r.error||!r.data) return;
+      var latest={}, all=null;
+      r.data.forEach(function(a){ var d=a.dept||'all'; if(!latest[d]||a.created_at>latest[d]) latest[d]=a.created_at; if(!all||a.created_at>all) all=a.created_at; });
+      var seen=boardSeen();
+      // 부서별 공지 링크
+      document.querySelectorAll('.deptboard').forEach(function(link){
+        var m=(link.getAttribute('href')||'').match(/dept=(\w+)/); var dep=m?m[1]:null; if(!dep) return;
+        var lt=latest[dep]; toggleN(link, !!lt && (!seen[dep] || lt>seen[dep]));
+        if(!link._nbWired){ link._nbWired=1; link.addEventListener('click',function(){ setBoardSeen(dep); }); }
+      });
+      // 통합 보드판 카드(전사 포함 전체)
+      var bc=document.querySelector('a.card[href="hub/board.html"]'); var h=bc&&(bc.querySelector('h4'));
+      if(h){ toggleN(h, !!all && (!seen['all'] || all>seen['all']));
+        if(!bc._nbWired){ bc._nbWired=1; bc.addEventListener('click',function(){ setBoardSeen('all'); }); } }
+    }).catch(function(){});
+  }
+
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(gate,60); });
   else setTimeout(gate,60);
 })();
