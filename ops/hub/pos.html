@@ -71,6 +71,16 @@
   .team-search .cnt{font-size:12.5px;color:var(--accent2);font-weight:800;white-space:nowrap}
   .team-btn.active-team{border-left-color:var(--accent2);background:linear-gradient(180deg,#fff 0%,#fbf6ea 100%)}
   .team-btn .tactive{display:inline-block;margin-left:7px;font-size:10px;font-weight:800;color:#fff;background:var(--accent2);border-radius:99px;padding:1px 8px;vertical-align:middle}
+  /* 날짜 섹션 헤더 + 일행 검색 결과 */
+  .tg-head{font-size:12.5px;font-weight:800;color:var(--accent2);margin:14px 0 9px;display:flex;align-items:center;gap:8px}
+  .tg-head::after{content:"";flex:1;height:1px;background:var(--border)}
+  #team-grid > .team-grid{margin-bottom:4px}
+  .mhit-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:9px}
+  .mhit{text-align:left;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent2);border-radius:10px;padding:11px 13px;cursor:pointer;transition:.12s;display:flex;flex-direction:column;gap:3px}
+  .mhit:hover{border-color:var(--accent);box-shadow:0 3px 10px rgba(15,23,42,.12);transform:translateY(-1px)}
+  .mhit .mh-name{font-size:15px;font-weight:800}
+  .mhit .mh-mem{margin-left:5px;font-size:9.5px;font-weight:800;color:#fff;background:var(--accent2);border-radius:8px;padding:0 5px;vertical-align:middle}
+  .mhit .mh-team{font-family:var(--mono);font-size:12px;color:var(--text2)}
 
   /* 주문 뷰 */
   .order-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:14px}
@@ -142,7 +152,7 @@
   @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.32">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.33">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -187,7 +197,7 @@
       <input class="inp" id="team-q" type="search" data-i18n-ph="po_teamSearch" autocomplete="off">
       <span class="cnt" id="active-cnt"></span>
     </div>
-    <div class="team-grid" id="team-grid">
+    <div id="team-grid">
       <div class="empty-hint" data-i18n="po_emptyTeams"></div>
     </div>
   </div>
@@ -230,7 +240,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.32"></script>
+<script src="../assets/saizen-ops.js?v=14.33"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -250,7 +260,7 @@ const OUTLETS={
 const _outletParam=new URLSearchParams(location.search).get('outlet')||'';
 let state={ date:'', teams:[], menu:[], venue:'__all__', team:null, folioId:null, runningGross:0, cart:[],
   roster:[], payerMode:'team', payerSel:new Set(), memberFolio:{},
-  outlet:(OUTLETS[_outletParam]?_outletParam:null), teamQ:'', activeSeqs:new Set() };
+  outlet:(OUTLETS[_outletParam]?_outletParam:null), teamQ:'', activeSeqs:new Set(), members:[] };
 // 이 매장이 다루는 venue 목록(없으면 전 매장)
 function outletVenues(){ return state.outlet ? OUTLETS[state.outlet].venues : null; }
 // 주문 기록 담당자 = 공유 상단바 담당자(saizen_ops_user). 없으면 폴백.
@@ -309,10 +319,29 @@ async function loadTeams(){
   state.teams=(data||[]).map(x=>({
     event_seq:x.event_seq, team_tag:x.team_tag, group_code:x.group_code, accom:x.accom, pax:x.pax,
     session_ym:x.session_ym||ymOf(d), rep:x.bookings?.rep_name||'', event_no:x.bookings?.event_no||'',
+    checkin:(x.bookings?.dep_date||''),
   })).sort((a,b)=>(a.accom||'').localeCompare(b.accom||'')||(a.rep||'').localeCompare(b.rep||''));
   await loadActive();   // 주문중(folio 발생) 팀 표시·우선정렬용
+  await loadMembers();  // 일행 이름 검색용
   backToTeams();
   toast(`${d} · 체류 ${state.teams.length}팀`,'ok');
+}
+
+// 이 날 팀들의 일행 명단(이름 검색·동명이인 구분용) — 1000행 페이지네이션
+async function loadMembers(){
+  state.members=[];
+  const seqs=state.teams.map(x=>x.event_seq);
+  if(!seqs.length||!supa) return;
+  let pg=0;
+  while(true){
+    const {data,error}=await supa.from('guest_members')
+      .select('id,event_seq,name_kr,name_en,seq_in_team,member_grade')
+      .in('event_seq',seqs).order('event_seq').order('seq_in_team').range(pg,pg+999);
+    if(error) break;
+    (data||[]).forEach(m=>state.members.push(m));
+    if(!data||data.length<1000) break;
+    pg+=1000;
+  }
 }
 
 // 이번 체류에 이미 주문이 있는(=진행중) 팀 event_seq 집합
@@ -334,24 +363,61 @@ function backToTeams(){
   renderTeams();
 }
 
+function teamBySeq(seq){ return state.teams.find(x=>x.event_seq===seq); }
+function fmtMD(iso){ if(!iso||iso==='-') return '-'; const p=String(iso).slice(0,10).split('-'); return p.length===3?`${+p[1]}/${+p[2]}`:iso; }
+function teamCardEl(tm){
+  const act=state.activeSeqs.has(tm.event_seq);
+  const b=document.createElement('button'); b.type='button'; b.className='team-btn'+(act?' active-team':'');
+  b.innerHTML=`<div class="ttag">${teamTag(tm)}${act?`<span class="tactive">${t('po_active')}</span>`:''}</div>
+    <div class="trep">${escP(tm.rep||'')}</div>
+    <div class="tmeta">${escP(tm.accom||'')} · ${tm.pax}${t('po_cntPpl')} · #${teamNo(tm)}</div>`;
+  b.addEventListener('click',()=>selectTeam(tm));
+  return b;
+}
+function gridOf(arr){ const g=document.createElement('div'); g.className='team-grid'; arr.forEach(tm=>g.appendChild(teamCardEl(tm))); return g; }
+function headEl(txt){ const h=document.createElement('div'); h.className='tg-head'; h.textContent=txt; return h; }
+
 function renderTeams(){
   const box=$('#team-grid'); box.innerHTML='';
   const q=(state.teamQ||'').trim().toLowerCase();
-  let list=state.teams;
-  if(q) list=list.filter(tm=>((tm.group_code||'')+' '+(tm.team_tag||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')+' '+(tm.accom||'')).toLowerCase().includes(q));
-  // 주문중(active) 팀을 맨 위로(기존 정렬은 안정 유지)
-  list=list.slice().sort((a,b)=>(state.activeSeqs.has(b.event_seq)?1:0)-(state.activeSeqs.has(a.event_seq)?1:0));
-  $('#team-cnt').textContent=`${list.length}/${state.teams.length}${t('po_cntTeam')}`;
-  const ac=$('#active-cnt'); if(ac) ac.textContent=state.activeSeqs.size?('🔥 '+t('po_active')+' '+state.activeSeqs.size):'';
-  if(!list.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
-  list.forEach(tm=>{
-    const act=state.activeSeqs.has(tm.event_seq);
-    const b=document.createElement('button'); b.type='button'; b.className='team-btn'+(act?' active-team':'');
-    b.innerHTML=`<div class="ttag">${teamTag(tm)}${act?`<span class="tactive">${t('po_active')}</span>`:''}</div>
-      <div class="trep">${tm.rep||''}</div>
-      <div class="tmeta">${tm.accom||''} · ${tm.pax}${t('po_cntPpl')} · #${teamNo(tm)}</div>`;
-    b.addEventListener('click',()=>selectTeam(tm));
-    box.appendChild(b);
+  const ac=$('#active-cnt');
+
+  if(q){   // ── 검색: 팀 + 일행(동명이인은 팀으로 구분) ──
+    const teamHits=state.teams
+      .filter(tm=>((tm.group_code||'')+' '+(tm.team_tag||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')+' '+(tm.accom||'')).toLowerCase().includes(q))
+      .slice().sort((a,b)=>(state.activeSeqs.has(b.event_seq)?1:0)-(state.activeSeqs.has(a.event_seq)?1:0));
+    const memHits=state.members.filter(m=>((m.name_kr||'')+' '+(m.name_en||'')).toLowerCase().includes(q));
+    $('#team-cnt').textContent=`${t('po_secTeam')} ${teamHits.length} · ${t('po_secMember')} ${memHits.length}`;
+    if(ac) ac.textContent='';
+    if(!teamHits.length && !memHits.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
+    if(teamHits.length){ box.appendChild(headEl(t('po_secTeam'))); box.appendChild(gridOf(teamHits)); }
+    if(memHits.length){
+      box.appendChild(headEl(`${t('po_secMember')} · ${t('po_dupHint')}`));
+      const wrap=document.createElement('div'); wrap.className='mhit-list';
+      memHits.slice(0,80).forEach(m=>{
+        const tm=teamBySeq(m.event_seq); if(!tm) return;
+        const isMem=(m.member_grade==='회원권');
+        const btn=document.createElement('button'); btn.type='button'; btn.className='mhit';
+        btn.innerHTML=`<span class="mh-name">${escP(m.name_kr||m.name_en||'-')}${isMem?'<span class="mh-mem">회</span>':''}</span>`
+          +`<span class="mh-team">${teamTag(tm)} · ${escP(tm.rep||'')} · #${teamNo(tm)}${tm.accom?(' · '+escP(tm.accom)):''}</span>`;
+        btn.addEventListener('click',()=>selectTeam(tm));
+        wrap.appendChild(btn);
+      });
+      box.appendChild(wrap);
+    }
+    return;
+  }
+
+  // ── 검색 없음: 체크인 날짜별 섹션(섹션 내 주문중 우선) ──
+  $('#team-cnt').textContent=`${state.teams.length}${t('po_cntTeam')}`;
+  if(ac) ac.textContent=state.activeSeqs.size?('🔥 '+t('po_active')+' '+state.activeSeqs.size):'';
+  if(!state.teams.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
+  const byDay={};
+  state.teams.forEach(tm=>{ const k=tm.checkin||'-'; (byDay[k]=byDay[k]||[]).push(tm); });
+  Object.keys(byDay).sort().forEach(day=>{
+    const arr=byDay[day].slice().sort((a,b)=>(state.activeSeqs.has(b.event_seq)?1:0)-(state.activeSeqs.has(a.event_seq)?1:0));
+    box.appendChild(headEl(`${fmtMD(day)} ${t('po_checkin')} · ${arr.length}${t('po_cntTeam')}`));
+    box.appendChild(gridOf(arr));
   });
 }
 // 팀 라벨 통일: 상단 = 그룹코드, # 뒤 = 행사번호(event_no)
