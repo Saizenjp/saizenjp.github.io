@@ -955,11 +955,16 @@
     if (!conn || conn.getAttribute('data-so-collapsed')) return;
     conn.setAttribute('data-so-collapsed', '1');
     conn.style.display = 'none';
+    // 내장 고정값이라 입력칸은 읽기전용(확인용). 실수·편집 방지. (키 교체는 코드 한 곳에서)
+    ['sb-url', 'sb-key'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) { el.readOnly = true; el.style.background = 'var(--surface3,#e9ede1)'; el.style.cursor = 'default'; }
+    });
     var toggle = function () { conn.style.display = (conn.style.display === 'none') ? '' : 'none'; };
     var pill = document.getElementById('conn-state');
     if (pill) {
       pill.style.cursor = 'pointer';
-      pill.title = '클릭: 연결 정보 보기/수정';
+      pill.title = '클릭: 연결 정보 보기(읽기전용)';
       pill.addEventListener('click', toggle);
     } else {
       var box = document.querySelector('.so-controls');
