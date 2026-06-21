@@ -378,6 +378,8 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let _selInit=true;
 let supa=null;
 let state={ date:null, guests:[], rooms:[], inventory:[], assignMap:{}, members:{} }; // members: event_seq → [guest_members]
+// 표시는 행사번호(event_no, guests에 적재). 없으면 event_seq 폴백. (예약번호=event_seq는 내부키)
+function evNo(seq){ const g=state.guests.find(x=>x.event_seq===seq); return (g&&g.event_no)||seq; }
 
 // ── 숙소 prefix (v13.4 동일) ──
 const PFX={'야마나미리조트':'Y','쿠주힐즈':'K','간지호텔':'G','시즈노야도 료칸':'S'};
@@ -672,7 +674,7 @@ function renderTimeline(){
       if(occ.length){
         const used=occ.reduce((s,x)=>s+(x.assigned_pax||0),0);
         const r0=occ[0];
-        const tag=teamGroupCode(r0.event_seq)||('팀'+r0.event_seq);
+        const tag=teamGroupCode(r0.event_seq)||('팀'+evNo(r0.event_seq));
         const names=[...new Set(occ.map(x=>{const m=x.member_id!=null?memberById(x.member_id):null;return m?m.name_kr:'';}).filter(Boolean))].join(', ');
         html+=`<td class="tl-c occ ${tlTypeClass(inv.room_type)}${used>cap?' tl-over':''}" `
           +`title="${tag} · ${names} · ${r0.check_in}~${r0.check_out} (${used}/${cap})">`
@@ -981,7 +983,7 @@ function renderRoom(inv){
   div.dataset.invId=inv.id;
   let chips=assigned.map(r=>{
     const m=r.member_id!=null?memberById(r.member_id):null;
-    const tag=m?personTag(r.event_seq,m.seq_in_team||1):(teamGroupCode(r.event_seq)||('팀'+r.event_seq));
+    const tag=m?personTag(r.event_seq,m.seq_in_team||1):(teamGroupCode(r.event_seq)||('팀'+evNo(r.event_seq)));
     const nameKr=m?(m.name_kr||'-'):'';
     const nameEn=m?(m.name_en||''):teamEnNames(r.event_seq);
     const gb=m?`<i class="gbadge" style="display:inline-block;font-size:8px;font-weight:700;border-radius:3px;padding:0 4px;margin-left:4px;vertical-align:middle;${isMember(m.member_grade)?'color:#fff;background:var(--accent2)':'color:var(--text2);background:var(--surface3);border:1px solid var(--border2)'}">${gradeLabel(m.member_grade)}</i>`:'';
@@ -1108,7 +1110,7 @@ function renderFloorRing(zoneRooms){
     else { node.style.position='relative'; node.style.display='inline-block'; } // 좌표 없으면 흐름배치
     const chips=assigned.map(r=>{
       const m=r.member_id!=null?memberById(r.member_id):null;
-      const tag=m?personTag(r.event_seq,m.seq_in_team||1):(teamGroupCode(r.event_seq)||('팀'+r.event_seq));
+      const tag=m?personTag(r.event_seq,m.seq_in_team||1):(teamGroupCode(r.event_seq)||('팀'+evNo(r.event_seq)));
       const nm=m?(m.name_kr||''):'';
       return `<span class="rchip"><b>${tag}</b> ${nm}</span>`;   // 평면도에선 ✕ 취소 없음(카드에서만)
     }).join('');
@@ -1173,7 +1175,7 @@ async function assignMembers(memberIds, inv, opts={}){
       blocked++;
       const others=[...new Set(overlapRows.map(r=>{
         const og=state.guests.find(x=>x.event_seq===r.event_seq);
-        return og?(og.team_tag||og.rep||r.event_seq):r.event_seq;
+        return og?(og.team_tag||og.rep||evNo(r.event_seq)):evNo(r.event_seq);
       }))].join(', ');
       blockMsg.push(`${inv.room_no} 정원 ${cap} 초과(사용중: ${others||'-'})`);
       break; // 더 넣어도 같은 방은 꽉 참
@@ -1353,7 +1355,7 @@ function mkRow(g,m,inv){
 
 // list 를 2명씩 짝지어 primaryPool 에 배정. 없으면 fallbackPool(강등). 홀수 1명은 보류.
 function placePairs(g,list,primaryPool,fallbackPool,label,pending,holds){
-  const gc=teamGroupCode(g.event_seq)||('팀'+g.event_seq);
+  const gc=teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq));
   let i=0;
   for(; i+1<list.length; i+=2){
     let inv=pickRoom(primaryPool,g.dep,g.arr,2,pending);
@@ -1390,7 +1392,7 @@ async function autoAssign(){
       const placed=new Set(pending.map(p=>p.member_id));
       const roster=teamRoster(g.event_seq).filter(m=>!manual.has(m.id) && !placed.has(m.id));
       if(!roster.length) continue;
-      if(roster.length===3){ holds.push(`${teamGroupCode(g.event_seq)||('팀'+g.event_seq)} 3명팀 보류`); continue; }
+      if(roster.length===3){ holds.push(`${teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq))} 3명팀 보류`); continue; }
 
       let mem = route.deluxe ? roster.filter(m=>isMember(m.member_grade)) : [];
       let gen = route.deluxe ? roster.filter(m=>!isMember(m.member_grade)) : roster.slice();

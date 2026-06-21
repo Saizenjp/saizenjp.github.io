@@ -217,7 +217,9 @@ const CATEGORIES=['라운딩','식음','숙박','골프샵','기타']; // 고정
 const METHODS=['현금','카드'];                         // 결제수단(Min 확정)
 const STATUS_LABEL={open:'열림',closed:'마감',settled:'결제완료'};
 
-let state={ ym:'', folios:[], selId:null, charges:[], payments:[], bookings:[] };
+let state={ ym:'', folios:[], selId:null, charges:[], payments:[], bookings:[], noBySeq:{} };
+// 표시는 행사번호(event_no). 없으면 event_seq 폴백. (예약번호=event_seq는 내부키로만)
+function evNo(seq){ const v=state.noBySeq&&state.noBySeq[seq]; return (v!=null&&v!=='')?v:seq; }
 
 function yen(n){ return '¥'+Number(n||0).toLocaleString('ja-JP'); }
 function taxOf(gross){ gross=Number(gross||0); return gross - Math.round(gross/(1+TAX_RATE)); }  // 内税(포함된 소비세)
@@ -273,8 +275,9 @@ async function loadSession(){
   state.folios=fres.data||[];
   // folio 미개설 예약(팀) 목록도 확보 — '정산계정 열기' 후보
   const {data:bk,error:be}=await supa.from('bookings')
-    .select('event_seq,rep_name,product_name,dep_date,arr_date').eq('session_ym',ym).order('dep_date');
+    .select('event_seq,event_no,rep_name,product_name,dep_date,arr_date').eq('session_ym',ym).order('dep_date');
   if(be){ state.bookings=[]; } else { state.bookings=bk||[]; }
+  state.noBySeq={}; (state.bookings||[]).forEach(b=>{ state.noBySeq[b.event_seq]=b.event_no||''; });
   state.selId=null; state.charges=[]; state.payments=[];
   renderFolioList(); renderDetail();
   toast(`${ym} · 정산계정 ${state.folios.length}건 로드`,'ok');
@@ -286,7 +289,7 @@ function folioCard(f){
   const isMember=f.subject==='member';
   card.className='folio-card'+(isMember?' member':'')+(f.folio_id===state.selId?' sel':'');
   card.dataset.id=f.folio_id;
-  const tag=f.team_tag||('팀'+f.event_seq);
+  const tag=f.team_tag||('팀'+evNo(f.event_seq));
   const bal=Number(f.balance||0);
   const balCls=bal<=0?'zero':'due';
   // 개인 folio: 작은 팀태그 + 개인명 강조 / 팀 folio: 팀태그 + 대표자
@@ -360,7 +363,7 @@ function renderDetail(){
   const box=$('#detail');
   const f=curFolio();
   if(!f){ box.innerHTML='<div class="empty-hint">'+t('st_selectFolio')+'</div>'; return; }
-  const tag=f.team_tag||('팀'+f.event_seq);
+  const tag=f.team_tag||('팀'+evNo(f.event_seq));
   const charges=state.charges.filter(c=>!c.voided);
   const subTotal=charges.reduce((s,c)=>s+Number(c.amount||0),0);
   const taxTotal=charges.reduce((s,c)=>s+Number(c.tax||0),0);
@@ -398,7 +401,7 @@ function renderDetail(){
     <div class="det-head">
       <div>
         <div class="dt">${tag} <span class="sbadge s-${f.status}">${STATUS_LABEL[f.status]||f.status}</span></div>
-        <div class="ds">${f.rep_name||''} · ${f.subject==='member'?('개인 '+(f.member_name||'')):'팀(행사) 단위'} · event #${f.event_seq}</div>
+        <div class="ds">${f.rep_name||''} · ${f.subject==='member'?('개인 '+(f.member_name||'')):'팀(행사) 단위'} · event #${evNo(f.event_seq)}</div>
       </div>
       <div class="dactions">
         <button class="btn ghost sm" id="btn-statement" type="button" data-i18n="st_btnStatement"></button>
@@ -548,7 +551,7 @@ async function openFolioModal(){
   const items=state.bookings.map(b=>{
     const already=opened.has(b.event_seq);
     return `<div class="pickitem" data-seq="${b.event_seq}" data-rep="${(b.rep_name||'').replace(/"/g,'')}">
-      <span class="pi-tag">#${b.event_seq}</span> ${b.rep_name||''} · ${b.product_name||''}
+      <span class="pi-tag">#${b.event_no||b.event_seq}</span> ${b.rep_name||''} · ${b.product_name||''}
       <span style="color:var(--muted);font-size:11px"> ${(b.dep_date||'')}~${(b.arr_date||'')}${already?' · 이미 열림':''}</span>
     </div>`;
   }).join('');
@@ -584,7 +587,7 @@ async function openFolio(event_seq){
     created_by:(window.__so_getUser&&__so_getUser())||null };
   const {data,error}=await supa.from('folios').insert(row).select('id').single();
   if(error){toast('계정 열기 실패: '+error.message,'err');return;}
-  toast('정산 계정 열림 (#'+event_seq+')','ok');
+  toast('정산 계정 열림 (#'+evNo(event_seq)+')','ok');
   await loadSession();
   if(data&&data.id) await selectFolio(data.id);
 }
@@ -611,12 +614,12 @@ async function exportStatement(f){
   const sub=ws.getCell('A2'); sub.value='アソ ヤマナミリゾート ／ 株式会社SaiZen';
   sub.font={size:10,color:{argb:XLM.blue}}; sub.alignment={horizontal:'center'};
 
-  const tag=f.team_tag||('팀'+f.event_seq);
+  const tag=f.team_tag||('팀'+evNo(f.event_seq));
   ws.getCell('A4').value='宛名 / 御一行'; ws.getCell('A4').font={bold:true,color:{argb:XLM.navy}};
   ws.getCell('B4').value=`${tag}  ${f.rep_name||''}${f.subject==='member'?('  ('+(f.member_name||'')+'様)'):' 御一行様'}`;
   ws.getCell('A5').value='発行日'; ws.getCell('A5').font={bold:true,color:{argb:XLM.navy}};
   ws.getCell('B5').value=new Date().toISOString().slice(0,10);
-  ws.getCell('E4').value='event'; ws.getCell('F4').value=f.event_seq;
+  ws.getCell('E4').value='event'; ws.getCell('F4').value=evNo(f.event_seq);
   ws.getCell('E5').value='session'; ws.getCell('F5').value=state.ym;
 
   // 명세 헤더
@@ -682,7 +685,7 @@ async function exportStatement(f){
     });
   }
 
-  await downloadWB(wb,`Statement_${state.ym}_event${f.event_seq}.xlsx`);
+  await downloadWB(wb,`Statement_${state.ym}_event${evNo(f.event_seq)}.xlsx`);
   toast('御請求書 다운로드','ok');
 }
 
