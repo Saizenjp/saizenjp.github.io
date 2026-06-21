@@ -424,6 +424,9 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
 .shz-room-h{font-size:14px;font-weight:700;color:var(--accent2);text-align:center;padding:2px 0 7px;border-bottom:1px solid var(--border)}
 .shz-zone{display:block;font-size:9px;font-weight:700;color:var(--text3);letter-spacing:.03em;margin-top:2px}
 .shz-onsen{display:block;font-style:normal;font-weight:600;color:var(--purple2);font-size:8.5px;margin-top:1px}
+.shz-onsen-tg{margin-left:4px;border:1px solid var(--purple);background:var(--card);color:var(--purple2);border-radius:5px;font-size:11px;padding:0 5px;cursor:pointer;line-height:1.5}
+.shz-onsen-tg.on{background:var(--purple);color:#fff}
+.shz-pv-onsen{color:var(--purple2);font-weight:700}
 .shz-room.byeolche{border-color:var(--purple)}
 .shz-room.byeolche .shz-room-h{color:var(--purple2);border-bottom-color:var(--purple)}
 .shz-room.byeolche .shz-zone{color:var(--purple2)}
@@ -812,7 +815,11 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
     <div class="shz-tip" data-i18n="shz_tip">💡 <b>クリック割当</b>：お客様カードをクリック→客室をクリックで配置（ドラッグでもOK）。現地予約は性別ボタン（男/女）を押してください。</div>
     <div class="shz-tip" style="background:var(--purple-dim);border-color:var(--purple)"><b style="color:var(--purple2)">♨ 別棟（吉祥·瑞雲·馬酔木）</b>：客室料金は本館と同じ <b>¥17,000</b>。個人温泉は<b>事前申請制</b>で、申請時のみ現地で温泉のお湯を準備します（事前申請費 ¥2,000）。</div>
     <div class="shz-toolbar">
-      <label>期間 <input type="date" id="shz-from" onchange="shzSetPeriod()"> ~ <input type="date" id="shz-to" onchange="shzSetPeriod()"></label>
+      <span class="shz-monthnav" style="display:inline-flex;align-items:center;gap:6px">
+        <button onclick="shzShiftMonth(-1)" style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);cursor:pointer">◀</button>
+        <input type="month" id="shz-ym" onchange="shzSetMonth(this.value)" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px">
+        <button onclick="shzShiftMonth(1)" style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);cursor:pointer">▶</button>
+      </span>
       <button class="btn-dl" onclick="shzAutoAssign()">⚡ 自動割当</button>
       <button class="btn-dl" onclick="shzClearAll()">✕ 全解除</button>
       <button class="btn-shz" onclick="shzDownload()">⬇ <span data-i18n="shz_dl">予約表 ダウンロード</span></button>
@@ -9720,18 +9727,19 @@ const SHZ_ZONE = r => SHZ_BYEOLCHE.includes(r) ? '別棟' : '本館';
 const SHZ_BASE  = 17000;   // 本館·別棟 공통 기본요금
 const SHZ_ONSEN = 2000;    // 別棟 개인온천 — 사전신청 시에만 추가
 const SHZ_DOW   = ['日','月','火','水','木','金','土'];
-const SHZ = { guests: [], from: '', to: '', focus: '', view: 'card' };  // focus: 보고 있는 하룻밤 · view: card|timeline(ops 방배정 방식)
+const SHZ = { guests: [], ym: '', focus: '', view: 'card' };  // ym: 보고 있는 월(YYYY-MM, ops room.html과 동일) · focus: 하룻밤 · view: card|timeline
 let SHZ_SEL = null;  // 클릭 배정용: 선택된 손님 id
 
 /* ── 상태(영속) ───────────────────────────────────────── */
 function shzState(){
-  if(typeof manualData === 'undefined') return { assign:{}, note:{}, name:{}, gender:{} };
-  if(!manualData._shizu) manualData._shizu = { assign:{}, note:{}, name:{}, gender:{} };
+  if(typeof manualData === 'undefined') return { assign:{}, note:{}, name:{}, gender:{}, onsen:{} };
+  if(!manualData._shizu) manualData._shizu = { assign:{}, note:{}, name:{}, gender:{}, onsen:{} };
   const s = manualData._shizu;
   s.assign = s.assign || {};
   s.note   = s.note   || {};
   s.name   = s.name   || {};
   s.gender = s.gender || {};
+  s.onsen  = s.onsen  || {};   // 別棟 온천 사전신청(개인별 guestId → true). +¥2,000/인·박
   return s;
 }
 function shzPersist(){ shzState(); if(typeof saveManual === 'function') saveManual(); }
@@ -9815,19 +9823,33 @@ function shzNights(g){
 function shzName(g){ const s = shzState(); return s.name[g.id] || g.defName || g.rep || ''; }
 function shzGender(g){ const s = shzState(); return g.gender || s.gender[g.id] || ''; }
 
+/* 선택 월(SHZ.ym)에 묵는 손님만 — ops room.html 월 단위와 동일 */
+function shzMonthGuests(){
+  if(!SHZ.ym) return SHZ.guests;
+  return SHZ.guests.filter(g => shzNights(g).some(d => d.slice(0,7)===SHZ.ym));
+}
+/* 축(날짜열) = 선택 월에서 실제 점유한 밤만(빈 날 테이블 방지) */
 function shzAxis(){
-  let min=null, max=null;
-  SHZ.guests.forEach(g => shzNights(g).forEach(d => {
-    if(!min || d<min) min=d;
-    if(!max || d>max) max=d;
-  }));
-  const from = SHZ.from || min, to = SHZ.to || max;
-  if(!from || !to) return [];
-  const d = shzParseISO(from), e = shzParseISO(to);
-  if(!d || !e) return [];
-  const out=[];
-  for(let x=new Date(d); x<=e; x.setDate(x.getDate()+1)) out.push(shzISO(x));
-  return out;
+  if(!SHZ.ym){
+    let min=null;
+    SHZ.guests.forEach(g => shzNights(g).forEach(d => { if(!min||d<min) min=d; }));
+    SHZ.ym = min ? min.slice(0,7) : (new Date()).toISOString().slice(0,7);
+  }
+  const set=new Set();
+  SHZ.guests.forEach(g => shzNights(g).forEach(d => { if(d.slice(0,7)===SHZ.ym) set.add(d); }));
+  return [...set].sort();
+}
+/* 별棟 온천 사전신청비: 선택 월 한정, 別棟 배정 + 사전신청한 사람의 박수 × ¥2,000 */
+function shzOnsenSummary(){
+  const s = shzState();
+  let persons=0, fee=0;
+  shzMonthGuests().forEach(g => {
+    if(s.onsen[g.id] && SHZ_BYEOLCHE.includes(s.assign[g.id])){
+      const n = shzNights(g).filter(d=>d.slice(0,7)===SHZ.ym).length;
+      if(n>0){ persons++; fee += SHZ_ONSEN * n; }
+    }
+  });
+  return { persons, fee };
 }
 function shzCellOcc(room, date){
   const s = shzState();
@@ -9879,12 +9901,24 @@ function shzSetNote(date, text){
   s.note[date] = String(text||'');
   shzPersist();
 }
-function shzSetPeriod(){
-  if(typeof document === 'undefined') return;
-  SHZ.from = document.getElementById('shz-from').value || '';
-  SHZ.to   = document.getElementById('shz-to').value || '';
-  SHZ.focus = '';   // 기간 바뀌면 첫 날로 재설정
-  shzRender();
+/* 월 토글(ops room.html 방식) */
+function shzSetMonth(ym){
+  SHZ.ym = ym || '';
+  SHZ.focus = '';   // 월 바뀌면 첫 날로 재설정
+  if(typeof document !== 'undefined') shzRender();
+}
+function shzShiftMonth(delta){
+  const cur = SHZ.ym || (new Date()).toISOString().slice(0,7);
+  const [y,m] = cur.split('-').map(Number);
+  const d = new Date(y, m-1+delta, 1);
+  shzSetMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+}
+function shzToggleOnsen(ev, id){
+  if(ev && ev.stopPropagation) ev.stopPropagation();
+  const s = shzState();
+  if(s.onsen[id]) delete s.onsen[id]; else s.onsen[id] = true;
+  shzPersist();
+  if(typeof document !== 'undefined') shzRender();
 }
 /* 보드 날짜(하룻밤) 선택 — 그날 묵는 인원만 객실에 표시(몰아넣기 방지) */
 function shzSetFocus(d){ SHZ.focus = d; if(typeof document !== 'undefined') shzRender(); }
@@ -9898,7 +9932,7 @@ function shzClearAll(){
 }
 function shzAutoAssign(){
   const s = shzState();
-  const un = SHZ.guests.filter(g => !s.assign[g.id]);
+  const un = shzMonthGuests().filter(g => !s.assign[g.id]);   // 선택 월만(월경계 엇갈림 방지)
   const byEv = {};
   un.forEach(g => { (byEv[g.seq] = byEv[g.seq] || []).push(g); });
   const parties = Object.values(byEv).sort((a,b)=>(a[0].ci||'').localeCompare(b[0].ci||''));
@@ -9930,10 +9964,13 @@ function shzAutoAssign(){
 
 /* ── 렌더: 보드 ───────────────────────────────────────── */
 function shzChipHTML(g){
+  const sS = shzState();
   const gen = shzGender(g);
   const nm  = shzName(g);
   const nights = shzNights(g).length;
   const need = g.local && !gen;
+  const inByeol = SHZ_BYEOLCHE.includes(sS.assign[g.id]);   // 別棟 배정 시에만 온천 사전신청 토글
+  const onsenBtn = inByeol ? `<button class="shz-onsen-tg${sS.onsen[g.id]?' on':''}" onclick="shzToggleOnsen(event,'${g.id}')" title="♨ 온천 사전신청 (+¥2,000/泊)">♨</button>` : '';
   let genHTML;
   if(g.local && !gen){
     genHTML = `<span class="shz-gset"><button onclick="shzSetGender('${g.id}','男')">男</button><button onclick="shzSetGender('${g.id}','女')">女</button></span>`;
@@ -9944,7 +9981,7 @@ function shzChipHTML(g){
   }
   return `<div class="shz-chip${g.local?' local':''}${g.mixed?' mixed':''}${g.id===SHZ_SEL?' sel':''}${need?' needgender':''}" draggable="true" data-id="${g.id}" ondragstart="shzDragStart(event)" onclick="shzPick(event,'${g.id}')">
     <span class="shz-cname" contenteditable="true" spellcheck="false" onblur="shzRename('${g.id}',this.textContent)">${nm}</span>
-    ${genHTML}${need?'<span class="shz-needlbl">性別未入力</span>':''}
+    ${genHTML}${onsenBtn}${need?'<span class="shz-needlbl">性別未入力</span>':''}
     <span class="shz-meta">${shzMD(g.ci)}~${shzMD(g.co)} · ${nights}泊${g.mixed?' · <span class="shz-warn">混在要確認</span>':''}</span>
   </div>`;
 }
@@ -9952,27 +9989,26 @@ function shzRender(){
   if(typeof document === 'undefined') return;
   SHZ.guests = shzCollect();
   const s = shzState();
-  // 期間 입력 기본값
-  let min=null,max=null;
-  SHZ.guests.forEach(g => shzNights(g).forEach(d => { if(!min||d<min)min=d; if(!max||d>max)max=d; }));
-  const fromEl = document.getElementById('shz-from'), toEl = document.getElementById('shz-to');
-  if(fromEl && !fromEl.value && (SHZ.from||min)) fromEl.value = SHZ.from || min;
-  if(toEl && !toEl.value && (SHZ.to||max)) toEl.value = SHZ.to || max;
+  // 월(ym) 동기화 — shzAxis가 ym 미설정 시 최소 점유월로 채움
+  const axis = shzAxis();
+  const ymEl = document.getElementById('shz-ym');
+  if(ymEl && SHZ.ym) ymEl.value = SHZ.ym;
 
-  // 통계
-  const total = SHZ.guests.length;
-  const assigned = SHZ.guests.filter(g => s.assign[g.id]).length;
-  const localN = SHZ.guests.filter(g => g.local).length;
+  // 통계 (선택 월 기준)
+  const mg = shzMonthGuests();
+  const total = mg.length;
+  const assigned = mg.filter(g => s.assign[g.id]).length;
+  const localN = mg.filter(g => g.local).length;
+  const ons = shzOnsenSummary();
   const stats = document.getElementById('shz-stats');
   if(stats) stats.innerHTML = `
     <div class="stat"><div class="stat-label">宿泊者</div><div class="stat-value">${total}</div><div class="stat-sub">名</div></div>
     <div class="stat"><div class="stat-label">配置済</div><div class="stat-value">${assigned}</div><div class="stat-sub">/ ${total}</div></div>
     <div class="stat"><div class="stat-label">未配置</div><div class="stat-value">${total-assigned}</div><div class="stat-sub">名</div></div>
     <div class="stat"><div class="stat-label">現地予約</div><div class="stat-value">${localN}</div><div class="stat-sub">性別要入力</div></div>
-    <div class="stat"><div class="stat-label">期間</div><div class="stat-value" style="font-size:13px">${shzMD(SHZ.from||min)}~${shzMD(SHZ.to||max)}</div><div class="stat-sub">予約表</div></div>`;
+    <div class="stat"><div class="stat-label">♨ 事前申請</div><div class="stat-value">${ons.persons}</div><div class="stat-sub">¥${ons.fee.toLocaleString()}</div></div>`;
 
   // ── 보드: ops 방배정(room.html) 방식 — 날짜 하루픽 + 카드/타임라인 토글 ──
-  const axis = shzAxis();
   const focus = (SHZ.focus && axis.includes(SHZ.focus)) ? SHZ.focus : (axis[0] || '');
   SHZ.focus = focus;
   const view = SHZ.view === 'timeline' ? 'timeline' : 'card';
@@ -10099,8 +10135,9 @@ function shzRenderPreview(){
       occ.forEach(g => { const x=shzGender(g); if(x==='男')tm++; else if(x==='女')tf++; });
       const sq = {}; occ.forEach(g => sq[g.seq]=(sq[g.seq]||0)+1);
       Object.keys(sq).forEach(k => { notes[k] = { nm: shzName(rep), c:(notes[k]?notes[k].c:0)+sq[k] }; });
+      const onsenHere = SHZ_BYEOLCHE.includes(room) && occ.some(g => s.onsen[g.id]);   // 別棟 사전신청 표시
       return {
-        name: shzName(rep)+'様',
+        name: shzName(rep)+'様'+(onsenHere?' <span class="shz-pv-onsen">♨</span>':''),
         mf: shzMF(occ),
         stay: `${shzZen(rn.length)}連泊 ${shzZen(rn.indexOf(date)+1)}`,
         cnt: shzZen(occ.length)
@@ -10184,7 +10221,8 @@ async function shzDownload(){
       const kc=ws.getCell(r0+3,col); kc.value='　　　　　　才'; kc.font={name:FONT,size:11};
       if(!occ.length) return;
       const rep=occ[0];
-      const nc=ws.getCell(r0+1,col); nc.value=shzName(rep)+'様'; nc.font={name:FONT,size:11}; nc.alignment={horizontal:'right',vertical:'middle'};
+      const onsenHere = SHZ_BYEOLCHE.includes(room) && occ.some(g=>s.onsen[g.id]);   // 別棟 사전신청 표시
+      const nc=ws.getCell(r0+1,col); nc.value=shzName(rep)+'様'+(onsenHere?' ♨':''); nc.font={name:FONT,size:11}; nc.alignment={horizontal:'right',vertical:'middle'};
       const ac=ws.getCell(r0+2,col); ac.value=shzMF(occ); ac.font={name:FONT,size:11}; ac.alignment={vertical:'middle'};
       const sc=ws.getCell(r0+4,col); sc.value=shzZen(occ.length); sc.font={name:FONT,size:11}; sc.alignment={horizontal:'center',vertical:'middle'};
       const rn=shzNights(rep);
