@@ -47,10 +47,14 @@
   .uname{font-weight:700}
   .uemail{font-size:11.5px;color:var(--muted);font-family:var(--mono)}
   .rolesel{min-width:108px}
-  .areas{display:flex;flex-wrap:wrap;gap:8px 12px;max-width:360px}
+  .areas{display:flex;flex-wrap:wrap;gap:10px 14px;max-width:460px}
   .areas label{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);white-space:nowrap}
   .areas.dim{opacity:.4;pointer-events:none}
   .areas .allnote{font-size:11.5px;color:var(--accent2);font-weight:700}
+  .deptgrp{border:1px solid var(--border);border-radius:8px;padding:7px 9px;background:var(--surface2)}
+  .depthead{font-size:12px;color:var(--text);margin-bottom:5px;border-bottom:1px dashed var(--border2);padding-bottom:4px}
+  .depthead .dnote{font-size:10.5px;color:var(--muted);font-weight:600}
+  .deptkids{display:flex;flex-direction:column;gap:3px;padding-left:3px}
   .rbadge{font-size:9.5px;font-weight:800;border-radius:4px;padding:2px 7px;white-space:nowrap}
   .rb-admin{color:#fff;background:var(--accent2)} .rb-manager{color:#fff;background:var(--accent)} .rb-staff{color:var(--text2);background:var(--surface3);border:1px solid var(--border2)}
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
@@ -59,7 +63,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.24">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.25">
 </head>
 <body data-so-area="admin">
 <div class="topbar so-bar">
@@ -96,7 +100,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=14.24"></script>
+<script src="../assets/saizen-ops.js?v=14.25"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 권한 관리(마스터 전용). 18_access_control.sql 의 RPC를 호출.
@@ -104,7 +108,38 @@
 const $=s=>document.querySelector(s);
 let supa=null, myRole=null, rows=[];
 const AREAS=[['step1','데이터등록'],['room','방배정'],['settle','정산'],['notes','팀메모'],['pos','POS'],['kitchen','주방'],['menu','메뉴']];
+const AREA_LABEL=Object.fromEntries(AREAS);
+// 부서(부서 단위로 카드를 묶어 한 번에 체크) — area는 그대로 카드별 저장
+const DEPTS=[
+  ['🛎 프론트·객실',['step1','room']],
+  ['🍽 식음(F&B)',['pos','kitchen','menu']],
+  ['💴 회계',['settle']],
+  ['🗂 공통',['notes']],
+];
 const ROLE_LABEL={admin:'마스터',manager:'관리담당',staff:'일반'};
+
+// 부서별로 묶은 카드 체크박스 HTML
+function buildAreas(checked){
+  const set=new Set(checked||[]);
+  return DEPTS.map(([dlab,keys])=>{
+    const kids=keys.map(k=>`<label><input type="checkbox" data-area="${k}" ${set.has(k)?'checked':''}> ${AREA_LABEL[k]||k}</label>`).join('');
+    return `<div class="deptgrp">
+        <label class="depthead"><input type="checkbox" data-deptall="${keys.join(',')}"> <b>${dlab}</b> <span class="dnote">부서 전체</span></label>
+        <div class="deptkids">${kids}</div>
+      </div>`;
+  }).join('');
+}
+// 부서 전체 체크박스 ↔ 하위 카드 동기화
+function wireDeptAll(scope){
+  scope.querySelectorAll('[data-deptall]').forEach(master=>{
+    const keys=master.dataset.deptall.split(',');
+    const kids=()=>keys.map(k=>scope.querySelector(`[data-area="${k}"]`)).filter(Boolean);
+    const sync=()=>{const ks=kids();master.checked=ks.length&&ks.every(c=>c.checked);master.indeterminate=!master.checked&&ks.some(c=>c.checked);};
+    master.addEventListener('change',()=>{kids().forEach(c=>c.checked=master.checked);});
+    kids().forEach(c=>c.addEventListener('change',sync));
+    sync();
+  });
+}
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function toast(msg,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.textContent=msg;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
@@ -151,7 +186,7 @@ function render(){
   rows.forEach(u=>{
     const roleOpts=['admin','manager','staff'].map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_LABEL[r]}</option>`).join('');
     const showAreas=u.role!=='admin';
-    const areaBoxes=AREAS.map(([k,lab])=>`<label><input type="checkbox" data-area="${k}" ${(u.areas||[]).includes(k)?'checked':''}> ${lab}</label>`).join('');
+    const areaBoxes=buildAreas(u.areas||[]);
     html+=`<tr data-id="${u.user_id}">
       <td><div class="uname">${esc(u.name||'(이름 미설정)')}</div><div class="uemail">${esc(u.email||'')}</div></td>
       <td><select class="inp rolesel" data-f="role">${roleOpts}</select></td>
@@ -161,6 +196,7 @@ function render(){
   });
   html+='</tbody></table>';
   box.innerHTML=html;
+  box.querySelectorAll('[data-areas]').forEach(ar=>{ if(ar.querySelector('[data-area]')) wireDeptAll(ar); });
   // 역할 변경 시 카드 영역 활성/비활성 토글
   box.querySelectorAll('select[data-f="role"]').forEach(sel=>{
     sel.addEventListener('change',()=>{
@@ -168,7 +204,7 @@ function render(){
       if(sel.value!=='admin'){
         ar.classList.remove('dim');
         if(!ar.querySelector('[data-area]')){   // allnote 상태면 체크박스 생성(기존 체크는 보존)
-          ar.innerHTML=AREAS.map(([k,lab])=>`<label><input type="checkbox" data-area="${k}"> ${lab}</label>`).join('');
+          ar.innerHTML=buildAreas([]); wireDeptAll(ar);
         }
       }else{
         ar.classList.add('dim'); ar.innerHTML='<span class="allnote">전 카드 접근(마스터)</span>';
