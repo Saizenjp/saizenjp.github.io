@@ -580,6 +580,21 @@ async function run(){
       return null;  // 풀 소진 (594개)
     }
 
+    // ── 그룹코드 xlsx 미업로드 시: member_codes(Supabase)에서 매칭(RPC) — xlsx 없이도 동작 ──
+    if(Object.keys(codeMap).length===0 && supa){
+      const repKeys=[...new Set(Object.keys(procMap).map(seqStr=>{
+        const seq=parseInt(seqStr,10); const info=procMap[seq];
+        const b=birthByKey[seq+'|'+info.repName]||''; return b?(info.repName+b):'';
+      }).filter(Boolean))];
+      if(repKeys.length){
+        try{
+          const {data:mc}=await supa.rpc('match_group_codes',{p_keys:repKeys});
+          (mc||[]).forEach(r=>{ if(r.member_key && r.code) codeMap[r.member_key]=r.code; });
+          log(`· 그룹코드 xlsx 없이 member_codes에서 ${Object.keys(codeMap).length}건 매칭`,'dim');
+        }catch(e){ log('· member_codes 매칭 실패(22번 SQL?): '+e.message,'warn'); }
+      }
+    }
+
     let nmCnt = 0, memCnt = 0, nmFull = 0;
     Object.keys(procMap).forEach(seqStr=>{
       const seq = parseInt(seqStr,10);
