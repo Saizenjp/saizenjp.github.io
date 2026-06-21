@@ -121,25 +121,10 @@
       <div class="f"><label data-i18n="me_cat"></label>
         <select class="inp" id="n-cat"><option>라운딩</option><option selected>식음</option><option>숙박</option><option>골프샵</option><option>기타</option></select></div>
       <div class="f"><label data-i18n="me_venue"></label><input class="inp" id="n-venue" list="venue-list" value="restaurant"></div>
-      <div class="f"><label data-i18n="me_station"></label>
-        <select class="inp" id="n-station"><option value="kitchen">kitchen (주방)</option><option value="bar">bar (드링크바)</option><option value="none">none</option></select></div>
       <div class="f"><label data-i18n="me_price"></label><input class="inp price" id="n-price" type="number" min="0" step="100" value="0"></div>
       <div class="f"><label data-i18n="me_sort"></label><input class="inp sort" id="n-sort" type="number" value="0"></div>
       <div class="f"><label>&nbsp;</label><button class="btn sm" id="btn-add" type="button" disabled data-i18n="me_add"></button></div>
     </div>
-  </div>
-
-  <!-- 일괄 붙여넣기 -->
-  <div class="panel">
-    <details class="bulk">
-      <summary data-i18n="me_bulkTitle"></summary>
-      <div class="fmt" data-i18n="me_bulkFmt"></div>
-      <textarea id="bulk-text" placeholder="生ビール, 생맥주, 식음, restaurant, bar, 800, B1&#10;定食, 정식, 식음, restaurant, kitchen, 1800, M1"></textarea>
-      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-        <button class="btn sm" id="btn-bulk" type="button" disabled data-i18n="me_bulkAdd"></button>
-        <span class="hint" id="bulk-hint" style="font-size:11px;color:var(--muted)"></span>
-      </div>
-    </details>
   </div>
 
   <!-- 메뉴 목록 -->
@@ -184,6 +169,12 @@ function codeCounters(){
 }
 function fmtCode(p,n){ return p+String(n).padStart(2,'0'); }
 function nextCode(cat){ const p=CODE_PREFIX[cat]||'X'; return fmtCode(p,(codeCounters()[p]||0)+1); }
+// station(조리 위치) 자동 기본값: 프론트·골프샵 매점=none, 식음=kitchen, 그 외=none.
+// (음료처럼 bar로 보낼 항목은 목록 표에서 수정)
+function autoStation(cat,venue){
+  if(venue==='front'||venue==='proshop') return 'none';
+  return cat==='식음' ? 'kitchen' : 'none';
+}
 let lastAuto='';
 // 비어있거나 직전 자동값 그대로면 다음 코드로 갱신(수동 입력은 보존). force=버튼.
 function fillNextCode(force){
@@ -208,7 +199,7 @@ async function connect(){
     if(error) throw error;
     setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
     btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
-    $('#btn-add').disabled=false; $('#btn-bulk').disabled=false;
+    $('#btn-add').disabled=false;
     await load();
   }catch(e){
     setConn('연결 실패','err');
@@ -300,7 +291,7 @@ async function addOne(){
     name_ko:$('#n-ko').value.trim()||null,
     category:$('#n-cat').value,
     venue:$('#n-venue').value.trim()||'etc',
-    station:$('#n-station').value,
+    station:autoStation($('#n-cat').value, $('#n-venue').value.trim()||'etc'),
     unit_price:Math.round(Number($('#n-price').value||0)),
     sort_order:Math.round(Number($('#n-sort').value||0)),
   };
@@ -312,39 +303,9 @@ async function addOne(){
   await load();   // load()가 다음 코드 자동 채움
 }
 
-// 일괄: 한 줄 = name_ja, name_ko, category, venue, station, unit_price[, code]
-async function addBulk(){
-  const lines=$('#bulk-text').value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  if(!lines.length){toast('붙여넣은 내용이 없습니다','warn');return;}
-  const rows=[]; const errs=[];
-  lines.forEach((line,i)=>{
-    const c=line.split(/\t|,/).map(s=>s.trim());
-    const name_ja=c[0]||'';
-    if(!name_ja){errs.push(`${i+1}행: 이름 없음`);return;}
-    let category=c[2]||'식음'; if(!CATS.includes(category)) category='식음';
-    let station=(c[4]||'kitchen').toLowerCase(); if(!STATIONS.includes(station)) station='kitchen';
-    rows.push({
-      name_ja, name_ko:c[1]||null, category,
-      venue:c[3]||'restaurant', station,
-      unit_price:Math.round(Number((c[5]||'0').replace(/[^\d.-]/g,''))||0),
-      code:c[6]||null, sort_order:i*10,
-    });
-  });
-  if(!rows.length){toast('유효한 행이 없습니다: '+errs.join(' / '),'err');return;}
-  // 코드 생략 행은 구분별 자동 채번(연속)
-  const cc=codeCounters();
-  rows.forEach(r=>{ if(!r.code){ const p=CODE_PREFIX[r.category]||'X'; cc[p]=(cc[p]||0)+1; r.code=fmtCode(p,cc[p]); } });
-  const {error}=await supa.from('menu_items').insert(rows);
-  if(error){toast('일괄 추가 실패: '+error.message,'err');return;}
-  $('#bulk-hint').textContent='';
-  toast(`${rows.length}건 추가됨${errs.length?` · ${errs.length}행 건너뜀`:''}`, errs.length?'warn':'ok');
-  $('#bulk-text').value=''; await load();
-}
-
 // ── 부팅 ──
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-add').addEventListener('click',addOne);
-$('#btn-bulk').addEventListener('click',addBulk);
 $('#btn-nextcode').addEventListener('click',()=>fillNextCode(true));
 $('#n-cat').addEventListener('change',()=>fillNextCode());   // 구분 바꾸면 그 구분의 다음 코드
 loadCreds();
