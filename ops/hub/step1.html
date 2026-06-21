@@ -464,11 +464,12 @@ async function run(){
 
     // ── 수정이력용: 업로드 전 그 달 기존 상태 스냅샷 (upsert 전에 떠야 추가/삭제 구분 가능) ──
     const _oldBk = {};   // event_seq -> rep_name
+    const _oldNo = {};   // event_seq -> event_no(행사번호 — 표시용)
     const _oldPx = {};   // event_seq -> { 이름+생년6: {name, grade} }
     try {
       let pg=0;
-      while(true){ const {data,error}=await supa.from('bookings').select('event_seq,rep_name').in('session_ym',fileMonths).range(pg,pg+999);
-        if(error||!data||!data.length) break; data.forEach(b=>{_oldBk[b.event_seq]=b.rep_name||'';}); if(data.length<1000) break; pg+=1000; }
+      while(true){ const {data,error}=await supa.from('bookings').select('event_seq,rep_name,event_no').in('session_ym',fileMonths).range(pg,pg+999);
+        if(error||!data||!data.length) break; data.forEach(b=>{_oldBk[b.event_seq]=b.rep_name||''; _oldNo[b.event_seq]=b.event_no||'';}); if(data.length<1000) break; pg+=1000; }
       pg=0;
       while(true){ const {data,error}=await supa.from('passengers').select('event_seq,name_kr,birth_yymmdd,member_grade,bookings!inner(session_ym)').in('bookings.session_ym',fileMonths).range(pg,pg+999);
         if(error||!data||!data.length) break; data.forEach(p=>{const k=(p.name_kr||'')+(p.birth_yymmdd||''); (_oldPx[p.event_seq]=_oldPx[p.event_seq]||{})[k]={name:p.name_kr,grade:p.member_grade};}); if(data.length<1000) break; pg+=1000; }
@@ -673,15 +674,18 @@ async function run(){
     try {
       const newPx={};
       paxRows.forEach(p=>{ const k=(p.name_kr||'')+(p.birth_yymmdd||''); (newPx[p.event_seq]=newPx[p.event_seq]||{})[k]={name:p.name_kr,grade:p.member_grade}; });
+      const newNo={};   // event_seq -> event_no(행사번호 — 표시용)
+      bookingRows.forEach(b=>{ newNo[b.event_seq]=b.event_no||''; });
+      const noOf = s => newNo[s] || _oldNo[s] || s;   // 행사번호 우선, 없으면 event_seq 폴백
       const newSeqs=new Set(bookingRows.map(b=>b.event_seq));
       const oldSeqs=new Set(Object.keys(_oldBk).map(Number));
-      newSeqs.forEach(s=>{ if(!oldSeqs.has(s)) changes.teams_added.push(s); });
-      oldSeqs.forEach(s=>{ if(!newSeqs.has(s)) changes.teams_removed.push({seq:s, rep:_oldBk[s], n:Object.keys(_oldPx[s]||{}).length}); });
+      newSeqs.forEach(s=>{ if(!oldSeqs.has(s)) changes.teams_added.push({seq:s, no:noOf(s)}); });
+      oldSeqs.forEach(s=>{ if(!newSeqs.has(s)) changes.teams_removed.push({seq:s, no:noOf(s), rep:_oldBk[s], n:Object.keys(_oldPx[s]||{}).length}); });
       newSeqs.forEach(s=>{ if(!oldSeqs.has(s)) return;     // 신규팀은 위에서
         const o=_oldPx[s]||{}, n=newPx[s]||{};
-        Object.keys(n).forEach(k=>{ if(!(k in o)) changes.persons_added.push({seq:s,name:n[k].name});
-          else if((o[k].grade||'')!==(n[k].grade||'')) changes.grade_changed.push({seq:s,name:n[k].name,from:o[k].grade||'-',to:n[k].grade||'-'}); });
-        Object.keys(o).forEach(k=>{ if(!(k in n)) changes.persons_removed.push({seq:s,name:o[k].name}); });
+        Object.keys(n).forEach(k=>{ if(!(k in o)) changes.persons_added.push({seq:s,no:noOf(s),name:n[k].name});
+          else if((o[k].grade||'')!==(n[k].grade||'')) changes.grade_changed.push({seq:s,no:noOf(s),name:n[k].name,from:o[k].grade||'-',to:n[k].grade||'-'}); });
+        Object.keys(o).forEach(k=>{ if(!(k in n)) changes.persons_removed.push({seq:s,no:noOf(s),name:o[k].name}); });
       });
     } catch(e){}
     // ── 변경이력 기록 (누가·언제·무슨 파일·건수 + diff) ──
@@ -744,12 +748,14 @@ function fmtChanges(ch){
   if(!(ta.length+tr.length+pa.length+pr.length+gc.length)) return '';
   const sum=[]; if(tr.length)sum.push(`취소 ${tr.length}팀`); if(ta.length)sum.push(`➕추가 ${ta.length}팀`);
   if(pr.length)sum.push(`➖빠짐 ${pr.length}`); if(pa.length)sum.push(`➕일행 ${pa.length}`); if(gc.length)sum.push(`등급 ${gc.length}`);
+  // 표시는 행사번호(no). 과거 로그(no 없음)는 seq 폴백. 숫자형(구 teams_added=seq)도 호환.
+  const nof = x => (x && typeof x==='object') ? (x.no!=null?x.no:x.seq) : x;
   let d='';
-  tr.forEach(t=>d+=`<div style="margin-left:20px;color:var(--err)">취소 ${t.seq} ${t.rep||''}(${t.n||0}명)</div>`);
-  ta.forEach(s=>d+=`<div style="margin-left:20px;color:var(--ok)">➕ 신규팀 ${s}</div>`);
-  pr.forEach(x=>d+=`<div style="margin-left:20px">➖ ${x.seq} <b>${x.name||''}</b> 빠짐</div>`);
-  pa.forEach(x=>d+=`<div style="margin-left:20px">➕ ${x.seq} <b>${x.name||''}</b> 추가</div>`);
-  gc.forEach(x=>d+=`<div style="margin-left:20px">${x.seq} ${x.name||''} 등급 ${x.from}→${x.to}</div>`);
+  tr.forEach(t=>d+=`<div style="margin-left:20px;color:var(--err)">취소 ${nof(t)} ${t.rep||''}(${t.n||0}명)</div>`);
+  ta.forEach(s=>d+=`<div style="margin-left:20px;color:var(--ok)">➕ 신규팀 ${nof(s)}</div>`);
+  pr.forEach(x=>d+=`<div style="margin-left:20px">➖ ${nof(x)} <b>${x.name||''}</b> 빠짐</div>`);
+  pa.forEach(x=>d+=`<div style="margin-left:20px">➕ ${nof(x)} <b>${x.name||''}</b> 추가</div>`);
+  gc.forEach(x=>d+=`<div style="margin-left:20px">${nof(x)} ${x.name||''} 등급 ${x.from}→${x.to}</div>`);
   return `<div style="margin-left:14px;color:var(--accent2);font-weight:700">↳ ${sum.join(' · ')}</div>${d}`;
 }
 // ── 변경이력 로드 (import_log) ──
