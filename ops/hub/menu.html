@@ -110,7 +110,12 @@
   <div class="panel">
     <h3 data-i18n="me_addTitle"></h3>
     <div class="formgrid">
-      <div class="f"><label data-i18n="me_code"></label><input class="inp code" id="n-code" type="text" placeholder="B1"></div>
+      <div class="f"><label data-i18n="me_code"></label>
+        <div style="display:flex;gap:4px">
+          <input class="inp code" id="n-code" type="text" placeholder="자동">
+          <button class="btn ghost sm" id="btn-nextcode" type="button" title="구분에 맞는 다음 코드 생성" style="padding:5px 9px">↻</button>
+        </div>
+      </div>
       <div class="f"><label data-i18n="me_nameJa"></label><input class="inp" id="n-ja" type="text" placeholder="生ビール"></div>
       <div class="f"><label data-i18n="me_nameKo"></label><input class="inp" id="n-ko" type="text" placeholder="생맥주"></div>
       <div class="f"><label data-i18n="me_cat"></label>
@@ -168,6 +173,25 @@ const CATS=['라운딩','식음','숙박','골프샵','기타'];
 const STATIONS=['kitchen','bar','none'];
 let state={ items:[] };
 
+// ── 코드 자동 채번: 구분(category)별 접두사 + 2자리 일련번호 ──
+const CODE_PREFIX={'라운딩':'R','식음':'F','숙박':'S','골프샵':'P','기타':'X'};
+function codeCounters(){
+  const m={}; Object.values(CODE_PREFIX).forEach(p=>m[p]=0);
+  state.items.forEach(it=>{ const s=String(it.code||'');
+    Object.values(CODE_PREFIX).forEach(p=>{ const mm=s.match(new RegExp('^'+p+'(\\d+)$')); if(mm) m[p]=Math.max(m[p],parseInt(mm[1],10)); });
+  });
+  return m;
+}
+function fmtCode(p,n){ return p+String(n).padStart(2,'0'); }
+function nextCode(cat){ const p=CODE_PREFIX[cat]||'X'; return fmtCode(p,(codeCounters()[p]||0)+1); }
+let lastAuto='';
+// 비어있거나 직전 자동값 그대로면 다음 코드로 갱신(수동 입력은 보존). force=버튼.
+function fillNextCode(force){
+  const el=$('#n-code'); if(!el) return;
+  const cur=el.value.trim();
+  if(force || !cur || cur===lastAuto){ const nc=nextCode($('#n-cat').value); el.value=nc; lastAuto=nc; }
+}
+
 function toast(msg,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.textContent=msg;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
 function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -198,6 +222,7 @@ async function load(){
   if(error){toast('로드 실패: '+error.message,'err');return;}
   state.items=data||[];
   render();
+  fillNextCode();   // 현재 DB 기준 다음 코드 자동 채움
 }
 
 function render(){
@@ -283,8 +308,8 @@ async function addOne(){
   const {error}=await supa.from('menu_items').insert(row);
   if(error){toast('추가 실패: '+error.message,'err');return;}
   toast('메뉴 추가됨','ok');
-  ['n-code','n-ja','n-ko'].forEach(id=>$('#'+id).value=''); $('#n-price').value=0;
-  await load();
+  ['n-code','n-ja','n-ko'].forEach(id=>$('#'+id).value=''); $('#n-price').value=0; lastAuto='';
+  await load();   // load()가 다음 코드 자동 채움
 }
 
 // 일괄: 한 줄 = name_ja, name_ko, category, venue, station, unit_price[, code]
@@ -306,6 +331,9 @@ async function addBulk(){
     });
   });
   if(!rows.length){toast('유효한 행이 없습니다: '+errs.join(' / '),'err');return;}
+  // 코드 생략 행은 구분별 자동 채번(연속)
+  const cc=codeCounters();
+  rows.forEach(r=>{ if(!r.code){ const p=CODE_PREFIX[r.category]||'X'; cc[p]=(cc[p]||0)+1; r.code=fmtCode(p,cc[p]); } });
   const {error}=await supa.from('menu_items').insert(rows);
   if(error){toast('일괄 추가 실패: '+error.message,'err');return;}
   $('#bulk-hint').textContent='';
@@ -317,6 +345,8 @@ async function addBulk(){
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-add').addEventListener('click',addOne);
 $('#btn-bulk').addEventListener('click',addBulk);
+$('#btn-nextcode').addEventListener('click',()=>fillNextCode(true));
+$('#n-cat').addEventListener('change',()=>fillNextCode());   // 구분 바꾸면 그 구분의 다음 코드
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 window.onSaizenLangChange=function(){ try{ render(); }catch(e){} };
