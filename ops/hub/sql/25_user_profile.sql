@@ -47,6 +47,7 @@ grant execute on function admin_list_users() to authenticated;
 
 -- ── 관리자: 권한 지정(이름·부서·직급 포함) ──
 drop function if exists admin_set_access(uuid, text, text[]);
+drop function if exists admin_set_access(uuid, text, text[], text, text, text);
 create function admin_set_access(p_user uuid, p_role text, p_areas text[],
                                  p_name text default null, p_dept text default null, p_title text default null)
 returns void language plpgsql security definer set search_path = public as $$
