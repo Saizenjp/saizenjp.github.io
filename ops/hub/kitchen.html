@@ -82,7 +82,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.28">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.29">
 </head>
 <body data-so-area="kitchen">
 <div class="topbar so-bar">
@@ -113,9 +113,8 @@
 
 <div class="toolbar">
   <div class="seg" id="station-seg">
-    <button data-station="kitchen" class="active" data-i18n="ki_stKitchen"></button>
-    <button data-station="bar" data-i18n="ki_stBar"></button>
-    <button data-station="__all__" data-i18n="ki_stAll"></button>
+    <button data-station="kitchen" data-i18n="ki_stKitchen"></button>
+    <button data-station="front" data-i18n="ki_stFront"></button>
   </div>
   <label><input type="checkbox" id="auto" checked> <span data-i18n="ki_auto"></span></label>
   <label title="신규 주문 알림음"><input type="checkbox" id="snd" checked> 🔔</label>
@@ -129,7 +128,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.28"></script>
+<script src="../assets/saizen-ops.js?v=14.29"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 주방 화면(KDS)  · docs 정산명세(04) Phase 3
@@ -140,7 +139,9 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
 const POLL_MS=7000;
 const AGE_WARN=600, AGE_OLD=1200;   // 10분 경과 주의 · 20분 경과 지연(초)
-let state={ station:'kitchen', tickets:[] };
+// ?view=front 로 들어오면 바·프론트(주방+바 전체) 화면으로 시작.
+const _view=new URLSearchParams(location.search).get('view');
+let state={ station:(_view==='front'?'front':'kitchen'), tickets:[] };
 let pollTimer=null;
 let seenNew=new Set(), firstLoad=true, flashIds=new Set(), audioCtx=null, reconnecting=false;
 
@@ -198,7 +199,8 @@ async function connect(){
 async function refresh(){
   if(!supa) return;
   let q=supa.from('kitchen_tickets').select('*').in('status',['new','accepted']).order('created_at');
-  if(state.station!=='__all__') q=q.eq('station',state.station);
+  if(state.station==='kitchen') q=q.eq('station','kitchen');
+  else if(state.station==='front') q=q.in('station',['kitchen','bar']);   // 바·프론트=주방+바 전부
   const {data,error}=await q;
   if(error){ handleConnLoss(error); return; }
   reconnecting=false;
@@ -282,6 +284,8 @@ $('#station-seg').querySelectorAll('button').forEach(b=>b.addEventListener('clic
   $('#station-seg').querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));
   refresh();
 }));
+// 초기 활성 탭(=?view 반영)
+$('#station-seg').querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.station===state.station));
 window.addEventListener('pointerdown',initAudio);   // 첫 터치/클릭에 알림음 언락
 // 연결 끊김 자동 재연결(10초마다 점검)
 setInterval(()=>{ if(!supa && $('#sb-url').value && $('#sb-key').value){ connect(); } }, 10000);
