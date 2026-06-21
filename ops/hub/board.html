@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 부서 공지 / 오늘 요약</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad; --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#3d5424; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#2c3d19;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --mono:'SFMono-Regular',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .topbar .grow{flex:1}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,textarea{font-family:inherit}
+  .inp{padding:8px 11px;border:1px solid var(--border2);border-radius:7px;background:var(--surface);color:var(--text);font-size:14px;width:100%}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  textarea.inp{min-height:70px;resize:vertical}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:8px 15px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.danger{border-color:#e3bdb4;color:var(--err);background:transparent}
+  .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{max-width:920px;margin:0 auto;padding:18px 20px 90px}
+
+  .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px}
+  .sm-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 15px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .sm-card .lab{font-size:11.5px;color:var(--text2);font-weight:700}
+  .sm-card .val{font-size:23px;font-weight:800;color:var(--accent);font-family:var(--mono);margin-top:3px}
+  .sm-card .sub{font-size:11px;color:var(--muted)}
+  .sm-date{font-size:12px;color:var(--text2);font-weight:700;margin:0 0 9px}
+
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .write-row{display:flex;flex-direction:column;gap:8px}
+  .write-row .opts{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .write-row label{font-size:12.5px;color:var(--text2);font-weight:700;display:inline-flex;align-items:center;gap:5px}
+
+  .ann{border:1px solid var(--border);border-left:4px solid var(--border2);border-radius:10px;padding:12px 15px;margin-bottom:11px;background:var(--surface)}
+  .ann.pin{border-left-color:var(--accent2);background:#fdfbf3}
+  .ann .ah{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .ann .at{font-size:15px;font-weight:800}
+  .ann .ameta{margin-left:auto;font-size:11.5px;color:var(--muted)}
+  .ann .abody{font-size:13.5px;color:var(--text);margin-top:6px;white-space:pre-wrap;line-height:1.55}
+  .ann .actions{margin-top:9px;display:flex;gap:7px}
+  .ann . pinbadge{font-size:10px}
+  .empty{text-align:center;color:var(--muted);font-size:14px;padding:34px 0}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.24">
+</head>
+<body>
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step">부서 공지 · 오늘 요약</span>
+  <a class="navhome" href="../index.html">← 홈</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint">공지 작성은 마스터·관리담당만 가능합니다.</span>
+</div>
+
+<div class="wrap">
+  <!-- 오늘 요약 -->
+  <div class="sm-date" id="sm-date">오늘 요약</div>
+  <div class="summary" id="summary"></div>
+
+  <!-- 공지 작성(admin/manager) -->
+  <div class="panel" id="write-panel" style="display:none">
+    <h3>✏ 공지 작성</h3>
+    <div class="write-row">
+      <input class="inp" id="w-title" placeholder="제목" maxlength="120">
+      <textarea class="inp" id="w-body" placeholder="내용"></textarea>
+      <div class="opts">
+        <label><input type="checkbox" id="w-pin"> 📌 상단 고정</label>
+        <button class="btn" id="w-post" type="button" style="margin-left:auto">공지 등록</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 공지 목록 -->
+  <div class="panel">
+    <h3>📢 공지사항</h3>
+    <div id="ann-list"><div class="empty">연결 후 표시됩니다.</div></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-ops.js?v=14.24"></script>
+<script>
+const $=s=>document.querySelector(s);
+let supa=null, canWrite=false, anns=[];
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+function yen(n){return '¥'+Number(n||0).toLocaleString('ja-JP');}
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn('URL·key 필요','err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
+      $('#ann-list').innerHTML='<div class="empty">로그인이 필요합니다. 상단 [로그인] 후 다시 연결하세요.</div>'; return; }
+    const acc=(window.__so_meAccess)?await __so_meAccess():null;
+    canWrite = !!(acc && (acc.role==='admin'||acc.role==='manager'));
+    $('#write-panel').style.display = canWrite ? '' : 'none';
+    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.disabled=false;
+    await Promise.all([loadSummary(), loadAnns()]);
+  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결·재시도';btn.disabled=false; supa=null; toast('연결 실패: '+e.message+' (SQL 21 실행 확인)','err'); }
+}
+
+async function loadSummary(){
+  const {data,error}=await supa.rpc('today_summary');
+  const box=$('#summary');
+  if(error){ box.innerHTML='<div class="sm-card"><div class="lab">요약 불가</div><div class="sub">'+esc(error.message)+'</div></div>'; return; }
+  const s=data||{};
+  $('#sm-date').textContent='오늘 요약 · '+(s.date||'');
+  box.innerHTML=`
+    <div class="sm-card"><div class="lab">체크인 팀</div><div class="val">${s.checkin_teams||0}</div><div class="sub">${s.checkin_pax||0}명</div></div>
+    <div class="sm-card"><div class="lab">체크아웃 팀</div><div class="val">${s.checkout_teams||0}</div><div class="sub">팀</div></div>
+    <div class="sm-card"><div class="lab">오늘 주문</div><div class="val">${s.orders||0}</div><div class="sub">건</div></div>
+    <div class="sm-card"><div class="lab">오늘 매출</div><div class="val" style="font-size:18px">${yen(s.sales)}</div><div class="sub">税込</div></div>`;
+}
+
+async function loadAnns(){
+  const {data,error}=await supa.from('announcements').select('*')
+    .order('pinned',{ascending:false}).order('created_at',{ascending:false});
+  if(error){ toast('공지 로드 실패: '+error.message,'err'); return; }
+  anns=data||[]; renderAnns();
+}
+function fmtTs(ts){ const d=new Date(ts); return isNaN(d)?'':`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+function renderAnns(){
+  const box=$('#ann-list');
+  if(!anns.length){ box.innerHTML='<div class="empty">등록된 공지가 없습니다.</div>'; return; }
+  box.innerHTML=anns.map(a=>`
+    <div class="ann${a.pinned?' pin':''}">
+      <div class="ah">
+        <span class="at">${a.pinned?'📌 ':''}${esc(a.title)}</span>
+        <span class="ameta">${esc(a.author||'')} · ${fmtTs(a.created_at)}</span>
+      </div>
+      ${a.body?`<div class="abody">${esc(a.body)}</div>`:''}
+      ${canWrite?`<div class="actions">
+        <button class="btn sm ghost" data-pin="${a.id}">${a.pinned?'고정 해제':'📌 고정'}</button>
+        <button class="btn sm danger" data-del="${a.id}">삭제</button>
+      </div>`:''}
+    </div>`).join('');
+  if(canWrite){
+    box.querySelectorAll('[data-pin]').forEach(b=>b.addEventListener('click',()=>togglePin(b.dataset.pin)));
+    box.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>delAnn(b.dataset.del)));
+  }
+}
+
+async function postAnn(){
+  const title=$('#w-title').value.trim(), body=$('#w-body').value.trim(), pinned=$('#w-pin').checked;
+  if(!title){ toast('제목을 입력하세요','err'); return; }
+  const author=(window.__so_getUser&&__so_getUser())||'';
+  const {error}=await supa.from('announcements').insert({title,body,pinned,author});
+  if(error){ toast('등록 실패: '+error.message,'err'); return; }
+  $('#w-title').value=''; $('#w-body').value=''; $('#w-pin').checked=false;
+  toast('공지 등록됨','ok'); loadAnns();
+}
+async function togglePin(id){
+  const a=anns.find(x=>String(x.id)===String(id)); if(!a) return;
+  const {error}=await supa.from('announcements').update({pinned:!a.pinned,updated_at:new Date().toISOString()}).eq('id',id);
+  if(error){ toast('변경 실패: '+error.message,'err'); return; } loadAnns();
+}
+async function delAnn(id){
+  if(!confirm('이 공지를 삭제할까요?')) return;
+  const {error}=await supa.from('announcements').delete().eq('id',id);
+  if(error){ toast('삭제 실패: '+error.message,'err'); return; } loadAnns();
+}
+
+$('#btn-connect').addEventListener('click',connect);
+$('#w-post').addEventListener('click',postAnn);
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
