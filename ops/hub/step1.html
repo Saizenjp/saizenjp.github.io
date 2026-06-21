@@ -209,7 +209,6 @@ let supa = null;
 const SLOTS = [
   {id:'res',     data:null, file:''},
   {id:'ilhaeng', data:null, file:''},
-  {id:'member',  data:null, file:''},
 ];
 // 슬롯 표시 텍스트는 i18n 키로 조회 (데이터 식별은 id로만)
 function slotText(slot, kind){ return t('s1_slot_'+slot.id+'_'+kind); }
@@ -268,14 +267,7 @@ function handleFile(slotId, fileList){
     reader.onload = e=>{
       try{
         const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true});
-        let rows;
-        if(slotId==='member'){
-          // 그룹코드: '회원_배정_현황' 시트 우선
-          const sheetName = wb.SheetNames.includes('회원_배정_현황') ? '회원_배정_현황' : wb.SheetNames[0];
-          rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {defval:''});
-        } else {
-          rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
-        }
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
         merged = merged.concat(rows);
       }catch(err){
         log(`✗ ${slotText(slot,'name')} ${t('s1_dyn_readFail')}: ${err.message}`, 'err');
@@ -283,7 +275,6 @@ function handleFile(slotId, fileList){
       if(--pending<=0){
         slot.data = merged;
         slot.file = files.length>1 ? `${files.length}${t('s1_dyn_filesMerged')}` : files[0].name;
-        if(slotId==='member'){ try{ localStorage.setItem('saizen_hub_membercodes', JSON.stringify(slot.data)); }catch(e){} }
         log(`📄 ${slotText(slot,'name')} ${t('s1_dyn_load')}: ${slot.data.length.toLocaleString()}${t('s1_dyn_rows')}${files.length>1?' ('+files.length+t('s1_dyn_filesMerged')+')':''}`, 'ok');
         renderDrops();
         detectSession();
@@ -415,30 +406,13 @@ async function run(){
   const ym = window._sessionYM || null;
   const res = SLOTS.find(s=>s.id==='res').data;
   const ilh = SLOTS.find(s=>s.id==='ilhaeng').data;
-  const mem = SLOTS.find(s=>s.id==='member').data || [];
   const stat = {};
 
   try{
     log(`▶ ${t('s1_dyn_runStart')} ${ym||t('s1_dyn_noDetect')}`,'dim');
 
-    // ── 0) 그룹코드 참조 맵 (member_key → code) ──
-    const codeMap = {}; const memberRows = [];
-    mem.forEach(r=>{
-      const code = String(r['코드']||'').trim();
-      const key  = String(r['그룹 내 배정된 아이디']||'').trim();
-      if(!code || !key) return;
-      codeMap[key] = code;
-      memberRows.push({
-        code, member_key:key,
-        member_class:String(r['고객 구분']||'').trim()||null,
-        name_kr:String(r['성명']||'').trim()||null,
-        is_learned:false
-      });
-    });
-    if(memberRows.length){
-      stat['member_codes'] = await upsertChunked('member_codes', memberRows, 'code,member_key');
-      log(`✓ ${t('s1_dyn_log_member')} ${stat['member_codes']}${t('s1_dyn_cases')}`,'ok');
-    } else log('· '+t('s1_dyn_grpMissing'),'warn');
+    // ── 0) 그룹코드 참조 맵 (member_key → code) — 관리·마스터(그룹코드)의 member_codes에서 RPC로 채움(아래) ──
+    const codeMap = {};
 
     // ── 1) bookings (예약리스트 = 마스터) ──
     //   운영 대상만 추림: pax>0, 현지예약·항공조인·구마모토시내 제외, 숙소 4종 해당
@@ -759,18 +733,7 @@ function clearAll(){
   $('#session-label').textContent='';
   $('#stats-panel').style.display='none';
   clearLog(); log('초기화됨','dim');
-  loadMemberCache();
   renderDrops();
-}
-
-// ── 그룹코드 캐시: 한번 등록하면 유지 ──
-function loadMemberCache(){
-  const slot = SLOTS.find(s=>s.id==='member');
-  if(slot.data && slot.data.length) return;
-  try{
-    const cached = JSON.parse(localStorage.getItem('saizen_hub_membercodes')||'[]');
-    if(cached.length){ slot.data = cached; slot.file = t('s1_dyn_memberCached'); }
-  }catch(e){}
 }
 
 // ── 수정이력(diff) 표시: 취소·추가팀 / 일행 빠짐·추가·등급변경 (이름+생년 기준) ──
@@ -825,7 +788,6 @@ $('#btn-run').addEventListener('click', run);
 $('#done-stay') && $('#done-stay').addEventListener('click', ()=>{ const m=$('#done-modal'); if(m) m.style.display='none'; });
 $('#done-modal') && $('#done-modal').addEventListener('click', e=>{ if(e.target.id==='done-modal') e.target.style.display='none'; });
 loadCreds();
-loadMemberCache();
 try{ const u=localStorage.getItem('saizen_hub_uploader'); if(u){ const el=$('#uploader'); if(el) el.value=u; } }catch(e){}
 renderDrops();
 log(t('s1_logWait'),'dim');
