@@ -136,7 +136,7 @@
   @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.27">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.28">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -165,6 +165,7 @@
 </div>
 
 <div class="toolbar">
+  <span class="pill" id="outlet-tag" style="display:none;background:var(--accentSoft);color:var(--accent);border-color:#b4cda0;font-size:13px"></span>
   <label data-i18n="po_dateLabel"></label>
   <input class="inp" id="date-pick" type="date">
   <button class="btn sm" id="btn-load" type="button" disabled data-i18n="po_btnLoad"></button>
@@ -219,7 +220,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.27"></script>
+<script src="../assets/saizen-ops.js?v=14.28"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -229,9 +230,19 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
 const TAX_RATE=0.10;   // 内税: 메뉴가=최종가(税込). 단가에서 소비세를 빼내 표시(더하지 않음)
-const VENUE_LABEL={restaurant:'レストラン / 레스토랑',banquet:'宴会場 / 연회장',proshop:'ゴルフショップ / 골프샵',etc:'その他 / 기타'};
+const VENUE_LABEL={restaurant:'レストラン / 레스토랑',banquet:'宴会場 / 연회장',proshop:'ゴルフショップ / 골프샵',front:'フロント / 프론트 매점',etc:'その他 / 기타'};
+// 매장(outlet) = venue 묶음. ?outlet= 로 해당 매장만 노출(레스토랑/골프샵/프론트 분리).
+const OUTLETS={
+  front:     {label:'🛎 フロント / 프론트 매점', venues:['front']},
+  restaurant:{label:'🍽 レストラン·宴会 / 레스토랑·연회', venues:['restaurant','banquet']},
+  golf:      {label:'🏌 ゴルフショップ / 골프샵', venues:['proshop']}
+};
+const _outletParam=new URLSearchParams(location.search).get('outlet')||'';
 let state={ date:'', teams:[], menu:[], venue:'__all__', team:null, folioId:null, runningGross:0, cart:[],
-  roster:[], payerMode:'team', payerSel:new Set(), memberFolio:{} };
+  roster:[], payerMode:'team', payerSel:new Set(), memberFolio:{},
+  outlet:(OUTLETS[_outletParam]?_outletParam:null) };
+// 이 매장이 다루는 venue 목록(없으면 전 매장)
+function outletVenues(){ return state.outlet ? OUTLETS[state.outlet].venues : null; }
 // 주문 기록 담당자 = 공유 상단바 담당자(saizen_ops_user). 없으면 폴백.
 function opBy(){ return (window.__so_getUser && __so_getUser()) || localStorage.getItem('saizen_op_name') || 'pos'; }
 
@@ -387,7 +398,12 @@ function renderPayer(){
 
 function renderVenueTabs(){
   const box=$('#venue-tabs'); box.innerHTML='';
-  const venues=[...new Set(state.menu.map(m=>m.venue||'etc'))];
+  const ov=outletVenues();
+  // 매장이 지정되면 그 매장 venue만, 아니면 메뉴에 존재하는 전 venue
+  let venues=[...new Set(state.menu.map(m=>m.venue||'etc'))];
+  if(ov) venues=ov.filter(v=>venues.includes(v));
+  // venue 1개뿐이면 탭 숨김(프론트·골프샵 등)
+  if(ov && venues.length<=1){ state.venue='__all__'; return; }
   const tabs=[['__all__',t('po_allVenues')]].concat(venues.map(v=>[v,VENUE_LABEL[v]||v]));
   tabs.forEach(([v,label])=>{
     const b=document.createElement('button'); b.type='button';
@@ -400,7 +416,12 @@ function renderVenueTabs(){
 
 function renderMenu(){
   const box=$('#menu-grid'); box.innerHTML='';
-  const list=state.menu.filter(m=>state.venue==='__all__'||(m.venue||'etc')===state.venue);
+  const ov=outletVenues();
+  const list=state.menu.filter(m=>{
+    const v=m.venue||'etc';
+    if(ov && !ov.includes(v)) return false;               // 이 매장 venue만
+    return state.venue==='__all__' || v===state.venue;    // 선택 탭
+  });
   if(!list.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyMenu')+'</div>'; return; }
   list.forEach(m=>{
     const b=document.createElement('button'); b.type='button'; b.className='menu-btn';
@@ -426,7 +447,10 @@ function addToCart(m){
   const key=m.id+'|'+price+'|'+desc;
   const exist=state.cart.find(l=>l.key===key);
   if(exist) exist.qty+=1;
-  else state.cart.push({key, id:m.id, category:m.category, venue:m.venue||'etc', station:m.station||'kitchen', name_ja:desc, name_ko:(price===Number(m.unit_price)?m.name_ko:''), unit_price:price, qty:1});
+  else { const vv=m.venue||'etc';
+    // 주방행 판정: 명시 station 우선, 없으면 매장 추정(프론트·골프샵=카운터→주방티켓 없음)
+    const st=m.station||((vv==='front'||vv==='proshop')?'counter':'kitchen');
+    state.cart.push({key, id:m.id, category:m.category, venue:vv, station:st, name_ja:desc, name_ko:(price===Number(m.unit_price)?m.name_ko:''), unit_price:price, qty:1}); }
   renderCart();
 }
 function changeQty(key,delta){
@@ -589,6 +613,14 @@ function koRender(rows){
   list.innerHTML=html;
 }
 
+// 매장 고정 표시(?outlet=) — 지정 시 그 매장만, 미지정이면 전 매장(기존 동작)
+function applyOutlet(){
+  const tag=$('#outlet-tag'); if(!tag) return;
+  if(state.outlet){ tag.textContent=OUTLETS[state.outlet].label; tag.style.display='';
+    try{ document.title='POS · '+OUTLETS[state.outlet].label.replace(/^[^ ]+ /,''); }catch(e){} }
+  else tag.style.display='none';
+}
+
 // ── 부팅 ──
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-load').addEventListener('click',loadTeams);
@@ -596,6 +628,7 @@ $('#btn-back').addEventListener('click',backToTeams);
 $('#btn-send').addEventListener('click',sendCart);
 $('#ko-refresh').addEventListener('click',koRefresh);
 $('#date-pick').value=isoToday();
+applyOutlet();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
