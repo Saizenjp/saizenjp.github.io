@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 그룹코드 관리(마스터)</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
@@ -126,6 +127,15 @@ function renderUI(){
       </div>
     </div>
     <div class="panel">
+      <h3>일괄 등록 (xlsx) — 최초 1회</h3>
+      <div class="desc">회원그룹코드 / <b>회원_배정_현황</b> 엑셀을 올리면 <b>코드·그룹 내 배정된 아이디·고객 구분·성명</b> 컬럼을 읽어 한 번에 등록(같은 키 덮어쓰기)합니다. 이후에는 위에서 직접 관리하세요.</div>
+      <div class="form-row">
+        <input class="inp" id="imp-file" type="file" accept=".xlsx,.xls">
+        <button class="btn" id="imp-go" type="button" disabled>등록</button>
+        <span class="cnt" id="imp-stat"></span>
+      </div>
+    </div>
+    <div class="panel">
       <h3>검색 <span class="cnt" id="gc-cnt"></span></h3>
       <div class="form-row" style="margin-bottom:8px">
         <input class="inp" id="q" placeholder="성명·그룹코드·키로 검색" style="width:260px">
@@ -138,6 +148,51 @@ function renderUI(){
   $('#f-clear').addEventListener('click',()=>{['f-name','f-birth','f-code'].forEach(id=>$('#'+id).value='');$('#f-class').value='';});
   $('#btn-search').addEventListener('click',search);
   $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
+  wireImport();
+}
+
+// ── 일괄 등록(xlsx): 회원_배정_현황 → member_codes upsert ──
+let impRows=[];
+function wireImport(){
+  const f=$('#imp-file'); if(!f) return;
+  f.addEventListener('change',e=>{
+    const file=e.target.files[0]; if(!file){ impRows=[]; $('#imp-go').disabled=true; $('#imp-stat').textContent=''; return; }
+    const rd=new FileReader();
+    rd.onload=ev=>{
+      try{
+        const wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
+        const sh=wb.SheetNames.includes('회원_배정_현황')?'회원_배정_현황':wb.SheetNames[0];
+        const rows=XLSX.utils.sheet_to_json(wb.Sheets[sh],{defval:''});
+        impRows=rows.map(r=>({
+          code:String(r['코드']||'').trim(),
+          member_key:String(r['그룹 내 배정된 아이디']||'').trim(),
+          member_class:String(r['고객 구분']||'').trim()||null,
+          name_kr:String(r['성명']||'').trim()||null,
+          is_learned:false
+        })).filter(x=>x.code&&x.member_key);
+        $('#imp-stat').textContent=`${impRows.length.toLocaleString()}건 인식 (시트: ${sh})`;
+        $('#imp-go').disabled=!impRows.length;
+      }catch(err){ impRows=[]; $('#imp-go').disabled=true; $('#imp-stat').textContent='읽기 실패: '+err.message; toast('읽기 실패: '+err.message,'err'); }
+    };
+    rd.readAsArrayBuffer(file);
+  });
+  $('#imp-go').addEventListener('click',importGo);
+}
+async function importGo(){
+  if(!impRows.length||!supa) return;
+  $('#imp-go').disabled=true;
+  const CH=500; let done=0;
+  try{
+    for(let i=0;i<impRows.length;i+=CH){
+      const chunk=impRows.slice(i,i+CH);
+      const {error}=await supa.from('member_codes').upsert(chunk,{onConflict:'code,member_key'});
+      if(error) throw error;
+      done+=chunk.length; $('#imp-stat').textContent=`${done.toLocaleString()}/${impRows.length.toLocaleString()} 등록…`;
+    }
+    $('#imp-stat').textContent=`${done.toLocaleString()}건 등록 완료`;
+    toast(`${done.toLocaleString()}건 등록 완료`,'ok');
+    $('#imp-file').value=''; impRows=[]; search();
+  }catch(e){ toast('등록 실패: '+e.message,'err'); $('#imp-go').disabled=false; }
 }
 
 async function saveMember(){
