@@ -52,6 +52,7 @@
       ix_g1Desc: r('予約','よやく')+'ファイル'+r('登録','とうろく')+' · '+r('変更','へんこう')+r('履歴','りれき'),
       ix_c1Step: 'STEP 1',
       ix_c1H: r('データ','')+r('登録','とうろく'),
+      ix_c1Req: r('必須','ひっす'),
       ix_c1Cd: r('予約','よやく')+'リスト・'+r('同行者','どうこうしゃ')+r('別','べつ')+r('予約','よやく')+'の2'+r('つ','')+'のファイルをアップロードすると、'+r('自動','じどう')+'で'+r('整理','せいり')+'・'+r('保存','ほぞん')+'されます。グループコードは'+r('選択','せんたく')+'（'+r('一度','いちど')+r('登録','とうろく')+'すると'+r('保持','ほじ')+'）。'+r('同','おな')+'じファイルを'+r('再','さい')+'アップロードしても'+r('重複','じゅうふく')+'しません。',
       ix_g2H: r('現場','げんば')+r('運営','うんえい'),
       ix_g2Desc: r('登録','とうろく')+'したデータで'+r('配置','はいち')+'・'+r('精算','せいさん'),
@@ -77,7 +78,7 @@
       ix_dBoard: r('統合','とうごう')+'ボード',
       ix_dBoardDesc: r('全部署','ぜんぶしょ')+'の'+r('共有','きょうゆう')+'・'+r('今日','きょう')+'の'+r('要約','ようやく'),
       ix_dFront: 'フロント・'+r('客室','きゃくしつ'),
-      ix_dFrontDesc: r('予約','よやく')+r('登録','とうろく')+'・'+r('部屋','へや')+r('割','わ')+'り',
+      ix_dFrontDesc: r('部屋','へや')+r('割','わ')+'り・'+r('客室','きゃくしつ'),
       ix_dFnb: r('飲食','いんしょく')+'（F&B）',
       ix_dFnbDesc: 'POS・'+r('厨房','ちゅうぼう')+'・メニュー',
       ix_dGolf: 'ゴルフ',
@@ -285,6 +286,7 @@
       ix_g1Desc: '예약 파일 등록 · 변경이력',
       ix_c1Step: 'STEP 1',
       ix_c1H: '데이터 등록',
+      ix_c1Req: '필수',
       ix_c1Cd: '예약리스트·일행별예약 2개 파일을 올리면 자동으로 정리되어 저장됩니다. 그룹코드는 선택(한번 등록하면 유지). 같은 파일을 다시 올려도 중복되지 않습니다.',
       ix_g2H: '현장 운영',
       ix_g2Desc: '등록된 데이터로 배정·정산',
@@ -310,7 +312,7 @@
       ix_dBoard: '통합 보드판',
       ix_dBoardDesc: '전 부서 공유 · 오늘 요약',
       ix_dFront: '프론트·객실',
-      ix_dFrontDesc: '예약 등록 · 방배정',
+      ix_dFrontDesc: '방배정 · 객실',
       ix_dFnb: '식음 (F&B)',
       ix_dFnbDesc: 'POS · 주방 · 메뉴',
       ix_dGolf: '골프',
@@ -516,6 +518,7 @@
       ix_g1Desc: 'Reservation file registration · change history',
       ix_c1Step: 'STEP 1',
       ix_c1H: 'Data Registration',
+      ix_c1Req: 'Required',
       ix_c1Cd: 'Upload the two files — reservation list and per-companion reservations — and they are organized and saved automatically. Group codes are optional (kept once registered). Re-uploading the same file does not create duplicates.',
       ix_g2H: 'Field Operations',
       ix_g2Desc: 'Assign and settle using registered data',
@@ -541,7 +544,7 @@
       ix_dBoard: 'Board',
       ix_dBoardDesc: 'All-dept sharing · today summary',
       ix_dFront: 'Front · Rooms',
-      ix_dFrontDesc: 'Reservation · room assignment',
+      ix_dFrontDesc: 'Room assignment',
       ix_dFnb: 'F&B',
       ix_dFnbDesc: 'POS · Kitchen · Menu',
       ix_dGolf: 'Golf',
@@ -793,6 +796,18 @@
   // ── 담당자(식별 라벨) — 모든 ops 페이지 상단바에 주입. 수정이력 기록용.
   //    로그인 세션이 있으면 그 이름(가입 시 입력)을 우선 사용 → 로그인=담당자 통합.
   //    로그인 안 했으면 수기 위젯값(saizen_ops_user)을 사용.
+  // ── 부서 키↔라벨(전 페이지 공유) — 권한·공지·작성자 프로필 공통 ──
+  var SO_DEPTS = [
+    ['front', '🛎 프론트·객실'],
+    ['fnb',   '🍽 식음'],
+    ['golf',  '🏌 골프'],
+    ['acct',  '💴 회계']
+  ];
+  var _deptMap = {}; SO_DEPTS.forEach(function (d) { _deptMap[d[0]] = d[1]; });
+  function deptLabelOf(k) { return k ? (_deptMap[k] || k) : ''; }
+  global.__so_DEPTS = SO_DEPTS;
+  global.__so_deptLabel = deptLabelOf;
+
   var _sessionName = '';
   function getUser() { return _sessionName || localStorage.getItem('saizen_ops_user') || ''; }
   global.__so_getUser = getUser;
@@ -870,18 +885,23 @@
     box.insertBefore(wrap, box.firstChild);
     c.auth.getSession().then(function (res) {
       var u = res && res.data && res.data.session ? res.data.session.user : null;
-      if (u) {
-        // 로그인=담당자 통합: 세션 이름을 담당자로 채택하고 수기 이름 위젯은 숨김.
+      if (!u) { renderAuth(wrap, null, null); return; }
+      var su = document.getElementById('so-user');
+      if (su) su.style.display = 'none';
+      // 마스터가 지정한 프로필(이름·부서·직급) 우선 → 첫 로그인 이름설정 강제 안 함.
+      meAccess().then(function (acc) {
+        var nm = (acc && acc.name) || metaName(u) || '';
+        _sessionName = nm || (u.email || '');
+        renderAuth(wrap, u, acc, nm);
+      }).catch(function () {
         _sessionName = sessionNameOf(u);
-        var su = document.getElementById('so-user');
-        if (su) su.style.display = 'none';
-      }
-      renderAuth(wrap, u);
-    }).catch(function () { renderAuth(wrap, null); });
+        renderAuth(wrap, u, null, metaName(u));
+      });
+    }).catch(function () { renderAuth(wrap, null, null); });
   }
-  function renderAuth(wrap, user) {
-    if (user && !metaName(user)) {
-      // 초대받아 첫 로그인 — 이름(담당자명)을 1회 설정해 계정에 저장.
+  function renderAuth(wrap, user, acc, knownName) {
+    if (user && !knownName) {
+      // 마스터가 이름 미지정 + 본인 메타도 없음 → 이름(담당자명)을 1회 설정.
       wrap.innerHTML = '<span class="so-auth-ic">🔐</span>'
         + '<input id="so-auth-nm" class="so-user-in" type="text" placeholder="이름(담당자명)" autocomplete="name" style="width:108px">'
         + '<button type="button" class="so-user-btn save" id="so-auth-nm-go">저장</button>';
@@ -891,8 +911,11 @@
       nm.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
       try { nm.focus(); } catch (e) {}
     } else if (user) {
+      var sub = (acc && (acc.dept || acc.title))
+        ? ' <span class="so-auth-sub" style="font-size:11px;color:var(--muted,#8a937c)">(' + escU([deptLabelOf(acc.dept), acc.title].filter(Boolean).join('·')) + ')</span>'
+        : '';
       wrap.innerHTML = '<span class="so-auth-ic">🔐</span>'
-        + '<span class="so-auth-email"><b>' + escU(sessionNameOf(user)) + '</b> 님</span>'
+        + '<span class="so-auth-email"><b>' + escU(knownName) + '</b> 님' + sub + '</span>'
         + '<button type="button" class="so-user-btn" id="so-auth-out">로그아웃</button>';
       wrap.querySelector('#so-auth-out').addEventListener('click', authLogout);
     } else {
@@ -942,9 +965,10 @@
     _meP = c.auth.getSession().then(function (r) {
       if (!r || !r.data || !r.data.session) return null;
       return c.rpc('me_access').then(function (rr) {
-        if (rr.error || !rr.data || !rr.data[0]) return { role: 'staff', areas: [] };
-        return { role: rr.data[0].role, areas: rr.data[0].areas || [] };
-      }).catch(function () { return { role: 'staff', areas: [] }; });
+        if (rr.error || !rr.data || !rr.data[0]) return { role: 'staff', areas: [], name: '', dept: '', title: '' };
+        var a = rr.data[0];
+        return { role: a.role, areas: a.areas || [], name: a.name || '', dept: a.dept || '', title: a.title || '' };
+      }).catch(function () { return { role: 'staff', areas: [], name: '', dept: '', title: '' }; });
     }).catch(function () { return null; });
     return _meP;
   }
