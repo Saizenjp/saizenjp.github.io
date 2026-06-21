@@ -67,7 +67,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.25">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.26">
 </head>
 <body>
 <div class="topbar so-bar">
@@ -103,6 +103,7 @@
     <div class="write-row">
       <input class="inp" id="w-title" placeholder="제목" maxlength="120">
       <textarea class="inp" id="w-body" placeholder="내용"></textarea>
+      <div id="w-who" style="font-size:11.5px;color:var(--muted);font-weight:600"></div>
       <div class="opts">
         <label>부서 <select class="inp" id="w-dept" style="width:auto;padding:6px 9px"></select></label>
         <label><input type="checkbox" id="w-pin"> 📌 상단 고정</label>
@@ -120,10 +121,10 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=14.25"></script>
+<script src="../assets/saizen-ops.js?v=14.26"></script>
 <script>
 const $=s=>document.querySelector(s);
-let supa=null, canWrite=false, anns=[];
+let supa=null, canWrite=false, anns=[], myAcc=null;
 // 부서 키 ↔ 라벨 (NULL/'' = 전사)
 const DEPTS=[['front','🛎 프론트·객실'],['fnb','🍽 식음'],['golf','🏌 골프'],['acct','💴 회계']];
 const DEPT_LABEL=Object.fromEntries(DEPTS);
@@ -148,6 +149,7 @@ async function connect(){
     if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
       $('#ann-list').innerHTML='<div class="empty">로그인이 필요합니다. 상단 [로그인] 후 다시 연결하세요.</div>'; return; }
     const acc=(window.__so_meAccess)?await __so_meAccess():null;
+    myAcc=acc;
     canWrite = !!(acc && (acc.role==='admin'||acc.role==='manager'));
     $('#write-panel').style.display = canWrite ? '' : 'none';
     if(canWrite) fillWriteDept();
@@ -179,7 +181,17 @@ function fmtTs(ts){ const d=new Date(ts); return isNaN(d)?'':`${d.getFullYear()}
 function fillWriteDept(){
   const sel=$('#w-dept'); if(!sel) return;
   sel.innerHTML='<option value="">전사(공통)</option>'+DEPTS.map(([k,l])=>`<option value="${k}">${l}</option>`).join('');
-  sel.value=curDept||'';
+  // 작성 부서 기본값 = 내 계정 부서(마스터 지정) → 없으면 진입 부서 → 전사
+  sel.value=(myAcc&&myAcc.dept)||curDept||'';
+  // 작성자(이름·직급) 자동 표시
+  const who=$('#w-who');
+  if(who){ const nm=authorName(); who.textContent = nm ? ('작성자: '+nm+(myAcc&&myAcc.dept?(' · 기본 부서 '+deptLabel(myAcc.dept)):'')) : ''; }
+}
+// 작성자 = 마스터 지정 이름(+직급) 우선
+function authorName(){
+  const nm=(myAcc&&myAcc.name)||(window.__so_getUser&&__so_getUser())||'';
+  const ttl=(myAcc&&myAcc.title)||'';
+  return nm?(nm+(ttl?(' '+ttl):'')):'';
 }
 function renderChips(){
   const wrap=$('#dept-chips');
@@ -221,7 +233,7 @@ function renderAnns(){
 async function postAnn(){
   const title=$('#w-title').value.trim(), body=$('#w-body').value.trim(), pinned=$('#w-pin').checked;
   if(!title){ toast('제목을 입력하세요','err'); return; }
-  const author=(window.__so_getUser&&__so_getUser())||'';
+  const author=authorName();
   const dept=($('#w-dept')&&$('#w-dept').value)||null;
   const {error}=await supa.from('announcements').insert({title,body,pinned,author,dept});
   if(error){ toast('등록 실패: '+error.message,'err'); return; }
