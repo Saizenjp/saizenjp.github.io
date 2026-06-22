@@ -1175,13 +1175,10 @@
       + '<div style="margin-top:6px;color:var(--text2,#566049);font-size:12px;line-height:1.5">계정이 없으시면 아래로 요청을 보내세요.<br>마스터(관리자) 확인 후 계정이 발급됩니다.</div>'
       + '<input id="so-rq-nm" type="text" placeholder="이름" autocomplete="name" style="margin-top:16px;' + lcInput() + '">'
       + '<input id="so-rq-em" type="email" placeholder="이메일(계정으로 사용할 주소)" autocomplete="email" spellcheck="false" style="margin-top:10px;' + lcInput() + '">'
-      + '<input id="so-rq-dp" type="text" placeholder="부서·직책 (선택)" style="margin-top:10px;' + lcInput() + '">'
-      + '<textarea id="so-rq-msg" placeholder="요청 메모 (선택)" rows="2" style="margin-top:10px;resize:vertical;' + lcInput() + '"></textarea>'
       + '<div id="so-rq-err" style="display:none;margin-top:10px;color:#b13b2c;font-size:12.5px;font-weight:600"></div>'
       + '<button type="button" id="so-rq-go" style="margin-top:16px;' + lcBtn() + '">요청 보내기</button>'
       + '<div style="margin-top:12px"><a id="so-rq-back" style="' + lcLink() + '">← 로그인으로</a></div>';
     var nm = card.querySelector('#so-rq-nm'), em = card.querySelector('#so-rq-em'),
-        dp = card.querySelector('#so-rq-dp'), msg = card.querySelector('#so-rq-msg'),
         err = card.querySelector('#so-rq-err'), btn = card.querySelector('#so-rq-go');
     function fail(m) { err.textContent = m; err.style.display = 'block'; btn.disabled = false; btn.textContent = '요청 보내기'; }
     function go() {
@@ -1190,7 +1187,7 @@
       if (!n || !e) { fail('이름과 이메일을 입력하세요.'); return; }
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { fail('이메일 형식을 확인하세요.'); return; }
       err.style.display = 'none'; btn.disabled = true; btn.textContent = '보내는 중…';
-      c.from('access_requests').insert({ name: n, email: e, dept: dp.value.trim() || null, message: msg.value.trim() || null })
+      c.from('access_requests').insert({ name: n, email: e })
         .then(function (res) {
           if (res && res.error) { fail('요청 실패: ' + res.error.message); return; }
           card.innerHTML =
@@ -1293,7 +1290,59 @@
     }
   }
 
-  function boot() { mountAuth(); applyLang(); guardPage(); mountConnToggle(); }
+  // ── 초대/비밀번호 재설정 링크 처리: #...type=invite|recovery 로 들어오면 비번 설정 화면 ──
+  //   · Supabase Dashboard에서 Invite 발송 → 사용자가 메일 링크 클릭 → 여기로 와서 비번 설정.
+  //   · supabase-js(detectSessionInUrl)가 해시에서 세션을 잡음 → updateUser({password})로 설정.
+  function handleAuthRedirect() {
+    var h = location.hash || '';
+    if (!/[#&]type=(invite|recovery|signup)/.test(h) && !/access_token=/.test(h)) return false;
+    if (!/type=(invite|recovery|signup)/.test(h)) return false;   // 비번 설정이 필요한 종류만
+    var c = authClient(); if (!c) return false;
+    showSetPasswordCard(c);
+    return true;
+  }
+  function showSetPasswordCard(c) {
+    var ov = document.createElement('div');
+    ov.setAttribute('style', 'position:fixed;inset:0;z-index:100000;background:rgba(31,42,24,.55);display:flex;align-items:center;justify-content:center;padding:20px');
+    var card = document.createElement('div');
+    card.setAttribute('style', 'background:var(--surface,#fff);border:1px solid var(--border2,#bcc4ad);border-radius:14px;box-shadow:0 12px 44px rgba(31,42,24,.16);padding:30px 28px;width:340px;max-width:92vw;text-align:center');
+    card.innerHTML =
+        '<div style="font-size:20px;font-weight:800;color:var(--accent,#647548)">비밀번호 설정</div>'
+      + '<div style="margin-top:6px;color:var(--text2,#566049);font-size:12.5px">초대받은 계정의 비밀번호를 정하세요.<br>이후 이메일+비밀번호로 로그인합니다.</div>'
+      + '<input id="so-sp-pw" type="password" placeholder="새 비밀번호 (6자 이상)" autocomplete="new-password" style="margin-top:18px;' + lcInput() + '">'
+      + '<input id="so-sp-pw2" type="password" placeholder="비밀번호 확인" autocomplete="new-password" style="margin-top:10px;' + lcInput() + '">'
+      + '<div id="so-sp-err" style="display:none;margin-top:10px;color:#b13b2c;font-size:12.5px;font-weight:600"></div>'
+      + '<button type="button" id="so-sp-go" style="margin-top:16px;' + lcBtn() + '">설정하고 시작</button>';
+    ov.appendChild(card); document.body.appendChild(ov);
+    var pw = card.querySelector('#so-sp-pw'), pw2 = card.querySelector('#so-sp-pw2'),
+        err = card.querySelector('#so-sp-err'), btn = card.querySelector('#so-sp-go');
+    function fail(m) { err.textContent = m; err.style.display = 'block'; btn.disabled = false; btn.textContent = '설정하고 시작'; }
+    function go() {
+      var p = pw.value, p2 = pw2.value;
+      if (!p || p.length < 6) { fail('비밀번호는 6자 이상이어야 합니다.'); return; }
+      if (p !== p2) { fail('두 비밀번호가 다릅니다.'); return; }
+      err.style.display = 'none'; btn.disabled = true; btn.textContent = '설정 중…';
+      c.auth.updateUser({ password: p }).then(function (res) {
+        if (res && res.error) { fail('설정 실패: ' + res.error.message + ' (링크가 만료되었으면 재초대 필요)'); return; }
+        card.innerHTML = '<div style="font-size:34px">✓</div>'
+          + '<div style="margin-top:8px;font-size:17px;font-weight:800;color:var(--accent,#647548)">비밀번호 설정 완료</div>'
+          + '<div style="margin-top:8px;color:var(--text2,#566049);font-size:13px">이제 이메일과 비밀번호로 로그인하세요.</div>'
+          + '<button type="button" id="so-sp-ok" style="margin-top:18px;' + lcBtn() + '">로그인 화면으로</button>';
+        card.querySelector('#so-sp-ok').addEventListener('click', function () {
+          try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+          location.reload();
+        });
+      }).catch(function (ex) { fail('오류: ' + ex.message); });
+    }
+    btn.addEventListener('click', go);
+    pw2.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+    setTimeout(function () { try { pw.focus(); } catch (e) {} }, 60);
+  }
+
+  function boot() {
+    if (handleAuthRedirect()) { applyLang(); return; }   // 초대/재설정 모드면 비번 설정만
+    mountAuth(); applyLang(); guardPage(); mountConnToggle();
+  }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
   } else {
