@@ -129,7 +129,9 @@
 
   <!-- 메뉴 목록 -->
   <div class="panel">
-    <h3><span data-i18n="me_listTitle"></span> <span class="cnt" id="list-cnt"></span></h3>
+    <h3><span data-i18n="me_listTitle"></span>
+      <button class="btn sm" id="btn-saveall" type="button" disabled style="margin-left:8px">💾 전체 저장</button>
+      <span class="cnt" id="list-cnt"></span></h3>
     <div style="overflow:auto">
       <table class="menu" id="menu-table">
         <thead><tr>
@@ -199,7 +201,7 @@ async function connect(){
     if(error) throw error;
     setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
     btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
-    $('#btn-add').disabled=false;
+    $('#btn-add').disabled=false; $('#btn-saveall').disabled=false;
     await load();
   }catch(e){
     setConn('연결 실패','err');
@@ -226,7 +228,11 @@ function render(){
     if(venue!==lastVenue){
       lastVenue=venue;
       const vr=document.createElement('tr');
-      vr.innerHTML=`<td colspan="10" class="venue-h">${esc(venue)}</td>`;
+      vr.innerHTML=`<td colspan="10" class="venue-h"><div style="display:flex;align-items:center;gap:10px">
+        <span>${esc(venue)}</span>
+        <button class="btn ghost sm" type="button" data-savevenue style="margin-left:auto">💾 이 구분 전체 저장</button>
+      </div></td>`;
+      vr.querySelector('[data-savevenue]').addEventListener('click',()=>saveVenue(venue));
       body.appendChild(vr);
     }
     const tr=document.createElement('tr');
@@ -277,6 +283,24 @@ async function saveRow(id){
   if(error){toast('저장 실패: '+error.message,'err');return;}
   toast('저장됨','ok'); await load();
 }
+// ── 일괄 저장: 여러 행을 한 번의 upsert 로 묶어 저장 ──
+async function saveMany(items){
+  if(!supa){toast('먼저 연결하세요','warn');return;}
+  const rows=[];
+  for(const m of items){
+    const tr=$(`tr[data-id="${m.id}"]`); if(!tr) continue;
+    const p=rowPatch(tr);
+    if(!p.name_ja){toast(`日本語名 누락: ${m.code||m.name_ko||m.id}`,'warn');return;}
+    p.id=m.id; rows.push(p);
+  }
+  if(!rows.length){toast('저장할 행이 없습니다','warn');return;}
+  const {error}=await supa.from('menu_items').upsert(rows);
+  if(error){toast('일괄 저장 실패: '+error.message,'err');return;}
+  toast(`${rows.length}건 저장됨`,'ok'); await load();
+}
+function saveVenue(venue){ saveMany(state.items.filter(m=>(m.venue||'etc')===venue)); }
+function saveAll(){ saveMany(state.items); }
+
 async function delRow(id){
   if(!confirm('이 메뉴를 삭제할까요? (과거 청구 기록은 영향 없음)')) return;
   const {error}=await supa.from('menu_items').delete().eq('id',id);
@@ -306,6 +330,7 @@ async function addOne(){
 // ── 부팅 ──
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-add').addEventListener('click',addOne);
+$('#btn-saveall').addEventListener('click',saveAll);
 $('#btn-nextcode').addEventListener('click',()=>fillNextCode(true));
 $('#n-cat').addEventListener('change',()=>fillNextCode());   // 구분 바꾸면 그 구분의 다음 코드
 loadCreds();
