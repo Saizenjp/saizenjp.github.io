@@ -35,6 +35,7 @@
     ja: {
       /* 공통 */
       brandSub: 'Yamanami '+r('運営','うんえい')+r('管理','かんり')+'システム',
+      so_footer: r('本','ほん')+'サイトはメリットツアーが'+r('制作','せいさく')+'・'+r('提供','ていきょう')+'しています',
       reset: r('初期化','しょきか'),
       home: 'ホーム',
       navStep1: '① '+r('登録','とうろく'),
@@ -327,6 +328,7 @@
     },
     ko: {
       brandSub: 'Yamanami 운영 관리 시스템',
+      so_footer: '본 사이트는 메리트투어가 제작·제공합니다',
       reset: '초기화',
       home: '홈',
       navStep1: '① 등록',
@@ -615,6 +617,7 @@
     en: {
       /* common */
       brandSub: 'Yamanami Operations Management System',
+      so_footer: 'This site is built &amp; provided by Merit Tour',
       reset: 'Reset',
       home: 'Home',
       navStep1: '① Register',
@@ -1389,9 +1392,26 @@
     setTimeout(function () { try { pw.focus(); } catch (e) {} }, 60);
   }
 
+  // ── 사이트 제공자 표기(흐린 푸터) — 전 ops 페이지 공통 ──
+  function mountFooter() {
+    if (document.querySelector('.so-footer')) return;
+    var f = document.createElement('footer');
+    f.className = 'so-footer';
+    f.setAttribute('style', 'margin-top:48px;padding:18px 14px 24px;text-align:center;font-size:11px;line-height:1.7;color:var(--text3,#9aa392);opacity:.65;border-top:1px solid var(--border,#e0e4d8)');
+    var s1 = document.createElement('span');
+    s1.setAttribute('data-i18n', 'so_footer');
+    f.appendChild(s1);
+    f.appendChild(document.createElement('br'));
+    var s2 = document.createElement('span');
+    s2.style.cssText = 'font-size:10px;opacity:.85';
+    s2.textContent = '© ' + new Date().getFullYear() + ' Merit Tour · SaiZen';
+    f.appendChild(s2);
+    document.body.appendChild(f);
+  }
+
   function boot() {
     if (handleAuthRedirect()) { applyLang(); return; }   // 초대/재설정 모드면 비번 설정만
-    mountAuth(); applyLang(); guardPage(); mountConnToggle();
+    mountAuth(); mountFooter(); applyLang(); guardPage(); mountConnToggle();
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
