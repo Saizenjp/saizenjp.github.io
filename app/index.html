@@ -516,7 +516,7 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
       <button id="app-lang-ko" onclick="setAppLang('ko')">한국어</button>
       <button id="app-lang-en" onclick="setAppLang('en')">EN</button>
     </div>
-    <span class="badge">v14.8</span>
+    <span class="badge">v14.9</span>
     <button class="ghost-btn" onclick="resetApp()" data-i18n="app_reset" title="업로드 파일·수기입력을 비웁니다 (참조테이블은 유지)">입력 비우기</button>
   </div>
 </div>
@@ -2562,10 +2562,15 @@ function renderDinner(date){
     accom: ac,
     list: paxList.filter(p => p.accom === ac)
   })).filter(g => g.list.length > 0);
-  // 미지정 추가팀 그룹
-  const unassignedExtras = paxList.filter(p => p.isExtra && !accomOrder.includes(p.accom));
+  // 미지정 추가팀 그룹 (비지터 제외)
+  const unassignedExtras = paxList.filter(p => p.isExtra && p.addType!=='visitor' && !accomOrder.includes(p.accom));
   if(unassignedExtras.length > 0){
     accomGroups.push({accom:'独立チーム (追加명단)', list: unassignedExtras});
+  }
+  // 일본 고객(비지터) 그룹 — 별도 표
+  const visitorExtras = paxList.filter(p => p.isExtra && p.addType==='visitor');
+  if(visitorExtras.length > 0){
+    accomGroups.push({accom:'日本のお客様', list: visitorExtras});
   }
 
   const tHead = `<div class="table-wrap"><table><thead>${hdrHtml(HDRS.DINNER)}</thead><tbody>`;
@@ -2629,6 +2634,8 @@ function renderDinner(date){
       const extraBadge = p.isExtra
         ? (p.addType === 'new'
             ? `<span class="tag" style="background:var(--green-dim);color:var(--green2);margin-left:4px;font-size:9px">現地新規</span>`
+            : p.addType === 'visitor'
+            ? `<span class="tag" style="background:var(--amber-dim);color:var(--amber2);margin-left:4px;font-size:9px">日本客</span>`
             : `<span class="tag" style="background:var(--amber-dim);color:var(--amber2);margin-left:4px;font-size:9px">現地合流</span>`)
         : '';
       const _dnTc = p.isExtra ? {} : (buildTagCodeMap()[String(p.eventSeq||'').trim()]||{});
@@ -2720,6 +2727,13 @@ function openDinnerAddModal(date){
               <div style="color:var(--text3);font-size:10px">예약 없는 식사 합류</div>
             </div>
           </label>
+          <label class="case-radio" style="flex:1;cursor:pointer">
+            <input type="radio" name="da-case" value="visitor" onchange="toggleDinnerAddCase()" style="display:none">
+            <div id="da-case-visitor" style="padding:10px 12px;border:2px solid var(--border);background:var(--surface3);border-radius:6px;text-align:center;font-size:11px">
+              <div style="font-weight:700;color:var(--text3);margin-bottom:3px">日本のお客様</div>
+              <div style="color:var(--text3);font-size:10px">현지 일본 고객(비지터)</div>
+            </div>
+          </label>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:10px;font-size:12px">
@@ -2739,22 +2753,20 @@ function openDinnerAddModal(date){
           </div>
 
           <div id="da-new-fields" style="display:none;flex-direction:column;gap:10px">
-            <div style="display:flex;gap:10px">
-              <div style="flex:1">
-                <label style="color:var(--text2);display:block;margin-bottom:4px">숙박지</label>
-                <select id="da-accom" style="width:100%;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px">
-                  <option value="">— 미지정 (独立) —</option>
-                  <option value="간지호텔">간지호텔</option>
-                  <option value="시즈노야도 료칸">시즈노야도 료칸</option>
-                  <option value="쿠주힐즈">쿠주힐즈</option>
-                  <option value="야마나미리조트">야마나미리조트</option>
-                </select>
-              </div>
-              <div style="flex:1">
-                <label style="color:var(--text2);display:block;margin-bottom:4px">팀 인원수</label>
-                <input id="da-pax" type="number" value="1" min="1" max="99" style="width:100%;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px">
-              </div>
+            <div>
+              <label style="color:var(--text2);display:block;margin-bottom:4px">숙박지</label>
+              <select id="da-accom" style="width:100%;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px">
+                <option value="">— 미지정 (独立) —</option>
+                <option value="간지호텔">간지호텔</option>
+                <option value="시즈노야도 료칸">시즈노야도 료칸</option>
+                <option value="쿠주힐즈">쿠주힐즈</option>
+                <option value="야마나미리조트">야마나미리조트</option>
+              </select>
             </div>
+          </div>
+          <div id="da-pax-field" style="display:none">
+            <label style="color:var(--text2);display:block;margin-bottom:4px">인원수</label>
+            <input id="da-pax" type="number" value="1" min="1" max="99" style="width:100%;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px">
           </div>
 
           <div style="background:var(--surface2);border-left:3px solid var(--amber);padding:8px 10px;border-radius:3px;font-size:10px;color:var(--text3);margin-top:4px">
@@ -2773,37 +2785,42 @@ function openDinnerAddModal(date){
 }
 
 function toggleDinnerAddCase(){
-  const isJoin = document.querySelector('input[name="da-case"]:checked').value === 'join';
-  const teamSec = document.getElementById('da-team-section');
-  const newFields = document.getElementById('da-new-fields');
-  const joinCard = document.getElementById('da-case-join');
-  const newCard = document.getElementById('da-case-new');
-
-  if(isJoin){
-    teamSec.style.display = 'block';
-    newFields.style.display = 'none';
-    joinCard.style.cssText = 'padding:10px 12px;border:2px solid var(--accent);background:var(--accent-dim);border-radius:6px;text-align:center;font-size:11px';
-    joinCard.querySelector('div').style.color = 'var(--accent2)';
-    newCard.style.cssText = 'padding:10px 12px;border:2px solid var(--border);background:var(--surface3);border-radius:6px;text-align:center;font-size:11px';
-    newCard.querySelector('div').style.color = 'var(--text3)';
-  } else {
-    teamSec.style.display = 'none';
-    newFields.style.display = 'flex';
-    newCard.style.cssText = 'padding:10px 12px;border:2px solid var(--green);background:var(--green-dim);border-radius:6px;text-align:center;font-size:11px';
-    newCard.querySelector('div').style.color = 'var(--green2)';
-    joinCard.style.cssText = 'padding:10px 12px;border:2px solid var(--border);background:var(--surface3);border-radius:6px;text-align:center;font-size:11px';
-    joinCard.querySelector('div').style.color = 'var(--text3)';
-  }
+  const cas = document.querySelector('input[name="da-case"]:checked').value;  // join / new / visitor
+  document.getElementById('da-team-section').style.display = cas==='join' ? 'block' : 'none';
+  document.getElementById('da-new-fields').style.display  = cas==='new'  ? 'flex'  : 'none';
+  document.getElementById('da-pax-field').style.display   = (cas==='new'||cas==='visitor') ? 'block' : 'none';
+  // 카드 강조 (선택=색상, 비선택=회색)
+  const sel = { join:'var(--accent)', new:'var(--green)', visitor:'var(--amber)' };
+  const dim = { join:'var(--accent-dim)', new:'var(--green-dim)', visitor:'var(--amber-dim)' };
+  const txt = { join:'var(--accent2)', new:'var(--green2)', visitor:'var(--amber2)' };
+  [['join','da-case-join'],['new','da-case-new'],['visitor','da-case-visitor']].forEach(([key,id])=>{
+    const card = document.getElementById(id); if(!card) return;
+    const on = cas===key;
+    card.style.cssText = `padding:10px 12px;border:2px solid ${on?sel[key]:'var(--border)'};background:${on?dim[key]:'var(--surface3)'};border-radius:6px;text-align:center;font-size:11px`;
+    card.querySelector('div').style.color = on?txt[key]:'var(--text3)';
+  });
 }
 
 function submitDinnerAdd(date){
-  const isJoin = document.querySelector('input[name="da-case"]:checked').value === 'join';
+  const cas = document.querySelector('input[name="da-case"]:checked').value;  // join / new / visitor
+  const isJoin = cas === 'join';
   const name = document.getElementById('da-name').value.trim();
   if(!name){ alert('이름을 입력해주세요.'); return; }
   const engfull = document.getElementById('da-engfull').value.trim();
 
   let entry;
-  if(isJoin){
+  if(cas === 'visitor'){
+    const pax = parseInt(document.getElementById('da-pax').value)||1;
+    entry = {
+      name, engFull: engfull,
+      repName: name,
+      eventSeq: '',
+      accom: '',
+      pax,
+      isRep: true,
+      addType: 'visitor',
+    };
+  } else if(isJoin){
     const teamSeq = document.getElementById('da-team').value;
     if(!teamSeq){ alert('합류할 팀을 선택해주세요.'); return; }
     const tr = processed.find(r => String(r.eventSeq||'').trim() === teamSeq);
@@ -7720,9 +7737,11 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
     // 추가 명단은 뒤에
     sorted.push(...paxList.filter(p=>p.isExtra));
 
-    // 대표자(isRep) + 추가(isExtra)만 한 행씩
-    const rows = sorted.filter(p => p.isRep || p.isExtra);
-    if(!rows.length) return '';
+    // 대표자(isRep) + 추가(isExtra)만 한 행씩  (일본 고객 비지터는 별도 표로 분리)
+    const allRows = sorted.filter(p => p.isRep || p.isExtra);
+    if(!allRows.length) return '';
+    const rows = allRows.filter(p => !(p.isExtra && p.addType==='visitor'));
+    const visitorRows = allRows.filter(p => p.isExtra && p.addType==='visitor');
 
     let no = 0;
     const trHTML = rows.map(p => {
@@ -7764,6 +7783,43 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
         <td>${md.remarks||''}</td>
       </tr>`;
     }).join('');
+
+    // 일본 고객(비지터) 별도 표 — 이름·테이블·인원·비고만(나머지 빈칸)
+    let vno = 0;
+    const visitorTrHTML = visitorRows.map(p => {
+      vno++;
+      const k = `dinner_${date}_extra_${p.extraId}`;
+      const md = manualData[k]||{};
+      return `<tr>
+        <td class="c">${vno}</td>
+        <td class="c date-c"></td>
+        <td class="c date-c"></td>
+        <td class="c"></td>
+        <td class="kor">${p.repName||p.name||''}</td>
+        <td class="eng">${p.engFull||''}</td>
+        <td class="c grp"></td>
+        <td class="c">${md.table||''}</td>
+        <td class="c"><strong>${p.pax||1}</strong></td>
+        <td class="c"></td>
+        <td></td>
+        <td></td>
+        <td>${md.remarks||''}</td>
+      </tr>`;
+    }).join('');
+    const visitorPaxCnt = visitorRows.reduce((s,p)=>s+(parseInt(p.pax,10)||0),0);
+    const visitorTableHTML = visitorRows.length ? `
+      <table class="do-table do-visitor">
+        <thead>
+          <tr><th colspan="13" class="do-vhead">日本のお客様　${visitorRows.length}組 · ${visitorPaxCnt}名</th></tr>
+          <tr>
+            <th style="width:3%">No</th><th style="width:5%">入国</th><th style="width:5%">帰国</th>
+            <th style="width:5%">出発地</th><th style="width:8%">名前</th><th style="width:16%">英文名</th>
+            <th style="width:9%">Group</th><th style="width:6%">テーブルNo</th><th style="width:5%">人数</th>
+            <th style="width:6%">日次</th><th style="width:5%">単価</th><th style="width:9%">料理</th><th style="width:18%">参考事項</th>
+          </tr>
+        </thead>
+        <tbody>${visitorTrHTML}</tbody>
+      </table>` : '';
 
     const teamCnt = rows.length;
     const paxCnt = rows.reduce((s,p)=>{
@@ -7819,6 +7875,7 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
         </tr></thead>
         <tbody>${trHTML}</tbody>
       </table>
+      ${visitorTableHTML}
       <table class="do-mealsum">
         <thead><tr><th class="ms-rowh"></th><th>朝食</th><th>昼食</th><th>夕食</th></tr></thead>
         <tbody>
@@ -7882,6 +7939,8 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
   .do-table td.orig.pus { color: #B45309; }
   .do-table td.grp { font-family: 'Consolas', monospace; font-size: 11pt; font-weight: 700; }
   .do-table tbody tr:nth-child(even) td { background: #f4f6fa; }
+  .do-visitor { margin-top: 5mm; }
+  .do-table .do-vhead { background: #1A4D8F; color: #fff; text-align: left; padding: 3mm 6mm; letter-spacing: 3pt; font-size: 14pt; font-weight: 800; }
   .do-mealsum { margin-top: 5mm; border-collapse: collapse; }
   .do-mealsum th, .do-mealsum td { border: 1.5pt solid #1A2540; padding: 2mm 9mm; text-align: center; }
   .do-mealsum th { font-size: 15pt; font-weight: 800; color: #fff; background: #1A2540; letter-spacing: 2pt; }
