@@ -1090,8 +1090,9 @@
         + '<button type="button" class="so-user-btn" id="so-auth-out">로그아웃</button>';
       wrap.querySelector('#so-auth-out').addEventListener('click', authLogout);
     } else {
-      wrap.innerHTML = '<button type="button" class="so-user-btn save" id="so-auth-in">로그인</button>';
-      wrap.querySelector('#so-auth-in').addEventListener('click', function () { authForm(wrap); });
+      // 로그인은 가운데 카드(게이트)에서만 받는다 — 상단 [로그인] 버튼 제거
+      wrap.innerHTML = '';
+      wrap.style.display = 'none';
     }
   }
   function authForm(wrap) {
@@ -1119,18 +1120,27 @@
 
   // ── 가운데 정식 로그인 카드 — 게이트(랜딩·페이지 가드) 공용. 이메일·비번 칸을 처음부터 노출. ──
   function loginCard() {
-    var I = 'padding:11px 13px;border:1px solid var(--border2,#bcc4ad);border-radius:9px;font-size:14px;font-family:inherit;background:var(--surface,#fff);color:var(--text,#1f2a18);width:100%';
     var card = document.createElement('div');
     card.className = 'so-login-card';
     card.setAttribute('style', 'background:var(--surface,#fff);border:1px solid var(--border2,#bcc4ad);border-radius:14px;box-shadow:0 12px 44px rgba(31,42,24,.16);padding:30px 28px;width:330px;max-width:92vw;text-align:center');
+    renderLogin(card);
+    return card;
+  }
+  global.__so_loginCard = loginCard;
+  function lcInput() { return 'padding:11px 13px;border:1px solid var(--border2,#bcc4ad);border-radius:9px;font-size:14px;font-family:inherit;background:var(--surface,#fff);color:var(--text,#1f2a18);width:100%'; }
+  function lcBtn() { return 'width:100%;padding:11px;border:1px solid var(--accent,#647548);background:var(--accent,#647548);color:#fff;font-weight:800;font-size:14.5px;border-radius:9px;cursor:pointer;font-family:inherit'; }
+  function lcLink() { return 'color:var(--accent,#647548);font-weight:700;font-size:12px;text-decoration:none;cursor:pointer'; }
+
+  function renderLogin(card) {
     card.innerHTML =
         '<div style="font-size:20px;font-weight:800;color:var(--accent,#647548);letter-spacing:-.01em">로그인</div>'
       + '<div style="margin-top:6px;color:var(--text2,#566049);font-size:12.5px">Yamanami 운영 관리 시스템</div>'
-      + '<input id="so-lc-em" type="email" placeholder="이메일" autocomplete="username" spellcheck="false" style="margin-top:18px;' + I + '">'
-      + '<input id="so-lc-pw" type="password" placeholder="비밀번호" autocomplete="current-password" style="margin-top:10px;' + I + '">'
+      + '<input id="so-lc-em" type="email" placeholder="이메일" autocomplete="username" spellcheck="false" style="margin-top:18px;' + lcInput() + '">'
+      + '<input id="so-lc-pw" type="password" placeholder="비밀번호" autocomplete="current-password" style="margin-top:10px;' + lcInput() + '">'
       + '<div id="so-lc-err" style="display:none;margin-top:10px;color:#b13b2c;font-size:12.5px;font-weight:600"></div>'
-      + '<button type="button" id="so-lc-go" style="margin-top:16px;width:100%;padding:11px;border:1px solid var(--accent,#647548);background:var(--accent,#647548);color:#fff;font-weight:800;font-size:14.5px;border-radius:9px;cursor:pointer;font-family:inherit">로그인</button>'
-      + '<div style="margin-top:14px;color:var(--muted,#8a937c);font-size:11.5px">계정은 마스터(관리자)가 발급합니다.</div>';
+      + '<button type="button" id="so-lc-go" style="margin-top:16px;' + lcBtn() + '">로그인</button>'
+      + '<div style="margin-top:14px;color:var(--muted,#8a937c);font-size:11.5px">계정은 마스터(관리자)가 발급합니다.</div>'
+      + '<div style="margin-top:6px"><a id="so-lc-req" style="' + lcLink() + '">처음이세요? 가입(계정) 요청 →</a></div>';
     var em = card.querySelector('#so-lc-em'), pw = card.querySelector('#so-lc-pw'),
         err = card.querySelector('#so-lc-err'), btn = card.querySelector('#so-lc-go');
     function fail(msg) { err.textContent = msg; err.style.display = 'block'; btn.disabled = false; btn.textContent = '로그인'; }
@@ -1147,10 +1157,47 @@
     btn.addEventListener('click', go);
     pw.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
     em.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); pw.focus(); } });
+    card.querySelector('#so-lc-req').addEventListener('click', function () { renderRequest(card); });
     setTimeout(function () { try { em.focus(); } catch (e) {} }, 40);
-    return card;
   }
-  global.__so_loginCard = loginCard;
+
+  // ── 가입(계정 발급) 요청 폼 — access_requests 테이블에 저장(자가가입 아님). ──
+  function renderRequest(card) {
+    card.innerHTML =
+        '<div style="font-size:19px;font-weight:800;color:var(--accent,#647548)">가입 요청</div>'
+      + '<div style="margin-top:6px;color:var(--text2,#566049);font-size:12px;line-height:1.5">계정이 없으시면 아래로 요청을 보내세요.<br>마스터(관리자) 확인 후 계정이 발급됩니다.</div>'
+      + '<input id="so-rq-nm" type="text" placeholder="이름" autocomplete="name" style="margin-top:16px;' + lcInput() + '">'
+      + '<input id="so-rq-em" type="email" placeholder="이메일(계정으로 사용할 주소)" autocomplete="email" spellcheck="false" style="margin-top:10px;' + lcInput() + '">'
+      + '<input id="so-rq-dp" type="text" placeholder="부서·직책 (선택)" style="margin-top:10px;' + lcInput() + '">'
+      + '<textarea id="so-rq-msg" placeholder="요청 메모 (선택)" rows="2" style="margin-top:10px;resize:vertical;' + lcInput() + '"></textarea>'
+      + '<div id="so-rq-err" style="display:none;margin-top:10px;color:#b13b2c;font-size:12.5px;font-weight:600"></div>'
+      + '<button type="button" id="so-rq-go" style="margin-top:16px;' + lcBtn() + '">요청 보내기</button>'
+      + '<div style="margin-top:12px"><a id="so-rq-back" style="' + lcLink() + '">← 로그인으로</a></div>';
+    var nm = card.querySelector('#so-rq-nm'), em = card.querySelector('#so-rq-em'),
+        dp = card.querySelector('#so-rq-dp'), msg = card.querySelector('#so-rq-msg'),
+        err = card.querySelector('#so-rq-err'), btn = card.querySelector('#so-rq-go');
+    function fail(m) { err.textContent = m; err.style.display = 'block'; btn.disabled = false; btn.textContent = '요청 보내기'; }
+    function go() {
+      var c = authClient(); var n = nm.value.trim(), e = em.value.trim();
+      if (!c) { fail('연결 정보가 없습니다.'); return; }
+      if (!n || !e) { fail('이름과 이메일을 입력하세요.'); return; }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { fail('이메일 형식을 확인하세요.'); return; }
+      err.style.display = 'none'; btn.disabled = true; btn.textContent = '보내는 중…';
+      c.from('access_requests').insert({ name: n, email: e, dept: dp.value.trim() || null, message: msg.value.trim() || null })
+        .then(function (res) {
+          if (res && res.error) { fail('요청 실패: ' + res.error.message); return; }
+          card.innerHTML =
+              '<div style="font-size:34px">✓</div>'
+            + '<div style="margin-top:8px;font-size:17px;font-weight:800;color:var(--accent,#647548)">요청이 접수되었습니다</div>'
+            + '<div style="margin-top:8px;color:var(--text2,#566049);font-size:13px;line-height:1.55">마스터(관리자) 확인 후 <b>' + escU(e) + '</b><br>으로 계정이 발급됩니다.</div>'
+            + '<button type="button" id="so-rq-ok" style="margin-top:18px;' + lcBtn() + '">로그인으로</button>';
+          card.querySelector('#so-rq-ok').addEventListener('click', function () { renderLogin(card); });
+        }).catch(function (ex) { fail('요청 오류: ' + ex.message); });
+    }
+    btn.addEventListener('click', go);
+    card.querySelector('#so-rq-back').addEventListener('click', function () { renderLogin(card); });
+    setTimeout(function () { try { nm.focus(); } catch (e) {} }, 40);
+  }
 
   // ── 첫 로그인 이름 설정 — 초대받은 계정이 담당자명을 1회 저장(user_metadata.name). ──
   function authSetName(name) {
