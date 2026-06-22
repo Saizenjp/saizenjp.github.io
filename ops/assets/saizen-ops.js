@@ -1132,16 +1132,21 @@
   function lcLink() { return 'color:var(--accent,#647548);font-weight:700;font-size:12px;text-decoration:none;cursor:pointer'; }
 
   function renderLogin(card) {
+    var savedEm = '';
+    try { savedEm = localStorage.getItem('saizen_last_email') || ''; } catch (e) {}
     card.innerHTML =
         '<div style="font-size:20px;font-weight:800;color:var(--accent,#647548);letter-spacing:-.01em">로그인</div>'
       + '<div style="margin-top:6px;color:var(--text2,#566049);font-size:12.5px">Yamanami 운영 관리 시스템</div>'
-      + '<input id="so-lc-em" type="email" placeholder="이메일" autocomplete="username" spellcheck="false" style="margin-top:18px;' + lcInput() + '">'
+      + '<input id="so-lc-em" type="email" placeholder="이메일" autocomplete="username" spellcheck="false" value="' + escU(savedEm) + '" style="margin-top:18px;' + lcInput() + '">'
       + '<input id="so-lc-pw" type="password" placeholder="비밀번호" autocomplete="current-password" style="margin-top:10px;' + lcInput() + '">'
+      + '<label style="display:flex;align-items:center;gap:6px;margin-top:11px;font-size:12.5px;color:var(--text2,#566049);cursor:pointer;user-select:none">'
+      + '<input id="so-lc-rm" type="checkbox"' + (savedEm ? ' checked' : '') + ' style="width:15px;height:15px;accent-color:var(--accent,#647548);cursor:pointer">아이디 기억</label>'
       + '<div id="so-lc-err" style="display:none;margin-top:10px;color:#b13b2c;font-size:12.5px;font-weight:600"></div>'
-      + '<button type="button" id="so-lc-go" style="margin-top:16px;' + lcBtn() + '">로그인</button>'
+      + '<button type="button" id="so-lc-go" style="margin-top:14px;' + lcBtn() + '">로그인</button>'
       + '<div style="margin-top:14px;color:var(--muted,#8a937c);font-size:11.5px">계정은 마스터(관리자)가 발급합니다.</div>'
       + '<div style="margin-top:6px"><a id="so-lc-req" style="' + lcLink() + '">처음이세요? 가입(계정) 요청 →</a></div>';
     var em = card.querySelector('#so-lc-em'), pw = card.querySelector('#so-lc-pw'),
+        rm = card.querySelector('#so-lc-rm'),
         err = card.querySelector('#so-lc-err'), btn = card.querySelector('#so-lc-go');
     function fail(msg) { err.textContent = msg; err.style.display = 'block'; btn.disabled = false; btn.textContent = '로그인'; }
     function go() {
@@ -1149,6 +1154,7 @@
       if (!c) { fail('연결 정보가 없습니다.'); return; }
       if (!e || !p) { fail('이메일과 비밀번호를 입력하세요.'); return; }
       err.style.display = 'none'; btn.disabled = true; btn.textContent = '로그인 중…';
+      try { if (rm.checked) localStorage.setItem('saizen_last_email', e); else localStorage.removeItem('saizen_last_email'); } catch (ex) {}
       c.auth.signInWithPassword({ email: e, password: p }).then(function (res) {
         if (res && res.error) { fail('로그인 실패: ' + res.error.message); return; }
         location.reload();
@@ -1158,7 +1164,8 @@
     pw.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
     em.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); pw.focus(); } });
     card.querySelector('#so-lc-req').addEventListener('click', function () { renderRequest(card); });
-    setTimeout(function () { try { em.focus(); } catch (e) {} }, 40);
+    // 저장된 아이디가 있으면 비밀번호 칸으로 바로 포커스
+    setTimeout(function () { try { (savedEm ? pw : em).focus(); } catch (e) {} }, 40);
   }
 
   // ── 가입(계정 발급) 요청 폼 — access_requests 테이블에 저장(자가가입 아님). ──
