@@ -1409,7 +1409,24 @@
     document.body.appendChild(f);
   }
 
+  // ── 공통 head 보강(파비콘·테마컬러) — 전 ops 페이지 ──
+  function mountHead() {
+    var head = document.head; if (!head) return;
+    if (!document.querySelector('link[rel="icon"]')) {
+      var ic = document.createElement('link');
+      ic.rel = 'icon'; ic.type = 'image/svg+xml';
+      ic.href = '/assets/logo-saizen-vertical.svg';
+      head.appendChild(ic);
+    }
+    if (!document.querySelector('meta[name="theme-color"]')) {
+      var tc = document.createElement('meta');
+      tc.name = 'theme-color'; tc.content = '#647548';
+      head.appendChild(tc);
+    }
+  }
+
   function boot() {
+    mountHead();
     if (handleAuthRedirect()) { applyLang(); return; }   // 초대/재설정 모드면 비번 설정만
     mountAuth(); mountFooter(); applyLang(); guardPage(); mountConnToggle();
   }
