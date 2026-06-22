@@ -107,7 +107,7 @@
   .navlink:hover{background:rgba(0,0,0,.04)}
   .navlink.cur{background:var(--accentSoft,#e6eeda);color:var(--accent,#647548);border-color:var(--accent,#647548)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.43">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.44">
 </head>
 <body data-so-area="step1">
 <div class="wrap">
@@ -174,6 +174,18 @@
     <div class="log" id="history"></div>
   </div>
 
+  <!-- ── 월 데이터 삭제 ── -->
+  <div class="panel" id="month-del-panel" style="display:none">
+    <h2>월 데이터 삭제 <span style="font-weight:500;color:var(--muted);font-size:11px">— 업로드와 무관하게 특정 월 전체 정리</span></h2>
+    <div style="padding:14px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text2);font-weight:600">삭제할 월</span>
+      <select id="month-del-sel" style="padding:8px 11px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);font-size:13px;font-family:var(--mono);min-width:120px"></select>
+      <button class="btn ghost" id="btn-month-del" type="button" disabled style="border-color:var(--err);color:var(--err)">🗑 이 달 데이터 삭제</button>
+      <button class="btn ghost" id="btn-month-refresh" type="button" style="font-size:12px;padding:8px 12px" title="월 목록 새로고침">↻</button>
+      <span style="flex-basis:100%;font-size:11px;color:var(--muted)">선택한 월의 팀·명단·방배정·현장기록을 모두 삭제(cascade)합니다. 다른 달은 영향 없습니다. 되돌릴 수 없습니다.</span>
+    </div>
+  </div>
+
   <!-- ── 로그 ── -->
   <div class="panel">
     <h2 data-i18n="s1_h2log"></h2>
@@ -194,7 +206,7 @@
   </div>
 </div>
 
-<script src="../assets/saizen-ops.js?v=14.43"></script>
+<script src="../assets/saizen-ops.js?v=14.44"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -363,6 +375,7 @@ async function connect(){
     log(''+t('s1_dyn_connOk'),'ok');
     refreshRunBtn();
     loadHistory();
+    loadMonths();
     return true;
   }catch(err){
     setConn(t('connState_fail'),'err');
@@ -644,14 +657,9 @@ async function run(){
         }
         const orphans = exB.map(r=>r.event_seq).filter(s=>!fileSeqs.has(s));
         if(orphans.length){
-          const go = confirm(
-            `이번 파일에 없는 ${fileMonths.join('·')} 팀 ${orphans.length}개가 DB에 남아 있습니다.\n\n`+
-            `정리(삭제)할까요?\n`+
-            `· 해당 팀의 명단·방배정·현장기록도 함께 삭제됩니다.\n`+
-            `· 다른 달 데이터는 영향 없습니다.\n\n`+
-            `[취소] 누르면 그대로 둡니다(누적).`
-          );
-          if(go){
+          // [데이터 누적] = 그대로 둠 / [없는 팀 정리] = 삭제 (취소=누적 혼동 제거)
+          const choice = await confirmOrphan(fileMonths, orphans.length);
+          if(choice==='sync'){
             let del=0;
             for(let i=0;i<orphans.length;i+=50){
               const chunk=orphans.slice(i,i+50);
@@ -661,7 +669,7 @@ async function run(){
             }
             log(`✓ ${fileMonths.join('·')} 잔존 팀 ${del}개 정리 — 파일 기준 최신화`,'ok');
           } else {
-            log(`· 잔존 팀 ${orphans.length}개 — 정리 건너뜀(사용자 취소)`,'dim');
+            log(`· 잔존 팀 ${orphans.length}개 — 데이터 누적(삭제 안 함)`,'dim');
           }
         }
       }
@@ -669,6 +677,7 @@ async function run(){
 
     log('■ 적재 완료. 운영층 rooms/rounds/dining/transactions는 2단계 모듈에서 채웁니다.','ok');
     showStats(stat);
+    loadMonths();   // 월 삭제 패널 목록 갱신
     // ── 수정이력 diff 계산 (이름+생년6자리 = 사람 단위) ──
     const changes = { teams_added:[], teams_removed:[], persons_added:[], persons_removed:[], grade_changed:[] };
     try {
@@ -790,6 +799,78 @@ async function loadHistory(){
 }
 
 // ── 부팅 ──
+// ── 업로드 동기화 선택 모달: [데이터 누적] / [없는 팀 정리] ──
+function confirmOrphan(months, count){
+  return new Promise(resolve=>{
+    const bg = document.createElement('div');
+    bg.style.cssText='position:fixed;inset:0;z-index:300;background:rgba(31,42,24,.45);display:flex;align-items:center;justify-content:center;padding:20px';
+    bg.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;max-width:460px;width:100%;padding:26px;box-shadow:0 16px 48px rgba(15,23,42,.22)">
+      <h3 style="font-size:16px;font-weight:800;color:var(--text);margin:0 0 8px">${months.join('·')} 등록 — 동기화</h3>
+      <p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0 0 20px">이번 파일에 <b>없는</b> ${months.join('·')} 팀이 DB에 <b style="color:var(--err)">${count}개</b> 남아 있습니다.<br>어떻게 처리할까요? <span style="color:var(--muted)">(다른 달은 영향 없음)</span></p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button id="om-keep" class="btn" type="button" style="flex:1;min-width:150px;line-height:1.3">데이터 누적<br><span style="font-size:10px;font-weight:500;opacity:.85">그대로 둠 · 아무것도 안 지움(안전)</span></button>
+        <button id="om-sync" class="btn ghost" type="button" style="flex:1;min-width:150px;border-color:var(--err);color:var(--err);line-height:1.3">없는 팀 정리<br><span style="font-size:10px;font-weight:500;opacity:.85">파일에 빠진 ${count}개 삭제(cascade)</span></button>
+      </div>
+    </div>`;
+    document.body.appendChild(bg);
+    const done = v => { bg.remove(); resolve(v); };
+    bg.querySelector('#om-keep').addEventListener('click', ()=>done('keep'));
+    bg.querySelector('#om-sync').addEventListener('click', ()=>done('sync'));
+    bg.addEventListener('click', e=>{ if(e.target===bg) done('keep'); });   // 바깥 클릭 = 누적(안전)
+  });
+}
+
+// ── 월 데이터 삭제 ──
+async function loadMonths(){
+  const panel = $('#month-del-panel'); if(!panel || !supa) return;
+  const sel = $('#month-del-sel');
+  try{
+    const seen = new Set(); let pg = 0;
+    while(true){
+      const { data, error } = await supa.from('bookings').select('session_ym').range(pg, pg+999);
+      if(error || !data || !data.length) break;
+      data.forEach(r=>{ if(r.session_ym) seen.add(r.session_ym); });
+      if(data.length<1000) break; pg += 1000;
+    }
+    const arr = [...seen].sort();
+    if(arr.length){
+      sel.innerHTML = arr.map(m=>`<option value="${m}">${m}</option>`).join('');
+      $('#btn-month-del').disabled = false;
+    } else {
+      sel.innerHTML = '<option value="">(등록된 월 없음)</option>';
+      $('#btn-month-del').disabled = true;
+    }
+    panel.style.display = 'block';
+  }catch(e){ log('· 월 목록 로드 실패: '+e.message,'warn'); }
+}
+async function deleteMonth(){
+  const ym = $('#month-del-sel').value;
+  if(!ym || !supa) return;
+  if(!confirm(`${ym} 데이터 전체를 삭제할까요?\n\n· 그 달 팀·명단·방배정·현장기록 모두 삭제(cascade)\n· 다른 달은 영향 없음\n\n되돌릴 수 없습니다.`)) return;
+  $('#btn-month-del').disabled = true;
+  try{
+    let seqs = [], pg = 0;
+    while(true){
+      const { data, error } = await supa.from('bookings').select('event_seq').eq('session_ym', ym).range(pg, pg+999);
+      if(error) throw error;
+      if(!data || !data.length) break;
+      seqs = seqs.concat(data.map(r=>r.event_seq));
+      if(data.length<1000) break; pg += 1000;
+    }
+    let del = 0;
+    for(let i=0;i<seqs.length;i+=50){
+      const chunk = seqs.slice(i,i+50);
+      const { error } = await supa.from('bookings').delete().in('event_seq', chunk);
+      if(error) throw error;
+      del += chunk.length;
+    }
+    log(`✓ ${ym} 데이터 삭제 — ${del}팀 제거(명단·방배정·현장기록 cascade)`,'ok');
+  }catch(e){ log('· 월 삭제 실패: '+e.message,'warn'); }
+  await loadMonths();
+}
+$('#btn-month-del') && $('#btn-month-del').addEventListener('click', deleteMonth);
+$('#btn-month-refresh') && $('#btn-month-refresh').addEventListener('click', loadMonths);
+
 $('#btn-connect').addEventListener('click', connect);
 $('#btn-run').addEventListener('click', run);
 $('#done-stay') && $('#done-stay').addEventListener('click', ()=>{ const m=$('#done-modal'); if(m) m.style.display='none'; });
