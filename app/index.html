@@ -516,7 +516,7 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
       <button id="app-lang-ko" onclick="setAppLang('ko')">한국어</button>
       <button id="app-lang-en" onclick="setAppLang('en')">EN</button>
     </div>
-    <span class="badge">v14.9</span>
+    <span class="badge">v15.0</span>
     <button class="ghost-btn" onclick="resetApp()" data-i18n="app_reset" title="업로드 파일·수기입력을 비웁니다 (참조테이블은 유지)">입력 비우기</button>
   </div>
 </div>
@@ -7850,24 +7850,41 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
       return s + (p.isExtra ? (p.pax||1) : (teamRec.pax||0));
     }, 0);
 
-    // 그 날짜의 조식·중식 인원 합계
-    //  · 조식(朝食) = 전날 밤 묵은 인원(그 날 아침 식사자, 출발일 손님 포함)  dep < date && arr >= date
-    //  · 중식(昼食) = 출발지·방향별로 분리 집계(아래 규칙)
-    //     - 중간 체류일      : 점심 O
-    //     - 입국일 서울(ICN) : 점심 O(가츠카레)  → lunchArrICN 로 분리
-    //     - 입국일 부산(PUS) : 점심 X(저녁부터)  → 제외
-    //     - 귀국일 부산(PUS) : 점심 O(먹고 출발) → 継続에 합산
-    //     - 귀국일 서울(ICN) : 점심 X(오전 출발) → 제외
-    const sumPax = (rs) => rs.reduce((s,r)=>s+(parseInt(r.pax,10)||0),0);
-    const breakfastN = sumPax(processed.filter(r => r.accom && (!_accomSet || _accomSet.has(r.accom)) && r.dep <  date && r.arr >= date));
-    let lunchContinue = 0, lunchArrICN = 0;
+    // 그 날짜의 조식·중식 인원 합계 (야마나미 식당 기준)
+    //  · 夕食(석식)은 paxCnt(그날 묵는 전원) — 위에서 계산.
+    //  · 숙소를 2그룹으로 나눠 집계:
+    //    [야마나미·쿠주힐즈] 기존 규칙(전 끼니 야마나미)
+    //       - 朝食 = 전날 밤 묵은 인원(귀국일 아침 포함)  dep < date && arr >= date
+    //       - 昼食 = 중간체류 O / 입국ICN O(가츠카레=入国) / 입국PUS X / 귀국PUS O / 귀국ICN X
+    //    [간지호텔·시즈노야도] 요일 규칙(Min 2026-06 — 외부숙소가 야마나미서 먹는 끼니만):
+    //       - 朝食 = 귀국일 & 수·목·일 (ICN·PUS 모두)
+    //       - 昼食 = 입국 ICN 수·목·일 / 입국 간지 토·일 / 귀국 PUS 수·목·일
+    //       - 그 외 조합(특이 출·귀국)은 수기 처리(일본고객 식수 패널·인라인)
+    const OFFSITE = new Set(['간지호텔','시즈노야도 료칸']);
+    const _wd = parseLocalDate(date).getDay();          // 0=일 … 3=수,4=목,6=토
+    const isWTS = (_wd===3 || _wd===4 || _wd===0);       // 수·목·일
+    const isSatSun = (_wd===6 || _wd===0);               // 토·일
+    let breakfastN = 0, lunchContinue = 0, lunchArrICN = 0;
     processed.forEach(r => {
       if(!r.accom || (_accomSet && !_accomSet.has(r.accom))) return;
       const pax = parseInt(r.pax,10)||0; if(!pax) return;
       const isPus = !!seqIsPus[String(r.eventSeq||'').trim()];
-      if(r.dep < date && r.arr > date) lunchContinue += pax;        // 중간 체류일
-      else if(r.dep === date){ if(!isPus) lunchArrICN += pax; }     // 입국일: 서울만 점심(가츠카레)
-      else if(r.arr === date){ if(isPus)  lunchContinue += pax; }   // 귀국일: 부산만 점심
+      const isIn  = (r.dep === date);
+      const isOut = (r.arr === date);
+      const isMid = (r.dep < date && r.arr > date);
+      if(!OFFSITE.has(r.accom)){
+        // 야마나미·쿠주힐즈 — 기존 규칙
+        if(r.dep < date && r.arr >= date) breakfastN += pax;        // 朝食: 전날 묵음
+        if(isMid)        lunchContinue += pax;                      // 중간체류 점심
+        else if(isIn){ if(!isPus) lunchArrICN += pax; }            // 입국 ICN=가츠카레
+        else if(isOut){ if(isPus)  lunchContinue += pax; }          // 귀국 PUS=먹고 출발
+      } else {
+        // 간지·시즈노야도 — 요일 규칙
+        if(isOut && isWTS) breakfastN += pax;                       // 朝食: 귀국 & 수목일
+        if(isIn && isWTS && !isPus)                lunchArrICN  += pax;  // 입국 ICN 수목일
+        else if(isIn && isSatSun && r.accom==='간지호텔') lunchArrICN += pax;  // 입국 간지 토일
+        else if(isOut && isWTS && isPus)           lunchContinue += pax;  // 귀국 PUS 수목일
+      }
     });
     const lunchN = lunchContinue + lunchArrICN;
     // 일본 고객(비지터) 수기 식수 (날짜별 저장)
