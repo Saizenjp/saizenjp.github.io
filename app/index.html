@@ -516,7 +516,7 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
       <button id="app-lang-ko" onclick="setAppLang('ko')">한국어</button>
       <button id="app-lang-en" onclick="setAppLang('en')">EN</button>
     </div>
-    <span class="badge">v15.6</span>
+    <span class="badge">v15.7</span>
     <button class="ghost-btn" onclick="resetApp()" data-i18n="app_reset" title="업로드 파일·수기입력을 비웁니다 (참조테이블은 유지)">입력 비우기</button>
   </div>
 </div>
@@ -2664,7 +2664,7 @@ function renderDinner(date){
             : `<span class="tag" style="background:var(--amber-dim);color:var(--amber2);margin-left:4px;font-size:9px">現地合流</span>`)
         : '';
       const _dnTc = p.isExtra ? {} : (buildTagCodeMap()[String(p.eventSeq||'').trim()]||{});
-      const grpCode = p.isExtra ? '—' : makeTagCodeSafe(_dnTc.teamIdx||0, 0, _dnTc.accomPfx, _dnTc.memberCode, _dnTc.manualCode, _dnTc.pendingMember, _dnTc.eventSeq, _dnTc.year);
+      const grpCode = p.isExtra ? '—' : teamTag(_dnTc, 0);   // 팀 인쇄물 오버라이드 적용(개인 네임택 미적용)
       // 제외 행: 숨기지 않고 옅은 빨강 배경 + 이름 취소선 + 「除外」 뱃지로 또렷이(흐릿 opacity 폐기 — Min 피드백)
       const excludedStyle = p._excluded ? 'background:var(--red-dim)' : '';
       const extraRowStyle = p.isExtra ? 'background:rgba(100,117,72,.06)' : '';
@@ -2707,12 +2707,11 @@ function renderDinner(date){
       };
       const mealChips = `<div style="display:flex;gap:4px;margin-bottom:3px;justify-content:center;align-items:center;flex-wrap:wrap"><span style="font-size:9px;color:var(--text3);font-weight:600">食事除外</span>${_mealCk('B','朝','朝食=翌朝')}${_mealCk('L','昼','昼食=当日')}${_mealCk('D','夕','夕食=当夜')}</div>`;
 
-      // 그룹코드 셀: 인라인 수정 가능(prefix 만 입력). 같은 prefix를 두 팀에 넣으면 현장에서 같은 팀으로 묶임.
+      // 그룹코드 셀: 전체 코드(예 GFな-1Y) 그대로 수정. 팀별 인쇄물(夕食·航空カバー·レストラン)에만 반영(개인 네임택 미적용).
       // 자동 재렌더 없이 입력만 받고, 저장은 행의 [💾 저장] 버튼에서 일괄 처리(Enter도 저장).
-      const grpPrefix = p.isExtra ? '' : String(grpCode||'').replace(/-\d+\D*$/, '');
       const grpCell = p.isExtra
         ? '<span style="color:var(--text3)">—</span>'
-        : `<input type="text" id="dn-tag-${k}" class="manual-tag-input" value="${grpPrefix}" data-eventseq="${p.eventSeq||''}" data-repname="${(p.repName||p.name||'').replace(/"/g,'&quot;')}" data-gubun="${_dnTc.gubun||''}" onkeypress="if(event.key==='Enter')saveDinnerRow('${k}','${date}')" title="그룹코드 수정(접두만) — 두 팀에 같은 코드를 넣고 저장하면 같은 팀으로 묶입니다" style="width:84px;padding:3px 5px;font-family:var(--mono);font-size:11px;background:var(--surface3);border:1px solid var(--border2);border-radius:4px;color:var(--text);text-align:center">`;
+        : `<input type="text" id="dn-tag-${k}" class="manual-tag-input" value="${grpCode}" data-eventseq="${p.eventSeq||''}" data-orig="${grpCode}" onkeypress="if(event.key==='Enter')saveDinnerRow('${k}','${date}')" title="그룹코드 수정(전체 코드) — 두 팀에 같은 코드를 넣고 저장하면 팀별 인쇄물에서 같은 팀으로 묶입니다" style="width:104px;padding:3px 5px;font-family:var(--mono);font-size:11px;background:var(--surface3);border:1px solid var(--border2);border-radius:4px;color:var(--text);text-align:center">`;
 
       html += `<tr class="draggable-row" data-eventseq="${p.eventSeq||''}" data-grpcode="${grpCode}" ${trStyle?`style="${trStyle}"`:''}>
         <td style="font-family:var(--mono);text-align:center">${globalNo}</td>
@@ -4903,7 +4902,7 @@ async function _downloadDinner(selectedDates, selectedAccoms){
       }
       globalNo++;
       const _xlDnTc=buildTagCodeMap()[String(p.eventSeq||'').trim()]||{};
-      const xlDnTagCode=makeTagCodeSafe(_xlDnTc.teamIdx||0, 0, _xlDnTc.accomPfx, _xlDnTc.memberCode, _xlDnTc.manualCode, _xlDnTc.pendingMember, _xlDnTc.eventSeq, _xlDnTc.year);
+      const xlDnTagCode=teamTag(_xlDnTc, 0);   // 夕食名前版 xlsx: 팀 오버라이드 적용
       const teamRec=stayingTeams.find(rv=>String(rv.eventSeq||'').trim()===String(p.eventSeq||'').trim())||{};
       const k=`dinner_${d}_${p.eventSeq}`, md=manualData[k]||{};
       // 滞在日次 계산 (입국일 = 1日目)
@@ -5050,7 +5049,7 @@ async function _downloadRestaurantNameplate(selectedDates, selectedAccoms){
     const pageBreakRows = [];  // 페이지 나누기 위치 수집
     dinnerTeams.forEach((team, idx)=>{
       const tc = tagMap[String(team.eventSeq||'').trim()] || {};
-      const tagCode = makeTagCodeSafe(tc.teamIdx||0, 0, tc.accomPfx, tc.memberCode, tc.manualCode, tc.pendingMember, tc.eventSeq, tc.year);
+      const tagCode = teamTag(tc, 0);   // レストラン名札 xlsx: 팀 오버라이드 적용
       const accomColor = xlAccomColor(team.accom);
 
       const fmtJP = (dStr) => {
@@ -5617,6 +5616,31 @@ try {
   if(saved) tagCodeManualMap = JSON.parse(saved);
 } catch(e){}
 
+// 팀별 인쇄물 전용 그룹코드 오버라이드 (eventSeq별) — 航空カバー·夕食名前版·レストラン名札 에만 적용.
+// ⚠ 개인별 인쇄물(ネームタグ)·다른 탭엔 적용하지 않는다(개인 -1Y/-2Y 번호가 바뀌지 않도록).
+//   사람(이름+생년) 학습도 안 함 → 다른 팀/다음 달로 번지지 않음(Min 결정).
+let tagTeamOverrideMap = {};
+try {
+  const savedTo = localStorage.getItem('tagTeamOverrideMap');
+  if(savedTo) tagTeamOverrideMap = JSON.parse(savedTo);
+} catch(e){}
+// 팀별 인쇄물 그룹코드: 오버라이드가 있으면 그 전체 코드(예 GFな-1Y)를 그대로 쓰고, 없으면 기본 계산값.
+//   편집 칸에서 본 그대로(WYSIWYG) 저장·표시 → 한 곳 수정 시 팀 출력 3종에 동일 반영.
+function teamTag(tc, paxIdx){
+  tc = tc || {};
+  const ov = tagTeamOverrideMap[String(tc.eventSeq||'').trim()];
+  if(ov) return ov;
+  return makeTagCodeSafe(tc.teamIdx||0, paxIdx||0, tc.accomPfx, tc.memberCode, tc.manualCode, tc.pendingMember, tc.eventSeq, tc.year);
+}
+function saveTeamTagOverride(eventSeq, prefix){
+  eventSeq = String(eventSeq||'').trim();
+  prefix = String(prefix||'').trim();
+  if(!prefix) delete tagTeamOverrideMap[eventSeq];
+  else tagTeamOverrideMap[eventSeq] = prefix;
+  try { localStorage.setItem('tagTeamOverrideMap', JSON.stringify(tagTeamOverrideMap)); } catch(e){}
+  _tagCodeMapCache = null;
+}
+
 // 학습된 마스터 (수동입력 시 자동 누적) — 대표자명+생년월일 → 그룹코드
 // localStorage: learnedMasterMap, learnedMasterMeta
 let learnedMasterMap = {};
@@ -5799,19 +5823,20 @@ function appToast(msg){
   t._tm = setTimeout(()=>{ t.style.opacity = '0'; }, 1600);
 }
 
-// 夕食 행 단위 저장: 그룹코드(접두) + 테이블 + 비고를 한 번에 저장
+// 夕食 행 단위 저장: 그룹코드(전체) + 테이블 + 비고를 한 번에 저장.
+//   그룹코드는 팀 인쇄물 전용 오버라이드(tagTeamOverrideMap)에만 저장 → 夕食·航空カバー·レストラン에만 반영.
+//   개인 네임택·다른 탭은 건드리지 않으므로 전 탭 재렌더 불필요(렉 없음).
 function saveDinnerRow(k, date){
   const tbl = document.getElementById('dn-tbl-'+k);
   if(tbl) saveField(k, 'table', tbl.value);
   const rmk = document.getElementById('dn-rmk-'+k);
   if(rmk) saveField(k, 'remarks', rmk.value);
   const tag = document.getElementById('dn-tag-'+k);
+  // 코드를 실제로 바꿨을 때만 오버라이드 저장(안 바꾸면 기존 자동코드 유지)
+  if(tag && tag.value !== (tag.dataset.orig||'')) saveTeamTagOverride(tag.dataset.eventseq, tag.value);
   appToast('저장되었습니다');
-  if(tag){
-    onManualTagCodeInput(tag);   // 그룹코드 저장 + 전 탭 재렌더 + 화면 복원
-  } else if(date){
-    renderDinner(date);
-  }
+  if(date) renderDinner(date);                                   // 夕食名前版(현재 탭)
+  if(tag && typeof buildAircover === 'function') buildAircover(); // 航空カバー도 같이 갱신
 }
 
 // 학습된 회원 목록 모달 (관리 UI)
@@ -7064,8 +7089,8 @@ function calcAircoverData(){
   const tagMap = buildTagCodeMap();
   const getRepTagCode = (seq) => {
     const tc = tagMap[seq]||{};
-    // 대표자는 개인번호 1번
-    return makeTagCodeSafe(tc.teamIdx||0, 0, tc.accomPfx, tc.memberCode, tc.manualCode, tc.pendingMember, tc.eventSeq, tc.year);
+    // 대표자는 개인번호 1번 · 航空カバー: 팀 오버라이드 적용
+    return teamTag(tc, 0);
   };
 
   // processed 기준으로 그룹정보 구성 (eventSeq 단위)
@@ -7641,7 +7666,7 @@ function generateAndPrintRestaurants(selectedDates, selectedAccoms){
         engName: (engName && engName !== '(미등록)') ? engName : '',
         pax: team.pax || 0,
         period: `${fmtJP(team.dep)} 〜 ${fmtJP(team.arr)}`,
-        tagCode: makeTagCodeSafe(tc.teamIdx||0, 0, tc.accomPfx, tc.memberCode, tc.manualCode, tc.pendingMember, tc.eventSeq, tc.year),
+        tagCode: teamTag(tc, 0),   // レストラン名札 인쇄: 팀 오버라이드 적용
         tableNo: (md.table||'').trim(),
         date
       });
@@ -7841,7 +7866,7 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
       no++;
       const teamRec = p.isExtra ? {} : (stayingTeams.find(r=>String(r.eventSeq||'').trim()===String(p.eventSeq||'').trim())||{});
       const tc = p.isExtra ? {} : (tagMap[String(p.eventSeq||'').trim()]||{});
-      const grpCode = p.isExtra ? '—' : makeTagCodeSafe(tc.teamIdx||0, 0, tc.accomPfx, tc.memberCode, tc.manualCode, tc.pendingMember, tc.eventSeq, tc.year);
+      const grpCode = p.isExtra ? '—' : teamTag(tc, 0);   // 夕食オーダー 인쇄: 팀 오버라이드 적용
       const k = p.isExtra ? `dinner_${date}_extra_${p.extraId}` : `dinner_${date}_${p.eventSeq}`;
       const md = manualData[k]||{};
       const engName = p.isExtra ? (p.engFull||'') : (getEngName(p.eventSeq)||'');
