@@ -286,7 +286,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.48">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.49">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -367,7 +367,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.48"></script>
+<script src="../assets/saizen-ops.js?v=14.49"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -431,9 +431,9 @@ function toast(msg,cls){
   t.textContent=msg; $('#toast').appendChild(t);
   setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);
 }
-// 되돌리기 버튼이 달린 토스트(6초) — 배정 해제 직후 같은 방으로 즉시 복구
+// 되돌리기 버튼이 달린 토스트(6초) — 배정 해제 직후 같은 방으로 즉시 복구. 취소 알림이라 빨강.
 function toastUndo(msg,onUndo){
-  const t=document.createElement('div'); t.className='toast ok';
+  const t=document.createElement('div'); t.className='toast err';
   t.innerHTML=`<span></span> <button type="button" class="tu-btn" style="margin-left:10px;border:1px solid currentColor;background:transparent;color:inherit;border-radius:6px;padding:2px 9px;font-weight:800;cursor:pointer;font-family:inherit">↩ 되돌리기</button>`;
   t.querySelector('span').textContent=msg;
   t.querySelector('.tu-btn').addEventListener('click',()=>{ t.remove(); onUndo(); });
@@ -811,11 +811,77 @@ function renderUnassigned(){
   renderSelBar();
 }
 
-// 선택된 멤버들을 한 방에 한꺼번에 배정
+// 선택된 멤버들을 한 방에 한꺼번에 배정. 선택이 없으면 → 그 방·날짜 배정가능 인원 팝업.
 async function assignSelectedTo(inv){
   const ids=[...(state.sel||[])];
-  if(!ids.length){toast('먼저 명단에서 인원을 선택하세요','warn');return;}
+  if(!ids.length){ openAssignPicker(inv); return; }   // 잔소리 토스트 대신 팝업 피커
   await assignMembers(ids, inv);
+}
+
+// 그 방 숙소가 팀 예약 숙소와 맞는가(같은 숙소 우선정렬용)
+function roomFitsTeam(inv,g){ const rk=roomPlaceKeys(inv)||[]; const tk=teamPlaceKeys(g)||[]; return rk.some(k=>tk.includes(k)); }
+function closeAssignPicker(){ const m=$('#assign-picker'); if(m) m.remove(); }
+// ── 빈 방 클릭 → "이 방·이 날짜에 배정 가능한 미배정 인원" 팝업 ──
+function openAssignPicker(inv){
+  closeAssignPicker();
+  if(!inv.active){ toast(inv.room_no+': 비활성(잠금) 객실 — 🔓로 풀어주세요','warn'); return; }
+  const cap=inv.max_capacity||inv.capacity;
+  const usedNow=roomUsedPax(inv);
+  const remain=Math.max(0, cap-usedNow);
+  // 후보: 선택 날짜 점유 + 미배정 인원 남은 팀. 같은 숙소 팀 먼저.
+  const teams=state.guests.filter(g=>teamInDayScope(g) && unassignedMembers(g.event_seq).length>0);
+  teams.sort((a,b)=>{
+    const fa=roomFitsTeam(inv,a)?0:1, fb=roomFitsTeam(inv,b)?0:1;
+    if(fa!==fb) return fa-fb;
+    return String(a.event_no||'').localeCompare(String(b.event_no||'')) || a.event_seq-b.event_seq;
+  });
+  const gbadge=(m)=>`<i style="font-size:8.5px;font-weight:700;border-radius:3px;padding:1px 5px;margin-left:5px;${isMember(m.member_grade)?'color:#fff;background:var(--accent2)':'color:var(--text2);background:var(--surface3);border:1px solid var(--border2)'}">${gradeLabel(m.member_grade)}</i>`;
+  const body = teams.length ? teams.map(g=>{
+    const fit=roomFitsTeam(inv,g);
+    const gcode=teamGroupCode(g.event_seq)||'(코드미정)';
+    const mem=unassignedMembers(g.event_seq);
+    const rows=mem.map(m=>`<label style="display:flex;align-items:center;gap:7px;padding:5px 9px;cursor:pointer;border-top:1px solid var(--border)">
+        <input type="checkbox" class="ap-chk" data-mid="${m.id}" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text2);min-width:30px">${m.tag||m.num||''}</span>
+        <span style="font-size:13px;font-weight:600">${m.name_kr||'-'}${m.is_rep?' <i style="font-size:8px;font-weight:800;color:var(--accent2)">REP</i>':''}${gbadge(m)}</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--muted)">${m.name_en||''}</span>
+      </label>`).join('');
+    return `<div style="border:1px solid ${fit?'var(--accent)':'var(--border)'};border-radius:9px;margin-bottom:8px;overflow:hidden;${fit?'box-shadow:0 0 0 1px var(--accent) inset':''}">
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2)">
+        <span style="font-family:var(--mono);font-weight:800;color:var(--accent)">${gcode}</span>
+        ${fit?'<span style="font-size:9.5px;font-weight:800;color:#fff;background:var(--accent);border-radius:99px;padding:1px 8px">이 숙소</span>':''}
+        <span style="margin-left:auto;font-size:11.5px;color:var(--text2)">${fmtMD(g.dep)}→${fmtMD(g.arr)} · ${g.accom} · 잔여 ${mem.length}</span>
+      </div>
+      ${rows}
+    </div>`;
+  }).join('') : '<div style="padding:28px;text-align:center;color:var(--muted)">이 날짜에 배정 가능한 미배정 인원이 없습니다.</div>';
+
+  const bg=document.createElement('div'); bg.className='modal-bg'; bg.id='assign-picker';
+  bg.innerHTML=`<div class="modal" style="max-width:580px">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>${inv.facility||''} ${inv.room_no} <span style="font-size:12px;font-weight:600;color:var(--muted)">· ${dayScopeLabel()} 배정</span></span>
+      <span style="font-size:12px;font-weight:700;color:${remain?'var(--accent2)':'var(--err)'}">현재 ${usedNow}/${cap} · 남은자리 ${remain}</span>
+    </h2>
+    <div class="mbody" style="max-height:58vh;overflow:auto">${body}</div>
+    <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center">
+      <span id="ap-cnt" style="margin-right:auto;font-size:12px;color:var(--text2)">선택 0명</span>
+      <button class="btn ghost sm" type="button" id="ap-close">닫기</button>
+      <button class="btn sm" type="button" id="ap-go" disabled>${inv.room_no}에 배정</button>
+    </div>
+  </div>`;
+  bg.addEventListener('click',e=>{ if(e.target===bg) closeAssignPicker(); });
+  document.body.appendChild(bg);
+  const upd=()=>{ const n=bg.querySelectorAll('.ap-chk:checked').length;
+    $('#ap-cnt').textContent=`선택 ${n}명`+(remain?` · 남은자리 ${remain}`:'')+(n>remain&&remain?` · ⚠ 정원 초과분은 보류됨`:'');
+    $('#ap-go').disabled=!n; };
+  bg.querySelectorAll('.ap-chk').forEach(c=>c.addEventListener('change',upd));
+  $('#ap-close').addEventListener('click',closeAssignPicker);
+  $('#ap-go').addEventListener('click',async()=>{
+    const ids=[...bg.querySelectorAll('.ap-chk:checked')].map(c=>c.dataset.mid);
+    if(!ids.length) return;
+    closeAssignPicker();
+    await assignMembers(ids, inv);   // 정원·날짜겹침·요금 가드는 assignMembers가 처리
+  });
 }
 
 // ── 숙소(장소) 다중 필터 — 야마나미를 골프텔/돔하우스/소보별장/아소별장으로 분리 ──
