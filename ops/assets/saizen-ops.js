@@ -7,6 +7,11 @@
 (function (global) {
   'use strict';
 
+  // ── 초대/재설정 링크 URL을 파싱 시점에 캡처(어떤 코드가 해시를 소비하기 전에) ──
+  //    supabase-js detectSessionInUrl 이 해시를 비우기 전에 잡아둔다.
+  var _bootHash   = (location.hash   || '');
+  var _bootSearch = (location.search || '');
+
   // ── Supabase 접속정보 내장(어느 PC든 자동 연결) ──
   //    publishable key 라 공개 안전(RLS로 잠겨 로그인 없이는 데이터 접근 불가).
   //    ⚠ sb_secret_ 키는 절대 여기 넣지 않는다.
@@ -1295,7 +1300,13 @@
   //   · supabase-js(detectSessionInUrl)가 해시에서 세션을 잡음 → updateUser({password})로 설정.
   var _spShown = false;
   function handleAuthRedirect() {
-    var h = location.hash || '', q = location.search || '';
+    var h = _bootHash || location.hash || '', q = _bootSearch || location.search || '';
+    // 만료/사용된 초대 링크: #error=...&error_code=otp_expired (또는 access_denied)
+    //   → 조용히 로그인 화면으로 떨어지지 말고 "재초대 필요" 안내를 띄운다.
+    if (/error_code=|[#?&]error=/.test(h + q) && /type=(invite|recovery|signup)|otp_expired|access_denied|invite/i.test(h + q)) {
+      showInviteErrorCard(h + q);
+      return true;
+    }
     // 구현 흐름(implicit): #access_token=…&type=invite|recovery|signup
     // PKCE 흐름           : ?code=…  (type 없이 들어오기도 함)
     var hashInvite  = /type=(invite|recovery|signup)/.test(h);
@@ -1322,6 +1333,23 @@
       _spShown = true; showSetPasswordCard(c);
     }
     return true;
+  }
+  function showInviteErrorCard(raw) {
+    var expired = /otp_expired|expired/i.test(raw);
+    var ov = document.createElement('div');
+    ov.setAttribute('style', 'position:fixed;inset:0;z-index:100000;background:rgba(31,42,24,.55);display:flex;align-items:center;justify-content:center;padding:20px');
+    var card = document.createElement('div');
+    card.setAttribute('style', 'background:var(--surface,#fff);border:1px solid var(--border2,#bcc4ad);border-radius:14px;box-shadow:0 12px 44px rgba(31,42,24,.16);padding:30px 28px;width:360px;max-width:92vw;text-align:center');
+    card.innerHTML =
+        '<div style="font-size:34px">⌛</div>'
+      + '<div style="margin-top:6px;font-size:18px;font-weight:800;color:#b13b2c">초대 링크가 ' + (expired ? '만료' : '무효') + '되었습니다</div>'
+      + '<div style="margin-top:10px;color:var(--text2,#566049);font-size:13px;line-height:1.6">초대 링크는 <b>한 번만</b> 사용할 수 있고 일정 시간이 지나면 만료됩니다.<br>관리자에게 <b>재초대</b>를 요청하시거나, 이미 비밀번호를 설정했다면 아래에서 로그인하세요.</div>'
+      + '<button type="button" id="so-ie-ok" style="margin-top:18px;' + lcBtn() + '">로그인 화면으로</button>';
+    ov.appendChild(card); document.body.appendChild(ov);
+    card.querySelector('#so-ie-ok').addEventListener('click', function () {
+      try { history.replaceState(null, '', location.pathname); } catch (e) {}
+      location.reload();
+    });
   }
   function showSetPasswordCard(c) {
     var ov = document.createElement('div');
