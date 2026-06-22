@@ -152,6 +152,14 @@
   .room .chip .cf-cont{color:#2b4a6b;background:#dbe6f2;border:1px solid #b9cde0}
   .room .chip .cf-out{color:#fff;background:var(--accent2)}
   .room .chip .cdate{font-size:9.5px;color:var(--muted);font-family:var(--mono);margin-left:4px}
+  /* 팀묶음 칩: 헤더(그룹코드·인원·기간) + 멤버 행들 */
+  .room .chip .cnum{font-size:9px;font-weight:800;color:var(--text2);background:rgba(255,255,255,.65);border-radius:4px;padding:0 5px}
+  .room .chip .cmems{display:flex;flex-direction:column;gap:1px;margin-top:3px}
+  .room .chip .cmem{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text);line-height:1.5}
+  .room .chip .cmem b{font-weight:700}
+  .room .chip .cmem .cmen{font-size:9.5px;color:var(--muted);font-family:var(--mono)}
+  .room .chip .cmem .cmem-act{margin-left:auto;display:flex;gap:3px;align-items:center}
+  .room .chip .cmem .cx,.room .chip .cmem .csplit{margin-left:0;font-size:11px}
   .room .chip .csplit + .cx{margin-left:4px}
   .room .chip .cpax{color:var(--text2)}
   .room .chip .cen{flex-basis:100%;font-size:10.5px;color:var(--text2);font-family:var(--mono);margin-top:2px;line-height:1.3}
@@ -263,6 +271,12 @@
   /* 미배정 목록 섹션 헤더(도착/잔류) */
   .ua-sec{font-size:11px;font-weight:800;color:var(--text2);background:var(--surface3);border-radius:7px;padding:5px 9px;margin:6px 0 6px;letter-spacing:.01em}
   .ua-sec b{color:var(--accent2);font-weight:800}
+  /* 오늘 퇴실 행 */
+  .checkout-row{display:flex;align-items:center;gap:7px;font-size:12px;padding:4px 9px;border-bottom:1px dashed var(--border);color:var(--text2)}
+  .checkout-row b{color:var(--text);font-weight:700}
+  .checkout-row .co-gc{font-family:var(--mono);font-weight:800;color:var(--accent2)}
+  .checkout-row .co-pax{font-size:11px;color:var(--muted)}
+  .checkout-row .co-rooms{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700}
   .day-chip.ds-all{background:var(--surface2);border-style:dashed;min-width:54px}
   .day-chip.ds-all.active{background:var(--accent2);border-color:var(--accent2);border-style:solid}
   .ds-lbl{font-size:11px;color:var(--text2);font-weight:700;flex:0 0 auto;margin-right:2px}
@@ -300,7 +314,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.54">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.55">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -381,7 +395,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.54"></script>
+<script src="../assets/saizen-ops.js?v=14.55"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -781,7 +795,25 @@ function renderUnassigned(){
   const list=state.guests.filter(g=>!teamFullyAssigned(g.event_seq) && teamMatch(g) && teamInDayScope(g));
   const totalLeft=list.reduce((s,g)=>s+unassignedMembers(g.event_seq).length,0);
   $('#unassigned-cnt').textContent=`${dayScopeLabel()} 기준 · ${list.length}${t('rm_cntTeam')} · ${totalLeft}${t('rm_cntPpl')}`;
-  if(!list.length){box.innerHTML='<div class="empty-hint">'+t('rm_allAssigned')+'</div>';renderSelBar();return;}
+  // ── 🚪 오늘 퇴실(체크아웃) — 그날 나가는 팀 + 방번호(이 방들이 비워짐 → 같은 날 체크인 가능) ──
+  const _coDay = (viewMode!=='timeline') ? (state.focus||state.from) : null;
+  if(_coDay){
+    const checkouts=state.guests.filter(g=>g.arr===_coDay && teamMatch(g))
+      .sort((a,b)=>String(teamGroupCode(a.event_seq)||'').localeCompare(String(teamGroupCode(b.event_seq)||'')));
+    if(checkouts.length){
+      const sh=document.createElement('div'); sh.className='ua-sec';
+      sh.style.cssText='background:#fbf4e6;color:#7a5a16;border:1px solid #e6d3a3';
+      sh.innerHTML=`🚪 ${fmtMD(_coDay)} 퇴실 <b>${checkouts.length}팀</b> — 이 방들이 비워집니다(같은 날 체크인 가능)`;
+      box.appendChild(sh);
+      checkouts.forEach(g=>{
+        const rooms=[...new Set(state.rooms.filter(r=>String(r.event_seq)===String(g.event_seq)).map(r=>r.room_no).filter(Boolean))];
+        const row=document.createElement('div'); row.className='checkout-row';
+        row.innerHTML=`<span class="co-gc">${teamGroupCode(g.event_seq)||evNo(g.event_seq)}</span> <b>${g.rep||''}</b> <span class="co-pax">${g.pax}명</span> <span class="co-rooms">${rooms.length?'🛏 '+rooms.join(', '):'<i style="color:var(--muted)">배정없음</i>'}</span>`;
+        box.appendChild(row);
+      });
+    }
+  }
+  if(!list.length){ const e=document.createElement('div'); e.className='empty-hint'; e.textContent=t('rm_allAssigned'); box.appendChild(e); renderSelBar(); return; }
   function mkCard(g){
     const roster=teamRoster(g.event_seq);
     const leftN=unassignedMembers(g.event_seq).length;
@@ -1158,21 +1190,26 @@ function renderRoom(inv){
   const stCls = usedPax>inv.capacity ? ' warn' : (usedPax>0 && usedPax>=inv.capacity ? ' full' : (usedPax>0 ? ' partial' : ''));
   div.className='room'+(inv.active?'':' inactive')+(assigned.length?' filled':'')+stCls;
   div.dataset.invId=inv.id;
-  // 기준일(focus) 대비 체크인/연박/퇴실 구분 (선택 배정 기간모드에선 표기 안 함)
+  // 기준일(focus) 대비 체크인(초록)/연박(블루) 구분. 퇴실은 카드에서 빼고 별도 「오늘 퇴실」 목록으로.
   const refDay = _span ? null : (state.focus||state.from);
-  let chips=assigned.map(r=>{
-    const m=r.member_id!=null?memberById(r.member_id):null;
-    const tag=m?personTag(r.event_seq,m.seq_in_team||1):(teamGroupCode(r.event_seq)||('팀'+evNo(r.event_seq)));
-    const nameKr=m?(m.name_kr||'-'):'';
-    const nameEn=m?(m.name_en||''):teamEnNames(r.event_seq);
-    const gb=m?`<i class="gbadge" style="display:inline-block;font-size:8px;font-weight:700;border-radius:3px;padding:0 4px;margin-left:4px;vertical-align:middle;${isMember(m.member_grade)?'color:#fff;background:var(--accent2)':'color:var(--text2);background:var(--surface3);border:1px solid var(--border2)'}">${gradeLabel(m.member_grade)}</i>`:'';
-    const isIn = refDay && r.check_in===refDay;                       // 오늘 입실
-    const isOut= refDay && r.check_out===isoShift(refDay,1);          // 오늘이 마지막 밤(내일 퇴실)
-    const chipCls = !refDay ? '' : (isIn?' chip-in' : isOut?' chip-out' : ' chip-cont');
-    const flag = !refDay ? '' : (isIn?'<span class="cflag cf-in">체크인</span>' : isOut?'<span class="cflag cf-out">퇴실</span>' : '<span class="cflag cf-cont">연박</span>');
+  // 같은 방 점유를 '팀 단위'로 묶어 표시(8인 별장도 한 칸에 안 터지게). 멤버별 ✕/분할은 유지.
+  const byTeam={}; assigned.forEach(r=>{ (byTeam[r.event_seq]=byTeam[r.event_seq]||[]).push(r); });
+  let chips=Object.keys(byTeam).map(seq=>{
+    const rows=byTeam[seq], r0=rows[0];
+    const gcode=teamGroupCode(seq)||('팀'+evNo(seq));
+    const isIn = refDay && r0.check_in===refDay;                       // 오늘 입실 팀
+    const chipCls = !refDay ? '' : (isIn?' chip-in' : ' chip-cont');
+    const flag = !refDay ? '' : (isIn?'<span class="cflag cf-in">체크인</span>' : '<span class="cflag cf-cont">연박</span>');
+    const mems=rows.map(r=>{
+      const m=r.member_id!=null?memberById(r.member_id):null;
+      const nameKr=m?(m.name_kr||'-'):gcode;
+      const nameEn=m?(m.name_en||''):'';
+      const gb=m?`<i class="gbadge" style="display:inline-block;font-size:8px;font-weight:700;border-radius:3px;padding:0 4px;margin-left:3px;vertical-align:middle;${isMember(m.member_grade)?'color:#fff;background:var(--accent2)':'color:var(--text2);background:var(--surface3);border:1px solid var(--border2)'}">${gradeLabel(m.member_grade)}</i>`:'';
+      return `<div class="cmem"><b>${nameKr}</b><span class="cmen">${nameEn}</span>${gb}<span class="cmem-act"><span class="csplit" data-room-id="${r.id}" title="기준일부터 다른 방으로 분할">✂</span><span class="cx" data-room-id="${r.id}" title="배정 취소">✕</span></span></div>`;
+    }).join('');
     return `<div class="chip${chipCls}">
-      <div class="chip-head"><span class="ctag">${tag}</span>${flag}${m?`<span class="csplit" data-room-id="${r.id}" title="기준일부터 다른 방으로 분할">분할</span>`:''}<span class="cx" data-room-id="${r.id}" title="배정 취소">✕</span></div>
-      <div class="cpeople"><div class="cperson"><b>${nameKr}</b> ${nameEn}${gb}<span class="cdate">${fmtMD(r.check_in)}~${fmtMD(r.check_out)}</span></div></div>
+      <div class="chip-head"><span class="ctag">${gcode}</span>${flag}<span class="cnum">${rows.length}명</span><span class="cdate">${fmtMD(r0.check_in)}~${fmtMD(r0.check_out)}</span></div>
+      <div class="cmems">${mems}</div>
     </div>`;
   }).join('');
   div.innerHTML=`
