@@ -61,6 +61,20 @@
   .st-kitchen{color:#fff;background:var(--c-식음)} .st-bar{color:#fff;background:var(--c-라운딩)} .st-none{color:var(--text2);background:var(--surface3);border:1px solid var(--border2)}
   .rowbtns{display:flex;gap:5px;white-space:nowrap}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
+  /* 장소(venue) 탭 */
+  .venue-tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+  .vtab{font-size:13px;font-weight:700;padding:6px 14px;border-radius:99px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer;transition:.12s}
+  .vtab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .vtab:not(.active):hover{background:var(--accentSoft);color:var(--accent)}
+  .vtab .vc{opacity:.7;font-weight:600;margin-left:4px}
+  table.menu .inp.code[readonly]{background:var(--surface3);color:var(--text2);border-style:dashed;cursor:not-allowed}
+  /* 수정 이력 */
+  .hist .hrow{display:flex;gap:10px;padding:6px 4px;border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:baseline;font-size:12.5px}
+  .hist .ht{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+  .hist .ha{font-weight:800;border-radius:4px;padding:1px 6px;font-size:10px;color:#fff}
+  .ha-insert{background:var(--ok)} .ha-update{background:var(--accent2)} .ha-delete{background:var(--err)}
+  .hist .hby{color:var(--text2);font-weight:700}
+  .hist .hd{color:var(--text2)}
   details.bulk summary{cursor:pointer;font-size:13px;font-weight:800;color:var(--accent)}
   details.bulk textarea{width:100%;min-height:120px;margin-top:10px;padding:10px;border:1px solid var(--border2);border-radius:8px;font-family:var(--mono);font-size:12px;line-height:1.5}
   .bulk .fmt{font-size:11.5px;color:var(--text2);margin-top:8px;line-height:1.6}
@@ -72,7 +86,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.42">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.43">
 </head>
 <body data-so-area="menu">
 <div class="topbar so-bar">
@@ -113,14 +127,14 @@
       <div class="f"><label data-i18n="me_code"></label>
         <div style="display:flex;gap:4px">
           <input class="inp code" id="n-code" type="text" placeholder="자동">
-          <button class="btn ghost sm" id="btn-nextcode" type="button" title="구분에 맞는 다음 코드 생성" style="padding:5px 9px">↻</button>
+          <button class="btn ghost sm" id="btn-nextcode" type="button" title="장소에 맞는 다음 코드 생성(FR1·GS1…)" style="padding:5px 9px">↻</button>
         </div>
       </div>
       <div class="f"><label data-i18n="me_nameJa"></label><input class="inp" id="n-ja" type="text" placeholder="生ビール"></div>
       <div class="f"><label data-i18n="me_nameKo"></label><input class="inp" id="n-ko" type="text" placeholder="생맥주"></div>
       <div class="f"><label data-i18n="me_cat"></label>
         <select class="inp" id="n-cat"><option>라운딩</option><option selected>식음</option><option>숙박</option><option>골프샵</option><option>기타</option></select></div>
-      <div class="f"><label data-i18n="me_venue"></label><input class="inp" id="n-venue" list="venue-list" value="restaurant"></div>
+      <div class="f"><label data-i18n="me_venue"></label><select class="inp" id="n-venue"></select></div>
       <div class="f"><label data-i18n="me_price"></label><input class="inp price" id="n-price" type="number" min="0" step="100" value="0"></div>
       <div class="f"><label data-i18n="me_sort"></label><input class="inp sort" id="n-sort" type="number" value="0"></div>
       <div class="f"><label>&nbsp;</label><button class="btn sm" id="btn-add" type="button" disabled data-i18n="me_add"></button></div>
@@ -132,6 +146,7 @@
     <h3><span data-i18n="me_listTitle"></span>
       <button class="btn sm" id="btn-saveall" type="button" disabled style="margin-left:8px">💾 전체 저장</button>
       <span class="cnt" id="list-cnt"></span></h3>
+    <div class="venue-tabs" id="venue-tabs"></div>
     <div style="overflow:auto">
       <table class="menu" id="menu-table">
         <thead><tr>
@@ -143,11 +158,19 @@
       </table>
     </div>
   </div>
+
+  <!-- 수정 이력 -->
+  <div class="panel">
+    <details id="hist-wrap">
+      <summary style="cursor:pointer;font-size:14px;font-weight:800;color:var(--accent)">🕘 수정 이력 <span class="cnt" id="hist-cnt" style="font-weight:700;color:var(--text2)"></span></summary>
+      <div class="hist" id="hist-body" style="margin-top:10px"><div class="empty-hint">연결 후 표시됩니다.</div></div>
+    </details>
+  </div>
 </div>
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.42"></script>
+<script src="../assets/saizen-ops.js?v=14.43"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 메뉴 관리(menu_items CRUD)  · POS/KDS 단가·station 마스터
@@ -158,21 +181,32 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
 const CATS=['라운딩','식음','숙박','골프샵','기타'];
 const STATIONS=['kitchen','bar','none'];
-let state={ items:[] };
+let state={ items:[], venueFilter:'__all' };
 
-// ── 코드 자동 채번: 구분(category)별 접두사 + 2자리 일련번호 ──
-const CODE_PREFIX={'라운딩':'R','식음':'F','숙박':'S','골프샵':'P','기타':'X'};
-function codeCounters(){
-  const m={}; Object.values(CODE_PREFIX).forEach(p=>m[p]=0);
-  state.items.forEach(it=>{ const s=String(it.code||'');
-    Object.values(CODE_PREFIX).forEach(p=>{ const mm=s.match(new RegExp('^'+p+'(\\d+)$')); if(mm) m[p]=Math.max(m[p],parseInt(mm[1],10)); });
-  });
-  return m;
+// ── 장소(venue) 레지스트리: 저장값(key)은 그대로, 화면은 라벨, 신규코드는 prefix+번호 ──
+const VENUES=[
+  {key:'restaurant', label:'레스토랑', prefix:'FR'},
+  {key:'proshop',    label:'골프샵',   prefix:'GS'},
+  {key:'banquet',    label:'연회',     prefix:'BQ'},
+  {key:'etc',        label:'기타',     prefix:'ET'},
+];
+const VENUE_BY_KEY=Object.fromEntries(VENUES.map(v=>[v.key,v]));
+function venueLabel(k){ return (VENUE_BY_KEY[k]&&VENUE_BY_KEY[k].label) || k || 'etc'; }
+function venuePrefix(k){ return (VENUE_BY_KEY[k]&&VENUE_BY_KEY[k].prefix) || 'X'; }
+// 데이터에 등장하는 모든 venue(레지스트리 + 미등록 venue) 를 순서대로
+function allVenues(){
+  const seen=new Set(VENUES.map(v=>v.key)); const list=VENUES.slice();
+  state.items.forEach(it=>{ const k=it.venue||'etc'; if(!seen.has(k)){ seen.add(k); list.push({key:k,label:k,prefix:'X'}); } });
+  return list;
 }
-function fmtCode(p,n){ return p+String(n).padStart(2,'0'); }
-function nextCode(cat){ const p=CODE_PREFIX[cat]||'X'; return fmtCode(p,(codeCounters()[p]||0)+1); }
+
+// ── 코드 자동 채번: 장소 prefix + 번호(FR1, FR2 …). 기존 의미형 코드와 충돌 없이 최대치+1 ──
+function nextCode(venueKey){
+  const p=venuePrefix(venueKey); let max=0;
+  state.items.forEach(it=>{ const mm=String(it.code||'').match(new RegExp('^'+p+'(\\d+)$')); if(mm) max=Math.max(max,parseInt(mm[1],10)); });
+  return p+(max+1);
+}
 // station(조리 위치) 자동 기본값: 프론트·골프샵 매점=none, 식음=kitchen, 그 외=none.
-// (음료처럼 bar로 보낼 항목은 목록 표에서 수정)
 function autoStation(cat,venue){
   if(venue==='front'||venue==='proshop') return 'none';
   return cat==='식음' ? 'kitchen' : 'none';
@@ -182,7 +216,14 @@ let lastAuto='';
 function fillNextCode(force){
   const el=$('#n-code'); if(!el) return;
   const cur=el.value.trim();
-  if(force || !cur || cur===lastAuto){ const nc=nextCode($('#n-cat').value); el.value=nc; lastAuto=nc; }
+  if(force || !cur || cur===lastAuto){ const nc=nextCode($('#n-venue').value); el.value=nc; lastAuto=nc; }
+}
+// 새 메뉴 폼 장소 select 채우기
+function fillVenueSelect(){
+  const sel=$('#n-venue'); if(!sel) return;
+  const cur=sel.value||'restaurant';
+  sel.innerHTML=VENUES.map(v=>`<option value="${v.key}">${esc(v.label)} (${v.prefix})</option>`).join('');
+  sel.value=VENUE_BY_KEY[cur]?cur:'restaurant';
 }
 
 function toast(msg,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.textContent=msg;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
@@ -216,21 +257,42 @@ async function load(){
   state.items=data||[];
   render();
   fillNextCode();   // 현재 DB 기준 다음 코드 자동 채움
+  loadHistory();    // 수정 이력 갱신
+}
+
+// 장소 탭(전체 + 각 장소, 건수 표시)
+function renderVenueTabs(){
+  const box=$('#venue-tabs'); if(!box) return;
+  const vs=allVenues();
+  const cnt=k=>state.items.filter(m=>(m.venue||'etc')===k).length;
+  const tab=(key,label,n)=>`<button class="vtab${state.venueFilter===key?' active':''}" data-vtab="${esc(key)}">${esc(label)}<span class="vc">${n}</span></button>`;
+  let html=tab('__all','전체',state.items.length);
+  vs.forEach(v=>{ html+=tab(v.key, v.label, cnt(v.key)); });
+  box.innerHTML=html;
+  box.querySelectorAll('[data-vtab]').forEach(b=>b.addEventListener('click',()=>{ state.venueFilter=b.dataset.vtab; render(); }));
+}
+function venueOpts(cur){
+  const seen=new Set(); let html='';
+  allVenues().forEach(v=>{ seen.add(v.key); html+=`<option value="${esc(v.key)}" ${v.key===cur?'selected':''}>${esc(v.label)}</option>`; });
+  if(cur && !seen.has(cur)) html+=`<option value="${esc(cur)}" selected>${esc(cur)}</option>`;
+  return html;
 }
 
 function render(){
+  renderVenueTabs();
   const body=$('#menu-body'); body.innerHTML='';
-  $('#list-cnt').textContent=`${state.items.length}${t('me_cntItem')}`;
-  if(!state.items.length){ body.innerHTML='<tr><td colspan="10" class="empty-hint">'+t('me_empty')+'</td></tr>'; return; }
+  const items=state.venueFilter==='__all' ? state.items : state.items.filter(m=>(m.venue||'etc')===state.venueFilter);
+  $('#list-cnt').textContent=`${items.length}${t('me_cntItem')}`;
+  if(!items.length){ body.innerHTML='<tr><td colspan="10" class="empty-hint">'+t('me_empty')+'</td></tr>'; return; }
   let lastVenue=null;
-  state.items.forEach(m=>{
+  items.forEach(m=>{
     const venue=m.venue||'etc';
     if(venue!==lastVenue){
       lastVenue=venue;
       const vr=document.createElement('tr');
       vr.innerHTML=`<td colspan="10" class="venue-h"><div style="display:flex;align-items:center;gap:10px">
-        <span>${esc(venue)}</span>
-        <button class="btn ghost sm" type="button" data-savevenue style="margin-left:auto">💾 이 구분 전체 저장</button>
+        <span>${esc(venueLabel(venue))} <span style="color:var(--muted);font-weight:600">(${esc(venuePrefix(venue))})</span></span>
+        <button class="btn ghost sm" type="button" data-savevenue style="margin-left:auto">💾 이 장소 전체 저장</button>
       </div></td>`;
       vr.querySelector('[data-savevenue]').addEventListener('click',()=>saveVenue(venue));
       body.appendChild(vr);
@@ -241,11 +303,11 @@ function render(){
     const catOpts=CATS.map(c=>`<option ${c===m.category?'selected':''}>${c}</option>`).join('');
     const stOpts=STATIONS.map(s=>`<option value="${s}" ${s===m.station?'selected':''}>${s}</option>`).join('');
     tr.innerHTML=`
-      <td><input class="inp code" data-f="code" value="${esc(m.code)}"></td>
+      <td><input class="inp code" data-f="code" value="${esc(m.code)}" readonly title="적용된 코드는 수정 불가"></td>
       <td><input class="inp" data-f="name_ja" value="${esc(m.name_ja)}"></td>
       <td><input class="inp" data-f="name_ko" value="${esc(m.name_ko)}"></td>
       <td><select class="inp" data-f="category">${catOpts}</select></td>
-      <td><input class="inp" data-f="venue" list="venue-list" value="${esc(venue)}"></td>
+      <td><select class="inp" data-f="venue">${venueOpts(venue)}</select></td>
       <td><select class="inp" data-f="station">${stOpts}</select></td>
       <td><input class="inp price" data-f="unit_price" type="number" min="0" step="100" value="${Number(m.unit_price||0)}"></td>
       <td><input class="inp sort" data-f="sort_order" type="number" value="${Number(m.sort_order||0)}"></td>
@@ -275,56 +337,120 @@ function rowPatch(tr){
     active:g('active').checked,
   };
 }
+// ── 변경이력(change_log) 기록 — best-effort(테이블 없거나 실패해도 저장은 진행) ──
+const LOG_FIELDS=['code','name_ja','name_ko','category','venue','station','unit_price','sort_order','active'];
+function norm(v){ return (v===true||v===false)?v:(v==null?'':String(v)); }
+function diffItem(before,after){
+  const ch={};
+  LOG_FIELDS.forEach(f=>{ const a=norm(before?before[f]:undefined), b=norm(after?after[f]:undefined);
+    if(a!==b) ch[f]={from:(before?before[f]:null)??null, to:(after?after[f]:null)??null}; });
+  return ch;
+}
+function curUser(){ return (window.__so_getUser&&window.__so_getUser())||null; }
+async function logChange(action,opt){
+  if(!supa) return; opt=opt||{};
+  const rec={ entity:'menu_item', action, entity_id:opt.id!=null?String(opt.id):null, label:opt.label||null, changed_by:curUser() };
+  if(opt.changes && Object.keys(opt.changes).length) rec.changes=opt.changes;
+  try{ const {error}=await supa.from('change_log').insert(rec); if(error) console.warn('change_log skip:',error.message); }
+  catch(e){ console.warn('change_log skip:',e.message); }
+}
+async function logMany(recs){
+  if(!supa||!recs.length) return;
+  const who=curUser();
+  const rows=recs.map(r=>({entity:'menu_item',action:r.action,entity_id:r.id!=null?String(r.id):null,label:r.label||null,
+    changes:(r.changes&&Object.keys(r.changes).length)?r.changes:null,changed_by:who}));
+  try{ const {error}=await supa.from('change_log').insert(rows); if(error) console.warn('change_log batch skip:',error.message); }
+  catch(e){ console.warn('change_log batch skip:',e.message); }
+}
+
 async function saveRow(id){
   const tr=$(`tr[data-id="${id}"]`); if(!tr) return;
+  const before=state.items.find(m=>String(m.id)===String(id));
   const patch=rowPatch(tr);
   if(!patch.name_ja){toast('日本語名は必須','warn');return;}
+  const ch=diffItem(before,patch);
+  if(!Object.keys(ch).length){toast('변경 없음','warn');return;}
   const {error}=await supa.from('menu_items').update(patch).eq('id',id);
   if(error){toast('저장 실패: '+error.message,'err');return;}
+  await logChange('update',{id,label:patch.code||patch.name_ja,changes:ch});
   toast('저장됨','ok'); await load();
 }
-// ── 일괄 저장: 여러 행을 한 번의 upsert 로 묶어 저장 ──
+// ── 일괄 저장: 여러 행을 한 번의 upsert 로 묶어 저장 + 변경분만 이력 기록 ──
 async function saveMany(items){
   if(!supa){toast('먼저 연결하세요','warn');return;}
-  const rows=[];
+  const rows=[]; const logs=[];
   for(const m of items){
     const tr=$(`tr[data-id="${m.id}"]`); if(!tr) continue;
     const p=rowPatch(tr);
     if(!p.name_ja){toast(`日本語名 누락: ${m.code||m.name_ko||m.id}`,'warn');return;}
+    const ch=diffItem(m,p);
     p.id=m.id; rows.push(p);
+    if(Object.keys(ch).length) logs.push({action:'update',id:m.id,label:p.code||p.name_ja,changes:ch});
   }
   if(!rows.length){toast('저장할 행이 없습니다','warn');return;}
   const {error}=await supa.from('menu_items').upsert(rows);
   if(error){toast('일괄 저장 실패: '+error.message,'err');return;}
-  toast(`${rows.length}건 저장됨`,'ok'); await load();
+  await logMany(logs);
+  toast(`${rows.length}건 저장됨 · 변경 ${logs.length}건`,'ok'); await load();
 }
 function saveVenue(venue){ saveMany(state.items.filter(m=>(m.venue||'etc')===venue)); }
 function saveAll(){ saveMany(state.items); }
 
 async function delRow(id){
+  const before=state.items.find(m=>String(m.id)===String(id));
   if(!confirm('이 메뉴를 삭제할까요? (과거 청구 기록은 영향 없음)')) return;
   const {error}=await supa.from('menu_items').delete().eq('id',id);
   if(error){toast('삭제 실패: '+error.message,'err');return;}
+  await logChange('delete',{id,label:(before&&(before.code||before.name_ja))||id,changes:diffItem(before,{})});
   toast('삭제됨','warn'); await load();
 }
 
 async function addOne(){
+  const venue=$('#n-venue').value||'etc';
   const row={
     code:$('#n-code').value.trim()||null,
     name_ja:$('#n-ja').value.trim(),
     name_ko:$('#n-ko').value.trim()||null,
     category:$('#n-cat').value,
-    venue:$('#n-venue').value.trim()||'etc',
-    station:autoStation($('#n-cat').value, $('#n-venue').value.trim()||'etc'),
+    venue:venue,
+    station:autoStation($('#n-cat').value, venue),
     unit_price:Math.round(Number($('#n-price').value||0)),
     sort_order:Math.round(Number($('#n-sort').value||0)),
   };
   if(!row.name_ja){toast('日本語名을 입력하세요','warn');return;}
-  const {error}=await supa.from('menu_items').insert(row);
+  const {data:ins,error}=await supa.from('menu_items').insert(row).select().single();
   if(error){toast('추가 실패: '+error.message,'err');return;}
+  await logChange('insert',{id:ins&&ins.id,label:row.code||row.name_ja,changes:diffItem({},row)});
   toast('메뉴 추가됨','ok');
   ['n-code','n-ja','n-ko'].forEach(id=>$('#'+id).value=''); $('#n-price').value=0; lastAuto='';
   await load();   // load()가 다음 코드 자동 채움
+}
+
+// ── 수정 이력 뷰어 ──
+function fmtDt(s){ if(!s) return ''; const d=new Date(s); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+async function loadHistory(){
+  const body=$('#hist-body'); if(!body||!supa) return;
+  const {data,error}=await supa.from('change_log').select('*').eq('entity','menu_item').order('changed_at',{ascending:false}).limit(40);
+  if(error){ body.innerHTML='<div class="empty-hint">이력 테이블 미설치(29_change_log.sql 실행 필요)</div>'; $('#hist-cnt').textContent=''; return; }
+  renderHistory(data||[]);
+}
+const HIST_FLABEL={code:'코드',name_ja:'日本語名',name_ko:'한국어명',category:'구분',venue:'장소',station:'station',unit_price:'단가',sort_order:'정렬',active:'활성'};
+function renderHistory(list){
+  $('#hist-cnt').textContent=list.length?`(최근 ${list.length}건)`:'';
+  const body=$('#hist-body');
+  if(!list.length){ body.innerHTML='<div class="empty-hint">아직 수정 이력이 없습니다.</div>'; return; }
+  const AL={insert:'추가',update:'수정',delete:'삭제'};
+  body.innerHTML=list.map(r=>{
+    let diff='';
+    let c=r.changes; if(typeof c==='string'){ try{c=JSON.parse(c);}catch(e){c=null;} }
+    if(c && typeof c==='object'){ diff=Object.keys(c).map(k=>`${HIST_FLABEL[k]||k}: ${esc(c[k]&&c[k].from)}→${esc(c[k]&&c[k].to)}`).join(' · '); }
+    else if(r.field){ diff=`${HIST_FLABEL[r.field]||r.field}: ${esc(r.old_value)}→${esc(r.new_value)}`; }
+    return `<div class="hrow"><span class="ht">${fmtDt(r.changed_at)}</span>`
+      +`<span class="ha ha-${esc(r.action)}">${AL[r.action]||r.action}</span>`
+      +`<span class="hby">${esc(r.label||'')}</span>`
+      +`<span class="hd">${diff}</span>`
+      +`<span class="ht">${esc(r.changed_by||'')}</span></div>`;
+  }).join('');
 }
 
 // ── 부팅 ──
@@ -332,7 +458,8 @@ $('#btn-connect').addEventListener('click',connect);
 $('#btn-add').addEventListener('click',addOne);
 $('#btn-saveall').addEventListener('click',saveAll);
 $('#btn-nextcode').addEventListener('click',()=>fillNextCode(true));
-$('#n-cat').addEventListener('change',()=>fillNextCode());   // 구분 바꾸면 그 구분의 다음 코드
+$('#n-venue').addEventListener('change',()=>fillNextCode());   // 장소 바꾸면 그 장소의 다음 코드
+fillVenueSelect();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 window.onSaizenLangChange=function(){ try{ render(); }catch(e){} };
