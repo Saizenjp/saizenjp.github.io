@@ -249,6 +249,11 @@
   .day-chip.we:not(.active){color:var(--err)}
   .day-chip:not(.active):hover{background:var(--accentSoft)}
   .day-chip .dcnt{display:block;font-size:9px;font-weight:700;color:var(--accent2)}
+  .day-chip .dun{display:block;font-size:9px;font-weight:800;color:#fff;background:var(--err);border-radius:5px;padding:0 4px;margin-top:1px}
+  .day-chip.active .dun{background:#fff;color:var(--err)}
+  /* 미배정 목록 섹션 헤더(도착/잔류) */
+  .ua-sec{font-size:11px;font-weight:800;color:var(--text2);background:var(--surface3);border-radius:7px;padding:5px 9px;margin:6px 0 6px;letter-spacing:.01em}
+  .ua-sec b{color:var(--accent2);font-weight:800}
   .day-chip.ds-all{background:var(--surface2);border-style:dashed;min-width:54px}
   .day-chip.ds-all.active{background:var(--accent2);border-color:var(--accent2);border-style:solid}
   .ds-lbl{font-size:11px;color:var(--text2);font-weight:700;flex:0 0 auto;margin-right:2px}
@@ -286,7 +291,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.50">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.51">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -367,7 +372,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.50"></script>
+<script src="../assets/saizen-ops.js?v=14.51"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -642,9 +647,11 @@ function renderDayStrip(){
   if(!state.days) state.days=new Set();
   const WD=['일','월','화','수','목','금','토'];
   const inByDate={}; state.guests.forEach(g=>{ if(g.dep) inByDate[g.dep]=(inByDate[g.dep]||0)+1; });
+  // 그 날 현지도착인데 아직 미배정인 팀 수(=0 되도록 맞추면 그 날짜 완료)
+  const unByDate={}; state.guests.forEach(g=>{ if(g.dep && unassignedMembers(g.event_seq).length>0) unByDate[g.dep]=(unByDate[g.dep]||0)+1; });
   const chip=(d,active)=>{
-    const wd=WD[new Date(d+'T00:00:00').getDay()]; const we=(wd==='토'||wd==='일'); const cin=inByDate[d]||0;
-    return `<button class="day-chip${active?' active':''}${we?' we':''}" data-d="${d}" title="${d} · 체크인 ${cin}팀">${fmtMD(d)}<small>${wd}</small>${cin?`<span class="dcnt">+${cin}</span>`:''}</button>`;
+    const wd=WD[new Date(d+'T00:00:00').getDay()]; const we=(wd==='토'||wd==='일'); const cin=inByDate[d]||0; const un=unByDate[d]||0;
+    return `<button class="day-chip${active?' active':''}${we?' we':''}" data-d="${d}" title="${d} · 체크인 ${cin}팀 · 미배정 도착 ${un}팀">${fmtMD(d)}<small>${wd}</small>${cin?`<span class="dcnt">+${cin}</span>`:''}${un?`<span class="dun">미${un}</span>`:''}</button>`;
   };
   if(viewMode==='timeline'){
     const all=state.days.size===0;
@@ -746,7 +753,7 @@ function renderUnassigned(){
   const totalLeft=list.reduce((s,g)=>s+unassignedMembers(g.event_seq).length,0);
   $('#unassigned-cnt').textContent=`${dayScopeLabel()} 기준 · ${list.length}${t('rm_cntTeam')} · ${totalLeft}${t('rm_cntPpl')}`;
   if(!list.length){box.innerHTML='<div class="empty-hint">'+t('rm_allAssigned')+'</div>';renderSelBar();return;}
-  list.forEach(g=>{
+  function mkCard(g){
     const roster=teamRoster(g.event_seq);
     const leftN=unassignedMembers(g.event_seq).length;
     const card=document.createElement('div');
@@ -806,8 +813,25 @@ function renderUnassigned(){
     });
     // 배정완료 행의 ✕해제 → 그 사람 배정 전부 풀어 명단으로
     card.querySelectorAll('.runassign').forEach(btn=>btn.addEventListener('click',ev=>{ev.stopPropagation();unassignMember(btn.dataset.mid);}));
-    box.appendChild(card);
-  });
+    return card;
+  }
+  // ── 현지도착일 기준 2그룹: 「오늘 현지도착」 / 「이전 도착·미배정 잔류」 (카드 보기) ──
+  const leftOf=g=>unassignedMembers(g.event_seq).length;
+  const focusDay = (viewMode!=='timeline') ? (state.focus||state.from) : null;
+  function secHead(txt){ const d=document.createElement('div'); d.className='ua-sec'; d.innerHTML=txt; return d; }
+  if(focusDay){
+    const arrivals=list.filter(g=>g.dep===focusDay);
+    const carry   =list.filter(g=>g.dep!==focusDay);
+    box.appendChild(secHead(`📍 ${fmtMD(focusDay)} 현지도착 <b>${arrivals.length}팀 · ${arrivals.reduce((s,g)=>s+leftOf(g),0)}명</b>`));
+    if(arrivals.length) arrivals.forEach(g=>box.appendChild(mkCard(g)));
+    else { const e=document.createElement('div'); e.className='empty-hint'; e.style.cssText='padding:10px;font-size:12px'; e.textContent='이 날 현지도착 미배정 없음 ✓'; box.appendChild(e); }
+    if(carry.length){
+      box.appendChild(secHead(`⏳ 이전 도착·미배정 잔류 <b>${carry.length}팀 · ${carry.reduce((s,g)=>s+leftOf(g),0)}명</b>`));
+      carry.forEach(g=>box.appendChild(mkCard(g)));
+    }
+  } else {
+    list.forEach(g=>box.appendChild(mkCard(g)));
+  }
   renderSelBar();
 }
 
