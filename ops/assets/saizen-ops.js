@@ -36,6 +36,7 @@
       /* 공통 */
       brandSub: 'Yamanami '+r('運営','うんえい')+r('管理','かんり')+'システム',
       so_footer: r('本','ほん')+'サイトはメリットツアーが'+r('制作','せいさく')+'・'+r('提供','ていきょう')+'しています',
+      so_privacy: r('個人情報','こじんじょうほう')+'の'+r('取扱','とりあつか')+'い',
       reset: r('初期化','しょきか'),
       home: 'ホーム',
       navStep1: '① '+r('登録','とうろく'),
@@ -329,6 +330,7 @@
     ko: {
       brandSub: 'Yamanami 운영 관리 시스템',
       so_footer: '본 사이트는 메리트투어가 제작·제공합니다',
+      so_privacy: '개인정보처리방침',
       reset: '초기화',
       home: '홈',
       navStep1: '① 등록',
@@ -618,6 +620,7 @@
       /* common */
       brandSub: 'Yamanami Operations Management System',
       so_footer: 'This site is built &amp; provided by Merit Tour',
+      so_privacy: 'Privacy Policy',
       reset: 'Reset',
       home: 'Home',
       navStep1: '① Register',
@@ -1402,6 +1405,15 @@
     s1.setAttribute('data-i18n', 'so_footer');
     f.appendChild(s1);
     f.appendChild(document.createElement('br'));
+    var pv = document.createElement('a');
+    pv.href = '/privacy.html';
+    pv.setAttribute('data-i18n', 'so_privacy');
+    pv.style.cssText = 'font-size:10px;color:inherit;text-decoration:underline;opacity:.9';
+    f.appendChild(pv);
+    var sep = document.createElement('span');
+    sep.style.cssText = 'font-size:10px;opacity:.6;margin:0 6px';
+    sep.textContent = '·';
+    f.appendChild(sep);
     var s2 = document.createElement('span');
     s2.style.cssText = 'font-size:10px;opacity:.85';
     s2.textContent = '© ' + new Date().getFullYear() + ' Merit Tour · SaiZen';
