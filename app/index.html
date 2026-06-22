@@ -516,7 +516,7 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
       <button id="app-lang-ko" onclick="setAppLang('ko')">한국어</button>
       <button id="app-lang-en" onclick="setAppLang('en')">EN</button>
     </div>
-    <span class="badge">v15.4</span>
+    <span class="badge">v15.5</span>
     <button class="ghost-btn" onclick="resetApp()" data-i18n="app_reset" title="업로드 파일·수기입력을 비웁니다 (참조테이블은 유지)">입력 비우기</button>
   </div>
 </div>
@@ -2601,8 +2601,7 @@ function renderDinner(date){
       <span style="color:var(--text3)">명단 관리:</span>
       <button onclick="openDinnerAddModal('${date}')" style="background:var(--accent-dim);color:var(--accent2);border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">＋ 명단 추가</button>
       ${extraCount > 0 ? `<span style="background:var(--amber-dim);color:var(--amber2);padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700">追加 ${extraCount}名</span>` : ''}
-      ${excludedCount > 0 ? `<button onclick="toggleShowExcluded('dinner','${date}')" style="background:${showExcluded?'var(--red-dim)':'var(--surface3)'};color:${showExcluded?'var(--red2)':'var(--text3)'};border:1px solid ${showExcluded?'var(--red)':'var(--border)'};padding:3px 8px;border-radius:4px;cursor:pointer;font-size:10px">${showExcluded?'除外 표시 중':'‍除外 숨김 중'} (${excludedCount}名)</button>` : ''}
-      ${excludedCount > 0 ? `<button onclick="if(confirm('제외된 ${excludedCount}명을 모두 복구할까요?')){clearAllExcluded('dinner','${date}');renderDinner('${date}')}" style="background:transparent;color:var(--text3);border:none;padding:3px 6px;cursor:pointer;font-size:10px;text-decoration:underline">全て復元</button>` : ''}
+      ${excludedCount > 0 ? `<span style="background:var(--red-dim);color:var(--red2);padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700">除外 ${excludedCount}名 (표에 「除外」 표시 · 행에서 復元)</span>` : ''}
     </div>
   `;
 
@@ -2650,9 +2649,7 @@ function renderDinner(date){
     // 대표자(isRep) + 추가 명단(isExtra) 표시
     const repList = list.filter(p => p.isRep || p.isExtra);
     repList.forEach((p, i) => {
-      // 제외 숨김 모드 처리
-      if(p._excluded && !showExcluded) return;
-
+      // 제외해도 행은 숨기지 않고 「除外」 표시로 남긴다(행별 復元 버튼 제공).
       const teamRec = p.isExtra ? {} : (stayingTeams.find(r => String(r.eventSeq||'').trim() === String(p.eventSeq||'').trim()) || {});
       globalNo++;
       const k = p.isExtra ? `dinner_${date}_extra_${p.extraId}` : `dinner_${date}_${p.eventSeq}`;
@@ -2668,22 +2665,27 @@ function renderDinner(date){
         : '';
       const _dnTc = p.isExtra ? {} : (buildTagCodeMap()[String(p.eventSeq||'').trim()]||{});
       const grpCode = p.isExtra ? '—' : makeTagCodeSafe(_dnTc.teamIdx||0, 0, _dnTc.accomPfx, _dnTc.memberCode, _dnTc.manualCode, _dnTc.pendingMember, _dnTc.eventSeq, _dnTc.year);
-      const excludedStyle = p._excluded ? 'opacity:.35;text-decoration:line-through' : '';
+      // 제외 행: 숨기지 않고 옅은 빨강 배경 + 이름 취소선 + 「除外」 뱃지로 또렷이(흐릿 opacity 폐기 — Min 피드백)
+      const excludedStyle = p._excluded ? 'background:var(--red-dim)' : '';
       const extraRowStyle = p.isExtra ? 'background:rgba(100,117,72,.06)' : '';
       const trStyle = [excludedStyle, extraRowStyle].filter(Boolean).join(';');
+      const exclBadge = p._excluded ? ` <span class="tag" style="background:var(--red);color:#fff;font-size:9px;margin-left:4px">除外</span>` : '';
+      const nameStrike = p._excluded ? 'text-decoration:line-through;' : '';
 
-      // 조작 버튼
+      // 조작 버튼 — 행별 제외/復元(통합 토글 폐기) + 저장
       const actionCell = p.isExtra
-        ? `<button onclick="if(confirm('이 追加명단을 삭제할까요?')){removeExtra('dinner','${date}','${p.extraId}');renderDinner('${date}')}" style="background:var(--red-dim);color:var(--red2);border:none;padding:3px 7px;border-radius:3px;cursor:pointer;font-size:10px" title="追加 삭제">삭제</button>`
+        ? `<button onclick="if(confirm('이 追加명단을 삭제할까요?')){removeExtra('dinner','${date}','${p.extraId}');renderDinner('${date}')}" style="background:var(--red-dim);color:var(--red2);border:none;padding:4px 9px;border-radius:4px;cursor:pointer;font-size:11px" title="追加 삭제">삭제</button>`
         : (p._excluded
-          ? `<button onclick="toggleExclude('dinner','${date}','${p._excludeKey}');renderDinner('${date}')" style="background:var(--green-dim);color:var(--green2);border:none;padding:3px 7px;border-radius:3px;cursor:pointer;font-size:10px" title="복구">↩</button>`
-          : `<button onclick="if(confirm('이 명단을 제외할까요?\\n(나중에 복구 가능)')){toggleExclude('dinner','${date}','${p._excludeKey}');renderDinner('${date}')}" style="background:transparent;color:var(--text3);border:1px solid var(--border);padding:3px 7px;border-radius:3px;cursor:pointer;font-size:10px" title="제외">✕</button>`);
+          ? `<button onclick="toggleExclude('dinner','${date}','${p._excludeKey}');renderDinner('${date}')" style="background:var(--green);color:#fff;border:none;padding:4px 9px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600" title="이 명단을 다시 살리기">↩ 復元</button>`
+          : `<button onclick="if(confirm('이 명단을 제외할까요?\\n(행에 「除外」로 남고 復元 가능)')){toggleExclude('dinner','${date}','${p._excludeKey}');renderDinner('${date}')}" style="background:transparent;color:var(--text3);border:1px solid var(--border);padding:4px 9px;border-radius:4px;cursor:pointer;font-size:11px" title="제외">✕ 除外</button>`);
+      // 저장 버튼(행 단위) — 태그코드 + 테이블 + 비고를 한 번에 저장
+      const saveBtn = `<button onclick="saveDinnerRow('${k}','${date}')" style="background:var(--accent);color:#fff;border:none;padding:4px 9px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600" title="이 행 저장(그룹코드·테이블·비고)">💾 저장</button>`;
 
       const displayName = p.isExtra
         ? (p.addType === 'join'
-            ? `<span style="color:var(--text3);font-size:10px">↳ ${p.name}</span>${extraBadge}`
-            : `<strong>${p.repName||p.name}</strong>${extraBadge}`)
-        : `<strong>${p.repName}</strong>${agencyBadge}${teamBadgeHtml}`;
+            ? `<span style="color:var(--text3);font-size:11px;${nameStrike}">↳ ${p.name}</span>${extraBadge}${exclBadge}`
+            : `<strong style="${nameStrike}">${p.repName||p.name}</strong>${extraBadge}${exclBadge}`)
+        : `<strong style="${nameStrike}">${p.repName}</strong>${agencyBadge}${teamBadgeHtml}${exclBadge}`;
 
       // 滞在日次 계산: 입국일 = 1日目
       let stayDayLabel = '-';
@@ -2706,22 +2708,23 @@ function renderDinner(date){
       const mealChips = `<div style="display:flex;gap:4px;margin-bottom:3px;justify-content:center;align-items:center;flex-wrap:wrap"><span style="font-size:9px;color:var(--text3);font-weight:600">食事除外</span>${_mealCk('B','朝','朝食=翌朝')}${_mealCk('L','昼','昼食=当日')}${_mealCk('D','夕','夕食=当夜')}</div>`;
 
       // 그룹코드 셀: 인라인 수정 가능(prefix 만 입력). 같은 prefix를 두 팀에 넣으면 현장에서 같은 팀으로 묶임.
+      // 자동 재렌더 없이 입력만 받고, 저장은 행의 [💾 저장] 버튼에서 일괄 처리(Enter도 저장).
       const grpPrefix = p.isExtra ? '' : String(grpCode||'').replace(/-\d+\D*$/, '');
       const grpCell = p.isExtra
         ? '<span style="color:var(--text3)">—</span>'
-        : `<input type="text" class="manual-tag-input" value="${grpPrefix}" data-eventseq="${p.eventSeq||''}" data-repname="${(p.repName||p.name||'').replace(/"/g,'&quot;')}" data-gubun="${_dnTc.gubun||''}" onchange="onManualTagCodeInput(this)" onkeypress="if(event.key==='Enter')this.blur()" title="그룹코드 수정(접두만) — 두 팀에 같은 코드를 넣으면 같은 팀으로 묶입니다" style="width:74px;padding:2px 4px;font-family:var(--mono);font-size:10px;background:var(--surface3);border:1px solid var(--border2);border-radius:3px;color:var(--text);text-align:center">`;
+        : `<input type="text" id="dn-tag-${k}" class="manual-tag-input" value="${grpPrefix}" data-eventseq="${p.eventSeq||''}" data-repname="${(p.repName||p.name||'').replace(/"/g,'&quot;')}" data-gubun="${_dnTc.gubun||''}" onkeypress="if(event.key==='Enter')saveDinnerRow('${k}','${date}')" title="그룹코드 수정(접두만) — 두 팀에 같은 코드를 넣고 저장하면 같은 팀으로 묶입니다" style="width:120px;padding:5px 7px;font-family:var(--mono);font-size:13px;background:var(--surface3);border:1px solid var(--border2);border-radius:4px;color:var(--text);text-align:center">`;
 
       html += `<tr class="draggable-row" data-eventseq="${p.eventSeq||''}" data-grpcode="${grpCode}" ${trStyle?`style="${trStyle}"`:''}>
         <td style="font-family:var(--mono);text-align:center">${globalNo}</td>
-        <td style="font-family:var(--mono);font-size:10px">${p.isExtra?'—':(teamRec.eventNo||"-")}</td>
-        <td style="font-family:var(--mono);font-size:10px">${grpCell}</td>
+        <td style="font-family:var(--mono);font-size:11px">${p.isExtra?'—':(teamRec.eventNo||"-")}</td>
+        <td style="font-family:var(--mono);font-size:11px">${grpCell}</td>
         <td>${displayName}</td>
         <td>${stayDayLabel}</td>
-        <td style="font-family:var(--mono);font-size:10px">${p.isExtra ? (p.engFull||'') : (getEngName(p.eventSeq)||'')}</td>
+        <td style="font-family:var(--mono);font-size:11px">${p.isExtra ? (p.engFull||'') : (getEngName(p.eventSeq)||'')}</td>
         <td class="num-center"><strong>${p.isExtra?(p.pax||1):(teamRec.pax||'')}</strong></td>
-        <td><input class="editable narrow" value="${md.table||''}" onchange="saveField('${k}','table',this.value)" placeholder="T-1"></td>
-        <td><input class="editable wide" value="${md.remarks||''}" onchange="saveField('${k}','remarks',this.value)" placeholder="参考事項 · メモ"></td>
-        <td style="text-align:center">${mealChips}${actionCell}</td>
+        <td><input id="dn-tbl-${k}" class="editable" value="${md.table||''}" onchange="saveField('${k}','table',this.value)" placeholder="T-1" style="width:100px;font-size:13px;padding:5px 7px"></td>
+        <td><input id="dn-rmk-${k}" class="editable" value="${md.remarks||''}" onchange="saveField('${k}','remarks',this.value)" placeholder="参考事項 · メモ" style="width:280px;font-size:13px;padding:5px 7px"></td>
+        <td style="text-align:center;white-space:nowrap">${mealChips}<div style="display:flex;gap:5px;justify-content:center;flex-wrap:wrap">${saveBtn}${actionCell}</div></td>
       </tr>`;
     });
     html += `</tbody></table></div></div>`;
@@ -5767,6 +5770,36 @@ function onManualTagCodeInput(input){
     });
     window.scrollTo(0, scrollY);
   }, 0);
+}
+
+// 간단 토스트(앱 공용)
+function appToast(msg){
+  let t = document.getElementById('app-toast');
+  if(!t){
+    t = document.createElement('div');
+    t.id = 'app-toast';
+    t.style.cssText = 'position:fixed;left:50%;bottom:32px;transform:translateX(-50%);z-index:99999;background:var(--accent);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 4px 18px rgba(0,0,0,.2);opacity:0;transition:opacity .15s';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._tm);
+  t._tm = setTimeout(()=>{ t.style.opacity = '0'; }, 1600);
+}
+
+// 夕食 행 단위 저장: 그룹코드(접두) + 테이블 + 비고를 한 번에 저장
+function saveDinnerRow(k, date){
+  const tbl = document.getElementById('dn-tbl-'+k);
+  if(tbl) saveField(k, 'table', tbl.value);
+  const rmk = document.getElementById('dn-rmk-'+k);
+  if(rmk) saveField(k, 'remarks', rmk.value);
+  const tag = document.getElementById('dn-tag-'+k);
+  appToast('저장되었습니다');
+  if(tag){
+    onManualTagCodeInput(tag);   // 그룹코드 저장 + 전 탭 재렌더 + 화면 복원
+  } else if(date){
+    renderDinner(date);
+  }
 }
 
 // 학습된 회원 목록 모달 (관리 UI)
