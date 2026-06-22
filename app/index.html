@@ -2526,6 +2526,15 @@ function saveDinnerVisitors(date){
   saveManual();
 }
 
+// ── 夕食 숙소 필터 (멀티 토글 · 선택 없으면 전체 · 인쇄 모달과 연동) ──
+let dinnerAccomFilter = (()=>{ try{ return new Set(JSON.parse(localStorage.getItem('saizen_dinner_accom')||'[]')); }catch(e){ return new Set(); } })();
+function persistDinnerAccom(){ try{ localStorage.setItem('saizen_dinner_accom', JSON.stringify([...dinnerAccomFilter])); }catch(e){} }
+function toggleDinnerAccom(accom, date){
+  if(dinnerAccomFilter.has(accom)) dinnerAccomFilter.delete(accom); else dinnerAccomFilter.add(accom);
+  persistDinnerAccom(); renderDinner(date);
+}
+function setDinnerAccomAll(date){ dinnerAccomFilter.clear(); persistDinnerAccom(); renderDinner(date); }
+
 function renderDinner(date){
   if(!date) return;
   const container = document.getElementById('dinner-content');
@@ -2599,15 +2608,26 @@ function renderDinner(date){
       <label style="display:flex;align-items:center;gap:5px">석식 <input type="number" min="0" id="dv-d-${date}" value="${dv.d||''}" placeholder="0" onchange="saveDinnerVisitors('${date}')" style="width:64px;padding:5px 6px;border:1px solid var(--border);border-radius:4px;text-align:center;font-size:13px"></label>
       <span style="font-size:10px;color:var(--text3)">입력 시 자동 저장 · 夕食オーダー 인쇄 합계에 반영</span>
     </div>`;
+  // 숙소 필터 칩 (멀티 토글 — 선택 없으면 전체). 그날 존재하는 숙소만 노출.
+  const allAccoms = accomGroups.map(g => g.accom);
+  const fSet = dinnerAccomFilter;
+  const shownGroups = fSet.size > 0 ? accomGroups.filter(g => fSet.has(g.accom)) : accomGroups;
+  const accomChipsHTML = allAccoms.length > 1 ? `
+    <div class="date-filter" style="margin-bottom:.85rem">
+      <span style="font-size:10px;color:var(--text3);margin-right:4px;line-height:28px">숙소:</span>
+      <div class="date-chip ${fSet.size===0?'active':''}" onclick="setDinnerAccomAll('${date}')">전체</div>
+      ${allAccoms.map(ac=>`<div class="date-chip ${(fSet.size===0||fSet.has(ac))?'active':''}" onclick="toggleDinnerAccom('${ac.replace(/'/g,"\\'")}','${date}')">${accomEngName(ac)||ac}</div>`).join('')}
+    </div>` : '';
+
   let html = `<div style="margin-bottom:1rem;padding:10px 14px;background:var(--surface3);border-radius:7px;font-size:12px;color:var(--text2)">
     <strong style="color:var(--text)">${date}${getWD(date)} 저녁 식사</strong>
     &nbsp;&nbsp;|&nbsp;&nbsp; <strong style="color:var(--accent2)">${stayingTeams.length}팀</strong> · ${activeCount}명
     &nbsp;&nbsp;<span style="font-size:10px;color:var(--text3)">${accomGroups.map(g=>`${accomEngName(g.accom)} ${g.list.filter(p=>p.isRep||p.isExtra).length}팀`).join(' · ')}</span>
-  </div>${mgmtBar}${visitorPanel}`;
+  </div>${accomChipsHTML}${mgmtBar}${visitorPanel}`;
 
   const dinnerTableIds = [];
   let globalNo = 0;
-  accomGroups.forEach(({accom, list}) => {
+  shownGroups.forEach(({accom, list}) => {
     const tag = accomTag(accom);
     const accomTeams = stayingTeams.filter(r => r.accom === accom);
     const tid = `dinner-tbl-${date}-${accom.replace(/[\s]/g,'')}`;
@@ -4210,12 +4230,15 @@ function showDatePickerModal(title, dates, onConfirm, confirmLabel, options){
         <button class="btn-dl" style="font-size:10px;padding:4px 10px" onclick="dlModalAccomSelectAll(false)">해제</button>
       </div>
       <div class="dl-date-grid" id="dl-accom-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
-        ${_accomList.map(a => `
-          <label class="dl-date-item selected">
-            <input type="checkbox" value="${a}" checked>
+        ${_accomList.map(a => {
+          // 화면 명단표의 숙소 필터(dinnerAccomFilter)와 연동: 선택이 있으면 그것만 체크
+          const _on = !(typeof dinnerAccomFilter!=='undefined' && dinnerAccomFilter && dinnerAccomFilter.size>0 && !dinnerAccomFilter.has(a));
+          return `
+          <label class="dl-date-item${_on?' selected':''}">
+            <input type="checkbox" value="${a}" ${_on?'checked':''}>
             <span style="font-family:var(--mono);text-align:center;font-size:11px">${accomEngName(a)}</span>
-          </label>
-        `).join('')}
+          </label>`;
+        }).join('')}
       </div>
     </div>` : '';
 
