@@ -65,7 +65,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.40">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.41">
 </head>
 <body data-so-area="admin">
 <div class="topbar so-bar">
@@ -93,6 +93,13 @@
 </div>
 
 <div class="wrap">
+  <div class="panel" id="req-panel" style="display:none">
+    <h3>가입 요청 <span class="pill" id="req-badge" style="display:none"></span></h3>
+    <div class="desc">처음 접속자가 보낸 <b>계정 발급 요청</b>입니다. 확인 후 <b>Supabase Dashboard → Authentication → Invite</b> 로 계정을 발급하고,
+      아래에서 <b>[처리완료]</b>로 표시하세요. (자가 회원가입은 OFF — 요청은 계정이 아닙니다)</div>
+    <div id="req-list"><div class="deny" style="color:var(--muted)">불러오는 중…</div></div>
+  </div>
+
   <div class="panel">
     <h3>담당자 권한 관리</h3>
     <div class="desc">각 계정의 <b>역할</b>(마스터·관리담당·일반)과 들어갈 수 있는 <b>카드</b>를 지정합니다.
@@ -102,7 +109,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=14.40"></script>
+<script src="../assets/saizen-ops.js?v=14.41"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 권한 관리(마스터 전용). 18_access_control.sql 의 RPC를 호출.
@@ -170,6 +177,7 @@ async function connect(){
       return;
     }
     await load();
+    await loadRequests();
   }catch(e){
     setConn('연결 실패','err'); btn.textContent='연결 · 재시도';btn.disabled=false; supa=null;
     toast('연결 실패: '+e.message+' (18_access_control.sql 실행·로그인 확인)','err');
@@ -236,6 +244,56 @@ async function saveRow(tr){
   if(error){toast('저장 실패: '+error.message,'err');return;}
   toast('저장됨','ok');
   await load();
+}
+
+// ── 가입 요청 검토 (28_access_requests.sql) ──
+function fmtDt(s){ if(!s) return ''; const d=new Date(s); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+async function loadRequests(){
+  const panel=$('#req-panel'); if(!panel||!supa) return;
+  const {data,error}=await supa.from('access_requests').select('*').order('created_at',{ascending:false}).limit(100);
+  if(error){ panel.style.display='none'; return; }   // 권한 없음/테이블 없음 → 패널 숨김
+  panel.style.display=''; renderRequests(data||[]);
+}
+function renderRequests(list){
+  const pend=list.filter(r=>r.status==='pending');
+  const badge=$('#req-badge');
+  if(badge){ badge.style.display=''; badge.className='pill'+(pend.length?' err':' ok'); badge.textContent='대기 '+pend.length; }
+  const box=$('#req-list');
+  if(!list.length){ box.innerHTML='<div class="deny" style="color:var(--muted)">아직 요청이 없습니다.</div>'; return; }
+  const STAT={pending:['대기','rb-staff'],approved:['처리완료','rb-manager'],rejected:['거절','rb-admin']};
+  let html='<table class="users"><thead><tr><th>요청자</th><th>이메일</th><th>부서·메모</th><th>요청시각</th><th>상태</th><th></th></tr></thead><tbody>';
+  list.forEach(r=>{
+    const st=STAT[r.status]||[r.status,'rb-staff'];
+    html+=`<tr data-id="${esc(r.id)}">
+      <td class="uname">${esc(r.name||'')}</td>
+      <td><span class="uemail">${esc(r.email||'')}</span></td>
+      <td style="font-size:12px;color:var(--text2)">${esc(r.dept||'')}${r.message?('<div style="color:var(--muted);margin-top:2px">'+esc(r.message)+'</div>'):''}</td>
+      <td style="font-size:11.5px;color:var(--muted);white-space:nowrap">${fmtDt(r.created_at)}</td>
+      <td><span class="rbadge ${st[1]}">${st[0]}</span>${r.handled_by?('<div style="font-size:10.5px;color:var(--muted);margin-top:3px">'+esc(r.handled_by)+'</div>'):''}</td>
+      <td style="white-space:nowrap">
+        ${r.status!=='approved'?'<button class="btn sm" data-act="approved">처리완료</button> ':''}
+        ${r.status!=='rejected'?'<button class="btn sm" data-act="rejected" style="background:transparent;color:var(--err);border-color:#e3bdb4">거절</button> ':''}
+        <button class="btn sm" data-act="delete" style="background:transparent;color:var(--muted);border-color:var(--border2)">삭제</button>
+      </td>
+    </tr>`;
+  });
+  html+='</tbody></table>';
+  box.innerHTML=html;
+  box.querySelectorAll('button[data-act]').forEach(b=>b.addEventListener('click',()=>handleReq(b.closest('tr').dataset.id,b.dataset.act)));
+}
+async function handleReq(id,act){
+  if(act==='delete'){
+    if(!confirm('이 요청을 삭제할까요?')) return;
+    const {error}=await supa.from('access_requests').delete().eq('id',id);
+    if(error){toast('삭제 실패: '+error.message,'err');return;}
+    toast('삭제됨','ok');
+  }else{
+    const who=(window.__so_getUser&&__so_getUser())||'';
+    const {error}=await supa.from('access_requests').update({status:act,handled_by:who||null,handled_at:new Date().toISOString()}).eq('id',id);
+    if(error){toast('처리 실패: '+error.message,'err');return;}
+    toast(act==='approved'?'처리완료로 표시':'거절로 표시','ok');
+  }
+  await loadRequests();
 }
 
 $('#btn-connect').addEventListener('click',connect);
