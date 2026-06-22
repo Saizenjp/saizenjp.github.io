@@ -286,7 +286,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.44">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.45">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -324,6 +324,7 @@
   <input type="date" id="date-pick" hidden><input type="date" id="date-to" hidden>
   <button class="btn sm" id="btn-auto" type="button" disabled title="회원→디럭스 우선, 일반→예약종류. 예약순·기존 수기배정 보호" style="background:var(--accent2);border-color:var(--accent2)">자동배정</button>
   <button class="btn ghost sm" id="btn-clear-all" type="button" disabled title="불러온 범위의 모든 배정 해제(수기·자동 전부)" style="color:var(--err);border-color:#e3bdb4">전체 비우기</button>
+  <button class="btn ghost sm" id="btn-conflicts" type="button" disabled title="정원 초과(겹침) 방을 스캔 → 초과 auto 배정을 정리(수기·분할은 보호)" style="color:var(--warn);border-color:#e6cf95">⚠ 충돌 점검</button>
   <button class="btn ghost sm" id="btn-local-shizu" type="button" disabled title="시즈노야도 현지(일본) 직접 예약을 추가하고 본관(별채 희망 시 별채)에 즉시 배정" style="border-color:var(--s)">시즈노야도 현지예약</button>
   <button class="btn ghost sm" id="btn-export" type="button" data-i18n-title="rm_btnExportTitle" data-i18n="rm_btnExport"></button>
   <span class="hint" id="session-hint"></span>
@@ -366,7 +367,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.44"></script>
+<script src="../assets/saizen-ops.js?v=14.45"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -478,7 +479,7 @@ async function connect(){
     if(error) throw error;
     setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
     btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
-    $('#btn-load').disabled=false; $('#btn-auto').disabled=false; $('#btn-clear-all').disabled=false; $('#btn-local-shizu').disabled=false;
+    $('#btn-load').disabled=false; $('#btn-auto').disabled=false; $('#btn-clear-all').disabled=false; $('#btn-local-shizu').disabled=false; $('#btn-conflicts').disabled=false;
     await loadInventory();
     if($('#month-pick').value){ await loadDay(); }   // 연결 후 이번 달 자동 로드
   }catch(e){
@@ -1333,17 +1334,20 @@ function roomPool(route, kind){
   return rooms;
 }
 
-// 특정 객실이 그 기간에 이미 쓰는 인원(state.rooms + 이번 배치 pending)
-function roomUsedFor(invId,dep,arr,pending){
+// 특정 객실이 그 기간에 이미 쓰는 인원(occ=점유원장 + 이번 배치 pending)
+//  · occ 기본값은 state.rooms(로드된 달)지만, 자동배정은 DB 전체 점유(다른 달 포함)를 넘겨
+//    월 경계 팀이 다른 달 팀과 같은 방·겹치는 날에 초과되지 않도록 한다.
+function roomUsedFor(invId,dep,arr,pending,occ){
+  const base = occ || state.rooms;
   let s=0;
-  state.rooms.forEach(r=>{ if(r.inventory_id===invId && overlaps(dep,arr,r.check_in,r.check_out)) s+=(r.assigned_pax||0); });
+  base.forEach(r=>{ if(r.inventory_id===invId && overlaps(dep,arr,r.check_in,r.check_out)) s+=(r.assigned_pax||0); });
   pending.forEach(r=>{ if(r.inventory_id===invId && overlaps(dep,arr,r.check_in,r.check_out)) s+=(r.assigned_pax||0); });
   return s;
 }
-function pickRoom(pool,dep,arr,need,pending){
+function pickRoom(pool,dep,arr,need,pending,occ){
   for(const inv of pool){
     const cap=inv.max_capacity||inv.capacity;
-    if(roomUsedFor(inv.id,dep,arr,pending)+need<=cap) return inv;
+    if(roomUsedFor(inv.id,dep,arr,pending,occ)+need<=cap) return inv;
   }
   return null;
 }
@@ -1354,13 +1358,13 @@ function mkRow(g,m,inv){
 }
 
 // list 를 2명씩 짝지어 primaryPool 에 배정. 없으면 fallbackPool(강등). 홀수 1명은 보류.
-function placePairs(g,list,primaryPool,fallbackPool,label,pending,holds){
+function placePairs(g,list,primaryPool,fallbackPool,label,pending,holds,occ){
   const gc=teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq));
   let i=0;
   for(; i+1<list.length; i+=2){
-    let inv=pickRoom(primaryPool,g.dep,g.arr,2,pending);
+    let inv=pickRoom(primaryPool,g.dep,g.arr,2,pending,occ);
     if(!inv && fallbackPool && fallbackPool!==primaryPool)
-      inv=pickRoom(fallbackPool,g.dep,g.arr,2,pending);
+      inv=pickRoom(fallbackPool,g.dep,g.arr,2,pending,occ);
     if(!inv){ holds.push(`${gc} ${list[i].name_kr||''}·${list[i+1].name_kr||''}: ${label} 객실부족`); continue; }
     pending.push(mkRow(g,list[i],inv));
     pending.push(mkRow(g,list[i+1],inv));
@@ -1382,6 +1386,20 @@ async function autoAssign(){
     }
     rebuildAssignMap();
 
+    // ── DB 기준 점유원장: 배정 대상 팀들의 전체 체류 구간에 걸치는 '모든' 기존 배정(다른 달 포함) ──
+    //   · 위에서 이번 auto는 이미 삭제됨 → 남은 건 수기·분할 + 다른 달 배정. 정원 체크의 권위 소스.
+    let occ = state.rooms.slice();   // 폴백
+    try{
+      const teamsAll=[...state.guests];
+      const deps=teamsAll.map(g=>g.dep).filter(Boolean), arrs=teamsAll.map(g=>g.arr).filter(Boolean);
+      if(deps.length && arrs.length){
+        const spanFrom=deps.reduce((a,b)=>a<b?a:b), spanTo=arrs.reduce((a,b)=>a>b?a:b);
+        // overlaps(span): check_in < spanTo AND check_out > spanFrom
+        const occRes=await pagedQuery(()=>supa.from('rooms').select('id,inventory_id,assigned_pax,check_in,check_out,assign_source,event_seq,member_id').lt('check_in',spanTo).gt('check_out',spanFrom).order('id'));
+        if(!occRes.error) occ=occRes.data||[];
+      }
+    }catch(e){ console.warn('점유원장 로드 실패, state.rooms로 폴백:', e.message); }
+
     const manual=assignedMemberSet();  // 수기로 이미 배정된 사람(보호)
     const pending=[], holds=[];
     const teams=[...state.guests].sort((a,b)=>a.event_seq-b.event_seq); // 예약순(선착)
@@ -1401,11 +1419,11 @@ async function autoAssign(){
 
       if(route.deluxe){
         const dlx=roomPool(route,'deluxe'), gp=roomPool(route,'general');
-        placePairs(g, mem, dlx, gp, '디럭스', pending, holds); // 부족 시 일반종류로 강등
-        placePairs(g, gen, gp, null, '일반', pending, holds);
+        placePairs(g, mem, dlx, gp, '디럭스', pending, holds, occ); // 부족 시 일반종류로 강등
+        placePairs(g, gen, gp, null, '일반', pending, holds, occ);
       }else{
         const gp=roomPool(route,'general');
-        placePairs(g, gen, gp, null, route.fac, pending, holds);
+        placePairs(g, gen, gp, null, route.fac, pending, holds, occ);
       }
     }
 
@@ -1417,6 +1435,109 @@ async function autoAssign(){
     toast(`자동배정 ${pending.length}명 완료${holds.length?` · 보류 ${holds.length}건(콘솔)`:''}`, holds.length?'warn':'ok');
     if(holds.length) console.warn('[자동배정 보류 '+holds.length+'건]\n'+holds.join('\n'));
   }finally{ btn.disabled=false; btn.textContent=old; }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  충돌 점검 — 정원 초과(같은 방·겹치는 날 > 정원) 스캔 + 해소
+//   · 초과분은 'auto'만 제거(수기·분할 보호) → 미배정 복귀 후 자동배정 재실행으로 재배치
+//   · auto로 못 푸는(수기/분할이 초과) 방은 '수기확인'으로 표시
+// ════════════════════════════════════════════════════════════════
+// 한 방의 행들에서 정원 초과를 없애기 위해 제거할 auto 행 계획(늦은 예약 우선 제거)
+function planResolve(rowsIn, cap){
+  const rows=rowsIn.map(r=>({...r,_dropped:false}));
+  const drop=[];
+  const nights=()=>{ const ds=new Set(); rows.forEach(r=>{ if(!r._dropped) ds.add(r.check_in); }); return [...ds]; };
+  const used=d=>rows.filter(r=>!r._dropped && r.check_in<=d && d<r.check_out).reduce((s,r)=>s+(r.assigned_pax||0),0);
+  let guard=0;
+  while(guard++<500){
+    let worstD=null, worstU=cap;
+    nights().forEach(d=>{ const u=used(d); if(u>worstU){ worstU=u; worstD=d; } });
+    if(worstD===null) break;                       // 모든 밤 정원 이하
+    const cand=rows.filter(r=>!r._dropped && r.assign_source==='auto' && r.check_in<=worstD && worstD<r.check_out);
+    if(!cand.length) break;                         // auto 없음 → 수기만 남음(stuck)
+    cand.sort((a,b)=>(b.event_seq||0)-(a.event_seq||0));   // 늦은 예약(낮은 우선순위) 먼저 제거
+    cand[0]._dropped=true; drop.push(cand[0].id);
+  }
+  const stuck = nights().some(d=>used(d)>cap);
+  return { drop, stuck };
+}
+
+async function checkConflicts(){
+  if(!supa){ toast('먼저 연결하세요','warn'); return; }
+  if(!state.from){ toast('먼저 날짜를 불러오세요','warn'); return; }
+  const btn=$('#btn-conflicts'); btn.disabled=true; const old=btn.textContent; btn.textContent='점검 중…';
+  try{
+    // 로드된 달 범위에 걸치는 모든 배정(다른 달 팀 포함) 조회
+    const res=await pagedQuery(()=>supa.from('rooms')
+      .select('id,inventory_id,assigned_pax,check_in,check_out,assign_source,event_seq,member_id,room_no')
+      .lte('check_in', state.to).gt('check_out', state.from).order('inventory_id'));
+    if(res.error){ toast('점검 실패: '+res.error.message,'err'); return; }
+    const byInv={}; (res.data||[]).forEach(r=>{ (byInv[r.inventory_id]=byInv[r.inventory_id]||[]).push(r); });
+    const conflicts=[];
+    for(const invId in byInv){
+      const inv=state.inventory.find(i=>String(i.id)===String(invId));
+      const cap=inv?(inv.max_capacity||inv.capacity):2;
+      const rr=byInv[invId];
+      const dates=new Set(); rr.forEach(r=>dates.add(r.check_in));
+      let worst=0, worstDate=null;
+      dates.forEach(d=>{ const u=rr.filter(r=>r.check_in<=d && d<r.check_out).reduce((s,r)=>s+(r.assigned_pax||0),0); if(u>worst){ worst=u; worstDate=d; } });
+      if(worst>cap){ conflicts.push({ inv, invId, cap, rows:rr, worst, worstDate, plan:planResolve(rr,cap) }); }
+    }
+    openConflictModal(conflicts);
+  }catch(e){ toast('점검 오류: '+e.message,'err'); }
+  finally{ btn.disabled=false; btn.textContent=old; }
+}
+
+function closeConflictModal(){ const m=$('#conflict-modal'); if(m) m.remove(); }
+function openConflictModal(conflicts){
+  closeConflictModal();
+  if(!conflicts.length){ toast('✓ 정원 초과(충돌) 없음','ok'); return; }
+  const dropTotal=conflicts.reduce((s,c)=>s+c.plan.drop.length,0);
+  const stuckCnt=conflicts.filter(c=>c.plan.stuck).length;
+  const list=conflicts.map(c=>{
+    const inv=c.inv||{};
+    const rno=inv.room_no||c.rows[0].room_no||c.invId;
+    const fac=inv.facility||'';
+    const srcCnt=c.rows.reduce((o,r)=>{ o[r.assign_source||'?']=(o[r.assign_source||'?']||0)+(r.assigned_pax||0); return o; },{});
+    const srcTxt=Object.entries(srcCnt).map(([k,v])=>`${k==='auto'?'자동':k==='manual'?'수기/분할':k} ${v}`).join(' · ');
+    return `<div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:7px;background:${c.plan.stuck?'#fbf3e2':'#fdf1f0'}">
+      <div style="font-weight:800;font-size:13px">${fac} ${rno} <span style="color:var(--err);font-family:var(--mono)">${c.worst}/${c.cap}</span> <span style="font-size:11px;color:var(--muted)">${c.worstDate} 기준</span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:2px">${srcTxt}</div>
+      <div style="font-size:11.5px;margin-top:3px">${c.plan.stuck
+        ? '<span style="color:var(--warn);font-weight:700">⚠ 수기확인 필요(수기/분할이 초과 — 자동 정리 불가)</span>'
+        : `<span style="color:var(--accent2);font-weight:700">자동 정리 가능: 초과 auto ${c.plan.drop.length}명 해제</span>`}</div>
+    </div>`;
+  }).join('');
+  const bg=document.createElement('div'); bg.className='modal-bg'; bg.id='conflict-modal';
+  bg.innerHTML=`<div class="modal" style="max-width:560px">
+    <h2>⚠ 방배정 충돌 ${conflicts.length}건 (정원 초과)</h2>
+    <div class="mbody">
+      <p style="font-size:12.5px;color:var(--text2);margin-bottom:12px">같은 방·겹치는 날에 정원을 초과한 방입니다. <b>초과 auto 배정 ${dropTotal}명</b>을 해제해 정원 안으로 맞춥니다(수기·분할은 보호).${stuckCnt?` <b style="color:var(--warn)">수기확인 ${stuckCnt}건</b>은 직접 조정하세요.`:''}</p>
+      ${list}
+    </div>
+    <div class="mfoot">
+      <button class="btn ghost sm" type="button" id="cf-close">닫기</button>
+      <button class="btn sm" type="button" id="cf-resolve" ${dropTotal?'':'disabled'} style="background:var(--err);border-color:var(--err)">초과 auto ${dropTotal}명 정리</button>
+    </div>
+  </div>`;
+  bg.addEventListener('click',e=>{ if(e.target===bg) closeConflictModal(); });
+  document.body.appendChild(bg);
+  $('#cf-close').addEventListener('click', closeConflictModal);
+  $('#cf-resolve').addEventListener('click', ()=>resolveConflicts(conflicts));
+}
+
+async function resolveConflicts(conflicts){
+  const allDrop=[]; conflicts.forEach(c=>allDrop.push(...c.plan.drop));
+  const stuckCnt=conflicts.filter(c=>c.plan.stuck).length;
+  if(!allDrop.length){ toast(stuckCnt?`auto로 풀 수 없는 충돌 ${stuckCnt}건 — 수기 확인`:'정리할 auto 초과 없음','warn'); return; }
+  const btn=$('#cf-resolve'); if(btn){ btn.disabled=true; btn.textContent='정리 중…'; }
+  const err=await deleteRoomsByIds(allDrop);
+  if(err){ toast('정리 실패: '+err.message,'err'); return; }
+  const ds=new Set(allDrop.map(String));
+  state.rooms=state.rooms.filter(r=>!ds.has(String(r.id)));
+  rebuildAssignMap(); render();
+  closeConflictModal();
+  toast(`✓ 초과 ${allDrop.length}명 해제 — 「자동배정」 다시 실행하면 빈 방으로 재배치됩니다${stuckCnt?` · 수기확인 ${stuckCnt}건`:''}`, stuckCnt?'warn':'ok');
 }
 
 // ── rooms 대량 삭제/삽입은 청크로 (in() URL 길이·body 한계 회피) ──
@@ -1829,6 +1950,7 @@ function setView(m){
 $('#view-card').addEventListener('click',()=>setView('card'));
 $('#view-timeline').addEventListener('click',()=>setView('timeline'));
 $('#btn-clear-all').addEventListener('click',clearAllAssignments);
+$('#btn-conflicts').addEventListener('click',checkConflicts);
 $('#btn-local-shizu').addEventListener('click',openLocalShizuModal);
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') cancelSplit(); });
 // 일별 칩: 타임라인=복수선택 토글, 카드=하루 단일선택. 재조회 없음
@@ -1845,10 +1967,13 @@ $('#day-strip').addEventListener('click',e=>{
   render();
 });
 // 숙소별 다중 필터 (객실 배정 = placeSel · 미배정 팀 = teamSel)
+// 객실 배정(#fac-filter)에는 '관내별장' 제외 — 소보별장·아소별장·돔하우스 수량과 중복되므로.
+// (미배정 팀 #team-filter 에는 예약 기준이라 관내별장 유지)
+function placeItemsFor(sel){ return sel==='#fac-filter' ? PLACE_ITEMS.filter(k=>k!=='관내별장') : PLACE_ITEMS; }
 function buildFilterBar(sel,set){
   const box=$(sel); if(!box) return;
   box.innerHTML=`<button class="ffbtn${set.size===0?' active':''}" data-k="전체" type="button">전체</button>`
-    + PLACE_ITEMS.map(k=>`<button class="ffbtn${set.has(k)?' active':''}" data-k="${k}" type="button"><span class="fdot" style="background:var(--${PLACE_COLOR[k]})"></span>${k}</button>`).join('');
+    + placeItemsFor(sel).map(k=>`<button class="ffbtn${set.has(k)?' active':''}" data-k="${k}" type="button"><span class="fdot" style="background:var(--${PLACE_COLOR[k]})"></span>${k}</button>`).join('');
 }
 function onFilterClick(e,set,sel){
   const b=e.target.closest('.ffbtn'); if(!b) return;
