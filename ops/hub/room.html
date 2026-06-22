@@ -286,7 +286,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.49">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.50">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -367,7 +367,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.49"></script>
+<script src="../assets/saizen-ops.js?v=14.50"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -1283,11 +1283,15 @@ async function assignMembers(memberIds, inv, opts={}){
     const roomUsed=overlapRows.reduce((s,r)=>s+(r.assigned_pax||0),0);
     if(roomUsed>=cap){
       blocked++;
+      // 누가·언제 쓰는지 명확히: 이름(그룹코드) 날짜~날짜  (코드만 나오던 문제 수정)
       const others=[...new Set(overlapRows.map(r=>{
-        const og=state.guests.find(x=>x.event_seq===r.event_seq);
-        return og?(og.team_tag||og.rep||evNo(r.event_seq)):evNo(r.event_seq);
-      }))].join(', ');
-      blockMsg.push(`${inv.room_no} 정원 ${cap} 초과(사용중: ${others||'-'})`);
+        const mm=memberById(r.member_id);
+        const gc=teamGroupCode(r.event_seq)||evNo(r.event_seq)||'';
+        const nm=mm?(mm.name_kr||mm.name_en||''):'';
+        const who=nm?(gc?`${nm}(${gc})`:nm):(gc||'미상');
+        return `${who} ${fmtMD(r.check_in)}~${fmtMD(r.check_out)}`;
+      }))].join(' / ');
+      blockMsg.push(`${inv.room_no} 정원 ${cap} 초과 — 사용중: ${others||'-'}`);
       break; // 더 넣어도 같은 방은 꽉 참
     }
     const row={
