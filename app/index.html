@@ -516,7 +516,7 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
       <button id="app-lang-ko" onclick="setAppLang('ko')">한국어</button>
       <button id="app-lang-en" onclick="setAppLang('en')">EN</button>
     </div>
-    <span class="badge">v15.2</span>
+    <span class="badge">v15.3</span>
     <button class="ghost-btn" onclick="resetApp()" data-i18n="app_reset" title="업로드 파일·수기입력을 비웁니다 (참조테이블은 유지)">입력 비우기</button>
   </div>
 </div>
@@ -7772,11 +7772,11 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
     sorted.push(...paxList.filter(p=>p.isExtra));
 
     // 대표자(isRep) + 추가(isExtra)만 한 행씩  (일본 고객 비지터는 별도 표로 분리)
-    //  · 夕食 제외(exD) 팀은 인쇄 명단·석식 합계에서 빠짐(화면 토글)
-    const allRows = sorted.filter(p => p.isRep || p.isExtra).filter(p => {
-      const k = p.isExtra ? `dinner_${date}_extra_${p.extraId}` : `dinner_${date}_${p.eventSeq}`;
-      return !(manualData[k]||{}).exD;
-    });
+    //  · 夕食 제외(exD) 팀은 명단에 취소선+「夕食除外」로 남기고 석식 합계에서만 제외(화면 토글)
+    const _rowKey = p => p.isExtra ? `dinner_${date}_extra_${p.extraId}` : `dinner_${date}_${p.eventSeq}`;
+    const _exF = (p, f) => !!(manualData[_rowKey(p)]||{})[f];
+    const _paxOf = p => p.isExtra ? (p.pax||1) : ((stayingTeams.find(r=>String(r.eventSeq||'').trim()===String(p.eventSeq||'').trim())||{}).pax||0);
+    const allRows = sorted.filter(p => p.isRep || p.isExtra);
     if(!allRows.length) return '';
     const rows = allRows.filter(p => !(p.isExtra && p.addType==='visitor'));
     const visitorRows = allRows.filter(p => p.isExtra && p.addType==='visitor');
@@ -7805,7 +7805,10 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
       const repName = p.isExtra ? (p.repName||p.name||'') : (p.repName||'');
       const rowPus = p.isExtra ? false : !!seqIsPus[String(p.eventSeq||'').trim()];
       const originCode = p.isExtra ? '' : (rowPus ? 'PUS' : 'ICN');
-      return `<tr>
+      // 끼니 제외 흔적: 夕食=취소선 행 + 「除外」 / 朝食·昼食=참고란 표기
+      const exD=!!md.exD, exB=!!md.exB, exL=!!md.exL;
+      const exNotes=[exD?'夕食除外':'',exB?'朝食除外':'',exL?'昼食除外':''].filter(Boolean).join(' · ');
+      return `<tr${exD?' class="do-exrow"':''}>
         <td class="c">${no}</td>
         <td class="c date-c">${depD}</td>
         <td class="c date-c">${arrD}</td>
@@ -7814,11 +7817,11 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
         <td class="eng">${engShow}</td>
         <td class="c grp">${grpCode}</td>
         <td class="c">${md.table||''}</td>
-        <td class="c"><strong>${pax}</strong></td>
+        <td class="c">${exD?'<span class="do-exmark">除外</span>':`<strong>${pax}</strong>`}</td>
         <td class="c">${stayDay}</td>
         <td></td>
         <td></td>
-        <td>${md.remarks||''}</td>
+        <td>${md.remarks||''}${exNotes?`<span class="do-exnote">${exNotes}</span>`:''}</td>
       </tr>`;
     }).join('');
 
@@ -7828,7 +7831,8 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
       vno++;
       const k = `dinner_${date}_extra_${p.extraId}`;
       const md = manualData[k]||{};
-      return `<tr>
+      const exD=!!md.exD;
+      return `<tr${exD?' class="do-exrow"':''}>
         <td class="c">${vno}</td>
         <td class="c date-c"></td>
         <td class="c date-c"></td>
@@ -7837,14 +7841,14 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
         <td class="eng">${p.engFull||''}</td>
         <td class="c grp"></td>
         <td class="c">${md.table||''}</td>
-        <td class="c"><strong>${p.pax||1}</strong></td>
+        <td class="c">${exD?'<span class="do-exmark">除外</span>':`<strong>${p.pax||1}</strong>`}</td>
         <td class="c"></td>
         <td></td>
         <td></td>
-        <td>${md.remarks||''}</td>
+        <td>${md.remarks||''}${exD?'<span class="do-exnote">夕食除外</span>':''}</td>
       </tr>`;
     }).join('');
-    const visitorPaxCnt = visitorRows.reduce((s,p)=>s+(parseInt(p.pax,10)||0),0);
+    const visitorPaxCnt = visitorRows.reduce((s,p)=> (manualData[`dinner_${date}_extra_${p.extraId}`]||{}).exD ? s : s+(parseInt(p.pax,10)||0), 0);
     const visitorTableHTML = visitorRows.length ? `
       <table class="do-table do-visitor">
         <thead>
@@ -7859,11 +7863,9 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
         <tbody>${visitorTrHTML}</tbody>
       </table>` : '';
 
-    const teamCnt = rows.length;
-    const paxCnt = rows.reduce((s,p)=>{
-      const teamRec = p.isExtra ? {} : (stayingTeams.find(r=>String(r.eventSeq||'').trim()===String(p.eventSeq||'').trim())||{});
-      return s + (p.isExtra ? (p.pax||1) : (teamRec.pax||0));
-    }, 0);
+    const teamCnt = rows.filter(p=>!_exF(p,'exD')).length;
+    const paxCnt  = rows.reduce((s,p)=> _exF(p,'exD') ? s : s + _paxOf(p), 0);
+    const exDN    = rows.reduce((s,p)=> _exF(p,'exD') ? s + _paxOf(p) : s, 0);   // 석식 제외 인원
 
     // 그 날짜의 조식·중식 인원 합계 (야마나미 식당 기준)
     //  · 夕食(석식)은 paxCnt(그날 묵는 전원) — 위에서 계산.
@@ -7882,7 +7884,7 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
     // 끼니 제외 토글(화면) 반영: 朝食=전날밤 행(_prevDate) exB / 昼食=귀국이면 전날밤·아니면 당일 행 exL
     const _prevDate = fmtDate(new Date(parseLocalDate(date).getTime() - 86400000));
     const _exFlag = (d, seq, f) => !!(manualData[`dinner_${d}_${seq}`]||{})[f];
-    let breakfastN = 0, lunchContinue = 0, lunchArrICN = 0;
+    let breakfastN = 0, lunchContinue = 0, lunchArrICN = 0, exBN = 0, exLN = 0;
     processed.forEach(r => {
       if(!r.accom || (_accomSet && !_accomSet.has(r.accom))) return;
       const pax = parseInt(r.pax,10)||0; if(!pax) return;
@@ -7893,7 +7895,7 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
       const isMid = (r.dep < date && r.arr > date);
       // 朝食 — 야마나미·쿠주=전날묵음 / 간지·시즈=귀국&수목일
       const eatsBreakfast = OFFSITE.has(r.accom) ? (isOut && isWTS) : (r.dep < date && r.arr >= date);
-      if(eatsBreakfast && !_exFlag(_prevDate, seq, 'exB')) breakfastN += pax;
+      if(eatsBreakfast){ if(!_exFlag(_prevDate, seq, 'exB')) breakfastN += pax; else exBN += pax; }
       // 昼食 — 종류 판정(arr=入国가츠카레 / cont=継続)
       let lunchKind = '';
       if(!OFFSITE.has(r.accom)){
@@ -7905,8 +7907,10 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
         else if(isIn && isSatSun && r.accom==='간지호텔') lunchKind = 'arr';   // 입국 간지 토일
         else if(isOut && isWTS && isPus)           lunchKind = 'cont';  // 귀국 PUS 수목일
       }
-      if(lunchKind && !_exFlag(isOut ? _prevDate : date, seq, 'exL')){
-        if(lunchKind==='arr') lunchArrICN += pax; else lunchContinue += pax;
+      if(lunchKind){
+        if(!_exFlag(isOut ? _prevDate : date, seq, 'exL')){
+          if(lunchKind==='arr') lunchArrICN += pax; else lunchContinue += pax;
+        } else exLN += pax;
       }
     });
     const lunchN = lunchContinue + lunchArrICN;
@@ -7942,7 +7946,7 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
       <table class="do-mealsum">
         <thead><tr><th class="ms-rowh"></th><th>朝食</th><th>昼食</th><th>夕食</th></tr></thead>
         <tbody>
-          <tr class="ms-resv"><td class="ms-rowh">予約</td><td>${breakfastN}</td><td>${lunchN}${lunchArrICN?`<span class="ms-sub">入国${lunchArrICN}</span>`:''}</td><td>${paxCnt}</td></tr>
+          <tr class="ms-resv"><td class="ms-rowh">予約</td><td>${breakfastN}${exBN?`<span class="ms-ex">除外${exBN}</span>`:''}</td><td>${lunchN}${lunchArrICN?`<span class="ms-sub">入国${lunchArrICN}</span>`:''}${exLN?`<span class="ms-ex">除外${exLN}</span>`:''}</td><td>${paxCnt}${exDN?`<span class="ms-ex">除外${exDN}</span>`:''}</td></tr>
           <tr class="ms-jp"><td class="ms-rowh">日本</td><td>${dvB||''}</td><td>${dvL||''}</td><td>${dvD||''}</td></tr>
           <tr class="ms-total"><td class="ms-rowh">合計</td><td>${breakfastN+dvB}</td><td>${lunchN+dvL}</td><td>${paxCnt+dvD}</td></tr>
         </tbody>
@@ -8010,6 +8014,10 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
   .do-mealsum td { font-size: 19pt; font-weight: 700; color: #1A2540; }
   .do-mealsum .ms-rowh { font-size: 14pt; font-weight: 800; background: #f4f6fa; letter-spacing: 2pt; }
   .do-mealsum .ms-sub { display: block; font-size: 10pt; font-weight: 700; color: #B45309; letter-spacing: 0.5pt; margin-top: 1mm; }
+  .do-mealsum .ms-ex { display: block; font-size: 10pt; font-weight: 800; color: #B0392B; letter-spacing: 0.3pt; margin-top: 1mm; }
+  .do-table tr.do-exrow td { color: #b0392b; text-decoration: line-through; background: #fbeeec !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .do-table tr.do-exrow td .do-exmark { text-decoration: none; font-weight: 800; color: #b0392b; }
+  .do-table .do-exnote { display: block; text-decoration: none; font-size: 9pt; font-weight: 800; color: #b0392b; margin-top: .5mm; }
   .do-mealsum .ms-jp td { color: #1A4D8F; }
   .do-mealsum .ms-total td { font-size: 30pt; font-weight: 800; color: #1A4D8F; background: #eaf0fa; }
   .do-mealsum .ms-total .ms-rowh { color: #1A2540; background: #dde6f5; font-size: 18pt; }
