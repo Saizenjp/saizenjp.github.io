@@ -286,7 +286,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.46">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.47">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -367,7 +367,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.46"></script>
+<script src="../assets/saizen-ops.js?v=14.47"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -431,6 +431,28 @@ function toast(msg,cls){
   t.textContent=msg; $('#toast').appendChild(t);
   setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);
 }
+// 되돌리기 버튼이 달린 토스트(6초) — 배정 해제 직후 같은 방으로 즉시 복구
+function toastUndo(msg,onUndo){
+  const t=document.createElement('div'); t.className='toast ok';
+  t.innerHTML=`<span></span> <button type="button" class="tu-btn" style="margin-left:10px;border:1px solid currentColor;background:transparent;color:inherit;border-radius:6px;padding:2px 9px;font-weight:800;cursor:pointer;font-family:inherit">↩ 되돌리기</button>`;
+  t.querySelector('span').textContent=msg;
+  t.querySelector('.tu-btn').addEventListener('click',()=>{ t.remove(); onUndo(); });
+  $('#toast').appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},6000);
+}
+// 해제했던 배정(snapshot 배열)을 같은 방·기간으로 다시 삽입
+async function restoreRooms(snaps){
+  if(!supa || !snaps || !snaps.length) return;
+  const rows=snaps.map(s=>({ event_seq:s.event_seq, member_id:s.member_id, inventory_id:s.inventory_id,
+    facility:s.facility, room_type:s.room_type, room_no:s.room_no,
+    check_in:s.check_in, check_out:s.check_out, assigned_pax:s.assigned_pax, assign_source:s.assign_source }));
+  const {data,error}=await supa.from('rooms').insert(rows).select();
+  if(error){ toast('되돌리기 실패: '+error.message,'err'); return; }
+  (data||[]).forEach(r=>state.rooms.push(r));
+  rebuildAssignMap(); render();
+  toast('↩ 되돌렸습니다','ok');
+}
+function _roomSnap(row){ if(!row) return null; const s={...row}; delete s.id; return s; }
 function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
 
 // ── 날짜/통계 헬퍼 ──
@@ -446,7 +468,12 @@ function roomUsedPax(inv){return roomOccAt(inv.id, state.focus||state.from).redu
 // 한 사람의 배정 객실(분할이면 여러 개) · 라벨 · 일괄 해제
 function memberRooms(mid){return state.rooms.filter(r=>r.member_id===mid);}
 function memberRoomLabel(mid){const rs=memberRooms(mid);return rs.length?[...new Set(rs.map(r=>r.room_no))].join(', '):'배정완료';}
-async function unassignMember(mid){const rs=memberRooms(mid);for(const r of rs){await unassign(r.id);}}
+async function unassignMember(mid){
+  const rs=memberRooms(mid); const snaps=[];
+  for(const r of rs){ const s=await unassign(r.id,{silent:true}); if(s) snaps.push(s); }
+  rebuildAssignMap(); render();
+  if(snaps.length) toastUndo(`배정 해제${snaps.length>1?` (${snaps.length}건)`:''}`, ()=>restoreRooms(snaps));
+}
 // ── 월 선택: 그 달 1일~말일을 범위로, 일별 칩은 그 달 전체 ──
 function lastDayOfMonth(ym){ const [y,m]=ym.split('-').map(Number); return `${ym}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`; }
 async function loadMonth(ym, focusDay){
@@ -694,14 +721,30 @@ function assignedSeqSet(){
   return new Set(state.rooms.map(r=>r.event_seq));
 }
 
+// 선택한 날짜(카드=focus 하루 / 타임라인=선택 일자, 비면 전체)에 머무는 팀인가
+//   · 객실 카드/타임라인이 보여주는 날짜와 미배정 목록을 일치시켜 "어느 날짜에 배정하는지" 명확화
+function teamInDayScope(g){
+  if(!g.dep || !g.arr) return true;
+  if(viewMode==='timeline'){
+    if(!state.days || state.days.size===0) return true;            // 전체
+    for(const d of state.days){ if(g.dep<=d && d<g.arr) return true; }
+    return false;
+  }
+  const d=state.focus||state.from;
+  return g.dep<=d && d<g.arr;                                       // 그 하루에 점유
+}
+function dayScopeLabel(){
+  if(viewMode==='timeline') return (state.days && state.days.size) ? [...state.days].sort().map(fmtMD).join('·') : '전체';
+  return fmtMD(state.focus||state.from);
+}
 function renderUnassigned(){
   const box=$('#unassigned'); box.innerHTML='';
   if(!state.sel) state.sel=new Set();
   const done=assignedMemberSet();
-  // 미배정 인원이 한 명이라도 남은 팀만 표시 (+ 숙소 필터)
-  const list=state.guests.filter(g=>!teamFullyAssigned(g.event_seq) && teamMatch(g));
+  // 미배정 인원이 남은 팀만 (+ 숙소 필터 + 선택 날짜 점유)
+  const list=state.guests.filter(g=>!teamFullyAssigned(g.event_seq) && teamMatch(g) && teamInDayScope(g));
   const totalLeft=list.reduce((s,g)=>s+unassignedMembers(g.event_seq).length,0);
-  $('#unassigned-cnt').textContent=`${list.length}${t('rm_cntTeam')} · ${totalLeft}${t('rm_cntPpl')}`;
+  $('#unassigned-cnt').textContent=`${dayScopeLabel()} 기준 · ${list.length}${t('rm_cntTeam')} · ${totalLeft}${t('rm_cntPpl')}`;
   if(!list.length){box.innerHTML='<div class="empty-hint">'+t('rm_allAssigned')+'</div>';renderSelBar();return;}
   list.forEach(g=>{
     const roster=teamRoster(g.event_seq);
@@ -1646,10 +1689,12 @@ function openSingleFeeModal(g, inv, nights, roomId, preMember){
   });
 }
 
-async function unassign(roomId){
+async function unassign(roomId, opts){
+  opts=opts||{};
   const row=state.rooms.find(r=>r.id===roomId);
+  const snap=_roomSnap(row);
   const {error}=await supa.from('rooms').delete().eq('id',roomId);
-  if(error){toast('취소 실패: '+error.message,'err');return;}
+  if(error){toast('취소 실패: '+error.message,'err');return null;}
   // 연동 추가요금 정리(같은 팀·해당 객실 설명 매칭)
   if(row){
     const inv=invById(row.inventory_id);
@@ -1665,8 +1710,10 @@ async function unassign(roomId){
     }
   }
   state.rooms=state.rooms.filter(r=>r.id!==roomId);
+  if(opts.silent) return snap;     // 일괄 호출(unassignMember)에서 모아서 처리
   rebuildAssignMap(); render();
-  toast('배정 취소됨','ok');
+  if(snap) toastUndo('배정 취소됨', ()=>restoreRooms([snap])); else toast('배정 취소됨','ok');
+  return snap;
 }
 
 // ════════════════════════════════════════════════════════════════════════
