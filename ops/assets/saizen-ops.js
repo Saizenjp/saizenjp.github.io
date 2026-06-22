@@ -1293,12 +1293,34 @@
   // ── 초대/비밀번호 재설정 링크 처리: #...type=invite|recovery 로 들어오면 비번 설정 화면 ──
   //   · Supabase Dashboard에서 Invite 발송 → 사용자가 메일 링크 클릭 → 여기로 와서 비번 설정.
   //   · supabase-js(detectSessionInUrl)가 해시에서 세션을 잡음 → updateUser({password})로 설정.
+  var _spShown = false;
   function handleAuthRedirect() {
-    var h = location.hash || '';
-    if (!/[#&]type=(invite|recovery|signup)/.test(h) && !/access_token=/.test(h)) return false;
-    if (!/type=(invite|recovery|signup)/.test(h)) return false;   // 비번 설정이 필요한 종류만
+    var h = location.hash || '', q = location.search || '';
+    // 구현 흐름(implicit): #access_token=…&type=invite|recovery|signup
+    // PKCE 흐름           : ?code=…  (type 없이 들어오기도 함)
+    var hashInvite  = /type=(invite|recovery|signup)/.test(h);
+    var queryInvite = /type=(invite|recovery|signup)/.test(q);
+    var pkceCode    = /[?&]code=/.test(q) && !/[?&]error=/.test(q);
+    if (!hashInvite && !queryInvite && !pkceCode) return false;
     var c = authClient(); if (!c) return false;
-    showSetPasswordCard(c);
+    // PASSWORD_RECOVERY 이벤트(supabase가 해시를 늦게 처리하는 경우 백업)
+    try {
+      c.auth.onAuthStateChange(function (evt) {
+        if (evt === 'PASSWORD_RECOVERY' || evt === 'USER_UPDATED' || evt === 'SIGNED_IN') {
+          if (!_spShown) { _spShown = true; showSetPasswordCard(c); }
+        }
+      });
+    } catch (e) {}
+    // PKCE 코드면 세션 교환 후 카드 표시
+    if (pkceCode && c.auth.exchangeCodeForSession) {
+      c.auth.exchangeCodeForSession(q).then(function () {
+        if (!_spShown) { _spShown = true; showSetPasswordCard(c); }
+      }).catch(function () {
+        if (!_spShown) { _spShown = true; showSetPasswordCard(c); }
+      });
+    } else {
+      _spShown = true; showSetPasswordCard(c);
+    }
     return true;
   }
   function showSetPasswordCard(c) {
