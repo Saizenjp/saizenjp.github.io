@@ -164,12 +164,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .table-wrap::-webkit-scrollbar-thumb:hover{background:var(--accent)}
 /* 가로 스크롤 컨테이너 (래퍼) — 페이드 + 버튼 부모 */
 .table-scroll{position:relative}
-/* 좌우 페이드 — 더 스크롤할 내용이 있을 때 가장자리에 표시 */
-.table-scroll .table-fade{position:absolute;top:0;bottom:0;width:42px;pointer-events:none;z-index:5;opacity:0;transition:opacity .2s}
-.table-scroll .table-fade-l{left:0;background:linear-gradient(90deg,var(--surface) 0%,transparent 100%)}
-.table-scroll .table-fade-r{right:0;background:linear-gradient(270deg,var(--surface) 0%,transparent 100%)}
-.table-scroll.can-left  .table-fade-l{opacity:1}
-.table-scroll.can-right .table-fade-r{opacity:1}
+/* 좌우 페이드 — 제거(Min 요청). 가장자리 흐린 그라데이션 표시 안 함 */
+.table-scroll .table-fade{display:none !important}
 /* 좌우 이동 버튼 */
 .table-scroll .table-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;display:none;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.18);transition:background .15s,opacity .2s}
 .table-scroll .table-nav:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
@@ -516,7 +512,7 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
       <button id="app-lang-ko" onclick="setAppLang('ko')">한국어</button>
       <button id="app-lang-en" onclick="setAppLang('en')">EN</button>
     </div>
-    <span class="badge">v15.8</span>
+    <span class="badge">v15.9</span>
     <button class="ghost-btn" onclick="resetApp()" data-i18n="app_reset" title="업로드 파일·수기입력을 비웁니다 (참조테이블은 유지)">입력 비우기</button>
   </div>
 </div>
@@ -880,7 +876,7 @@ const HDRS = {
   ACCOM: ['No','イベント番号','タグコード','予約者(チーム)','氏名','英文名','チェックイン','チェックアウト','泊数','施設','部屋タイプ','部屋番号','備考','操作'],
   NAMETAG: ['No','タグコード','名前','英文名','入国便','帰国便','泊数','人数','施設'],
   LOCAL: ['No','区分','イベント番号','代表者名','商品名','出発日','到着日','泊数','人数','取消','備考','販売金額(¥)'],
-  DISPATCH: ['No','タグコード','イベント番号','代表者名','出発日','到着日','泊数','人数','施設','部屋タイプ','会員権区分','操作'],
+  DISPATCH: ['No','タグコード','イベント番号','代表者名','英文名','出発日','到着日','泊数','人数','施設','部屋タイプ','会員権区分','操作'],
 };
 // 헤더 배열 → HTML <tr><th>...</th></tr> 문자열 변환
 function hdrHtml(keys){
@@ -2600,6 +2596,7 @@ function renderDinner(date){
     <div style="margin-bottom:.75rem;padding:8px 12px;background:var(--surface2);border:1px dashed var(--border);border-radius:7px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:11px">
       <span style="color:var(--text3)">명단 관리:</span>
       <button onclick="openDinnerAddModal('${date}')" style="background:var(--accent-dim);color:var(--accent2);border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">＋ 명단 추가</button>
+      <input type="search" id="dinner-search" value="${(dinnerSearchTerm||'').replace(/"/g,'&quot;')}" oninput="onDinnerSearch(this)" placeholder="🔍 검색(대표자·영문명·코드·테이블)" style="flex:1;min-width:180px;max-width:320px;padding:5px 9px;border:1px solid var(--border);border-radius:5px;font-size:11px;background:var(--surface)">
       ${extraCount > 0 ? `<span style="background:var(--amber-dim);color:var(--amber2);padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700">追加 ${extraCount}名</span>` : ''}
       ${excludedCount > 0 ? `<span style="background:var(--red-dim);color:var(--red2);padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700">除外 ${excludedCount}名 (표에 「除外」 표시 · 행에서 復元)</span>` : ''}
     </div>
@@ -2720,7 +2717,9 @@ function renderDinner(date){
         <td>${displayName}</td>
         <td>${stayDayLabel}</td>
         <td style="font-family:var(--mono);font-size:10px">${p.isExtra ? (p.engFull||'') : (getEngName(p.eventSeq)||'')}</td>
-        <td class="num-center"><strong>${p.isExtra?(p.pax||1):(teamRec.pax||'')}</strong></td>
+        <td class="num-center">${p.isExtra
+          ? `<strong>${p.pax||1}</strong>`
+          : `<input type="number" min="0" value="${dinnerPaxFor(k, teamRec.pax)}" onchange="saveField('${k}','pax',this.value);renderDinner('${date}')" title="저녁 인원 수정(夕食 합계 반영)" style="width:50px;text-align:center;font-weight:700;padding:3px 4px;border:1px solid var(--border);border-radius:4px;background:var(--surface);font-size:12px">`}</td>
         <td><input id="dn-tbl-${k}" class="editable narrow" value="${md.table||''}" onchange="saveField('${k}','table',this.value)" placeholder="T-1"></td>
         <td><input id="dn-rmk-${k}" class="editable wide" value="${md.remarks||''}" onchange="saveField('${k}','remarks',this.value)" placeholder="参考事項 · メモ"></td>
         <td style="text-align:center;white-space:nowrap">${mealChips}<div style="display:flex;gap:5px;justify-content:center;flex-wrap:wrap">${saveBtn}${actionCell}</div></td>
@@ -2733,6 +2732,26 @@ function renderDinner(date){
   container.innerHTML = html;
   dinnerTableIds.forEach(id => initDrag(id));
   syncUndoBtnForPrefix('dinner');
+  filterDinnerRows();   // 검색어 재적용(재렌더 후)
+}
+
+// ── 夕食 검색 + 인원 수정 헬퍼 ──────────────────────────────
+let dinnerSearchTerm = '';
+function onDinnerSearch(input){
+  dinnerSearchTerm = input.value || '';
+  filterDinnerRows();
+}
+function filterDinnerRows(){
+  const q = (dinnerSearchTerm || '').trim().toLowerCase();
+  document.querySelectorAll('#dinner-content tr.draggable-row').forEach(tr => {
+    tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  });
+}
+// 夕食 인원: 수기 override(manualData[k].pax) 우선, 없으면 예약 pax
+function dinnerPaxFor(k, fallback){
+  const md = manualData[k] || {};
+  const v = md.pax;
+  return (v !== undefined && v !== '' && v !== null && !isNaN(v)) ? parseInt(v,10) : (parseInt(fallback,10) || 0);
 }
 
 // ── 저녁 명단 추가 모달 ──────────────────────────────
@@ -4918,7 +4937,7 @@ async function _downloadDinner(selectedDates, selectedAccoms){
       xlDataRow(ws,r,[globalNo,teamRec.eventNo||'-',xlDnTagCode,p.repName,
         stayDay,
         getEngName(p.eventSeq)||'',
-        teamRec.pax||'',
+        dinnerPaxFor(k, teamRec.pax),
         md.table||'',md.remarks||''],
         COL,globalNo%2===0,{boldCols:[4],numCols:[7]});
       ws.getCell(r,4).font={bold:true,size:9,color:{argb:XL.FG_ACCENT},name:'Meiryo'};
@@ -7110,7 +7129,7 @@ function calcAircoverData(){
   const grpInfo = {};
   processed.filter(r=>r.accom).forEach(r=>{
     const seq = String(r.eventSeq||'').trim();
-    grpInfo[seq] = {group: getRepTagCode(seq), accom:r.accom, pax:r.pax, dep:r.dep, arr:r.arr};
+    grpInfo[seq] = {group: getRepTagCode(seq), repName:r.repName||'', eng:(getEngName(seq)||''), accom:r.accom, pax:r.pax, dep:r.dep, arr:r.arr};
   });
 
   // APIS 기준으로 날짜/편명 집계
@@ -7126,7 +7145,7 @@ function calcAircoverData(){
       inDone.add(inKey);
       const mk=`${p.depDate}_${p.depFlight}`;
       if(!inMap[mk]) inMap[mk]=[];
-      inMap[mk].push({group:g, seq, accom:info.accom||p.accom, pax:info.pax||1,
+      inMap[mk].push({group:g, seq, rep:info.repName||'', eng:info.eng||'', accom:info.accom||p.accom, pax:info.pax||1,
         from:p.origin, dep:info.dep||p.depDate, arr:info.arr||p.arrDate,
         nights: info.dep&&info.arr ? Math.round((parseLocalDate(info.arr)-parseLocalDate(info.dep))/(86400000)) : 0});
     }
@@ -7136,7 +7155,7 @@ function calcAircoverData(){
       outDone.add(outKey);
       const mk=`${p.arrDate}_${p.retFlight}`;
       if(!outMap[mk]) outMap[mk]=[];
-      outMap[mk].push({group:g, seq, accom:info.accom||p.accom, pax:info.pax||1,
+      outMap[mk].push({group:g, seq, rep:info.repName||'', eng:info.eng||'', accom:info.accom||p.accom, pax:info.pax||1,
         from:p.origin, dep:info.dep||p.depDate, arr:info.arr||p.arrDate,
         nights: info.dep&&info.arr ? Math.round((parseLocalDate(info.arr)-parseLocalDate(info.dep))/(86400000)) : 0});
     }
@@ -7210,10 +7229,12 @@ function renderAircoverTable(date, dir, inMap, outMap){
           ${date}${getWD(date)} &nbsp; ${flight} &nbsp; ${FLIGHT_TIMES[flight]||''} &nbsp; — &nbsp; ${groups.length}팀 / ${totalPax}名
         </div>
         <div class="table-wrap"><table style="table-layout:fixed;width:100%"><colgroup>
-          <col style="width:14%"><col style="width:13%"><col style="width:13%"><col style="width:10%">
-          <col style="width:14%"><col style="width:10%"><col style="width:26%">
+          <col style="width:12%"><col style="width:12%"><col style="width:13%"><col style="width:9%"><col style="width:9%">
+          <col style="width:8%"><col style="width:7%"><col style="width:6%"><col style="width:24%">
         </colgroup><thead><tr>
           <th style="text-align:left">タグコード</th>
+          <th style="text-align:left">代表者</th>
+          <th style="text-align:left">英文名</th>
           <th style="text-align:left">入国日</th>
           <th style="text-align:left">帰国日</th>
           <th style="text-align:center">出発地</th>
@@ -7241,12 +7262,14 @@ function renderAircoverTable(date, dir, inMap, outMap){
           const secRows = sortedGroups.filter(x=>x.accom===g.accom);
           const secPax = secRows.reduce((s,x)=>s+x.pax,0);
           html+=`<tr style="background:var(--surface3)">
-            <td colspan="7" style="font-size:11px;font-weight:700;color:var(--text2);padding:5px 10px">
+            <td colspan="9" style="font-size:11px;font-weight:700;color:var(--text2);padding:5px 10px">
               ◎ ${g.accom} — ${secRows.length}팀 · ${secPax}名
             </td></tr>`;
         }
         html+=`<tr>
           <td style="text-align:left"><input type="text" class="manual-tag-input" value="${g.group}" data-eventseq="${g.seq||''}" data-orig="${g.group}" onchange="saveTeamTagInput(this)" onkeypress="if(event.key==='Enter')this.blur()" title="그룹코드 수정 — 夕食名前版·レストラン名札에도 같이 반영(개인 네임택 미적용)" style="width:104px;padding:3px 5px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent2);background:var(--surface3);border:1px solid var(--border2);border-radius:4px;text-align:center"></td>
+          <td style="font-weight:600">${g.rep||'-'}</td>
+          <td style="font-family:var(--mono);font-size:10px;text-align:left">${g.eng&&g.eng!=='(미등록)'?g.eng:''}</td>
           <td style="font-family:var(--mono);font-size:10px;text-align:left">${g.dep}</td>
           <td style="font-family:var(--mono);font-size:10px;text-align:left">${g.arr}</td>
           <td style="font-family:var(--mono);font-size:10px;text-align:center">${origin}</td>
@@ -7868,7 +7891,7 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
     //  · 夕食 제외(exD) 팀은 명단에 취소선+「夕食除外」로 남기고 석식 합계에서만 제외(화면 토글)
     const _rowKey = p => p.isExtra ? `dinner_${date}_extra_${p.extraId}` : `dinner_${date}_${p.eventSeq}`;
     const _exF = (p, f) => !!(manualData[_rowKey(p)]||{})[f];
-    const _paxOf = p => p.isExtra ? (p.pax||1) : ((stayingTeams.find(r=>String(r.eventSeq||'').trim()===String(p.eventSeq||'').trim())||{}).pax||0);
+    const _paxOf = p => p.isExtra ? (p.pax||1) : dinnerPaxFor(`dinner_${date}_${p.eventSeq}`, (stayingTeams.find(r=>String(r.eventSeq||'').trim()===String(p.eventSeq||'').trim())||{}).pax||0);
     const allRows = sorted.filter(p => p.isRep || p.isExtra);
     if(!allRows.length) return '';
     const rows = allRows.filter(p => !(p.isExtra && p.addType==='visitor'));
@@ -7884,7 +7907,7 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
       const md = manualData[k]||{};
       const engName = p.isExtra ? (p.engFull||'') : (getEngName(p.eventSeq)||'');
       const engShow = (engName && engName !== '(미등록)') ? engName : '';
-      const pax = p.isExtra ? (p.pax||1) : (teamRec.pax||'');
+      const pax = p.isExtra ? (p.pax||1) : dinnerPaxFor(`dinner_${date}_${p.eventSeq}`, teamRec.pax);
       const depD = p.isExtra ? '' : fmtMD(teamRec.dep);
       const arrD = p.isExtra ? '' : fmtMD(teamRec.arr);
       // 滞在日次
@@ -8985,6 +9008,7 @@ function buildDispatch(){
       <td style="text-align:center;font-family:var(--mono);font-weight:700">${d.tagCode}</td>
       <td style="text-align:center;font-family:var(--mono)">${d.rec.eventNo||'-'}</td>
       <td style="font-weight:600">${d.rec.repName||'-'}${d.hasManual?' <span title="수기 입력 있음" style="font-size:10px">✏️</span>':''}</td>
+      <td style="font-family:var(--mono);font-size:10px">${getEngName(d.rec.eventSeq)||''}</td>
       <td style="text-align:center;font-family:var(--mono)">${d.rec.dep||''}</td>
       <td style="text-align:center;font-family:var(--mono)">${d.rec.arr||''}</td>
       <td style="text-align:center">${d.rec.nights}泊</td>
@@ -9325,7 +9349,7 @@ async function downloadDispatchXlsx(){
     const ov = [
       ['出発日', `${rec.dep||''} ${getWD(rec.dep)}`, '到着日', `${rec.arr||''} ${getWD(rec.arr)}`],
       ['期間',   `${rec.nights}泊${Number(rec.nights)+1}日`, '人数', `${rec.pax}名`],
-      ['代表者', rec.repName||'-', '会員権区分', rec.memberType||'-'],
+      ['代表者', `${rec.repName||'-'}${(()=>{const e=getEngName(rec.eventSeq);return e&&e!=='(미등록)'?` / ${e}`:'';})()}`, '会員権区分', rec.memberType||'-'],
       ['出発地', `${d.port} (${d.portName})`, 'チーム', rec.teamName||'-'],
     ];
     ov.forEach(row => {
@@ -10156,8 +10180,13 @@ function shzPoolByTeam(list){
   const order = Object.keys(byTeam).sort((a,b) => (byTeam[a][0].ci||'').localeCompare(byTeam[b][0].ci||'') || String(a).localeCompare(String(b)));
   return order.map((seq,i) => {
     const team = byTeam[seq];
-    const rep = team[0].rep || team[0].defName || '';
-    const head = (rep ? rep+'様' : '#'+seq) + (team[0].local ? ' <span class="shz-tlocal">現地</span>' : '');
+    const rep = team[0].rep || '';
+    const _eng = getEngName(seq) || '';
+    const eng = (_eng && _eng !== '(미등록)') ? _eng : (team[0].defName || '');
+    const nameHtml = rep
+      ? `${rep}様${eng ? ` <small style="color:var(--text3);font-weight:500">${eng}</small>` : ''}`
+      : (eng || ('#'+seq));
+    const head = nameHtml + (team[0].local ? ' <span class="shz-tlocal">現地</span>' : '');
     return `<div class="shz-team t${i%6}">
       <div class="shz-team-h">${head} <small>${team.length}名</small></div>
       <div class="shz-team-chips">${team.map(shzChipHTML).join('')}</div>
