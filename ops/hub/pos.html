@@ -383,7 +383,7 @@ async function loadMembers(){
   let pg=0;
   while(true){
     const {data,error}=await supa.from('guest_members')
-      .select('id,event_seq,name_kr,name_en,seq_in_team,member_grade')
+      .select('id,event_seq,name_kr,name_en,seq_in_team,member_grade,member_class,member_div')
       .in('event_seq',seqs).order('event_seq').order('seq_in_team').range(pg,pg+999);
     if(error) break;
     (data||[]).forEach(m=>state.members.push(m));
@@ -412,6 +412,10 @@ function backToTeams(){
 }
 
 function teamBySeq(seq){ return state.teams.find(x=>x.event_seq===seq); }
+// 회원 판정 = 고객등급(T)·회원권구분(V)·회원구분(U) 셋 중 하나라도 회원신호면 회원(회원 우선).
+//   값이 공란 아님 + '일반'·'비회원' 미포함 = 회원신호. 오등록된 어긋난 케이스 대비.
+function _looksMemberP(v){ const s=String(v||'').trim(); return !!s && !/일반|비회원/.test(s); }
+function posIsMember(m){ return _looksMemberP(m&&m.member_grade)||_looksMemberP(m&&m.member_class)||_looksMemberP(m&&m.member_div); }
 function fmtMD(iso){ if(!iso||iso==='-') return '-'; const p=String(iso).slice(0,10).split('-'); return p.length===3?`${+p[1]}/${+p[2]}`:iso; }
 function teamCardEl(tm){
   const act=state.activeSeqs.has(tm.event_seq);
@@ -445,7 +449,7 @@ function renderTeams(){
       const wrap=document.createElement('div'); wrap.className='mhit-list';
       memHits.slice(0,80).forEach(m=>{
         const tm=teamBySeq(m.event_seq); if(!tm) return;
-        const isMem=(m.member_grade==='회원권');
+        const isMem=posIsMember(m);
         const btn=document.createElement('button'); btn.type='button'; btn.className='mhit';
         btn.innerHTML=`<span class="mh-name">${escP(m.name_kr||m.name_en||'-')}${isMem?'<span class="mh-mem">회</span>':''}</span>`
           +`<span class="mh-team">${teamTag(tm)} · ${escP(tm.rep||'')} · #${teamNo(tm)}${tm.accom?(' · '+escP(tm.accom)):''}${roomLabel(tm.event_seq)?(' · '+roomLabel(tm.event_seq)):''}</span>`;
@@ -489,7 +493,7 @@ async function selectTeam(tm){
   });
   // 개인 분할용 명단(guest_members) 로드
   const {data:gm}=await supa.from('guest_members')
-    .select('id,seq_in_team,name_kr,name_en,is_rep,member_grade')
+    .select('id,seq_in_team,name_kr,name_en,is_rep,member_grade,member_class,member_div')
     .eq('event_seq',tm.event_seq).order('seq_in_team',{ascending:true});
   state.roster=gm||[];
   $('#team-view').style.display='none';
@@ -515,7 +519,7 @@ function renderPayer(){
     } else {
       const chips=state.roster.map(m=>{
         const on=state.payerSel.has(String(m.id));
-        const isMem=(m.member_grade==='회원권');
+        const isMem=posIsMember(m);
         return `<button type="button" class="pchip${on?' on':''}" data-mid="${m.id}">`
           +`${m.seq_in_team!=null?m.seq_in_team+'. ':''}${escP(m.name_kr||m.name_en||'-')}`
           +`${isMem?'<span class="mbadge">회</span>':''}</button>`;

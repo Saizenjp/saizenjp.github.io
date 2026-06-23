@@ -649,7 +649,7 @@ async function loadDay(){
     const rr=await pagedInSeq('rooms','*',seqs);
     if(rr.error){toast('배정 로드 실패: '+rr.error.message,'err');return;}
     state.rooms=rr.data||[];
-    const mm=await pagedInSeq('guest_members','id,event_seq,seq_in_team,name_kr,name_en,is_rep,member_grade',seqs);
+    const mm=await pagedInSeq('guest_members','id,event_seq,seq_in_team,name_kr,name_en,is_rep,member_grade,member_class,member_div',seqs);
     if(mm.error){toast('명단 로드 실패: '+mm.error.message,'warn');}
     else (mm.data||[]).forEach(x=>{(state.members[x.event_seq]=state.members[x.event_seq]||[]).push(x);});
   }
@@ -846,7 +846,7 @@ function renderUnassigned(){
       return `<div class="rmember${m.is_rep?' rep':''}${isDone?' done':''}${checked?' sel':''}" data-mid="${m.id}" ${isDone?'':'draggable="true"'}>
         <input type="checkbox" class="mchk" data-mid="${m.id}" ${isDone?'disabled':''} ${checked?'checked':''}>
         <span class="rtag">${m.tag||(m.num)}</span>
-        <span class="rname">${m.name_kr||'-'}${m.is_rep?'<i class="repbadge">REP</i>':''}<i class="gbadge" style="display:inline-block;font-size:8.5px;font-weight:700;border-radius:3px;padding:1px 5px;margin-left:5px;vertical-align:middle;${isMember(m.member_grade)?'color:#fff;background:var(--accent2)':'color:var(--text2);background:var(--surface3);border:1px solid var(--border2)'}">${gradeLabel(m.member_grade)}</i></span>
+        <span class="rname">${m.name_kr||'-'}${m.is_rep?'<i class="repbadge">REP</i>':''}<i class="gbadge" style="display:inline-block;font-size:8.5px;font-weight:700;border-radius:3px;padding:1px 5px;margin-left:5px;vertical-align:middle;${isMember(m)?'color:#fff;background:var(--accent2)':'color:var(--text2);background:var(--surface3);border:1px solid var(--border2)'}">${gradeLabel(m)}</i></span>
         <span class="ren">${m.name_en||''}</span>
         ${isDone?`<span class="rdone" title="배정된 객실">${memberRoomLabel(m.id)} <button class="runassign" data-mid="${m.id}" title="배정 해제 → 명단으로">✕해제</button></span>`:''}
       </div>`;
@@ -947,7 +947,7 @@ function openAssignPicker(inv){
     if(fa!==fb) return fa-fb;
     return String(a.event_no||'').localeCompare(String(b.event_no||'')) || a.event_seq-b.event_seq;
   });
-  const gbadge=(m)=>`<i style="font-size:8.5px;font-weight:700;border-radius:3px;padding:1px 5px;margin-left:5px;${isMember(m.member_grade)?'color:#fff;background:var(--accent2)':'color:var(--text2);background:var(--surface3);border:1px solid var(--border2)'}">${gradeLabel(m.member_grade)}</i>`;
+  const gbadge=(m)=>`<i style="font-size:8.5px;font-weight:700;border-radius:3px;padding:1px 5px;margin-left:5px;${isMember(m)?'color:#fff;background:var(--accent2)':'color:var(--text2);background:var(--surface3);border:1px solid var(--border2)'}">${gradeLabel(m)}</i>`;
   const body = teams.length ? teams.map(g=>{
     const fit=roomFitsTeam(inv,g);
     const gcode=teamGroupCode(g.event_seq)||'(코드미정)';
@@ -1226,7 +1226,7 @@ function renderRoom(inv){
       const m=r.member_id!=null?memberById(r.member_id):null;
       const nameKr=m?(m.name_kr||'-'):gcode;
       const nameEn=m?(m.name_en||''):'';
-      const gb=m?`<i class="gbadge" style="display:inline-block;font-size:8px;font-weight:700;border-radius:3px;padding:0 4px;margin-left:3px;vertical-align:middle;${isMember(m.member_grade)?'color:#fff;background:var(--accent2)':'color:var(--text2);background:var(--surface3);border:1px solid var(--border2)'}">${gradeLabel(m.member_grade)}</i>`:'';
+      const gb=m?`<i class="gbadge" style="display:inline-block;font-size:8px;font-weight:700;border-radius:3px;padding:0 4px;margin-left:3px;vertical-align:middle;${isMember(m)?'color:#fff;background:var(--accent2)':'color:var(--text2);background:var(--surface3);border:1px solid var(--border2)'}">${gradeLabel(m)}</i>`:'';
       return `<div class="cmem"><b>${nameKr}</b><span class="cmen">${nameEn}</span>${gb}<span class="cmem-act"><span class="csplit" data-room-id="${r.id}" title="기준일부터 다른 방으로 분할">✂</span><span class="cx" data-room-id="${r.id}" title="배정 취소">✕</span></span></div>`;
     }).join('');
     return `<div class="chip${chipCls}">
@@ -1523,18 +1523,30 @@ async function assign(seq,inv){
 // ════════════════════════════════════════════════════════════════════════
 const DELUXE_TYPES=['디럭스더블트윈','디럭스트윈']; // 우선순위 순(최상급 먼저)
 
-function isMember(grade){
-  const s=String(grade||'').trim();
-  if(!s) return false;                       // 공란 = 일반
-  if(s==='일반고객'||s==='일반') return false; // 명시적 일반
-  return true;                               // 회원권/다이아몬드1/EWRC… = 회원
+// 한 컬럼값이 '회원'을 가리키는지: 공란 아님 + '일반'·'비회원' 미포함
+//   → 회원권·정회원·다이아몬드·EWRC… = 회원신호 / 일반고객·일반·비회원·공란 = 아님
+function _looksMember(v){
+  const s=String(v||'').trim();
+  if(!s) return false;
+  if(/일반|비회원/.test(s)) return false;
+  return true;
 }
-// 화면 표시용 라벨: 실제 회원권명이 있으면 그대로, 아니면 회원/일반
-function gradeLabel(grade){
-  const s=String(grade||'').trim();
-  if(!s || s==='일반고객' || s==='일반') return '일반';
-  if(s==='회원권') return '회원';
-  return s;                                  // 다이아몬드1 / EWRC이용권 등
+// 회원 판정 = 고객등급(T)·회원권구분(V)·회원구분(U) 셋 중 하나라도 회원신호면 회원.
+//   초기 회원등록 오류로 컬럼이 어긋난 경우, 회원으로 우선 판단(Min 결정).
+//   ※ 하위호환: 문자열 단일 인자도 허용(member_grade만).
+function isMember(m){
+  if(m && typeof m==='object')
+    return _looksMember(m.member_grade) || _looksMember(m.member_class) || _looksMember(m.member_div);
+  return _looksMember(m);
+}
+// 화면 표시용 라벨: 실제 등급(회원권구분 V) 우선 → 고객등급(T) → 회원/일반
+function gradeLabel(m){
+  const obj = (m && typeof m==='object');
+  const cls = String((obj?m.member_class:'')||'').trim();
+  if(cls && !/일반|비회원/.test(cls)) return cls;     // 다이아몬드Ⅱ·EWRCⅡ 등 실제 등급
+  const g = String((obj?m.member_grade:m)||'').trim();
+  if(g && g!=='회원권' && !/일반|비회원/.test(g)) return g; // 레거시: T에 실제 등급이 있던 경우
+  return isMember(m)?'회원':'일반';
 }
 
 // 팀의 판매분류·숙소 → 배정 라우팅. null 이면 자동배정 제외(소보 등).
@@ -1661,8 +1673,8 @@ async function autoAssign(){
       if(!roster.length) continue;
       if(roster.length===3){ holds.push(`${teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq))} 3명팀 보류`); continue; }
 
-      let mem = route.deluxe ? roster.filter(m=>isMember(m.member_grade)) : [];
-      let gen = route.deluxe ? roster.filter(m=>!isMember(m.member_grade)) : roster.slice();
+      let mem = route.deluxe ? roster.filter(m=>isMember(m)) : [];
+      let gen = route.deluxe ? roster.filter(m=>!isMember(m)) : roster.slice();
       // 외톨이 회원: 명단 앞 일반 1명을 디럭스로 끌어올려 짝 채움(룸메 유지)
       if(route.deluxe && mem.length%2===1 && gen.length>0) mem.push(gen.shift());
 
