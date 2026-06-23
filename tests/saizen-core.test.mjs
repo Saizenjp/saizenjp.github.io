@@ -42,3 +42,38 @@ test('하위호환: 문자열 단일 인자(member_grade)', () => {
   assert.equal(SZ.looksMember('정회원'), true);
   assert.equal(SZ.looksMember('비회원'), false);
 });
+
+// ── 날짜 유틸 ──────────────────────────────────────────────────────────────
+test('fmtDate: Date → YYYY-MM-DD (로컬)', () => {
+  assert.equal(SZ.fmtDate(new Date(2026, 5, 9)), '2026-06-09'); // 6월=month index 5
+  assert.equal(SZ.fmtDate(new Date(NaN)), '');
+  assert.equal(SZ.fmtDate('2026-06-09'), '');                   // 비Date → ''
+});
+
+test('parseFlexDate: 다양한 입력 흡수', () => {
+  assert.equal(SZ.parseFlexDate('2026-08-15'), '2026-08-15');   // ISO
+  assert.equal(SZ.parseFlexDate('2026/8/5'), '2026-08-05');     // 슬래시 한자리
+  assert.equal(SZ.parseFlexDate('20260815'), '2026-08-15');     // 구분자 없음
+  assert.equal(SZ.parseFlexDate('2026년 8월 15일'), '2026-08-15'); // 한국어
+  assert.equal(SZ.parseFlexDate('08/15/2026'), '2026-08-15');   // MM/DD/YYYY
+  assert.equal(SZ.parseFlexDate('8/5/2026'), '2026-08-05');     // M/D/YYYY
+  assert.equal(SZ.parseFlexDate(45900), '2025-08-31');          // 엑셀 직렬
+  assert.equal(SZ.parseFlexDate(new Date(2026, 5, 9)), '2026-06-09');
+  assert.equal(SZ.parseFlexDate(''), '');
+  assert.equal(SZ.parseFlexDate(null), '');
+  assert.equal(SZ.parseFlexDate('알수없음'), '');
+});
+
+test('parseLocalDate: 문자열 → 로컬 Date(시간대 밀림 방지)', () => {
+  const d = SZ.parseLocalDate('2026-08-15');
+  assert.equal(d.getFullYear(), 2026);
+  assert.equal(d.getMonth(), 7);   // 8월
+  assert.equal(d.getDate(), 15);
+  assert.ok(isNaN(SZ.parseLocalDate('')));
+});
+
+test('overlaps: 체류 구간 겹침(퇴실=경계 비포함)', () => {
+  assert.equal(SZ.overlaps('2026-06-01', '2026-06-03', '2026-06-02', '2026-06-04'), true);  // 겹침
+  assert.equal(SZ.overlaps('2026-06-01', '2026-06-03', '2026-06-03', '2026-06-05'), false); // 턴오버(경계 접촉)
+  assert.equal(SZ.overlaps('2026-06-01', '2026-06-02', '2026-06-05', '2026-06-06'), false); // 분리
+});
