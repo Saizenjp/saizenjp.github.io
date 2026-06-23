@@ -512,7 +512,7 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
       <button id="app-lang-ko" onclick="setAppLang('ko')">한국어</button>
       <button id="app-lang-en" onclick="setAppLang('en')">EN</button>
     </div>
-    <span class="badge">v16.1</span>
+    <span class="badge">v16.2</span>
     <button class="ghost-btn" onclick="resetApp()" data-i18n="app_reset" title="업로드 파일·수기입력을 비웁니다 (참조테이블은 유지)">입력 비우기</button>
   </div>
 </div>
@@ -2674,7 +2674,6 @@ function renderDinner(date){
           ? `<button onclick="toggleExclude('dinner','${date}','${p._excludeKey}');renderDinner('${date}')" style="background:var(--green);color:#fff;border:none;padding:4px 9px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600" title="이 명단을 다시 살리기">↩ 復元</button>`
           : `<button onclick="if(confirm('이 명단을 제외할까요?\\n(행에 「除外」로 남고 復元 가능)')){toggleExclude('dinner','${date}','${p._excludeKey}');renderDinner('${date}')}" style="background:transparent;color:var(--text3);border:1px solid var(--border);padding:4px 9px;border-radius:4px;cursor:pointer;font-size:11px" title="제외">✕ 除外</button>`);
       // 저장 버튼(행 단위) — 태그코드 + 테이블 + 비고를 한 번에 저장
-      const saveBtn = `<button onclick="saveDinnerRow('${k}','${date}')" style="background:var(--accent);color:#fff;border:none;padding:4px 9px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600" title="이 행 저장(그룹코드·테이블·비고)">💾 저장</button>`;
 
       const displayName = p.isExtra
         ? (p.addType === 'join'
@@ -2702,11 +2701,11 @@ function renderDinner(date){
       };
       const mealChips = `<div style="display:flex;gap:4px;margin-bottom:3px;justify-content:center;align-items:center;flex-wrap:wrap"><span style="font-size:9px;color:var(--text3);font-weight:600">食事除外</span>${_mealCk('B','朝','朝食=翌朝')}${_mealCk('L','昼','昼食=当日')}${_mealCk('D','夕','夕食=当夜')}</div>`;
 
-      // 그룹코드 셀: 전체 코드(예 GFな-1Y) 그대로 수정. 팀별 인쇄물(夕食·航空カバー·レストラン)에만 반영(개인 네임택 미적용).
-      // 자동 재렌더 없이 입력만 받고, 저장은 행의 [💾 저장] 버튼에서 일괄 처리(Enter도 저장).
+      // 그룹코드 셀: 전체 코드(예 GFな-1Y) 그대로 수정. 칸을 벗어나면(blur) 자동 저장(저장 버튼 없음).
+      // 팀별 인쇄물(夕食·航空カバー·レストラン)에만 반영(개인 네임택 미적용).
       const grpCell = p.isExtra
         ? '<span style="color:var(--text3)">—</span>'
-        : `<input type="text" id="dn-tag-${k}" class="manual-tag-input" value="${grpCode}" data-eventseq="${p.eventSeq||''}" data-orig="${grpCode}" onkeypress="if(event.key==='Enter')saveDinnerRow('${k}','${date}')" title="그룹코드 수정(전체 코드) — 두 팀에 같은 코드를 넣고 저장하면 팀별 인쇄물에서 같은 팀으로 묶입니다" style="width:104px;padding:3px 5px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent2);background:var(--surface3);border:1px solid var(--border2);border-radius:4px;text-align:center">`;
+        : `<input type="text" id="dn-tag-${k}" class="manual-tag-input" value="${grpCode}" data-eventseq="${p.eventSeq||''}" data-orig="${grpCode}" onchange="onDinnerTagInput(this,'${date}')" onkeypress="if(event.key==='Enter')this.blur()" title="그룹코드 수정(전체 코드) — 두 팀에 같은 코드를 넣으면 팀별 인쇄물에서 같은 팀으로 묶입니다" style="width:104px;padding:3px 5px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent2);background:var(--surface3);border:1px solid var(--border2);border-radius:4px;text-align:center">`;
 
       const engCell = p.isExtra ? (p.engFull||'') : (getEngName(p.eventSeq)||'');
       html += `<tr class="draggable-row" data-eventseq="${p.eventSeq||''}" data-grpcode="${grpCode}" ${trStyle?`style="${trStyle}"`:''}>
@@ -2717,9 +2716,9 @@ function renderDinner(date){
         <td class="num-center">${p.isExtra
           ? `<strong>${p.pax||1}</strong>`
           : `<input type="number" min="0" value="${dinnerPaxFor(k, teamRec.pax)}" onchange="saveField('${k}','pax',this.value);renderDinner('${date}')" title="저녁 인원 수정(夕食 합계 반영)" style="width:50px;text-align:center;font-weight:700;padding:3px 4px;border:1px solid var(--border);border-radius:4px;background:var(--surface);font-size:12px">`}</td>
-        <td><input id="dn-tbl-${k}" class="editable narrow" value="${md.table||''}" onchange="saveField('${k}','table',this.value)" placeholder="T-1"></td>
+        <td><input id="dn-tbl-${k}" class="editable" value="${md.table||''}" onchange="saveField('${k}','table',this.value)" placeholder="T1" style="width:42px;text-align:center;padding:3px 2px"></td>
         <td><input id="dn-rmk-${k}" class="editable wide" value="${md.remarks||''}" onchange="saveField('${k}','remarks',this.value)" placeholder="参考事項 · メモ"></td>
-        <td style="text-align:center;white-space:nowrap">${mealChips}<div style="display:flex;gap:5px;justify-content:center;flex-wrap:wrap">${saveBtn}${actionCell}</div></td>
+        <td style="text-align:center;white-space:nowrap">${mealChips}<div style="display:flex;gap:5px;justify-content:center;flex-wrap:wrap">${actionCell}</div></td>
       </tr>`;
     });
     html += `</tbody></table></div></div>`;
@@ -5844,20 +5843,16 @@ function appToast(msg){
   t._tm = setTimeout(()=>{ t.style.opacity = '0'; }, 1600);
 }
 
-// 夕食 행 단위 저장: 그룹코드(전체) + 테이블 + 비고를 한 번에 저장.
-//   그룹코드는 팀 인쇄물 전용 오버라이드(tagTeamOverrideMap)에만 저장 → 夕食·航空カバー·レストラン에만 반영.
-//   개인 네임택·다른 탭은 건드리지 않으므로 전 탭 재렌더 불필요(렉 없음).
-function saveDinnerRow(k, date){
-  const tbl = document.getElementById('dn-tbl-'+k);
-  if(tbl) saveField(k, 'table', tbl.value);
-  const rmk = document.getElementById('dn-rmk-'+k);
-  if(rmk) saveField(k, 'remarks', rmk.value);
-  const tag = document.getElementById('dn-tag-'+k);
-  // 코드를 실제로 바꿨을 때만 오버라이드 저장(안 바꾸면 기존 자동코드 유지)
-  if(tag && tag.value !== (tag.dataset.orig||'')) saveTeamTagOverride(tag.dataset.eventseq, tag.value);
+// 夕食 그룹코드 인라인 수정(저장 버튼 없음 — 칸을 벗어나면 자동 저장).
+//   팀 인쇄물 전용 오버라이드(tagTeamOverrideMap)에만 저장 → 夕食·航空カバー·レストラン에만 반영.
+//   개인 네임택·다른 탭은 안 건드림. 테이블/비고는 각자 onchange(saveField)로 저장.
+function onDinnerTagInput(input, date){
+  if(!input) return;
+  if(input.value === (input.dataset.orig||'')) return;           // 안 바뀌면 아무것도 안 함
+  saveTeamTagOverride(input.dataset.eventseq, input.value);
   appToast('저장되었습니다');
   if(date) renderDinner(date);                                   // 夕食名前版(현재 탭)
-  if(tag && typeof buildAircover === 'function') buildAircover(); // 航空カバー도 같이 갱신
+  if(typeof buildAircover === 'function') buildAircover();       // 航空カバー도 같이 갱신
 }
 
 // 航空カバー 화면에서 그룹코드 수정(onchange=blur 시 커밋) — 夕食·レストラン에도 같이 반영(양방향).
