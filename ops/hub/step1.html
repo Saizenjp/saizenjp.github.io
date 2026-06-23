@@ -310,13 +310,25 @@ function detectSession(){
 
 // ── 날짜 포맷 → YYYY-MM-DD ──
 function fmtDate(v){
-  if(!v) return '';
+  if(v===null||v===undefined||v==='') return '';
   if(v instanceof Date && !isNaN(v)){
     return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
   }
+  // 엑셀 직렬 날짜(숫자) — SheetJS가 cellDates 없이 읽으면 숫자로 옴(예: 45900)
+  if(typeof v==='number' && v>20000 && v<80000){
+    const d=new Date(Math.round((v-25569)*86400000));
+    return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
+  }
   const s = String(v).trim();
-  const m = s.match(/(\d{4})[\-\/\.]?(\d{1,2})[\-\/\.]?(\d{1,2})/);
+  // 한국어 "2026년 8월 15일"
+  let k = s.match(/(\d{4})\s*[년.\-\/]\s*(\d{1,2})\s*[월.\-\/]\s*(\d{1,2})/);
+  if(k) return `${k[1]}-${k[2].padStart(2,'0')}-${k[3].padStart(2,'0')}`;
+  // YYYY 선두 (YYYY-MM-DD / YYYY/M/D / YYYYMMDD)
+  let m = s.match(/(\d{4})[\-\/\.]?(\d{1,2})[\-\/\.]?(\d{1,2})/);
   if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  // MM/DD/YYYY · M/D/YYYY (월 선두 — 연도가 뒤)
+  let mdy = s.match(/^(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4})$/);
+  if(mdy) return `${mdy[3]}-${mdy[1].padStart(2,'0')}-${mdy[2].padStart(2,'0')}`;
   return '';
 }
 // ── 생년월일 → YYMMDD 6자리 (member_key 조합용) ──
@@ -435,6 +447,7 @@ async function run(){
     const procMap = {};   // event_seq → {accom, accomPfx, pax, repName}
     const bookingRows = [];
     const ymBySeq = {};   // event_seq → 'YYYY-MM' (팀별 출발월 — 여러 달 동시 업로드 대응)
+    let badDate=0;        // 출발일자 파싱 실패 팀 수(세션월 폴백으로 오분류 위험)
     res.forEach(r=>{
       const status = String(r['구분']||'').trim();
       if(!['견적','대기','확정','정산'].includes(status)) return;
@@ -445,7 +458,9 @@ async function run(){
       if(pname.includes('현지예약')||pname.includes('항공조인')||pname.includes('구마모토 시내')) return;
       const accom = detectAccom(pname);
       const remark = String(r['비고']||'').trim();
-      const rowYm = (birthISO(r['출발일자'])||'').slice(0,7) || ym;   // 팀별 출발월
+      const _depYm = (birthISO(r['출발일자'])||'').slice(0,7);
+      if(!_depYm) badDate++;                                          // 출발일자 인식 실패
+      const rowYm = _depYm || ym;   // 팀별 출발월(인식 실패 시 세션월로 추정 — 경고 표시)
       bookingRows.push({
         event_seq:seq,
         event_no:String(r['행사번호']||'').trim()||null,
@@ -473,6 +488,7 @@ async function run(){
       }
     });
 
+    if(badDate) log(`⚠ 출발일자를 인식하지 못한 팀 ${badDate}개 → 세션월(${ym||'?'})로 추정 처리됨. 해당 월이 누락되거나 다른 달에 섞일 수 있으니 예약리스트 「출발일자」 칸 형식을 확인하세요.`,'warn');
     // 이 업로드에 포함된 월(여러 달일 수 있음) — 동기화·스냅샷·이력 범위
     const fileMonths = [...new Set(Object.values(ymBySeq))].filter(Boolean).sort();
     if(fileMonths.length){ $('#session-label').innerHTML = '세션 <b>'+fileMonths.join(', ')+'</b>'; }
