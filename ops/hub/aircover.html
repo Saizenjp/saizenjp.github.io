@@ -46,6 +46,9 @@
   .prev-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-top:8px}
   .prev-card{border:2px solid var(--border);border-radius:8px;padding:9px 11px;background:var(--surface2)}
   .prev-tag{font-size:20px;font-weight:800;font-family:Arial,sans-serif;line-height:1;text-align:center}
+  .prev-tag-inp{width:100%;font-size:20px;font-weight:800;font-family:Arial,sans-serif;line-height:1;text-align:center;border:1px dashed transparent;border-radius:5px;background:transparent;padding:3px 2px}
+  .prev-tag-inp:hover{border-color:var(--border2)}
+  .prev-tag-inp:focus{outline:none;border-color:var(--accent);background:var(--surface)}
   .prev-hero{font-size:13px;font-weight:800;text-align:center;margin:5px 0;color:#1a2540}
   .prev-line{font-size:11px;font-family:var(--mono);color:var(--text2);line-height:1.5}
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
@@ -86,7 +89,8 @@
 <script src="../assets/saizen-ops.js?v=14.64"></script>
 <script>
 const $=s=>document.querySelector(s);
-let supa=null, YM=null, CARDS=[], ORIGIN='all', SELDATES=new Set(), SELACCOMS=new Set();
+let supa=null, YM=null, CARDS=[], ORIGIN='all', SELDATES=new Set(), SELACCOMS=new Set(), OVR={};
+function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
 const FLIGHT_TIMES={'TW287':'09:25 着','ZE967':'13:25 着','TW288':'10:25 発','ZE968':'14:30 発'};
 const ACCOM_COLOR={Y:'#000000',K:'#5B21B6',G:'#065F46',S:'#92400E'};
@@ -217,14 +221,19 @@ async function load(){
         if(!data||data.length<1000) break; pg+=1000;
       }
     }
+    // 팀 태그 오버라이드(print_overrides) — 어느 PC에서 고쳐도 공유
+    OVR={};
+    const {data:ov}=await supa.from('print_overrides').select('event_seq,team_tag').eq('session_ym',YM);
+    (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
     CARDS=seqs.map(seq=>{
       const g=gmap[seq]||{}; const r=reps[seq]||{};
-      const tag=r.tag||g.group_code||'';
+      const o=OVR[seq]||{};
+      const tag=(o.team_tag&&o.team_tag.trim())||r.tag||g.group_code||'';
       // /app/ 동일: 태그코드 마지막 글자(Y/K/G/S)로 시설 판정, 없으면 accom_prefix 폴백
       const last=tag.slice(-1); const pfx=ACCOM_COLOR[last]?last:accomPfx(g);
       const inF=r.dep_flight||''; const outF=r.ret_flight||'';
       return {
-        tag:tag, accom:g.accom||'', accomColor:ACCOM_COLOR[pfx]||'#1A2540', accomLabel:ACCOM_LABEL[pfx]||(g.accom||''),
+        seq:String(seq), tag:tag, accom:g.accom||'', accomColor:ACCOM_COLOR[pfx]||'#1A2540', accomLabel:ACCOM_LABEL[pfx]||(g.accom||''),
         from:portOf(inF,outF,g.origin), pax:g.pax||0,
         inFlight:inF||'-', inTime:FLIGHT_TIMES[inF]||'', inDate:mmdd(g.dep),
         outFlight:outF||'-', outTime:FLIGHT_TIMES[outF]||'', outDate:mmdd(g.arr),
@@ -260,12 +269,23 @@ function renderPreview(){
   if(!list.length){ box.innerHTML='<div class="deny" style="color:var(--muted);padding:24px">표시할 팀이 없습니다.</div>'; return; }
   box.innerHTML='<div class="prev-grid">'+list.slice(0,90).map(c=>`
     <div class="prev-card" style="border-color:${c.accomColor}">
-      <div class="prev-tag" style="color:${c.accomColor}">${esc(c.tag)}</div>
+      <input class="prev-tag-inp" data-seq="${c.seq}" value="${esc(c.tag)}" title="태그코드 수정 — 저장 시 夕食 인쇄에도 반영" style="color:${c.accomColor}">
       <div class="prev-hero" style="color:${c.accomColor}">${c.from} · 1〜${c.pax}番 · ${c.pax}名</div>
       <div class="prev-line">入 ${esc(c.inFlight)} ${esc(c.inTime)} (${esc(c.inDate)})</div>
       <div class="prev-line">帰 ${esc(c.outFlight)} ${esc(c.outTime)} (${esc(c.outDate)})</div>
       <div class="prev-line">施設 ${esc(c.accomLabel)}</div>
-    </div>`).join('')+'</div>'+(list.length>90?`<div class="cnt" style="margin-top:8px">※ 미리보기 90팀까지 · 인쇄는 전체 ${list.length}팀</div>`:'');
+    </div>`).join('')+'</div>'
+    +'<div class="cnt" style="margin-top:8px">✎ 태그코드 칸을 직접 수정하면 저장(공유)되고 <b>夕食 인쇄</b>에도 반영됩니다.'+(list.length>90?` ※ 미리보기 90팀까지 · 인쇄는 전체 ${list.length}팀`:'')+'</div>';
+  box.querySelectorAll('.prev-tag-inp').forEach(inp=>inp.addEventListener('change',()=>saveTagOverride(inp.dataset.seq,inp.value)));
+}
+async function saveTagOverride(seq,val){
+  const v=String(val||'').trim();
+  const c=CARDS.find(x=>x.seq===String(seq));
+  if(c){ c.tag=v||c.tag; const last=(c.tag||'').slice(-1); const pfx=ACCOM_COLOR[last]?last:null; if(pfx){ c.accomColor=ACCOM_COLOR[pfx]; c.accomLabel=ACCOM_LABEL[pfx]; } }
+  try{
+    const {error}=await supa.from('print_overrides').upsert({event_seq:Number(seq),team_tag:v||null,session_ym:YM,updated_by:curUser()},{onConflict:'event_seq'});
+    if(error)throw error; OVR[seq]={event_seq:Number(seq),team_tag:v||null}; toast('태그 저장(공유)','ok'); renderPreview();
+  }catch(e){ toast('저장 실패: '+e.message,'err'); }
 }
 
 // A5 가로 카드 1장/팀 인쇄(app 航空カバー置き場 동일 레이아웃)
