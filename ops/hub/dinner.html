@@ -47,6 +47,14 @@
   .pv-day{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--surface2)}
   .pv-day b{font-size:13px;color:var(--accent)}
   .pv-meal{font-family:var(--mono);font-size:12px;color:var(--text2);margin-top:3px}
+  table.tedit{width:100%;border-collapse:collapse;font-size:12px}
+  table.tedit th{background:var(--surface3);border:1px solid var(--border);padding:5px 7px;font-weight:700;color:var(--text2);white-space:nowrap}
+  table.tedit td{border:1px solid var(--border);padding:4px 7px}
+  table.tedit td.c{text-align:center}
+  table.tedit td.mono{font-family:var(--mono)}
+  table.tedit input{border:1px solid var(--border2);border-radius:5px;padding:4px 6px;font-size:12px;font-family:inherit}
+  table.tedit input.te-tag{font-family:var(--mono);font-weight:700;color:var(--accent2)}
+  .te-edited{color:var(--accent2);font-weight:800}
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
   .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
@@ -85,7 +93,8 @@
 <script src="../assets/saizen-ops.js?v=14.64"></script>
 <script>
 const $=s=>document.querySelector(s);
-let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set();
+let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set(), OVR={};
+function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
 const OFFSITE=new Set(['간지호텔','시즈노야도 료칸']);
 
@@ -147,10 +156,47 @@ function renderUI(){
     <div class="panel">
       <h3>날짜별 식수 미리보기 <span class="cnt" id="pv-cnt"></span></h3>
       <div id="preview" class="preview"></div>
+    </div>
+    <div class="panel">
+      <h3>팀별 태그·인원 수정 <span class="cnt">— 저장 시 공유되고 航空カバー·夕食 인쇄에 반영(인원은 식수 집계에 반영)</span></h3>
+      <div style="overflow:auto"><table class="tedit" id="tedit"><thead></thead><tbody></tbody></table></div>
     </div>`;
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
   $('#btn-print').addEventListener('click',printOrder);
+}
+function renderTeamEdit(){
+  const thead=$('#tedit thead'), tbody=$('#tedit tbody'); if(!thead)return;
+  const rows=TEAMS.filter(t=>ACCOMSEL.size===0||ACCOMSEL.has(t.accom)).slice()
+    .sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||accomIdx(a.accom)-accomIdx(b.accom)||(a.repName||'').localeCompare(b.repName||''));
+  thead.innerHTML='<tr><th>入国</th><th>施設</th><th>代表者</th><th>タグコード</th><th>人数</th><th></th></tr>';
+  if(!rows.length){ tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">팀 없음</td></tr>'; return; }
+  tbody.innerHTML=rows.map(t=>{ const ov=OVR[t.seq]||{}; const edited=(ov.team_tag&&ov.team_tag.trim())||(ov.pax_override!=null);
+    return `<tr data-seq="${t.seq}">
+      <td class="c mono">${esc((t.dep||'').slice(5))}</td>
+      <td class="c">${esc(t.accom)}</td>
+      <td>${esc(t.repName||'')}</td>
+      <td><input class="te-tag" data-seq="${t.seq}" value="${esc(t.tag)}" style="width:120px"></td>
+      <td><input class="te-pax" data-seq="${t.seq}" type="number" min="0" value="${parseInt(t.pax,10)||0}" style="width:64px;text-align:center"></td>
+      <td class="c">${edited?'<span class="te-edited" title="오버라이드 적용됨">✎</span>':''}</td>
+    </tr>`; }).join('');
+  tbody.querySelectorAll('.te-tag').forEach(inp=>inp.addEventListener('change',()=>saveDinnerOverride(inp.dataset.seq,'team_tag',inp.value)));
+  tbody.querySelectorAll('.te-pax').forEach(inp=>inp.addEventListener('change',()=>saveDinnerOverride(inp.dataset.seq,'pax_override',inp.value)));
+}
+function accomIdx(ac){ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; }
+async function saveDinnerOverride(seq,field,val){
+  const t=TEAMS.find(x=>x.seq===String(seq)); if(!t)return;
+  let payload={event_seq:Number(seq),session_ym:YM,updated_by:curUser()};
+  if(field==='team_tag'){ const v=String(val||'').trim(); payload.team_tag=v||null; t.tag=v||(OVR[seq]&&OVR[seq]._autoTag)||t.tag; }
+  else { const n=String(val).trim()===''?null:(parseInt(val,10)||0); payload.pax_override=n; t.pax=(n!=null?n:t.basePax); }
+  try{
+    const cur=OVR[seq]||{};
+    const merged={event_seq:Number(seq),session_ym:YM,updated_by:curUser(),
+      team_tag:field==='team_tag'?payload.team_tag:(cur.team_tag||null),
+      pax_override:field==='pax_override'?payload.pax_override:(cur.pax_override!=null?cur.pax_override:null)};
+    const {error}=await supa.from('print_overrides').upsert(merged,{onConflict:'event_seq'}); if(error)throw error;
+    OVR[seq]=merged; toast('저장(공유)','ok'); renderPreview(); renderTeamEdit();
+  }catch(e){ toast('저장 실패: '+e.message,'err'); }
 }
 function renderDateChips(){
   const dates=allDates();
@@ -216,11 +262,19 @@ async function load(){
         if(!data||data.length<1000)break; pg+=1000;
       }
     }
-    TEAMS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{}; const r=REP[b.event_seq]||{}; const o=ORI[b.event_seq]||{};
+    // 팀 태그·인원 오버라이드(print_overrides) — 航空カバー와 공유. event_seq 기준(월경계 포함)
+    OVR={};
+    for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
+      const {data:ov}=await supa.from('print_overrides').select('event_seq,team_tag,pax_override').in('event_seq',chunk);
+      (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
+    }
+    TEAMS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{}; const r=REP[b.event_seq]||{}; const o=ORI[b.event_seq]||{}; const ov=OVR[b.event_seq]||{};
       const origin=(o.byRep?o.origin:'')||o.origin||b.origin||'';
+      const basePax=b.pax||g.pax||0;
       return { seq:String(b.event_seq), accom:g.accom||'', dep:fmtDate(b.dep_date), arr:fmtDate(b.arr_date),
-        pax:b.pax||g.pax||0, repName:b.rep_name||r.name||'', engName:r.eng||o.eng||'',
-        tag:r.tag||g.team_tag||g.group_code||'', isPus:isPusOf(origin) };
+        pax:(ov.pax_override!=null?ov.pax_override:basePax), basePax,
+        repName:b.rep_name||r.name||'', engName:r.eng||o.eng||'',
+        tag:(ov.team_tag&&ov.team_tag.trim())||r.tag||g.team_tag||g.group_code||'', isPus:isPusOf(origin) };
     }).filter(t=>t.accom);
     DATESEL.clear(); ACCOMSEL.clear();
     $('#stat').textContent=`${TEAMS.length}팀 · ${allDates().length}일`;
@@ -254,6 +308,7 @@ function mealCounts(date){
 }
 
 function renderPreview(){
+  renderTeamEdit();
   const dates=selectedDates();
   $('#btn-print').disabled=!dates.length;
   $('#pv-cnt').textContent=dates.length?`(${dates.length}일)`:'';
