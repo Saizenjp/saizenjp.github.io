@@ -109,6 +109,12 @@
     <p data-i18n="ix_heroP"></p>
   </div>
 
+  <!-- 등록된 데이터 현황(로그인 시) — 어느 달이 언제·누가 등록됐는지 -->
+  <div id="reg-strip" style="display:none;align-items:center;flex-wrap:wrap;gap:8px 14px;background:#e3f8ec;border:1px solid #1fb257;border-left:4px solid #1fb257;border-radius:10px;padding:10px 16px;margin-bottom:6px;color:var(--text)">
+    <span style="font-weight:800;color:#127a3b;white-space:nowrap">📅 등록된 데이터</span>
+    <span id="reg-strip-list" style="display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12.5px"></span>
+  </div>
+
   <!-- 최신 고정 공지 띠(로그인 시) -->
   <a href="hub/board.html" id="ann-strip" style="display:none;text-decoration:none;align-items:center;gap:10px;background:#fdfbf3;border:1px solid #e6d3a3;border-left:4px solid var(--accent2);border-radius:10px;padding:11px 16px;margin-bottom:6px;color:var(--text)">
     <span style="font-weight:800;color:var(--accent2)" data-i18n="ix_annTag"></span>
@@ -311,6 +317,7 @@
           if(r.data&&r.data[0]){ var st=document.getElementById('ann-strip'); st.style.display='flex'; document.getElementById('ann-strip-t').textContent=r.data[0].title; }
         }).catch(function(){});
       }
+      loadRegStrip();    // 등록된 데이터 현황(월·등록자·시각)
       markNewBadges();   // 부서 공지 새 글 N 표시
       var all=(acc.role==='admin'||acc.role==='manager');
       document.querySelectorAll('.card[data-area]').forEach(function(card){
@@ -328,6 +335,26 @@
         g.style.display = anyVisible ? '' : 'none';
       });
     });
+  }
+  // ── 등록된 데이터 현황(import_log) — 월별 최신 등록 시각·등록자 ──
+  function loadRegStrip(){
+    if(!window.__so_authClient) return; var c=__so_authClient(); if(!c) return;
+    c.from('import_log').select('session_ym,uploaded_by,uploaded_at').order('uploaded_at',{ascending:false}).limit(60).then(function(r){
+      if(r.error||!r.data||!r.data.length) return;
+      var byYm={};  // 월별 최신(첫 등장 = 최신순 정렬)
+      r.data.forEach(function(x){ var ym=x.session_ym||''; if(!ym) return; if(!byYm[ym]) byYm[ym]=x; });
+      var yms=Object.keys(byYm).sort();
+      if(!yms.length) return;
+      var p=function(n){ return String(n).padStart(2,'0'); };
+      var html=yms.map(function(ym){
+        var x=byYm[ym]; var d=new Date(x.uploaded_at);
+        var ts=p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
+        var who=x.uploaded_by?(' · '+x.uploaded_by):'';
+        return '<span style="background:#fff;border:1px solid #b6e6c8;border-radius:99px;padding:2px 10px">'
+             + '<b style="font-family:var(--mono)">'+ym+'</b>'+who+' · <span style="color:var(--muted)">'+ts+'</span></span>';
+      }).join('');
+      var box=document.getElementById('reg-strip-list'); if(box){ box.innerHTML=html; document.getElementById('reg-strip').style.display='flex'; }
+    }).catch(function(){});
   }
   // ── 부서 공지 "새 글" N 뱃지 ──
   function boardSeen(){ try{ return JSON.parse(localStorage.getItem('saizen_board_seen')||'{}'); }catch(e){ return {}; } }
