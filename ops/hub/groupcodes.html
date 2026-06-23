@@ -183,6 +183,10 @@ async function connect(){
 function renderUI(){
   const clsOpts=CLASSES.map(c=>`<option value="${c}">${c||'(등급 없음)'}</option>`).join('');
   $('#content').innerHTML=`
+    <div id="gc-regbar" style="display:none;align-items:center;flex-wrap:wrap;gap:8px 14px;background:#e3f8ec;border:1px solid #1fb257;border-left:4px solid #1fb257;border-radius:10px;padding:10px 16px;margin-bottom:14px;color:var(--text)">
+      <span style="font-weight:800;color:#127a3b;white-space:nowrap">👥 회원 마스터</span>
+      <span id="gc-regbar-info" style="font-size:12.5px"></span>
+    </div>
     <div class="panel">
       <h3>회원 추가 / 수정</h3>
       <div class="desc">키 = <b>성명 + 생년6자리</b>(예: 황보관현590611). 같은 키면 덮어씁니다(수정).</div>
@@ -225,6 +229,26 @@ function renderUI(){
   $('#btn-search').addEventListener('click',search);
   $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
   wireImport();
+  loadMasterStatus();
+}
+
+// ── 회원 마스터 등록 현황: 총 행수 + 최초 등록 / 최근 갱신 ──
+async function loadMasterStatus(){
+  const bar=$('#gc-regbar'), info=$('#gc-regbar-info'); if(!bar||!info||!supa) return;
+  try{
+    const {count}=await supa.from('member_codes').select('*',{count:'exact',head:true});
+    if(!count){ info.textContent='아직 등록된 회원 마스터가 없습니다 — 아래 [일괄 등록]으로 회원_배정_현황을 올리세요.'; bar.style.display='flex'; return; }
+    const {count:learned}=await supa.from('member_codes').select('*',{count:'exact',head:true}).eq('is_learned',true);
+    const {data:first}=await supa.from('member_codes').select('created_at').order('created_at',{ascending:true}).limit(1);
+    const {data:last}=await supa.from('member_codes').select('updated_at').order('updated_at',{ascending:false}).limit(1);
+    const fmt=s=>{ if(!s) return '-'; const d=new Date(s),p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+    const master=(count||0)-(learned||0);
+    info.innerHTML=`총 <b>${(count||0).toLocaleString()}</b>행`
+      + ` <span style="color:var(--muted)">(마스터 ${master.toLocaleString()} · 학습 ${(learned||0).toLocaleString()})</span>`
+      + ` · 최초 등록 <b>${fmt(first&&first[0]&&first[0].created_at)}</b>`
+      + ` · 최근 갱신 <b>${fmt(last&&last[0]&&last[0].updated_at)}</b>`;
+    bar.style.display='flex';
+  }catch(e){ /* 권한·네트워크 오류 시 조용히 숨김 */ }
 }
 
 // ── 일괄 등록(xlsx): 회원_배정_현황 → member_codes upsert ──
@@ -267,7 +291,7 @@ async function importGo(){
     }
     $('#imp-stat').textContent=`${done.toLocaleString()}건 등록 완료`;
     toast(`${done.toLocaleString()}건 등록 완료`,'ok');
-    $('#imp-file').value=''; impRows=[]; _gcUsed=null; search();
+    $('#imp-file').value=''; impRows=[]; _gcUsed=null; search(); loadMasterStatus();
   }catch(e){ toast('등록 실패: '+e.message,'err'); $('#imp-go').disabled=false; }
 }
 
@@ -279,7 +303,7 @@ async function saveMember(){
   const member_key=name+birth;
   const {error}=await supa.from('member_codes').upsert({code,member_key,name_kr:name,member_class:cls||null,is_learned:false},{onConflict:'code,member_key'});
   if(error){ toast('저장 실패: '+error.message,'err'); return; }
-  toast('저장됨: '+member_key,'ok'); _gcUsed=null; search();
+  toast('저장됨: '+member_key,'ok'); _gcUsed=null; search(); loadMasterStatus();
 }
 
 async function search(){
@@ -320,7 +344,7 @@ async function delMember(code,key){
   if(!confirm(`삭제할까요?\n${code} · ${key}`)) return;
   const {error}=await supa.from('member_codes').delete().eq('code',code).eq('member_key',key);
   if(error){ toast('삭제 실패: '+error.message,'err'); return; }
-  toast('삭제됨','ok'); _gcUsed=null; search();
+  toast('삭제됨','ok'); _gcUsed=null; search(); loadMasterStatus();
 }
 
 $('#btn-connect').addEventListener('click',connect);
