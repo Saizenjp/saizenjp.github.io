@@ -353,7 +353,7 @@
   <button class="btn sm" id="btn-auto" type="button" disabled title="회원→디럭스 우선, 일반→예약종류. 예약순·기존 수기배정 보호" style="background:var(--accent2);border-color:var(--accent2)">자동배정</button>
   <button class="btn ghost sm" id="btn-clear-all" type="button" disabled title="불러온 범위의 모든 배정 해제(수기·자동 전부)" style="color:var(--err);border-color:#e3bdb4">전체 비우기</button>
   <button class="btn ghost sm" id="btn-conflicts" type="button" disabled title="정원 초과(겹침) 방을 스캔 → 초과 auto 배정을 정리(수기·분할은 보호)" style="color:var(--warn);border-color:#e6cf95">⚠ 충돌 점검</button>
-  <button class="btn ghost sm" id="btn-local-shizu" type="button" disabled title="시즈노야도 현지(일본) 직접 예약을 추가하고 본관(별채 희망 시 별채)에 즉시 배정" style="border-color:var(--s)">시즈노야도 현지예약</button>
+  <button class="btn ghost sm" id="btn-local-shizu" type="button" disabled title="현지(일본) 직접 예약을 숙소별로 추가하고 해당 숙소 빈 객실에 즉시 배정" style="border-color:var(--s)">＋ 현지예약 추가</button>
   <button class="btn ghost sm" id="btn-export" type="button" data-i18n-title="rm_btnExportTitle" data-i18n="rm_btnExport"></button>
   <span class="hint" id="session-hint"></span>
   <span id="sel-bar" style="display:none;align-items:center;gap:8px;margin-left:auto">
@@ -1969,27 +1969,41 @@ async function saveHotelRooms(bg,types,cur){
 // ════════════════════════════════════════════════════════════════════════
 const LOCAL_SEQ_BASE=9000000;   // 현지예약 event_seq 시작 대역
 
+// 숙소→prefix(태그 끝글자) · 현지예약 일반화
+const FAC_PREFIX={'야마나미리조트':'Y','쿠주힐즈':'K','간지호텔':'G','시즈노야도 료칸':'S'};
+function _lsEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function localFacilities(){
+  const set=[...new Set((state.inventory||[]).map(r=>r.facility).filter(Boolean))];
+  const order=['시즈노야도 료칸','간지호텔','쿠주힐즈','야마나미리조트'];
+  set.sort((a,b)=>{const ai=order.indexOf(a),bi=order.indexOf(b);return (ai<0?9:ai)-(bi<0?9:bi);});
+  return set.length?set:order;
+}
+function localZones(fac){ return [...new Set((state.inventory||[]).filter(r=>r.facility===fac).map(r=>r.zone||'').filter(Boolean))]; }
+
 function openLocalShizuModal(){
   if(!supa){toast('먼저 연결하세요','warn');return;}
   const today=new Date().toISOString().slice(0,10);
   const ci=$('#date-pick').value||state.from||today;
   const co=(()=>{ const d=new Date(ci+'T00:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
+  const facs=localFacilities();
   const bg=document.createElement('div'); bg.className='modal-bg';
   bg.innerHTML=`<div class="modal">
-    <h2>시즈노야도 현지예약 추가</h2>
+    <h2>＋ 현지예약 추가</h2>
     <div class="mbody">
       <p style="font-size:12px;color:var(--text2);margin-bottom:14px">
-        메리트투어 송객이 아닌 <b>현지(일본) 직접 예약</b>을 등록합니다. 객실 기본요금은
-        본관·별채 모두 1박 1인 <b>¥17,000</b>입니다. 별채 개인온천은 <b>사전신청제</b>(신청 시 현장에서
-        온천물 준비, 사전신청비 +¥2,000/박). 등록 후 본관(별채 사전신청 시 별채)에 자동 배정됩니다.
+        메리트투어 송객이 아닌 <b>현지(일본) 직접 예약</b>을 등록합니다. <b>숙소</b>를 선택하면 그 숙소의
+        빈 객실(또는 선택 zone)에 자동 배정됩니다. <b>시즈노야도 별채</b> 개인온천은 <b>사전신청제</b>(+¥2,000/박).
       </p>
+      <div class="mrow"><div><label>숙소 *</label></div>
+        <select class="inp" id="ls-fac">${facs.map(f=>`<option value="${_lsEsc(f)}" ${f==='시즈노야도 료칸'?'selected':''}>${_lsEsc(f)}</option>`).join('')}</select></div>
+      <div class="mrow"><div><label>zone(구역)</label></div><select class="inp" id="ls-zone"></select></div>
       <div class="mrow" style="grid-template-columns:1fr"><div><label>예약자명 *</label><input class="inp" id="ls-name" type="text" placeholder="예: 山田太郎" style="width:100%;margin-top:4px"></div></div>
       <div class="mrow" style="grid-template-columns:1fr"><div><label>연락처</label><input class="inp" id="ls-tel" type="text" placeholder="전화/메일(선택)" style="width:100%;margin-top:4px"></div></div>
       <div class="mrow"><div><label>인원 *</label></div><input class="inp" id="ls-pax" type="number" min="1" max="20" value="2"></div>
       <div class="mrow"><div><label>체크인 *</label></div><input class="inp" id="ls-ci" type="date" value="${ci}"></div>
       <div class="mrow"><div><label>체크아웃 *</label></div><input class="inp" id="ls-co" type="date" value="${co}"></div>
-      <div class="mrow" style="grid-template-columns:1fr"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
-        <input id="ls-byeolche" type="checkbox" style="width:16px;height:16px">별채 온천 사전신청 <span class="desc">(吉祥·瑞雲·馬酔木 — 온천 +¥2,000/박)</span></label></div>
+      <div class="mrow" style="grid-template-columns:1fr;display:none" id="ls-onsen-row"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+        <input id="ls-byeolche" type="checkbox" style="width:16px;height:16px">별채 온천 사전신청 <span class="desc">(吉祥·瑞雲·馬酔木 — 온천 +¥2,000/박, 별채로 배정)</span></label></div>
       <div class="mrow" style="grid-template-columns:1fr"><div><label>메모</label><input class="inp" id="ls-memo" type="text" placeholder="현지 비고(선택)" style="width:100%;margin-top:4px"></div></div>
     </div>
     <div class="mfoot">
@@ -1998,19 +2012,35 @@ function openLocalShizuModal(){
     </div>
   </div>`;
   document.body.appendChild(bg);
+  const facSel=bg.querySelector('#ls-fac'), zoneSel=bg.querySelector('#ls-zone'), onsenRow=bg.querySelector('#ls-onsen-row');
+  function refreshZones(){
+    const zones=localZones(facSel.value);
+    zoneSel.innerHTML=`<option value="">자동(빈 객실 우선)</option>`+zones.map(z=>`<option value="${_lsEsc(z)}">${_lsEsc(z)}</option>`).join('');
+    const isShizu=(facSel.value==='시즈노야도 료칸');
+    onsenRow.style.display=isShizu?'':'none';
+    if(!isShizu) bg.querySelector('#ls-byeolche').checked=false;
+  }
+  facSel.addEventListener('change',refreshZones);
+  refreshZones();
   bg.querySelector('#ls-cancel').addEventListener('click',()=>bg.remove());
   bg.addEventListener('click',e=>{if(e.target===bg)bg.remove();});
   bg.querySelector('#ls-save').addEventListener('click',()=>saveLocalShizu(bg));
 }
 
 async function saveLocalShizu(bg){
+  const fac=bg.querySelector('#ls-fac').value;
+  const isShizu=(fac==='시즈노야도 료칸');
+  const byeolche=isShizu && bg.querySelector('#ls-byeolche').checked;
+  let zone=bg.querySelector('#ls-zone').value||'';
+  if(byeolche) zone='별채';   // 온천 사전신청 = 별채로 배정
+  const prefix=FAC_PREFIX[fac]||'X';
   const name=bg.querySelector('#ls-name').value.trim();
   const tel=bg.querySelector('#ls-tel').value.trim();
   const pax=parseInt(bg.querySelector('#ls-pax').value,10)||0;
   const ci=bg.querySelector('#ls-ci').value;
   const co=bg.querySelector('#ls-co').value;
-  const byeolche=bg.querySelector('#ls-byeolche').checked;
   const memo=bg.querySelector('#ls-memo').value.trim();
+  if(!fac){toast('숙소를 선택하세요','warn');return;}
   if(!name){toast('예약자명을 입력하세요','warn');return;}
   if(pax<1){toast('인원을 확인하세요','warn');return;}
   if(!ci||!co){toast('체크인·체크아웃 날짜를 입력하세요','warn');return;}
@@ -2025,64 +2055,66 @@ async function saveLocalShizu(bg){
     const gcode='現'+String(localNo).padStart(3,'0');
     const remarkParts=[];
     if(byeolche) remarkParts.push('★별채·온천사전신청');
+    else if(zone) remarkParts.push('zone:'+zone);
     if(tel) remarkParts.push('TEL '+tel);
     if(memo) remarkParts.push(memo);
     const remark='[현지예약] '+remarkParts.join(' / ');
     // 2) bookings
     let r=await supa.from('bookings').insert({
       event_seq:seq, event_no:'現地'+localNo, status:'현지예약', rep_name:name,
-      dep_date:ci, arr_date:co, product_name:'시즈노야도 현지예약',
+      dep_date:ci, arr_date:co, product_name:fac+' 현지예약',
       pax, remark, session_ym:ym
     });
     if(r.error) throw r.error;
     // 3) guests (팀 원장)
     r=await supa.from('guests').insert({
-      event_seq:seq, team_tag:gcode+'-S', group_code:gcode,
-      accom:'시즈노야도 료칸', accom_prefix:'S', pax, check_status:'체크인전', session_ym:ym
+      event_seq:seq, team_tag:gcode+'-'+prefix, group_code:gcode,
+      accom:fac, accom_prefix:prefix, pax, check_status:'체크인전', session_ym:ym
     });
     if(r.error) throw r.error;
     // 4) guest_members (개인 — 1번=예약자, 나머지=동행N · 현지=일반)
     const gm=[];
     for(let i=1;i<=pax;i++){
       gm.push({
-        event_seq:seq, passenger_id:null, person_tag:`${gcode}-${i}S`, seq_in_team:i,
+        event_seq:seq, passenger_id:null, person_tag:`${gcode}-${i}${prefix}`, seq_in_team:i,
         name_kr:(i===1?name:`동행${i}`), name_en:null, is_rep:(i===1), member_grade:'일반고객'
       });
     }
     r=await supa.from('guest_members').insert(gm);
     if(r.error) throw r.error;
     bg.remove();
-    toast(`${name} ${pax}명 현지예약 등록 (${ci}~${co})`,'ok');
+    toast(`${name} ${pax}명 현지예약 등록 (${fac} · ${ci}~${co})`,'ok');
     // 5) 이 예약이 보이도록 날짜 범위 맞추고 로드 → 자동 배정
     $('#date-pick').value=ci; $('#date-to').value=co;
     state.from=ci; state.to=co;
     await loadDay();
-    await autoFillShizu(seq, byeolche?'별채':'본관');
+    await autoFillLocal(seq, fac, zone||null, byeolche);
   }catch(e){
     toast('등록 실패: '+(e.message||e),'err');
     saveBtn.disabled=false; saveBtn.textContent='등록·배정';
   }
 }
 
-// 새 현지예약을 시즈노야도 지정 zone(본관/별채) 객실에 채워 배정.
-//   · 2인/실(capacity) 기준 · 정원·기간겹침 검증은 assignMembers 가 수행.
-//   · 별채면 assignMembers 가 +2,000엔/박을 자동 기록.
-async function autoFillShizu(seq, zone){
+// 새 현지예약을 지정 숙소(+선택 zone) 빈 객실에 채워 배정.
+//   · capacity 기준 · 정원·기간겹침 검증은 assignMembers 가 수행.
+//   · 시즈노야도 별채+온천이면 assignMembers 가 +2,000엔/박을 자동 기록.
+async function autoFillLocal(seq, facility, zone, byeolche){
   const g=state.guests.find(x=>x.event_seq===seq);
   if(!g){toast('등록은 됐지만 현재 날짜 범위에 없어 자동배정은 생략','warn');return;}
   const rooms=state.inventory
-    .filter(r=>r.facility==='시즈노야도 료칸' && (r.zone||'')===zone && r.active)
+    .filter(r=>r.facility===facility && (!zone || (r.zone||'')===zone) && r.active)
     .sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+  if(!rooms.length){toast(`${zone||facility} 사용 가능한 객실이 없습니다 — 수기 배정하세요`,'warn');return;}
   const left=()=>teamRoster(seq).map(m=>m.id).filter(id=>!assignedMemberSet().has(id));
   for(const inv of rooms){
     const ids=left(); if(!ids.length) break;
     const used=state.rooms.filter(r=>r.inventory_id===inv.id && overlaps(g.dep,g.arr,r.check_in,r.check_out)).reduce((s,r)=>s+(r.assigned_pax||0),0);
     const free=(inv.capacity||2)-used;
     if(free<=0) continue;
-    await assignMembers(ids.slice(0,free), inv, {byeolcheAdvance: zone==='별채'});   // 별채=현지 사전신청 → 자동 기록. state.rooms 갱신
+    await assignMembers(ids.slice(0,free), inv, {byeolcheAdvance: !!byeolche && facility==='시즈노야도 료칸' && zone==='별채'});
   }
   const rest=left();
-  if(rest.length) toast(`${rest.length}명은 ${zone} 빈 객실이 부족 — 수기 배정하세요`,'warn');
+  if(rest.length) toast(`${rest.length}명은 ${zone||facility} 빈 객실이 부족 — 수기 배정하세요`,'warn');
 }
 
 
