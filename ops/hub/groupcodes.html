@@ -87,6 +87,75 @@ const $=s=>document.querySelector(s);
 let supa=null;
 const CLASSES=['다이아몬드','다이아몬드Ⅱ','골드','특별','EWRC','EWRCⅡ','EWRC이용권',''];
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+// ── 그룹코드 정책 + 빈코드 피커 (app과 동일 · 소스=member_codes) ──
+const GC_POS2=['A','B','F','G','H','J','K','L','M','O','P','R','S','T','W','X','Y','Z'];
+const GC_KANA=['あ','ウ','カ','キ','コ','サ','す','セ','た','ち','テ','と','な','ニ','ネ','の','は','ヒ','ふ','ホ','マ','み','ム','め','モ','ヤ','ヨ','ラ','リ','ル','れ','ロ','わ'];
+const GC_GRADE_PREFIX={'다이아몬드':['D','M'],'다이아몬드Ⅱ':['H'],'골드':['G'],'특별':['T','S'],'EWRC이용권':['E'],'EWRCⅡ':['W','R','C']};
+function gcNormGrade(g){g=String(g||'').trim();if(GC_GRADE_PREFIX[g])return g;if(/다이아몬드\s*Ⅱ|다이아몬드\s*2/.test(g))return '다이아몬드Ⅱ';if(/다이아/.test(g))return '다이아몬드';if(/골드/i.test(g))return '골드';if(/특별/.test(g))return '특별';if(/EWRC\s*Ⅱ|EWRC\s*2/i.test(g))return 'EWRCⅡ';if(/EWRC/i.test(g))return 'EWRC이용권';return '';}
+let _gcUsed=null, _gcPickCb=null;
+async function gcLoadUsed(force){
+  if(_gcUsed && !force) return _gcUsed;
+  const used={}; let from=0; const SZ=1000;
+  for(;;){
+    const {data,error}=await supa.from('member_codes').select('code,name_kr').range(from,from+SZ-1);
+    if(error) throw error;
+    (data||[]).forEach(r=>{ if(r.code){ (used[r.code]=used[r.code]||[]).push(r.name_kr||'?'); } });
+    if(!data || data.length<SZ) break;
+    from+=SZ;
+  }
+  _gcUsed=used; return used;
+}
+async function gcOpenPicker(grade, onPick){
+  grade=gcNormGrade(grade)||Object.keys(GC_GRADE_PREFIX)[0]; _gcPickCb=onPick;
+  let bg=document.getElementById('gc-pick-bg'); if(bg) bg.remove();
+  bg=document.createElement('div'); bg.id='gc-pick-bg';
+  bg.style.cssText='position:fixed;inset:0;z-index:300;background:rgba(31,42,24,.5);display:flex;align-items:center;justify-content:center;padding:18px';
+  bg.innerHTML='<div style="background:#fff;border-radius:12px;padding:28px 36px;font-weight:700;color:#566049">빈 코드 계산 중…</div>';
+  document.body.appendChild(bg);
+  bg.addEventListener('click',e=>{if(e.target===bg){bg.remove();_gcPickCb=null;}});
+  let used; try{ used=await gcLoadUsed(); }catch(e){ bg.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px;color:#b13b2c">로드 실패: '+esc(e.message)+'</div>'; return; }
+  gcRenderPicker(bg, grade, used);
+}
+function gcRenderPicker(bg, grade, used){
+  const prefixes=GC_GRADE_PREFIX[grade];
+  const thS='padding:2px 4px;text-align:center;background:var(--surface2);color:var(--text2);font-weight:700;font-size:9px;border:.5px solid var(--border);position:sticky';
+  const grid=prefixes.map(pfx=>{
+    const head=`<tr><th style="${thS};left:0;z-index:2">${pfx}\\가나</th>${GC_POS2.map(c=>`<th style="${thS};top:0">${c}</th>`).join('')}</tr>`;
+    const rows=GC_KANA.map(kana=>{
+      const cells=GC_POS2.map(c2=>{
+        const code=pfx+c2+kana; const mem=used[code]||[]; const n=mem.length;
+        let cb,cf; if(n===0){cb='#e4ecd9';cf='#2f7d4f';}else{cb='#f5ecd6';cf='#9a7322';}
+        const t=n?code+' · '+n+'명: '+mem.join(', '):code+' · 빈 코드';
+        return `<td title="${esc(t)}" onclick="gcPick('${code}',${n})" style="cursor:pointer;text-align:center;font-family:var(--mono);font-size:9px;font-weight:700;padding:3px 1px;min-width:17px;background:${cb};color:${cf};border:.5px solid var(--border)">${n||''}</td>`;
+      }).join('');
+      return `<tr><th style="${thS};left:0">${kana}</th>${cells}</tr>`;
+    }).join('');
+    return `<div style="margin-bottom:14px"><div style="font-weight:700;font-size:12px;color:var(--accent2);margin-bottom:4px">prefix「${pfx}」 18×33=594</div><div style="overflow:auto;max-height:44vh;border:1px solid var(--border);border-radius:6px"><table style="border-collapse:collapse">${head}${rows}</table></div></div>`;
+  }).join('');
+  const gradeSel=Object.keys(GC_GRADE_PREFIX).map(g=>`<option value="${g}" ${g===grade?'selected':''}>${g}</option>`).join('');
+  bg.innerHTML=`<div style="background:#fff;border-radius:12px;max-width:880px;width:100%;max-height:88vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border)">
+      <b style="font-size:15px;color:var(--accent)">그룹코드 선택</b>
+      <select onchange="gcReopen(this.value)" class="inp" style="padding:4px 8px;font-weight:700;color:var(--accent2)">${gradeSel}</select>
+      <span style="flex:1"></span>
+      <button onclick="document.getElementById('gc-pick-bg').remove();_gcPickCb=null" class="btn ghost sm">닫기 ✕</button>
+    </div>
+    <div style="padding:14px 18px;overflow:auto">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.7;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
+        <span style="display:inline-block;width:11px;height:11px;background:#e4ecd9;border:1px solid #b4cda0;vertical-align:middle"></span> <b style="color:#2f7d4f">빈 코드</b>(0명, 바로 배정) ·
+        <span style="display:inline-block;width:11px;height:11px;background:#f5ecd6;border:1px solid #e0c48f;vertical-align:middle"></span> <b style="color:#9a7322">채워진 코드</b>(이미 배정됨 — 클릭 시 추가 확인)<br>
+        셀 숫자=현재 인원 · <b>칸 클릭 = 그 코드로 배정</b> · 가로=영문(2번째), 세로=가나(3번째).
+      </div>
+      ${grid}
+    </div>
+  </div>`;
+}
+function gcReopen(g){ const bg=document.getElementById('gc-pick-bg'); if(bg && _gcUsed) gcRenderPicker(bg, gcNormGrade(g)||g, _gcUsed); }
+function gcPick(code,n){
+  if(n>0 && !confirm(`이미 배정된 그룹코드입니다 (${n}명).\n이 코드에 추가로 배정하시겠습니까?`)) return;
+  const cb=_gcPickCb; _gcPickCb=null; const bg=document.getElementById('gc-pick-bg'); if(bg) bg.remove(); if(typeof cb==='function') cb(code);
+}
 function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
 function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
@@ -118,13 +187,15 @@ function renderUI(){
       <h3>회원 추가 / 수정</h3>
       <div class="desc">키 = <b>성명 + 생년6자리</b>(예: 황보관현590611). 같은 키면 덮어씁니다(수정).</div>
       <div class="form-row">
-        <input class="inp" id="f-name" placeholder="성명" style="width:130px">
-        <input class="inp" id="f-birth" placeholder="생년6(590611)" maxlength="6" style="width:120px">
-        <input class="inp" id="f-code" placeholder="그룹코드(DAあ)" style="width:120px">
+        <input class="inp" id="f-name" placeholder="성명" style="width:120px">
+        <input class="inp" id="f-birth" placeholder="생년6(590611)" maxlength="6" style="width:110px">
         <select class="inp" id="f-class" style="width:140px">${clsOpts}</select>
+        <input class="inp" id="f-code" placeholder="← 빈코드 선택" style="width:120px;font-family:var(--mono);font-weight:700;color:var(--accent2)" readonly>
+        <button class="btn sm" id="f-pick" type="button">🔍 빈코드 선택</button>
         <button class="btn" id="f-save" type="button">저장</button>
         <button class="btn ghost sm" id="f-clear" type="button">비우기</button>
       </div>
+      <div class="desc" style="margin:8px 0 0">그룹코드는 <b>[🔍 빈코드 선택]</b>으로 등급별 빈/채워진 코드 표에서 고릅니다(직접 타이핑 대신).</div>
     </div>
     <div class="panel">
       <h3>일괄 등록 (xlsx) — 최초 1회</h3>
@@ -145,6 +216,11 @@ function renderUI(){
       <div id="gc-list"></div>
     </div>`;
   $('#f-save').addEventListener('click',saveMember);
+  $('#f-pick').addEventListener('click',()=>{
+    const cls=$('#f-class').value;
+    if(!gcNormGrade(cls)){ toast('사전배정 등급(다이아·골드·특별·EWRC…)을 먼저 선택하세요','err'); return; }
+    gcOpenPicker(cls, c=>{ $('#f-code').value=c; });
+  });
   $('#f-clear').addEventListener('click',()=>{['f-name','f-birth','f-code'].forEach(id=>$('#'+id).value='');$('#f-class').value='';});
   $('#btn-search').addEventListener('click',search);
   $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
@@ -191,7 +267,7 @@ async function importGo(){
     }
     $('#imp-stat').textContent=`${done.toLocaleString()}건 등록 완료`;
     toast(`${done.toLocaleString()}건 등록 완료`,'ok');
-    $('#imp-file').value=''; impRows=[]; search();
+    $('#imp-file').value=''; impRows=[]; _gcUsed=null; search();
   }catch(e){ toast('등록 실패: '+e.message,'err'); $('#imp-go').disabled=false; }
 }
 
@@ -203,7 +279,7 @@ async function saveMember(){
   const member_key=name+birth;
   const {error}=await supa.from('member_codes').upsert({code,member_key,name_kr:name,member_class:cls||null,is_learned:false},{onConflict:'code,member_key'});
   if(error){ toast('저장 실패: '+error.message,'err'); return; }
-  toast('저장됨: '+member_key,'ok'); search();
+  toast('저장됨: '+member_key,'ok'); _gcUsed=null; search();
 }
 
 async function search(){
@@ -244,7 +320,7 @@ async function delMember(code,key){
   if(!confirm(`삭제할까요?\n${code} · ${key}`)) return;
   const {error}=await supa.from('member_codes').delete().eq('code',code).eq('member_key',key);
   if(error){ toast('삭제 실패: '+error.message,'err'); return; }
-  toast('삭제됨','ok'); search();
+  toast('삭제됨','ok'); _gcUsed=null; search();
 }
 
 $('#btn-connect').addEventListener('click',connect);
