@@ -152,7 +152,7 @@
   @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.65">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.66">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -197,6 +197,7 @@
       <input class="inp" id="team-q" type="search" data-i18n-ph="po_teamSearch" autocomplete="off">
       <span class="cnt" id="active-cnt"></span>
     </div>
+    <div id="pos-accom" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
     <div id="team-grid">
       <div class="empty-hint" data-i18n="po_emptyTeams"></div>
     </div>
@@ -240,7 +241,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.65"></script>
+<script src="../assets/saizen-ops.js?v=14.66"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -260,7 +261,9 @@ const OUTLETS={
 const _outletParam=new URLSearchParams(location.search).get('outlet')||'';
 let state={ date:'', teams:[], menu:[], venue:'__all__', team:null, folioId:null, runningGross:0, cart:[],
   roster:[], payerMode:'team', payerSel:new Set(), memberFolio:{},
-  outlet:(OUTLETS[_outletParam]?_outletParam:null), teamQ:'', activeSeqs:new Set(), members:[] };
+  outlet:(OUTLETS[_outletParam]?_outletParam:null), teamQ:'', activeSeqs:new Set(), members:[], roomsBySeq:{}, accomSel:null };
+const ACCOM_ALL=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
+const ACCOM_DEFAULT=['야마나미리조트','쿠주힐즈'];   // 기본 = 야마나미쪽(골프텔·호텔·별장·돔하우스)+쿠주힐즈
 // 이 매장이 다루는 venue 목록(없으면 전 매장)
 function outletVenues(){ return state.outlet ? OUTLETS[state.outlet].venues : null; }
 // 주문 기록 담당자 = 공유 상단바 담당자(saizen_ops_user). 없으면 폴백.
@@ -324,6 +327,7 @@ async function loadTeams(){
   await loadActive();   // 주문중(folio 발생) 팀 표시·우선정렬용
   await loadMembers();  // 일행 이름 검색용
   await loadRooms();    // 방배정 호수(그날 점유) — 표시·검색용
+  renderAccomPos();     // 숙소 토글(기본 야마나미+쿠주)
   backToTeams();
   toast(`${d} · 체류 ${state.teams.length}팀`,'ok');
 }
@@ -351,6 +355,22 @@ async function loadRooms(){
 }
 function roomsOf(seq){ return (state.roomsBySeq&&state.roomsBySeq[seq])||[]; }
 function roomLabel(seq){ const r=roomsOf(seq); return r.length?('🛏 '+r.join(', ')):''; }
+
+// ── 숙소 토글 칩 (기본 야마나미+쿠주, 전체 토글) ──
+function accomPass(accom){ const s=state.accomSel; if(!s||!s.size) return true; return s.has(accom); }
+function renderAccomPos(){
+  const box=$('#pos-accom'); if(!box) return;
+  if(state.accomSel===null) state.accomSel=new Set(ACCOM_DEFAULT);
+  const sel=state.accomSel; const allOn=(sel.size===ACCOM_ALL.length);
+  const chip=(label,on,key)=>`<button type="button" class="ac-chip" data-k="${key}" style="font-size:13px;font-weight:700;padding:6px 13px;border-radius:99px;cursor:pointer;border:1px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent)':'var(--surface3)'};color:${on?'#fff':'var(--text2)'}">${label}</button>`;
+  box.innerHTML=chip('전체',allOn,'__all')+ACCOM_ALL.map(a=>chip(a,sel.has(a),a)).join('');
+  box.querySelectorAll('.ac-chip').forEach(b=>b.addEventListener('click',()=>{
+    const k=b.dataset.k;
+    if(k==='__all'){ state.accomSel = allOn ? new Set() : new Set(ACCOM_ALL); }
+    else { if(sel.has(k)) sel.delete(k); else sel.add(k); state.accomSel=sel; }
+    renderAccomPos(); renderTeams();
+  }));
+}
 
 // 이 날 팀들의 일행 명단(이름 검색·동명이인 구분용) — 1000행 페이지네이션
 async function loadMembers(){
@@ -406,12 +426,13 @@ function renderTeams(){
   const box=$('#team-grid'); box.innerHTML='';
   const q=(state.teamQ||'').trim().toLowerCase();
   const ac=$('#active-cnt');
+  const pool=state.teams.filter(tm=>accomPass(tm.accom));   // 숙소 토글 필터
 
   if(q){   // ── 검색: 팀 + 일행(동명이인은 팀으로 구분) ──
-    const teamHits=state.teams
+    const teamHits=pool
       .filter(tm=>((tm.group_code||'')+' '+(tm.team_tag||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')+' '+(tm.accom||'')+' '+roomsOf(tm.event_seq).join(' ')).toLowerCase().includes(q))
       .slice().sort((a,b)=>(state.activeSeqs.has(b.event_seq)?1:0)-(state.activeSeqs.has(a.event_seq)?1:0));
-    const memHits=state.members.filter(m=>((m.name_kr||'')+' '+(m.name_en||'')).toLowerCase().includes(q));
+    const memHits=state.members.filter(m=>{const tm=teamBySeq(m.event_seq);return tm&&accomPass(tm.accom)&&((m.name_kr||'')+' '+(m.name_en||'')).toLowerCase().includes(q);});
     $('#team-cnt').innerHTML=`${t('po_secTeam')} ${teamHits.length} · ${t('po_secMember')} ${memHits.length}`;
     if(ac) ac.textContent='';
     if(!teamHits.length && !memHits.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
@@ -434,11 +455,11 @@ function renderTeams(){
   }
 
   // ── 검색 없음: 체크인 날짜별 섹션(섹션 내 주문중 우선) ──
-  $('#team-cnt').innerHTML=`${state.teams.length}${t('po_cntTeam')}`;
+  $('#team-cnt').innerHTML=`${pool.length}${t('po_cntTeam')}`;
   if(ac) ac.innerHTML=state.activeSeqs.size?(''+t('po_active')+' '+state.activeSeqs.size):'';
-  if(!state.teams.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
+  if(!pool.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
   const byDay={};
-  state.teams.forEach(tm=>{ const k=tm.checkin||'-'; (byDay[k]=byDay[k]||[]).push(tm); });
+  pool.forEach(tm=>{ const k=tm.checkin||'-'; (byDay[k]=byDay[k]||[]).push(tm); });
   Object.keys(byDay).sort().forEach(day=>{
     const arr=byDay[day].slice().sort((a,b)=>(state.activeSeqs.has(b.event_seq)?1:0)-(state.activeSeqs.has(a.event_seq)?1:0));
     box.appendChild(headEl(`${fmtMD(day)} ${t('po_checkin')} · ${arr.length}${t('po_cntTeam')}`));
