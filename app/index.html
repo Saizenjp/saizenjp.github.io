@@ -512,7 +512,7 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
       <button id="app-lang-ko" onclick="setAppLang('ko')">한국어</button>
       <button id="app-lang-en" onclick="setAppLang('en')">EN</button>
     </div>
-    <span class="badge">v16.8</span>
+    <span class="badge">v16.9</span>
     <button class="ghost-btn" onclick="resetApp()" data-i18n="app_reset" title="업로드 파일·수기입력을 비웁니다 (참조테이블은 유지)">입력 비우기</button>
   </div>
 </div>
@@ -1713,11 +1713,10 @@ function gcOpenPicker(grade, onPick){
         const code = pfx+c2+kana;
         const mem = used[code] || []; const n = mem.length;
         let cbg, cfg;
-        if(n===0){ cbg='var(--green-dim)'; cfg='var(--green2)'; }
-        else if(n<4){ cbg='var(--amber-dim)'; cfg='var(--amber2)'; }
-        else { cbg='var(--surface3)'; cfg='var(--text3)'; }
+        if(n===0){ cbg='var(--green-dim)'; cfg='var(--green2)'; }   // 빈 코드
+        else { cbg='var(--amber-dim)'; cfg='var(--amber2)'; }       // 채워진 코드
         const title = n ? `${code} · ${n}명: ${mem.join(', ')}` : `${code} · 빈 코드`;
-        return `<td title="${title.replace(/"/g,'&quot;')}" onclick="gcPick('${code}')" style="cursor:pointer;text-align:center;font-family:var(--mono);font-size:9px;font-weight:700;padding:3px 1px;min-width:17px;background:${cbg};color:${cfg};border:0.5px solid var(--border)">${n||''}</td>`;
+        return `<td title="${title.replace(/"/g,'&quot;')}" onclick="gcPick('${code}',${n})" style="cursor:pointer;text-align:center;font-family:var(--mono);font-size:9px;font-weight:700;padding:3px 1px;min-width:17px;background:${cbg};color:${cfg};border:0.5px solid var(--border)">${n||''}</td>`;
       }).join('');
       return `<tr><th style="${thS};left:0">${kana}</th>${cells}</tr>`;
     }).join('');
@@ -1735,10 +1734,9 @@ function gcOpenPicker(grade, onPick){
       </div>
       <div class="dl-modal-body" style="max-height:74vh;overflow:auto">
         <div style="font-size:11px;color:var(--text2);line-height:1.7;margin-bottom:12px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
-          <span style="display:inline-block;width:11px;height:11px;background:var(--green-dim);border:1px solid var(--green);border-radius:2px;vertical-align:middle"></span> <b style="color:var(--green2)">빈 코드</b>(0명) &nbsp;·&nbsp;
-          <span style="display:inline-block;width:11px;height:11px;background:var(--amber-dim);border:1px solid var(--amber);border-radius:2px;vertical-align:middle"></span> <b style="color:var(--amber2)">합류 가능</b>(1~3명) &nbsp;·&nbsp;
-          <span style="display:inline-block;width:11px;height:11px;background:var(--surface3);border:1px solid var(--border);border-radius:2px;vertical-align:middle"></span> <b style="color:var(--text3)">4명+</b>(단체)<br>
-          셀 숫자=현재 인원 · <b>클릭하면 그 코드로 배정</b> · 칸에 마우스 올리면 배정된 명단 표시. 가로=영문(2번째), 세로=가나(3번째).
+          <span style="display:inline-block;width:11px;height:11px;background:var(--green-dim);border:1px solid var(--green);border-radius:2px;vertical-align:middle"></span> <b style="color:var(--green2)">빈 코드</b>(0명, 바로 배정) &nbsp;·&nbsp;
+          <span style="display:inline-block;width:11px;height:11px;background:var(--amber-dim);border:1px solid var(--amber);border-radius:2px;vertical-align:middle"></span> <b style="color:var(--amber2)">채워진 코드</b>(이미 배정됨 — 클릭 시 추가 확인)<br>
+          셀 숫자=현재 인원 · <b>칸 클릭 = 그 코드로 배정</b> · 칸에 마우스 올리면 배정된 명단 표시. 가로=영문(2번째), 세로=가나(3번째).
         </div>
         ${gridHTML}
       </div>
@@ -1746,7 +1744,8 @@ function gcOpenPicker(grade, onPick){
   bg.addEventListener('click', e=>{ if(e.target===bg){ bg.remove(); _gcPickCb=null; } });
   document.body.appendChild(bg);
 }
-function gcPick(code){
+function gcPick(code, n){
+  if(n>0 && !confirm(`이미 배정된 그룹코드입니다 (${n}명).\n이 코드에 추가로 배정하시겠습니까?`)) return;
   const cb = _gcPickCb; _gcPickCb = null;
   const bg = document.getElementById('gc-pick-bg'); if(bg) bg.remove();
   if(typeof cb === 'function') cb(code);
