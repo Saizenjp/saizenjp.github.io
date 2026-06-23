@@ -512,7 +512,7 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
       <button id="app-lang-ko" onclick="setAppLang('ko')">한국어</button>
       <button id="app-lang-en" onclick="setAppLang('en')">EN</button>
     </div>
-    <span class="badge">v16.6</span>
+    <span class="badge">v16.7</span>
     <button class="ghost-btn" onclick="resetApp()" data-i18n="app_reset" title="업로드 파일·수기입력을 비웁니다 (참조테이블은 유지)">입력 비우기</button>
   </div>
 </div>
@@ -1614,6 +1614,7 @@ function openMasterMemberModal(){
       </div>
       <div class="dl-modal-foot">
         <button class="btn-dl" onclick="document.getElementById('master-modal-bg').remove()" style="font-size:11px">닫기</button>
+        <button class="btn-dl" onclick="openMasterAddModal()" style="font-size:11px;border-color:var(--green);color:var(--green2);background:var(--green-dim)" title="새 회원을 빈 그룹코드에 직접 등록">＋ 회원 추가</button>
         <button class="btn-dl" onclick="downloadMasterXlsx()" style="font-size:11px;border-color:var(--accent);color:var(--accent2)" title="등록된 마스터를 원본 양식(회원_배정_현황)으로 다운로드">⬇ 엑셀 다운로드 (원본 양식)</button>
       </div>
     </div>`;
@@ -1663,6 +1664,162 @@ async function downloadMasterXlsx(){
   });
   ws.getRow(1).font = {bold:true};
   await xlSave(wb, `member_groupcode_master_${today()}.xlsx`);
+}
+
+// ════════════════════════════════════════════════════════════════
+// 그룹코드 선택 시스템 (정책: 3자리 = 등급prefix + 영문18 + 가나33)
+//   · 등급별 코드 풀에서 빈 코드/합류가능(4명미만) 코드를 색으로 구분해 클릭 배정
+// ════════════════════════════════════════════════════════════════
+const GC_POS2 = ['A','B','F','G','H','J','K','L','M','O','P','R','S','T','W','X','Y','Z']; // 18
+const GC_KANA = ['あ','ウ','カ','キ','コ','サ','す','セ','た','ち','テ','と','な','ニ','ネ','の','は','ヒ','ふ','ホ','マ','み','ム','め','モ','ヤ','ヨ','ラ','リ','ル','れ','ロ','わ']; // 33
+const GC_GRADE_PREFIX = {  // 사전배정 6개 등급(고객 구분 문자열 = 마스터 gubun)
+  '다이아몬드':['D','M'], '다이아몬드Ⅱ':['H'], '골드':['G'],
+  '특별':['T','S'], 'EWRC이용권':['E'], 'EWRCⅡ':['W','R','C'],
+};
+// 코드 → 배정된 회원 이름 목록 (마스터 + 학습 통합)
+function gcUsedMap(){
+  const used = {};
+  const add = m => { if(m && m.code){ (used[m.code] = used[m.code] || []).push(m.name||'?'); } };
+  Object.values(memberMasterMeta||{}).forEach(add);
+  Object.values(learnedMasterMeta||{}).forEach(add);
+  return used;
+}
+let _gcPickCb = null;
+// 등급 문자열 정규화(예약 회원권구분 → 마스터 6등급)
+function gcNormalizeGrade(g){
+  g = String(g||'').trim();
+  if(GC_GRADE_PREFIX[g]) return g;
+  if(/다이아몬드\s*Ⅱ|다이아몬드\s*2|다이아Ⅱ|다이아2/.test(g)) return '다이아몬드Ⅱ';
+  if(/다이아/.test(g)) return '다이아몬드';
+  if(/골드|gold/i.test(g)) return '골드';
+  if(/특별|special/i.test(g)) return '특별';
+  if(/EWRC\s*Ⅱ|EWRC\s*2/i.test(g)) return 'EWRCⅡ';
+  if(/EWRC/i.test(g)) return 'EWRC이용권';
+  return '';
+}
+function gcReopenPicker(g){ const cb=_gcPickCb; gcOpenPicker(g, cb); }
+function gcOpenPicker(grade, onPick){
+  grade = gcNormalizeGrade(grade) || Object.keys(GC_GRADE_PREFIX)[0];
+  const prefixes = GC_GRADE_PREFIX[grade];
+  _gcPickCb = onPick;
+  const used = gcUsedMap();
+  const existing = document.getElementById('gc-pick-bg'); if(existing) existing.remove();
+  const bg = document.createElement('div'); bg.id='gc-pick-bg'; bg.className='dl-modal-bg';
+  const thS = 'padding:2px 4px;text-align:center;background:var(--surface2);color:var(--text2);font-weight:700;font-size:9px;border:0.5px solid var(--border);position:sticky';
+  const gridHTML = prefixes.map(pfx=>{
+    const head = `<tr><th style="${thS};left:0;z-index:2">${pfx}\\가나</th>${GC_POS2.map(c=>`<th style="${thS};top:0">${c}</th>`).join('')}</tr>`;
+    const rows = GC_KANA.map(kana=>{
+      const cells = GC_POS2.map(c2=>{
+        const code = pfx+c2+kana;
+        const mem = used[code] || []; const n = mem.length;
+        let cbg, cfg;
+        if(n===0){ cbg='var(--green-dim)'; cfg='var(--green2)'; }
+        else if(n<4){ cbg='var(--amber-dim)'; cfg='var(--amber2)'; }
+        else { cbg='var(--surface3)'; cfg='var(--text3)'; }
+        const title = n ? `${code} · ${n}명: ${mem.join(', ')}` : `${code} · 빈 코드`;
+        return `<td title="${title.replace(/"/g,'&quot;')}" onclick="gcPick('${code}')" style="cursor:pointer;text-align:center;font-family:var(--mono);font-size:9px;font-weight:700;padding:3px 1px;min-width:17px;background:${cbg};color:${cfg};border:0.5px solid var(--border)">${n||''}</td>`;
+      }).join('');
+      return `<tr><th style="${thS};left:0">${kana}</th>${cells}</tr>`;
+    }).join('');
+    return `<div style="margin-bottom:16px"><div style="font-weight:700;font-size:12px;color:var(--accent2);margin-bottom:4px">prefix「${pfx}」 — 18 × 33 = 594코드</div><div style="overflow:auto;max-height:46vh;border:1px solid var(--border);border-radius:6px"><table style="border-collapse:collapse">${head}${rows}</table></div></div>`;
+  }).join('');
+  bg.innerHTML = `
+    <div class="dl-modal" style="max-width:860px">
+      <div class="dl-modal-head">
+        <div class="dl-modal-title">그룹코드 선택
+          <select onchange="gcReopenPicker(this.value)" style="margin-left:8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:12px;color:var(--accent2);font-weight:700;outline:none">
+            ${Object.keys(GC_GRADE_PREFIX).map(g=>`<option value="${g}" ${g===grade?'selected':''}>${g}</option>`).join('')}
+          </select>
+        </div>
+        <button onclick="document.getElementById('gc-pick-bg').remove();_gcPickCb=null" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1;padding:2px 6px">✕</button>
+      </div>
+      <div class="dl-modal-body" style="max-height:74vh;overflow:auto">
+        <div style="font-size:11px;color:var(--text2);line-height:1.7;margin-bottom:12px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
+          <span style="display:inline-block;width:11px;height:11px;background:var(--green-dim);border:1px solid var(--green);border-radius:2px;vertical-align:middle"></span> <b style="color:var(--green2)">빈 코드</b>(0명) &nbsp;·&nbsp;
+          <span style="display:inline-block;width:11px;height:11px;background:var(--amber-dim);border:1px solid var(--amber);border-radius:2px;vertical-align:middle"></span> <b style="color:var(--amber2)">합류 가능</b>(1~3명) &nbsp;·&nbsp;
+          <span style="display:inline-block;width:11px;height:11px;background:var(--surface3);border:1px solid var(--border);border-radius:2px;vertical-align:middle"></span> <b style="color:var(--text3)">4명+</b>(단체)<br>
+          셀 숫자=현재 인원 · <b>클릭하면 그 코드로 배정</b> · 칸에 마우스 올리면 배정된 명단 표시. 가로=영문(2번째), 세로=가나(3번째).
+        </div>
+        ${gridHTML}
+      </div>
+    </div>`;
+  bg.addEventListener('click', e=>{ if(e.target===bg){ bg.remove(); _gcPickCb=null; } });
+  document.body.appendChild(bg);
+}
+function gcPick(code){
+  const cb = _gcPickCb; _gcPickCb = null;
+  const bg = document.getElementById('gc-pick-bg'); if(bg) bg.remove();
+  if(typeof cb === 'function') cb(code);
+}
+// ⚠ 미등록 회원 행: 빈코드 선택 → 입력칸 채우고 저장
+function gcPickForPending(key, gubun){
+  gcOpenPicker(gubun, code=>{
+    const inp = document.querySelector('.pending-input[data-key="'+key+'"]');
+    if(!inp) return;
+    inp.value = code;
+    const btn = inp.parentNode.querySelector('.pending-save-btn');
+    if(btn) savePendingMember(btn);
+  });
+}
+
+// 마스터에 회원 직접 추가 (이름+생년6 + 등급 + 코드선택)
+function openMasterAddModal(){
+  const existing = document.getElementById('master-add-bg'); if(existing) existing.remove();
+  const bg = document.createElement('div'); bg.id='master-add-bg'; bg.className='dl-modal-bg';
+  const grades = Object.keys(GC_GRADE_PREFIX);
+  bg.innerHTML = `
+    <div class="dl-modal" style="max-width:440px">
+      <div class="dl-modal-head">
+        <div class="dl-modal-title">＋ 회원 추가 (마스터 직접 등록)</div>
+        <button onclick="document.getElementById('master-add-bg').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1;padding:2px 6px">✕</button>
+      </div>
+      <div class="dl-modal-body" style="display:flex;flex-direction:column;gap:10px">
+        <label style="font-size:11px;font-weight:600;color:var(--text2)">성명
+          <input id="ma-name" type="text" placeholder="예: 황보관현" style="width:100%;margin-top:3px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:6px 9px;font-size:12px;color:var(--text);outline:none"></label>
+        <label style="font-size:11px;font-weight:600;color:var(--text2)">생년월일 6자리
+          <input id="ma-birth" type="text" maxlength="6" inputmode="numeric" placeholder="예: 590611 (YYMMDD)" style="width:100%;margin-top:3px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:6px 9px;font-size:12px;color:var(--text);outline:none;font-family:var(--mono)"></label>
+        <label style="font-size:11px;font-weight:600;color:var(--text2)">등급
+          <select id="ma-grade" onchange="document.getElementById('ma-code').value=''" style="width:100%;margin-top:3px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:6px 9px;font-size:12px;color:var(--text);outline:none">
+            ${grades.map(g=>`<option value="${g}">${g}</option>`).join('')}
+          </select></label>
+        <div style="font-size:11px;font-weight:600;color:var(--text2)">그룹코드
+          <div style="display:flex;gap:6px;margin-top:3px">
+            <input id="ma-code" type="text" readonly placeholder="아래 버튼으로 선택" style="flex:1;background:var(--surface3);border:1px solid var(--border);border-radius:5px;padding:6px 9px;font-size:13px;color:var(--accent2);font-weight:700;font-family:var(--mono);outline:none">
+            <button class="btn-dl" onclick="gcOpenPicker(document.getElementById('ma-grade').value, c=>{document.getElementById('ma-code').value=c;})" style="font-size:11px;border-color:var(--accent);color:var(--accent2);white-space:nowrap">코드 선택</button>
+          </div>
+        </div>
+      </div>
+      <div class="dl-modal-foot">
+        <button class="btn-dl" onclick="document.getElementById('master-add-bg').remove()" style="font-size:11px">취소</button>
+        <button class="btn-dl" onclick="saveMasterAdd()" style="font-size:11px;border-color:var(--green);color:var(--green2);background:var(--green-dim)">저장</button>
+      </div>
+    </div>`;
+  bg.addEventListener('click', e=>{ if(e.target===bg) bg.remove(); });
+  document.body.appendChild(bg);
+}
+function saveMasterAdd(){
+  const name = String((document.getElementById('ma-name')||{}).value||'').trim();
+  const birth = String((document.getElementById('ma-birth')||{}).value||'').trim();
+  const grade = String((document.getElementById('ma-grade')||{}).value||'').trim();
+  const code = String((document.getElementById('ma-code')||{}).value||'').trim();
+  if(!name){ alert('성명을 입력하세요.'); return; }
+  if(!/^\d{6}$/.test(birth)){ alert('생년월일 6자리(YYMMDD)를 정확히 입력하세요.'); return; }
+  if(!code){ alert('그룹코드를 선택하세요.'); return; }
+  const key = name + birth;
+  if(memberMasterMeta[key] && !confirm(`이미 등록된 회원입니다 (${memberMasterMeta[key].code}).\n${code}로 덮어쓸까요?`)) return;
+  memberMasterMap[key] = code;
+  memberMasterMeta[key] = { code, name, birth, gubun: grade, id: key };
+  try {
+    localStorage.setItem('memberMasterMap', JSON.stringify(memberMasterMap));
+    localStorage.setItem('memberMasterMeta', JSON.stringify(memberMasterMeta));
+    localStorage.setItem('memberMasterCount', String(Object.keys(memberMasterMap).length));
+  } catch(e){}
+  const bg = document.getElementById('master-add-bg'); if(bg) bg.remove();
+  updateMasterListCount();
+  if(typeof appToast === 'function') appToast(`${name} · ${code} 등록 완료`);
+  // 명단 모달 열려있으면 갱신
+  if(document.getElementById('master-modal-bg')){ _masterModalEntries = Object.values(memberMasterMeta).slice().sort((a,b)=>String(a.code||'').localeCompare(String(b.code||''))); renderMasterModalRows((document.getElementById('master-search')||{}).value||''); }
+  if(processed.length && typeof renderAll==='function') renderAll();
 }
 
 // DOMContentLoaded 시 복원
@@ -6312,6 +6469,7 @@ function openPendingMemberModal(){
       <td style="padding:6px 8px">
         <div style="display:flex;gap:4px;align-items:center">
           <input type="text" class="pending-input" data-key="${p.key}" data-name="${p.name}" data-birth="${p.birth}" data-gubun="${p.gubun}" data-seqs="${p.eventSeqs.join(',')}" placeholder="예: DAあ" style="width:80px;padding:3px 6px;font-family:var(--mono);font-size:11px;background:var(--surface3);border:1px solid var(--border2);border-radius:3px;color:var(--text);text-align:center" onkeypress="if(event.key==='Enter'){event.preventDefault();savePendingMember(this.parentNode.querySelector('.pending-save-btn'));}">
+          <button onclick="gcPickForPending('${p.key}','${String(p.gubun||'').replace(/'/g,"\\'")}')" style="padding:3px 8px;font-size:10px;background:var(--accent-dim);color:var(--accent2);border:1px solid var(--accent);border-radius:3px;cursor:pointer;font-weight:600" title="빈 그룹코드 표에서 선택">🔍 빈코드</button>
           <button class="pending-save-btn" onclick="savePendingMember(this)" style="padding:3px 8px;font-size:10px;background:var(--green-dim);color:var(--green2);border:1px solid var(--green);border-radius:3px;cursor:pointer;font-weight:600">저장</button>
         </div>
       </td>
