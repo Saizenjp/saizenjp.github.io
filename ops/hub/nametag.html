@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · ネームタグ(네임택) 인쇄</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad; --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#3d5424; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#2c3d19;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --mono:'SFMono-Regular',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{max-width:1000px;margin:0 auto;padding:16px 20px 90px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:10px}
+  .panel .desc{font-size:12px;color:var(--text2);margin-bottom:11px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .ymctrl{display:flex;align-items:center;gap:6px}
+  .ymctrl b{font-size:15px;font-family:var(--mono);min-width:78px;text-align:center}
+  .chip{font-size:12px;font-weight:700;padding:5px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border);cursor:pointer}
+  .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  /* 미리보기(축소) 라벨 그리드 */
+  .prev-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-top:8px}
+  .prev-cell{border:1px solid var(--border);border-radius:6px;padding:7px 9px;background:var(--surface2);text-align:center}
+  .prev-tag{font-size:17px;font-weight:800;font-family:Arial,sans-serif;line-height:1}
+  .prev-name{font-size:12px;font-weight:700;margin-top:3px}
+  .prev-eng{font-size:9px;color:var(--muted)}
+  .prev-io{font-size:9.5px;font-family:var(--mono);color:var(--text2);margin-top:2px}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.64">
+</head>
+<body data-so-area="room">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step">ネームタグ · 네임택 인쇄</span>
+  <a class="navhome" href="../index.html">← 홈</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint">step1에서 등록한 개인 태그(person_tag)를 읽어 Askul 70×33.9mm 24면 라벨로 인쇄합니다.</span>
+</div>
+
+<div class="wrap" id="content">
+  <div class="panel"><div class="deny" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-ops.js?v=14.64"></script>
+<script>
+const $=s=>document.querySelector(s);
+let supa=null, YM=null, CELLS=[], ORIGIN='all';
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+function thisYM(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function shiftYM(ym,delta){const [y,m]=ym.split('-').map(Number);const d=new Date(y,m-1+delta,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function mmdd(d){if(!d)return '-';const m=String(d).match(/(\d{4})-(\d{2})-(\d{2})/);return m?`${m[2]}/${m[3]}`:String(d);}
+
+// 숙소 → 색/포트 (app 항공커버·라벨과 동일 톤)
+const ACCOM_COLOR={Y:'#111111',K:'#5B21B6',G:'#065F46',S:'#92400E'};
+function accomPfx(g){ if(g.accom_prefix) return g.accom_prefix; const a=g.accom||''; if(a.includes('쿠주'))return 'K'; if(a.includes('간지')||a.includes('ガーン'))return 'G'; if(a.includes('시즈'))return 'S'; return 'Y'; }
+function portOf(origin){ return String(origin||'').includes('부산')?'PUS':'ICN'; }
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn('URL·key 필요','err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">로그인이 필요합니다.<small>가운데 로그인 카드에서 로그인 후 다시 연결하세요.</small></div></div>'; return; }
+    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.disabled=false;
+    YM=YM||thisYM();
+    renderUI(); load();
+  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결·재시도';btn.disabled=false; supa=null; toast('연결 실패: '+e.message,'err'); }
+}
+
+function renderUI(){
+  $('#content').innerHTML=`
+    <div class="panel">
+      <h3>월 선택 · 필터</h3>
+      <div class="row">
+        <div class="ymctrl">
+          <button class="btn sm ghost" id="ym-prev" type="button">◀</button>
+          <b id="ym-label"></b>
+          <button class="btn sm ghost" id="ym-next" type="button">▶</button>
+        </div>
+        <span style="width:1px;height:20px;background:var(--border)"></span>
+        <span class="cnt">출발지</span>
+        <div class="chip on" data-o="all">전체</div>
+        <div class="chip" data-o="icn">ICN(인천)</div>
+        <div class="chip" data-o="pus">PUS(부산)</div>
+        <span style="flex:1"></span>
+        <span class="cnt" id="stat"></span>
+        <button class="btn" id="btn-print" type="button" disabled>🖨 라벨 인쇄</button>
+      </div>
+      <div class="desc" style="margin-top:10px">선택 월에 <b>입국(출발일)</b>하는 팀의 개인 명단을 불러옵니다. 라벨 = 개인 1명당 1장(태그코드·이름·IN/OUT).</div>
+    </div>
+    <div class="panel">
+      <h3>미리보기 <span class="cnt" id="prev-cnt"></span></h3>
+      <div id="prev"></div>
+    </div>`;
+  $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
+  $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
+  $('#btn-print').addEventListener('click',printLabels);
+  document.querySelectorAll('.chip[data-o]').forEach(c=>c.addEventListener('click',()=>{
+    document.querySelectorAll('.chip[data-o]').forEach(x=>x.classList.remove('on'));
+    c.classList.add('on'); ORIGIN=c.dataset.o; renderPreview();
+  }));
+}
+
+async function load(){
+  if(!supa) return;
+  $('#ym-label').textContent=YM; $('#stat').textContent='불러오는 중…'; $('#btn-print').disabled=true;
+  try{
+    // 1) 선택 월 팀(guests+bookings)
+    const {data:gs,error:e1}=await supa.from('guests')
+      .select('event_seq,group_code,accom,accom_prefix,bookings!inner(rep_name,dep_date,arr_date,origin,session_ym)')
+      .eq('session_ym',YM);
+    if(e1) throw e1;
+    const gmap={}; (gs||[]).forEach(g=>{ gmap[g.event_seq]={accom:g.accom,accom_prefix:g.accom_prefix,b:g.bookings||{}}; });
+    const seqs=Object.keys(gmap).map(Number);
+    if(!seqs.length){ CELLS=[]; $('#stat').textContent='해당 월 데이터 없음'; renderPreview(); return; }
+    // 2) 개인(guest_members) — event_seq 청크로 로드
+    const members=[];
+    for(let i=0;i<seqs.length;i+=200){
+      const chunk=seqs.slice(i,i+200);
+      let pg=0;
+      for(;;){
+        const {data,error}=await supa.from('guest_members')
+          .select('event_seq,person_tag,seq_in_team,name_kr,name_en,is_rep')
+          .in('event_seq',chunk).order('event_seq').order('seq_in_team').range(pg,pg+999);
+        if(error) throw error;
+        members.push(...(data||[]));
+        if(!data||data.length<1000) break; pg+=1000;
+      }
+    }
+    // 3) 셀 구성
+    CELLS=members.map(m=>{
+      const g=gmap[m.event_seq]||{}; const b=g.b||{};
+      const pfx=accomPfx(g);
+      return {
+        tag:m.person_tag||'', kor:m.name_kr||'', eng:m.name_en||'',
+        port:portOf(b.origin), dep:mmdd(b.dep_date), arr:mmdd(b.arr_date),
+        origin:b.origin||'', accomColor:ACCOM_COLOR[pfx]||'#111'
+      };
+    }).filter(c=>c.tag||c.kor);
+    $('#stat').textContent=`${CELLS.length}명 · ${seqs.length}팀`;
+    renderPreview();
+  }catch(e){ $('#stat').textContent='로드 실패'; toast('로드 실패: '+e.message,'err'); }
+}
+
+function filtered(){ return ORIGIN==='all'?CELLS:CELLS.filter(c=> ORIGIN==='icn'? c.port==='ICN' : c.port==='PUS'); }
+function renderPreview(){
+  const list=filtered();
+  $('#btn-print').disabled=!list.length;
+  $('#prev-cnt').textContent=list.length?`(${list.length}장)`:'';
+  const box=$('#prev');
+  if(!list.length){ box.innerHTML='<div class="deny" style="color:var(--muted);padding:24px">표시할 명단이 없습니다.</div>'; return; }
+  box.innerHTML='<div class="prev-grid">'+list.slice(0,120).map(c=>`
+    <div class="prev-cell">
+      <div class="prev-tag" style="color:${c.accomColor}">${esc(c.tag)}</div>
+      <div class="prev-name">${esc(c.kor)} <span class="prev-eng">${c.eng?'('+esc(c.eng)+')':''}</span></div>
+      <div class="prev-io">IN ${c.port} ${esc(c.dep)} / OUT ${c.port} ${esc(c.arr)}</div>
+    </div>`).join('')+'</div>'
+    +(list.length>120?`<div class="cnt" style="margin-top:8px">※ 미리보기는 120장까지 · 인쇄는 전체 ${list.length}장</div>`:'');
+}
+
+// Askul AR9-0796 70×33.9mm 24면 라벨 인쇄창
+function printLabels(){
+  const list=filtered();
+  if(!list.length){ toast('인쇄할 명단이 없음','err'); return; }
+  const PER=24, pages=[];
+  for(let i=0;i<list.length;i+=PER){ const pg=list.slice(i,i+PER); while(pg.length<PER) pg.push(null); pages.push(pg); }
+  const cell=c=> c? `<div class="lp-cell"><div class="lp-hole"></div><div class="lp-body">
+      <div class="lp-r1" style="color:${c.accomColor}">${esc(c.tag)}</div>
+      <div class="lp-r2">${esc(c.kor)} <span class="lp-r2-eng">${c.eng?'('+esc(c.eng)+')':''}</span></div>
+      <div class="lp-r3">IN&nbsp; ${esc(c.port)} ${esc(c.dep)}</div>
+      <div class="lp-r4">OUT ${esc(c.port)} ${esc(c.arr)}</div>
+    </div></div>` : '<div class="lp-cell lp-cell-empty"></div>';
+  const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>ネームタグ 印刷 — ${YM}</title>
+  <style>
+  @page{size:A4 portrait;margin:0}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{font-family:'Meiryo','Malgun Gothic',sans-serif;background:#f5f5f5;color:#1a2540}
+  .lp-toolbar{position:sticky;top:0;background:#fff;padding:14px 20px;box-shadow:0 2px 8px rgba(0,0,0,.1);display:flex;align-items:center;gap:16px;z-index:100}
+  .lp-toolbar h1{font-size:16px;font-weight:700}.lp-toolbar .meta{font-size:11px;color:#666}
+  .lp-toolbar button{padding:8px 20px;background:#15803D;color:#fff;border:none;border-radius:5px;font-size:13px;font-weight:600;cursor:pointer}
+  .lp-toolbar .lp-close{background:#999}.lp-container{padding:20px}
+  .lp-page{width:210mm;height:297mm;margin:0 auto 20px;background:#fff;position:relative;padding:12.9mm 0;display:grid;grid-template-columns:repeat(3,70mm);grid-template-rows:repeat(8,33.9mm);box-shadow:0 2px 12px rgba(0,0,0,.08);page-break-after:always}
+  .lp-page:last-child{page-break-after:auto}
+  .lp-cell{width:70mm;height:33.9mm;overflow:hidden;border:.3pt dashed #e0e0e0;position:relative;display:flex;flex-direction:row;align-items:center;padding:1.5mm 2.5mm 1.5mm 1mm}
+  .lp-hole{width:5mm;height:100%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .lp-hole::after{content:'';width:2.5mm;height:2.5mm;border:.4pt solid #c8c8c8;border-radius:50%}
+  .lp-body{flex:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+  .lp-cell-empty{border:.3pt dashed #e0e0e0;background:repeating-linear-gradient(45deg,#fafafa,#fafafa 6px,#f0f0f0 6px,#f0f0f0 12px)}
+  .lp-r1{font-size:25pt;font-weight:700;text-align:center;font-family:'Arial','Meiryo',sans-serif;letter-spacing:.5px;line-height:1;margin-bottom:.8mm}
+  .lp-r2{font-size:15pt;font-weight:700;text-align:center;line-height:1.05;margin-bottom:.6mm}
+  .lp-r2-eng{font-size:7pt;color:#6b7a90;font-weight:500}
+  .lp-r3,.lp-r4{font-size:7.5pt;text-align:center;font-family:'Consolas','Menlo',monospace;color:#1a2540;line-height:1.25}
+  @media print{html,body{background:#fff}.lp-toolbar{display:none}.lp-container{padding:0}.lp-page{margin:0 auto;box-shadow:none}.lp-cell{border:none}.lp-cell-empty{background:#fff;border:none}}
+  </style></head><body>
+  <div class="lp-toolbar"><h1>ネームタグ 인쇄 미리보기</h1>
+    <div class="meta">A4 24면 (70×33.9mm · 3열×8단) · ${list.length}장 · ${pages.length}페이지 · ${YM}</div>
+    <div style="flex:1"></div>
+    <button onclick="window.print()">인쇄</button><button class="lp-close" onclick="window.close()">✕ 닫기</button>
+  </div>
+  <div class="lp-container">${pages.map(pg=>`<div class="lp-page">${pg.map(cell).join('')}</div>`).join('')}</div>
+  </body></html>`;
+  const w=window.open('','_blank'); if(!w){ toast('팝업 차단 — 허용 필요','err'); return; }
+  w.document.write(html); w.document.close();
+}
+
+$('#btn-connect').addEventListener('click',connect);
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
