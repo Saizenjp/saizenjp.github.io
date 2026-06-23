@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 現地精算表(Merit B2B)</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad; --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#3d5424; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#2c3d19;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --red:#b13b2c; --mono:'SFMono-Regular',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{max-width:1280px;margin:0 auto;padding:16px 20px 90px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:10px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .ymctrl{display:flex;align-items:center;gap:6px}
+  .ymctrl b{font-size:15px;font-family:var(--mono);min-width:78px;text-align:center}
+  .chip{font-size:12px;font-weight:700;padding:5px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border);cursor:pointer}
+  .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  .boxes{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:6px}
+  .sbox{border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:11px 13px;background:var(--surface2)}
+  .sbox .lab{font-size:13px;font-weight:800;color:var(--accent);margin-bottom:6px}
+  .sbox .sr{display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding:1.5px 0}
+  .sbox .sr .v{font-family:var(--mono);font-weight:700;color:var(--text)}
+  .sbox .sr.tot{border-top:1px solid var(--border);margin-top:5px;padding-top:5px;font-weight:800}
+  .sbox .sr.tot .v{color:var(--accent2);font-size:14px}
+  .grand{display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:#1f2a18;color:#fff;border-radius:10px;padding:13px 18px;margin-top:10px}
+  .grand .g{display:flex;flex-direction:column}
+  .grand .g .gl{font-size:11px;opacity:.8}
+  .grand .g .gv{font-size:20px;font-weight:800;font-family:var(--mono)}
+  .grand .g .gv.net{color:#ffd98a}
+  table.list{width:100%;border-collapse:collapse;font-size:12px}
+  table.list th{background:var(--accent);color:#fff;border:1px solid var(--accent);padding:6px 7px;font-weight:700;white-space:nowrap;font-size:11px}
+  table.list td{border:1px solid var(--border);padding:5px 7px}
+  table.list td.c{text-align:center}
+  table.list td.num{text-align:right;font-family:var(--mono)}
+  table.list td.mono{font-family:var(--mono);font-size:10.5px}
+  table.list tr.sec td{background:var(--surface3);font-weight:800;color:var(--accent);font-size:12px}
+  table.list tr.tot td{background:#eef1e6;font-weight:800}
+  table.list input.rem{width:100%;border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:11px;font-family:inherit}
+  .ded-grid{display:grid;grid-template-columns:150px 130px 1fr 170px 34px;gap:6px;align-items:center;margin-bottom:6px}
+  .ded-grid .hd{font-size:10px;color:var(--muted)}
+  .ded-grid input,.ded-grid select{border:1px solid var(--border2);border-radius:5px;padding:5px 7px;font-size:12px}
+  .ded-x{background:#f7e6e2;border:1px solid #e3bdb4;color:var(--err);border-radius:5px;cursor:pointer;font-size:12px;padding:4px 8px}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.64">
+</head>
+<body data-so-area="settle">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step">現地精算表 (Merit B2B)</span>
+  <a class="navhome" href="../index.html">← 홈</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint">메리트투어↔사이젠 B2B 선계약 정산(숙박비+송영비). 현장 추가요금(추가라운드·미니바 등)은 別 시스템.</span>
+</div>
+
+<div class="wrap" id="content">
+  <div class="panel"><div class="deny" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-ops.js?v=14.64"></script>
+<script>
+const $=s=>document.querySelector(s);
+let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DEDS=[];
+const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
+const ACCOM_RATE={'야마나미리조트':14000,'쿠주힐즈':14000,'간지호텔':16000,'시즈노야도 료칸':17000};
+const TRANSPORT_PER=6000;
+const DED_TYPES=['보증금 예약 쿠폰','장기숙박 쿠폰','야마나미 이용권','포인트','싱글차지 선납','기타 선납'];
+const HDRS_SETTLE=['No','イベント番号','区分','会員権区分','代表者名','英文名','出発日','到着日','泊数','人数','施設','部屋タイプ','料金(¥/人/泊)','宿泊費(¥)','送迎費(¥)','合計(¥)','備考'];
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+function thisYM(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function shiftYM(ym,delta){const [y,m]=ym.split('-').map(Number);const d=new Date(y,m-1+delta,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function today(){return new Date().toISOString().slice(0,10);}
+function fmtDate(d){ if(!d)return ''; if(d instanceof Date){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;} return String(d).slice(0,10); }
+function parseLocalDate(s){ if(!s)return new Date(NaN); if(s instanceof Date)return s; const p=String(s).slice(0,10).split('-'); return new Date(Number(p[0]),Number(p[1])-1,Number(p[2])); }
+function yen(n){ return '¥'+(Number(n)||0).toLocaleString(); }
+function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
+function accIdx(ac){ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; }
+
+// /app/ parseProduct 동일(룸타입·박수·단가)
+function parseProduct(name){
+  name=String(name||''); let accom='',roomType='',nights=0,rate=0;
+  if(name.includes('야마나미')||name.includes('돔하우스')||name.includes('관내별장')||name.includes('소보별장')||name.includes('아소별장')){
+    accom='야마나미리조트'; rate=14000;
+    if(name.includes('소형트윈'))roomType='호텔 소형트윈'; else if(name.includes('트윈'))roomType='호텔 트윈';
+    else if(name.includes('돔하우스'))roomType='돔하우스'; else if(name.includes('별장'))roomType='관내별장'; else roomType='호텔 트윈';
+  } else if(name.includes('쿠주힐즈')||name.includes('구주힐즈')||name.includes('久住ヒルズ')||name.includes('장기숙박')||name.includes('별장전용')){
+    accom='쿠주힐즈'; roomType='장기숙박전용'; rate=14000;
+  } else if(name.includes('간지호텔')){ accom='간지호텔'; roomType='호텔'; rate=16000; }
+  else if(name.includes('시즈노야도')||name.includes('료칸')){ accom='시즈노야도 료칸'; roomType='료칸'; rate=17000; }
+  const m=name.match(/(\d+)박/); nights=m?parseInt(m[1]):0;
+  return {accom,roomType,nights,rate};
+}
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn('URL·key 필요','err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">로그인이 필요합니다.<small>가운데 로그인 카드에서 로그인 후 다시 연결하세요.</small></div></div>'; return; }
+    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.disabled=false;
+    YM=YM||thisYM();
+    renderUI(); load();
+  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결·재시도';btn.disabled=false; supa=null; toast('연결 실패: '+e.message,'err'); }
+}
+
+function renderUI(){
+  $('#content').innerHTML=`
+    <div class="panel">
+      <h3>월 선택 · 필터</h3>
+      <div class="row">
+        <div class="ymctrl">
+          <button class="btn sm ghost" id="ym-prev" type="button">◀</button>
+          <b id="ym-label"></b>
+          <button class="btn sm ghost" id="ym-next" type="button">▶</button>
+        </div>
+        <span style="width:1px;height:20px;background:var(--border)"></span>
+        <span class="cnt" style="min-width:46px">숙소</span>
+        <div id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <span style="flex:1"></span>
+        <span class="cnt" id="stat"></span>
+        <button class="btn" id="btn-xlsx" type="button" disabled>⬇ 現地精算表 xlsx</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>숙소별 요약</h3>
+      <div id="boxes" class="boxes"></div>
+      <div class="grand" id="grand"></div>
+    </div>
+    <div class="panel">
+      <h3>차감 항목 <span class="cnt">— 쿠폰·선납 등(¥). Supabase 저장(월별 공유)</span></h3>
+      <div id="ded-rows"></div>
+      <div class="row" style="margin-top:8px"><button class="btn sm ghost" id="btn-add-ded" type="button">＋ 항목 추가</button></div>
+    </div>
+    <div class="panel">
+      <h3>정산 명세</h3>
+      <div style="overflow:auto"><table class="list" id="list"><thead></thead><tbody></tbody></table></div>
+    </div>`;
+  $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
+  $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
+  $('#btn-xlsx').addEventListener('click',downloadXlsx);
+  $('#btn-add-ded').addEventListener('click',addDed);
+}
+function renderAccomChips(){
+  const accoms=[...new Set(ROWS.map(r=>r.accom).filter(Boolean))].sort((a,b)=>accIdx(a)-accIdx(b));
+  const box=$('#accomchips'); if(!box)return;
+  box.innerHTML=`<div class="chip ${ACCOMSEL.size===0?'on':''}" data-a="__all">전체</div>`
+    + accoms.map(a=>`<div class="chip ${ACCOMSEL.has(a)?'on':''}" data-a="${esc(a)}">${esc(a)}</div>`).join('');
+  box.querySelectorAll('.chip[data-a]').forEach(c=>c.addEventListener('click',()=>{ const a=c.dataset.a; if(a==='__all'){ACCOMSEL.clear();}else{ACCOMSEL.has(a)?ACCOMSEL.delete(a):ACCOMSEL.add(a);} renderAccomChips(); renderAll(); }));
+}
+
+async function load(){
+  if(!supa)return;
+  $('#ym-label').textContent=YM; $('#stat').textContent='불러오는 중…'; $('#btn-xlsx').disabled=true;
+  try{
+    const {data:bs,error:e1}=await supa.from('bookings')
+      .select('event_seq,event_no,status,member_type,rep_name,dep_date,arr_date,nights_label,product_name,pax')
+      .eq('session_ym',YM);
+    if(e1)throw e1;
+    const seqs=(bs||[]).map(b=>b.event_seq);
+    if(!seqs.length){ ROWS=[]; DEDS=[]; $('#stat').textContent='해당 월 데이터 없음'; ACCOMSEL.clear(); renderAccomChips(); renderAll(); return; }
+    // guests(accom), passengers(실제 인원·英文名), settle_remarks(비고)
+    const GMAP={}, PCNT={}, ENG={}, REM={};
+    for(let i=0;i<seqs.length;i+=200){
+      const chunk=seqs.slice(i,i+200);
+      const {data:gs}=await supa.from('guests').select('event_seq,accom').in('event_seq',chunk);
+      (gs||[]).forEach(g=>{GMAP[g.event_seq]=g.accom;});
+      let pg=0;
+      for(;;){
+        const {data,error}=await supa.from('passengers').select('event_seq,name_en,seq_in_team').in('event_seq',chunk).order('event_seq').order('seq_in_team').range(pg,pg+999);
+        if(error)throw error;
+        (data||[]).forEach(p=>{ PCNT[p.event_seq]=(PCNT[p.event_seq]||0)+1; if(ENG[p.event_seq]==null && p.name_en) ENG[p.event_seq]=p.name_en; });
+        if(!data||data.length<1000)break; pg+=1000;
+      }
+    }
+    // 비고 (settle_remarks)
+    const {data:rms}=await supa.from('settle_remarks').select('event_seq,remark').in('event_seq',seqs);
+    (rms||[]).forEach(x=>{REM[x.event_seq]=x.remark||'';});
+    // 차감 (settle_deductions, 월별)
+    const {data:dd}=await supa.from('settle_deductions').select('*').eq('session_ym',YM).order('sort_no').order('created_at');
+    DEDS=(dd||[]).map(d=>({...d}));
+    ROWS=(bs||[]).map((b,i)=>{
+      const pp=parseProduct(b.product_name);
+      const accom=GMAP[b.event_seq]||pp.accom||'';
+      const dep=fmtDate(b.dep_date), arr=fmtDate(b.arr_date);
+      let nights=pp.nights;
+      if(!nights){ const m=String(b.nights_label||'').match(/(\d+)박/); nights=m?parseInt(m[1]):(dep&&arr?Math.max(0,Math.round((parseLocalDate(arr)-parseLocalDate(dep))/86400000)):0); }
+      const pax=PCNT[b.event_seq]||b.pax||0;
+      const rate=accom?(pp.rate||ACCOM_RATE[accom]||0):0;
+      const stay=accom?pax*nights*rate:0, transport=accom?pax*TRANSPORT_PER:0;
+      return { seq:b.event_seq, no:i+1, eventNo:b.event_no||'-', status:String(b.status||'').trim()||'-', memberType:String(b.member_type||'').trim()||'-',
+        repName:b.rep_name||'', engName:ENG[b.event_seq]||'', dep, arr, nights, pax, accom, roomType:pp.roomType||'-',
+        rate, stay, transport, total:stay+transport, remark:REM[b.event_seq]||'' };
+    }).filter(r=>r.accom);
+    ACCOMSEL.clear();
+    $('#stat').textContent=`${ROWS.length}건`;
+    renderAccomChips(); renderAll();
+  }catch(e){ $('#stat').textContent='로드 실패'; toast('로드 실패: '+e.message,'err'); }
+}
+
+function visibleRows(){ return ROWS.filter(r=>ACCOMSEL.size===0||ACCOMSEL.has(r.accom)); }
+
+function renderAll(){
+  const rows=visibleRows();
+  $('#btn-xlsx').disabled=!rows.length;
+  // 요약 박스
+  const stayT=rows.reduce((s,r)=>s+r.stay,0), transT=rows.reduce((s,r)=>s+r.transport,0), totalT=rows.reduce((s,r)=>s+r.total,0), paxT=rows.reduce((s,r)=>s+r.pax,0);
+  $('#boxes').innerHTML=ACCOM_ORDER.map(a=>{ const g=rows.filter(r=>r.accom===a); if(!g.length)return '';
+    const s=g.reduce((x,r)=>x+r.stay,0), tr=g.reduce((x,r)=>x+r.transport,0), tot=g.reduce((x,r)=>x+r.total,0);
+    return `<div class="sbox"><div class="lab">${esc(a)}</div>
+      <div class="sr"><span>단가</span><span class="v">${yen(ACCOM_RATE[a])}/인/박</span></div>
+      <div class="sr"><span>건수</span><span class="v">${g.length}건 / ${g.reduce((x,r)=>x+r.pax,0)}명</span></div>
+      <div class="sr"><span>숙박비</span><span class="v">${yen(s)}</span></div>
+      <div class="sr"><span>송영비</span><span class="v">${yen(tr)}</span></div>
+      <div class="sr tot"><span>합계</span><span class="v">${yen(tot)}</span></div></div>`;
+  }).join('')||'<div class="cnt" style="color:var(--muted)">표시할 데이터 없음</div>';
+  // 차감·합계
+  const dedT=DEDS.reduce((s,d)=>s+(Number(d.amount)||0),0);
+  $('#grand').innerHTML=`
+    <div class="g"><span class="gl">총 매출(B2B)</span><span class="gv">${yen(totalT)}</span></div>
+    <div class="g"><span class="gl">차감 합계</span><span class="gv" style="color:#ff9d8a">- ${yen(dedT)}</span></div>
+    <div class="g"><span class="gl">정산액(Net)</span><span class="gv net">${yen(totalT-dedT)}</span></div>
+    <div class="g"><span class="gl">숙박 / 송영</span><span class="gv" style="font-size:14px">${yen(stayT)} / ${yen(transT)}</span></div>
+    <div class="g"><span class="gl">건수 / 인원</span><span class="gv" style="font-size:14px">${rows.length}건 / ${paxT}명</span></div>`;
+  renderDeds();
+  // 명세 테이블
+  const thead=$('#list thead'), tbody=$('#list tbody');
+  thead.innerHTML='<tr>'+HDRS_SETTLE.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr>';
+  if(!rows.length){ tbody.innerHTML=`<tr><td colspan="${HDRS_SETTLE.length}" class="c" style="color:var(--muted);padding:24px">데이터 없음</td></tr>`; return; }
+  const sorted=rows.slice().sort((a,b)=>accIdx(a.accom)-accIdx(b.accom)||(a.dep||'').localeCompare(b.dep||''));
+  let prev='', html='';
+  sorted.forEach((r,i)=>{
+    if(r.accom!==prev){ prev=r.accom; const g=sorted.filter(x=>x.accom===r.accom);
+      html+=`<tr class="sec"><td colspan="${HDRS_SETTLE.length}">◎ ${esc(r.accom)} — ${g.length}건 · ${g.reduce((a,x)=>a+x.pax,0)}명 · ${yen(g.reduce((a,x)=>a+x.total,0))}</td></tr>`; }
+    html+=`<tr>
+      <td class="c">${i+1}</td><td class="mono">${esc(r.eventNo)}</td><td class="c">${esc(r.status)}</td><td class="mono">${esc(r.memberType)}</td>
+      <td style="font-weight:600">${esc(r.repName)}</td><td class="mono">${esc(r.engName)}</td>
+      <td class="mono">${esc(r.dep)}</td><td class="mono">${esc(r.arr)}</td><td class="c">${r.nights}</td><td class="c">${r.pax}</td>
+      <td class="c">${esc(r.accom)}</td><td style="font-size:10.5px">${esc(r.roomType)}</td>
+      <td class="num">${r.rate?yen(r.rate):'-'}</td><td class="num">${r.stay?yen(r.stay):'-'}</td><td class="num">${r.transport?yen(r.transport):'-'}</td>
+      <td class="num" style="font-weight:700;color:var(--accent2)">${r.total?yen(r.total):'-'}</td>
+      <td><input class="rem" value="${esc(r.remark)}" data-seq="${r.seq}" placeholder="비고"></td>
+    </tr>`;
+  });
+  html+=`<tr class="tot"><td colspan="13" style="text-align:right">合計 Total</td><td class="num">${yen(stayT)}</td><td class="num">${yen(transT)}</td><td class="num">${yen(totalT)}</td><td></td></tr>`;
+  tbody.innerHTML=html;
+  tbody.querySelectorAll('input.rem').forEach(inp=>inp.addEventListener('change',()=>saveRemark(Number(inp.dataset.seq),inp.value)));
+}
+
+async function saveRemark(seq,val){
+  const r=ROWS.find(x=>x.seq===seq); if(r) r.remark=val;
+  try{ const {error}=await supa.from('settle_remarks').upsert({event_seq:seq,remark:val,updated_by:curUser()},{onConflict:'event_seq'}); if(error)throw error; toast('비고 저장','ok'); }
+  catch(e){ toast('비고 저장 실패: '+e.message,'err'); }
+}
+
+// ── 차감 항목 CRUD (settle_deductions) ──
+function renderDeds(){
+  const el=$('#ded-rows'); if(!el)return;
+  if(!DEDS.length){ el.innerHTML='<div class="cnt" style="color:var(--muted);padding:6px 0">차감 항목이 없습니다. [＋ 항목 추가]를 눌러 추가하세요.</div>'; return; }
+  el.innerHTML=`<div class="ded-grid"><div class="hd">유형</div><div class="hd">차감 금액(¥)</div><div class="hd">항목 내용</div><div class="hd">대상 그룹/고객</div><div></div></div>`
+    + DEDS.map(d=>`<div class="ded-grid" data-id="${d.id}">
+        <select data-f="dtype">${DED_TYPES.map(t=>`<option ${d.dtype===t?'selected':''}>${t}</option>`).join('')}</select>
+        <input data-f="amount" type="text" value="${esc(d.amount||'')}" placeholder="예: 5000" style="text-align:right;font-family:var(--mono)">
+        <input data-f="label" value="${esc(d.label||'')}" placeholder="예: 봄 시즌 쿠폰">
+        <input data-f="target" value="${esc(d.target||'')}" placeholder="예: 260501-97866 / 홍길동">
+        <button class="ded-x" data-del="${d.id}">✕</button>
+      </div>`).join('');
+  el.querySelectorAll('.ded-grid[data-id]').forEach(g=>{ const id=g.dataset.id;
+    g.querySelectorAll('[data-f]').forEach(inp=>inp.addEventListener('change',()=>updateDed(id,inp.dataset.f,inp.value)));
+  });
+  el.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>removeDed(b.dataset.del)));
+}
+async function addDed(){
+  try{ const {data,error}=await supa.from('settle_deductions').insert({session_ym:YM,dtype:'보증금 예약 쿠폰',amount:0,updated_by:curUser(),sort_no:DEDS.length}).select().single();
+    if(error)throw error; DEDS.push(data); renderDeds(); renderAll(); }
+  catch(e){ toast('추가 실패: '+e.message,'err'); }
+}
+async function updateDed(id,field,val){
+  const d=DEDS.find(x=>String(x.id)===String(id)); if(!d)return;
+  d[field]=field==='amount'?(parseInt(String(val).replace(/[^0-9-]/g,''),10)||0):val;
+  try{ const {error}=await supa.from('settle_deductions').update({[field]:d[field],updated_by:curUser()}).eq('id',id); if(error)throw error;
+    if(field==='amount') renderAll(); else renderDeds(); }
+  catch(e){ toast('수정 실패: '+e.message,'err'); }
+}
+async function removeDed(id){
+  try{ const {error}=await supa.from('settle_deductions').delete().eq('id',id); if(error)throw error;
+    DEDS=DEDS.filter(x=>String(x.id)!==String(id)); renderAll(); }
+  catch(e){ toast('삭제 실패: '+e.message,'err'); }
+}
+
+// ── xlsx (/app/ downloadSettle 동일 — 모노크롬 회계 2시트) ──
+const XLM={ FG:'FF1A1A1A',FG_TITLE:'FFFFFFFF',BG_TITLE:'FF3A3A3A',BG_HDR:'FFE8E8E6',BG_SECTION:'FFD8D8D4',BG_TOTAL:'FFDCDCD8',BG_ALT:'FFF6F6F4',BG_WHITE:'FFFFFFFF',
+  B_THIN:{style:'thin',color:{argb:'FFCFCFCB'}},B_MED:{style:'medium',color:{argb:'FF888884'}} };
+function xlColWidths(ws,w){ w.forEach((x,i)=>{ws.getColumn(i+1).width=x;}); }
+function xlmTitle(ws,r,text,col){ ws.mergeCells(r,1,r,col); const c=ws.getCell(r,1); c.value=text; c.font={bold:true,size:11,color:{argb:XLM.FG_TITLE},name:'Meiryo'}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:XLM.BG_TITLE}}; c.alignment={horizontal:'left',vertical:'middle',indent:1}; c.border={top:XLM.B_MED,left:XLM.B_MED,bottom:XLM.B_MED,right:XLM.B_MED}; ws.getRow(r).height=20; }
+function xlmHeader(ws,r,hs){ const row=ws.getRow(r); row.height=18; hs.forEach((h,i)=>{ const c=ws.getCell(r,i+1); c.value=h; c.font={bold:true,size:9,color:{argb:XLM.FG},name:'Meiryo'}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:XLM.BG_HDR}}; c.alignment={horizontal:'center',vertical:'middle'}; c.border={top:XLM.B_MED,left:XLM.B_THIN,bottom:XLM.B_MED,right:XLM.B_THIN}; }); }
+function xlmSection(ws,r,text,col){ ws.mergeCells(r,1,r,col); const c=ws.getCell(r,1); c.value=text; c.font={bold:true,size:10,color:{argb:XLM.FG},name:'Meiryo'}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:XLM.BG_SECTION}}; c.alignment={horizontal:'left',vertical:'middle',indent:1}; c.border={top:XLM.B_MED,bottom:XLM.B_MED}; ws.getRow(r).height=17; }
+function xlmDataRow(ws,r,vals,isAlt,opts){ opts=opts||{}; const row=ws.getRow(r); row.height=opts.height||15; const bg=isAlt?XLM.BG_ALT:XLM.BG_WHITE;
+  vals.forEach((v,i)=>{ const c=ws.getCell(r,i+1); c.value=(v==null)?null:v; c.font={size:9,color:{argb:XLM.FG},name:'Meiryo'}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:bg}}; c.alignment={vertical:'middle'}; c.border={top:XLM.B_THIN,left:XLM.B_THIN,bottom:XLM.B_THIN,right:XLM.B_THIN}; });
+  (opts.numCols||[]).forEach(cn=>{ const c=ws.getCell(r,cn); if(typeof c.value==='number'){ c.alignment={horizontal:'right',vertical:'middle'}; c.numFmt='#,##0;[Red]-#,##0'; } });
+  (opts.centerCols||[]).forEach(cn=>{ ws.getCell(r,cn).alignment={horizontal:'center',vertical:'middle'}; });
+  (opts.boldCols||[]).forEach(cn=>{ const c=ws.getCell(r,cn); c.font={...c.font,bold:true}; });
+}
+function xlmTotalRow(ws,r,vals){ const row=ws.getRow(r); row.height=18; vals.forEach((v,i)=>{ const c=ws.getCell(r,i+1); c.value=(v==null)?null:v; c.font={bold:true,size:10,color:{argb:XLM.FG},name:'Meiryo'}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:XLM.BG_TOTAL}}; c.alignment={horizontal:typeof v==='number'?'right':'center',vertical:'middle'}; c.border={top:XLM.B_MED,left:XLM.B_THIN,bottom:XLM.B_MED,right:XLM.B_THIN}; if(typeof v==='number') c.numFmt='#,##0;[Red]-#,##0'; }); }
+
+async function downloadXlsx(){
+  if(!window.ExcelJS){ toast('ExcelJS 로드 실패','err'); return; }
+  const rows=visibleRows(); if(!rows.length){ toast('데이터 없음','err'); return; }
+  const sorted=rows.slice().sort((a,b)=>accIdx(a.accom)-accIdx(b.accom)||(a.dep||'').localeCompare(b.dep||''));
+  const wb=new ExcelJS.Workbook(); wb.creator='SaiZen'; wb.created=new Date();
+  const A4P={paperSize:9,orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:0.5,right:0.5,top:0.5,bottom:0.5,header:0,footer:0}};
+  const A4L={paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:0.5,right:0.5,top:0.5,bottom:0.5,header:0,footer:0}};
+  // 시트1: 精算要約
+  const COL=6; const ws1=wb.addWorksheet('精算要約',{views:[{state:'frozen',ySplit:3}],pageSetup:A4P});
+  xlColWidths(ws1,[18,8,8,14,14,14]);
+  xlmTitle(ws1,1,'メリットツアー × サイゼン — 現地精算表  '+YM+'  '+today(),COL);
+  xlmHeader(ws1,2,['施設','件数','人数','宿泊費(¥)','送迎費(¥)','合計(¥)']);
+  let r=3;
+  ACCOM_ORDER.forEach((t,ai)=>{ const g=sorted.filter(x=>x.accom===t); if(!g.length)return;
+    xlmDataRow(ws1,r,[t,g.length,g.reduce((a,x)=>a+x.pax,0),g.reduce((a,x)=>a+x.stay,0),g.reduce((a,x)=>a+x.transport,0),g.reduce((a,x)=>a+x.total,0)],ai%2===0,{numCols:[2,3,4,5,6],centerCols:[2,3],boldCols:[1]}); r++; });
+  xlmTotalRow(ws1,r,['合計','',rows.reduce((a,x)=>a+x.pax,0),rows.reduce((a,x)=>a+x.stay,0),rows.reduce((a,x)=>a+x.transport,0),rows.reduce((a,x)=>a+x.total,0)]); r++;
+  // 차감·정산액
+  const dedT=DEDS.reduce((s,d)=>s+(Number(d.amount)||0),0); const grossT=rows.reduce((a,x)=>a+x.total,0);
+  if(DEDS.length){ r++; xlmSection(ws1,r,'▌ 차감 항목',COL); r++;
+    xlmHeader(ws1,r,['유형','금액(¥)','항목','대상','','']); r++;
+    DEDS.forEach((d,di)=>{ xlmDataRow(ws1,r,[d.dtype||'',Number(d.amount)||0,d.label||'',d.target||'','',''],di%2===0,{numCols:[2]}); r++; });
+  }
+  xlmTotalRow(ws1,r,['総売上(B2B)','','','','',grossT]); r++;
+  xlmTotalRow(ws1,r,['控除 合計','','','','',-dedT]); r++;
+  xlmTotalRow(ws1,r,['精算額(Net)','','','','',grossT-dedT]);
+  // 시트2: 精算明細
+  const COL2=17; const ws2=wb.addWorksheet('精算明細',{views:[{state:'frozen',ySplit:3}],pageSetup:A4L});
+  xlColWidths(ws2,[5,12,8,10,16,22,11,11,6,5,16,12,12,12,12,12,22]);
+  xlmTitle(ws2,1,'現地精算表 — 明細  '+YM+'  '+today(),COL2);
+  xlmHeader(ws2,2,HDRS_SETTLE);
+  r=3; let prev='';
+  sorted.forEach((rec,i)=>{ if(rec.accom!==prev){ const g=sorted.filter(x=>x.accom===rec.accom);
+      xlmSection(ws2,r,'▌ '+rec.accom+'  —  '+g.length+'件 / '+g.reduce((a,x)=>a+x.pax,0)+'名 / ¥'+g.reduce((a,x)=>a+x.total,0).toLocaleString(),COL2); r++; prev=rec.accom; }
+    xlmDataRow(ws2,r,[i+1,rec.eventNo,rec.status,rec.memberType,rec.repName,rec.engName,rec.dep,rec.arr,rec.nights,rec.pax,rec.accom,rec.roomType,rec.rate,rec.stay,rec.transport,rec.total,rec.remark||''],i%2===0,{numCols:[13,14,15,16],centerCols:[1,3,9,10],boldCols:[5]}); r++; });
+  xlmTotalRow(ws2,r,['','','','','合計','','','','',rows.reduce((a,x)=>a+x.pax,0),'','','',rows.reduce((a,x)=>a+x.stay,0),rows.reduce((a,x)=>a+x.transport,0),rows.reduce((a,x)=>a+x.total,0),'']);
+  const suffix=ACCOMSEL.size?('_'+[...ACCOMSEL].join('-')):'';
+  const buf=await wb.xlsx.writeBuffer(); const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`Genchi_Seisan${suffix}_${YM}.xlsx`;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},500);
+  toast('xlsx 다운로드','ok');
+}
+
+$('#btn-connect').addEventListener('click',connect);
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
