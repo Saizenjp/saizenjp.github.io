@@ -146,7 +146,7 @@
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
   @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.65">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.66">
 </head>
 <body data-so-area="settle">
 <div class="topbar so-bar">
@@ -178,7 +178,10 @@
   <label data-i18n="st_sessionLabel"></label>
   <input class="inp" id="session-ym" type="month">
   <button class="btn sm" id="btn-load" type="button" disabled data-i18n="st_btnLoad"></button>
-  <button class="btn ghost sm" id="btn-open" type="button" disabled data-i18n="st_btnOpen"></button>
+  <span style="width:1px;height:18px;background:var(--border)"></span>
+  <label style="font-size:12px;color:var(--text2)">날짜</label>
+  <input class="inp" id="settle-day" type="date">
+  <button class="btn ghost sm" id="btn-day-all" type="button" title="이 달 전체 팀 보기">월 전체</button>
   <button class="btn ghost sm" id="btn-sales" type="button" disabled data-i18n="st_btnSales"></button>
   <span class="hint" data-i18n="st_taxHint"></span>
 </div>
@@ -187,6 +190,8 @@
   <!-- 좌: folio 목록 -->
   <div class="col">
     <h2><span data-i18n="st_colFolios"></span> <span class="cnt" id="folio-cnt"></span></h2>
+    <div id="settle-accom" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px"></div>
+    <input class="inp" id="settle-q" type="search" placeholder="이름·호수·대표자·그룹코드 검색" autocomplete="off" style="width:100%;margin-bottom:9px">
     <div class="col-body" id="folio-list">
       <div class="empty-hint" data-i18n="st_emptyFolios"></div>
     </div>
@@ -202,7 +207,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.65"></script>
+<script src="../assets/saizen-ops.js?v=14.66"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -217,7 +222,9 @@ const CATEGORIES=['라운딩','식음','숙박','골프샵','기타']; // 고정
 const METHODS=['현금','카드'];                         // 결제수단(Min 확정)
 const STATUS_LABEL={open:'열림',closed:'마감',settled:'결제완료'};
 
-let state={ ym:'', folios:[], selId:null, charges:[], payments:[], bookings:[], noBySeq:{} };
+let state={ ym:'', folios:[], selId:null, charges:[], payments:[], bookings:[], noBySeq:{}, day:'', q:'', roomsBySeq:{}, tagBySeq:{}, accomSel:null };
+const ACCOM_ALL=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
+const ACCOM_DEFAULT=['야마나미리조트','쿠주힐즈'];   // 기본 = 야마나미쪽(골프텔·호텔·별장·돔하우스)+쿠주힐즈
 // 표시는 행사번호(event_no). 없으면 event_seq 폴백. (예약번호=event_seq는 내부키로만)
 function evNo(seq){ const v=state.noBySeq&&state.noBySeq[seq]; return (v!=null&&v!=='')?v:seq; }
 
@@ -244,13 +251,13 @@ async function connect(){
     if(error) throw error;
     setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
     btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
-    $('#btn-load').disabled=false; $('#btn-open').disabled=false; $('#btn-sales').disabled=false;
+    $('#btn-load').disabled=false; $('#btn-sales').disabled=false;
     loadSession();
   }catch(e){
     setConn('연결 실패','err');
     toast('연결 실패: '+e.message+' (09_settlement_core.sql 실행·키 확인)','err');
     btn.textContent='연결 실패 · 재시도'; btn.classList.remove('connected'); btn.disabled=false;
-    supa=null; $('#btn-load').disabled=true; $('#btn-open').disabled=true; $('#btn-sales').disabled=true;
+    supa=null; $('#btn-load').disabled=true; $('#btn-sales').disabled=true;
   }
 }
 
@@ -266,21 +273,113 @@ async function pagedQuery(buildFn){
   }
   return {data:out};
 }
-// ── 세션(월) 단위 folio 로드 ──
+// ── 세션(월) 로드 — folio + 팀(bookings) + 숙소·태그(guests) + 호수(rooms) ──
 async function loadSession(){
   if(!supa){toast('먼저 연결하세요','warn');return;}
   const ym=$('#session-ym').value||nowYM(); state.ym=ym; $('#session-ym').value=ym;
   const fres=await pagedQuery(()=>supa.from('v_folio_balance').select('*').eq('session_ym',ym).order('opened_at').order('folio_id'));
   if(fres.error){toast('folio 로드 실패: '+fres.error.message,'err');return;}
   state.folios=fres.data||[];
-  // folio 미개설 예약(팀) 목록도 확보 — '정산계정 열기' 후보
   const {data:bk,error:be}=await supa.from('bookings')
-    .select('event_seq,event_no,rep_name,product_name,dep_date,arr_date').eq('session_ym',ym).order('dep_date');
-  if(be){ state.bookings=[]; } else { state.bookings=bk||[]; }
-  state.noBySeq={}; (state.bookings||[]).forEach(b=>{ state.noBySeq[b.event_seq]=b.event_no||''; });
+    .select('event_seq,event_no,rep_name,product_name,dep_date,arr_date').eq('session_ym',ym).order('arr_date');
+  state.bookings = be ? [] : (bk||[]);
+  state.noBySeq={}; state.bookings.forEach(b=>{ state.noBySeq[b.event_seq]=b.event_no||''; });
+  // 숙소·태그(guests)
+  const gres=await pagedQuery(()=>supa.from('guests').select('event_seq,accom,team_tag,group_code').eq('session_ym',ym));
+  state.accomBySeq={}; state.tagBySeq={};
+  (gres.data||[]).forEach(g=>{ state.accomBySeq[g.event_seq]=g.accom||''; state.tagBySeq[g.event_seq]=g.team_tag||g.group_code||''; });
+  await loadRoomsSettle(state.bookings.map(b=>b.event_seq));
+  // 기본 숙소필터(야마나미+쿠주) · 기본 날짜(오늘이 이 달이면 오늘, 아니면 월 전체)
+  if(state.accomSel===null) state.accomSel=new Set(ACCOM_DEFAULT);
+  const today=isoTodayS(); state.day=(today.slice(0,7)===ym)?today:'';
+  if($('#settle-day')) $('#settle-day').value=state.day;
   state.selId=null; state.charges=[]; state.payments=[];
-  renderFolioList(); renderDetail();
+  renderAccomChips(); renderFolioList(); renderDetail();
   toast(`${ym} · 정산계정 ${state.folios.length}건 로드`,'ok');
+}
+function isoTodayS(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+// 그날 점유/체류 방번호(팀 전체 체류 기준) — 정산은 월뷰라 팀의 배정 호수 전체
+async function loadRoomsSettle(seqs){
+  state.roomsBySeq={};
+  if(!seqs||!seqs.length) return;
+  for(let i=0;i<seqs.length;i+=300){
+    const chunk=seqs.slice(i,i+300); let pg=0;
+    while(true){
+      const {data,error}=await supa.from('rooms').select('event_seq,room_no').in('event_seq',chunk).range(pg,pg+999);
+      if(error) break;
+      (data||[]).forEach(r=>{ if(r.room_no){ const a=state.roomsBySeq[r.event_seq]=state.roomsBySeq[r.event_seq]||[]; if(!a.includes(r.room_no)) a.push(r.room_no); } });
+      if(!data||data.length<1000) break; pg+=1000;
+    }
+  }
+  Object.values(state.roomsBySeq).forEach(a=>a.sort((x,y)=>String(x).localeCompare(String(y),undefined,{numeric:true})));
+}
+function roomsOfS(seq){ return (state.roomsBySeq&&state.roomsBySeq[seq])||[]; }
+function roomLabelS(seq){ const r=roomsOfS(seq); return r.length?('🛏 '+r.join(', ')):''; }
+
+// ── 숙소 토글 칩 (기본 야마나미+쿠주, 전체 토글) ──
+function renderAccomChips(){
+  const box=$('#settle-accom'); if(!box) return;
+  const sel=state.accomSel||new Set(ACCOM_DEFAULT);
+  const allOn=(sel.size===ACCOM_ALL.length);
+  const chip=(label,on,key)=>`<button type="button" class="ac-chip" data-k="${key}" style="font-size:12px;font-weight:700;padding:4px 11px;border-radius:99px;cursor:pointer;border:1px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent)':'var(--surface3)'};color:${on?'#fff':'var(--text2)'}">${label}</button>`;
+  box.innerHTML=chip('전체',allOn,'__all')+ACCOM_ALL.map(a=>chip(a,sel.has(a),a)).join('');
+  box.querySelectorAll('.ac-chip').forEach(b=>b.addEventListener('click',()=>{
+    const k=b.dataset.k;
+    if(k==='__all'){ state.accomSel = allOn ? new Set() : new Set(ACCOM_ALL); }
+    else { if(sel.has(k)) sel.delete(k); else sel.add(k); state.accomSel=sel; }
+    renderAccomChips(); renderFolioList();
+  }));
+}
+function accomPass(seq){
+  const sel=state.accomSel; if(!sel||!sel.size) return true;   // 빈 선택=전체
+  const a=state.accomBySeq?state.accomBySeq[seq]:''; return sel.has(a);
+}
+function teamPresentOnDay(b){
+  if(!state.day) return true;
+  const dep=b.dep_date||'', arr=b.arr_date||'';
+  return dep && arr && dep<=state.day && state.day<=arr;   // 체크아웃일 포함
+}
+function settleHay(b){
+  return ((b.rep_name||'')+' '+(b.event_no||'')+' '+(b.product_name||'')+' '+(state.tagBySeq[b.event_seq]||'')+' '+roomsOfS(b.event_seq).join(' ')).toLowerCase();
+}
+// folio 미개설 팀 카드(클릭=자동 개설)
+function pendingCard(b){
+  const card=document.createElement('div'); card.className='folio-card';
+  const tag=(state.tagBySeq[b.event_seq])||('팀'+(b.event_no||b.event_seq));
+  const rl=roomLabelS(b.event_seq);
+  card.innerHTML=`
+    <div class="fh"><span class="ftag">${tag}</span><span class="frep">${b.rep_name||''}</span><span class="sbadge" style="background:var(--surface3);color:var(--muted);border:1px solid var(--border)">미개설</span></div>
+    <div class="fmeta">${state.accomBySeq[b.event_seq]||''}${rl?' · '+rl:''} · ${(b.arr_date||'').slice(5)} 체크아웃</div>
+    <div class="fbal zero">클릭 → 정산 시작(계정 자동 개설)</div>`;
+  card.addEventListener('click',()=>ensureFolioAndSelect(b.event_seq));
+  return card;
+}
+async function ensureFolioAndSelect(seq){
+  const tf=state.folios.find(f=>f.event_seq===seq && f.subject==='team');
+  if(tf){ selectFolio(tf.folio_id); return; }
+  await openFolio(seq);   // 자동 개설 후 loadSession→select
+}
+// 기존 folio(팀+개인 묶음/단일) 렌더 — 한 팀
+function renderTeamFolios(box, seq, list){
+  list.sort((a,b)=>(a.subject==='team'?0:1)-(b.subject==='team'?0:1));
+  const members=list.filter(f=>f.subject==='member');
+  if(!members.length){ list.forEach(f=>box.appendChild(folioCard(f))); return; }
+  const teamF=list.find(f=>f.subject==='team')||list[0];
+  const tag=teamF.team_tag||('팀'+seq);
+  const gGross=list.reduce((s,f)=>s+Number(f.gross_total||0),0);
+  const gPaid =list.reduce((s,f)=>s+Number(f.paid_total||0),0);
+  const gBal=gGross-gPaid; const gCls=gBal<=0?'zero':'due';
+  const grp=document.createElement('div'); grp.className='folio-group';
+  grp.innerHTML=`
+    <div class="fg-head">
+      <span class="fg-tag">${tag}</span>
+      <span class="fg-rep">${teamF.rep_name||''}</span>
+      <span class="fg-split">개인 분할 ${members.length}명</span>
+      <span class="fg-bal ${gCls}">팀 합계 잔액 ${yen(gBal)}</span>
+    </div>`;
+  const body=document.createElement('div'); body.className='fg-body';
+  list.forEach(f=>body.appendChild(folioCard(f)));
+  grp.appendChild(body); box.appendChild(grp);
 }
 
 // folio 카드 1장 생성(팀/개인 공통). member=개인 folio면 대표자 대신 개인명 강조.
@@ -301,48 +400,33 @@ function folioCard(f){
     : `<span class="ftag">${tag}</span>
        <span class="frep">${f.rep_name||''}</span>
        <span class="sbadge s-${f.status}">${STATUS_LABEL[f.status]||f.status}</span>`;
+  const rl=(!isMember)?roomLabelS(f.event_seq):'';
   card.innerHTML=`
     <div class="fh">${head}</div>
-    <div class="fmeta">청구 ${f.charge_count||0}건 · 합계 ${yen(f.gross_total)} · 결제 ${yen(f.paid_total)}</div>
+    <div class="fmeta">${rl?rl+' · ':''}청구 ${f.charge_count||0}건 · 합계 ${yen(f.gross_total)} · 결제 ${yen(f.paid_total)}</div>
     <div class="fbal ${balCls}">잔액 ${yen(bal)}</div>`;
   card.addEventListener('click',()=>selectFolio(f.folio_id));
   return card;
 }
 
+// 좌측 목록 = 날짜·숙소·검색으로 거른 '정산 대상 팀'. folio 있으면 잔액 표시, 없으면 미개설(클릭=자동개설).
 function renderFolioList(){
   const box=$('#folio-list'); box.innerHTML='';
-  $('#folio-cnt').textContent=`${state.folios.length}건`;
-  if(!state.folios.length){ box.innerHTML='<div class="empty-hint">'+t('st_emptyFolios')+'</div>'; return; }
-  // 팀(event_seq)별 그룹화 — 원래 정렬(opened_at) 순서로 그룹 등장순 유지
-  const order=[], groups=new Map();
-  state.folios.forEach(f=>{
-    if(!groups.has(f.event_seq)){ groups.set(f.event_seq,[]); order.push(f.event_seq); }
-    groups.get(f.event_seq).push(f);
-  });
-  order.forEach(seq=>{
-    const list=groups.get(seq);
-    // 팀 folio 먼저, 개인 folio 나중
-    list.sort((a,b)=>(a.subject==='team'?0:1)-(b.subject==='team'?0:1));
-    const members=list.filter(f=>f.subject==='member');
-    // 분할(개인 folio)이 없는 단일 팀은 그대로 카드 1장 — 묶음 헤더 없이
-    if(!members.length){ list.forEach(f=>box.appendChild(folioCard(f))); return; }
-    // 개인 분할이 있는 팀 → 묶음(헤더 = 팀 전체 합계)
-    const teamF=list.find(f=>f.subject==='team')||list[0];
-    const tag=teamF.team_tag||('팀'+seq);
-    const gGross=list.reduce((s,f)=>s+Number(f.gross_total||0),0);
-    const gPaid =list.reduce((s,f)=>s+Number(f.paid_total||0),0);
-    const gBal=gGross-gPaid; const gCls=gBal<=0?'zero':'due';
-    const grp=document.createElement('div'); grp.className='folio-group';
-    grp.innerHTML=`
-      <div class="fg-head">
-        <span class="fg-tag">${tag}</span>
-        <span class="fg-rep">${teamF.rep_name||''}</span>
-        <span class="fg-split">개인 분할 ${members.length}명</span>
-        <span class="fg-bal ${gCls}">팀 합계 잔액 ${yen(gBal)}</span>
-      </div>`;
-    const body=document.createElement('div'); body.className='fg-body';
-    list.forEach(f=>body.appendChild(folioCard(f)));
-    grp.appendChild(body); box.appendChild(grp);
+  // folio 팀별 그룹
+  const folioByTeam=new Map();
+  state.folios.forEach(f=>{ if(!folioByTeam.has(f.event_seq)) folioByTeam.set(f.event_seq,[]); folioByTeam.get(f.event_seq).push(f); });
+  const q=(state.q||'').trim().toLowerCase();
+  // 대상 팀 = bookings 필터(날짜+숙소+검색)
+  let teams=(state.bookings||[]).filter(b=>teamPresentOnDay(b)&&accomPass(b.event_seq));
+  if(q) teams=teams.filter(b=>settleHay(b).includes(q));
+  // 정렬: 체크아웃(arr) 빠른 순 → 잔액 있는 팀 우선 → 대표자
+  teams.sort((a,b)=>String(a.arr_date||'').localeCompare(String(b.arr_date||''))||String(a.rep_name||'').localeCompare(String(b.rep_name||'')));
+  $('#folio-cnt').textContent=`${teams.length}팀${state.day?' · '+state.day.slice(5):' · 월 전체'}`;
+  if(!teams.length){ box.innerHTML='<div class="empty-hint">대상 팀이 없습니다. (날짜·숙소 필터를 확인하거나 「월 전체」)</div>'; return; }
+  teams.forEach(b=>{
+    const flist=folioByTeam.get(b.event_seq);
+    if(flist&&flist.length) renderTeamFolios(box, b.event_seq, flist);
+    else box.appendChild(pendingCard(b));
   });
 }
 
@@ -734,8 +818,10 @@ async function downloadWB(wb,filename){
 // ── 부팅 ──
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-load').addEventListener('click',loadSession);
-$('#btn-open').addEventListener('click',openFolioModal);
 $('#btn-sales').addEventListener('click',exportSalesSummary);
+$('#settle-day').addEventListener('change',e=>{ state.day=e.target.value||''; renderFolioList(); });
+$('#btn-day-all').addEventListener('click',()=>{ state.day=''; $('#settle-day').value=''; renderFolioList(); });
+$('#settle-q').addEventListener('input',e=>{ state.q=e.target.value||''; renderFolioList(); });
 $('#session-ym').value=nowYM();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
