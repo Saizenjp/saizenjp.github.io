@@ -354,6 +354,7 @@
   <button class="btn ghost sm" id="btn-clear-all" type="button" disabled title="불러온 범위의 모든 배정 해제(수기·자동 전부)" style="color:var(--err);border-color:#e3bdb4">전체 비우기</button>
   <button class="btn ghost sm" id="btn-conflicts" type="button" disabled title="정원 초과(겹침) 방을 스캔 → 초과 auto 배정을 정리(수기·분할은 보호)" style="color:var(--warn);border-color:#e6cf95">⚠ 충돌 점검</button>
   <button class="btn ghost sm" id="btn-local-shizu" type="button" disabled title="현지(일본) 직접 예약을 숙소별로 추가하고 해당 숙소 빈 객실에 즉시 배정" style="border-color:var(--s)">＋ 현지예약 추가</button>
+  <button class="btn ghost sm" id="btn-closure" type="button" disabled title="특정 객실을 기간 지정해 폐쇄(잠금) — 대표님 사용 중·점검 등. 폐쇄 기간엔 배정 불가" style="color:var(--err);border-color:#e3bdb4">🔒 객실 폐쇄</button>
   <button class="btn ghost sm" id="btn-export" type="button" data-i18n-title="rm_btnExportTitle" data-i18n="rm_btnExport"></button>
   <span class="hint" id="session-hint"></span>
   <span id="sel-bar" style="display:none;align-items:center;gap:8px;margin-left:auto">
@@ -492,6 +493,19 @@ function teamNights(g){if(!g.dep||!g.arr)return 0;return Math.max(0,Math.round((
 function roomOccAt(invId, d){
   return state.rooms.filter(r=>r.inventory_id===invId && (!d || (r.check_in<=d && d<r.check_out)));
 }
+// 기간 폐쇄: 체류 [dep,arr) 가 폐쇄 [from_date,to_date](종료 포함)와 겹치면 그 폐쇄 반환
+function roomClosure(invId, dep, arr){
+  return (state.closures||[]).find(c=>c.inventory_id===invId && dep<=c.to_date && arr>c.from_date) || null;
+}
+// 기준 하룻밤(focus) 폐쇄 여부
+function roomClosedFocus(invId){
+  const d=state.focus||state.from; if(!d) return null;
+  const nx=fmtDate(addDays(parseISO(d),1));
+  return roomClosure(invId, d, nx);
+}
+function parseISO(s){ const p=String(s).slice(0,10).split('-'); return new Date(Number(p[0]),Number(p[1])-1,Number(p[2])); }
+function addDays(dt,n){ const d=new Date(dt); d.setDate(d.getDate()+n); return d; }
+function fmtDate(d){ const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
 // ── 배정 맥락: 인원을 선택하면 카드/카운트를 '그 팀 체류기간' 점유로 보이게(빈 듯해도 그 기간 사용중이면 꽉 참) ──
 function selAssignSpan(){
   if(!state.sel || !state.sel.size) return null;
@@ -554,7 +568,7 @@ async function connect(){
     if(error) throw error;
     setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
     btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
-    $('#btn-load').disabled=false; $('#btn-auto').disabled=false; $('#btn-clear-all').disabled=false; $('#btn-local-shizu').disabled=false; $('#btn-conflicts').disabled=false;
+    $('#btn-load').disabled=false; $('#btn-auto').disabled=false; $('#btn-clear-all').disabled=false; $('#btn-local-shizu').disabled=false; $('#btn-conflicts').disabled=false; $('#btn-closure').disabled=false;
     await loadInventory();
     if($('#month-pick').value){ await loadDay(); }   // 연결 후 이번 달 자동 로드
   }catch(e){
@@ -640,6 +654,12 @@ async function loadDay(){
     if(mm.error){toast('명단 로드 실패: '+mm.error.message,'warn');}
     else (mm.data||[]).forEach(x=>{(state.members[x.event_seq]=state.members[x.event_seq]||[]).push(x);});
   }
+  // 기간 폐쇄(잠금) 로드 — 범위에 겹치는 폐쇄(from_date<=to AND to_date>=from)
+  state.closures=[];
+  try{
+    const cl=await supa.from('room_closures').select('*').lte('from_date',to).gte('to_date',from);
+    if(!cl.error) state.closures=cl.data||[];
+  }catch(e){}
   state.sel=new Set();
   rebuildAssignMap();
   render();
@@ -916,6 +936,8 @@ function closeAssignPicker(){ const m=$('#assign-picker'); if(m) m.remove(); }
 function openAssignPicker(inv){
   closeAssignPicker();
   if(!inv.active){ toast(inv.room_no+': 비활성(잠금) 객실 — 🔓로 풀어주세요','warn'); return; }
+  const _cloF=roomClosedFocus(inv.id);
+  if(_cloF){ toast(`${inv.room_no}: 폐쇄 기간(${_cloF.from_date}~${_cloF.to_date}${_cloF.reason?' · '+_cloF.reason:''})`,'warn'); return; }
   const cap=inv.max_capacity||inv.capacity;
   const usedNow=roomUsedPax(inv);
   const remain=Math.max(0, cap-usedNow);
@@ -1188,7 +1210,8 @@ function renderRoom(inv){
   const cap=inv.max_capacity||inv.capacity;
   // 상태색: 초과=빨강(위험) · 정원 꽉참=초록(깔끔) · 정원 미달=앰버(주의)
   const stCls = usedPax>inv.capacity ? ' warn' : (usedPax>0 && usedPax>=inv.capacity ? ' full' : (usedPax>0 ? ' partial' : ''));
-  div.className='room'+(inv.active?'':' inactive')+(assigned.length?' filled':'')+stCls;
+  const clo=roomClosedFocus(inv.id);   // 기준일 폐쇄 여부
+  div.className='room'+((inv.active&&!clo)?'':' inactive')+(assigned.length?' filled':'')+stCls;
   div.dataset.invId=inv.id;
   // 기준일(focus) 대비 체크인(초록)/연박(블루) 구분. 퇴실은 카드에서 빼고 별도 「오늘 퇴실」 목록으로.
   const refDay = _span ? null : (state.focus||state.from);
@@ -1218,6 +1241,7 @@ function renderRoom(inv){
     <div class="rn">${inv.room_no}${zonePin(inv)}</div>
     <div class="rt">${typeLabel(inv.room_type)}</div>
     ${inv.note?`<div class="note">${inv.note}</div>`:''}
+    ${clo?`<div class="note" style="color:#b13b2c;font-weight:700">🔒 폐쇄 ${fmtMD(clo.from_date)}~${fmtMD(clo.to_date)}${clo.reason?' · '+clo.reason:''}</div>`:''}
     <div class="assigned">${chips}</div>
     ${usedPax>inv.capacity?'<span class="badge">초과</span>':''}`;
   // 칩 삭제
@@ -1387,6 +1411,8 @@ async function assignMembers(memberIds, inv, opts={}){
   for(const m of targets){
     const g=state.guests.find(x=>x.event_seq===m.event_seq);
     if(!g){blocked++;continue;}
+    const _clo=roomClosure(inv.id,g.dep,g.arr);
+    if(_clo){ blocked++; blockMsg.push(`${inv.room_no}: 폐쇄 기간(${_clo.from_date}~${_clo.to_date}${_clo.reason?' · '+_clo.reason:''}) — 배정 불가`); break; }
     // 이 방에서 기간 겹치는 기존 배정만 정원 합산
     const sameRoom=state.rooms.filter(r=>r.inventory_id===inv.id);
     const overlapRows=sameRoom.filter(r=>overlaps(g.dep,g.arr,r.check_in,r.check_out));
@@ -1569,6 +1595,7 @@ function roomUsedFor(invId,dep,arr,pending,occ){
 }
 function pickRoom(pool,dep,arr,need,pending,occ){
   for(const inv of pool){
+    if(roomClosure(inv.id,dep,arr)) continue;   // 기간 폐쇄된 방은 자동배정 제외
     const cap=inv.max_capacity||inv.capacity;
     if(roomUsedFor(inv.id,dep,arr,pending,occ)+need<=cap) return inv;
   }
@@ -1969,6 +1996,65 @@ async function saveHotelRooms(bg,types,cur){
 // ════════════════════════════════════════════════════════════════════════
 const LOCAL_SEQ_BASE=9000000;   // 현지예약 event_seq 시작 대역
 
+// ════════════════════════════════════════════════════════════════════════
+//  객실 폐쇄(기간 잠금) 관리 — room_closures
+// ════════════════════════════════════════════════════════════════════════
+function _curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
+function openClosureModal(){
+  if(!supa){toast('먼저 연결하세요','warn');return;}
+  const today=new Date().toISOString().slice(0,10);
+  const invs=(state.inventory||[]).slice().sort((a,b)=>String(a.facility).localeCompare(String(b.facility))||(a.sort_order||0)-(b.sort_order||0));
+  if(!invs.length){toast('객실 정보를 먼저 불러오세요(연결/날짜 로드)','warn');return;}
+  const opts=invs.map(r=>`<option value="${r.id}">${_lsEsc(r.facility)} · ${_lsEsc(r.room_no)}${r.zone?(' ('+_lsEsc(r.zone)+')'):''}</option>`).join('');
+  const list=(state.closures||[]).slice().sort((a,b)=>String(a.from_date).localeCompare(String(b.from_date))).map(c=>{
+    const inv=invs.find(x=>x.id===c.inventory_id);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border);font-size:12.5px">
+      <b style="font-family:var(--mono)">${inv?_lsEsc(inv.facility+' · '+inv.room_no):_lsEsc(c.inventory_id)}</b>
+      <span style="font-family:var(--mono)">${c.from_date}~${c.to_date}</span>
+      <span style="color:var(--text2)">${c.reason?_lsEsc(c.reason):''}</span>
+      <button class="btn ghost sm" data-del-clo="${c.id}" style="margin-left:auto;color:var(--err);border-color:#e3bdb4">삭제</button>
+    </div>`;
+  }).join('') || '<div style="color:var(--muted);font-size:12px;padding:8px 0">현재 불러온 기간에 폐쇄가 없습니다.</div>';
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal">
+    <h2>🔒 객실 폐쇄(잠금) 관리</h2>
+    <div class="mbody">
+      <p style="font-size:12px;color:var(--text2);margin-bottom:12px">특정 객실을 <b>기간 지정</b>해 닫습니다(예: 대표님 사용 중·점검). 폐쇄 기간엔 자동·수기 배정이 막히고 카드에 사유가 표시됩니다. <b>종료일 포함</b>.</p>
+      <div class="mrow"><div><label>객실 *</label></div><select class="inp" id="cl-inv">${opts}</select></div>
+      <div class="mrow"><div><label>시작일 *</label></div><input class="inp" id="cl-from" type="date" value="${today}"></div>
+      <div class="mrow"><div><label>종료일 *</label></div><input class="inp" id="cl-to" type="date" value="${today}"></div>
+      <div class="mrow" style="grid-template-columns:1fr"><div><label>사유</label><input class="inp" id="cl-reason" type="text" placeholder="예: 대표님 사용 중 / 사용 안 함 / 점검" style="width:100%;margin-top:4px"></div></div>
+      <div style="margin-top:6px"><button class="btn sm" id="cl-add" type="button">＋ 폐쇄 추가</button></div>
+      <div style="margin-top:14px"><div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:2px">불러온 기간 폐쇄 목록</div>${list}</div>
+    </div>
+    <div class="mfoot"><button class="btn ghost sm" id="cl-close" type="button">닫기</button></div>
+  </div>`;
+  document.body.appendChild(bg);
+  bg.querySelector('#cl-close').addEventListener('click',()=>bg.remove());
+  bg.addEventListener('click',e=>{if(e.target===bg)bg.remove();});
+  bg.querySelector('#cl-add').addEventListener('click',()=>saveClosure(bg));
+  bg.querySelectorAll('[data-del-clo]').forEach(b=>b.addEventListener('click',()=>delClosure(b.dataset.delClo)));
+}
+async function saveClosure(bg){
+  const inv=bg.querySelector('#cl-inv').value;
+  const from=bg.querySelector('#cl-from').value, to=bg.querySelector('#cl-to').value;
+  const reason=bg.querySelector('#cl-reason').value.trim();
+  if(!inv){toast('객실을 선택하세요','warn');return;}
+  if(!from||!to){toast('기간을 입력하세요','warn');return;}
+  if(to<from){toast('종료일은 시작일 이후여야 합니다','warn');return;}
+  const btn=bg.querySelector('#cl-add'); btn.disabled=true; btn.textContent='등록 중…';
+  try{
+    const {error}=await supa.from('room_closures').insert({inventory_id:inv,from_date:from,to_date:to,reason:reason||null,created_by:_curUser()});
+    if(error) throw error;
+    bg.remove(); toast('객실 폐쇄 등록','ok'); await loadDay(); openClosureModal();
+  }catch(e){ toast('등록 실패: '+(e.message||e),'err'); btn.disabled=false; btn.textContent='＋ 폐쇄 추가'; }
+}
+async function delClosure(id){
+  try{ const {error}=await supa.from('room_closures').delete().eq('id',id); if(error) throw error;
+    toast('폐쇄 해제','ok'); const bg=document.querySelector('.modal-bg'); if(bg)bg.remove(); await loadDay(); openClosureModal();
+  }catch(e){ toast('해제 실패: '+(e.message||e),'err'); }
+}
+
 // 숙소→prefix(태그 끝글자) · 현지예약 일반화
 const FAC_PREFIX={'야마나미리조트':'Y','쿠주힐즈':'K','간지호텔':'G','시즈노야도 료칸':'S'};
 function _lsEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -2211,6 +2297,7 @@ $('#view-timeline').addEventListener('click',()=>setView('timeline'));
 $('#btn-clear-all').addEventListener('click',clearAllAssignments);
 $('#btn-conflicts').addEventListener('click',checkConflicts);
 $('#btn-local-shizu').addEventListener('click',openLocalShizuModal);
+$('#btn-closure').addEventListener('click',openClosureModal);
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') cancelSplit(); });
 // 일별 칩: 타임라인=복수선택 토글, 카드=하루 단일선택. 재조회 없음
 $('#day-strip').addEventListener('click',e=>{
