@@ -558,6 +558,8 @@ function renderVenueTabs(){
   });
 }
 
+const POS_CAT_ORDER=['라운딩','식음','숙박','골프샵','기타'];
+function posCatLabel(c){ return c==='숙박'?'룸':(c||'기타'); }
 function renderMenu(){
   const box=$('#menu-grid'); box.innerHTML='';
   const ov=outletVenues();
@@ -567,14 +569,24 @@ function renderMenu(){
     return state.venue==='__all__' || v===state.venue;    // 선택 탭
   });
   if(!list.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyMenu')+'</div>'; return; }
-  list.forEach(m=>{
+  // 구분(라인=category)별 섹션 헤더로 묶기
+  const byCat={}; list.forEach(m=>{ const c=m.category||'기타'; (byCat[c]=byCat[c]||[]).push(m); });
+  const cats=Object.keys(byCat).sort((a,b)=>{const ai=POS_CAT_ORDER.indexOf(a),bi=POS_CAT_ORDER.indexOf(b);return (ai<0?99:ai)-(bi<0?99:bi);});
+  const card=(m)=>{
     const b=document.createElement('button'); b.type='button'; b.className='menu-btn';
     b.innerHTML=`<span class="mcat cat-${m.category}"></span>
       ${m.code?`<span class="mcode">${m.code}</span>`:''}
       <div><div class="mja">${m.name_ja||''}</div>${m.name_ko?`<div class="mko">${m.name_ko}</div>`:''}</div>
       <div class="mprice">${Number(m.unit_price)>0?yen(m.unit_price):t('po_manualPrice')}</div>`;
     b.addEventListener('click',()=>addToCart(m));
-    box.appendChild(b);
+    return b;
+  };
+  cats.forEach(c=>{
+    const h=document.createElement('div');
+    h.style.cssText='grid-column:1/-1;font-size:13px;font-weight:800;color:var(--accent2);padding:6px 2px 2px;border-bottom:1px solid var(--border);margin-top:4px';
+    h.textContent=posCatLabel(c);
+    box.appendChild(h);
+    byCat[c].forEach(m=>box.appendChild(card(m)));
   });
 }
 
