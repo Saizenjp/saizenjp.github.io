@@ -200,6 +200,7 @@ const VENUES=[
 const VENUE_BY_KEY=Object.fromEntries(VENUES.map(v=>[v.key,v]));
 function venueLabel(k){ return (VENUE_BY_KEY[k]&&VENUE_BY_KEY[k].label) || k || 'etc'; }
 function venuePrefix(k){ return (VENUE_BY_KEY[k]&&VENUE_BY_KEY[k].prefix) || 'X'; }
+function venueIdx(k){ const i=VENUES.findIndex(v=>v.key===k); return i===-1?99:i; }
 // 데이터에 등장하는 모든 venue(레지스트리 + 미등록 venue) 를 순서대로
 function allVenues(){
   const seen=new Set(VENUES.map(v=>v.key)); const list=VENUES.slice();
@@ -307,25 +308,44 @@ function render(){
     items=state.items.filter(m=>state.lineFilter==='__all'||(m.category||'기타')===state.lineFilter)
       .slice().sort((a,b)=>(CATS.indexOf(a.category||'기타')-CATS.indexOf(b.category||'기타'))||String(a.venue||'').localeCompare(String(b.venue||''))||((a.sort_order||0)-(b.sort_order||0)));
   } else {
-    items=state.venueFilter==='__all' ? state.items : state.items.filter(m=>(m.venue||'etc')===state.venueFilter);
+    // 장소별: 장소(헤더) 안을 라인(카테고리)으로 다시 묶음 → 장소순 → 라인순 → 정렬순
+    items=(state.venueFilter==='__all' ? state.items : state.items.filter(m=>(m.venue||'etc')===state.venueFilter))
+      .slice().sort((a,b)=>(venueIdx(a.venue||'etc')-venueIdx(b.venue||'etc'))
+        ||(CATS.indexOf(a.category||'기타')-CATS.indexOf(b.category||'기타'))
+        ||((a.sort_order||0)-(b.sort_order||0)));
   }
   $('#list-cnt').innerHTML=`${items.length}${t('me_cntItem')}`;
   if(!items.length){ body.innerHTML='<tr><td colspan="10" class="empty-hint">'+t('me_empty')+'</td></tr>'; return; }
-  let lastGroup=null;
+  let lastGroup=null, lastVenue=null, lastCat=null;
   items.forEach(m=>{
     const venue=m.venue||'etc';
-    const gkey=line?(m.category||'기타'):venue;
-    if(gkey!==lastGroup){
-      lastGroup=gkey;
-      const vr=document.createElement('tr');
-      const headLabel=line ? ('라인 · '+catLabel(gkey))
-                            : (esc(venueLabel(gkey))+' <span style="color:var(--muted);font-weight:600">('+esc(venuePrefix(gkey))+')</span>');
-      vr.innerHTML=`<td colspan="10" class="venue-h"><div style="display:flex;align-items:center;gap:10px">
-        <span>${headLabel}</span>
-        ${line?'':'<button class="btn ghost sm" type="button" data-savevenue style="margin-left:auto">💾 이 장소 전체 저장</button>'}
-      </div></td>`;
-      if(!line){ const sb=vr.querySelector('[data-savevenue]'); if(sb) sb.addEventListener('click',()=>saveVenue(gkey)); }
-      body.appendChild(vr);
+    const cat=m.category||'기타';
+    if(line){
+      if(cat!==lastGroup){
+        lastGroup=cat;
+        const vr=document.createElement('tr');
+        vr.innerHTML=`<td colspan="10" class="venue-h"><span>라인 · ${esc(catLabel(cat))}</span></td>`;
+        body.appendChild(vr);
+      }
+    } else {
+      // 장소 헤더 (장소 전체 저장 버튼 포함)
+      if(venue!==lastVenue){
+        lastVenue=venue; lastCat=null;
+        const vr=document.createElement('tr');
+        vr.innerHTML=`<td colspan="10" class="venue-h"><div style="display:flex;align-items:center;gap:10px">
+          <span>${esc(venueLabel(venue))} <span style="color:var(--muted);font-weight:600">(${esc(venuePrefix(venue))})</span></span>
+          <button class="btn ghost sm" type="button" data-savevenue style="margin-left:auto">💾 이 장소 전체 저장</button>
+        </div></td>`;
+        const sb=vr.querySelector('[data-savevenue]'); if(sb) sb.addEventListener('click',()=>saveVenue(venue));
+        body.appendChild(vr);
+      }
+      // 라인(카테고리) 서브헤더 — 장소 안 구분
+      if(cat!==lastCat){
+        lastCat=cat;
+        const cr=document.createElement('tr');
+        cr.innerHTML=`<td colspan="10" class="line-subh" style="background:var(--surface2);color:var(--text2);font-weight:700;font-size:12px;padding:5px 14px 5px 26px;border-bottom:1px solid var(--border)">▸ ${esc(catLabel(cat))}</td>`;
+        body.appendChild(cr);
+      }
     }
     const tr=document.createElement('tr');
     if(!m.active) tr.className='inactive';
