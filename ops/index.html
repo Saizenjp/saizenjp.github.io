@@ -341,8 +341,14 @@
     if(!window.__so_authClient) return; var c=__so_authClient(); if(!c) return;
     c.from('import_log').select('session_ym,uploaded_by,uploaded_at').order('uploaded_at',{ascending:false}).limit(60).then(function(r){
       if(r.error||!r.data||!r.data.length) return;
-      var byYm={};  // 월별 최신(첫 등장 = 최신순 정렬)
-      r.data.forEach(function(x){ var ym=x.session_ym||''; if(!ym) return; if(!byYm[ym]) byYm[ym]=x; });
+      // session_ym 한 행에 여러 달이 콤마로 들어올 수 있음 → 실제 월 단위로 분해
+      // r.data는 uploaded_at 내림차순 → 각 월의 '첫 등장' = 그 달의 최신 등록
+      var byYm={};
+      r.data.forEach(function(x){
+        String(x.session_ym||'').split(',').forEach(function(raw){
+          var ym=raw.trim(); if(!ym) return; if(!byYm[ym]) byYm[ym]=x;
+        });
+      });
       var yms=Object.keys(byYm).sort();
       if(!yms.length) return;
       var p=function(n){ return String(n).padStart(2,'0'); };
