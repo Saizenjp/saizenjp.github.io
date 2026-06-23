@@ -512,7 +512,7 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
       <button id="app-lang-ko" onclick="setAppLang('ko')">한국어</button>
       <button id="app-lang-en" onclick="setAppLang('en')">EN</button>
     </div>
-    <span class="badge">v16.4</span>
+    <span class="badge">v16.5</span>
     <button class="ghost-btn" onclick="resetApp()" data-i18n="app_reset" title="업로드 파일·수기입력을 비웁니다 (참조테이블은 유지)">입력 비우기</button>
   </div>
 </div>
@@ -729,7 +729,6 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
       <button class="btn-dl" onclick="openRestaurantPrintModal()" style="background:var(--green-dim);color:var(--green2);border-color:var(--green)">レストラン名札 인쇄</button>
       <button class="btn-dl" onclick="openDinnerOrderPrintModal()" style="background:var(--amber-dim);color:var(--amber2);border-color:var(--amber)">夕食オーダー A3 인쇄</button>
       <button class="btn-dl" onclick="downloadDinner()">⬇ 夕食名前版 (xlsx)</button>
-      <button class="btn-dl" onclick="downloadRestaurantNameplate()">⬇ レストラン名札 (xlsx)</button>
       <button class="btn-undo" id="undo-btn-dinner-top" onclick="undoLastTable('dinner')" title="되돌릴 내용 없음">↩ 되돌리기</button>
     </div>
     <div id="dinner-date-filter" class="date-filter"></div>
@@ -738,7 +737,6 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
       <button class="btn-dl" onclick="openRestaurantPrintModal()" style="background:var(--green-dim);color:var(--green2);border-color:var(--green)">レストラン名札 인쇄</button>
       <button class="btn-dl" onclick="openDinnerOrderPrintModal()" style="background:var(--amber-dim);color:var(--amber2);border-color:var(--amber)">夕食オーダー A3 인쇄</button>
       <button class="btn-dl" onclick="downloadDinner()">⬇ 夕食名前版 (xlsx)</button>
-      <button class="btn-dl" onclick="downloadRestaurantNameplate()">⬇ レストラン名札 (xlsx)</button>
       <button class="btn-undo" id="undo-btn-dinner" onclick="undoLastTable('dinner')" title="되돌릴 내용 없음">↩ 되돌리기</button>
     </div>
   </div>
@@ -784,14 +782,12 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
   <div class="card">
     <div class="card-title">네임택 목록</div>
     <div class="btn-row" style="margin-top:0;margin-bottom:.75rem">
-      <button class="btn-dl" onclick="downloadNametag()">⬇ 네임택 다운로드 (xlsx)</button>
       <button class="btn-dl" onclick="openLabelPrintModal()" style="background:var(--green-dim);color:var(--green2);border-color:var(--green)">ネームタグ 인쇄</button>
       <button class="btn-undo" id="undo-btn-nametag-top" onclick="undoLastTable('nametag')" title="되돌릴 내용 없음">↩ 되돌리기</button>
     </div>
     <div id="nametag-filter" class="date-filter"></div>
     <div id="nametag-content"></div>
     <div class="btn-row">
-      <button class="btn-dl" onclick="downloadNametag()">⬇ 네임택 다운로드 (xlsx)</button>
       <button class="btn-dl" onclick="openLabelPrintModal()" style="background:var(--green-dim);color:var(--green2);border-color:var(--green)">ネームタグ 인쇄</button>
       <button class="btn-undo" id="undo-btn-nametag" onclick="undoLastTable('nametag')" title="되돌릴 내용 없음">↩ 되돌리기</button>
     </div>
@@ -8934,8 +8930,9 @@ function collectDispatchData(){
       tee: ((dman.teeoff && dman.teeoff[g.date]) || ((manualData['golf_'+g.date+'_'+seq]||{}).teeoff) || '').trim()
     }));
     const memo = String(dman.memo||'').trim();
+    const charges = dman.charges || {};   // 현장 발생분(B2B 정산과 별도)
     const hasManual = !!((dman.teeoff && Object.values(dman.teeoff).some(v=>String(v||'').trim()))
-      || (dman.roomCnt && String(dman.roomCnt).trim()) || memo);
+      || (dman.roomCnt && String(dman.roomCnt).trim()) || memo || Object.keys(charges).length);
     return {
       rec, seq, no: i+1, paxList, tagCode,
       depFlight, retFlight,
@@ -8946,7 +8943,7 @@ function collectDispatchData(){
       airline:    rep.airline    || '',
       port: isPUS ? 'PUS' : 'ICN',
       portName: isPUS ? '釜山(金海)' : 'ソウル(仁川)',
-      roomCnt, memo, hasManual,
+      roomCnt, memo, charges, hasManual,
       golf,
       prodName: String((rec.raw && rec.raw['상품명']) || ''),
       accomJp: dispatchAccomJp(rec.accom),
@@ -9020,7 +9017,16 @@ function buildDispatch(){
     </tr>`).join('');
 }
 
-// ── 행사별 수기 입력 모달 (티오프·방수·현장메모) ──────────────
+// 현장 발생분 区分 (B2B ⑤現地精算表와 별도 — 手配書 記入表 전용)
+const DISPATCH_CHARGE_CATS = [
+  {key:'room',     ja:'ルームチャージ', ko:'룸차지'},
+  {key:'cart',     ja:'EVカート',       ko:'EV카트'},
+  {key:'golf',     ja:'ラウンド追加',    ko:'라운딩 추가'},
+  {key:'transfer', ja:'送迎',           ko:'송영'},
+  {key:'etc',      ja:'その他',          ko:'기타'},
+];
+
+// ── 행사별 수기 입력 모달 (방수·현장메모·현장 발생분) ──────────────
 function openDispatchInputModal(seq){
   const d = collectDispatchData().find(x => x.seq === String(seq||'').trim());
   if(!d){ alert('행사를 찾을 수 없습니다.'); return; }
@@ -9047,6 +9053,22 @@ function openDispatchInputModal(seq){
         <textarea id="dispatch-memo-inp" rows="3" placeholder="例: レイトチェックアウト希望 / アレルギー: えび"
           style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:6px 9px;font-size:11px;color:var(--text);outline:none;resize:vertical;font-family:var(--sans)">${(man.memo||'')}</textarea>
 
+        <div style="font-size:11px;font-weight:600;color:var(--text2);margin:14px 0 6px">現地発生分 記入 <span style="font-size:10px;font-weight:400;color:var(--text3)">— 현장 발생 추가요금. <b>메리트투어 B2B(⑤現地精算表)와 별도</b> · 手配書 2장째 記入表에 인쇄</span></div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px">
+          <thead><tr style="color:var(--text3);font-size:10px">
+            <th style="text-align:left;padding:3px 4px;width:34%">区分</th>
+            <th style="text-align:right;padding:3px 4px;width:26%">金額(¥)</th>
+            <th style="text-align:left;padding:3px 4px">内容</th>
+          </tr></thead>
+          <tbody>
+          ${DISPATCH_CHARGE_CATS.map((c,i)=>{const cv=(man.charges||{})[c.key]||{};return `<tr>
+            <td style="padding:3px 4px;font-weight:600">${i+1}. ${c.ko} <span style="font-size:9px;color:var(--text3)">${c.ja}</span></td>
+            <td style="padding:3px 4px"><input type="number" min="0" id="dc-amt-${c.key}" value="${cv.amt||''}" placeholder="0" style="width:100%;text-align:right;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:11px;color:var(--text);outline:none"></td>
+            <td style="padding:3px 4px"><input type="text" id="dc-memo-${c.key}" value="${String(cv.memo||'').replace(/"/g,'&quot;')}" placeholder="메모(선택)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:11px;color:var(--text);outline:none"></td>
+          </tr>`;}).join('')}
+          </tbody>
+        </table>
+
         <div style="font-size:10px;color:var(--text3);margin-top:10px">저장 시 현재 월 세션(localStorage)에 보관되며, 인쇄·Excel 모두 자동 반영됩니다.</div>
       </div>
       <div class="dl-modal-foot">
@@ -9063,10 +9085,17 @@ function saveDispatchInput(seq){
   if(!bg) return;
   const roomCnt = String((bg.querySelector('#dispatch-room-inp')||{}).value||'').trim();
   const memo = String((bg.querySelector('#dispatch-memo-inp')||{}).value||'').trim();
+  // 현장 발생분(B2B 정산과 별도 저장소)
+  const charges = {};
+  DISPATCH_CHARGE_CATS.forEach(c=>{
+    const amt = String((bg.querySelector('#dc-amt-'+c.key)||{}).value||'').trim();
+    const cmemo = String((bg.querySelector('#dc-memo-'+c.key)||{}).value||'').trim();
+    if(amt || cmemo) charges[c.key] = { amt, memo: cmemo };
+  });
   const key = 'dispatch_' + String(seq||'').trim();
   const teeoff = (manualData[key] && manualData[key].teeoff) || {};  // 기존 티오프 보존 (모달 입력 제거됨)
-  if(Object.keys(teeoff).length || roomCnt || memo){
-    manualData[key] = { teeoff, roomCnt, memo };
+  if(Object.keys(teeoff).length || roomCnt || memo || Object.keys(charges).length){
+    manualData[key] = { teeoff, roomCnt, memo, charges };
   } else {
     delete manualData[key];
   }
@@ -9147,9 +9176,22 @@ function dispatchFrontHTML(d, masked){
 
 function dispatchBackHTML(d){
   const r = d.rec;
-  const rows = Array.from({length:12}, () =>
+  // 앱에서 입력한 현장 발생분을 먼저 채우고, 나머지는 손기입용 빈 행
+  const ch = d.charges || {};
+  let total = 0;
+  const filledRows = DISPATCH_CHARGE_CATS.map((c,i)=>{
+    const cv = ch[c.key];
+    if(!cv || !(cv.amt || cv.memo)) return '';
+    const amt = parseInt(cv.amt,10)||0; total += amt;
+    const memoEsc = String(cv.memo||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    return `<tr><td></td><td class="c">${i+1}. ${c.ja}</td><td>${memoEsc}</td><td></td><td></td><td class="c mono">${amt?('¥'+amt.toLocaleString()):''}</td><td></td></tr>`;
+  }).filter(Boolean);
+  const blankCount = Math.max(2, 12 - filledRows.length);
+  const blankRows = Array.from({length:blankCount}, () =>
     `<tr class="hp-fill"><td></td><td class="c"><span class="hp-cat">① ② ③ ④ ⑤</span></td><td></td><td></td><td></td><td></td><td></td></tr>`
   ).join('');
+  const rows = filledRows.join('') + blankRows;
+  const totalStr = total ? ('¥'+total.toLocaleString()) : '';
   return `<div class="hp-page">
     <div class="hp-head">
       <div>
@@ -9167,7 +9209,7 @@ function dispatchBackHTML(d){
     <table class="hp-t hp-form">
       <tr><th style="width:11%">日付</th><th style="width:16%">区分</th><th>内容</th><th style="width:8%">数量</th><th style="width:12%">単価(¥)</th><th style="width:13%">金額(¥)</th><th style="width:9%">担当</th></tr>
       ${rows}
-      <tr class="hp-total"><td colspan="5" style="text-align:right;font-weight:800;padding-right:3mm;background:#f0f2f6">合計</td><td></td><td style="background:#f0f2f6"></td></tr>
+      <tr class="hp-total"><td colspan="5" style="text-align:right;font-weight:800;padding-right:3mm;background:#f0f2f6">合計</td><td class="c mono" style="font-weight:800">${totalStr}</td><td style="background:#f0f2f6"></td></tr>
     </table>
 
     <table class="hp-t" style="margin-top:6mm">
