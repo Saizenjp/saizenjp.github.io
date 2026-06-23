@@ -323,9 +323,34 @@ async function loadTeams(){
   })).sort((a,b)=>(a.accom||'').localeCompare(b.accom||'')||(a.rep||'').localeCompare(b.rep||''));
   await loadActive();   // 주문중(folio 발생) 팀 표시·우선정렬용
   await loadMembers();  // 일행 이름 검색용
+  await loadRooms();    // 방배정 호수(그날 점유) — 표시·검색용
   backToTeams();
   toast(`${d} · 체류 ${state.teams.length}팀`,'ok');
 }
+
+// 그날 점유 방번호(event_seq → [호수…]) — 방배정 후 POS/검색에 표기
+async function loadRooms(){
+  state.roomsBySeq={};
+  const seqs=state.teams.map(x=>x.event_seq);
+  if(!seqs.length||!supa) return;
+  const d=state.date;
+  let pg=0;
+  while(true){
+    const {data,error}=await supa.from('rooms').select('event_seq,room_no,check_in,check_out').in('event_seq',seqs).range(pg,pg+999);
+    if(error) break;
+    (data||[]).forEach(r=>{
+      if(r.room_no && r.check_in<=d && d<r.check_out){   // 그날 밤 점유 방만
+        const arr=state.roomsBySeq[r.event_seq]=state.roomsBySeq[r.event_seq]||[];
+        if(!arr.includes(r.room_no)) arr.push(r.room_no);
+      }
+    });
+    if(!data||data.length<1000) break;
+    pg+=1000;
+  }
+  Object.values(state.roomsBySeq).forEach(a=>a.sort((x,y)=>String(x).localeCompare(String(y),undefined,{numeric:true})));
+}
+function roomsOf(seq){ return (state.roomsBySeq&&state.roomsBySeq[seq])||[]; }
+function roomLabel(seq){ const r=roomsOf(seq); return r.length?('🛏 '+r.join(', ')):''; }
 
 // 이 날 팀들의 일행 명단(이름 검색·동명이인 구분용) — 1000행 페이지네이션
 async function loadMembers(){
@@ -370,7 +395,7 @@ function teamCardEl(tm){
   const b=document.createElement('button'); b.type='button'; b.className='team-btn'+(act?' active-team':'');
   b.innerHTML=`<div class="ttag">${teamTag(tm)}${act?`<span class="tactive">${t('po_active')}</span>`:''}</div>
     <div class="trep">${escP(tm.rep||'')}</div>
-    <div class="tmeta">${escP(tm.accom||'')} · ${tm.pax}${t('po_cntPpl')} · #${teamNo(tm)}</div>`;
+    <div class="tmeta">${escP(tm.accom||'')} · ${tm.pax}${t('po_cntPpl')} · #${teamNo(tm)}${roomLabel(tm.event_seq)?` · <b style="color:var(--accent2)">${roomLabel(tm.event_seq)}</b>`:''}</div>`;
   b.addEventListener('click',()=>selectTeam(tm));
   return b;
 }
@@ -384,7 +409,7 @@ function renderTeams(){
 
   if(q){   // ── 검색: 팀 + 일행(동명이인은 팀으로 구분) ──
     const teamHits=state.teams
-      .filter(tm=>((tm.group_code||'')+' '+(tm.team_tag||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')+' '+(tm.accom||'')).toLowerCase().includes(q))
+      .filter(tm=>((tm.group_code||'')+' '+(tm.team_tag||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')+' '+(tm.accom||'')+' '+roomsOf(tm.event_seq).join(' ')).toLowerCase().includes(q))
       .slice().sort((a,b)=>(state.activeSeqs.has(b.event_seq)?1:0)-(state.activeSeqs.has(a.event_seq)?1:0));
     const memHits=state.members.filter(m=>((m.name_kr||'')+' '+(m.name_en||'')).toLowerCase().includes(q));
     $('#team-cnt').innerHTML=`${t('po_secTeam')} ${teamHits.length} · ${t('po_secMember')} ${memHits.length}`;
@@ -399,7 +424,7 @@ function renderTeams(){
         const isMem=(m.member_grade==='회원권');
         const btn=document.createElement('button'); btn.type='button'; btn.className='mhit';
         btn.innerHTML=`<span class="mh-name">${escP(m.name_kr||m.name_en||'-')}${isMem?'<span class="mh-mem">회</span>':''}</span>`
-          +`<span class="mh-team">${teamTag(tm)} · ${escP(tm.rep||'')} · #${teamNo(tm)}${tm.accom?(' · '+escP(tm.accom)):''}</span>`;
+          +`<span class="mh-team">${teamTag(tm)} · ${escP(tm.rep||'')} · #${teamNo(tm)}${tm.accom?(' · '+escP(tm.accom)):''}${roomLabel(tm.event_seq)?(' · '+roomLabel(tm.event_seq)):''}</span>`;
         btn.addEventListener('click',()=>selectTeam(tm));
         wrap.appendChild(btn);
       });
