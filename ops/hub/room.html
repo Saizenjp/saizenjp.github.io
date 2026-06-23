@@ -395,6 +395,7 @@
 
 <div id="toast"></div>
 
+<script src="../assets/saizen-core.js?v=1"></script>
 <script src="../assets/saizen-ops.js?v=14.66"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
@@ -1523,31 +1524,10 @@ async function assign(seq,inv){
 // ════════════════════════════════════════════════════════════════════════
 const DELUXE_TYPES=['디럭스더블트윈','디럭스트윈']; // 우선순위 순(최상급 먼저)
 
-// 한 컬럼값이 '회원'을 가리키는지: 공란 아님 + '일반'·'비회원' 미포함
-//   → 회원권·정회원·다이아몬드·EWRC… = 회원신호 / 일반고객·일반·비회원·공란 = 아님
-function _looksMember(v){
-  const s=String(v||'').trim();
-  if(!s) return false;
-  if(/일반|비회원/.test(s)) return false;
-  return true;
-}
-// 회원 판정 = 고객등급(T)·회원권구분(V)·회원구분(U) 셋 중 하나라도 회원신호면 회원.
-//   초기 회원등록 오류로 컬럼이 어긋난 경우, 회원으로 우선 판단(Min 결정).
-//   ※ 하위호환: 문자열 단일 인자도 허용(member_grade만).
-function isMember(m){
-  if(m && typeof m==='object')
-    return _looksMember(m.member_grade) || _looksMember(m.member_class) || _looksMember(m.member_div);
-  return _looksMember(m);
-}
-// 화면 표시용 라벨: 실제 등급(회원권구분 V) 우선 → 고객등급(T) → 회원/일반
-function gradeLabel(m){
-  const obj = (m && typeof m==='object');
-  const cls = String((obj?m.member_class:'')||'').trim();
-  if(cls && !/일반|비회원/.test(cls)) return cls;     // 다이아몬드Ⅱ·EWRCⅡ 등 실제 등급
-  const g = String((obj?m.member_grade:m)||'').trim();
-  if(g && g!=='회원권' && !/일반|비회원/.test(g)) return g; // 레거시: T에 실제 등급이 있던 경우
-  return isMember(m)?'회원':'일반';
-}
+// 회원 판정·등급 라벨은 공유 모듈(saizen-core.js)이 단일 진실원 — 여기선 위임만.
+//   회원 판정 = 고객등급(T)·회원권구분(V)·회원구분(U) 3컬럼 OR(회원 우선).
+function isMember(m){ return SZCore.isMember(m); }
+function gradeLabel(m){ return SZCore.gradeLabel(m); }
 
 // 팀의 판매분류·숙소 → 배정 라우팅. null 이면 자동배정 제외(소보 등).
 function autoRoute(g){
