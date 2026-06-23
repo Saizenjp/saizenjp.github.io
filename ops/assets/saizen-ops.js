@@ -1365,17 +1365,37 @@
     card.innerHTML =
         '<div style="font-size:20px;font-weight:800;color:var(--accent,#647548)">비밀번호 설정</div>'
       + '<div style="margin-top:6px;color:var(--text2,#566049);font-size:12.5px">초대받은 계정의 비밀번호를 정하세요.<br>이후 이메일+비밀번호로 로그인합니다.</div>'
-      + '<input id="so-sp-pw" type="password" placeholder="새 비밀번호 (6자 이상)" autocomplete="new-password" style="margin-top:18px;' + lcInput() + '">'
+      + '<input id="so-sp-pw" type="password" placeholder="새 비밀번호" autocomplete="new-password" style="margin-top:18px;' + lcInput() + '">'
       + '<input id="so-sp-pw2" type="password" placeholder="비밀번호 확인" autocomplete="new-password" style="margin-top:10px;' + lcInput() + '">'
+      + '<div id="so-sp-hint" style="margin-top:9px;font-size:11.5px;text-align:left;line-height:1.8">'
+      +   '<div data-rule="len" style="color:var(--muted,#8d9285)">○ 8자 이상</div>'
+      +   '<div data-rule="an" style="color:var(--muted,#8d9285)">○ 영문 + 숫자 포함</div>'
+      +   '<div style="color:var(--muted,#8d9285)">· 특수문자(!@#$ 등) 포함 권장</div>'
+      + '</div>'
       + '<div id="so-sp-err" style="display:none;margin-top:10px;color:#b13b2c;font-size:12.5px;font-weight:600"></div>'
-      + '<button type="button" id="so-sp-go" style="margin-top:16px;' + lcBtn() + '">설정하고 시작</button>';
+      + '<button type="button" id="so-sp-go" style="margin-top:14px;' + lcBtn() + '">설정하고 시작</button>';
     ov.appendChild(card); document.body.appendChild(ov);
     var pw = card.querySelector('#so-sp-pw'), pw2 = card.querySelector('#so-sp-pw2'),
         err = card.querySelector('#so-sp-err'), btn = card.querySelector('#so-sp-go');
+    var hLen = card.querySelector('[data-rule="len"]'), hAn = card.querySelector('[data-rule="an"]');
+    function rule(el, ok, label) {
+      el.textContent = (ok ? '✓ ' : '○ ') + label;
+      el.style.color = ok ? '#3f7d34' : 'var(--muted,#8d9285)';
+      el.style.fontWeight = ok ? '700' : '400';
+    }
+    function okLen(p) { return p.length >= 8; }
+    function okAn(p) { return /[A-Za-z]/.test(p) && /[0-9]/.test(p); }
+    function updateHint() {
+      var p = pw.value;
+      rule(hLen, okLen(p), '8자 이상');
+      rule(hAn, okAn(p), '영문 + 숫자 포함');
+    }
+    pw.addEventListener('input', updateHint);
     function fail(m) { err.textContent = m; err.style.display = 'block'; btn.disabled = false; btn.textContent = '설정하고 시작'; }
     function go() {
       var p = pw.value, p2 = pw2.value;
-      if (!p || p.length < 6) { fail('비밀번호는 6자 이상이어야 합니다.'); return; }
+      if (!okLen(p)) { fail('비밀번호는 8자 이상이어야 합니다.'); return; }
+      if (!okAn(p)) { fail('영문과 숫자를 모두 포함해야 합니다.'); return; }
       if (p !== p2) { fail('두 비밀번호가 다릅니다.'); return; }
       err.style.display = 'none'; btn.disabled = true; btn.textContent = '설정 중…';
       c.auth.updateUser({ password: p }).then(function (res) {
