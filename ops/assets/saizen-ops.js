@@ -1082,24 +1082,16 @@
     }).catch(function () { renderAuth(wrap, null, null); });
   }
   function renderAuth(wrap, user, acc, knownName) {
-    if (user && !knownName) {
-      // 마스터가 이름 미지정 + 본인 메타도 없음 → 이름(담당자명)을 1회 설정.
-      wrap.innerHTML = '<span class="so-auth-ic"></span>'
-        + '<input id="so-auth-nm" class="so-user-in" type="text" placeholder="이름(담당자명)" autocomplete="name" style="width:108px">'
-        + '<button type="button" class="so-user-btn save" id="so-auth-nm-go">저장</button>'
-        + '<button type="button" class="so-user-btn" id="so-auth-nm-out" style="margin-left:4px">로그아웃</button>';
-      var nm = wrap.querySelector('#so-auth-nm');
-      var go = function () { authSetName(nm.value.trim()); };
-      wrap.querySelector('#so-auth-nm-go').addEventListener('click', go);
-      wrap.querySelector('#so-auth-nm-out').addEventListener('click', authLogout);
-      nm.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
-      try { nm.focus(); } catch (e) {}
-    } else if (user) {
+    if (user) {
+      // 담당자명은 계정 생성/관리 때 admin이 지정한다(admin.html). 사용자 자가 입력 없음.
+      // 이름 미지정이면 이메일로 표기.
+      wrap.style.display = '';
+      var label = knownName || (user.email || '');
       var sub = (acc && (acc.dept || acc.title))
         ? ' <span class="so-auth-sub" style="font-size:11px;color:var(--muted,#8a937c)">(' + escU([deptLabelOf(acc.dept), acc.title].filter(Boolean).join('·')) + ')</span>'
         : '';
       wrap.innerHTML = '<span class="so-auth-ic"></span>'
-        + '<span class="so-auth-email"><b>' + escU(knownName) + '</b> 님' + sub + '</span>'
+        + '<span class="so-auth-email"><b>' + escU(label) + '</b> 님' + sub + '</span>'
         + '<button type="button" class="so-user-btn" id="so-auth-out">로그아웃</button>';
       wrap.querySelector('#so-auth-out').addEventListener('click', authLogout);
     } else {
