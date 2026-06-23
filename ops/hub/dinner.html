@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 夕食オーダー 인쇄</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad; --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#3d5424; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#2c3d19;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --mono:'SFMono-Regular',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{max-width:1180px;margin:0 auto;padding:16px 20px 90px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:10px}
+  .panel .desc{font-size:12px;color:var(--text2);margin-bottom:11px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .ymctrl{display:flex;align-items:center;gap:6px}
+  .ymctrl b{font-size:15px;font-family:var(--mono);min-width:78px;text-align:center}
+  .chip{font-size:12px;font-weight:700;padding:5px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border);cursor:pointer}
+  .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  .preview{display:flex;flex-direction:column;gap:8px}
+  .pv-day{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--surface2)}
+  .pv-day b{font-size:13px;color:var(--accent)}
+  .pv-meal{font-family:var(--mono);font-size:12px;color:var(--text2);margin-top:3px}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.64">
+</head>
+<body data-so-area="room">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step">夕食オーダー 인쇄</span>
+  <a class="navhome" href="../index.html">← 홈</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint">날짜별 夕食オーダー(A3 가로) 인쇄 + 朝/昼/夕 식수 자동 집계. step1 데이터 기준.</span>
+</div>
+
+<div class="wrap" id="content">
+  <div class="panel"><div class="deny" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-ops.js?v=14.64"></script>
+<script>
+const $=s=>document.querySelector(s);
+let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set();
+const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
+const OFFSITE=new Set(['간지호텔','시즈노야도 료칸']);
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+function thisYM(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function shiftYM(ym,delta){const [y,m]=ym.split('-').map(Number);const d=new Date(y,m-1+delta,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function today(){return new Date().toISOString().slice(0,10);}
+function fmtDate(d){ if(!d)return ''; if(d instanceof Date){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;} return String(d).slice(0,10); }
+function parseLocalDate(s){ if(!s)return new Date(NaN); if(s instanceof Date)return s; const p=String(s).slice(0,10).split('-'); return new Date(Number(p[0]),Number(p[1])-1,Number(p[2])); }
+function getWD(d){ const w=['(月)','(火)','(水)','(木)','(金)','(土)','(日)']; try{ const day=new Date(d).getDay(); return w[day===0?6:day-1]; }catch(e){ return ''; } }
+function fmtMD(s){ if(!s)return ''; return `${parseInt(s.slice(5,7),10)}/${parseInt(s.slice(8,10),10)}`; }
+function isPusOf(o){ const u=String(o||'').toUpperCase(); return String(o||'').includes('부산')||String(o||'').includes('김해')||u==='PUS'||u==='BUS'||u==='PNS'; }
+function monthBounds(ym){ const [y,m]=ym.split('-').map(Number); const start=`${y}-${String(m).padStart(2,'0')}-01`; const endD=new Date(y,m,0).getDate(); const end=`${y}-${String(m).padStart(2,'0')}-${String(endD).padStart(2,'0')}`; return {start,end}; }
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn('URL·key 필요','err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">로그인이 필요합니다.<small>가운데 로그인 카드에서 로그인 후 다시 연결하세요.</small></div></div>'; return; }
+    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.disabled=false;
+    YM=YM||thisYM();
+    renderUI(); load();
+  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결·재시도';btn.disabled=false; supa=null; toast('연결 실패: '+e.message,'err'); }
+}
+
+function renderUI(){
+  $('#content').innerHTML=`
+    <div class="panel">
+      <h3>월 선택 · 필터</h3>
+      <div class="row">
+        <div class="ymctrl">
+          <button class="btn sm ghost" id="ym-prev" type="button">◀</button>
+          <b id="ym-label"></b>
+          <button class="btn sm ghost" id="ym-next" type="button">▶</button>
+        </div>
+        <span style="width:1px;height:20px;background:var(--border)"></span>
+        <span style="flex:1"></span>
+        <span class="cnt" id="stat"></span>
+        <button class="btn" id="btn-print" type="button" disabled>🖨 夕食オーダー A3 印刷</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <span class="cnt" style="min-width:46px">날짜</span>
+        <div id="datechips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="cnt" style="min-width:46px">숙소</span>
+        <div id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <div class="desc" style="margin-top:10px">날짜 1일 = A3 가로 1페이지(夕食オーダー 명단 + 朝食·昼食·夕食 식수표). <b>A3 가로, 배율 100%</b>로 인쇄. ※테이블No·끼니제외·ウォークイン·일본고객 식수는 /app/ 수기항목이라 비어 있습니다(식수 자동집계는 동일 규칙).</div>
+    </div>
+    <div class="panel">
+      <h3>날짜별 식수 미리보기 <span class="cnt" id="pv-cnt"></span></h3>
+      <div id="preview" class="preview"></div>
+    </div>`;
+  $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
+  $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
+  $('#btn-print').addEventListener('click',printOrder);
+}
+function renderDateChips(){
+  const dates=allDates();
+  const box=$('#datechips'); if(!box)return;
+  box.innerHTML=`<div class="chip ${DATESEL.size===0?'on':''}" data-d="__all">전체</div>`
+    + dates.map(d=>`<div class="chip ${DATESEL.has(d)?'on':''}" data-d="${d}">${d.slice(5).replace('-','/')}${getWD(d)}</div>`).join('');
+  box.querySelectorAll('.chip[data-d]').forEach(c=>c.addEventListener('click',()=>{ const d=c.dataset.d; if(d==='__all'){DATESEL.clear();}else{DATESEL.has(d)?DATESEL.delete(d):DATESEL.add(d);} renderDateChips(); renderPreview(); }));
+}
+function renderAccomChips(){
+  const accoms=[...new Set(TEAMS.map(t=>t.accom).filter(Boolean))].sort((a,b)=>{const ai=ACCOM_ORDER.indexOf(a),bi=ACCOM_ORDER.indexOf(b);return (ai<0?9:ai)-(bi<0?9:bi);});
+  const box=$('#accomchips'); if(!box)return;
+  box.innerHTML=`<div class="chip ${ACCOMSEL.size===0?'on':''}" data-a="__all">전체</div>`
+    + accoms.map(a=>`<div class="chip ${ACCOMSEL.has(a)?'on':''}" data-a="${esc(a)}">${esc(a)}</div>`).join('');
+  box.querySelectorAll('.chip[data-a]').forEach(c=>c.addEventListener('click',()=>{ const a=c.dataset.a; if(a==='__all'){ACCOMSEL.clear();}else{ACCOMSEL.has(a)?ACCOMSEL.delete(a):ACCOMSEL.add(a);} renderAccomChips(); renderDateChips(); renderPreview(); }));
+}
+
+// 선택 월 안에서, 숙박 1박 이상 발생하는 모든 날짜(dep<=D<arr)
+function allDates(){
+  const {start,end}=monthBounds(YM); const set=new Set();
+  TEAMS.forEach(t=>{ if(ACCOMSEL.size && !ACCOMSEL.has(t.accom)) return; if(!t.dep||!t.arr) return;
+    let cur=parseLocalDate(t.dep); const arr=parseLocalDate(t.arr);
+    for(;cur<arr;cur.setDate(cur.getDate()+1)){ const ds=fmtDate(cur); if(ds>=start&&ds<=end) set.add(ds); }
+  });
+  return [...set].sort();
+}
+
+async function load(){
+  if(!supa)return;
+  $('#ym-label').textContent=YM; $('#stat').textContent='불러오는 중…'; $('#btn-print').disabled=true;
+  try{
+    const {start,end}=monthBounds(YM);
+    // 월에 걸치는 모든 팀(경계 포함): dep<=월말 && arr>월초
+    const {data:bs,error:e1}=await supa.from('bookings')
+      .select('event_seq,rep_name,dep_date,arr_date,origin,airline,pax')
+      .lte('dep_date',end).gt('arr_date',start);
+    if(e1)throw e1;
+    const seqs=(bs||[]).map(b=>b.event_seq);
+    if(!seqs.length){ TEAMS=[]; $('#stat').textContent='해당 월 데이터 없음'; DATESEL.clear();ACCOMSEL.clear(); renderDateChips();renderAccomChips();renderPreview(); return; }
+    // guests(accom·tag), passengers(rep origin), guest_members(rep tag·name)
+    const GMAP={}, REP={}, ORI={};
+    for(let i=0;i<seqs.length;i+=200){
+      const chunk=seqs.slice(i,i+200);
+      const {data:gs}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,pax').in('event_seq',chunk);
+      (gs||[]).forEach(g=>{GMAP[g.event_seq]=g;});
+      // 대표 origin/tag/name: guest_members.is_rep → passenger
+      let mg=0;
+      for(;;){
+        const {data,error}=await supa.from('guest_members').select('event_seq,person_tag,is_rep,seq_in_team,name_kr,name_en,passenger_id').in('event_seq',chunk).order('event_seq').order('seq_in_team').range(mg,mg+999);
+        if(error)throw error;
+        (data||[]).forEach(m=>{ const cur=REP[m.event_seq]; const curSeq=cur?(cur._seq==null?99:cur._seq):99;
+          if(!cur || (m.is_rep&&curSeq!==0) || (!m.is_rep&&curSeq!==0&&(m.seq_in_team||99)<curSeq)){
+            REP[m.event_seq]={tag:m.person_tag||'',_seq:m.is_rep?0:(m.seq_in_team||99),pid:m.passenger_id,name:m.name_kr||'',eng:m.name_en||''};
+          }
+        });
+        if(!data||data.length<1000)break; mg+=1000;
+      }
+      // passengers origin (대표 pid 우선, 없으면 팀 어느 한 명)
+      let pg=0;
+      for(;;){
+        const {data,error}=await supa.from('passengers').select('id,event_seq,origin,name_en').in('event_seq',chunk).range(pg,pg+999);
+        if(error)throw error;
+        (data||[]).forEach(p=>{ const rep=REP[p.event_seq]; if(!(p.event_seq in ORI) || (rep&&rep.pid===p.id)) ORI[p.event_seq]={origin:p.origin||'',eng:p.name_en||'',byRep:!!(rep&&rep.pid===p.id)}; });
+        if(!data||data.length<1000)break; pg+=1000;
+      }
+    }
+    TEAMS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{}; const r=REP[b.event_seq]||{}; const o=ORI[b.event_seq]||{};
+      const origin=(o.byRep?o.origin:'')||o.origin||b.origin||'';
+      return { seq:String(b.event_seq), accom:g.accom||'', dep:fmtDate(b.dep_date), arr:fmtDate(b.arr_date),
+        pax:b.pax||g.pax||0, repName:b.rep_name||r.name||'', engName:r.eng||o.eng||'',
+        tag:r.tag||g.team_tag||g.group_code||'', isPus:isPusOf(origin) };
+    }).filter(t=>t.accom);
+    DATESEL.clear(); ACCOMSEL.clear();
+    $('#stat').textContent=`${TEAMS.length}팀 · ${allDates().length}일`;
+    renderDateChips(); renderAccomChips(); renderPreview();
+  }catch(e){ $('#stat').textContent='로드 실패'; toast('로드 실패: '+e.message,'err'); }
+}
+
+function selectedDates(){ const all=allDates(); return DATESEL.size? all.filter(d=>DATESEL.has(d)) : all; }
+
+// 날짜별 식수 집계 (/app/ generateAndPrintDinnerOrder 규칙 동일)
+function mealCounts(date){
+  const _accomSet=ACCOMSEL.size?ACCOMSEL:null;
+  const _wd=parseLocalDate(date).getDay();
+  const isWTS=(_wd===3||_wd===4||_wd===0), isSatSun=(_wd===6||_wd===0);
+  let breakfastN=0, lunchContinue=0, lunchArrICN=0;
+  TEAMS.forEach(t=>{
+    if(_accomSet && !_accomSet.has(t.accom)) return;
+    const pax=parseInt(t.pax,10)||0; if(!pax) return;
+    const isPus=t.isPus, isIn=(t.dep===date), isOut=(t.arr===date), isMid=(t.dep<date&&t.arr>date);
+    const eatsBreakfast = OFFSITE.has(t.accom) ? (isOut&&isWTS) : (t.dep<date && t.arr>=date);
+    if(eatsBreakfast) breakfastN+=pax;
+    let lunchKind='';
+    if(!OFFSITE.has(t.accom)){ if(isMid)lunchKind='cont'; else if(isIn&&!isPus)lunchKind='arr'; else if(isOut&&isPus)lunchKind='cont'; }
+    else{ if(isIn&&isWTS&&!isPus)lunchKind='arr'; else if(isIn&&isSatSun&&t.accom==='간지호텔')lunchKind='arr'; else if(isOut&&isWTS&&isPus)lunchKind='cont'; }
+    if(lunchKind){ if(lunchKind==='arr')lunchArrICN+=pax; else lunchContinue+=pax; }
+  });
+  // 석식 = 그날 묵는 전원(dep<=date<arr)
+  let dinnerN=0, teamCnt=0;
+  TEAMS.forEach(t=>{ if(_accomSet&&!_accomSet.has(t.accom))return; if(t.dep<=date&&t.arr>date){ dinnerN+=parseInt(t.pax,10)||0; teamCnt++; } });
+  return {breakfastN, lunchN:lunchContinue+lunchArrICN, lunchArrICN, dinnerN, teamCnt};
+}
+
+function renderPreview(){
+  const dates=selectedDates();
+  $('#btn-print').disabled=!dates.length;
+  $('#pv-cnt').textContent=dates.length?`(${dates.length}일)`:'';
+  const box=$('#preview');
+  if(!dates.length){ box.innerHTML='<div class="deny" style="color:var(--muted);padding:24px">출력할 날짜가 없습니다.</div>'; return; }
+  box.innerHTML=dates.map(d=>{ const mc=mealCounts(d);
+    return `<div class="pv-day"><b>${d.slice(5).replace('-','/')}${getWD(d)}</b> · ${mc.teamCnt}チーム ${mc.dinnerN}名
+      <div class="pv-meal">朝食 ${mc.breakfastN} ・ 昼食 ${mc.lunchN}${mc.lunchArrICN?`(入国${mc.lunchArrICN})`:''} ・ 夕食 ${mc.dinnerN}</div></div>`;
+  }).join('');
+}
+
+// ── A3 인쇄 (/app/ generateAndPrintDinnerOrder 완전 동일 양식) ──
+function printOrder(){
+  const dates=selectedDates();
+  if(!dates.length){ toast('출력할 날짜가 없습니다','err'); return; }
+  const _accomSet=ACCOMSEL.size?ACCOMSEL:null;
+  const todayStr=today();
+  const accIdx=(ac)=>{ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; };
+  const pagesHTML=dates.map(date=>{
+    const staying=TEAMS.filter(t=>(!_accomSet||_accomSet.has(t.accom)) && t.dep<=date && t.arr>date);
+    if(!staying.length) return '';
+    const sorted=staying.slice().sort((a,b)=>{ if(a.dep!==b.dep)return a.dep<b.dep?-1:1; const ai=accIdx(a.accom),bi=accIdx(b.accom); if(ai!==bi)return ai-bi; return (a.repName||'').localeCompare(b.repName||''); });
+    let no=0;
+    const trHTML=sorted.map(t=>{ no++;
+      const depD=fmtMD(t.dep), arrD=fmtMD(t.arr);
+      let stayDay='';
+      if(t.dep){ const days=Math.round((parseLocalDate(date)-parseLocalDate(t.dep))/86400000)+1; const nights=(t.dep&&t.arr)?Math.round((parseLocalDate(t.arr)-parseLocalDate(t.dep))/86400000):0; if(days>=1&&days<=nights+1) stayDay=`${days}日目`; }
+      const originCode=t.isPus?'PUS':'ICN';
+      const engShow=(t.engName&&t.engName!=='(미등록)')?t.engName:'';
+      return `<tr>
+        <td class="c">${no}</td>
+        <td class="c date-c">${depD}</td>
+        <td class="c date-c">${arrD}</td>
+        <td class="c orig ${t.isPus?'pus':'icn'}">${originCode}</td>
+        <td class="kor">${esc(t.repName||'')}</td>
+        <td class="eng">${esc(engShow)}</td>
+        <td class="c grp">${esc(t.tag||'')}</td>
+        <td class="c"></td>
+        <td class="c"><strong>${parseInt(t.pax,10)||0}</strong></td>
+        <td class="c">${stayDay}</td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>`;
+    }).join('');
+    const mc=mealCounts(date);
+    return `<div class="do-page">
+      <div class="do-head">
+        <div class="do-date">${date.slice(5).replace('-','/')}${getWD(date)}</div>
+        <div class="do-title">夕食オーダー</div>
+        <div class="do-meta">${mc.teamCnt}チーム · ${mc.dinnerN}名<br>${todayStr}</div>
+      </div>
+      <table class="do-table">
+        <thead><tr>
+          <th style="width:3%">No</th>
+          <th style="width:5%">入国</th>
+          <th style="width:5%">帰国</th>
+          <th style="width:5%">出発地</th>
+          <th style="width:8%">名前</th>
+          <th style="width:16%">英文名</th>
+          <th style="width:9%">Group</th>
+          <th style="width:6%">テーブルNo</th>
+          <th style="width:5%">人数</th>
+          <th style="width:6%">日次</th>
+          <th style="width:5%">単価</th>
+          <th style="width:9%">料理</th>
+          <th style="width:18%">参考事項</th>
+        </tr></thead>
+        <tbody>${trHTML}</tbody>
+      </table>
+      <table class="do-mealsum">
+        <thead><tr><th class="ms-rowh"></th><th>朝食</th><th>昼食</th><th>夕食</th></tr></thead>
+        <tbody>
+          <tr class="ms-resv"><td class="ms-rowh">予約</td><td>${mc.breakfastN}</td><td>${mc.lunchN}${mc.lunchArrICN?`<span class="ms-sub">入国${mc.lunchArrICN}</span>`:''}</td><td>${mc.dinnerN}</td></tr>
+          <tr class="ms-jp"><td class="ms-rowh">日本</td><td></td><td></td><td></td></tr>
+          <tr class="ms-total"><td class="ms-rowh">合計</td><td>${mc.breakfastN}</td><td>${mc.lunchN}</td><td>${mc.dinnerN}</td></tr>
+        </tbody>
+      </table>
+    </div>`;
+  }).filter(Boolean).join('');
+  if(!pagesHTML){ toast('출력할 데이터가 없습니다','err'); return; }
+  const fullHTML=`<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8">
+<title>夕食オーダー A3 印刷 — ${todayStr}</title>
+<style>
+  @page { size: A3 landscape; margin: 8mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { font-family: 'Meiryo', 'Malgun Gothic', sans-serif; background: #f5f5f5; color: #1a2540; }
+  .do-toolbar { position: sticky; top: 0; background: #fff; padding: 14px 20px; box-shadow: 0 2px 8px rgba(0,0,0,.1); display: flex; align-items: center; gap: 16px; z-index: 100; }
+  .do-toolbar h1 { font-size: 16px; font-weight: 700; }
+  .do-toolbar .meta { font-size: 11px; color: #666; }
+  .do-toolbar button { padding: 8px 20px; background: #15803D; color: #fff; border: none; border-radius: 5px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .do-toolbar .do-close { background: #999; }
+  .do-container { padding: 20px; }
+  .do-page { width: 410mm; min-height: 287mm; margin: 0 auto 20px; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.08); page-break-after: always; padding: 4mm; }
+  .do-page:last-child { page-break-after: auto; }
+  .do-head { display: grid; grid-template-columns: 1fr 2fr 1fr; align-items: center; margin-bottom: 4mm; padding-bottom: 2mm; border-bottom: 2.5pt solid #1A2540; }
+  .do-date { font-size: 28pt; font-weight: 800; color: #1A2540; }
+  .do-title { font-size: 30pt; font-weight: 800; text-align: center; letter-spacing: 6pt; color: #1A2540; }
+  .do-meta { font-size: 11pt; text-align: right; color: #555; line-height: 1.4; }
+  .do-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .do-table th { background: #1A2540; color: #fff; font-size: 12pt; font-weight: 700; padding: 4mm 1mm; text-align: center; border: 0.5pt solid #1A2540; letter-spacing: 1pt; }
+  .do-table td { font-size: 13pt; padding: 2.6mm 2mm; border: 0.5pt solid #b8c0d0; color: #1a2540; line-height: 1.2; }
+  .do-table td.c { text-align: center; }
+  .do-table td.kor { font-weight: 700; font-size: 14pt; }
+  .do-table td.eng { font-size: 11pt; color: #333; }
+  .do-table td.date-c { font-size: 11pt; color: #1A4D8F; font-weight: 600; font-family: 'Consolas', monospace; }
+  .do-table td.orig { font-family: 'Consolas', monospace; font-size: 11pt; font-weight: 800; letter-spacing: 0.5pt; }
+  .do-table td.orig.icn { color: #1A4D8F; }
+  .do-table td.orig.pus { color: #B45309; }
+  .do-table td.grp { font-family: 'Consolas', monospace; font-size: 11pt; font-weight: 700; }
+  .do-table tbody tr:nth-child(even) td { background: #f4f6fa; }
+  .do-mealsum { margin-top: 5mm; border-collapse: collapse; }
+  .do-mealsum th, .do-mealsum td { border: 1.5pt solid #1A2540; padding: 2mm 9mm; text-align: center; }
+  .do-mealsum th { font-size: 15pt; font-weight: 800; color: #fff; background: #1A2540; letter-spacing: 2pt; }
+  .do-mealsum td { font-size: 19pt; font-weight: 700; color: #1A2540; }
+  .do-mealsum .ms-rowh { font-size: 14pt; font-weight: 800; background: #f4f6fa; letter-spacing: 2pt; }
+  .do-mealsum .ms-sub { display: block; font-size: 10pt; font-weight: 700; color: #B45309; letter-spacing: 0.5pt; margin-top: 1mm; }
+  .do-mealsum .ms-jp td { color: #1A4D8F; }
+  .do-mealsum .ms-total td { font-size: 30pt; font-weight: 800; color: #1A4D8F; background: #eaf0fa; }
+  .do-mealsum .ms-total .ms-rowh { color: #1A2540; background: #dde6f5; font-size: 18pt; }
+  @media print {
+    html, body { background: #fff; }
+    .do-toolbar { display: none; }
+    .do-container { padding: 0; }
+    .do-page { margin: 0 auto; box-shadow: none; width: 100%; padding: 0; }
+    .do-table tbody tr:nth-child(even) td { background: #f4f6fa !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .do-table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style></head>
+<body>
+  <div class="do-toolbar">
+    <h1>夕食オーダー A3 印刷 미리보기</h1>
+    <div class="meta">A3 가로 · ${dates.length}일 · ${todayStr}</div>
+    <button onclick="window.print()">인쇄</button>
+    <button class="do-close" onclick="window.close()">✕ 닫기</button>
+  </div>
+  <div class="do-container">${pagesHTML}</div>
+</body></html>`;
+  const w=window.open('','_blank'); if(!w){ toast('팝업 차단 — 허용 필요','err'); return; }
+  w.document.write(fullHTML); w.document.close();
+}
+
+$('#btn-connect').addEventListener('click',connect);
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
