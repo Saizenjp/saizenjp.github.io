@@ -143,6 +143,7 @@ function renderUI(){
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
         <button class="btn" id="btn-print" type="button" disabled>🖨 夕食オーダー A3 印刷</button>
+        <button class="btn ghost" id="btn-nameplate" type="button" disabled>🍽 レストラン名札 印刷</button>
       </div>
       <div class="row" style="margin-top:10px">
         <span class="cnt" style="min-width:46px">날짜</span>
@@ -166,6 +167,7 @@ function renderUI(){
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
   $('#btn-print').addEventListener('click',printOrder);
+  $('#btn-nameplate').addEventListener('click',printNameplates);
 }
 function renderTeamEdit(){
   const thead=$('#tedit thead'), tbody=$('#tedit tbody'); if(!thead)return;
@@ -326,6 +328,7 @@ function renderPreview(){
   renderTeamEdit();
   const dates=selectedDates();
   $('#btn-print').disabled=!dates.length;
+  { const nb=$('#btn-nameplate'); if(nb) nb.disabled=!dates.length; }
   $('#pv-cnt').textContent=dates.length?`(${dates.length}일)`:'';
   const box=$('#preview');
   if(!dates.length){ box.innerHTML='<div class="deny" style="color:var(--muted);padding:24px">출력할 날짜가 없습니다.</div>'; return; }
@@ -462,6 +465,75 @@ function printOrder(){
     <button class="do-close" onclick="window.close()">✕ 닫기</button>
   </div>
   <div class="do-container">${pagesHTML}</div>
+</body></html>`;
+  const w=window.open('','_blank'); if(!w){ toast('팝업 차단 — 허용 필요','err'); return; }
+  w.document.write(fullHTML); w.document.close();
+}
+
+// ── レストラン名札 印刷 (간결판: A4 가로 1팀=1장, 가운데 접는 양면 텐트형) ──
+//   선택 날짜·숙소 기준, 그날 묵는(제외 제외) 팀을 태그코드·代表者 중심 명패로.
+function printNameplates(){
+  const dates=selectedDates();
+  if(!dates.length){ toast('출력할 날짜가 없습니다','err'); return; }
+  const _accomSet=ACCOMSEL.size?ACCOMSEL:null;
+  const todayStr=today();
+  const accIdx=(ac)=>{ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; };
+  const cards=[];
+  dates.forEach(date=>{
+    const staying=TEAMS.filter(t=>(!_accomSet||_accomSet.has(t.accom)) && !t.excluded && t.dep<=date && t.arr>date)
+      .sort((a,b)=>{ const ai=accIdx(a.accom),bi=accIdx(b.accom); if(ai!==bi)return ai-bi; return (a.repName||'').localeCompare(b.repName||''); });
+    staying.forEach(t=>{
+      const pax=parseInt(t.pax,10)||0;
+      const face=`<div class="np-face">
+          <div class="np-accom">${esc(t.accom)} · ${date.slice(5).replace('-','/')}${getWD(date)}</div>
+          <div class="np-rep">${esc(t.repName||'')}<span class="np-sama">様</span></div>
+          <div class="np-tag">${esc(t.tag)}</div>
+          <div class="np-meta">${pax}名 · ${fmtMD(t.dep)}〜${fmtMD(t.arr)}</div>
+        </div>`;
+      cards.push(`<div class="np-page"><div class="np-half np-top">${face}</div><div class="np-fold"></div><div class="np-half">${face}</div></div>`);
+    });
+  });
+  if(!cards.length){ toast('출력할 데이터가 없습니다','err'); return; }
+  const fullHTML=`<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8">
+<title>レストラン名札 印刷 — ${todayStr}</title>
+<style>
+  @page { size: A4 landscape; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { font-family: 'Meiryo', 'Malgun Gothic', sans-serif; background: #eceef1; color: #1A2540; }
+  .np-toolbar { position: sticky; top: 0; background: #fff; padding: 14px 20px; box-shadow: 0 2px 8px rgba(0,0,0,.1); display: flex; align-items: center; gap: 16px; z-index: 100; }
+  .np-toolbar h1 { font-size: 16px; font-weight: 700; }
+  .np-toolbar .meta { font-size: 11px; color: #666; }
+  .np-toolbar button { padding: 8px 20px; background: #15803D; color: #fff; border: none; border-radius: 5px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .np-toolbar .np-close { background: #999; }
+  .np-container { padding: 20px; }
+  .np-page { width: 297mm; height: 209mm; margin: 0 auto 16px; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.08); page-break-after: always; display: flex; flex-direction: column; }
+  .np-page:last-child { page-break-after: auto; }
+  .np-half { flex: 1; display: flex; align-items: center; justify-content: center; }
+  .np-top { transform: rotate(180deg); }
+  .np-fold { height: 0; border-top: 1.2pt dashed #aab; }
+  .np-face { text-align: center; padding: 8mm; }
+  .np-accom { font-size: 15pt; font-weight: 700; color: #1A4D8F; margin-bottom: 7mm; letter-spacing: 1pt; }
+  .np-rep { font-size: 56pt; font-weight: 800; color: #1A2540; line-height: 1.1; }
+  .np-sama { font-size: 30pt; font-weight: 600; margin-left: 4mm; color: #555; }
+  .np-tag { font-size: 34pt; font-weight: 800; font-family: 'Consolas', monospace; color: #15803D; letter-spacing: 3pt; margin-top: 6mm; }
+  .np-meta { font-size: 16pt; color: #666; margin-top: 5mm; font-family: 'Consolas', monospace; }
+  @media print {
+    html, body { background: #fff; }
+    .np-toolbar { display: none; }
+    .np-container { padding: 0; }
+    .np-page { margin: 0 auto; box-shadow: none; }
+    .np-tag, .np-accom { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style></head>
+<body>
+  <div class="np-toolbar">
+    <h1>レストラン名札 印刷 미리보기</h1>
+    <div class="meta">A4 가로 · 1팀=1장(가운데 접어 양면) · ${cards.length}장 · ${todayStr}</div>
+    <button onclick="window.print()">인쇄</button>
+    <button class="np-close" onclick="window.close()">✕ 닫기</button>
+  </div>
+  <div class="np-container">${cards.join('')}</div>
 </body></html>`;
   const w=window.open('','_blank'); if(!w){ toast('팝업 차단 — 허용 필요','err'); return; }
   w.document.write(fullHTML); w.document.close();
