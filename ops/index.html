@@ -352,14 +352,26 @@
       var yms=Object.keys(byYm).sort();
       if(!yms.length) return;
       var p=function(n){ return String(n).padStart(2,'0'); };
-      var html=yms.map(function(ym){
-        var x=byYm[ym]; var d=new Date(x.uploaded_at);
-        var ts=p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
-        var who=x.uploaded_by?(' · '+x.uploaded_by):'';
-        return '<span style="background:#fff;border:1px solid #b6e6c8;border-radius:99px;padding:2px 10px">'
-             + '<b style="font-family:var(--mono)">'+ym+'</b>'+who+' · <span style="color:var(--muted)">'+ts+'</span></span>';
-      }).join('');
-      var box=document.getElementById('reg-strip-list'); if(box){ box.innerHTML=html; document.getElementById('reg-strip').style.display='flex'; }
+      // 월별 실제 팀·인원 수(현재 DB 기준 — import_log.counts는 다중월 업로드 시 부정확)
+      Promise.all(yms.map(function(ym){
+        return Promise.all([
+          c.from('bookings').select('*',{count:'exact',head:true}).eq('session_ym',ym),
+          c.from('passengers').select('event_seq,bookings!inner(session_ym)',{count:'exact',head:true}).eq('bookings.session_ym',ym)
+        ]).then(function(res){ return {ym:ym,teams:(res[0]&&res[0].count),ppl:(res[1]&&res[1].count)}; })
+         .catch(function(){ return {ym:ym,teams:null,ppl:null}; });
+      })).then(function(arr){
+        var cntBy={}; arr.forEach(function(o){ cntBy[o.ym]=o; });
+        var html=yms.map(function(ym){
+          var x=byYm[ym]; var d=new Date(x.uploaded_at);
+          var ts=p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
+          var who=x.uploaded_by?(' · '+x.uploaded_by):'';
+          var cn=cntBy[ym]; var cntTxt='';
+          if(cn&&cn.teams!=null){ cntTxt=' · <b style="color:#127a3b">'+cn.teams.toLocaleString()+'</b>팀'+(cn.ppl!=null?' <b style="color:#127a3b">'+cn.ppl.toLocaleString()+'</b>명':''); }
+          return '<span style="background:#fff;border:1px solid #b6e6c8;border-radius:99px;padding:3px 11px">'
+               + '<b style="font-family:var(--mono)">'+ym+'</b>'+who+' · <span style="color:var(--muted)">'+ts+'</span>'+cntTxt+'</span>';
+        }).join('');
+        var box=document.getElementById('reg-strip-list'); if(box){ box.innerHTML=html; document.getElementById('reg-strip').style.display='flex'; }
+      });
     }).catch(function(){});
   }
   // ── 부서 공지 "새 글" N 뱃지 ──
