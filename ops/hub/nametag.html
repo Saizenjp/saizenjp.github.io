@@ -88,7 +88,8 @@
 <script src="../assets/saizen-ops.js?v=14.64"></script>
 <script>
 const $=s=>document.querySelector(s);
-let supa=null, YM=null, CELLS=[], ORIGIN='all';
+let supa=null, YM=null, CELLS=[], ORIGIN='all', SELDATES=new Set(), SELACCOMS=new Set(), START=1;
+const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
 function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
@@ -133,11 +134,22 @@ function renderUI(){
         <div class="chip on" data-o="all">전체</div>
         <div class="chip" data-o="icn">ICN(인천)</div>
         <div class="chip" data-o="pus">PUS(부산)</div>
+        <span style="width:1px;height:20px;background:var(--border)"></span>
+        <span class="cnt">시작칸</span>
+        <input class="inp" id="start-slot" type="number" min="1" max="24" value="1" style="width:64px;text-align:center" title="라벨지 시작 위치(1~24) — 쓰던 라벨지 이어쓰기">
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
         <button class="btn" id="btn-print" type="button" disabled>🖨 라벨 인쇄</button>
       </div>
-      <div class="desc" style="margin-top:10px">선택 월에 <b>입국(출발일)</b>하는 팀의 개인 명단을 불러옵니다. 라벨 = 개인 1명당 1장(태그코드·이름·IN/OUT).</div>
+      <div class="row" style="margin-top:10px">
+        <span class="cnt" style="min-width:46px">날짜</span>
+        <div id="daychips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="cnt" style="min-width:46px">숙소</span>
+        <div id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <div class="desc" style="margin-top:10px">선택 월에 <b>입국(출발일)</b>하는 팀의 개인 명단. 날짜·숙소·출발지로 거르고, <b>날짜→ICN/PUS→숙소</b> 순으로 정렬해 라벨(개인 1명당 1장)을 출력합니다.</div>
     </div>
     <div class="panel">
       <h3>미리보기 <span class="cnt" id="prev-cnt"></span></h3>
@@ -146,9 +158,36 @@ function renderUI(){
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
   $('#btn-print').addEventListener('click',printLabels);
+  $('#start-slot').addEventListener('input',e=>{ START=Math.max(1,Math.min(24,parseInt(e.target.value,10)||1)); });
   document.querySelectorAll('.chip[data-o]').forEach(c=>c.addEventListener('click',()=>{
     document.querySelectorAll('.chip[data-o]').forEach(x=>x.classList.remove('on'));
     c.classList.add('on'); ORIGIN=c.dataset.o; renderPreview();
+  }));
+}
+
+// 날짜(입국일) 칩 — 멀티 선택, 빈 Set=전체
+function renderDayChips(){
+  const dates=[...new Set(CELLS.map(c=>c.depRaw).filter(Boolean))].sort();
+  const box=$('#daychips'); if(!box) return;
+  box.innerHTML=`<div class="chip ${SELDATES.size===0?'on':''}" data-d="__all">전체</div>`
+    + dates.map(d=>`<div class="chip ${SELDATES.has(d)?'on':''}" data-d="${d}">${mmdd(d)}</div>`).join('');
+  box.querySelectorAll('.chip[data-d]').forEach(c=>c.addEventListener('click',()=>{
+    const d=c.dataset.d;
+    if(d==='__all'){ SELDATES.clear(); } else { if(SELDATES.has(d)) SELDATES.delete(d); else SELDATES.add(d); }
+    renderDayChips(); renderPreview();
+  }));
+}
+// 숙소 칩 — 멀티 선택, 빈 Set=전체
+function renderAccomChips(){
+  const accoms=[...new Set(CELLS.map(c=>c.accom).filter(Boolean))]
+    .sort((a,b)=>{const ai=ACCOM_ORDER.indexOf(a),bi=ACCOM_ORDER.indexOf(b);return (ai<0?9:ai)-(bi<0?9:bi);});
+  const box=$('#accomchips'); if(!box) return;
+  box.innerHTML=`<div class="chip ${SELACCOMS.size===0?'on':''}" data-a="__all">전체</div>`
+    + accoms.map(a=>`<div class="chip ${SELACCOMS.has(a)?'on':''}" data-a="${esc(a)}">${esc(a)}</div>`).join('');
+  box.querySelectorAll('.chip[data-a]').forEach(c=>c.addEventListener('click',()=>{
+    const a=c.dataset.a;
+    if(a==='__all'){ SELACCOMS.clear(); } else { if(SELACCOMS.has(a)) SELACCOMS.delete(a); else SELACCOMS.add(a); }
+    renderAccomChips(); renderPreview();
   }));
 }
 
@@ -184,16 +223,35 @@ async function load(){
       const pfx=accomPfx(g);
       return {
         tag:m.person_tag||'', kor:m.name_kr||'', eng:m.name_en||'',
-        port:portOf(b.origin), dep:mmdd(b.dep_date), arr:mmdd(b.arr_date),
-        origin:b.origin||'', accomColor:ACCOM_COLOR[pfx]||'#111'
+        seq:m.seq_in_team||0,
+        port:portOf(b.origin), dep:mmdd(b.dep_date), arr:mmdd(b.arr_date), depRaw:b.dep_date||'',
+        accom:g.accom||'', origin:b.origin||'', accomColor:ACCOM_COLOR[pfx]||'#111'
       };
     }).filter(c=>c.tag||c.kor);
+    // 월이 바뀌면 선택 초기화
+    SELDATES.clear(); SELACCOMS.clear();
     $('#stat').textContent=`${CELLS.length}명 · ${seqs.length}팀`;
-    renderPreview();
+    renderDayChips(); renderAccomChips(); renderPreview();
   }catch(e){ $('#stat').textContent='로드 실패'; toast('로드 실패: '+e.message,'err'); }
 }
 
-function filtered(){ return ORIGIN==='all'?CELLS:CELLS.filter(c=> ORIGIN==='icn'? c.port==='ICN' : c.port==='PUS'); }
+// 정렬: 날짜 → ICN/PUS → 숙소순 → 팀내순번
+function sortCells(a,b){
+  if(a.depRaw!==b.depRaw) return (a.depRaw||'').localeCompare(b.depRaw||'');
+  if(a.port!==b.port) return a.port==='ICN'?-1:1;
+  const ai=ACCOM_ORDER.indexOf(a.accom), bi=ACCOM_ORDER.indexOf(b.accom);
+  if(ai!==bi) return (ai<0?9:ai)-(bi<0?9:bi);
+  return (a.seq||0)-(b.seq||0);
+}
+function filtered(){
+  return CELLS.filter(c=>{
+    if(ORIGIN==='icn' && c.port!=='ICN') return false;
+    if(ORIGIN==='pus' && c.port!=='PUS') return false;
+    if(SELDATES.size && !SELDATES.has(c.depRaw)) return false;
+    if(SELACCOMS.size && !SELACCOMS.has(c.accom)) return false;
+    return true;
+  }).sort(sortCells);
+}
 function renderPreview(){
   const list=filtered();
   $('#btn-print').disabled=!list.length;
@@ -214,7 +272,8 @@ function printLabels(){
   const list=filtered();
   if(!list.length){ toast('인쇄할 명단이 없음','err'); return; }
   const PER=24, pages=[];
-  for(let i=0;i<list.length;i+=PER){ const pg=list.slice(i,i+PER); while(pg.length<PER) pg.push(null); pages.push(pg); }
+  const slots=[...Array(Math.max(0,START-1)).fill(null), ...list];   // 시작칸만큼 빈 셀 앞에 채움
+  for(let i=0;i<slots.length;i+=PER){ const pg=slots.slice(i,i+PER); while(pg.length<PER) pg.push(null); pages.push(pg); }
   const cell=c=> c? `<div class="lp-cell"><div class="lp-hole"></div><div class="lp-body">
       <div class="lp-r1" style="color:${c.accomColor}">${esc(c.tag)}</div>
       <div class="lp-r2">${esc(c.kor)} <span class="lp-r2-eng">${c.eng?'('+esc(c.eng)+')':''}</span></div>
