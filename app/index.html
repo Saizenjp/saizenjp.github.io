@@ -512,7 +512,7 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
       <button id="app-lang-ko" onclick="setAppLang('ko')">한국어</button>
       <button id="app-lang-en" onclick="setAppLang('en')">EN</button>
     </div>
-    <span class="badge">v16.5</span>
+    <span class="badge">v16.6</span>
     <button class="ghost-btn" onclick="resetApp()" data-i18n="app_reset" title="업로드 파일·수기입력을 비웁니다 (참조테이블은 유지)">입력 비우기</button>
   </div>
 </div>
@@ -614,6 +614,7 @@ table.shz-tl{border-collapse:separate;border-spacing:0;font-size:11px;white-spac
         <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <button class="btn-dl" onclick="openPendingMemberModal()" id="btn-pending-members" style="font-size:10px;padding:4px 10px;border-color:#f87171;color:#f87171;display:none" title="(구)그룹코드 미등록 회원 일괄 입력">⚠ 미등록 회원 <span id="pending-count">0</span>명</button>
           <button class="btn-dl" onclick="openNonMemberPoolModal()" id="btn-nonmember-pool" style="font-size:10px;padding:4px 10px;border-color:#fbbf24;color:#fbbf24" title="일반고객 F풀 사용 현황 보기">F풀 <span id="nonmember-pool-count">0/594</span></button>
+          <button class="btn-dl" onclick="openMasterMemberModal()" id="btn-master-list" style="font-size:10px;padding:4px 10px;border-color:var(--accent);color:var(--accent2);font-weight:700" title="등록된 (구)그룹코드 마스터 명단 보기·검색">📋 등록 명단 <span id="master-list-count">미등록</span></button>
           <button class="btn-dl" onclick="openLearnedMemberModal()" style="font-size:10px;padding:4px 10px">학습된 회원 보기</button>
           <button class="btn-dl" onclick="document.getElementById('inp5').click()" style="font-size:10px;padding:4px 10px" title="새 파일로 마스터 교체">재등록</button>
           <button class="btn-dl" onclick="clearMemberMaster()" style="font-size:10px;padding:4px 10px;border-color:#f87171;color:#f87171" title="마스터 데이터 완전 삭제 (학습 회원 데이터는 별도)">삭제</button>
@@ -1505,6 +1506,7 @@ function processMasterFile(wb, file){
   document.getElementById('fname5').textContent = file.name;
   document.getElementById('fsize5').textContent = `${cnt.toLocaleString()}명 등록 · 영구 저장됨`;
   document.getElementById('drop5').classList.add('uploaded');
+  if(typeof updateMasterListCount==='function') updateMasterListCount();
 
   // 분석 후라면 즉시 재매핑 적용 (buildTagCodeMap은 호출마다 새로 생성)
   if(processed.length){
@@ -1543,6 +1545,7 @@ function clearMemberMaster(){
     document.getElementById('fsize5').textContent = '';
     drop5.classList.remove('uploaded');
   }
+  if(typeof updateMasterListCount==='function') updateMasterListCount();
 
   // 분석 후라면 재매핑 적용
   if(processed.length){
@@ -1569,9 +1572,99 @@ function restoreMasterFromStorage(){
         document.getElementById('fsize5').textContent = `${cnt.toLocaleString()}명 등록`;
         drop5.classList.add('uploaded');
       }
+      updateMasterListCount();
     }
   } catch(e){ console.warn('localStorage restore failed:', e); }
 }
+
+// 카드의 「등록 명단」 버튼 카운트 갱신
+function updateMasterListCount(){
+  const el = document.getElementById('master-list-count');
+  if(!el) return;
+  const cnt = Object.keys(memberMasterMap||{}).length;
+  el.textContent = cnt ? cnt.toLocaleString()+'명' : '미등록';
+}
+
+// ── 등록된 (구)그룹코드 마스터 명단 보기·검색 ──────────────────
+let _masterModalEntries = null;
+function openMasterMemberModal(){
+  const entries = Object.values(memberMasterMeta||{});
+  if(!entries.length){ alert('등록된 (구)그룹코드 마스터가 없습니다.\n파일을 업로드하면 명단이 여기에 표시됩니다.'); return; }
+  _masterModalEntries = entries.slice().sort((a,b)=>String(a.code||'').localeCompare(String(b.code||'')));
+  const existing = document.getElementById('master-modal-bg'); if(existing) existing.remove();
+  const bg = document.createElement('div'); bg.id='master-modal-bg'; bg.className='dl-modal-bg';
+  bg.innerHTML = `
+    <div class="dl-modal" style="max-width:700px">
+      <div class="dl-modal-head">
+        <div class="dl-modal-title">등록된 (구)그룹코드 마스터 <span style="font-family:var(--mono);font-size:12px;color:var(--accent2)">${entries.length.toLocaleString()}명</span></div>
+        <button onclick="document.getElementById('master-modal-bg').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1;padding:2px 6px">✕</button>
+      </div>
+      <div class="dl-modal-body" style="max-height:560px;overflow-y:auto">
+        <input type="search" id="master-search" oninput="renderMasterModalRows(this.value)" placeholder="🔍 성명 또는 그룹코드 검색" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;color:var(--text);outline:none;margin-bottom:10px">
+        <table style="width:100%;font-size:11px">
+          <thead><tr style="background:var(--surface3)">
+            <th style="text-align:left;padding:6px 8px;font-size:10px;color:var(--text2);width:22%">(구)그룹코드</th>
+            <th style="text-align:left;padding:6px 8px;font-size:10px;color:var(--text2)">성명</th>
+            <th style="text-align:left;padding:6px 8px;font-size:10px;color:var(--text2);width:24%">생년월일</th>
+            <th style="text-align:left;padding:6px 8px;font-size:10px;color:var(--text2);width:20%">등급</th>
+          </tr></thead>
+          <tbody id="master-modal-tbody"></tbody>
+        </table>
+        <div id="master-modal-count" style="margin-top:12px;font-size:10px;color:var(--text3)"></div>
+      </div>
+      <div class="dl-modal-foot">
+        <button class="btn-dl" onclick="document.getElementById('master-modal-bg').remove()" style="font-size:11px">닫기</button>
+        <button class="btn-dl" onclick="downloadMasterXlsx()" style="font-size:11px;border-color:var(--accent);color:var(--accent2)" title="등록된 마스터를 원본 양식(회원_배정_현황)으로 다운로드">⬇ 엑셀 다운로드 (원본 양식)</button>
+      </div>
+    </div>`;
+  bg.addEventListener('click', e=>{ if(e.target===bg) bg.remove(); });
+  document.body.appendChild(bg);
+  renderMasterModalRows('');
+}
+
+function renderMasterModalRows(q){
+  const tbody = document.getElementById('master-modal-tbody');
+  const cntEl = document.getElementById('master-modal-count');
+  if(!tbody) return;
+  q = String(q||'').trim().toLowerCase();
+  const all = _masterModalEntries||[];
+  const filtered = q ? all.filter(m => String(m.name||'').toLowerCase().includes(q) || String(m.code||'').toLowerCase().includes(q)) : all;
+  const LIMIT = 400;
+  const shown = filtered.slice(0, LIMIT);
+  tbody.innerHTML = shown.length ? shown.map(m=>{
+    const b = String(m.birth||'');
+    const birthStr = b.length>=6 ? `${(+b.slice(0,2)>30?'19':'20')}${b.slice(0,2)}-${b.slice(2,4)}-${b.slice(4,6)}` : (b||'-');
+    return `<tr>
+      <td style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent2)">${m.code||''}</td>
+      <td>${m.name||''}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--text2)">${birthStr}</td>
+      <td style="font-size:10px;color:var(--text2)">${m.gubun||'-'}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:20px">검색 결과 없음</td></tr>`;
+  cntEl.textContent = q
+    ? `검색 결과 ${filtered.length.toLocaleString()}명${filtered.length>LIMIT?` · 상위 ${LIMIT}명 표시`:''}`
+    : `전체 ${all.length.toLocaleString()}명${all.length>LIMIT?` · 상위 ${LIMIT}명 표시 (검색으로 전체 조회)`:''}`;
+}
+
+// 등록된 마스터를 원본 양식(회원_배정_현황)으로 역방향 다운로드
+async function downloadMasterXlsx(){
+  const entries = Object.values(memberMasterMeta||{});
+  if(!entries.length){ alert('등록된 마스터가 없습니다.'); return; }
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('회원_배정_현황');
+  ws.columns = [
+    {header:'코드', key:'code', width:10},
+    {header:'고객 구분', key:'gubun', width:14},
+    {header:'그룹 내 배정된 아이디', key:'id', width:24},
+    {header:'성명', key:'name', width:14},
+  ];
+  entries.slice().sort((a,b)=>String(a.code||'').localeCompare(String(b.code||''))).forEach(m=>{
+    ws.addRow({code:m.code||'', gubun:m.gubun||'', id:m.id||((m.name||'')+(m.birth||'')), name:m.name||''});
+  });
+  ws.getRow(1).font = {bold:true};
+  await xlSave(wb, `member_groupcode_master_${today()}.xlsx`);
+}
+
 // DOMContentLoaded 시 복원
 if(document.readyState === 'loading'){
   document.addEventListener('DOMContentLoaded', () => {
