@@ -159,7 +159,8 @@ function renderUI(){
       <div id="preview" class="preview"></div>
     </div>
     <div class="panel">
-      <h3>팀별 태그·인원 수정 <span class="cnt">— 저장 시 공유되고 航空カバー·夕食 인쇄에 반영(인원은 식수 집계에 반영)</span></h3>
+      <h3>팀별 태그·인원 수정 <span class="cnt">— 태그·인원·제외는 夕食オーダー에만 반영(병합용). 항공커버는 영향 없음</span></h3>
+      <div id="tedit-reco" style="font-size:12.5px;margin:2px 0 10px;color:var(--muted)"></div>
       <div style="overflow:auto"><table class="tedit" id="tedit"><thead></thead><tbody></tbody></table></div>
     </div>`;
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
@@ -170,33 +171,45 @@ function renderTeamEdit(){
   const thead=$('#tedit thead'), tbody=$('#tedit tbody'); if(!thead)return;
   const rows=TEAMS.filter(t=>ACCOMSEL.size===0||ACCOMSEL.has(t.accom)).slice()
     .sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||accomIdx(a.accom)-accomIdx(b.accom)||(a.repName||'').localeCompare(b.repName||''));
-  thead.innerHTML='<tr><th>入国</th><th>施設</th><th>代表者</th><th>タグコード</th><th>人数</th><th></th></tr>';
+  // 분배 정합성: 원래 합계(basePax) vs 수정 후 합계(제외=0, 오버라이드 반영). 병합 시 총원 보존 확인.
+  const origN=rows.reduce((s,t)=>s+(parseInt(t.basePax,10)||0),0);
+  const editN=rows.reduce((s,t)=>s+(t.excluded?0:(parseInt(t.pax,10)||0)),0);
+  const exCnt=rows.filter(t=>t.excluded).length;
+  const reco=$('#tedit-reco');
+  if(reco){ const diff=editN-origN; const sc=(ACCOMSEL.size?'선택 숙소':'전체')+(exCnt?` · 제외 ${exCnt}팀`:'');
+    reco.innerHTML = diff===0
+      ? `<span style="color:var(--ok);font-weight:800">✓ 분배 일치</span> — 원래 ${origN}名 = 수정 후 ${editN}名 <span style="color:var(--muted)">(${sc})</span>`
+      : `<span style="color:var(--err);font-weight:800">⚠ 분배 불일치 (${diff>0?'+':''}${diff}名)</span> — 원래 ${origN}名 → 수정 후 ${editN}名 <span style="color:var(--muted)">(${sc}) · 취합이 맞는지 확인</span>`;
+  }
+  thead.innerHTML='<tr><th>入国</th><th>施設</th><th>代表者</th><th>タグコード</th><th>人数</th><th>除外</th></tr>';
   if(!rows.length){ tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">팀 없음</td></tr>'; return; }
-  tbody.innerHTML=rows.map(t=>{ const ov=OVR[t.seq]||{}; const edited=(ov.team_tag&&ov.team_tag.trim())||(ov.pax_override!=null);
-    return `<tr data-seq="${t.seq}">
+  tbody.innerHTML=rows.map(t=>{ const ov=OVR[t.seq]||{}; const edited=(ov.team_tag&&ov.team_tag.trim())||(ov.pax_override!=null); const ex=!!t.excluded;
+    return `<tr data-seq="${t.seq}" style="${ex?'opacity:.45':''}">
       <td class="c mono">${esc((t.dep||'').slice(5))}</td>
       <td class="c">${esc(t.accom)}</td>
-      <td>${esc(t.repName||'')}</td>
-      <td><input class="te-tag" data-seq="${t.seq}" value="${esc(t.tag)}" style="width:120px"></td>
-      <td><input class="te-pax" data-seq="${t.seq}" type="number" min="0" value="${parseInt(t.pax,10)||0}" style="width:64px;text-align:center"></td>
-      <td class="c">${edited?'<span class="te-edited" title="오버라이드 적용됨">✎</span>':''}</td>
+      <td style="${ex?'text-decoration:line-through':''}">${esc(t.repName||'')}${edited&&!ex?' <span class="te-edited" title="오버라이드 적용됨">✎</span>':''}</td>
+      <td><input class="te-tag" data-seq="${t.seq}" value="${esc(t.tag)}" style="width:120px" ${ex?'disabled':''}></td>
+      <td><input class="te-pax" data-seq="${t.seq}" type="number" min="0" value="${parseInt(t.pax,10)||0}" style="width:64px;text-align:center" ${ex?'disabled':''}></td>
+      <td class="c"><button type="button" class="te-ex" data-seq="${t.seq}" data-ex="${ex?1:0}" style="font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:6px;cursor:pointer;border:1px solid ${ex?'var(--accent)':'var(--border2)'};background:${ex?'var(--accent)':'var(--surface)'};color:${ex?'#fff':'var(--err)'}">${ex?'복원':'제외'}</button></td>
     </tr>`; }).join('');
   tbody.querySelectorAll('.te-tag').forEach(inp=>inp.addEventListener('change',()=>saveDinnerOverride(inp.dataset.seq,'team_tag',inp.value)));
   tbody.querySelectorAll('.te-pax').forEach(inp=>inp.addEventListener('change',()=>saveDinnerOverride(inp.dataset.seq,'pax_override',inp.value)));
+  tbody.querySelectorAll('.te-ex').forEach(b=>b.addEventListener('click',()=>saveDinnerOverride(b.dataset.seq,'excluded',b.dataset.ex!=='1')));
 }
 function accomIdx(ac){ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; }
 async function saveDinnerOverride(seq,field,val){
   const t=TEAMS.find(x=>x.seq===String(seq)); if(!t)return;
-  let payload={event_seq:Number(seq),session_ym:YM,updated_by:curUser()};
-  if(field==='team_tag'){ const v=String(val||'').trim(); payload.team_tag=v||null; t.tag=v||(OVR[seq]&&OVR[seq]._autoTag)||t.tag; }
-  else { const n=String(val).trim()===''?null:(parseInt(val,10)||0); payload.pax_override=n; t.pax=(n!=null?n:t.basePax); }
+  const cur=OVR[seq]||{};
+  let team_tag=cur.team_tag||null;
+  let pax_override=(cur.pax_override!=null?cur.pax_override:null);
+  let excluded=!!cur.excluded;
+  if(field==='team_tag'){ const v=String(val||'').trim(); team_tag=v||null; t.tag=v||(OVR[seq]&&OVR[seq]._autoTag)||t.tag; }
+  else if(field==='pax_override'){ const n=String(val).trim()===''?null:(parseInt(val,10)||0); pax_override=n; t.pax=(n!=null?n:t.basePax); }
+  else if(field==='excluded'){ excluded=!!val; t.excluded=excluded; }
   try{
-    const cur=OVR[seq]||{};
-    const merged={event_seq:Number(seq),session_ym:YM,updated_by:curUser(),
-      team_tag:field==='team_tag'?payload.team_tag:(cur.team_tag||null),
-      pax_override:field==='pax_override'?payload.pax_override:(cur.pax_override!=null?cur.pax_override:null)};
+    const merged={event_seq:Number(seq),session_ym:YM,updated_by:curUser(),team_tag,pax_override,excluded};
     const {error}=await supa.from('print_overrides').upsert(merged,{onConflict:'event_seq'}); if(error)throw error;
-    OVR[seq]=merged; toast('저장(공유)','ok'); renderPreview(); renderTeamEdit();
+    OVR[seq]=merged; toast(field==='excluded'?(excluded?'제외 — 명단·식수에서 빠짐':'복원'):'저장','ok'); renderPreview();
   }catch(e){ toast('저장 실패: '+e.message,'err'); }
 }
 function renderDateChips(){
@@ -266,14 +279,14 @@ async function load(){
     // 팀 태그·인원 오버라이드(print_overrides) — 航空カバー와 공유. event_seq 기준(월경계 포함)
     OVR={};
     for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
-      const {data:ov}=await supa.from('print_overrides').select('event_seq,team_tag,pax_override').in('event_seq',chunk);
+      const {data:ov}=await supa.from('print_overrides').select('event_seq,team_tag,pax_override,excluded').in('event_seq',chunk);
       (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
     }
     TEAMS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{}; const r=REP[b.event_seq]||{}; const o=ORI[b.event_seq]||{}; const ov=OVR[b.event_seq]||{};
       const origin=(o.byRep?o.origin:'')||o.origin||b.origin||'';
       const basePax=b.pax||g.pax||0;
       return { seq:String(b.event_seq), accom:g.accom||'', dep:fmtDate(b.dep_date), arr:fmtDate(b.arr_date),
-        pax:(ov.pax_override!=null?ov.pax_override:basePax), basePax,
+        pax:(ov.pax_override!=null?ov.pax_override:basePax), basePax, excluded:!!ov.excluded,
         repName:b.rep_name||r.name||'', engName:r.eng||o.eng||'',
         tag:(ov.team_tag&&ov.team_tag.trim())||r.tag||g.team_tag||g.group_code||'', isPus:isPusOf(origin) };
     }).filter(t=>t.accom);
@@ -293,6 +306,7 @@ function mealCounts(date){
   let breakfastN=0, lunchContinue=0, lunchArrICN=0;
   TEAMS.forEach(t=>{
     if(_accomSet && !_accomSet.has(t.accom)) return;
+    if(t.excluded) return;                       // 제외(병합) 팀은 집계 제외
     const pax=parseInt(t.pax,10)||0; if(!pax) return;
     const isPus=t.isPus, isIn=(t.dep===date), isOut=(t.arr===date), isMid=(t.dep<date&&t.arr>date);
     const eatsBreakfast = OFFSITE.has(t.accom) ? (isOut&&isWTS) : (t.dep<date && t.arr>=date);
@@ -304,7 +318,7 @@ function mealCounts(date){
   });
   // 석식 = 그날 묵는 전원(dep<=date<arr)
   let dinnerN=0, teamCnt=0;
-  TEAMS.forEach(t=>{ if(_accomSet&&!_accomSet.has(t.accom))return; if(t.dep<=date&&t.arr>date){ dinnerN+=parseInt(t.pax,10)||0; teamCnt++; } });
+  TEAMS.forEach(t=>{ if(_accomSet&&!_accomSet.has(t.accom))return; if(t.excluded)return; if(t.dep<=date&&t.arr>date){ dinnerN+=parseInt(t.pax,10)||0; teamCnt++; } });
   return {breakfastN, lunchN:lunchContinue+lunchArrICN, lunchArrICN, dinnerN, teamCnt};
 }
 
@@ -329,7 +343,7 @@ function printOrder(){
   const todayStr=today();
   const accIdx=(ac)=>{ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; };
   const pagesHTML=dates.map(date=>{
-    const staying=TEAMS.filter(t=>(!_accomSet||_accomSet.has(t.accom)) && t.dep<=date && t.arr>date);
+    const staying=TEAMS.filter(t=>(!_accomSet||_accomSet.has(t.accom)) && !t.excluded && t.dep<=date && t.arr>date);
     if(!staying.length) return '';
     const sorted=staying.slice().sort((a,b)=>{ if(a.dep!==b.dep)return a.dep<b.dep?-1:1; const ai=accIdx(a.accom),bi=accIdx(b.accom); if(ai!==bi)return ai-bi; return (a.repName||'').localeCompare(b.repName||''); });
     let no=0;
