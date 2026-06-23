@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 現地手配書 인쇄</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad; --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#3d5424; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#2c3d19;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --mono:'SFMono-Regular',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{max-width:1180px;margin:0 auto;padding:16px 20px 90px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:10px}
+  .panel .desc{font-size:12px;color:var(--text2);margin-bottom:11px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .ymctrl{display:flex;align-items:center;gap:6px}
+  .ymctrl b{font-size:15px;font-family:var(--mono);min-width:78px;text-align:center}
+  .chip{font-size:12px;font-weight:700;padding:5px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border);cursor:pointer}
+  .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  table.list{width:100%;border-collapse:collapse;font-size:12px}
+  table.list th{background:var(--surface3);border:1px solid var(--border);padding:6px 7px;font-weight:700;color:var(--text2);white-space:nowrap}
+  table.list td{border:1px solid var(--border);padding:5px 7px}
+  table.list td.c{text-align:center}
+  table.list td.mono{font-family:var(--mono)}
+  .lbl-check{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--text2)}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.64">
+</head>
+<body data-so-area="room">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step">現地手配書 인쇄</span>
+  <a class="navhome" href="../index.html">← 홈</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint">행사별 現地手配書(앞면) + 現地発生分 記入表(뒷면) A4 양면 인쇄. step1 데이터 기준.</span>
+</div>
+
+<div class="wrap" id="content">
+  <div class="panel"><div class="deny" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-ops.js?v=14.64"></script>
+<script>
+const $=s=>document.querySelector(s);
+let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DATESEL=new Set(), SEARCHQ='';
+let MASK=(function(){ try{ return localStorage.getItem('saizen_dispatch_mask')!=='0'; }catch(e){ return true; } })();
+const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+function thisYM(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function shiftYM(ym,delta){const [y,m]=ym.split('-').map(Number);const d=new Date(y,m-1+delta,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function today(){return new Date().toISOString().slice(0,10);}
+
+// ── /app/ 동일 날짜·휴일 헬퍼 ──────────────────────────────
+function fmtDate(d){ if(!d)return ''; if(d instanceof Date){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;} return String(d).slice(0,10); }
+function parseLocalDate(s){ if(!s)return new Date(NaN); if(s instanceof Date)return s; const p=String(s).slice(0,10).split('-'); return new Date(Number(p[0]),Number(p[1])-1,Number(p[2])); }
+function getWD(d){ const w=['(月)','(火)','(水)','(木)','(金)','(土)','(日)']; try{ const day=new Date(d).getDay(); return w[day===0?6:day-1]; }catch(e){ return ''; } }
+function isWeekend(date){ const d=new Date(date).getDay(); return d===0||d===6; }
+const JP_HOLIDAYS=new Set(['2025-01-01','2025-01-13','2025-02-11','2025-02-23','2025-02-24','2025-03-20','2025-04-29','2025-05-03','2025-05-04','2025-05-05','2025-05-06','2025-07-21','2025-08-11','2025-09-15','2025-09-22','2025-09-23','2025-10-13','2025-11-03','2025-11-23','2025-11-24','2026-01-01','2026-01-12','2026-02-11','2026-02-23','2026-03-20','2026-04-29','2026-05-03','2026-05-04','2026-05-05','2026-05-06','2026-07-20','2026-08-11','2026-09-21','2026-09-22','2026-09-23','2026-10-12','2026-11-03','2026-11-23','2027-01-01','2027-01-11','2027-02-11','2027-02-23','2027-03-22','2027-04-29','2027-05-03','2027-05-04','2027-05-05','2027-07-19','2027-08-11','2027-09-20','2027-09-23','2027-10-11','2027-11-03','2027-11-23']);
+function isJpHoliday(date){ return JP_HOLIDAYS.has(String(date).slice(0,10)); }
+function isNonWorkday(date){ return isWeekend(date)||isJpHoliday(date); }
+
+// ── /app/ 동일 시설·룸타입·코스·비고 헬퍼 ──────────────────
+function dispatchAccomJp(accom){ if(accom==='야마나미리조트')return '阿蘇やまなみリゾート'; if(accom==='쿠주힐즈')return '久住ヒルズ'; if(accom==='간지호텔')return '間地ホテル'; if(accom==='시즈노야도 료칸')return 'シズノヤド旅館'; return accom||''; }
+function dispatchRoomTypeJp(rt){ const m={'호텔 트윈':'ホテルツイン','호텔 소형트윈':'ホテル小型ツイン','돔하우스':'ドームハウス','관내별장':'館内別荘','장기숙박전용':'長期滞在専用','료칸':'旅館','호텔':'ホテル'}; return m[rt]||rt||'-'; }
+function dispatchCourseSummary(d){ const courses=[...new Set((d.golf||[]).map(g=>g.course).filter(Boolean))]; return courses.length?courses.join(' ・ '):'ラウンドなし'; }
+const DISPATCH_BOLD_KW=['체크인','체크아웃','얼리','레이트','알러지','알레르기','채식','비건','휠체어','거동','픽업','송영','차량','룸업','업그레이드','생일','기념일','캐디','카트','vip','귀빈','추가','별도','요청'];
+function bigoSegments(text,alwaysBold){ if(!text)return []; return String(text).split(/(\n|\/)/).map(seg=>{ if(seg==='\n'||seg==='/')return {t:seg,b:false}; if(alwaysBold)return {t:seg,b:seg.trim()!==''}; const low=seg.toLowerCase(); const hit=DISPATCH_BOLD_KW.some(kw=>low.includes(kw)); return {t:seg,b:hit&&seg.trim()!==''}; }); }
+// ops 비고: bookings.remark + event_notes(remarks/memo). 현지 중요(remarks) 굵게 → 비고(remark) 키워드 굵게 → 【現地メモ】(memo)
+function dispatchNoteSegments(rec){ const segs=[]; const nl=()=>{ if(segs.length)segs.push({t:'\n',b:false}); };
+  const remarks=String(rec.noteRemarks||'').trim(); const bigo=String(rec.remark||'').trim(); const memo=String(rec.noteMemo||'').trim();
+  if(remarks){ nl(); segs.push(...bigoSegments(remarks,true)); }
+  if(bigo){ nl(); segs.push(...bigoSegments(bigo,false)); }
+  if(memo){ nl(); segs.push({t:'【現地メモ】 ',b:true},{t:memo,b:false}); }
+  while(segs.length&&segs[0].t==='\n') segs.shift(); return segs; }
+function dispatchNotesHTML(rec){ return dispatchNoteSegments(rec).map(s=>s.b?`<b>${esc(s.t)}</b>`:esc(s.t)).join(''); }
+
+// ── 라운딩 일정 (/app/ dispatchGolfRows 동일) ──────────────
+function dispatchGolfRows(rec,isPUS){
+  const rows=[]; if(!rec.dep||!rec.arr)return rows;
+  const cur=parseLocalDate(rec.dep),end=parseLocalDate(rec.arr); if(isNaN(cur)||isNaN(end))return rows;
+  for(;cur<=end;cur.setDate(cur.getDate()+1)){
+    const ds=fmtDate(cur);
+    if(ds===rec.dep){ if(isPUS)continue; rows.push({date:ds,course:'やまなみCC',holes:18,note:'入国日'}); }
+    else if(ds===rec.arr){ if(!isPUS)continue; rows.push({date:ds,course:'やまなみCC',holes:9,note:'帰国日(釜山便)'}); }
+    else{ const nonWork=isNonWorkday(ds); const course=(rec.accom==='간지호텔'&&!nonWork)?'九重高原CC':'やまなみCC'; rows.push({date:ds,course,holes:18,note:nonWork?(isJpHoliday(ds)?'祝日':'週末'):'+9Hサービス対象'}); }
+  }
+  return rows;
+}
+
+// 현장 발생분 区分 (B2B 정산과 별도 — 記入表 전용)
+const DISPATCH_CHARGE_CATS=[ {key:'room',ja:'ルームチャージ'},{key:'cart',ja:'EVカート'},{key:'golf',ja:'ラウンド追加'},{key:'transfer',ja:'送迎'},{key:'etc',ja:'その他'} ];
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn('URL·key 필요','err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">로그인이 필요합니다.<small>가운데 로그인 카드에서 로그인 후 다시 연결하세요.</small></div></div>'; return; }
+    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.disabled=false;
+    YM=YM||thisYM();
+    renderUI(); load();
+  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결·재시도';btn.disabled=false; supa=null; toast('연결 실패: '+e.message,'err'); }
+}
+
+function renderUI(){
+  $('#content').innerHTML=`
+    <div class="panel">
+      <h3>월 선택 · 필터</h3>
+      <div class="row">
+        <div class="ymctrl">
+          <button class="btn sm ghost" id="ym-prev" type="button">◀</button>
+          <b id="ym-label"></b>
+          <button class="btn sm ghost" id="ym-next" type="button">▶</button>
+        </div>
+        <span style="width:1px;height:20px;background:var(--border)"></span>
+        <input class="inp" id="search" type="text" placeholder="代表者·イベント番号·タグコード 검색" style="width:240px">
+        <label class="lbl-check"><input type="checkbox" id="mask-cb"> 個人情報マスキング(생년월일까지)</label>
+        <span style="flex:1"></span>
+        <span class="cnt" id="stat"></span>
+        <button class="btn" id="btn-print" type="button" disabled>🖨 一括印刷(양면)</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <span class="cnt" style="min-width:46px">出発日</span>
+        <div id="datechips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="cnt" style="min-width:46px">숙소</span>
+        <div id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <div class="desc" style="margin-top:10px">행사 1건 = 앞면 現地手配書 + 뒷면 現地発生分 記入表(2페이지). <b>A4 세로 · 양면(긴 가장자리 제본)</b>으로 인쇄하세요. 記入表는 현장 손기입용(<b>메리트투어 B2B ⑤現地精算表와 별도</b>).</div>
+    </div>
+    <div class="panel">
+      <h3>대상 행사 <span class="cnt" id="list-cnt"></span></h3>
+      <div style="overflow:auto"><table class="list" id="list"><thead></thead><tbody></tbody></table></div>
+    </div>`;
+  $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
+  $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
+  $('#btn-print').addEventListener('click',()=>printDispatch(null));
+  $('#search').addEventListener('input',e=>{SEARCHQ=String(e.target.value||'').trim().toLowerCase();renderList();});
+  const mc=$('#mask-cb'); mc.checked=MASK; mc.addEventListener('change',e=>{ MASK=!!e.target.checked; try{localStorage.setItem('saizen_dispatch_mask',MASK?'1':'0');}catch(x){} });
+}
+function renderDateChips(){
+  const dates=[...new Set(ROWS.map(r=>r.dep).filter(Boolean))].sort();
+  const box=$('#datechips'); if(!box)return;
+  box.innerHTML=`<div class="chip ${DATESEL.size===0?'on':''}" data-d="__all">전체</div>`
+    + dates.map(d=>`<div class="chip ${DATESEL.has(d)?'on':''}" data-d="${d}">${d.slice(5)}${getWD(d)}</div>`).join('');
+  box.querySelectorAll('.chip[data-d]').forEach(c=>c.addEventListener('click',()=>{ const d=c.dataset.d; if(d==='__all'){DATESEL.clear();}else{DATESEL.has(d)?DATESEL.delete(d):DATESEL.add(d);} renderDateChips(); renderList(); }));
+}
+function renderAccomChips(){
+  const accoms=[...new Set(ROWS.map(r=>r.accom).filter(Boolean))].sort((a,b)=>{const ai=ACCOM_ORDER.indexOf(a),bi=ACCOM_ORDER.indexOf(b);return (ai<0?9:ai)-(bi<0?9:bi);});
+  const box=$('#accomchips'); if(!box)return;
+  box.innerHTML=`<div class="chip ${ACCOMSEL.size===0?'on':''}" data-a="__all">전체</div>`
+    + accoms.map(a=>`<div class="chip ${ACCOMSEL.has(a)?'on':''}" data-a="${esc(a)}">${esc(a)}</div>`).join('');
+  box.querySelectorAll('.chip[data-a]').forEach(c=>c.addEventListener('click',()=>{ const a=c.dataset.a; if(a==='__all'){ACCOMSEL.clear();}else{ACCOMSEL.has(a)?ACCOMSEL.delete(a):ACCOMSEL.add(a);} renderAccomChips(); renderList(); }));
+}
+
+async function load(){
+  if(!supa)return;
+  $('#ym-label').textContent=YM; $('#stat').textContent='불러오는 중…'; $('#btn-print').disabled=true;
+  try{
+    const {data:bs,error:e1}=await supa.from('bookings')
+      .select('event_seq,event_no,rep_name,member_type,dep_date,arr_date,nights_label,origin,airline,product_name,pax,remark,team_label')
+      .eq('session_ym',YM);
+    if(e1)throw e1;
+    const BMAP={}; (bs||[]).forEach(b=>{BMAP[b.event_seq]=b;});
+    const seqs=Object.keys(BMAP).map(Number);
+    if(!seqs.length){ ROWS=[]; $('#stat').textContent='해당 월 데이터 없음'; DATESEL.clear();ACCOMSEL.clear(); renderDateChips();renderAccomChips();renderList(); return; }
+    const {data:gs}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,accom_prefix,pax').eq('session_ym',YM);
+    const GMAP={}; (gs||[]).forEach(g=>{GMAP[g.event_seq]=g;});
+    const {data:ns}=await supa.from('event_notes').select('event_seq,remarks,memo').eq('session_ym',YM);
+    const NMAP={}; (ns||[]).forEach(n=>{NMAP[n.event_seq]=n;});
+    // 개인 명단(passengers) + 대표/태그(guest_members)
+    const PAX={}, REP={};
+    for(let i=0;i<seqs.length;i+=200){
+      const chunk=seqs.slice(i,i+200);
+      // passengers
+      let pg=0;
+      for(;;){
+        const {data,error}=await supa.from('passengers')
+          .select('id,event_seq,seq_in_team,name_kr,name_en,gender,birth,birth_yymmdd,passport_no,phone,dep_flight,ret_flight,dep_time,loc_arr_time,ret_dep_time,kor_arr_time,airline,origin')
+          .in('event_seq',chunk).order('event_seq').order('seq_in_team').range(pg,pg+999);
+        if(error)throw error;
+        (data||[]).forEach(p=>{ (PAX[p.event_seq]=PAX[p.event_seq]||[]).push(p); });
+        if(!data||data.length<1000)break; pg+=1000;
+      }
+      // guest_members (대표 tag·is_rep → passenger_id)
+      let mg=0;
+      for(;;){
+        const {data,error}=await supa.from('guest_members')
+          .select('event_seq,person_tag,is_rep,seq_in_team,passenger_id').in('event_seq',chunk).order('event_seq').order('seq_in_team').range(mg,mg+999);
+        if(error)throw error;
+        (data||[]).forEach(m=>{
+          const cur=REP[m.event_seq]; const curSeq=cur?(cur._seq==null?99:cur._seq):99;
+          if(!cur || (m.is_rep&&curSeq!==0) || (!m.is_rep&&curSeq!==0&&(m.seq_in_team||99)<curSeq)){
+            REP[m.event_seq]={tag:m.person_tag||'',_seq:m.is_rep?0:(m.seq_in_team||99),pid:m.passenger_id};
+          }
+        });
+        if(!data||data.length<1000)break; mg+=1000;
+      }
+    }
+    // 행사별 카드 데이터 구성 (출발일 → 대표자명 순)
+    ROWS=seqs.map(seq=>{
+      const b=BMAP[seq]||{}, g=GMAP[seq]||{}, note=NMAP[seq]||{};
+      const paxList=(PAX[seq]||[]).slice().sort((a,b2)=>(a.seq_in_team||99)-(b2.seq_in_team||99));
+      const rep=REP[seq]||{};
+      const repPax=paxList.find(p=>p.id===rep.pid)||paxList[0]||{};
+      const dep=fmtDate(b.dep_date), arr=fmtDate(b.arr_date);
+      const nights=(dep&&arr)?Math.max(0,Math.round((parseLocalDate(arr)-parseLocalDate(dep))/86400000)):0;
+      const origin=repPax.origin||b.origin||'';
+      const depFlight=repPax.dep_flight||b.airline||'';
+      const isPUS=String(origin).includes('부산')||String(origin).includes('김해')||String(depFlight).toUpperCase().startsWith('ZE');
+      const rec={ eventSeq:seq, eventNo:b.event_no||'', repName:b.rep_name||'', memberType:b.member_type||'', dep, arr, nights, pax:b.pax||g.pax||0,
+        accom:g.accom||'', roomType:'', teamName:b.team_label||note.team_label||'', remark:b.remark||'', noteRemarks:note.remarks||'', noteMemo:note.memo||'',
+        prodName:b.product_name||'' };
+      const golf=dispatchGolfRows(rec,isPUS).map(x=>({...x,tee:''}));
+      const autoRoom=rec.pax>0?(Math.ceil(rec.pax/2)+'室 (2人1室)'):'-';
+      return {
+        seq, rec, dep, accom:rec.accom, repPid:repPax.id,
+        tagCode:rep.tag||g.team_tag||g.group_code||'',
+        engName:repPax.name_en||'',
+        depFlight, retFlight:repPax.ret_flight||'', depTime:repPax.dep_time||'', locArrTime:repPax.loc_arr_time||'', retTime:repPax.ret_dep_time||'', korArrTime:repPax.kor_arr_time||'', airline:repPax.airline||b.airline||'',
+        port:isPUS?'PUS':'ICN', portName:isPUS?'釜山(金海)':'ソウル(仁川)',
+        roomCnt:autoRoom, golf, paxList, prodName:rec.prodName, accomJp:dispatchAccomJp(rec.accom)
+      };
+    }).sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||(a.rec.repName||'').localeCompare(b.rec.repName||''))
+      .map((d,i)=>{ d.no=i+1; return d; });
+    DATESEL.clear(); ACCOMSEL.clear();
+    $('#stat').textContent=`${ROWS.length}件`;
+    renderDateChips(); renderAccomChips(); renderList();
+  }catch(e){ $('#stat').textContent='로드 실패'; toast('로드 실패: '+e.message,'err'); }
+}
+
+function pass(d){
+  if(ACCOMSEL.size && !ACCOMSEL.has(d.accom)) return false;
+  if(DATESEL.size && !DATESEL.has(d.dep)) return false;
+  if(SEARCHQ){ const hay=`${d.rec.repName||''} ${d.rec.eventNo||''} ${d.tagCode||''} ${d.seq}`.toLowerCase(); if(!hay.includes(SEARCHQ)) return false; }
+  return true;
+}
+function renderList(){
+  const visible=ROWS.filter(pass);
+  $('#btn-print').disabled=!visible.length;
+  $('#list-cnt').textContent=ROWS.length?`(${visible.length}件 표시 / 전체 ${ROWS.length}件 · 一括印刷은 표시분만)`:'';
+  const thead=$('#list thead'), tbody=$('#list tbody');
+  thead.innerHTML='<tr><th>No</th><th>タグコード</th><th>イベント番号</th><th>代表者</th><th>英文名</th><th>出発日</th><th>到着日</th><th>泊</th><th>人数</th><th>施設</th><th>会員権</th><th>操作</th></tr>';
+  if(!ROWS.length){ tbody.innerHTML='<tr><td colspan="12" class="c" style="color:var(--muted);padding:24px">該当データなし</td></tr>'; return; }
+  if(!visible.length){ tbody.innerHTML='<tr><td colspan="12" class="c" style="color:var(--muted);padding:24px">검색·필터 결과가 없습니다</td></tr>'; return; }
+  tbody.innerHTML=visible.map(d=>`<tr>
+    <td class="c">${d.no}</td>
+    <td class="c mono" style="font-weight:700">${esc(d.tagCode)}</td>
+    <td class="c mono">${esc(d.rec.eventNo||'-')}</td>
+    <td style="font-weight:600">${esc(d.rec.repName||'-')}</td>
+    <td class="mono" style="font-size:11px">${esc(d.engName||'')}</td>
+    <td class="c mono">${esc(d.rec.dep||'')}</td>
+    <td class="c mono">${esc(d.rec.arr||'')}</td>
+    <td class="c">${d.rec.nights}泊</td>
+    <td class="c">${d.rec.pax}名</td>
+    <td class="c">${esc(d.accom||'')}</td>
+    <td class="c">${esc(d.rec.memberType||'-')}</td>
+    <td class="c"><button class="btn sm" onclick="printDispatch('${d.seq}')">미리보기</button></td>
+  </tr>`).join('');
+}
+
+// ── 인쇄용 HTML (/app/ dispatchFrontHTML / dispatchBackHTML 완전 동일) ──
+function dispatchFrontHTML(d,masked){
+  const r=d.rec; const periodStr=`${r.nights}泊${Number(r.nights)+1}日`;
+  const privHead=masked?'':'<th style="width:12%">旅券番号</th><th style="width:12%">電話番号</th>';
+  const colCount=masked?8:10;
+  const guestHead=`<tr><th style="width:5%">No</th><th style="width:7%">区分</th><th>氏名</th><th>英文姓</th><th>英文名</th><th style="width:6%">性別</th><th style="width:11%">生年月日</th>${privHead}<th>備考</th></tr>`;
+  const guestRows=d.paxList.length?d.paxList.map((p,i)=>{
+    const gd=(p.gender==='M'||p.gender==='남')?'男':(p.gender==='F'||p.gender==='여')?'女':(p.gender||'');
+    const en=String(p.name_en||'').trim(); const sp=en.indexOf(' '); const engSur=sp>0?en.slice(0,sp):en; const engGiven=sp>0?en.slice(sp+1):'';
+    const bday=p.birth?fmtDate(p.birth):(p.birth_yymmdd||'');
+    const priv=masked?'':`<td class="c mono">${esc(p.passport_no||'')}</td><td class="c mono">${esc(p.phone||'')}</td>`;
+    return `<tr><td class="c">${i+1}</td><td class="c">${p._isRep?'<b>代表</b>':''}</td><td><b>${esc(p.name_kr||'')}</b></td><td>${esc(engSur)}</td><td>${esc(engGiven)}</td><td class="c">${esc(gd)}</td><td class="c mono">${esc(bday)}</td>${priv}<td></td></tr>`;
+  }).join(''):`<tr><td colspan="${colCount}" class="c" style="color:#777">名簿未登録 — 代表: ${esc(r.repName||'-')} 計${r.pax}名</td></tr>`;
+  const guestSizeCls=d.paxList.length>16?' g-xs':d.paxList.length>10?' g-sm':'';
+  const courseStr=dispatchCourseSummary(d);
+  const notesHTML=dispatchNotesHTML(r);
+  return `<div class="hp-page">
+    <div class="hp-head">
+      <div>
+        <div class="hp-title">現地手配書</div>
+        <div class="hp-sub mono">イベント番号 ${esc(r.eventNo||'-')} ・ ${esc(d.prodName)}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="hp-tag">${esc(d.tagCode)}</div>
+        <div class="hp-sub" style="margin-top:1.5mm">発行日 ${today()} ・ SaiZen運営システム</div>
+      </div>
+    </div>
+    <table class="hp-t">
+      <tr><th style="width:11%">出発日</th><td class="c mono" style="width:15%">${esc(r.dep||'')} ${getWD(r.dep)}</td>
+          <th style="width:11%">到着日</th><td class="c mono" style="width:15%">${esc(r.arr||'')} ${getWD(r.arr)}</td>
+          <th style="width:9%">期間</th><td class="c" style="width:11%">${periodStr}</td>
+          <th style="width:9%">人数</th><td class="c"><b>${r.pax}名</b></td></tr>
+      <tr><th>代表者</th><td class="c"><b>${esc(r.repName||'-')}</b></td>
+          <th>会員権</th><td class="c">${esc(r.memberType||'-')}</td>
+          <th>出発地</th><td class="c">${d.port}</td>
+          <th>チーム</th><td class="c">${esc(r.teamName||'-')}</td></tr>
+    </table>
+    <div class="hp-sec">航空情報</div>
+    <table class="hp-t">
+      <tr><th style="width:10%">区分</th><th style="width:13%">便名</th><th style="width:17%">日付</th><th style="width:13%">出発時間</th><th style="width:17%">出発地</th><th style="width:17%">到着地</th><th style="width:13%">到着時間</th></tr>
+      <tr><td class="c">往路</td><td class="c mono"><b>${esc(d.depFlight||'-')}</b></td><td class="c mono">${esc(r.dep||'')}</td><td class="c mono">${esc(d.depTime)}</td><td class="c">${d.portName}</td><td class="c">熊本(KMJ)</td><td class="c mono">${esc(d.locArrTime)}</td></tr>
+      <tr><td class="c">復路</td><td class="c mono"><b>${esc(d.retFlight||'-')}</b></td><td class="c mono">${esc(r.arr||'')}</td><td class="c mono">${esc(d.retTime)}</td><td class="c">熊本(KMJ)</td><td class="c">${d.portName}</td><td class="c mono">${esc(d.korArrTime||'')}</td></tr>
+    </table>
+    <div class="hp-sec">宿泊情報</div>
+    <table class="hp-t">
+      <tr><th style="width:26%">施設</th><th style="width:18%">部屋タイプ</th><th style="width:14%">チェックイン</th><th style="width:15%">チェックアウト</th><th style="width:10%">泊数</th><th>部屋数</th></tr>
+      <tr><td class="c"><b>${esc(d.accomJp)}</b></td><td class="c">${dispatchRoomTypeJp(r.roomType)}</td><td class="c mono">${esc(r.dep||'')}</td><td class="c mono">${esc(r.arr||'')}</td><td class="c">${r.nights}泊</td><td class="c">${esc(d.roomCnt)}</td></tr>
+    </table>
+    <div class="hp-sec">顧客情報${masked?' <span class="hp-mask">個人情報保護 — 生年月日まで表記</span>':''}</div>
+    <table class="hp-t${guestSizeCls}">${guestHead}${guestRows}</table>
+    <div class="hp-sec">ゴルフ情報</div>
+    <table class="hp-t">
+      <tr><th style="width:24%">ゴルフ場</th><td class="c"><b>${esc(courseStr)}</b></td></tr>
+    </table>
+    <div class="hp-sec">参考事項</div>
+    <div class="hp-memo">${notesHTML}</div>
+  </div>`;
+}
+function dispatchBackHTML(d){
+  const r=d.rec;
+  const blankCount=12;
+  const blankRows=Array.from({length:blankCount},()=>`<tr class="hp-fill"><td></td><td class="c"><span class="hp-cat">① ② ③ ④ ⑤</span></td><td></td><td></td><td></td><td></td><td></td></tr>`).join('');
+  return `<div class="hp-page">
+    <div class="hp-head">
+      <div>
+        <div class="hp-title" style="font-size:15pt">現地発生分 記入表</div>
+        <div class="hp-sub">滞在中に現地で発生した追加料金（ルームチャージ・EVカート・ラウンド追加・送迎・その他）を記入。<b>※メリットツアーとのB2B精算（⑤現地精算表）とは別管理です。</b></div>
+      </div>
+      <div style="text-align:right">
+        <div class="hp-tag" style="font-size:13pt">${esc(d.tagCode)}</div>
+        <div class="hp-sub" style="margin-top:1.5mm">イベント番号 ${esc(r.eventNo||'-')} ・ 代表 <b>${esc(r.repName||'-')}</b> ・ ${esc((r.dep||'').slice(5))}〜${esc((r.arr||'').slice(5))} ・ ${r.pax}名</div>
+      </div>
+    </div>
+    <div class="hp-legend"><b>区分:</b> ① ルームチャージ &nbsp; ② EVカート &nbsp; ③ ラウンド追加 &nbsp; ④ 送迎 &nbsp; ⑤ その他 &nbsp;—&nbsp; 該当番号に○を付けてください</div>
+    <table class="hp-t hp-form">
+      <tr><th style="width:11%">日付</th><th style="width:16%">区分</th><th>内容</th><th style="width:8%">数量</th><th style="width:12%">単価(¥)</th><th style="width:13%">金額(¥)</th><th style="width:9%">担当</th></tr>
+      ${blankRows}
+      <tr class="hp-total"><td colspan="5" style="text-align:right;font-weight:800;padding-right:3mm;background:#f0f2f6">合計</td><td class="c mono" style="font-weight:800"></td><td style="background:#f0f2f6"></td></tr>
+    </table>
+    <table class="hp-t" style="margin-top:6mm">
+      <tr><th style="width:16%">記入者(現場)</th><td style="width:21%;height:11mm"></td><th style="width:16%">確認者</th><td style="width:21%"></td><th style="width:10%">記入日</th><td class="c" style="color:#888">　　　年　　月　　日</td></tr>
+    </table>
+  </div>`;
+}
+
+function printDispatch(seq){
+  let data=ROWS.slice();
+  if(seq) data=data.filter(d=>d.seq===String(seq).trim());
+  else data=data.filter(pass);
+  if(!data.length){ toast('대상 행사가 없습니다','err'); return; }
+  // 대표 표시(_isRep): 대표 passenger id 와 일치하는 행에 플래그
+  data.forEach(d=>{ d.paxList.forEach(p=>{ p._isRep=(d.repPid!=null && p.id===d.repPid); }); if(!d.paxList.some(p=>p._isRep)&&d.paxList[0]) d.paxList[0]._isRep=true; });
+  const masked=MASK;
+  const pages=data.map(d=>dispatchFrontHTML(d,masked)+dispatchBackHTML(d)).join('');
+  const fullHTML=`<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>現地手配書_${today()}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#e8eaf0;font-family:'Yu Gothic','Meiryo','Malgun Gothic',sans-serif;color:#1a2030;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .hp-toolbar{position:sticky;top:0;display:flex;gap:14px;align-items:center;background:#1e3a5f;color:#fff;padding:10px 16px;z-index:10}
+  .hp-toolbar h1{font-size:14px;font-weight:700}
+  .hp-toolbar .meta{font-size:11px;opacity:.85}
+  .hp-toolbar button{background:#fff;color:#1e3a5f;border:none;border-radius:5px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer}
+  .hp-toolbar .hp-close{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4)}
+  .hp-container{padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px}
+  .hp-page{width:210mm;min-height:296mm;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.18);padding:11mm 11mm;position:relative}
+  .hp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:6mm;border-bottom:2.5px solid #1e3a5f;padding-bottom:2.5mm;margin-bottom:4mm}
+  .hp-title{font-size:17pt;font-weight:800;letter-spacing:3px;color:#1e3a5f}
+  .hp-sub{font-size:8.5pt;color:#555;margin-top:1mm}
+  .hp-tag{display:inline-block;font-size:16pt;font-weight:800;font-family:Consolas,Menlo,monospace;border:2px solid #1e3a5f;color:#1e3a5f;padding:1mm 4mm;border-radius:1.5mm;letter-spacing:1px}
+  .hp-sec{font-size:10.5pt;font-weight:800;margin:4.5mm 0 1.8mm;padding:1.4mm 2.5mm;background:#eef1f5;border-left:3.5px solid #1e3a5f;color:#1e3a5f}
+  .hp-mask{font-size:7.5pt;color:#777;font-weight:500;margin-left:2.5mm}
+  table.hp-t{width:100%;border-collapse:collapse;font-size:9.5pt}
+  .hp-t th{background:#f0f2f6;border:1px solid #555;padding:1.5mm 1.8mm;font-weight:700;font-size:8.8pt}
+  .hp-t td{border:1px solid #555;padding:1.5mm 1.8mm}
+  .hp-t.g-sm{font-size:8.3pt} .hp-t.g-sm th, .hp-t.g-sm td{padding:1mm 1.4mm}
+  .hp-t.g-xs{font-size:7.4pt} .hp-t.g-xs th, .hp-t.g-xs td{padding:.7mm 1.2mm}
+  .c{text-align:center} .mono{font-family:Consolas,Menlo,monospace}
+  .hp-memo{border:1px solid #555;min-height:30mm;padding:2mm;font-size:9.5pt;white-space:pre-wrap}
+  .hp-legend{font-size:9.5pt;margin-bottom:2mm;padding:1.6mm 2.5mm;background:#f0f2f6;border:1px solid #bbb}
+  .hp-form .hp-fill td{height:12.5mm}
+  .hp-cat{font-size:8.5pt;letter-spacing:.5px;color:#555}
+  .hp-total td{height:9.5mm;font-size:11pt}
+  @media print{
+    @page{size:A4 portrait;margin:0}
+    body{background:#fff}
+    .hp-toolbar{display:none}
+    .hp-container{padding:0;gap:0;display:block}
+    .hp-page{box-shadow:none;width:210mm;height:296mm;min-height:0;page-break-after:always;overflow:hidden}
+  }
+</style></head><body>
+  <div class="hp-toolbar">
+    <h1>現地手配書 미리보기</h1>
+    <div class="meta">A4 세로 · ${data.length}행사 × 양면 2페이지 = 총 ${data.length*2}페이지 · ${masked?'마스킹 ON (생년월일까지)':'마스킹 OFF (전체 표기)'} · ${today()}<br>※ 인쇄 설정에서 <b>양면 인쇄 (긴 가장자리 제본)</b>을 선택하세요 — 앞면 手配書 / 뒷면 記入表가 자동으로 맞춰집니다.</div>
+    <div style="flex:1"></div>
+    <button onclick="window.print()">인쇄</button>
+    <button class="hp-close" onclick="window.close()">✕ 닫기</button>
+  </div>
+  <div class="hp-container">${pages}</div>
+</body></html>`;
+  const w=window.open('','_blank','width=920,height=950'); if(!w){ toast('팝업 차단 — 허용 필요','err'); return; }
+  w.document.write(fullHTML); w.document.close();
+}
+
+$('#btn-connect').addEventListener('click',connect);
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
