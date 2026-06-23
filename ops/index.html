@@ -343,39 +343,41 @@
       });
     });
   }
-  // ── 등록된 데이터 현황(import_log) — 월별 최신 등록 시각·등록자 ──
+  // ── 등록된 데이터 현황 — 월 목록은 실제 데이터(bookings.session_ym) 기준,
+  //    등록 시각·등록자는 import_log에서 보강. (import_log 누락/한도와 무관하게 등록된 모든 달 표시) ──
   function loadRegStrip(){
     if(!window.__so_authClient) return; var c=__so_authClient(); if(!c) return;
-    c.from('import_log').select('session_ym,uploaded_by,uploaded_at').order('uploaded_at',{ascending:false}).limit(60).then(function(r){
-      if(r.error||!r.data||!r.data.length) return;
-      // session_ym 한 행에 여러 달이 콤마로 들어올 수 있음 → 실제 월 단위로 분해
-      // r.data는 uploaded_at 내림차순 → 각 월의 '첫 등장' = 그 달의 최신 등록
-      var byYm={};
-      r.data.forEach(function(x){
-        String(x.session_ym||'').split(',').forEach(function(raw){
-          var ym=raw.trim(); if(!ym) return; if(!byYm[ym]) byYm[ym]=x;
+    var p=function(n){ return String(n).padStart(2,'0'); };
+    // 1) who/when 맵(import_log) — best-effort
+    var infoBy={};
+    c.from('import_log').select('session_ym,uploaded_by,uploaded_at').order('uploaded_at',{ascending:false}).limit(200).then(function(r){
+      (r&&r.data||[]).forEach(function(x){ String(x.session_ym||'').split(',').forEach(function(raw){ var ym=raw.trim(); if(ym&&!infoBy[ym]) infoBy[ym]=x; }); });
+    }).catch(function(){}).then(function(){
+      // 2) 실제 등록 월·팀수 = bookings 전수 스캔(session_ym만, 페이지네이션)
+      var teams={};
+      function page(off){
+        return c.from('bookings').select('session_ym').range(off,off+999).then(function(r){
+          var rows=(r&&r.data)||[];
+          rows.forEach(function(b){ if(b.session_ym) teams[b.session_ym]=(teams[b.session_ym]||0)+1; });
+          if(rows.length===1000) return page(off+1000);
         });
-      });
-      var yms=Object.keys(byYm).sort();
+      }
+      return page(0).then(function(){ return teams; });
+    }).then(function(teams){
+      var yms=Object.keys(teams||{}).sort();
       if(!yms.length) return;
-      var p=function(n){ return String(n).padStart(2,'0'); };
-      // 월별 실제 팀·인원 수(현재 DB 기준 — import_log.counts는 다중월 업로드 시 부정확)
-      Promise.all(yms.map(function(ym){
-        return Promise.all([
-          c.from('bookings').select('*',{count:'exact',head:true}).eq('session_ym',ym),
-          c.from('passengers').select('event_seq,bookings!inner(session_ym)',{count:'exact',head:true}).eq('bookings.session_ym',ym)
-        ]).then(function(res){ return {ym:ym,teams:(res[0]&&res[0].count),ppl:(res[1]&&res[1].count)}; })
-         .catch(function(){ return {ym:ym,teams:null,ppl:null}; });
-      })).then(function(arr){
-        var cntBy={}; arr.forEach(function(o){ cntBy[o.ym]=o; });
+      // 3) 월별 인원(passengers) 병렬 카운트
+      return Promise.all(yms.map(function(ym){
+        return c.from('passengers').select('event_seq,bookings!inner(session_ym)',{count:'exact',head:true}).eq('bookings.session_ym',ym)
+          .then(function(r){ return {ym:ym,ppl:(r&&r.count)}; }).catch(function(){ return {ym:ym,ppl:null}; });
+      })).then(function(pplArr){
+        var pplBy={}; pplArr.forEach(function(o){ pplBy[o.ym]=o.ppl; });
         var html=yms.map(function(ym){
-          var x=byYm[ym]; var d=new Date(x.uploaded_at);
-          var ts=p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
-          var who=x.uploaded_by?(' · '+x.uploaded_by):'';
-          var cn=cntBy[ym]; var cntTxt='';
-          if(cn&&cn.teams!=null){ cntTxt=' · <b style="color:#127a3b">'+cn.teams.toLocaleString()+'</b>팀'+(cn.ppl!=null?' <b style="color:#127a3b">'+cn.ppl.toLocaleString()+'</b>명':''); }
+          var info=infoBy[ym]; var who='', ts='';
+          if(info){ var d=new Date(info.uploaded_at); ts=' · <span style="color:var(--muted)">'+p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+'</span>'; who=info.uploaded_by?(' · '+info.uploaded_by):''; }
+          var cnt=' · <b style="color:#127a3b">'+(teams[ym]||0).toLocaleString()+'</b>팀'+(pplBy[ym]!=null?' <b style="color:#127a3b">'+pplBy[ym].toLocaleString()+'</b>명':'');
           return '<span style="background:#fff;border:1px solid #b6e6c8;border-radius:99px;padding:3px 11px">'
-               + '<b style="font-family:var(--mono)">'+ym+'</b>'+who+' · <span style="color:var(--muted)">'+ts+'</span>'+cntTxt+'</span>';
+               + '<b style="font-family:var(--mono)">'+ym+'</b>'+who+ts+cnt+'</span>';
         }).join('');
         var box=document.getElementById('reg-strip-list'); if(box){ box.innerHTML=html; document.getElementById('reg-strip').style.display='flex'; }
       });
