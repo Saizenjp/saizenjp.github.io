@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 프론트 데스크</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
+    --border:#e3e6ea; --border2:#cdd2d8;
+    --text:#1f2937; --text2:#525b66; --muted:#8b919b;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none}
+  .navhome:hover{text-decoration:underline}
+  .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .hint{font-size:11px;color:var(--muted)}
+
+  .datebar{padding:10px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+  .datebar label{font-size:12px;color:var(--text2);font-weight:600}
+  main{padding:16px 20px 70px;max-width:1280px;margin:0 auto}
+
+  /* KPI */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 16px}
+  .kpi .l{font-size:11.5px;color:var(--text2);font-weight:700}
+  .kpi .v{font-size:23px;font-weight:800;color:var(--accent);font-family:var(--mono);margin-top:2px}
+  .kpi .v small{font-size:12px;color:var(--text2);font-weight:600}
+  .kpi.due .v{color:var(--err)}
+
+  .stage{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+  @media(max-width:900px){.stage{grid-template-columns:1fr}}
+  .col h3{font-size:13px;font-weight:800;color:var(--accent);margin:6px 0 8px;display:flex;align-items:center;gap:8px}
+  .col h3 .c{font-size:11.5px;color:var(--text2);font-weight:700}
+  .sect{margin-bottom:16px}
+  .sect .sh{font-size:12.5px;font-weight:800;margin:0 0 7px;padding:5px 10px;border-radius:8px;display:flex;align-items:center;gap:8px}
+  .sh.arr{background:#e7efe1;color:#3c5230} .sh.dep{background:#f5ecd8;color:#7a5a14} .sh.stay{background:#e9f0f7;color:#2c5078}
+  .sh .c{margin-left:auto;font-family:var(--mono)}
+  .trow{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 12px;margin-bottom:7px;cursor:pointer;transition:.1s;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .trow:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(15,23,42,.08)}
+  .trow.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .trow .tag{font-family:var(--mono);font-weight:800;font-size:13px;color:var(--accent)}
+  .trow .rep{font-weight:700;font-size:14px}
+  .trow .pax{font-size:12px;color:var(--text2)}
+  .trow .room{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--text2)}
+  .trow .bal{margin-left:auto;font-family:var(--mono);font-weight:800;font-size:13px}
+  .trow .bal.due{color:var(--err)} .trow .bal.zero{color:var(--muted)}
+  .trow .accom{font-size:11px;color:var(--muted)}
+  .empty{padding:14px;text-align:center;color:var(--muted);font-size:12.5px;border:1px dashed var(--border);border-radius:9px}
+
+  /* 상세 패널 */
+  .detail{position:sticky;top:74px;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:16px 17px}
+  .detail .dh{font-size:16px;font-weight:800;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .detail .dh .tag{font-family:var(--mono);color:var(--accent)}
+  .detail .dsub{font-size:12px;color:var(--text2);margin-top:3px}
+  .detail .drow{display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-bottom:1px solid var(--border)}
+  .detail .drow b{font-weight:700}
+  .detail .big{font-size:20px;font-weight:800;font-family:var(--mono)}
+  .detail .big.due{color:var(--err)} .detail .big.zero{color:var(--muted)}
+  .detail .memo{font-size:12.5px;color:var(--text2);background:var(--surface2);border-radius:8px;padding:9px 11px;margin-top:8px;white-space:pre-wrap;min-height:38px}
+  .detail .links{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+  .detail .none{color:var(--muted);font-size:13px;text-align:center;padding:30px 0}
+
+  #toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);min-width:200px;text-align:center}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.67">
+</head>
+<body data-so-area="room">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step">프론트 데스크 / フロント</span>
+  <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint">실시간 도착·출발·재실 + 팀별 방번호·잔액·메모. 읽기 중심.</span>
+</div>
+
+<div class="datebar">
+  <label>날짜</label>
+  <button class="btn ghost sm" id="d-prev" type="button" title="전날">◀</button>
+  <input class="inp" id="day-pick" type="date" style="width:160px">
+  <button class="btn ghost sm" id="d-next" type="button" title="다음날">▶</button>
+  <button class="btn ghost sm" id="d-today" type="button">오늘</button>
+  <button class="btn sm" id="btn-reload" type="button" disabled>↻ 새로고침</button>
+  <span class="hint" id="day-label" style="margin-left:auto"></span>
+</div>
+
+<main>
+  <div class="kpis" id="kpis"></div>
+  <div class="stage">
+    <div class="col" id="lists"><div class="empty">상단에서 연결하면 오늘 현황이 표시됩니다.</div></div>
+    <div class="col"><div class="detail" id="detail"><div class="none">팀을 선택하면<br>방·잔액·메모가 여기 표시됩니다.</div></div></div>
+  </div>
+</main>
+
+<div id="toast"></div>
+<script src="../assets/saizen-ops.js?v=14.67"></script>
+<script>
+const $=s=>document.querySelector(s);
+let supa=null;
+let state={ day:'', teams:[], byId:{}, selSeq:null };
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function yen(n){const v=Math.round(Number(n)||0);return '¥'+v.toLocaleString('ja-JP');}
+function setConn(t,c){const e=$('#conn-state');if(e){e.textContent=t;e.className='pill'+(c?' '+c:'');}}
+function toast(msg,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.textContent=msg;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2400);}
+function isoToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function ymOf(d){return (d||'').slice(0,7);}
+function shiftDay(delta){const d=new Date($('#day-pick').value||isoToday());d.setDate(d.getDate()+delta);$('#day-pick').value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;if(supa)load();}
+function wd(d){const n=['日','月','火','水','木','金','土'][new Date(d).getDay()];return `(${n})`;}
+
+/* ── 연결 ── */
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn('URL·key 필요','err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.disabled=true;btn.textContent='연결 중…';btn.classList.remove('connected');
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {error}=await supa.from('bookings').select('event_seq',{count:'exact',head:true});
+    if(error)throw error;
+    setConn('연결됨','ok');btn.textContent='✓ 연결됨';btn.classList.add('connected');btn.disabled=false;
+    $('#btn-reload').disabled=false; await load();
+  }catch(e){setConn('연결 실패','err');toast('연결 실패: '+e.message,'err');btn.textContent='연결 실패 · 재시도';btn.disabled=false;supa=null;}
+}
+async function pagedQuery(buildFn){let out=[],pg=0;while(true){const {data,error}=await buildFn().range(pg,pg+999);if(error)return{error};out=out.concat(data||[]);if(!data||data.length<1000)break;pg+=1000;}return{data:out};}
+
+/* ── 로드 ── */
+async function load(){
+  if(!supa)return;
+  const day=$('#day-pick').value||isoToday(); state.day=day;
+  const ym=ymOf(day);
+  $('#day-label').textContent=day.slice(5).replace('-','/')+wd(day);
+  try{
+    // 그 날 걸치는 팀(월경계 포함): dep<=day && arr>=day  (출발 당일도 포함)
+    const {data:bs,error:e1}=await supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax,product_name').lte('dep_date',day).gte('arr_date',day);
+    if(e1)throw e1;
+    const seqs=(bs||[]).map(b=>b.event_seq);
+    const G={},R={},BAL={},NOTE={};
+    for(let i=0;i<seqs.length;i+=300){
+      const chunk=seqs.slice(i,i+300);
+      const {data:gs}=await supa.from('guests').select('event_seq,team_tag,group_code,accom,pax').in('event_seq',chunk); (gs||[]).forEach(g=>G[g.event_seq]=g);
+      const rr=await pagedQuery(()=>supa.from('rooms').select('event_seq,room_no').in('event_seq',chunk)); (rr.data||[]).forEach(r=>{if(r.room_no){(R[r.event_seq]=R[r.event_seq]||new Set()).add(r.room_no);}});
+      const {data:nt}=await supa.from('event_notes').select('event_seq,remarks,memo,team_label').in('event_seq',chunk); (nt||[]).forEach(n=>NOTE[n.event_seq]=n);
+    }
+    // 잔액: v_folio_balance(월) → event_seq 합산
+    const fb=await pagedQuery(()=>supa.from('v_folio_balance').select('event_seq,balance,gross_total,paid_total,charge_count').eq('session_ym',ym));
+    (fb.data||[]).forEach(f=>{const b=BAL[f.event_seq]=BAL[f.event_seq]||{bal:0,gross:0,paid:0,cnt:0};b.bal+=Number(f.balance||0);b.gross+=Number(f.gross_total||0);b.paid+=Number(f.paid_total||0);b.cnt+=Number(f.charge_count||0);});
+    state.teams=(bs||[]).map(b=>{const g=G[b.event_seq]||{};const bal=BAL[b.event_seq]||{bal:0,gross:0,paid:0,cnt:0};const n=NOTE[b.event_seq]||{};
+      return {seq:b.event_seq,no:b.event_no||b.event_seq,rep:b.rep_name||'',pax:g.pax||b.pax||0,dep:b.dep_date,arr:b.arr_date,
+        accom:g.accom||'',tag:g.team_tag||g.group_code||('팀'+(b.event_no||b.event_seq)),
+        rooms:R[b.event_seq]?[...R[b.event_seq]]:[],bal:bal.bal,gross:bal.gross,paid:bal.paid,cnt:bal.cnt,
+        memo:[n.remarks,n.memo].filter(Boolean).join(' / '),teamLabel:n.team_label||''};
+    });
+    state.byId={}; state.teams.forEach(t=>state.byId[t.seq]=t);
+    render();
+  }catch(e){toast('로드 실패: '+e.message,'err');}
+}
+
+function render(){
+  const day=state.day;
+  const arr=state.teams.filter(t=>t.dep===day);            // 체크인
+  const dep=state.teams.filter(t=>t.arr===day);            // 체크아웃
+  const stay=state.teams.filter(t=>t.dep<day&&t.arr>day);  // 연박(재실)
+  const ppl=a=>a.reduce((s,t)=>s+(parseInt(t.pax,10)||0),0);
+  const dueSum=state.teams.reduce((s,t)=>s+Math.max(0,t.bal),0);
+  const occRooms=new Set(); state.teams.filter(t=>t.dep<=day&&t.arr>day).forEach(t=>t.rooms.forEach(r=>occRooms.add(r)));
+  $('#kpis').innerHTML=
+    kpi('🛬 체크인',`${arr.length}<small>팀 ${ppl(arr)}名</small>`)+
+    kpi('🛫 체크아웃',`${dep.length}<small>팀 ${ppl(dep)}名</small>`)+
+    kpi('🏨 재실(연박)',`${stay.length}<small>팀 ${ppl(stay)}名</small>`)+
+    kpi('💴 미수 잔액',`${yen(dueSum)}`,dueSum>0?'due':'');
+  $('#lists').innerHTML=
+    sect('arr','🛬 오늘 체크인',arr)+
+    sect('dep','🛫 오늘 체크아웃',dep)+
+    sect('stay','🏨 재실(연박)',stay);
+  $('#lists').querySelectorAll('[data-seq]').forEach(el=>el.addEventListener('click',()=>selectTeam(Number(el.dataset.seq))));
+  if(state.selSeq && state.byId[state.selSeq]) renderDetail(state.byId[state.selSeq]);
+}
+function kpi(l,v,cls){return `<div class="kpi ${cls||''}"><div class="l">${l}</div><div class="v">${v}</div></div>`;}
+function sect(kind,title,list){
+  let rows = list.length? list.sort((a,b)=>(a.accom||'').localeCompare(b.accom||'')||(a.rep||'').localeCompare(b.rep||'')).map(t=>{
+    const balCls=t.bal>0?'due':(t.cnt?'':'zero');
+    return `<div class="trow ${t.seq===state.selSeq?'sel':''}" data-seq="${t.seq}">
+      <span class="tag">${esc(t.tag)}</span>
+      <span class="rep">${esc(t.rep)}</span>
+      <span class="pax">${t.pax}名</span>
+      <span class="room">${t.rooms.length?'🛏 '+t.rooms.join(','):'<span style="color:var(--muted)">미배정</span>'}</span>
+      <span class="accom">${esc(t.accom)}</span>
+      <span class="bal ${balCls}">${t.cnt?yen(t.bal):'-'}</span>
+    </div>`;
+  }).join('') : '<div class="empty">해당 없음</div>';
+  return `<div class="sect"><div class="sh ${kind}">${title}<span class="c">${list.length}팀</span></div>${rows}</div>`;
+}
+function selectTeam(seq){state.selSeq=seq;render();}
+function renderDetail(t){
+  const balCls=t.bal>0?'due':'zero';
+  $('#detail').innerHTML=`
+    <div class="dh"><span class="tag">${esc(t.tag)}</span> ${esc(t.rep)}様</div>
+    <div class="dsub">#${esc(String(t.no))} · ${esc(t.accom)} · ${t.pax}名 · ${esc((t.dep||'').slice(5))}~${esc((t.arr||'').slice(5))}</div>
+    <div style="margin-top:12px">
+      <div class="drow"><b>🛏 방번호</b><span>${t.rooms.length?esc(t.rooms.join(', ')):'<span style="color:var(--muted)">미배정</span>'}</span></div>
+      <div class="drow"><b>청구</b><span>${t.cnt}건 · ${yen(t.gross)}</span></div>
+      <div class="drow"><b>결제</b><span>${yen(t.paid)}</span></div>
+    </div>
+    <div style="margin-top:10px;text-align:center">
+      <div style="font-size:11.5px;color:var(--text2);font-weight:700">잔액</div>
+      <div class="big ${balCls}">${yen(t.bal)}</div>
+    </div>
+    <div style="font-size:11.5px;color:var(--text2);font-weight:700;margin-top:10px">📝 메모</div>
+    <div class="memo">${t.memo?esc(t.memo):'<span style="color:var(--muted)">메모 없음</span>'}</div>
+    <div class="links">
+      <a class="btn ghost sm" href="room.html" title="방배정에서 보기">🛏 방배정</a>
+      <a class="btn ghost sm" href="settle.html" title="정산에서 보기">💴 정산</a>
+      <a class="btn ghost sm" href="notes.html" title="메모 편집">📝 메모</a>
+    </div>`;
+}
+
+/* ── 부팅 ── */
+$('#btn-connect').addEventListener('click',connect);
+$('#btn-reload').addEventListener('click',load);
+$('#d-prev').addEventListener('click',()=>shiftDay(-1));
+$('#d-next').addEventListener('click',()=>shiftDay(1));
+$('#d-today').addEventListener('click',()=>{$('#day-pick').value=isoToday();if(supa)load();});
+$('#day-pick').addEventListener('change',()=>{if(supa)load();});
+(function init(){ $('#day-pick').value=isoToday(); loadCreds(); if($('#sb-url').value&&$('#sb-key').value) connect(); })();
+</script>
+</body>
+</html>
