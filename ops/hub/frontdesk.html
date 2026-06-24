@@ -93,7 +93,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.68">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.69">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -138,8 +138,9 @@
   </div>
 </main>
 
+<button id="to-top" title="맨 위로" style="display:none;position:fixed;right:20px;bottom:24px;z-index:50;width:44px;height:44px;border-radius:50%;border:1px solid var(--accent);background:var(--surface);color:var(--accent);font-size:19px;font-weight:800;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.16)">↑</button>
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=14.68"></script>
+<script src="../assets/saizen-ops.js?v=14.69"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -230,14 +231,18 @@ function render(){
   $('#kpis').innerHTML=
     kpi('🛬 체크인',`${arr.length}<small>팀 ${ppl(arr)}名</small>`,'','sec-arr')+
     kpi('🛫 체크아웃',`${dep.length}<small>팀 ${ppl(dep)}名</small>`,'','sec-dep')+
-    kpi('🏨 재실(연박)',`${stay.length}<small>팀 ${ppl(stay)}名</small>`,'','sec-stay')+
+    kpi('🏨 체류중(연박)',`${stay.length}<small>팀 ${ppl(stay)}名</small>`,'','sec-stay')+
     kpi('🍽 오늘 석식',`${ppl(dine)}<small>名 ${dine.length}팀</small>`)+
     kpi('💴 미수 잔액',`${yen(dueSum)}`,dueSum>0?'due':'');
-  $('#kpis').querySelectorAll('[data-go]').forEach(el=>el.addEventListener('click',()=>{const tg=document.getElementById(el.dataset.go);if(tg)tg.scrollIntoView({behavior:'smooth',block:'start'});}));
+  $('#kpis').querySelectorAll('[data-go]').forEach(el=>el.addEventListener('click',()=>{
+    const tg=document.getElementById(el.dataset.go); if(!tg) return;
+    const off=((document.querySelector('.topbar')||{}).offsetHeight||56)+8;   // 상단 고정바 가림 보정 → 라인명부터 보이게
+    window.scrollTo({top: tg.getBoundingClientRect().top+window.scrollY-off, behavior:'smooth'});
+  }));
   $('#lists').innerHTML=
     sect('arr','🛬 오늘 체크인',arr)+
     sect('dep','🛫 오늘 체크아웃',dep)+
-    sect('stay','🏨 재실(연박)',stay);
+    sect('stay','🏨 체류중(연박)',stay);
   $('#lists').querySelectorAll('[data-seq]').forEach(el=>el.addEventListener('click',()=>selectTeam(Number(el.dataset.seq))));
   if(state.selSeq && state.byId[state.selSeq]) renderDetail(state.byId[state.selSeq]);
 }
@@ -287,6 +292,10 @@ $('#d-prev').addEventListener('click',()=>shiftDay(-1));
 $('#d-next').addEventListener('click',()=>shiftDay(1));
 $('#d-today').addEventListener('click',()=>{$('#day-pick').value=isoToday();if(supa)load();});
 $('#day-pick').addEventListener('change',()=>{if(supa)load();});
+// 맨 위로 버튼 — 스크롤 내려가면 노출
+const _toTop=$('#to-top');
+window.addEventListener('scroll',()=>{ _toTop.style.display = window.scrollY>320?'block':'none'; });
+_toTop.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
 (function init(){ $('#day-pick').value=isoToday(); loadCreds(); if($('#sb-url').value&&$('#sb-key').value) connect(); })();
 </script>
 </body>
