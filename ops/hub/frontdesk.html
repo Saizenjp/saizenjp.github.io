@@ -228,11 +228,12 @@ function render(){
   const ppl=a=>a.reduce((s,t)=>s+(parseInt(t.pax,10)||0),0);
   const dueSum=pool.reduce((s,t)=>s+Math.max(0,t.bal),0);
   $('#kpis').innerHTML=
-    kpi('🛬 체크인',`${arr.length}<small>팀 ${ppl(arr)}名</small>`)+
-    kpi('🛫 체크아웃',`${dep.length}<small>팀 ${ppl(dep)}名</small>`)+
-    kpi('🏨 재실(연박)',`${stay.length}<small>팀 ${ppl(stay)}名</small>`)+
+    kpi('🛬 체크인',`${arr.length}<small>팀 ${ppl(arr)}名</small>`,'','sec-arr')+
+    kpi('🛫 체크아웃',`${dep.length}<small>팀 ${ppl(dep)}名</small>`,'','sec-dep')+
+    kpi('🏨 재실(연박)',`${stay.length}<small>팀 ${ppl(stay)}名</small>`,'','sec-stay')+
     kpi('🍽 오늘 석식',`${ppl(dine)}<small>名 ${dine.length}팀</small>`)+
     kpi('💴 미수 잔액',`${yen(dueSum)}`,dueSum>0?'due':'');
+  $('#kpis').querySelectorAll('[data-go]').forEach(el=>el.addEventListener('click',()=>{const tg=document.getElementById(el.dataset.go);if(tg)tg.scrollIntoView({behavior:'smooth',block:'start'});}));
   $('#lists').innerHTML=
     sect('arr','🛬 오늘 체크인',arr)+
     sect('dep','🛫 오늘 체크아웃',dep)+
@@ -240,7 +241,7 @@ function render(){
   $('#lists').querySelectorAll('[data-seq]').forEach(el=>el.addEventListener('click',()=>selectTeam(Number(el.dataset.seq))));
   if(state.selSeq && state.byId[state.selSeq]) renderDetail(state.byId[state.selSeq]);
 }
-function kpi(l,v,cls){return `<div class="kpi ${cls||''}"><div class="l">${l}</div><div class="v">${v}</div></div>`;}
+function kpi(l,v,cls,go){return `<div class="kpi ${cls||''}"${go?` data-go="${go}" style="cursor:pointer"`:''}><div class="l">${l}</div><div class="v">${v}</div></div>`;}
 function sect(kind,title,list){
   let rows = list.length? list.sort((a,b)=>(a.accom||'').localeCompare(b.accom||'')||(a.rep||'').localeCompare(b.rep||'')).map(t=>{
     const balCls=t.bal>0?'due':(t.cnt?'':'zero');
@@ -253,7 +254,7 @@ function sect(kind,title,list){
       <span class="bal ${balCls}">${t.cnt?yen(t.bal):'-'}</span>
     </div>`;
   }).join('') : '<div class="empty">해당 없음</div>';
-  return `<div class="sect"><div class="sh ${kind}">${title}<span class="c">${list.length}팀</span></div>${rows}</div>`;
+  return `<div class="sect" id="sec-${kind}"><div class="sh ${kind}">${title}<span class="c">${list.length}팀</span></div>${rows}</div>`;
 }
 function selectTeam(seq){state.selSeq=seq;render();}
 function renderDetail(t){
@@ -273,8 +274,8 @@ function renderDetail(t){
     <div style="font-size:11.5px;color:var(--text2);font-weight:700;margin-top:10px">📝 메모</div>
     <div class="memo">${t.memo?esc(t.memo):'<span style="color:var(--muted)">메모 없음</span>'}</div>
     <div class="links">
-      <a class="btn ghost sm" href="room.html" title="방배정에서 보기">🛏 방배정</a>
-      <a class="btn ghost sm" href="settle.html" title="정산에서 보기">💴 정산</a>
+      <a class="btn ghost sm" href="room.html?ym=${ymOf(t.dep)}&date=${state.day}" title="그 날짜 방배정으로">🛏 방배정</a>
+      <a class="btn ghost sm" href="settle.html?ym=${ymOf(t.dep)}&seq=${t.seq}" title="이 팀 정산으로">💴 정산</a>
       <a class="btn ghost sm" href="notes.html" title="메모 편집">📝 메모</a>
     </div>`;
 }

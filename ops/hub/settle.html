@@ -296,6 +296,15 @@ async function loadSession(){
   state.selId=null; state.charges=[]; state.payments=[];
   renderAccomChips(); renderFolioList(); renderDetail();
   toast(`${ym} · 정산계정 ${state.folios.length}건 로드`,'ok');
+  // 딥링크(?seq): 그 팀 folio 있으면 자동 열기, 없으면 월 전체에 노출(자동 생성 안 함)
+  if(window._deepSeq){
+    const s=window._deepSeq; window._deepSeq=null;
+    state.day=''; if($('#settle-day')) $('#settle-day').value='';
+    const tf=state.folios.find(f=>f.event_seq===s && f.subject==='team');
+    renderFolioList();
+    if(tf) selectFolio(tf.folio_id);
+    else toast('이 팀은 아직 청구 없음 — 목록에서 클릭해 시작','warn');
+  }
 }
 function isoTodayS(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 // 그날 점유/체류 방번호(팀 전체 체류 기준) — 정산은 월뷰라 팀의 배정 호수 전체
@@ -826,6 +835,8 @@ $('#settle-day').addEventListener('change',e=>{ state.day=e.target.value||''; re
 $('#btn-day-all').addEventListener('click',()=>{ state.day=''; $('#settle-day').value=''; renderFolioList(); });
 $('#settle-q').addEventListener('input',e=>{ state.q=e.target.value||''; renderFolioList(); });
 $('#session-ym').value=nowYM();
+// 프론트 데스크 등에서 ?ym=&seq= 딥링크 → 그 달 로드 후 그 팀 정산 자동 선택(없으면 월 전체에 노출, 자동생성 안 함)
+(function(){ const q=new URLSearchParams(location.search); if(q.get('ym')) $('#session-ym').value=q.get('ym'); window._deepSeq=q.get('seq')?Number(q.get('seq')):null; })();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
