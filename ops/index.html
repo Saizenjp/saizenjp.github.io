@@ -118,8 +118,8 @@
   <!-- 최신 고정 공지 띠(로그인 시) -->
   <a href="hub/board.html" id="ann-strip" style="display:none;text-decoration:none;align-items:center;gap:10px;background:#fdfbf3;border:1px solid #e6d3a3;border-left:4px solid var(--accent2);border-radius:10px;padding:11px 16px;margin-bottom:6px;color:var(--text)">
     <span style="font-weight:800;color:var(--accent2)" data-i18n="ix_annTag"></span>
-    <b id="ann-strip-t" style="font-size:14px"></b>
-    <span style="margin-left:auto;font-size:12px;color:var(--muted)" data-i18n="ix_boardOpen"></span>
+    <b id="ann-strip-t" style="font-size:14px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></b>
+    <span style="flex:none;font-size:12px;color:var(--muted);white-space:nowrap" data-i18n="ix_boardOpen"></span>
   </a>
 
   <!-- 주간 날씨(아소) — Open-Meteo 공개 API(키 불필요). 라운딩·송영 참고용 -->
@@ -345,7 +345,7 @@
       notice.style.display='none';
       // 고정 공지 띠 — 활성 고정(pin_until 미경과) 여러 건을 5초마다 페이드 전환(캐러셀)
       if(window.__so_authClient){ var _c=__so_authClient();
-        if(_c) _c.from('announcements').select('title,pin_until').eq('pinned',true)
+        if(_c) _c.from('announcements').select('title,pin_until,dept').eq('pinned',true)
           .order('sort_order',{ascending:true}).order('created_at',{ascending:false}).then(function(r){
           var now=Date.now();
           var pins=(r.data||[]).filter(function(a){ return !a.pin_until || new Date(a.pin_until).getTime()>now; });
@@ -353,7 +353,11 @@
           var st=document.getElementById('ann-strip'), el=document.getElementById('ann-strip-t');
           if(st.dataset.annWired) return;                 // gate 재호출 시 중복 배치·타이머 방지
           st.dataset.annWired='1';
-          st.style.display='flex'; el.style.transition='opacity .35s'; el.textContent=pins[0].title;
+          var DEPTL={front:'프론트',fnb:'식음',golf:'골프',acct:'회계',room:'객실'};
+          function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+          function item(a){ var d=a.dept?(DEPTL[a.dept]||a.dept):'전체';
+            return '<span style="display:inline-block;font-size:10px;font-weight:800;color:#fff;background:var(--accent2);border-radius:4px;padding:1px 6px;margin-right:7px;vertical-align:middle">'+esc(d)+'</span>'+esc(a.title); }
+          st.style.display='flex'; el.style.transition='opacity .35s'; el.innerHTML=item(pins[0]);
           if(pins.length>1){
             var cnt=document.createElement('span');
             cnt.style.cssText='font-size:11px;font-weight:700;color:var(--accent2);margin-right:2px';
@@ -362,7 +366,7 @@
             var i=0;
             setInterval(function(){
               i=(i+1)%pins.length; el.style.opacity='0';
-              setTimeout(function(){ el.textContent=pins[i].title; el.style.opacity='1'; },350);
+              setTimeout(function(){ el.innerHTML=item(pins[i]); el.style.opacity='1'; },350);
             }, 5000);
           }
         }).catch(function(){});
