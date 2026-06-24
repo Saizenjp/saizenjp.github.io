@@ -334,10 +334,25 @@
         return;
       }
       notice.style.display='none';
-      // 최신 고정 공지 띠
+      // 고정 공지 띠 — 활성 고정(pin_until 미경과) 여러 건을 5초마다 페이드 전환(캐러셀)
       if(window.__so_authClient){ var _c=__so_authClient();
-        if(_c) _c.from('announcements').select('title').eq('pinned',true).order('created_at',{ascending:false}).limit(1).then(function(r){
-          if(r.data&&r.data[0]){ var st=document.getElementById('ann-strip'); st.style.display='flex'; document.getElementById('ann-strip-t').textContent=r.data[0].title; }
+        if(_c) _c.from('announcements').select('title,pin_until').eq('pinned',true)
+          .order('sort_order',{ascending:true}).order('created_at',{ascending:false}).then(function(r){
+          var now=Date.now();
+          var pins=(r.data||[]).filter(function(a){ return !a.pin_until || new Date(a.pin_until).getTime()>now; });
+          if(!pins.length) return;
+          var st=document.getElementById('ann-strip'), el=document.getElementById('ann-strip-t');
+          st.style.display='flex'; el.style.transition='opacity .35s'; el.textContent=pins[0].title;
+          if(pins.length>1){
+            var cnt=document.createElement('span');
+            cnt.style.cssText='margin-left:auto;font-size:11px;font-weight:700;color:var(--accent2)';
+            cnt.textContent='📌 '+pins.length; st.appendChild(cnt);
+            var i=0;
+            setInterval(function(){
+              i=(i+1)%pins.length; el.style.opacity='0';
+              setTimeout(function(){ el.textContent=pins[i].title; el.style.opacity='1'; },350);
+            }, 5000);
+          }
         }).catch(function(){});
       }
       loadRegStrip();    // 등록된 데이터 현황(월·등록자·시각)
