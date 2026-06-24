@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="robots" content="noindex">
+<title>SaiZen · 御精算 / 계산 확인</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f6f2; --surface:#ffffff; --line:#d8ddce; --text:#23291d; --text2:#5d6650; --muted:#8b937c;
+    --accent:#647548; --accent2:#9a7322; --ok:#2f7d4f; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Noto Sans JP','Malgun Gothic',system-ui,sans-serif;
+    background:var(--bg);color:var(--text);-webkit-user-select:none;user-select:none;overflow:hidden}
+  .wrap{height:100vh;display:flex;flex-direction:column}
+  .top{display:flex;align-items:center;gap:14px;padding:16px 28px;border-bottom:3px solid var(--accent);background:var(--surface)}
+  .top .brand{font-weight:800;font-size:20px;color:var(--accent);letter-spacing:.5px}
+  .top .brand small{font-weight:600;color:var(--muted);font-size:12px;margin-left:8px;letter-spacing:0}
+  .langs{margin-left:auto;display:flex;gap:6px}
+  .langs button{font-family:inherit;font-size:14px;font-weight:700;padding:7px 14px;border-radius:99px;border:1px solid var(--line);
+    background:var(--surface);color:var(--text2);cursor:pointer}
+  .langs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .body{flex:1;overflow:auto;padding:22px 28px 34px}
+
+  /* 대기 화면 */
+  .idle{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;color:var(--text2)}
+  .idle .big{font-size:46px;font-weight:800;color:var(--accent)}
+  .idle .sub{font-size:18px;color:var(--muted)}
+
+  /* 계산서 */
+  .bill{max-width:860px;margin:0 auto}
+  .bhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;border-bottom:2px solid var(--accent);padding-bottom:12px;margin-bottom:6px}
+  .bhead .rep{font-size:30px;font-weight:800}
+  .bhead .tag{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--accent2)}
+  .bhead .ttl{margin-left:auto;font-size:15px;font-weight:700;color:var(--muted)}
+  table.lines{width:100%;border-collapse:collapse;font-size:19px}
+  table.lines th{text-align:left;font-size:13px;font-weight:700;color:var(--text2);padding:10px 8px;border-bottom:1px solid var(--line)}
+  table.lines th.r,table.lines td.r{text-align:right}
+  table.lines th.c,table.lines td.c{text-align:center}
+  table.lines td{padding:11px 8px;border-bottom:1px solid var(--line);font-weight:600}
+  table.lines td.amt{font-family:var(--mono);font-weight:700;white-space:nowrap}
+  .nolines{padding:34px;text-align:center;color:var(--muted);font-size:18px}
+  .totals{margin-top:18px;margin-left:auto;max-width:480px}
+  .trow{display:flex;justify-content:space-between;align-items:baseline;padding:7px 4px;font-size:20px}
+  .trow .lab{color:var(--text2);font-weight:700}
+  .trow .val{font-family:var(--mono);font-weight:800}
+  .trow.sum{border-top:2px solid var(--line);margin-top:4px;padding-top:12px}
+  .trow.due{border-top:3px solid var(--accent);margin-top:6px;padding-top:14px;font-size:30px}
+  .trow.due .lab{color:var(--accent);font-weight:800}
+  .trow.due .val{color:var(--accent)}
+  .note{text-align:center;color:var(--muted);font-size:15px;margin-top:22px}
+
+  /* 설정/로그인 */
+  .setup{height:100%;display:flex;align-items:center;justify-content:center}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px 28px;width:340px;box-shadow:0 8px 30px rgba(0,0,0,.08)}
+  .card h2{font-size:17px;color:var(--accent);margin-bottom:6px}
+  .card p{font-size:12.5px;color:var(--text2);margin-bottom:14px;line-height:1.5}
+  .card input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;margin-bottom:9px;font-family:inherit}
+  .card button{width:100%;padding:11px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-weight:700;font-size:14px;border-radius:8px;cursor:pointer}
+  .card .msg{font-size:12px;margin-top:9px;min-height:16px}
+  .card .msg.err{color:var(--err)} .card .msg.ok{color:var(--ok)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <span class="brand">SaiZen <small>Yamanami Resort</small></span>
+    <div class="langs" id="langs">
+      <button data-l="ko" class="on">한국어</button>
+      <button data-l="ja">日本語</button>
+      <button data-l="en">EN</button>
+    </div>
+  </div>
+  <div class="body" id="body"></div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const T={
+  ko:{ welcome:'어서 오세요', idle:'직원이 계산서를 표시하면 여기에 나타납니다.', guest:'고객',
+       item:'항목', qty:'수량', amount:'금액', noLines:'아직 청구 내역이 없습니다.',
+       subtotal:'청구 합계', paid:'결제 완료', due:'미결제 잔액', note:'※ 금액을 확인해 주세요. 결제는 직원이 도와드립니다.',
+       setupH:'손님 확인 화면 설정', setupP:'이 태블릿에서 직원 계정으로 한 번 로그인하면, 이후 계산대에서 표시한 팀의 계산서가 자동으로 나타납니다.',
+       email:'이메일', pw:'비밀번호', login:'로그인', loggingIn:'로그인 중…', loginErr:'로그인 실패', needCreds:'먼저 허브(ops)에서 접속한 적이 있어야 합니다.' },
+  ja:{ welcome:'いらっしゃいませ', idle:'スタッフがご精算内容を表示するとこちらに出ます。', guest:'お客様',
+       item:'品目', qty:'数量', amount:'金額', noLines:'まだご請求はありません。',
+       subtotal:'ご請求合計', paid:'お支払い済', due:'未払い残高', note:'※ 金額をご確認ください。お支払いはスタッフが承ります。',
+       setupH:'お客様確認画面の設定', setupP:'このタブレットでスタッフ用アカウントで一度ログインすると、レジで表示したチームの精算内容が自動表示されます。',
+       email:'メール', pw:'パスワード', login:'ログイン', loggingIn:'ログイン中…', loginErr:'ログイン失敗', needCreds:'先にハブ(ops)へ接続した履歴が必要です。' },
+  en:{ welcome:'Welcome', idle:'Your bill appears here once staff displays it.', guest:'Guest',
+       item:'Item', qty:'Qty', amount:'Amount', noLines:'No charges yet.',
+       subtotal:'Subtotal', paid:'Paid', due:'Balance due', note:'※ Please review the amount. Staff will assist with payment.',
+       setupH:'Customer Display Setup', setupP:'Log in once with a staff account on this tablet; the bill of the team shown at the register will then appear automatically.',
+       email:'Email', pw:'Password', login:'Log in', loggingIn:'Logging in…', loginErr:'Login failed', needCreds:'Connect via the hub (ops) at least once first.' }
+};
+let lang=localStorage.getItem('saizen_lang')||'ko'; if(!T[lang]) lang='ko';
+const station=new URLSearchParams(location.search).get('station')||'main';
+let supa=null, pollTimer=null, lastRender='';
+
+function yen(n){ return '¥'+Number(n||0).toLocaleString('ja-JP'); }
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+// 언어 토글
+document.querySelectorAll('#langs button').forEach(b=>b.addEventListener('click',()=>{
+  lang=b.dataset.l; localStorage.setItem('saizen_lang',lang);
+  document.querySelectorAll('#langs button').forEach(x=>x.classList.toggle('on',x===b));
+  document.documentElement.lang=lang; lastRender=''; tick();
+}));
+document.querySelectorAll('#langs button').forEach(x=>x.classList.toggle('on',x.dataset.l===lang));
+document.documentElement.lang=lang;
+
+function showIdle(){
+  const d=T[lang];
+  $('#body').innerHTML=`<div class="idle"><div class="big">${esc(d.welcome)}</div><div class="sub">${esc(d.idle)}</div></div>`;
+}
+function showSetup(){
+  const d=T[lang];
+  $('#body').innerHTML=`<div class="setup"><div class="card">
+    <h2>${esc(d.setupH)}</h2><p>${esc(d.setupP)}</p>
+    <input id="su-email" type="email" placeholder="${esc(d.email)}" autocomplete="username">
+    <input id="su-pw" type="password" placeholder="${esc(d.pw)}" autocomplete="current-password">
+    <button id="su-go">${esc(d.login)}</button>
+    <div class="msg" id="su-msg"></div>
+  </div></div>`;
+  $('#su-go').addEventListener('click',doLogin);
+  $('#su-pw').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+}
+async function doLogin(){
+  const d=T[lang], email=$('#su-email').value.trim(), pw=$('#su-pw').value;
+  if(!email||!pw) return;
+  $('#su-msg').className='msg'; $('#su-msg').textContent=d.loggingIn;
+  try{
+    const {error}=await supa.auth.signInWithPassword({email,password:pw});
+    if(error) throw error;
+    startPolling();
+  }catch(e){ $('#su-msg').className='msg err'; $('#su-msg').textContent=d.loginErr+': '+(e.message||e); }
+}
+
+function renderBill(seq, bal, lines){
+  const d=T[lang];
+  const rep=(bal[0]&&bal[0].rep_name)||'', tag=(bal[0]&&(bal[0].team_tag||bal[0].group_code))||'';
+  let gross=0, paid=0, due=0;
+  bal.forEach(f=>{ gross+=Number(f.gross_total||0); paid+=Number(f.paid_total||0); due+=Number(f.balance||0); });
+  const rows = lines.length ? lines.map(l=>{
+    const amt=Number(l.amount||0)+Number(l.tax||0)+Number(l.service_charge||0);
+    const q=Number(l.qty||1);
+    return `<tr><td>${esc(l.description||'')}</td><td class="c">${q%1===0?q:q}</td><td class="r amt">${yen(amt)}</td></tr>`;
+  }).join('') : `<tr><td colspan="3" class="nolines">${esc(d.noLines)}</td></tr>`;
+  $('#body').innerHTML=`<div class="bill">
+    <div class="bhead"><span class="rep">${esc(rep||d.guest)}</span>${tag?`<span class="tag">${esc(tag)}</span>`:''}<span class="ttl">${esc(d.guest)}</span></div>
+    <table class="lines">
+      <thead><tr><th>${esc(d.item)}</th><th class="c">${esc(d.qty)}</th><th class="r">${esc(d.amount)}</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="totals">
+      <div class="trow sum"><span class="lab">${esc(d.subtotal)}</span><span class="val">${yen(gross)}</span></div>
+      ${paid>0?`<div class="trow"><span class="lab">${esc(d.paid)}</span><span class="val">−${yen(paid)}</span></div>`:''}
+      <div class="trow due"><span class="lab">${esc(d.due)}</span><span class="val">${yen(due)}</span></div>
+    </div>
+    <div class="note">${esc(d.note)}</div>
+  </div>`;
+}
+
+async function tick(){
+  if(!supa) return;
+  try{
+    const {data:disp}=await supa.from('pos_display').select('event_seq').eq('station',station).maybeSingle();
+    const seq=disp?disp.event_seq:null;
+    if(!seq){ if(lastRender!=='idle'){ showIdle(); lastRender='idle'; } return; }
+    const [balRes, lineRes]=await Promise.all([
+      supa.from('v_folio_balance').select('rep_name,team_tag,group_code,gross_total,paid_total,balance').eq('event_seq',seq),
+      supa.from('charges').select('description,qty,amount,tax,service_charge,charged_at').eq('event_seq',seq).eq('voided',false).order('charged_at')
+    ]);
+    const bal=balRes.data||[], lines=lineRes.data||[];
+    // 변경 없으면 재렌더 안 함(언어변경 시 lastRender='' 로 강제)
+    const sig=lang+'|'+seq+'|'+JSON.stringify(bal)+'|'+lines.length+'|'+lines.reduce((s,l)=>s+Number(l.amount||0)+Number(l.tax||0),0);
+    if(sig!==lastRender){ renderBill(seq, bal, lines); lastRender=sig; }
+  }catch(e){ /* 폴링 오류는 조용히 무시(다음 주기 재시도) */ }
+}
+function startPolling(){
+  if(pollTimer) clearInterval(pollTimer);
+  lastRender=''; tick();
+  pollTimer=setInterval(tick, 3500);
+}
+
+(async function init(){
+  const url=localStorage.getItem('saizen_sb_url'), key=localStorage.getItem('saizen_sb_key');
+  if(!url||!key){ showSetup(); $('#su-msg')&&($('#su-msg').textContent=T[lang].needCreds); return; }
+  supa=window.supabase.createClient(url, key);
+  const {data}=await supa.auth.getSession();
+  if(data&&data.session){ startPolling(); } else { showSetup(); }
+})();
+</script>
+</body>
+</html>
