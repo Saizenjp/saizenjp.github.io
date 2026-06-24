@@ -125,7 +125,7 @@
   <!-- 주간 날씨(아소) — Open-Meteo 공개 API(키 불필요). 라운딩·송영 참고용 -->
   <div id="wx-strip" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:10px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <b style="font-size:12.5px;color:var(--accent)">🗻 아소 주간 날씨</b>
+      <b style="font-size:12.5px;color:var(--accent)">🗻 야마나미 오늘 시간별 날씨</b>
       <span id="wx-meta" style="font-size:11px;color:var(--muted)"></span>
     </div>
     <div id="wx-days" style="display:flex;gap:6px;overflow-x:auto"></div>
@@ -455,9 +455,9 @@
   else setTimeout(gate,60);
 })();
 
-// ── 주간 날씨(아소 야마나미) — Open-Meteo 공개 API(키·인증 불필요). 라운딩·송영 참고 ──
+// ── 오늘 시간별 날씨(야마나미 리조트, 아소) — Open-Meteo 공개 API(키·인증 불필요). 라운딩 참고 ──
 (function(){
-  var LAT=32.95, LON=131.12, WD=['일','월','화','수','목','금','토'];
+  var LAT=32.95, LON=131.12;   // 아소 야마나미 리조트 인근
   function wmap(c){
     if(c===0) return ['☀️','맑음']; if(c===1||c===2) return ['🌤️','대체로 맑음']; if(c===3) return ['☁️','흐림'];
     if(c===45||c===48) return ['🌫️','안개']; if(c>=51&&c<=57) return ['🌦️','이슬비'];
@@ -466,24 +466,29 @@
     return ['·',''];
   }
   var url='https://api.open-meteo.com/v1/forecast?latitude='+LAT+'&longitude='+LON
-    +'&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FTokyo&forecast_days=7';
+    +'&hourly=temperature_2m,weather_code,precipitation_probability&timezone=Asia%2FTokyo&forecast_days=1';
   fetch(url).then(function(r){return r.json();}).then(function(d){
-    if(!d||!d.daily||!d.daily.time) return;
-    var D=d.daily, html='';
-    for(var i=0;i<D.time.length;i++){
-      var dt=new Date(D.time[i]+'T00:00:00'), w=wmap(D.weather_code[i]), today=i===0;
-      var pp=D.precipitation_probability_max?D.precipitation_probability_max[i]:null;
-      html+='<div style="flex:0 0 auto;min-width:74px;text-align:center;padding:6px 4px;border-radius:8px;'
-        +(today?'background:var(--accentSoft,#e4ecd9);':'')+'">'
-        +'<div style="font-size:11px;color:var(--text2);font-weight:'+(today?'800':'600')+'">'
-          +(today?'오늘':(parseInt(D.time[i].slice(5,7),10)+'/'+parseInt(D.time[i].slice(8,10),10)+'('+WD[dt.getDay()]+')'))+'</div>'
-        +'<div style="font-size:20px;line-height:1.5" title="'+w[1]+'">'+w[0]+'</div>'
-        +'<div style="font-size:12px"><b>'+Math.round(D.temperature_2m_max[i])+'°</b> <span style="color:var(--muted)">'+Math.round(D.temperature_2m_min[i])+'°</span></div>'
-        +'<div style="font-size:10.5px;color:#1a4d8f">💧'+(pp==null?'-':pp+'%')+'</div></div>';
+    if(!d||!d.hourly||!d.hourly.time) return;
+    var H=d.hourly;
+    // 현재 JST 시각(보는 사람 시간대와 무관하게 리조트 기준)
+    var nowH=parseInt(new Date().toLocaleString('en-US',{timeZone:'Asia/Tokyo',hour:'2-digit',hour12:false}),10);
+    var html='';
+    for(var i=0;i<H.time.length;i++){
+      var hh=parseInt(H.time[i].slice(11,13),10);
+      if(hh<nowH) continue;                              // 지난 시간 제외(지금부터 자정까지)
+      var w=wmap(H.weather_code[i]), cur=hh===nowH;
+      var pp=H.precipitation_probability?H.precipitation_probability[i]:null;
+      html+='<div style="flex:0 0 auto;min-width:62px;text-align:center;padding:6px 4px;border-radius:8px;'
+        +(cur?'background:var(--accentSoft,#e4ecd9);':'')+'">'
+        +'<div style="font-size:11px;color:var(--text2);font-weight:'+(cur?'800':'600')+'">'+(cur?'지금':(hh+'시'))+'</div>'
+        +'<div style="font-size:19px;line-height:1.5" title="'+w[1]+'">'+w[0]+'</div>'
+        +'<div style="font-size:12px"><b>'+Math.round(H.temperature_2m[i])+'°</b></div>'
+        +'<div style="font-size:10px;color:#1a4d8f">💧'+(pp==null?'-':pp+'%')+'</div></div>';
     }
+    if(!html) html='<div style="padding:10px;color:var(--muted);font-size:12px">오늘 남은 시간이 없습니다(자정 이후 갱신).</div>';
     var days=document.getElementById('wx-days'); if(!days) return;
     days.innerHTML=html;
-    var mt=document.getElementById('wx-meta'); if(mt) mt.textContent='제공: Open-Meteo';
+    var mt=document.getElementById('wx-meta'); if(mt) mt.textContent='제공: Open-Meteo · 아소';
     document.getElementById('wx-strip').style.display='';
   }).catch(function(){ /* 날씨 로드 실패는 조용히 숨김 */ });
 })();
