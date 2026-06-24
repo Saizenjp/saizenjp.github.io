@@ -470,70 +470,87 @@ function printOrder(){
   w.document.write(fullHTML); w.document.close();
 }
 
-// ── レストラン名札 印刷 (간결판: A4 가로 1팀=1장, 가운데 접는 양면 텐트형) ──
-//   선택 날짜·숙소 기준, 그날 묵는(제외 제외) 팀을 태그코드·代表者 중심 명패로.
+// ── レストラン名札 印刷 (/app/ 완전 동일 양식: A4 가로·1팀1페이지·좌우 동일 텐트 반접기) ──
+//   입국일(dep===date) 기준 팀을 대표자名(큰글씨)+님·영문명·"일 행"·人数·기간·태그코드로.
+//   ※テーブルNo는 /app/ localStorage 수기항목이라 ops에선 빈칸(양식은 동일).
 function printNameplates(){
   const dates=selectedDates();
   if(!dates.length){ toast('출력할 날짜가 없습니다','err'); return; }
   const _accomSet=ACCOMSEL.size?ACCOMSEL:null;
   const todayStr=today();
-  const accIdx=(ac)=>{ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; };
+  const accomOrder=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
+  const fmtJP=(s)=>{ if(!s) return ''; return `${parseInt(s.slice(5,7),10)}月${parseInt(s.slice(8,10),10)}日`; };
   const cards=[];
   dates.forEach(date=>{
-    const staying=TEAMS.filter(t=>(!_accomSet||_accomSet.has(t.accom)) && !t.excluded && t.dep<=date && t.arr>date)
-      .sort((a,b)=>{ const ai=accIdx(a.accom),bi=accIdx(b.accom); if(ai!==bi)return ai-bi; return (a.repName||'').localeCompare(b.repName||''); });
-    staying.forEach(t=>{
-      const pax=parseInt(t.pax,10)||0;
-      const face=`<div class="np-face">
-          <div class="np-accom">${esc(t.accom)} · ${date.slice(5).replace('-','/')}${getWD(date)}</div>
-          <div class="np-rep">${esc(t.repName||'')}<span class="np-sama">様</span></div>
-          <div class="np-tag">${esc(t.tag)}</div>
-          <div class="np-meta">${pax}名 · ${fmtMD(t.dep)}〜${fmtMD(t.arr)}</div>
-        </div>`;
-      cards.push(`<div class="np-page"><div class="np-half np-top">${face}</div><div class="np-fold"></div><div class="np-half">${face}</div></div>`);
+    const teams=TEAMS.filter(t=> t.accom && !t.excluded && t.dep===date && (!_accomSet||_accomSet.has(t.accom)))
+      .sort((a,b)=>{ const ai=accomOrder.indexOf(a.accom),bi=accomOrder.indexOf(b.accom); if(ai!==bi) return (ai===-1?99:ai)-(bi===-1?99:bi); return (a.repName||'').localeCompare(b.repName||''); });
+    teams.forEach(t=>{
+      const eng=(t.engName && t.engName!=='(미등록)')?t.engName:'';
+      cards.push({ repName:(t.repName||'').trim(), engName:eng, pax:parseInt(t.pax,10)||0,
+        period:`${fmtJP(t.dep)} 〜 ${fmtJP(t.arr)}`, tagCode:t.tag||'' });
     });
   });
   if(!cards.length){ toast('출력할 데이터가 없습니다','err'); return; }
+  const pages=cards.map(c=>[c,c]);   // 양쪽 동일(반 접기 텐트)
+  const cellHTML=(c)=>{
+    if(!c) return `<div class="rn-card rn-card-empty"></div>`;
+    const repName=(c.repName||'').trim();
+    const hasKorean=/[가-힣]/.test(repName); const nameLen=repName.length; let nameSize;
+    if(hasKorean){ if(nameLen<=2)nameSize='100pt'; else if(nameLen===3)nameSize='82pt'; else if(nameLen===4)nameSize='62pt'; else nameSize='48pt'; }
+    else { if(nameLen<=5)nameSize='86pt'; else if(nameLen<=7)nameSize='68pt'; else if(nameLen<=10)nameSize='54pt'; else nameSize='42pt'; }
+    return `<div class="rn-card">
+      <div class="rn-r1" style="font-size:${nameSize}">${esc(repName)}<span class="rn-honorific">님</span></div>
+      <div class="rn-r1b">${esc(c.engName||'')}</div>
+      <div class="rn-r2">일  행</div>
+      <div class="rn-r3">${c.pax}名</div>
+      <div class="rn-r4">${esc(c.period)}</div>
+      <div class="rn-r5">${esc(c.tagCode)}</div>
+      <div class="rn-table"></div>
+    </div>`;
+  };
+  const pagesHTML=pages.map(pg=>`<div class="rn-page">${pg.map(cellHTML).join('')}</div>`).join('');
   const fullHTML=`<!DOCTYPE html>
-<html lang="ja"><head><meta charset="UTF-8">
+<html lang="ko"><head><meta charset="UTF-8">
 <title>レストラン名札 印刷 — ${todayStr}</title>
 <style>
-  @page { size: A4 landscape; margin: 0; }
+  @page { size: A4 landscape; margin: 8mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { font-family: 'Meiryo', 'Malgun Gothic', sans-serif; background: #eceef1; color: #1A2540; }
-  .np-toolbar { position: sticky; top: 0; background: #fff; padding: 14px 20px; box-shadow: 0 2px 8px rgba(0,0,0,.1); display: flex; align-items: center; gap: 16px; z-index: 100; }
-  .np-toolbar h1 { font-size: 16px; font-weight: 700; }
-  .np-toolbar .meta { font-size: 11px; color: #666; }
-  .np-toolbar button { padding: 8px 20px; background: #15803D; color: #fff; border: none; border-radius: 5px; font-size: 13px; font-weight: 600; cursor: pointer; }
-  .np-toolbar .np-close { background: #999; }
-  .np-container { padding: 20px; }
-  .np-page { width: 297mm; height: 209mm; margin: 0 auto 16px; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.08); page-break-after: always; display: flex; flex-direction: column; }
-  .np-page:last-child { page-break-after: auto; }
-  .np-half { flex: 1; display: flex; align-items: center; justify-content: center; }
-  .np-top { transform: rotate(180deg); }
-  .np-fold { height: 0; border-top: 1.2pt dashed #aab; }
-  .np-face { text-align: center; padding: 8mm; }
-  .np-accom { font-size: 15pt; font-weight: 700; color: #1A4D8F; margin-bottom: 7mm; letter-spacing: 1pt; }
-  .np-rep { font-size: 56pt; font-weight: 800; color: #1A2540; line-height: 1.1; }
-  .np-sama { font-size: 30pt; font-weight: 600; margin-left: 4mm; color: #555; }
-  .np-tag { font-size: 34pt; font-weight: 800; font-family: 'Consolas', monospace; color: #15803D; letter-spacing: 3pt; margin-top: 6mm; }
-  .np-meta { font-size: 16pt; color: #666; margin-top: 5mm; font-family: 'Consolas', monospace; }
+  html, body { font-family: 'Malgun Gothic', 'Meiryo', sans-serif; background: #f5f5f5; color: #000; }
+  .rn-toolbar { position: sticky; top: 0; background: #fff; padding: 14px 20px; box-shadow: 0 2px 8px rgba(0,0,0,.1); display: flex; align-items: center; gap: 16px; z-index: 100; }
+  .rn-toolbar h1 { font-size: 16px; font-weight: 700; color: #1a2540; }
+  .rn-toolbar .meta { font-size: 11px; color: #666; }
+  .rn-toolbar button { padding: 8px 20px; background: #15803D; color: #fff; border: none; border-radius: 5px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .rn-toolbar .rn-close { background: #999; }
+  .rn-container { padding: 20px; }
+  .rn-page { width: 281mm; height: 194mm; margin: 0 auto 20px; background: #fff; display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; box-shadow: 0 2px 12px rgba(0,0,0,.08); page-break-after: always; }
+  .rn-page:last-child { page-break-after: auto; }
+  .rn-card { border: 3pt solid #1A2540; border-radius: 4mm; padding: 4mm 4mm; display: grid; grid-template-rows: 48mm 10mm 36mm 28mm 12mm 24mm 18mm; align-items: center; text-align: center; overflow: hidden; color: #000; }
+  .rn-card-empty { border: 3pt dashed #ddd; }
+  .rn-r1 { font-size: 100pt; font-weight: 700; line-height: 1; letter-spacing: -2pt; }
+  .rn-honorific { font-size: 0.55em; margin-left: 0.25em; font-weight: 700; opacity: 0.85; }
+  .rn-r1b { font-size: 16pt; font-weight: 500; line-height: 1; letter-spacing: 1.5pt; color: #333; font-family: 'Arial', 'Meiryo', sans-serif; }
+  .rn-r2 { font-size: 54pt; font-weight: 700; line-height: 1; letter-spacing: 6pt; }
+  .rn-r3 { font-size: 50pt; font-weight: 700; line-height: 1; }
+  .rn-r4 { font-size: 18pt; font-weight: 500; color: #333; line-height: 1; letter-spacing: 2pt; }
+  .rn-r5 { font-size: 54pt; font-weight: 700; line-height: 1; font-family: 'Arial', 'Meiryo', sans-serif; letter-spacing: 3pt; color: #000; }
+  .rn-table { font-size: 34pt; font-weight: 800; line-height: 1; font-family: 'Arial', 'Meiryo', sans-serif; letter-spacing: 2pt; color: #1A2540; border-top: 1.5pt solid #1A2540; padding-top: 3mm; margin: 0 8mm; }
+  .rn-table:empty { border-top: none; }
   @media print {
     html, body { background: #fff; }
-    .np-toolbar { display: none; }
-    .np-container { padding: 0; }
-    .np-page { margin: 0 auto; box-shadow: none; }
-    .np-tag, .np-accom { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .rn-toolbar { display: none; }
+    .rn-container { padding: 0; }
+    .rn-page { margin: 0 auto; box-shadow: none; }
   }
-</style></head>
-<body>
-  <div class="np-toolbar">
+</style>
+</head><body>
+  <div class="rn-toolbar">
     <h1>レストラン名札 印刷 미리보기</h1>
-    <div class="meta">A4 가로 · 1팀=1장(가운데 접어 양면) · ${cards.length}장 · ${todayStr}</div>
+    <div class="meta">A4 가로 · 1팀 1페이지 · 양쪽 동일 (반 접기 텐트형) · 총 ${cards.length}팀 · ${pages.length}페이지 · ${todayStr}</div>
+    <div style="flex:1"></div>
     <button onclick="window.print()">인쇄</button>
-    <button class="np-close" onclick="window.close()">✕ 닫기</button>
+    <button class="rn-close" onclick="window.close()">✕ 닫기</button>
   </div>
-  <div class="np-container">${cards.join('')}</div>
+  <div class="rn-container">${pagesHTML}</div>
 </body></html>`;
   const w=window.open('','_blank'); if(!w){ toast('팝업 차단 — 허용 필요','err'); return; }
   w.document.write(fullHTML); w.document.close();
