@@ -1524,10 +1524,26 @@
     } catch (e) {}
   }
 
+  // ── 맨 위로 버튼 — 전 ops 페이지 공통. 스크롤 내려가면 우하단에 노출. ──
+  function mountToTop() {
+    if (document.getElementById('so-totop')) return;   // 페이지 자체 버튼이 있으면 중복 방지
+    var b = document.createElement('button');
+    b.id = 'so-totop'; b.type = 'button'; b.title = '맨 위로'; b.setAttribute('aria-label', '맨 위로');
+    b.textContent = '↑';
+    b.style.cssText = 'display:none;position:fixed;right:20px;bottom:24px;z-index:60;width:44px;height:44px;'
+      + 'border-radius:50%;border:1px solid var(--accent,#647548);background:var(--surface,#fff);'
+      + 'color:var(--accent,#647548);font-size:19px;font-weight:800;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.16)';
+    document.body.appendChild(b);
+    var onScroll = function () { b.style.display = (window.scrollY > 320) ? 'block' : 'none'; };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    b.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    onScroll();
+  }
+
   function boot() {
     mountHead();
     if (handleAuthRedirect()) { applyLang(); return; }   // 초대/재설정 모드면 비번 설정만
-    mountAuth(); mountFooter(); applyLang(); guardPage(); mountConnToggle(); mountHelp();
+    mountAuth(); mountFooter(); applyLang(); guardPage(); mountConnToggle(); mountHelp(); mountToTop();
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);

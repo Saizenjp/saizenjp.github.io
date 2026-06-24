@@ -67,7 +67,10 @@
   /* 2단 레이아웃 */
   .stage{display:grid;grid-template-columns:300px 1fr;gap:16px;padding:16px 20px;align-items:start}
   /* 좌측 미배정 팀 패널 = 스크롤 동행(고정바 아래 sticky, 길면 내부 스크롤). 순수 CSS라 랙 없음 */
-  .stage > .col:first-child{position:sticky;top:56px;max-height:calc(100vh - 68px);overflow:auto}
+  /* 컨트롤 바(월·버튼+날짜칩) = 상단 topbar 아래 고정. top은 JS가 topbar 높이로 동기화. */
+  .ctrlbar{position:sticky;top:56px;z-index:25;background:var(--bg);box-shadow:0 4px 8px -5px rgba(0,0,0,.22)}
+  /* 좌측 미배정 패널 = 컨트롤 바 아래에 고정(높이는 JS가 --stick2로 계산) */
+  .stage > .col:first-child{position:sticky;top:var(--stick2,150px);max-height:calc(100vh - var(--stick2,150px) - 12px);overflow:auto}
   @media(max-width:860px){.stage{grid-template-columns:1fr}.stage > .col:first-child{position:static;max-height:none;overflow:visible}}
 
   .col{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.05)}
@@ -316,7 +319,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.72">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.73">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -344,6 +347,7 @@
   <span class="hint" data-i18n="rm_connHint"></span>
 </div>
 
+<div class="ctrlbar" id="ctrlbar">
 <div class="datebar">
   <label id="lbl-from">월</label>
   <button class="btn ghost sm" id="date-prev" type="button" title="이전 달" style="padding:5px 9px">◀</button>
@@ -371,6 +375,7 @@
   </div>
 </div>
 <div class="day-strip" id="day-strip"></div>
+</div><!-- /ctrlbar -->
 
 <div class="stage">
   <!-- 좌: 미배정 팀 -->
@@ -411,7 +416,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=2"></script>
-<script src="../assets/saizen-ops.js?v=14.72"></script>
+<script src="../assets/saizen-ops.js?v=14.73"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -2314,6 +2319,21 @@ if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자�
 
 // 언어 전환 시 현재 화면 다시 그리기(로드된 데이터가 있으면)
 window.onSaizenLangChange = function(){ try{ if(typeof render==='function' && state && state.guests) render(); }catch(e){} try{ renderSelBar(); }catch(e){} };
+
+// 고정 컨트롤 바 높이 동기화 — topbar 높이로 ctrlbar top을 맞추고, (topbar+ctrlbar) 높이를
+//   --stick2 로 내려 좌측 패널이 그 아래에 붙게. 스크롤 핸들러 없이 ResizeObserver만(랙 없음).
+(function(){
+  const tb=document.querySelector('.topbar'), cb=document.getElementById('ctrlbar');
+  if(!tb||!cb) return;
+  function sync(){
+    const tbh=tb.offsetHeight||56;
+    cb.style.top=tbh+'px';
+    document.documentElement.style.setProperty('--stick2',(tbh+cb.offsetHeight+6)+'px');
+  }
+  sync();
+  if(window.ResizeObserver){ const ro=new ResizeObserver(sync); ro.observe(tb); ro.observe(cb); }
+  window.addEventListener('resize',sync);
+})();
 </script>
 </body>
 </html>
