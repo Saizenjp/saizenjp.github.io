@@ -54,13 +54,14 @@
   table.tedit td.mono{font-family:var(--mono)}
   table.tedit input{border:1px solid var(--border2);border-radius:5px;padding:4px 6px;font-size:12px;font-family:inherit}
   table.tedit input.te-tag{font-family:var(--mono);font-weight:700;color:var(--accent2)}
+  .dg-badge{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:999px;border:1px solid var(--border2);white-space:nowrap}
   .te-edited{color:var(--accent2);font-weight:800}
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
   .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.70">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.71">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -91,7 +92,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=2"></script>
-<script src="../assets/saizen-ops.js?v=14.70"></script>
+<script src="../assets/saizen-ops.js?v=14.71"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set(), OVR={};
@@ -160,14 +161,21 @@ function renderUI(){
       <div id="preview" class="preview"></div>
     </div>
     <div class="panel">
-      <h3>팀별 태그·인원 수정 <span class="cnt">— 태그·인원·제외는 夕食オーダー에만 반영(병합용). 항공커버는 영향 없음</span></h3>
+      <h3>팀별 태그·인원·묶기 <span class="cnt">— 태그·인원·제외는 夕食オーダー에만 반영. 묶기(🔗)는 レストラン名札 1장으로 합석(인원 합산·대표/태그 모두 표기). 항공커버는 영향 없음</span></h3>
       <div id="tedit-reco" style="font-size:12.5px;margin:2px 0 10px;color:var(--muted)"></div>
+      <div id="tedit-tools" style="display:flex;gap:8px;align-items:center;margin:0 0 8px;flex-wrap:wrap">
+        <button class="btn ghost sm" id="dg-link" type="button">🔗 선택 묶기</button>
+        <button class="btn ghost sm" id="dg-unlink" type="button">✂ 묶음 해제</button>
+        <span class="hint">같은 식당 명패로 합석할 팀을 체크 → 묶기. 명패엔 합산 인원 + 대표자·태그 모두 나옵니다.</span>
+      </div>
       <div style="overflow:auto"><table class="tedit" id="tedit"><thead></thead><tbody></tbody></table></div>
     </div>`;
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
   $('#btn-print').addEventListener('click',printOrder);
   $('#btn-nameplate').addEventListener('click',printNameplates);
+  $('#dg-link').addEventListener('click',groupSelected);
+  $('#dg-unlink').addEventListener('click',ungroupSelected);
 }
 function renderTeamEdit(){
   const thead=$('#tedit thead'), tbody=$('#tedit tbody'); if(!thead)return;
@@ -183,13 +191,15 @@ function renderTeamEdit(){
       ? `<span style="color:var(--ok);font-weight:800">✓ 분배 일치</span> — 원래 ${origN}名 = 수정 후 ${editN}名 <span style="color:var(--muted)">(${sc})</span>`
       : `<span style="color:var(--err);font-weight:800">⚠ 분배 불일치 (${diff>0?'+':''}${diff}名)</span> — 원래 ${origN}名 → 수정 후 ${editN}名 <span style="color:var(--muted)">(${sc}) · 취합이 맞는지 확인</span>`;
   }
-  thead.innerHTML='<tr><th>入国</th><th>施設</th><th>代表者</th><th>タグコード</th><th>人数</th><th>除外</th></tr>';
-  if(!rows.length){ tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">팀 없음</td></tr>'; return; }
+  thead.innerHTML='<tr><th><input type="checkbox" id="te-all" title="전체 선택"></th><th>入国</th><th>施設</th><th>代表者</th><th>묶음</th><th>タグコード</th><th>人数</th><th>除外</th></tr>';
+  if(!rows.length){ tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:18px">팀 없음</td></tr>'; return; }
   tbody.innerHTML=rows.map(t=>{ const ov=OVR[t.seq]||{}; const edited=(ov.team_tag&&ov.team_tag.trim())||(ov.pax_override!=null); const ex=!!t.excluded;
     return `<tr data-seq="${t.seq}" style="${ex?'opacity:.45':''}">
+      <td class="c"><input type="checkbox" class="te-ck" data-seq="${t.seq}"></td>
       <td class="c mono">${esc((t.dep||'').slice(5))}</td>
       <td class="c">${esc(t.accom)}</td>
       <td style="${ex?'text-decoration:line-through':''}">${esc(t.repName||'')}${edited&&!ex?' <span class="te-edited" title="오버라이드 적용됨">✎</span>':''}</td>
+      <td class="c">${dgBadge(t.dgroup)}</td>
       <td><input class="te-tag" data-seq="${t.seq}" value="${esc(t.tag)}" style="width:120px" ${ex?'disabled':''}></td>
       <td><input class="te-pax" data-seq="${t.seq}" type="number" min="0" value="${parseInt(t.pax,10)||0}" style="width:64px;text-align:center" ${ex?'disabled':''}></td>
       <td class="c"><button type="button" class="te-ex" data-seq="${t.seq}" data-ex="${ex?1:0}" style="font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:6px;cursor:pointer;border:1px solid ${ex?'var(--accent)':'var(--border2)'};background:${ex?'var(--accent)':'var(--surface)'};color:${ex?'#fff':'var(--err)'}">${ex?'복원':'제외'}</button></td>
@@ -197,6 +207,37 @@ function renderTeamEdit(){
   tbody.querySelectorAll('.te-tag').forEach(inp=>inp.addEventListener('change',()=>saveDinnerOverride(inp.dataset.seq,'team_tag',inp.value)));
   tbody.querySelectorAll('.te-pax').forEach(inp=>inp.addEventListener('change',()=>saveDinnerOverride(inp.dataset.seq,'pax_override',inp.value)));
   tbody.querySelectorAll('.te-ex').forEach(b=>b.addEventListener('click',()=>saveDinnerOverride(b.dataset.seq,'excluded',b.dataset.ex!=='1')));
+  const all=$('#te-all'); if(all) all.addEventListener('change',()=>{ tbody.querySelectorAll('.te-ck').forEach(c=>{c.checked=all.checked;}); });
+}
+// 묶음 색 — group key 해시 → hue. 같은 묶음끼리 같은 색.
+function dgHue(key){ let h=0; for(const c of String(key||'')) h=(h*31+c.charCodeAt(0))%360; return h; }
+function dgBadge(key){ if(!key) return ''; const h=dgHue(key); const n=TEAMS.filter(t=>t.dgroup===key).length;
+  return `<span class="dg-badge" style="background:hsl(${h},60%,93%);color:hsl(${h},70%,32%);border-color:hsl(${h},50%,75%)">🔗 ${n}팀</span>`; }
+function _ckSeqs(){ return [...document.querySelectorAll('#tedit .te-ck:checked')].map(c=>c.dataset.seq); }
+async function groupSelected(){
+  const seqs=_ckSeqs();
+  if(seqs.length<2){ toast('합석할 팀을 2개 이상 체크하세요','warn'); return; }
+  const key='g'+seqs.map(Number).sort((a,b)=>a-b)[0];
+  await saveDiningGroup(seqs,key); toast(seqs.length+'팀 묶음 — 명패 1장으로 합석','ok');
+}
+async function ungroupSelected(){
+  const seqs=_ckSeqs();
+  if(!seqs.length){ toast('해제할 팀을 체크하세요','warn'); return; }
+  await saveDiningGroup(seqs,null); toast('묶음 해제','ok');
+}
+async function saveDiningGroup(seqs,key){
+  if(!supa) return;
+  try{
+    for(const seq of seqs){
+      const cur=OVR[seq]||{};
+      const merged={event_seq:Number(seq),session_ym:YM,updated_by:curUser(),
+        team_tag:cur.team_tag||null, pax_override:(cur.pax_override!=null?cur.pax_override:null),
+        excluded:!!cur.excluded, dining_group:key};
+      const {error}=await supa.from('print_overrides').upsert(merged,{onConflict:'event_seq'}); if(error)throw error;
+      OVR[seq]=merged; const t=TEAMS.find(x=>x.seq===String(seq)); if(t) t.dgroup=key;
+    }
+    renderTeamEdit(); renderPreview();
+  }catch(e){ toast('저장 실패: '+e.message,'err'); }
 }
 function accomIdx(ac){ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; }
 async function saveDinnerOverride(seq,field,val){
@@ -281,14 +322,14 @@ async function load(){
     // 팀 태그·인원 오버라이드(print_overrides) — 航空カバー와 공유. event_seq 기준(월경계 포함)
     OVR={};
     for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
-      const {data:ov}=await supa.from('print_overrides').select('event_seq,team_tag,pax_override,excluded').in('event_seq',chunk);
+      const {data:ov}=await supa.from('print_overrides').select('event_seq,team_tag,pax_override,excluded,dining_group').in('event_seq',chunk);
       (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
     }
     TEAMS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{}; const r=REP[b.event_seq]||{}; const o=ORI[b.event_seq]||{}; const ov=OVR[b.event_seq]||{};
       const origin=(o.byRep?o.origin:'')||o.origin||b.origin||'';
       const basePax=b.pax||g.pax||0;
       return { seq:String(b.event_seq), accom:g.accom||'', dep:fmtDate(b.dep_date), arr:fmtDate(b.arr_date),
-        pax:(ov.pax_override!=null?ov.pax_override:basePax), basePax, excluded:!!ov.excluded,
+        pax:(ov.pax_override!=null?ov.pax_override:basePax), basePax, excluded:!!ov.excluded, dgroup:ov.dining_group||null,
         repName:b.rep_name||r.name||'', engName:r.eng||o.eng||'',
         tag:(ov.team_tag&&ov.team_tag.trim())||r.tag||g.team_tag||g.group_code||'', isPus:isPusOf(origin) };
     }).filter(t=>t.accom);
@@ -484,10 +525,18 @@ function printNameplates(){
   dates.forEach(date=>{
     const teams=TEAMS.filter(t=> t.accom && !t.excluded && t.dep===date && (!_accomSet||_accomSet.has(t.accom)))
       .sort((a,b)=>{ const ai=accomOrder.indexOf(a.accom),bi=accomOrder.indexOf(b.accom); if(ai!==bi) return (ai===-1?99:ai)-(bi===-1?99:bi); return (a.repName||'').localeCompare(b.repName||''); });
-    teams.forEach(t=>{
-      const eng=(t.engName && t.engName!=='(미등록)')?t.engName:'';
-      cards.push({ repName:(t.repName||'').trim(), engName:eng, pax:parseInt(t.pax,10)||0,
-        period:`${fmtJP(t.dep)} 〜 ${fmtJP(t.arr)}`, tagCode:t.tag||'' });
+    // 묶음(dining_group) 단위로 합쳐 1장: 인원 합산 + 대표자·태그 모두 표기. 단독은 그대로.
+    const byG=new Map(), gOrder=[];
+    teams.forEach(t=>{ const key=t.dgroup||('_solo:'+t.seq); if(!byG.has(key)){ byG.set(key,[]); gOrder.push(key); } byG.get(key).push(t); });
+    gOrder.forEach(key=>{
+      const grp=byG.get(key);
+      const names=grp.map(t=>(t.repName||'').trim()).filter(Boolean);
+      const engs=grp.map(t=>(t.engName&&t.engName!=='(미등록)')?t.engName.trim():'').filter(Boolean);
+      const tags=grp.map(t=>(t.tag||'').trim()).filter(Boolean);
+      const pax=grp.reduce((s,t)=>s+(parseInt(t.pax,10)||0),0);
+      const f=grp[0];
+      cards.push({ repName:names.join(' · '), engName:engs.join(' · '), pax,
+        period:`${fmtJP(f.dep)} 〜 ${fmtJP(f.arr)}`, tagCode:tags.join('  '), nTeams:grp.length });
     });
   });
   if(!cards.length){ toast('출력할 데이터가 없습니다','err'); return; }
@@ -496,15 +545,18 @@ function printNameplates(){
     if(!c) return `<div class="rn-card rn-card-empty"></div>`;
     const repName=(c.repName||'').trim();
     const hasKorean=/[가-힣]/.test(repName); const nameLen=repName.length; let nameSize;
-    if(hasKorean){ if(nameLen<=2)nameSize='100pt'; else if(nameLen===3)nameSize='82pt'; else if(nameLen===4)nameSize='62pt'; else nameSize='48pt'; }
-    else { if(nameLen<=5)nameSize='86pt'; else if(nameLen<=7)nameSize='68pt'; else if(nameLen<=10)nameSize='54pt'; else nameSize='42pt'; }
+    // 묶음으로 이름이 길어지면 칸에 맞게 자동 축소(' · ' 구분 포함 길이 기준).
+    if(hasKorean){ nameSize = nameLen<=2?'100pt': nameLen===3?'82pt': nameLen===4?'62pt': nameLen<=6?'48pt': nameLen<=9?'38pt': nameLen<=13?'30pt':'24pt'; }
+    else { nameSize = nameLen<=5?'86pt': nameLen<=7?'68pt': nameLen<=10?'54pt': nameLen<=14?'42pt': nameLen<=20?'32pt':'26pt'; }
+    const tagLen=(c.tagCode||'').length;
+    const tagSize = tagLen<=5?'54pt': tagLen<=9?'40pt': tagLen<=14?'30pt':'24pt';
     return `<div class="rn-card">
       <div class="rn-r1" style="font-size:${nameSize}">${esc(repName)}<span class="rn-honorific">님</span></div>
       <div class="rn-r1b">${esc(c.engName||'')}</div>
       <div class="rn-r2">일  행</div>
       <div class="rn-r3">${c.pax}名</div>
       <div class="rn-r4">${esc(c.period)}</div>
-      <div class="rn-r5">${esc(c.tagCode)}</div>
+      <div class="rn-r5" style="font-size:${tagSize}">${esc(c.tagCode)}</div>
       <div class="rn-table"></div>
     </div>`;
   };
@@ -545,7 +597,7 @@ function printNameplates(){
 </head><body>
   <div class="rn-toolbar">
     <h1>レストラン名札 印刷 미리보기</h1>
-    <div class="meta">A4 가로 · 1팀 1페이지 · 양쪽 동일 (반 접기 텐트형) · 총 ${cards.length}팀 · ${pages.length}페이지 · ${todayStr}</div>
+    <div class="meta">A4 가로 · 1장 1페이지(묶음=합석 1장) · 양쪽 동일 (반 접기 텐트형) · 총 ${cards.length}장 · ${pages.length}페이지 · ${todayStr}</div>
     <div style="flex:1"></div>
     <button onclick="window.print()">인쇄</button>
     <button class="rn-close" onclick="window.close()">✕ 닫기</button>
