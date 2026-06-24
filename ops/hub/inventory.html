@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 재고 · 내부 관리</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
+    --border:#e3e6ea; --border2:#cdd2d8; --muted:#8a93a0; --text2:#566071;
+  }
+  .inv-wrap{ padding:14px 20px 80px; max-width:1180px; margin:0 auto; }
+  .inv-bar{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px }
+  .dept-toggle{ display:flex; gap:6px }
+  .dept-toggle button{ font-size:14px; font-weight:700; padding:8px 18px; border-radius:9px; border:1px solid var(--border2);
+    background:var(--surface); color:var(--text2); cursor:pointer }
+  .dept-toggle button.on{ background:var(--accent); color:#fff; border-color:var(--accent) }
+  .inv-sum{ margin-left:auto; font-size:13px; color:var(--text2); font-weight:700 }
+  .inv-sum .low{ color:#b3473a }
+  .catchips{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px }
+  .catchip{ font-size:12.5px; font-weight:700; padding:5px 13px; border-radius:99px; border:1px solid var(--border2);
+    background:var(--surface); color:var(--text2); cursor:pointer }
+  .catchip.on{ background:var(--accent2); color:#fff; border-color:var(--accent2) }
+  .addrow{ display:flex; gap:7px; flex-wrap:wrap; align-items:center; background:var(--surface); border:1px solid var(--border);
+    border-radius:11px; padding:11px 13px; margin-bottom:14px }
+  .addrow .inp{ font-size:13px }
+  .inv-table{ width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--border); border-radius:11px; overflow:hidden }
+  .inv-table th{ background:var(--surface3); font-size:12px; font-weight:800; color:var(--text2); padding:9px 10px; text-align:left; white-space:nowrap }
+  .inv-table td{ font-size:13.5px; padding:8px 10px; border-top:1px solid var(--border); vertical-align:middle }
+  .inv-table tr.cat-h td{ background:var(--surface2); font-weight:800; color:var(--accent2); font-size:12.5px; padding:6px 12px }
+  .inv-table tr.low td{ background:#fdf2f0 }
+  .qty{ font-family:'Consolas',monospace; font-weight:800; font-size:15px }
+  .st-badge{ font-size:11px; font-weight:800; border-radius:6px; padding:2px 8px }
+  .st-ok{ background:#e7efe1; color:#3c5230 } .st-low{ background:#f7e0db; color:#b3473a } .st-zero{ background:#eceff0; color:#7a8088 }
+  .actbtns button{ font-size:12px; font-weight:700; border-radius:6px; padding:4px 8px; margin-right:3px; cursor:pointer; border:1px solid var(--border2); background:var(--surface) }
+  .actbtns .b-in{ color:#2f7d4f; border-color:#bcd9c4 } .actbtns .b-out{ color:#b3473a; border-color:#e3bdb4 }
+  .actbtns .b-stk{ color:#3a6ea5; border-color:#bcd0e5 }
+  .inv-empty{ padding:26px; text-align:center; color:var(--muted) }
+  .txn-panel{ margin-top:22px; background:var(--surface); border:1px solid var(--border); border-radius:11px; padding:14px 16px }
+  .txn-panel h3{ font-size:14px; margin:0 0 10px }
+  .txn-row{ display:flex; gap:10px; align-items:center; font-size:12.5px; padding:5px 0; border-top:1px solid var(--border); color:var(--text2) }
+  .txn-row:first-of-type{ border-top:none }
+  .txn-row .d-in{ color:#2f7d4f; font-weight:800; font-family:'Consolas',monospace } .txn-row .d-out{ color:#b3473a; font-weight:800; font-family:'Consolas',monospace }
+  .txn-row .tn{ flex:1; font-weight:700; color:var(--text) }
+</style>
+</head>
+<body>
+<script>(function(){var d=new URLSearchParams(location.search).get('dept');document.body.setAttribute('data-so-area', d==='room'?'room':'kitchen');})();</script>
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム">
+    <img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen">
+  </a>
+  <span class="step">재고 · 내부 관리 / 在庫管理</span>
+  <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+    <button class="so-furi" id="so-furi" onclick="__so_toggleFuri()"></button>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint">연결 정보는 이 브라우저에만 저장됩니다.</span>
+</div>
+
+<div class="inv-wrap">
+  <div class="inv-bar">
+    <div class="dept-toggle">
+      <button id="dept-fnb" type="button">🍽 F&amp;B</button>
+      <button id="dept-room" type="button">🛏 객실</button>
+    </div>
+    <button class="btn ghost sm" id="btn-reload" type="button" title="다시 불러오기">↻ 새로고침</button>
+    <span class="inv-sum" id="inv-sum"></span>
+  </div>
+
+  <div class="catchips" id="catchips"></div>
+
+  <div class="addrow">
+    <select class="inp" id="add-cat" style="width:120px"></select>
+    <input class="inp" id="add-name" placeholder="품목명 (예: 생수 500ml)" style="flex:1;min-width:180px">
+    <input class="inp" id="add-unit" placeholder="단위" value="개" style="width:70px">
+    <input class="inp" id="add-loc" placeholder="보관 위치" style="width:120px">
+    <input class="inp" id="add-par" type="number" min="0" placeholder="적정재고" style="width:90px" title="이 수량 미만이면 부족 알림">
+    <input class="inp" id="add-qty" type="number" min="0" placeholder="현재고" style="width:80px" title="현재 보유 수량">
+    <button class="btn sm" id="btn-add" type="button">＋ 품목 추가</button>
+  </div>
+
+  <div id="inv-list"><div class="inv-empty">상단에서 Supabase 연결 후, 부서(F&amp;B / 객실)를 선택하면 품목이 표시됩니다.</div></div>
+
+  <div class="txn-panel" id="txn-panel" style="display:none">
+    <h3>🕘 최근 입출고 이력 <span style="font-weight:600;color:var(--muted);font-size:12px">(최근 30건)</span></h3>
+    <div id="txn-list"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="../assets/saizen-ops.js?v=14.66"></script>
+<script>
+const $=s=>document.querySelector(s);
+let supa=null;
+const DEPTS={
+  fnb:{ label:'F&B', cats:['식자재','음료','주류','주방소모품','기타'] },
+  room:{ label:'객실', cats:['객실비품','린넨','어메니티','청소용품','미니바','기타'] }
+};
+const state={ dept:'fnb', catFilter:'__all', items:[], txns:[] };
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function curUser(){ return (window.__so_getUser?(__so_getUser()||''):'')||localStorage.getItem('saizen_ops_user')||''; }
+function setConn(t,c){ const e=$('#conn-state'); if(e){ e.textContent=t; e.className='pill'+(c?' '+c:''); } }
+function toast(msg,cls){ const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.textContent=msg;
+  $('#toast').appendChild(t); setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); },2400); }
+function num(v){ const n=Number(v); return isFinite(n)?n:0; }
+function fmtQ(n){ const x=num(n); return Number.isInteger(x)?String(x):x.toFixed(2).replace(/0+$/,'').replace(/\.$/,''); }
+
+/* ── 연결 ── */
+function loadCreds(){ $('#sb-url').value=localStorage.getItem('saizen_sb_url')||''; $('#sb-key').value=localStorage.getItem('saizen_sb_key')||''; }
+async function connect(){
+  const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
+  if(!url||!key){ setConn('URL·key 필요','err'); return; }
+  localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.disabled=true; btn.textContent='연결 중…'; btn.classList.remove('connected');
+  try{
+    supa=window.supabase.createClient(url,key);
+    const { error }=await supa.from('inv_items').select('id',{count:'exact',head:true});
+    if(error) throw error;
+    setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
+    btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
+    await load();
+  }catch(e){
+    setConn('연결 실패','err'); toast('연결 실패: '+e.message+' (SQL 36 실행·키 확인)','err');
+    btn.textContent='연결 실패 · 재시도'; btn.classList.remove('connected'); btn.disabled=false; supa=null;
+  }
+}
+
+/* ── 로드 ── */
+async function load(){
+  if(!supa) return;
+  try{
+    const { data:items, error:e1 }=await supa.from('inv_items').select('*').eq('dept',state.dept).order('category').order('sort_order').order('name_ko');
+    if(e1) throw e1;
+    state.items=items||[];
+    const ids=state.items.map(i=>i.id);
+    state.txns=[];
+    if(ids.length){
+      const { data:txns }=await supa.from('inv_txns').select('*').in('item_id',ids).order('created_at',{ascending:false}).limit(30);
+      state.txns=txns||[];
+    }
+    render();
+  }catch(e){ toast('로드 실패: '+e.message,'err'); }
+}
+
+/* ── 렌더 ── */
+function setDeptBtns(){ $('#dept-fnb').classList.toggle('on',state.dept==='fnb'); $('#dept-room').classList.toggle('on',state.dept==='room'); }
+function renderAddCats(){ $('#add-cat').innerHTML=DEPTS[state.dept].cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join(''); }
+function renderCatChips(){
+  const cats=DEPTS[state.dept].cats.filter(c=>state.items.some(i=>(i.category||'기타')===c));
+  const extra=[...new Set(state.items.map(i=>i.category||'기타').filter(c=>!DEPTS[state.dept].cats.includes(c)))];
+  const all=[...cats,...extra];
+  const chip=(k,l)=>`<div class="catchip${state.catFilter===k?' on':''}" data-cat="${esc(k)}">${esc(l)}</div>`;
+  $('#catchips').innerHTML=chip('__all','전체')+all.map(c=>chip(c,c)).join('');
+  $('#catchips').querySelectorAll('[data-cat]').forEach(c=>c.addEventListener('click',()=>{ state.catFilter=c.dataset.cat; render(); }));
+}
+function isLow(i){ return num(i.par_level)>0 && num(i.current_qty)<=num(i.par_level); }
+function render(){
+  setDeptBtns(); renderAddCats(); renderCatChips();
+  const rows=state.items.filter(i=>state.catFilter==='__all'||(i.category||'기타')===state.catFilter);
+  const lowN=state.items.filter(isLow).length;
+  $('#inv-sum').innerHTML=`전체 ${state.items.length}품목`+(lowN?` · <span class="low">⚠ 부족 ${lowN}</span>`:' · 부족 0');
+  const box=$('#inv-list');
+  if(!rows.length){ box.innerHTML='<div class="inv-empty">품목이 없습니다. 위에서 추가하세요.</div>'; renderTxns(); return; }
+  let html='<table class="inv-table"><thead><tr><th>품목</th><th>위치</th><th>단위</th><th style="text-align:right">현재고</th><th style="text-align:right">적정</th><th>상태</th><th>입출고 / 관리</th></tr></thead><tbody>';
+  let lastCat=null;
+  rows.forEach(i=>{
+    const cat=i.category||'기타';
+    if(cat!==lastCat){ lastCat=cat; html+=`<tr class="cat-h"><td colspan="7">▸ ${esc(cat)}</td></tr>`; }
+    const low=isLow(i), zero=num(i.current_qty)<=0;
+    const badge=zero?'<span class="st-badge st-zero">없음</span>':(low?'<span class="st-badge st-low">부족</span>':'<span class="st-badge st-ok">충분</span>');
+    html+=`<tr class="${low?'low':''}" data-id="${i.id}">
+      <td><b>${esc(i.name_ko)}</b>${i.name_ja?` <span style="color:var(--muted);font-size:11px">${esc(i.name_ja)}</span>`:''}</td>
+      <td style="color:var(--text2)">${esc(i.location||'')}</td>
+      <td style="color:var(--text2)">${esc(i.unit||'')}</td>
+      <td style="text-align:right" class="qty">${fmtQ(i.current_qty)}</td>
+      <td style="text-align:right;color:var(--muted)">${num(i.par_level)?fmtQ(i.par_level):'-'}</td>
+      <td>${badge}</td>
+      <td class="actbtns">
+        <button class="b-in"  data-act="in"  data-id="${i.id}">＋입고</button>
+        <button class="b-out" data-act="out" data-id="${i.id}">－사용</button>
+        <button class="b-stk" data-act="stk" data-id="${i.id}">실사</button>
+        <button data-act="edit" data-id="${i.id}">수정</button>
+        <button data-act="del"  data-id="${i.id}" title="삭제">✕</button>
+      </td></tr>`;
+  });
+  html+='</tbody></table>';
+  box.innerHTML=html;
+  box.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',()=>onAct(b.dataset.act,b.dataset.id)));
+  renderTxns();
+  if(window.SaizenOps) window.SaizenOps.apply();
+}
+function renderTxns(){
+  const p=$('#txn-panel'), l=$('#txn-list');
+  if(!state.txns.length){ p.style.display='none'; return; }
+  const byId=Object.fromEntries(state.items.map(i=>[i.id,i]));
+  p.style.display='';
+  l.innerHTML=state.txns.map(t=>{
+    const it=byId[t.item_id]; const nm=it?it.name_ko:'(삭제된 품목)';
+    const d=num(t.delta), cls=d>=0?'d-in':'d-out', sign=d>=0?'+':'';
+    const when=String(t.created_at||'').slice(5,16).replace('T',' ');
+    return `<div class="txn-row"><span style="color:var(--muted);width:90px">${when}</span>
+      <span class="tn">${esc(nm)}</span>
+      <span class="${cls}">${sign}${fmtQ(d)}</span>
+      <span style="width:80px">${esc(t.reason||'')}</span>
+      <span style="width:110px;text-align:right;color:var(--muted)">${esc(t.created_by||'')}</span></div>`;
+  }).join('');
+}
+
+/* ── 품목 추가 ── */
+async function addItem(){
+  if(!supa){ toast('먼저 연결하세요','err'); return; }
+  const name=$('#add-name').value.trim();
+  if(!name){ toast('품목명을 입력하세요','err'); return; }
+  const row={ dept:state.dept, category:$('#add-cat').value, name_ko:name,
+    unit:$('#add-unit').value.trim()||'개', location:$('#add-loc').value.trim()||null,
+    par_level:num($('#add-par').value), current_qty:num($('#add-qty').value) };
+  try{
+    const { data, error }=await supa.from('inv_items').insert(row).select().single();
+    if(error) throw error;
+    // 초기 현재고가 있으면 입고 이력 1건
+    if(num(row.current_qty)>0){
+      await supa.from('inv_txns').insert({ item_id:data.id, delta:num(row.current_qty), reason:'입고', note:'초기 등록', qty_after:num(row.current_qty), created_by:curUser() });
+    }
+    $('#add-name').value=''; $('#add-loc').value=''; $('#add-par').value=''; $('#add-qty').value='';
+    toast('추가됨','ok'); await load();
+  }catch(e){ toast('추가 실패: '+e.message,'err'); }
+}
+
+/* ── 입출고 / 실사 / 수정 / 삭제 ── */
+async function onAct(act,id){
+  const it=state.items.find(x=>x.id===id); if(!it) return;
+  if(act==='edit') return editItem(it);
+  if(act==='del') return delItem(it);
+  let delta=0, reason='';
+  if(act==='in'){
+    const q=num(prompt(`[입고] ${it.name_ko}\n현재 ${fmtQ(it.current_qty)}${it.unit||''} → 몇 개 입고할까요?`,''));
+    if(q<=0) return; delta=q; reason='입고';
+  } else if(act==='out'){
+    const q=num(prompt(`[사용/출고] ${it.name_ko}\n현재 ${fmtQ(it.current_qty)}${it.unit||''} → 몇 개 사용했나요?`,''));
+    if(q<=0) return; delta=-q; reason='사용';
+  } else if(act==='stk'){
+    const v=prompt(`[실사 보정] ${it.name_ko}\n실제 보유 수량을 입력하면 그 값으로 맞춥니다. (현재 ${fmtQ(it.current_qty)})`, fmtQ(it.current_qty));
+    if(v===null||v==='') return; const target=num(v); delta=target-num(it.current_qty); reason='실사조정';
+    if(delta===0){ toast('변동 없음'); return; }
+  }
+  const after=num(it.current_qty)+delta;
+  try{
+    const { error:e1 }=await supa.from('inv_items').update({ current_qty:after }).eq('id',id);
+    if(e1) throw e1;
+    await supa.from('inv_txns').insert({ item_id:id, delta, reason, qty_after:after, created_by:curUser() });
+    toast(`${reason} ${delta>0?'+':''}${fmtQ(delta)} → ${fmtQ(after)}`,'ok'); await load();
+  }catch(e){ toast('처리 실패: '+e.message,'err'); }
+}
+async function editItem(it){
+  const name=prompt('품목명', it.name_ko); if(name===null) return;
+  const par=prompt('적정재고(부족 기준)', fmtQ(it.par_level)); if(par===null) return;
+  const loc=prompt('보관 위치', it.location||''); if(loc===null) return;
+  try{
+    const { error }=await supa.from('inv_items').update({ name_ko:name.trim()||it.name_ko, par_level:num(par), location:loc.trim()||null }).eq('id',it.id);
+    if(error) throw error; toast('수정됨','ok'); await load();
+  }catch(e){ toast('수정 실패: '+e.message,'err'); }
+}
+async function delItem(it){
+  if(!confirm(`'${it.name_ko}' 품목을 삭제할까요? (입출고 이력도 함께 삭제됩니다)`)) return;
+  try{ const { error }=await supa.from('inv_items').delete().eq('id',it.id); if(error) throw error; toast('삭제됨','ok'); await load(); }
+  catch(e){ toast('삭제 실패: '+e.message,'err'); }
+}
+
+/* ── 부팅 ── */
+$('#btn-connect').addEventListener('click',connect);
+$('#btn-reload').addEventListener('click',load);
+$('#btn-add').addEventListener('click',addItem);
+$('#add-name').addEventListener('keypress',e=>{ if(e.key==='Enter') addItem(); });
+$('#dept-fnb').addEventListener('click',()=>{ state.dept='fnb'; state.catFilter='__all'; if(supa)load(); else { setDeptBtns(); renderAddCats(); } });
+$('#dept-room').addEventListener('click',()=>{ state.dept='room'; state.catFilter='__all'; if(supa)load(); else { setDeptBtns(); renderAddCats(); } });
+(function init(){
+  const d=new URLSearchParams(location.search).get('dept'); if(d==='room') state.dept='room';
+  setDeptBtns(); renderAddCats();
+  loadCreds();
+  if($('#sb-url').value && $('#sb-key').value) connect();
+})();
+</script>
+</body>
+</html>
