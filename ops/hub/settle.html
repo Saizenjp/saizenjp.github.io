@@ -555,7 +555,7 @@ function renderDetail(){
   // 이벤트 바인딩
   box.querySelectorAll('[data-void-charge]').forEach(b=>b.addEventListener('click',()=>voidCharge(b.dataset.voidCharge)));
   box.querySelectorAll('[data-void-pay]').forEach(b=>b.addEventListener('click',()=>voidPayment(b.dataset.voidPay)));
-  const st=$('#btn-statement'); if(st) st.addEventListener('click',()=>exportStatement(f));
+  const st=$('#btn-statement'); if(st) st.addEventListener('click',()=>previewStatement(f));
   const bc=$('#btn-close'); if(bc) bc.addEventListener('click',()=>setStatus(f.folio_id,'closed'));
   const bs=$('#btn-settle'); if(bs) bs.addEventListener('click',()=>setStatus(f.folio_id,'settled'));
   const br=$('#btn-reopen'); if(br) br.addEventListener('click',()=>setStatus(f.folio_id,'open'));
@@ -693,6 +693,92 @@ const XLM={ navy:'FF1A2540', blue:'FF1A4D8F', soft:'FFEAF0F7', line:'FFB9C4D6', 
 function xFill(argb){ return {type:'pattern',pattern:'solid',fgColor:{argb}}; }
 function xBorderAll(){ const s={style:'thin',color:{argb:XLM.line}}; return {top:s,left:s,bottom:s,right:s}; }
 
+// ── 御請求書 HTML 미리보기 팝업(→ 인쇄). 즉시 엑셀 다운로드 대신 한 단계 거침. ──
+async function previewStatement(f){
+  if(f.folio_id!==state.selId) await selectFolio(f.folio_id);
+  window.__curStmtF=f;
+  const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const Y=n=>'¥'+Number(n||0).toLocaleString('ja-JP');
+  const catJ={'라운딩':'ラウンド','식음':'飲食','숙박':'宿泊','골프샵':'ゴルフショップ','기타':'その他'};
+  const tag=f.team_tag||('팀'+evNo(f.event_seq));
+  const ate=`${tag}  ${f.rep_name||''}${f.subject==='member'?('  ('+(f.member_name||'')+'様)'):' 御一行様'}`;
+  const rooms=(roomsOfS(f.event_seq).join(', '))||'-';
+  const today=new Date().toISOString().slice(0,10);
+  const lines=state.charges.filter(c=>!c.voided);
+  const subTotal=lines.reduce((s,c)=>s+Number(c.amount||0),0);
+  const taxTotal=lines.reduce((s,c)=>s+Number(c.tax||0),0);
+  const grand=subTotal+taxTotal+lines.reduce((s,c)=>s+Number(c.service_charge||0),0);
+  const pays=state.payments.filter(p=>!p.voided);
+  const paid=pays.reduce((s,p)=>s+Number(p.amount||0),0);
+  const bal=grand-paid;
+  const rowsHTML=lines.length?lines.map(c=>{
+    const tot=Number(c.amount||0)+Number(c.tax||0)+Number(c.service_charge||0);
+    return `<tr><td>${esc(catJ[c.category]||c.category)}</td><td class="l">${esc(c.description||'')}</td><td class="r">${Number(c.qty||0)}</td><td class="r">${Y(c.unit_price)}</td><td class="r">${Y(c.amount)}</td><td class="r">${Y(c.tax)}</td><td class="r b">${Y(tot)}</td></tr>`;
+  }).join(''):`<tr><td colspan="7" class="empty">(請求項目なし)</td></tr>`;
+  const paysHTML=pays.length?`<div class="paytitle">お支払い内訳</div>
+    <table class="pay"><thead><tr><th>方法</th><th class="r">金額</th><th>日付</th></tr></thead><tbody>
+    ${pays.map(p=>`<tr><td>${p.method==='현금'?'現金':'カード'}</td><td class="r">${Y(p.amount)}</td><td>${esc((p.paid_at||'').slice(0,10))}</td></tr>`).join('')}
+    </tbody></table>`:'';
+  const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>御請求書 — ${esc(tag)} ${today}</title>
+<style>
+  @page{size:A4;margin:14mm}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Meiryo','Malgun Gothic','Noto Sans JP',sans-serif;background:#eceef1;color:#1a2540}
+  .toolbar{position:sticky;top:0;background:#fff;border-bottom:1px solid #ccc;display:flex;align-items:center;gap:12px;padding:12px 20px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+  .toolbar h1{font-size:15px;color:#1a2540}.toolbar .meta{font-size:12px;color:#666}
+  .toolbar button{padding:8px 18px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;background:#15803d;color:#fff}
+  .toolbar button.x{background:#1a4d8f}.toolbar button.c{background:#999}
+  .page{width:190mm;min-height:262mm;margin:18px auto;background:#fff;padding:16mm 16mm;box-shadow:0 2px 14px rgba(0,0,0,.1)}
+  .h1{font-size:26px;font-weight:800;letter-spacing:8px;text-align:center;color:#1a2540}
+  .sub{text-align:center;font-size:12px;color:#1a4d8f;margin:4px 0 18px}
+  .info{font-size:13px;line-height:1.9;border-top:2px solid #1a2540;border-bottom:1px solid #b9c4d6;padding:10px 2px;margin-bottom:14px}
+  .info .lab{display:inline-block;min-width:96px;color:#1a4d8f;font-weight:700}
+  .info .rt{color:#555;font-size:12px;margin-top:2px}
+  table.lines{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.lines th{background:#1a2540;color:#fff;padding:8px 7px;font-weight:700;text-align:right}
+  table.lines th.l{text-align:left}
+  table.lines td{border:1px solid #b9c4d6;padding:7px;text-align:right}
+  table.lines td.l{text-align:left}table.lines td.b{font-weight:700}
+  table.lines td.empty{text-align:center;color:#888;padding:18px}
+  table.lines tbody tr:nth-child(even) td{background:#f4f7fb}
+  .totals{margin:16px 0 0 auto;width:300px}
+  .trow{display:flex;justify-content:space-between;font-size:13px;padding:6px 8px}
+  .trow.grand{background:#eaf0f7;font-weight:800;border-top:1px solid #b9c4d6}
+  .trow.bal{background:#eaf0f7;font-weight:800;font-size:16px;border-top:2px solid #1a2540;color:#1a2540}
+  .paytitle{margin:22px 0 6px;font-weight:700;color:#1a4d8f;font-size:13px}
+  table.pay{border-collapse:collapse;font-size:12px}
+  table.pay th{background:#1a4d8f;color:#fff;padding:6px 14px}
+  table.pay td{border:1px solid #b9c4d6;padding:5px 14px;text-align:right}
+  @media print{ body{background:#fff} .toolbar{display:none} .page{margin:0;box-shadow:none;width:auto;min-height:auto;padding:0} }
+</style></head><body>
+  <div class="toolbar"><h1>御請求書 미리보기</h1><div class="meta">${esc(tag)} · ${esc(f.rep_name||'')} · ${today}</div><div style="flex:1"></div>
+    <button onclick="window.print()">🖨 인쇄</button>
+    <button class="x" onclick="try{window.opener&&window.opener.__settleDownloadStmt&&window.opener.__settleDownloadStmt()}catch(e){alert('원래 창에서 다운로드해 주세요')}">⬇ 엑셀</button>
+    <button class="c" onclick="window.close()">✕ 닫기</button></div>
+  <div class="page">
+    <div class="h1">御　請　求　書</div>
+    <div class="sub">アソ ヤマナミリゾート ／ 株式会社SaiZen</div>
+    <div class="info">
+      <div><span class="lab">宛名 / 御一行</span> <b>${esc(ate)}</b></div>
+      <div><span class="lab">御部屋 / Room</span> ${esc(rooms)}</div>
+      <div class="rt"><span class="lab">発行日</span> ${today} &nbsp;·&nbsp; event ${esc(String(evNo(f.event_seq)))} &nbsp;·&nbsp; session ${esc(state.ym)}</div>
+    </div>
+    <table class="lines"><thead><tr><th class="l">区分</th><th class="l">内訳</th><th>数量</th><th>単価</th><th>小計</th><th>消費税</th><th>合計</th></tr></thead>
+    <tbody>${rowsHTML}</tbody></table>
+    <div class="totals">
+      <div class="trow"><span>小計(税抜)</span><span>${Y(subTotal)}</span></div>
+      <div class="trow"><span>うち消費税(10%·内税)</span><span>${Y(taxTotal)}</span></div>
+      <div class="trow grand"><span>御請求合計</span><span>${Y(grand)}</span></div>
+      <div class="trow"><span>入金</span><span>−${Y(paid)}</span></div>
+      <div class="trow bal"><span>残額</span><span>${Y(bal)}</span></div>
+    </div>
+    ${paysHTML}
+  </div></body></html>`;
+  const w=window.open('','_blank'); if(!w){ toast('팝업 차단 — 허용 필요','err'); return; }
+  w.document.write(html); w.document.close();
+}
+window.__settleDownloadStmt=function(){ if(window.__curStmtF) exportStatement(window.__curStmtF); };
+
 async function exportStatement(f){
   // folio 데이터가 현재 선택본과 다르면 다시 로드
   if(f.folio_id!==state.selId) await selectFolio(f.folio_id);
@@ -785,6 +871,47 @@ async function exportStatement(f){
   toast('御請求書 다운로드','ok');
 }
 
+// ── 매출요약 HTML 미리보기 팝업(→ 인쇄). [엑셀]은 팝업 안 버튼으로 유지. ──
+async function previewSalesSummary(){
+  if(!supa){toast('먼저 연결하세요','warn');return;}
+  const {data,error}=await supa.from('v_settlement_by_category').select('*').eq('session_ym',state.ym);
+  if(error){toast('매출요약 로드 실패: '+error.message,'err');return;}
+  const rows=data||[]; const Y=n=>'¥'+Number(n||0).toLocaleString('ja-JP');
+  const catJ={'라운딩':'ラウンド','식음':'飲食','숙박':'宿泊','골프샵':'ゴルフショップ','기타':'その他'};
+  let tC=0,tS=0,tT=0,tG=0, body='';
+  CATEGORIES.forEach(cat=>{ const row=rows.find(x=>x.category===cat); if(!row) return;
+    tC+=Number(row.line_count||0); tS+=Number(row.charge_amount||0); tT+=Number(row.tax_amount||0); tG+=Number(row.gross_total||0);
+    body+=`<tr><td class="l">${catJ[cat]||cat}</td><td class="r">${Number(row.line_count||0)}</td><td class="r">${Y(row.charge_amount)}</td><td class="r">${Y(row.tax_amount)}</td><td class="r b">${Y(row.gross_total)}</td></tr>`;
+  });
+  const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>売上要約 ${state.ym}</title>
+<style>@page{size:A4;margin:14mm}*{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Meiryo','Malgun Gothic','Noto Sans JP',sans-serif;background:#eceef1;color:#1a2540}
+  .toolbar{position:sticky;top:0;background:#fff;border-bottom:1px solid #ccc;display:flex;align-items:center;gap:12px;padding:12px 20px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+  .toolbar h1{font-size:15px}.toolbar .meta{font-size:12px;color:#666}
+  .toolbar button{padding:8px 18px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;background:#15803d;color:#fff}
+  .toolbar button.x{background:#1a4d8f}.toolbar button.c{background:#999}
+  .page{width:190mm;margin:18px auto;background:#fff;padding:16mm;box-shadow:0 2px 14px rgba(0,0,0,.1)}
+  .h1{font-size:20px;font-weight:800;color:#1a2540;margin-bottom:14px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{background:#1a2540;color:#fff;padding:8px;text-align:right}th.l{text-align:left}
+  td{border:1px solid #b9c4d6;padding:8px;text-align:right}td.l{text-align:left}td.b{font-weight:700}
+  tr.tot td{background:#eaf0f7;font-weight:800;border-top:2px solid #1a2540}
+  @media print{body{background:#fff}.toolbar{display:none}.page{margin:0;box-shadow:none;width:auto;padding:0}}
+</style></head><body>
+  <div class="toolbar"><h1>売上要約 미리보기</h1><div class="meta">${state.ym}</div><div style="flex:1"></div>
+    <button onclick="window.print()">🖨 인쇄</button>
+    <button class="x" onclick="try{window.opener&&window.opener.__settleDownloadSales&&window.opener.__settleDownloadSales()}catch(e){alert('원래 창에서 다운로드해 주세요')}">⬇ 엑셀</button>
+    <button class="c" onclick="window.close()">✕ 닫기</button></div>
+  <div class="page"><div class="h1">売上要約　${state.ym}</div>
+    <table><thead><tr><th class="l">区分</th><th>件数</th><th>小計(税抜)</th><th>消費税</th><th>合計</th></tr></thead>
+    <tbody>${body||'<tr><td colspan="5" style="text-align:center;color:#888;padding:18px">데이터 없음</td></tr>'}
+    <tr class="tot"><td class="l">合計</td><td class="r">${tC}</td><td class="r">${Y(tS)}</td><td class="r">${Y(tT)}</td><td class="r">${Y(tG)}</td></tr>
+    </tbody></table></div></body></html>`;
+  const w=window.open('','_blank'); if(!w){ toast('팝업 차단 — 허용 필요','err'); return; }
+  w.document.write(html); w.document.close();
+}
+window.__settleDownloadSales=function(){ exportSalesSummary(); };
+
 async function exportSalesSummary(){
   if(!supa){toast('먼저 연결하세요','warn');return;}
   const {data,error}=await supa.from('v_settlement_by_category').select('*').eq('session_ym',state.ym);
@@ -830,7 +957,7 @@ async function downloadWB(wb,filename){
 // ── 부팅 ──
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-load').addEventListener('click',loadSession);
-$('#btn-sales').addEventListener('click',exportSalesSummary);
+$('#btn-sales').addEventListener('click',previewSalesSummary);
 $('#settle-day').addEventListener('change',e=>{ state.day=e.target.value||''; renderFolioList(); });
 $('#btn-day-all').addEventListener('click',()=>{ state.day=''; $('#settle-day').value=''; renderFolioList(); });
 $('#settle-q').addEventListener('input',e=>{ state.q=e.target.value||''; renderFolioList(); });
