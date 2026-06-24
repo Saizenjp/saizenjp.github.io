@@ -1599,12 +1599,39 @@ function mkRow(g,m,inv){
     check_in:g.dep, check_out:g.arr, assigned_pax:1, assign_source:'auto' };
 }
 
+// 그 팀 needRooms개가 '한 층에' 다 들어갈 수 있는 가장 높은 층(층 정보 있는 방만). 없으면 null.
+//   → 같은 팀은 되도록 같은 층(기본 원칙). 별장·돔하우스 등 층 없는 방(floor 0)은 묶지 않음.
+function pickFloor(pool,needRooms,dep,arr,pending,occ){
+  const byFloor={};
+  pool.forEach(inv=>{ const f=floorOf(inv); if(f>0) (byFloor[f]=byFloor[f]||[]).push(inv); });
+  const floors=Object.keys(byFloor).map(Number).sort((a,b)=>b-a);  // 높은 층 먼저
+  for(const f of floors){
+    let free=0;
+    for(const inv of byFloor[f]){
+      if(roomClosure(inv.id,dep,arr)) continue;
+      const cap=inv.max_capacity||inv.capacity;
+      if(roomUsedFor(inv.id,dep,arr,pending,occ)+2<=cap) free++;
+    }
+    if(free>=needRooms) return f;
+  }
+  return null;
+}
+
 // list 를 2명씩 짝지어 primaryPool 에 배정. 없으면 fallbackPool(강등). 홀수 1명은 보류.
+//   ★ 같은 팀 같은 층 원칙: 2방 이상이면 팀 전체가 들어갈 가장 높은 한 층으로 묶고,
+//      그 층이 모자라면 전체 풀로 폴백(자리 없는 것보단 분산 배정).
 function placePairs(g,list,primaryPool,fallbackPool,label,pending,holds,occ){
   const gc=teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq));
+  const needRooms=Math.floor(list.length/2);
+  let usePool=primaryPool;
+  if(needRooms>=2){
+    const f=pickFloor(primaryPool,needRooms,g.dep,g.arr,pending,occ);
+    if(f!=null) usePool=primaryPool.filter(inv=>floorOf(inv)===f);   // 그 팀은 이 층으로 묶기
+  }
   let i=0;
   for(; i+1<list.length; i+=2){
-    let inv=pickRoom(primaryPool,g.dep,g.arr,2,pending,occ);
+    let inv=pickRoom(usePool,g.dep,g.arr,2,pending,occ);
+    if(!inv && usePool!==primaryPool) inv=pickRoom(primaryPool,g.dep,g.arr,2,pending,occ); // 같은 층 소진 → 전체 풀
     if(!inv && fallbackPool && fallbackPool!==primaryPool)
       inv=pickRoom(fallbackPool,g.dep,g.arr,2,pending,occ);
     if(!inv){ holds.push(`${gc} ${list[i].name_kr||''}·${list[i+1].name_kr||''}: ${label} 객실부족`); continue; }
