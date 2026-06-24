@@ -40,10 +40,15 @@
 
   .datebar{padding:10px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border)}
   .datebar label{font-size:12px;color:var(--text2);font-weight:600}
+  .accombar{padding:8px 20px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--surface2)}
+  .accombar > label{font-size:12px;color:var(--text2);font-weight:700;margin-right:2px}
+  .chip{font-size:12px;font-weight:700;padding:5px 12px;border-radius:99px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer}
+  .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   main{padding:16px 20px 70px;max-width:1280px;margin:0 auto}
 
   /* KPI */
-  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
+  @media(max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}}
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 16px}
   .kpi .l{font-size:11.5px;color:var(--text2);font-weight:700}
   .kpi .v{font-size:23px;font-weight:800;color:var(--accent);font-family:var(--mono);margin-top:2px}
@@ -123,6 +128,8 @@
   <span class="hint" id="day-label" style="margin-left:auto"></span>
 </div>
 
+<div class="accombar"><label>숙소</label><span id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></span></div>
+
 <main>
   <div class="kpis" id="kpis"></div>
   <div class="stage">
@@ -136,7 +143,21 @@
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
-let state={ day:'', teams:[], byId:{}, selSeq:null };
+let state={ day:'', teams:[], byId:{}, selSeq:null, accomSel:new Set() };
+function accomPass(ac){ return state.accomSel.size===0 || state.accomSel.has(ac); }
+function renderAccomChips(){
+  const box=$('#accomchips'); if(!box) return;
+  const accoms=[...new Set(state.teams.map(t=>t.accom).filter(Boolean))]
+    .sort((a,b)=>{const O=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];const ai=O.indexOf(a),bi=O.indexOf(b);return (ai<0?9:ai)-(bi<0?9:bi);});
+  const chip=(k,l,on)=>`<div class="chip${on?' on':''}" data-a="${esc(k)}">${esc(l)}</div>`;
+  box.innerHTML=chip('__all','전체',state.accomSel.size===0)+accoms.map(a=>chip(a,a,state.accomSel.has(a))).join('');
+  box.querySelectorAll('[data-a]').forEach(c=>c.addEventListener('click',()=>{
+    const a=c.dataset.a;
+    if(a==='__all') state.accomSel.clear();
+    else state.accomSel.has(a)?state.accomSel.delete(a):state.accomSel.add(a);
+    render();
+  }));
+}
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function yen(n){const v=Math.round(Number(n)||0);return '¥'+v.toLocaleString('ja-JP');}
@@ -197,17 +218,20 @@ async function load(){
 }
 
 function render(){
+  renderAccomChips();
   const day=state.day;
-  const arr=state.teams.filter(t=>t.dep===day);            // 체크인
-  const dep=state.teams.filter(t=>t.arr===day);            // 체크아웃
-  const stay=state.teams.filter(t=>t.dep<day&&t.arr>day);  // 연박(재실)
+  const pool=state.teams.filter(t=>accomPass(t.accom));     // 숙소 필터 적용
+  const arr=pool.filter(t=>t.dep===day);                    // 체크인
+  const dep=pool.filter(t=>t.arr===day);                    // 체크아웃
+  const stay=pool.filter(t=>t.dep<day&&t.arr>day);          // 연박(재실)
+  const dine=pool.filter(t=>t.dep<=day&&t.arr>day);         // 그날 묵는 전원 = 석식 대상
   const ppl=a=>a.reduce((s,t)=>s+(parseInt(t.pax,10)||0),0);
-  const dueSum=state.teams.reduce((s,t)=>s+Math.max(0,t.bal),0);
-  const occRooms=new Set(); state.teams.filter(t=>t.dep<=day&&t.arr>day).forEach(t=>t.rooms.forEach(r=>occRooms.add(r)));
+  const dueSum=pool.reduce((s,t)=>s+Math.max(0,t.bal),0);
   $('#kpis').innerHTML=
     kpi('🛬 체크인',`${arr.length}<small>팀 ${ppl(arr)}名</small>`)+
     kpi('🛫 체크아웃',`${dep.length}<small>팀 ${ppl(dep)}名</small>`)+
     kpi('🏨 재실(연박)',`${stay.length}<small>팀 ${ppl(stay)}名</small>`)+
+    kpi('🍽 오늘 석식',`${ppl(dine)}<small>名 ${dine.length}팀</small>`)+
     kpi('💴 미수 잔액',`${yen(dueSum)}`,dueSum>0?'due':'');
   $('#lists').innerHTML=
     sect('arr','🛬 오늘 체크인',arr)+
