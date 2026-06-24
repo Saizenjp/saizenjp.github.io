@@ -1487,10 +1487,46 @@
     }
   }
 
+  // ── 페이지 설명서 자동 주입 — 각 페이지 .conn 아래에 접이식 <details class="page-help"> ──
+  //   실무자가 "이게 뭐였더라" 하지 않게: 하는 일·계산/판정·용어·권한을 코드 기준으로.
+  var SO_HELP = {
+    'step1.html': '<h4>이 화면이 하는 일</h4>엠클릭 엑셀(<b>예약리스트·일행별예약·그룹코드 참조</b>)을 올리면 그룹코드·회원여부·항공정보를 계산해 저장합니다. <b>모든 화면의 출발점</b>입니다.<h4>계산·판정</h4><ul><li><b>월 단위 동기화</b>: 올린 그 달에서 파일에 없는 팀만 확인 거쳐 정리(<b>다른 달 무영향</b>). 있는 팀은 id 유지(배정 보존).</li><li><b>그룹코드 자동계산</b>: 회원=사전배정, 비회원=F풀(<code>FAあ</code>~).</li><li><b>날짜 자동인식</b>: 엑셀 숫자·한국어·MM/DD/YYYY 모두 흡수.</li></ul><h4>주요 용어</h4>예약리스트=<b>팀 마스터</b>(상품·숙소·기간·금액) / 일행별예약=<b>개인 명세</b>(명단·항공·생년·등급). 결합키=<code>eventSeq</code>(행사번호).<h4>권한·데이터</h4>step1 영역. 저장: bookings·passengers·guests·guest_members.',
+    'room.html': '<h4>이 화면이 하는 일</h4><b>개인 단위</b> 객실 배정. 자동배정·분할체류·타임라인·기간폐쇄.<h4>계산·판정(자동배정)</h4><ul><li><b>예약순 선착</b>: 빠른 예약 팀부터.</li><li><b>회원→디럭스 / 일반→예약종류</b>(트윈·컴팩트), 각 풀에서 <b>고층부터</b>.</li><li><b>재배정=전체 재배치</b>: auto만 지우고 처음부터. 수기·분할(✂)은 보호.</li><li><b>정원</b>: 하룻밤 겹침 체크(다른 달 포함). 폐쇄 기간 방 제외.</li></ul><h4>주요 용어</h4><b>태그코드</b>=3자리 그룹코드(<code>F</code>접두=비회원). <b>회원 판정</b>=고객등급·회원권구분·회원구분 <b>셋 중 하나라도 회원이면 회원</b>. <b>분할(✂)</b>=기준일부터 다른 방.<h4>권한·데이터</h4>room 영역. rooms·room_inventory·room_closures.',
+    'nametag.html': '<h4>이 화면이 하는 일</h4>개인별 <b>네임택 라벨</b>(Askul 24면)을 인쇄합니다. step1에서 계산된 값을 읽어 출력(재계산 없음).<h4>주요 용어</h4><b>태그코드</b>=그룹코드+개인번호(<code>DAあ-1Y</code>). 끝글자(Y·K·G·S)=숙소 구분.<h4>권한·데이터</h4>room 영역. guests·guest_members 읽기.',
+    'aircover.html': '<h4>이 화면이 하는 일</h4>팀별 <b>A5 항공커버</b> 1장(가로). 개인 항공편·시설색.<h4>계산·판정</h4><ul><li>대표=<code>is_rep</code> 우선.</li><li><b>시설색·라벨</b>=태그 끝글자(Y/K/G/S).</li><li>항공편 ZE→PUS·TW→ICN 보정.</li><li>태그·인원 <b>인라인 수정</b>=print_overrides 공유 → 석식과 동기.</li></ul><h4>주요 용어</h4>태그코드(3자리, F접두=비회원).<h4>권한·데이터</h4>room 영역.',
+    'dispatch.html': '<h4>이 화면이 하는 일</h4>행사별 <b>A4 양면</b> — 앞=現地手配書, 뒤=現地発生分 記入表.<h4>계산·판정</h4><ul><li>라운딩 일정 자동·部屋数=<code>ceil(pax/2)</code>室.</li><li><b>마스킹 토글</b>: ON=생년월일까지 / OFF=여권·전화 노출.</li><li>記入表(뒷면)=현장 손기입, B2B 정산과 별개.</li></ul><h4>권한·데이터</h4>room 영역.',
+    'dinner.html': '<h4>이 화면이 하는 일</h4>날짜별 <b>夕食オーダー</b>(A3) + 조·중·석 <b>식수 자동집계</b> + <b>レストラン名札</b> 인쇄.<h4>계산·판정</h4><ul><li>식수=숙소 그룹별 규칙. <b>석식=그날 묵는 전원</b>.</li><li><b>제외(병합)</b>: 한 팀 지우고 다른 팀에 인원 취합 → 명단·식수에서 빠짐.</li><li><b>분배 정합성</b>: 원래 합계=수정 후 합계인지 ✓/⚠.</li></ul><h4>주요 용어</h4>태그코드. 「팀별 태그·인원 수정」은 항공커버와 공유(夕食만 제외 반영).<h4>권한·데이터</h4>room 영역.',
+    'settle.html': '<h4>이 화면이 하는 일</h4>체크아웃 <b>명세서(御請求書)</b>. 팀별 청구·결제·잔액.<h4>계산·판정</h4><ul><li><b>잔액=청구합계−결제합계</b>.</li><li>미개설 팀=청구 0=<b>잔액 ¥0</b>(클릭하면 청구 추가, 계정 자동개설).</li><li>개인 분할이 있으면 folio 묶음(팀+개인 합계).</li></ul><h4>주요 용어</h4>현장 추가요금(추가라운드·미니바 등) — B2B 선계약과 <b>별개</b>.<h4>권한·데이터</h4>settle 영역. folios·charges·payments.',
+    'settle_merit.html': '<h4>이 화면이 하는 일</h4>메리트↔사이젠 <b>B2B 선계약</b> 정산표.<h4>계산·판정</h4><ul><li><b>숙박비=인원×박수×숙소단가</b>(야마나미·쿠주 14,000 / 간지 16,000 / 시즈 17,000).</li><li><b>송영비=인원×¥6,000</b>.</li><li>인원=<b>실제 명단 수</b>(예약 pax보다 우선). 차감·비고만 별도 저장.</li></ul><h4>주요 용어</h4>B2B(현장 추가요금과 혼동 금지).<h4>권한·데이터</h4>settle 영역.',
+    'pos.html': '<h4>이 화면이 하는 일</h4>주문 입력(간이 POS). 팀 기본 + 개인 분할.<h4>계산·판정</h4><ul><li><b>분할</b>: 팀공통 / 특정 1인 / N분의1 → charges + 개인 folio 자동 생성.</li><li><b>주방 티켓</b>=분할 무관 <b>풀수량·팀단위</b>.</li><li>회원 배지=고객등급·회원권구분·회원구분 3컬럼 OR.</li></ul><h4>주요 용어</h4>매장(outlet)=프론트/레스토랑·연회/골프샵.<h4>권한·데이터</h4>pos 영역. charges·folios.',
+    'kitchen.html': '<h4>이 화면이 하는 일</h4>주방·바 <b>주문 티켓 화면(KDS)</b>.<h4>계산·판정</h4><ul><li>티켓 <b>신규 → 접수 → 완료</b> 3단계(접수 시 담당 기록).</li><li>품목별 <b>조리 라우팅</b>(station): 주방/바/프론트.</li></ul><h4>권한·데이터</h4>kitchen 영역. kitchen_tickets.',
+    'menu.html': '<h4>이 화면이 하는 일</h4>메뉴 품목 관리(장소·라인별).<h4>계산·판정</h4><ul><li><b>코드 자동채번</b>=장소 prefix+번호(<code>FR1</code>·<code>GS1</code>).</li><li>이미 적용된 코드는 <b>잠금</b>(수정 불가).</li><li>모든 변경은 이력(change_log)에 기록.</li></ul><h4>주요 용어</h4><b>장소(venue)</b>=판매처·코드 prefix / <b>라인(category)</b>=정산 집계 기준(<code>숙박</code>은 화면에 「룸」 표시).<h4>권한·데이터</h4>menu 영역. menu_items.',
+    'board.html': '<h4>이 화면이 하는 일</h4>부서 <b>공지</b> + <b>오늘 요약</b>(JST 기준 체크인·아웃·주문·매출 집계).<h4>권한·데이터</h4>읽기=로그인 전원 / 공지 쓰기=admin·manager.',
+    'notes.html': '<h4>이 화면이 하는 일</h4>행사(팀)별 <b>팀 라벨·야마나미 코스·비고·메모</b>를 남깁니다.<h4>계산·판정</h4>값은 포커스 벗어나면 자동 저장. 모든 수정은 <b>누가·언제·이전→이후</b>로 이력에 남습니다.<h4>권한·데이터</h4>notes 영역. event_notes·event_note_log.',
+    'groupcodes.html': '<h4>이 화면이 하는 일</h4><b>회원 마스터(개인정보)</b> 관리 + 빈코드 피커. <b>마스터(admin) 전용</b>.<h4>계산·판정</h4><ul><li>그룹코드 3자리=<b>등급 prefix + 영문(18종) + 가나(33종)</b>.</li><li><b>빈코드 피커</b>: 등급별 18×33 그리드 — <b>초록=빈 코드</b>(0명, 바로 배정) / <b>앰버=합류 가능</b>(1~3명) / 회색=4명+.</li></ul><h4>주요 용어</h4>F풀=비회원. 등급 prefix=다이아[D·M]·골드[G]·EWRC[E·W·R·C] 등.<h4>권한·데이터</h4>admin 전용(PII). member_codes.',
+    'admin.html': '<h4>이 화면이 하는 일</h4>계정 <b>역할·영역 지정</b> + 가입요청 처리. <b>마스터 전용</b>.<h4>계산·판정</h4><ul><li>역할 <b>admin / manager / staff</b> + 영역(step1·room·settle·pos·kitchen·menu·notes).</li><li>admin·manager=전 카드 통과, staff=<b>지정 영역만</b>.</li></ul><h4>권한·데이터</h4>admin 전용. user_access·access_requests.'
+  };
+  function mountHelp() {
+    try {
+      var file = (location.pathname.split('/').pop() || '').toLowerCase();
+      var body = SO_HELP[file];
+      if (!body) return;
+      if (document.querySelector('.page-help[data-so-help]')) return;  // 중복 방지
+      var d = document.createElement('details');
+      d.className = 'page-help';
+      d.setAttribute('data-so-help', '1');
+      d.innerHTML = '<summary>📖 이 페이지 설명 · 계산 방식</summary><div class="ph-body">' + body + '</div>';
+      var conn = document.querySelector('.conn');
+      var anchor = conn || document.querySelector('.topbar, .so-bar');
+      if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(d, anchor.nextSibling);
+      else document.body.insertBefore(d, document.body.firstChild);
+    } catch (e) {}
+  }
+
   function boot() {
     mountHead();
     if (handleAuthRedirect()) { applyLang(); return; }   // 초대/재설정 모드면 비번 설정만
-    mountAuth(); mountFooter(); applyLang(); guardPage(); mountConnToggle();
+    mountAuth(); mountFooter(); applyLang(); guardPage(); mountConnToggle(); mountHelp();
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
