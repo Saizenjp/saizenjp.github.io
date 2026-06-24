@@ -1,5 +1,5 @@
 -- ============================================================================
---  SaiZen Hub — 설치 상태 종합 점검 (01~15 전체)
+--  SaiZen Hub — 설치 상태 종합 점검 (01~40 전체)
 --  Supabase SQL Editor 에 붙여넣고 Run → 각 항목 ✅/❌ 한눈에.
 --  (to_regclass / information_schema 사용 → 객체가 없어도 에러 없이 동작)
 --  ❌ 가 보이면 괄호 안 번호 파일을 SQL Editor 에서 실행하세요.
@@ -66,6 +66,51 @@ from (
   -- ── 16 팀 운영 주석 ──
   union all select 16,'16 운영주석','event_notes',    case when to_regclass('public.event_notes')    is not null then '✅ 있음' else '❌ 없음 (16)' end
   union all select 16,'16 운영주석','event_note_log', case when to_regclass('public.event_note_log') is not null then '✅ 있음' else '❌ 없음 (16)' end
+
+  -- ── 17~19 RLS 강화 / 접근권한 ──
+  union all select 18,'18 권한','user_access',           case when to_regclass('public.user_access') is not null then '✅ 있음' else '❌ 없음 (18)' end
+  union all select 18,'18 권한','fn is_admin',           case when exists(select 1 from pg_proc where proname='is_admin')      then '✅ 있음' else '❌ 없음 (18)' end
+  union all select 18,'18 권한','fn me_access',          case when exists(select 1 from pg_proc where proname='me_access')     then '✅ 있음' else '❌ 없음 (18)' end
+  union all select 19,'19 RLS','fn has_any_area',        case when exists(select 1 from pg_proc where proname='has_any_area')  then '✅ 있음' else '❌ 없음 (19)' end
+  union all select 19,'19 RLS','folios 영역화(anon차단)', case when exists(select 1 from pg_policies where tablename='folios' and policyname='folios_sel') then '✅ 적용' else '❌ 미적용 (17~19)' end
+
+  -- ── 20 주방 접수단계 ──
+  union all select 20,'20 주방','kitchen_tickets.accepted_at', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='kitchen_tickets' and column_name='accepted_at') then '✅ 있음' else '❌ 없음 (20)' end
+
+  -- ── 21 보드/요약 ──
+  union all select 21,'21 보드','announcements',         case when to_regclass('public.announcements') is not null then '✅ 있음' else '❌ 없음 (21)' end
+  union all select 21,'21 보드','fn today_summary',      case when exists(select 1 from pg_proc where proname='today_summary') then '✅ 있음' else '❌ 없음 (21)' end
+
+  -- ── 25 프로필 부서 ──
+  union all select 25,'25 프로필','user_access.dept',    case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='user_access' and column_name='dept') then '✅ 있음' else '❌ 없음 (25)' end
+
+  -- ── 27 키택 / 28 가입요청 / 29 변경이력 ──
+  union all select 27,'27 키택','key_bindings',          case when to_regclass('public.key_bindings')    is not null then '✅ 있음' else '❌ 없음 (27)' end
+  union all select 28,'28 가입','access_requests',       case when to_regclass('public.access_requests') is not null then '✅ 있음' else '❌ 없음 (28)' end
+  union all select 29,'29 이력','change_log',            case when to_regclass('public.change_log')      is not null then '✅ 있음' else '❌ 없음 (29)' end
+
+  -- ── 30 B2B 정산 저장 ──
+  union all select 30,'30 정산B2B','settle_remarks',     case when to_regclass('public.settle_remarks')    is not null then '✅ 있음' else '❌ 없음 (30)' end
+  union all select 30,'30 정산B2B','settle_deductions',  case when to_regclass('public.settle_deductions') is not null then '✅ 있음' else '❌ 없음 (30)' end
+
+  -- ── 31 회원등급(⚠ step1 import 전 먼저 적용 필요) ──
+  union all select 31,'31 회원등급','passengers.member_class',    case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='passengers'    and column_name='member_class') then '✅ 있음' else '❌ 없음 (31·import전필수)' end
+  union all select 31,'31 회원등급','guest_members.member_class', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='guest_members' and column_name='member_class') then '✅ 있음' else '❌ 없음 (31·import전필수)' end
+
+  -- ── 32 인쇄 오버라이드 / 35 제외 / 37 팀묶기 ──
+  union all select 32,'32 인쇄OV','print_overrides',          case when to_regclass('public.print_overrides') is not null then '✅ 있음' else '❌ 없음 (32)' end
+  union all select 35,'35 인쇄OV','print_overrides.excluded',     case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='print_overrides' and column_name='excluded')     then '✅ 있음' else '❌ 없음 (35)' end
+  union all select 37,'37 인쇄OV','print_overrides.dining_group', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='print_overrides' and column_name='dining_group') then '✅ 있음' else '❌ 없음 (37)' end
+
+  -- ── 33 객실폐쇄 / 36 재고 ──
+  union all select 33,'33 폐쇄','room_closures', case when to_regclass('public.room_closures') is not null then '✅ 있음' else '❌ 없음 (33)' end
+  union all select 36,'36 재고','inv_items',     case when to_regclass('public.inv_items')     is not null then '✅ 있음' else '❌ 없음 (36)' end
+  union all select 36,'36 재고','inv_txns',      case when to_regclass('public.inv_txns')      is not null then '✅ 있음' else '❌ 없음 (36)' end
+
+  -- ── 39 정산뷰 보안 / 40 정원 트리거 (이번 배포 보안 수정) ──
+  union all select 39,'39 보안','v_folio_balance security_invoker', case when exists(select 1 from pg_class where relname='v_folio_balance' and reloptions @> array['security_invoker=on']) then '✅ 적용' else '❌ 미적용 (39·뷰RLS우회)' end
+  union all select 39,'39 보안','folios 읽기 front 포함',           case when exists(select 1 from pg_policies where tablename='folios' and policyname='folios_sel' and qual like '%front%') then '✅ 적용' else '⚠ 미적용 (39)' end
+  union all select 40,'40 정원','trg_rooms_capacity', case when exists(select 1 from pg_trigger where tgname='trg_rooms_capacity' and not tgisinternal) then '✅ 있음' else '❌ 없음 (40·더블부킹차단)' end
 ) t
 order by ord, 항목;
 

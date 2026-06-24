@@ -241,12 +241,17 @@ async function load(){
       const dep=fmtDate(b.dep_date), arr=fmtDate(b.arr_date);
       let nights=pp.nights;
       if(!nights){ const m=String(b.nights_label||'').match(/(\d+)박/); nights=m?parseInt(m[1]):(dep&&arr?Math.max(0,Math.round((parseLocalDate(arr)-parseLocalDate(dep))/86400000)):0); }
-      const pax=PCNT[b.event_seq]||b.pax||0;
+      // 인원 = 명단 실제 수와 예약 pax 중 큰 값. (명단 부분 import 시 PCNT가 예약보다 적어
+      //   B2B 청구가 과소되던 버그 수정 → 둘 중 큰 값으로 안전. 불일치는 화면에 경고.)
+      const _pcnt=PCNT[b.event_seq]||0, _bpax=b.pax||0;
+      const pax=Math.max(_pcnt,_bpax);
+      const paxWarn=(_pcnt>0 && _bpax>0 && _pcnt!==_bpax)?`명단 ${_pcnt}/예약 ${_bpax}`:'';
       const rate=accom?(pp.rate||ACCOM_RATE[accom]||0):0;
+      const rateWarn=accom?(rate>0?'':'단가 미등록'):'';
       const stay=accom?pax*nights*rate:0, transport=accom?pax*TRANSPORT_PER:0;
       return { seq:b.event_seq, no:i+1, eventNo:b.event_no||'-', status:String(b.status||'').trim()||'-', memberType:String(b.member_type||'').trim()||'-',
-        repName:b.rep_name||'', engName:ENG[b.event_seq]||'', dep, arr, nights, pax, accom, roomType:pp.roomType||'-',
-        rate, stay, transport, total:stay+transport, remark:REM[b.event_seq]||'' };
+        repName:b.rep_name||'', engName:ENG[b.event_seq]||'', dep, arr, nights, pax, paxWarn, accom, roomType:pp.roomType||'-',
+        rate, rateWarn, stay, transport, total:stay+transport, remark:REM[b.event_seq]||'' };
     }).filter(r=>r.accom);
     ACCOMSEL.clear();
     $('#stat').textContent=`${ROWS.length}건`;
@@ -291,9 +296,9 @@ function renderAll(){
     html+=`<tr>
       <td class="c">${i+1}</td><td class="mono">${esc(r.eventNo)}</td><td class="c">${esc(r.status)}</td><td class="mono">${esc(r.memberType)}</td>
       <td style="font-weight:600">${esc(r.repName)}</td><td class="mono">${esc(r.engName)}</td>
-      <td class="mono">${esc(r.dep)}</td><td class="mono">${esc(r.arr)}</td><td class="c">${r.nights}</td><td class="c">${r.pax}</td>
+      <td class="mono">${esc(r.dep)}</td><td class="mono">${esc(r.arr)}</td><td class="c">${r.nights}</td><td class="c">${r.pax}${r.paxWarn?`<br><span style="font-size:9px;font-weight:800;color:var(--err)" title="명단 인원과 예약 인원이 다릅니다 — 큰 값으로 청구">⚠${esc(r.paxWarn)}</span>`:''}</td>
       <td class="c">${esc(r.accom)}</td><td style="font-size:10.5px">${esc(r.roomType)}</td>
-      <td class="num">${r.rate?yen(r.rate):'-'}</td><td class="num">${r.stay?yen(r.stay):'-'}</td><td class="num">${r.transport?yen(r.transport):'-'}</td>
+      <td class="num">${r.rate?yen(r.rate):(r.rateWarn?`<span style="font-size:9px;font-weight:800;color:var(--err)">⚠${esc(r.rateWarn)}</span>`:'-')}</td><td class="num">${r.stay?yen(r.stay):'-'}</td><td class="num">${r.transport?yen(r.transport):'-'}</td>
       <td class="num" style="font-weight:700;color:var(--accent2)">${r.total?yen(r.total):'-'}</td>
       <td><input class="rem" value="${esc(r.remark)}" data-seq="${r.seq}" placeholder="비고"></td>
     </tr>`;

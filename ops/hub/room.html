@@ -1305,7 +1305,11 @@ async function commitSplit(inv){
   const srcRow=state.rooms.find(r=>r.id===sp.srcId);
   if(srcRow && srcRow.inventory_id===inv.id){ toast('같은 방입니다 — 다른 방을 클릭하세요','warn'); return; }
   const cap=inv.max_capacity||inv.capacity;
-  const used=state.rooms.filter(r=>r.inventory_id===inv.id && r.id!==sp.srcId && overlaps(sp.from,sp.to,r.check_in,r.check_out)).reduce((s,r)=>s+(r.assigned_pax||0),0);
+  // 폐쇄 가드(자동·수기·피커와 동일하게 분할에도 적용)
+  const _cloSp=roomClosure(inv.id,sp.from,sp.to);
+  if(_cloSp){ toast(`${inv.room_no}: 폐쇄 기간(${_cloSp.from_date}~${_cloSp.to_date}${_cloSp.reason?' · '+_cloSp.reason:''}) — 분할 배정 불가`,'warn'); return; }
+  // 정원 = DB 권위 점유(다른 달 포함, 원행 제외). state.rooms만 보던 월경계 회귀 수정.
+  const used=await dbRoomUsedPax(inv.id, sp.from, sp.to, [sp.srcId]);
   if(used+1>cap){ toast(`${inv.room_no}: ${sp.from}~${sp.to} 정원 초과`,'warn'); return; }
   // 1) 원래 행을 앞부분으로 단축(수기 표시)
   const {error:e1}=await supa.from('rooms').update({check_out:sp.from, assign_source:'manual'}).eq('id',sp.srcId);
@@ -1424,15 +1428,29 @@ async function assignMembers(memberIds, inv, opts={}){
   }
   if(!targets.length){toast('배정할 인원이 없습니다','warn');return;}
 
+  // ── DB 권위 점유원장(다른 달 포함) — 월경계 더블부킹 방지. autoAssign과 동일 원칙. ──
+  //   state.rooms는 로드된 달만 보므로, 다른 달 경계팀이 같은 방·겹치는 날을 점유해도
+  //   합산에서 빠져 정원초과가 났다(회귀 버그). 대상 팀 체류구간에 걸치는 DB 전체 점유로 체크.
+  let _occ=null;
+  try{
+    const _gs=targets.map(m=>state.guests.find(x=>x.event_seq===m.event_seq)).filter(Boolean);
+    const _deps=_gs.map(g=>g.dep).filter(Boolean), _arrs=_gs.map(g=>g.arr).filter(Boolean);
+    if(_deps.length&&_arrs.length){
+      const spanFrom=_deps.reduce((a,b)=>a<b?a:b), spanTo=_arrs.reduce((a,b)=>a>b?a:b);
+      const _r=await pagedQuery(()=>supa.from('rooms').select('id,inventory_id,assigned_pax,check_in,check_out,member_id,event_seq').lt('check_in',spanTo).gt('check_out',spanFrom).order('id'));
+      if(!_r.error) _occ=_r.data||[];
+    }
+  }catch(e){ console.warn('점유원장 로드 실패, state.rooms 폴백:',e.message); }
+  const _occBase=_occ||state.rooms;
+
   let ok=0, blocked=0; const blockMsg=[]; const byeolcheList=[]; const _logAssignNames=[];
   for(const m of targets){
     const g=state.guests.find(x=>x.event_seq===m.event_seq);
     if(!g){blocked++;continue;}
     const _clo=roomClosure(inv.id,g.dep,g.arr);
     if(_clo){ blocked++; blockMsg.push(`${inv.room_no}: 폐쇄 기간(${_clo.from_date}~${_clo.to_date}${_clo.reason?' · '+_clo.reason:''}) — 배정 불가`); break; }
-    // 이 방에서 기간 겹치는 기존 배정만 정원 합산
-    const sameRoom=state.rooms.filter(r=>r.inventory_id===inv.id);
-    const overlapRows=sameRoom.filter(r=>overlaps(g.dep,g.arr,r.check_in,r.check_out));
+    // 이 방에서 기간 겹치는 기존 배정만 정원 합산(DB 권위 점유 = 다른 달 포함)
+    const overlapRows=_occBase.filter(r=>r.inventory_id===inv.id && overlaps(g.dep,g.arr,r.check_in,r.check_out));
     const roomUsed=overlapRows.reduce((s,r)=>s+(r.assigned_pax||0),0);
     if(roomUsed>=cap){
       blocked++;
@@ -1455,6 +1473,7 @@ async function assignMembers(memberIds, inv, opts={}){
     const {data,error}=await supa.from('rooms').insert(row).select().single();
     if(error){blocked++; blockMsg.push(`${m.name_kr||m.id}: ${error.message}`); continue;}
     state.rooms.push(data);
+    if(_occ) _occ.push(data);   // 같은 호출 내 다음 멤버 정원 합산에 즉시 반영(DB 점유 배열)
     if(state.sel) state.sel.delete(m.id);
     ok++;
     _logAssignNames.push(`${m.name_kr||m.name_en||m.id}(${teamGroupCode(m.event_seq)||evNo(m.event_seq)||''})`);
@@ -1602,6 +1621,19 @@ function roomUsedFor(invId,dep,arr,pending,occ){
   base.forEach(r=>{ if(r.inventory_id===invId && overlaps(dep,arr,r.check_in,r.check_out)) s+=(r.assigned_pax||0); });
   pending.forEach(r=>{ if(r.inventory_id===invId && overlaps(dep,arr,r.check_in,r.check_out)) s+=(r.assigned_pax||0); });
   return s;
+}
+// 한 방의 [dep,arr) 겹침 점유를 DB에서 권위 조회(다른 달 포함). 수기·분할 정원 체크용.
+//   overlaps(dep,arr,ci,co) = dep<co && ci<arr  →  .lt('check_in',arr).gt('check_out',dep)
+async function dbRoomUsedPax(invId, dep, arr, excludeIds){
+  const ex=new Set(excludeIds||[]);
+  try{
+    const r=await pagedQuery(()=>supa.from('rooms').select('id,assigned_pax,check_in,check_out')
+      .eq('inventory_id',invId).lt('check_in',arr).gt('check_out',dep).order('id'));
+    if(r.error) throw r.error;
+    return (r.data||[]).filter(x=>!ex.has(x.id)).reduce((s,x)=>s+(x.assigned_pax||0),0);
+  }catch(e){   // 폴백: 로드된 달만(state.rooms) — 최소 보장
+    return state.rooms.filter(x=>x.inventory_id===invId && !ex.has(x.id) && overlaps(dep,arr,x.check_in,x.check_out)).reduce((s,x)=>s+(x.assigned_pax||0),0);
+  }
 }
 function pickRoom(pool,dep,arr,need,pending,occ){
   for(const inv of pool){
