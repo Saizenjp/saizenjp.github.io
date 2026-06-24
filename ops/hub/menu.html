@@ -146,10 +146,6 @@
     <h3><span data-i18n="me_listTitle"></span>
       <button class="btn sm" id="btn-saveall" type="button" disabled style="margin-left:8px">💾 전체 저장</button>
       <span class="cnt" id="list-cnt"></span></h3>
-    <div style="display:flex;gap:6px;margin-bottom:10px">
-      <button class="btn ghost sm" id="grp-venue" type="button">장소별 보기</button>
-      <button class="btn ghost sm" id="grp-line" type="button">라인별 보기</button>
-    </div>
     <div class="venue-tabs" id="venue-tabs"></div>
     <div style="overflow:auto">
       <table class="menu" id="menu-table">
@@ -188,7 +184,7 @@ const CATS=['라운딩','식음','숙박','골프샵','기타'];
 const CAT_LABEL={'라운딩':'라운딩','식음':'식음','숙박':'룸','골프샵':'골프샵','기타':'기타'};
 function catLabel(c){ return CAT_LABEL[c]||c||'기타'; }
 const STATIONS=['kitchen','bar','none'];
-let state={ items:[], venueFilter:'__all', groupMode:'venue', lineFilter:'__all' };
+let state={ items:[], venueFilter:'__all' };
 
 // ── 장소(venue) 레지스트리: 저장값(key)은 그대로, 화면은 라벨, 신규코드는 prefix+번호 ──
 const VENUES=[
@@ -271,26 +267,13 @@ async function load(){
 // 장소 탭(전체 + 각 장소, 건수 표시)
 function renderVenueTabs(){
   const box=$('#venue-tabs'); if(!box) return;
-  // 모드 토글 버튼 활성 표시
-  const gv=$('#grp-venue'), gl=$('#grp-line');
-  if(gv){ gv.classList.toggle('active', state.groupMode==='venue'); if(state.groupMode==='venue'){gv.style.background='var(--accent)';gv.style.color='#fff';}else{gv.style.background='';gv.style.color='';} }
-  if(gl){ gl.classList.toggle('active', state.groupMode==='line'); if(state.groupMode==='line'){gl.style.background='var(--accent)';gl.style.color='#fff';}else{gl.style.background='';gl.style.color='';} }
-  if(state.groupMode==='line'){
-    const cnt=c=>state.items.filter(m=>(m.category||'기타')===c).length;
-    const tab=(key,label,n)=>`<button class="vtab${state.lineFilter===key?' active':''}" data-ltab="${esc(key)}">${esc(label)}<span class="vc">${n}</span></button>`;
-    let html=tab('__all','전체',state.items.length);
-    CATS.forEach(c=>{ html+=tab(c, catLabel(c), cnt(c)); });
-    box.innerHTML=html;
-    box.querySelectorAll('[data-ltab]').forEach(b=>b.addEventListener('click',()=>{ state.lineFilter=b.dataset.ltab; render(); }));
-  } else {
-    const vs=allVenues();
-    const cnt=k=>state.items.filter(m=>(m.venue||'etc')===k).length;
-    const tab=(key,label,n)=>`<button class="vtab${state.venueFilter===key?' active':''}" data-vtab="${esc(key)}">${esc(label)}<span class="vc">${n}</span></button>`;
-    let html=tab('__all','전체',state.items.length);
-    vs.forEach(v=>{ html+=tab(v.key, v.label, cnt(v.key)); });
-    box.innerHTML=html;
-    box.querySelectorAll('[data-vtab]').forEach(b=>b.addEventListener('click',()=>{ state.venueFilter=b.dataset.vtab; render(); }));
-  }
+  const vs=allVenues();
+  const cnt=k=>state.items.filter(m=>(m.venue||'etc')===k).length;
+  const tab=(key,label,n)=>`<button class="vtab${state.venueFilter===key?' active':''}" data-vtab="${esc(key)}">${esc(label)}<span class="vc">${n}</span></button>`;
+  let html=tab('__all','전체',state.items.length);
+  vs.forEach(v=>{ html+=tab(v.key, v.label, cnt(v.key)); });
+  box.innerHTML=html;
+  box.querySelectorAll('[data-vtab]').forEach(b=>b.addEventListener('click',()=>{ state.venueFilter=b.dataset.vtab; render(); }));
 }
 function venueOpts(cur){
   const seen=new Set(); let html='';
@@ -302,50 +285,34 @@ function venueOpts(cur){
 function render(){
   renderVenueTabs();
   const body=$('#menu-body'); body.innerHTML='';
-  const line=(state.groupMode==='line');
-  let items;
-  if(line){
-    items=state.items.filter(m=>state.lineFilter==='__all'||(m.category||'기타')===state.lineFilter)
-      .slice().sort((a,b)=>(CATS.indexOf(a.category||'기타')-CATS.indexOf(b.category||'기타'))||String(a.venue||'').localeCompare(String(b.venue||''))||((a.sort_order||0)-(b.sort_order||0)));
-  } else {
-    // 장소별: 장소(헤더) 안을 라인(카테고리)으로 다시 묶음 → 장소순 → 라인순 → 정렬순
-    items=(state.venueFilter==='__all' ? state.items : state.items.filter(m=>(m.venue||'etc')===state.venueFilter))
-      .slice().sort((a,b)=>(venueIdx(a.venue||'etc')-venueIdx(b.venue||'etc'))
-        ||(CATS.indexOf(a.category||'기타')-CATS.indexOf(b.category||'기타'))
-        ||((a.sort_order||0)-(b.sort_order||0)));
-  }
+  // 장소별 단일 보기: 장소(헤더) 안을 라인(카테고리)으로 다시 묶음 → 장소순 → 라인순 → 정렬순
+  const items=(state.venueFilter==='__all' ? state.items : state.items.filter(m=>(m.venue||'etc')===state.venueFilter))
+    .slice().sort((a,b)=>(venueIdx(a.venue||'etc')-venueIdx(b.venue||'etc'))
+      ||(CATS.indexOf(a.category||'기타')-CATS.indexOf(b.category||'기타'))
+      ||((a.sort_order||0)-(b.sort_order||0)));
   $('#list-cnt').innerHTML=`${items.length}${t('me_cntItem')}`;
   if(!items.length){ body.innerHTML='<tr><td colspan="10" class="empty-hint">'+t('me_empty')+'</td></tr>'; return; }
-  let lastGroup=null, lastVenue=null, lastCat=null;
+  let lastVenue=null, lastCat=null;
   items.forEach(m=>{
     const venue=m.venue||'etc';
     const cat=m.category||'기타';
-    if(line){
-      if(cat!==lastGroup){
-        lastGroup=cat;
-        const vr=document.createElement('tr');
-        vr.innerHTML=`<td colspan="10" class="venue-h"><span>라인 · ${esc(catLabel(cat))}</span></td>`;
-        body.appendChild(vr);
-      }
-    } else {
-      // 장소 헤더 (장소 전체 저장 버튼 포함)
-      if(venue!==lastVenue){
-        lastVenue=venue; lastCat=null;
-        const vr=document.createElement('tr');
-        vr.innerHTML=`<td colspan="10" class="venue-h"><div style="display:flex;align-items:center;gap:10px">
-          <span>${esc(venueLabel(venue))} <span style="color:var(--muted);font-weight:600">(${esc(venuePrefix(venue))})</span></span>
-          <button class="btn ghost sm" type="button" data-savevenue style="margin-left:auto">💾 이 장소 전체 저장</button>
-        </div></td>`;
-        const sb=vr.querySelector('[data-savevenue]'); if(sb) sb.addEventListener('click',()=>saveVenue(venue));
-        body.appendChild(vr);
-      }
-      // 라인(카테고리) 서브헤더 — 장소 안 구분
-      if(cat!==lastCat){
-        lastCat=cat;
-        const cr=document.createElement('tr');
-        cr.innerHTML=`<td colspan="10" class="line-subh" style="background:var(--surface2);color:var(--text2);font-weight:700;font-size:12px;padding:5px 14px 5px 26px;border-bottom:1px solid var(--border)">▸ ${esc(catLabel(cat))}</td>`;
-        body.appendChild(cr);
-      }
+    // 장소 헤더 (장소 전체 저장 버튼 포함)
+    if(venue!==lastVenue){
+      lastVenue=venue; lastCat=null;
+      const vr=document.createElement('tr');
+      vr.innerHTML=`<td colspan="10" class="venue-h"><div style="display:flex;align-items:center;gap:10px">
+        <span>${esc(venueLabel(venue))} <span style="color:var(--muted);font-weight:600">(${esc(venuePrefix(venue))})</span></span>
+        <button class="btn ghost sm" type="button" data-savevenue style="margin-left:auto">💾 이 장소 전체 저장</button>
+      </div></td>`;
+      const sb=vr.querySelector('[data-savevenue]'); if(sb) sb.addEventListener('click',()=>saveVenue(venue));
+      body.appendChild(vr);
+    }
+    // 라인(카테고리) 서브헤더 — 장소 안 구분
+    if(cat!==lastCat){
+      lastCat=cat;
+      const cr=document.createElement('tr');
+      cr.innerHTML=`<td colspan="10" class="line-subh" style="background:var(--surface2);color:var(--text2);font-weight:700;font-size:12px;padding:5px 14px 5px 26px;border-bottom:1px solid var(--border)">▸ ${esc(catLabel(cat))}</td>`;
+      body.appendChild(cr);
     }
     const tr=document.createElement('tr');
     if(!m.active) tr.className='inactive';
@@ -507,8 +474,6 @@ function renderHistory(list){
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-add').addEventListener('click',addOne);
 $('#btn-saveall').addEventListener('click',saveAll);
-$('#grp-venue').addEventListener('click',()=>{ state.groupMode='venue'; render(); });
-$('#grp-line').addEventListener('click',()=>{ state.groupMode='line'; render(); });
 $('#btn-nextcode').addEventListener('click',()=>fillNextCode(true));
 $('#n-venue').addEventListener('change',()=>fillNextCode());   // 장소 바꾸면 그 장소의 다음 코드
 fillVenueSelect();
