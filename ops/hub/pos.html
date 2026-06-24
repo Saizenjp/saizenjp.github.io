@@ -140,8 +140,8 @@
   .pchip{font-family:inherit;font-size:12px;font-weight:600;padding:4px 10px;border:1px solid var(--border2);border-radius:12px;background:var(--surface);color:var(--text2);cursor:pointer;transition:.12s;display:inline-flex;flex-direction:column;align-items:flex-start;line-height:1.18;text-align:left}
   .pchip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   .pchip .pc-top{display:flex;align-items:center;gap:3px}
-  .pchip .pc-en{font-size:9.5px;font-weight:500;opacity:.78;font-family:var(--mono,monospace)}
-  .pchip.on .pc-en{opacity:.9}
+  .pchip .pc-en{font-size:11px;font-weight:600;color:var(--text2);margin-top:1px}
+  .pchip.on .pc-en{color:rgba(255,255,255,.92)}
   .pchip .mbadge{background:var(--accent2);color:#fff;border-radius:8px;padding:0 4px;font-size:9px;margin-left:3px;font-weight:700}
   .payer-hint{font-size:11px;color:var(--muted)}
   .payer-act{display:flex;gap:6px;margin-top:5px}
@@ -214,6 +214,7 @@
     <div class="order-head">
       <div class="ot"><span class="otag" id="oh-tag"></span> <span id="oh-rep"></span></div>
       <div class="orun"><span data-i18n="po_runningTotal"></span> <b id="oh-run">¥0</b></div>
+      <button class="btn ghost sm" id="btn-cust-display" type="button" title="이 팀 계산서를 손님 확인 화면에 표시/해제" style="margin-left:10px">🖥 손님 화면 표시</button>
     </div>
     <div class="order-stage">
       <div>
@@ -408,11 +409,33 @@ async function loadActive(){
 }
 
 function backToTeams(){
+  if(custShownSeq!=null) pushCustomerDisplay(null);   // 팀에서 나가면 손님 화면 비움(대기)
   state.team=null; state.folioId=null; state.cart=[];
   $('#order-view').style.display='none';
   $('#team-view').style.display='';
   $('#btn-back').style.display='none';
   renderTeams();
+}
+
+// ── 손님 확인 화면(pos_customer.html) 연동 — 이 팀 계산서를 손님 태블릿에 표시 ──
+const POS_STATION=new URLSearchParams(location.search).get('station')||'main';
+let custShownSeq=null;
+async function pushCustomerDisplay(seq){
+  if(!supa) return;
+  try{
+    const {error}=await supa.from('pos_display').upsert(
+      {station:POS_STATION, event_seq:seq, updated_by:(window.__so_getUser&&__so_getUser())||null, updated_at:new Date().toISOString()},
+      {onConflict:'station'});
+    if(error) throw error;
+    custShownSeq=seq; updateCustBtn();
+    toast(seq?'손님 화면에 표시했습니다':'손님 화면을 비웠습니다','ok');
+  }catch(e){ toast('손님 화면 표시 실패: '+e.message,'err'); }
+}
+function updateCustBtn(){
+  const b=$('#btn-cust-display'); if(!b) return;
+  const on=!!(state.team && custShownSeq===state.team.event_seq);
+  b.textContent = on?'🖥 표시 끄기':'🖥 손님 화면 표시';
+  b.style.background = on?'var(--accent)':''; b.style.color = on?'#fff':'';
 }
 
 function teamBySeq(seq){ return state.teams.find(x=>x.event_seq===seq); }
@@ -504,7 +527,7 @@ async function selectTeam(tm){
   $('#oh-tag').textContent=teamTag(tm);
   $('#oh-rep').textContent=(tm.rep||'')+'  ·  #'+teamNo(tm);
   $('#oh-run').textContent=yen(state.runningGross);
-  renderVenueTabs(); renderMenu(); renderPayer(); renderCart();
+  renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); updateCustBtn();
 }
 
 // ── 결제 주체(payer): 팀 공통 / 개인·N분의1 ──
@@ -801,6 +824,11 @@ $('#btn-day-next').addEventListener('click',()=>shiftPosDay(1));
 $('#btn-today').addEventListener('click',()=>{ $('#date-pick').value=isoToday(); if(supa) loadTeams(); });
 $('#date-pick').addEventListener('change',()=>{ if(supa) loadTeams(); });
 $('#btn-back').addEventListener('click',backToTeams);
+$('#btn-cust-display').addEventListener('click',()=>{
+  if(!state.team) return;
+  const on=custShownSeq===state.team.event_seq;
+  pushCustomerDisplay(on?null:state.team.event_seq);
+});
 $('#team-q') && $('#team-q').addEventListener('input',e=>{ state.teamQ=e.target.value; renderTeams(); });
 $('#btn-send').addEventListener('click',sendCart);
 $('#ko-refresh').addEventListener('click',koRefresh);
