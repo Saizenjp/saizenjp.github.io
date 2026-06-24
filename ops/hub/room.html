@@ -263,6 +263,24 @@
 
   /* 일별 선택 칩 (불러온 범위의 날짜를 하루씩) */
   .day-strip{display:flex;gap:5px;overflow-x:auto;padding:4px 20px 10px;align-items:center}
+  /* 배정 검색 */
+  .rsearch{position:relative;padding:0 20px 8px;display:flex;align-items:center;gap:10px}
+  .rsearch #room-search{width:360px;max-width:60vw}
+  #room-search-cnt{font-size:11px;color:var(--muted)}
+  #room-search-results{position:absolute;top:100%;left:20px;z-index:40;width:min(560px,80vw);max-height:46vh;overflow:auto;
+    background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.16);display:none}
+  #room-search-results.on{display:block}
+  .rs-item{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--border);cursor:pointer;font-size:12.5px}
+  .rs-item:first-child{border-top:none}
+  .rs-item:hover{background:var(--surface2)}
+  .rs-item b{font-size:13px}
+  .rs-en{color:var(--text2)}
+  .rs-tag{font-family:var(--mono);font-weight:700;color:var(--accent2)}
+  .rs-eno{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .rs-loc{margin-left:auto;font-weight:700;color:var(--accent)}
+  .rs-empty{padding:12px;color:var(--muted);font-size:12.5px}
+  .room.rs-flash{outline:3px solid var(--accent2);outline-offset:2px;animation:rsFlash 1.8s ease-out}
+  @keyframes rsFlash{0%{box-shadow:0 0 0 6px rgba(154,115,34,.45)}100%{box-shadow:0 0 0 0 rgba(154,115,34,0)}}
   .day-strip:empty{display:none}
   .day-chip{flex:0 0 auto;font-family:inherit;font-size:12px;font-weight:700;line-height:1.1;text-align:center;padding:5px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;transition:.1s;min-width:42px}
   .day-chip small{display:block;font-size:9px;color:var(--muted);font-weight:600}
@@ -319,7 +337,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.73">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.74">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -374,6 +392,11 @@
     <span><span class="sw" style="background:var(--s)"></span><span data-i18n="rm_legS"></span></span>
   </div>
 </div>
+<div class="rsearch">
+  <input class="inp" id="room-search" type="search" autocomplete="off" placeholder="🔎 배정 검색 — 태그코드·한글명·영문명·행사번호">
+  <span class="hint" id="room-search-cnt"></span>
+  <div id="room-search-results"></div>
+</div>
 <div class="day-strip" id="day-strip"></div>
 </div><!-- /ctrlbar -->
 
@@ -416,7 +439,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=2"></script>
-<script src="../assets/saizen-ops.js?v=14.73"></script>
+<script src="../assets/saizen-ops.js?v=14.74"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -1327,7 +1350,7 @@ async function commitSplit(inv){
   state.rooms.push(data);
   state.splitPending=null;
   rebuildAssignMap(); render();
-  logAssign('분할', `${sp.name||''}(${teamGroupCode(sp.event_seq)||evNo(sp.event_seq)||''}) ${sp.from}부터 → ${inv.facility||''} ${inv.room_no}`);
+  logAssign('분할', `${sp.name||''}(${teamGroupCode(sp.event_seq)||evNo(sp.event_seq)||''}) ${srcRow?(srcRow.facility||'')+' '+srcRow.room_no+' ':''}→ ${inv.facility||''} ${inv.room_no} (${sp.from}부터)`);
   toast(`분할 완료 — ${sp.from}부터 ${inv.room_no}`,'ok');
 }
 function cancelSplit(){ if(state.splitPending){ state.splitPending=null; render(); } }
@@ -1701,6 +1724,8 @@ async function autoAssign(){
   if(!state.guests||!state.guests.length){toast('먼저 날짜를 불러오세요','warn');return;}
   const btn=$('#btn-auto'); btn.disabled=true; const old=btn.textContent; btn.textContent='배정 중…';
   try{
+    // 0) 이동 추적용 — 재배치 '전' 각 인원의 방을 스냅샷(어디서→어디로 기록)
+    const _beforeRoom={}; state.rooms.forEach(r=>{ if(r.member_id!=null && _beforeRoom[r.member_id]==null) _beforeRoom[r.member_id]={f:r.facility,no:r.room_no}; });
     // 1) 기존 auto 배정 제거(재실행=재정렬, 수기 배정 보호)
     const autoIds=state.rooms.filter(r=>r.assign_source==='auto').map(r=>r.id);
     if(autoIds.length){
@@ -1757,6 +1782,17 @@ async function autoAssign(){
     (data||[]).forEach(r=>state.rooms.push(r));
     rebuildAssignMap(); render();
     logAssign('자동배정', `${state.from||''}~${state.to||''} 자동배정 재실행 — ${pending.length}명 재배치${holds.length?` · 보류 ${holds.length}건`:''}`);
+    // 개인별 이동(어디서→어디로) 기록 — 이전 방과 달라진 사람만(신규 배정·미변경 제외)
+    const _moves=[];
+    (data||[]).forEach(r=>{
+      const b=_beforeRoom[r.member_id]; if(!b) return;                       // 이전 배정 없음(신규)
+      if(b.no===r.room_no && b.f===r.facility) return;                       // 같은 방(안 바뀜)
+      const m=r.member_id!=null?memberById(r.member_id):null;
+      const nm=(m&&(m.name_kr||m.name_en))||'';
+      const gc=teamGroupCode(r.event_seq)||evNo(r.event_seq)||'';
+      _moves.push(`${nm}(${gc}) ${b.f||''} ${b.no} → ${r.facility||''} ${r.room_no}`);
+    });
+    if(_moves.length) logMoves(_moves);
     toast(`자동배정 ${pending.length}명 완료${holds.length?` · 보류 ${holds.length}건(콘솔)`:''}`, holds.length?'warn':'ok');
     if(holds.length) console.warn('[자동배정 보류 '+holds.length+'건]\n'+holds.join('\n'));
   }finally{ btn.disabled=false; btn.textContent=old; }
@@ -2074,10 +2110,17 @@ async function logAssign(action, label){
   try{ await supa.from('change_log').insert({ entity:'room_assign', action, label:String(label||'').slice(0,300), changed_by:_curUser() }); }
   catch(e){ /* 이력 실패는 무시 */ }
 }
+// 이동(어디서→어디로) 여러 건을 한 번에 기록 — 자동배정 재배치 추적용(배치 insert 1회).
+async function logMoves(labels){
+  if(!supa||!labels||!labels.length) return;
+  const who=_curUser();
+  try{ await supa.from('change_log').insert(labels.map(l=>({ entity:'room_assign', action:'이동', label:String(l||'').slice(0,300), changed_by:who }))); }
+  catch(e){ /* 무시 */ }
+}
 // 변경이력 조회 — 40건씩 페이지네이션, label ilike 검색. 데이터 부담 없이 전체 열람 가능.
 const HIST_PAGE=40;
 let _histOff=0, _histQ='', _histLoading=false;
-const HIST_ICON={ '배정':'🛏', '해제':'✕', '분할':'✂', '자동배정':'🪄', '충돌정리':'🧹' };
+const HIST_ICON={ '배정':'🛏', '해제':'✕', '분할':'✂', '자동배정':'🪄', '이동':'↪️', '충돌정리':'🧹' };
 async function loadHist(reset){
   if(!supa){ $('#hist-list').innerHTML='<div class="empty-hint" style="padding:14px">먼저 연결하세요.</div>'; return; }
   if(_histLoading) return; _histLoading=true;
@@ -2333,6 +2376,56 @@ window.onSaizenLangChange = function(){ try{ if(typeof render==='function' && st
   sync();
   if(window.ResizeObserver){ const ro=new ResizeObserver(sync); ro.observe(tb); ro.observe(cb); }
   window.addEventListener('resize',sync);
+})();
+
+// ── 배정 검색 — 태그코드·한글명·영문명·행사번호로 '배정된 사람'을 찾아 위치 표시 + 점프 ──
+(function(){
+  const inp=document.getElementById('room-search'); if(!inp) return;
+  const box=document.getElementById('room-search-results'), cnt=document.getElementById('room-search-cnt');
+  let timer=null;
+  function run(){
+    const q=(inp.value||'').trim().toLowerCase();
+    if(!q){ box.classList.remove('on'); box.innerHTML=''; cnt.textContent=''; return; }
+    const hits=[];
+    (state.rooms||[]).forEach(r=>{
+      const m=r.member_id!=null?memberById(r.member_id):null;
+      const nameKr=(m&&m.name_kr)||'', nameEn=(m&&m.name_en)||'';
+      const tag=m?personTag(r.event_seq, m.seq_in_team||1):'';
+      const gcode=teamGroupCode(r.event_seq)||'';
+      const eno=String(evNo(r.event_seq)||'');
+      if((nameKr+' '+nameEn+' '+tag+' '+gcode+' '+eno).toLowerCase().indexOf(q)>=0)
+        hits.push({r,nameKr,nameEn,tag,gcode,eno});
+    });
+    hits.sort((a,b)=>String(a.r.check_in||'').localeCompare(String(b.r.check_in||''))
+      || String(a.r.facility||'').localeCompare(String(b.r.facility||''))
+      || String(a.r.room_no||'').localeCompare(String(b.r.room_no||'')));
+    const total=hits.length, shown=hits.slice(0,40);
+    cnt.textContent = total ? `${total}건${total>40?' · 40건 표시':''}` : '결과 없음';
+    box.innerHTML = shown.length ? shown.map(h=>{ const r=h.r;
+      return `<div class="rs-item" data-inv="${r.inventory_id}" data-date="${r.check_in||''}">
+        <b>${_lsEsc(h.nameKr||h.gcode||'-')}</b>${h.nameEn?`<span class="rs-en">${_lsEsc(h.nameEn)}</span>`:''}
+        <span class="rs-tag">${_lsEsc(h.tag||h.gcode)}</span>${h.eno?`<span class="rs-eno">#${_lsEsc(h.eno)}</span>`:''}
+        <span class="rs-loc">→ ${_lsEsc(r.facility||'')} ${_lsEsc(r.room_no||'')} · ${fmtMD(r.check_in)}~${fmtMD(r.check_out)}</span>
+      </div>`;
+    }).join('') : '<div class="rs-empty">배정된 인원 중 일치하는 사람이 없습니다.</div>';
+    box.classList.add('on');
+  }
+  inp.addEventListener('input',()=>{ clearTimeout(timer); timer=setTimeout(run,120); });
+  inp.addEventListener('focus',()=>{ if(inp.value.trim()) run(); });
+  box.addEventListener('click',e=>{
+    const it=e.target.closest('.rs-item'); if(!it) return;
+    const invId=it.dataset.inv; let date=it.dataset.date||state.from;
+    if(state.from && date<state.from) date=state.from;
+    if(state.to && date>state.to) date=state.to;
+    state.focus=date;
+    if(viewMode!=='card') setView('card'); else render();   // 카드 뷰라야 방 카드로 점프 가능
+    box.classList.remove('on');
+    setTimeout(()=>{
+      const el=document.querySelector('.room[data-inv-id="'+invId+'"]');
+      if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.classList.add('rs-flash'); setTimeout(()=>el.classList.remove('rs-flash'),1900); }
+    },90);
+  });
+  document.addEventListener('click',e=>{ if(!e.target.closest('.rsearch')) box.classList.remove('on'); });
 })();
 </script>
 </body>
