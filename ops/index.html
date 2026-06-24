@@ -122,6 +122,15 @@
     <span style="margin-left:auto;font-size:12px;color:var(--muted)" data-i18n="ix_boardOpen"></span>
   </a>
 
+  <!-- 주간 날씨(아소) — Open-Meteo 공개 API(키 불필요). 라운딩·송영 참고용 -->
+  <div id="wx-strip" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <b style="font-size:12.5px;color:var(--accent)">🗻 아소 주간 날씨</b>
+      <span id="wx-meta" style="font-size:11px;color:var(--muted)"></span>
+    </div>
+    <div id="wx-days" style="display:flex;gap:6px;overflow-x:auto"></div>
+  </div>
+
   <!-- 데이터 등록 — 시스템의 출발점(최상단 강조) -->
   <div class="group foundation">
     <h3><span data-i18n="ix_g1H"></span> <span class="desc" data-i18n="ix_g1Desc"></span></h3>
@@ -444,6 +453,39 @@
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(gate,60); });
   else setTimeout(gate,60);
+})();
+
+// ── 주간 날씨(아소 야마나미) — Open-Meteo 공개 API(키·인증 불필요). 라운딩·송영 참고 ──
+(function(){
+  var LAT=32.95, LON=131.12, WD=['일','월','화','수','목','금','토'];
+  function wmap(c){
+    if(c===0) return ['☀️','맑음']; if(c===1||c===2) return ['🌤️','대체로 맑음']; if(c===3) return ['☁️','흐림'];
+    if(c===45||c===48) return ['🌫️','안개']; if(c>=51&&c<=57) return ['🌦️','이슬비'];
+    if(c>=61&&c<=67) return ['🌧️','비']; if(c>=71&&c<=77) return ['🌨️','눈'];
+    if(c>=80&&c<=82) return ['🌧️','소나기']; if(c>=85&&c<=86) return ['🌨️','눈']; if(c>=95) return ['⛈️','뇌우'];
+    return ['·',''];
+  }
+  var url='https://api.open-meteo.com/v1/forecast?latitude='+LAT+'&longitude='+LON
+    +'&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FTokyo&forecast_days=7';
+  fetch(url).then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.daily||!d.daily.time) return;
+    var D=d.daily, html='';
+    for(var i=0;i<D.time.length;i++){
+      var dt=new Date(D.time[i]+'T00:00:00'), w=wmap(D.weather_code[i]), today=i===0;
+      var pp=D.precipitation_probability_max?D.precipitation_probability_max[i]:null;
+      html+='<div style="flex:0 0 auto;min-width:74px;text-align:center;padding:6px 4px;border-radius:8px;'
+        +(today?'background:var(--accentSoft,#e4ecd9);':'')+'">'
+        +'<div style="font-size:11px;color:var(--text2);font-weight:'+(today?'800':'600')+'">'
+          +(today?'오늘':(parseInt(D.time[i].slice(5,7),10)+'/'+parseInt(D.time[i].slice(8,10),10)+'('+WD[dt.getDay()]+')'))+'</div>'
+        +'<div style="font-size:20px;line-height:1.5" title="'+w[1]+'">'+w[0]+'</div>'
+        +'<div style="font-size:12px"><b>'+Math.round(D.temperature_2m_max[i])+'°</b> <span style="color:var(--muted)">'+Math.round(D.temperature_2m_min[i])+'°</span></div>'
+        +'<div style="font-size:10.5px;color:#1a4d8f">💧'+(pp==null?'-':pp+'%')+'</div></div>';
+    }
+    var days=document.getElementById('wx-days'); if(!days) return;
+    days.innerHTML=html;
+    var mt=document.getElementById('wx-meta'); if(mt) mt.textContent='제공: Open-Meteo';
+    document.getElementById('wx-strip').style.display='';
+  }).catch(function(){ /* 날씨 로드 실패는 조용히 숨김 */ });
 })();
 </script>
 </body>
