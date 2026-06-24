@@ -5,31 +5,44 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 재고 · 내부 관리</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.66">
 <style>
   :root{
+    /* 중립 회색 캔버스(디자인 리프레시) — accent 등은 saizen-ops.css 가 통일 */
     --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
-    --border:#e3e6ea; --border2:#cdd2d8; --muted:#8a93a0; --text2:#566071;
+    --border:#e3e6ea; --border2:#cdd2d8;
+    --text:#1f2937; --text2:#525b66; --muted:#8b919b;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
   }
-  /* 공통 chrome — saizen-ops.css 미제공분(.step/.pill/.conn/.hint), 타 ops 페이지와 동일 */
-  .topbar .step{ font-size:10.5px; font-weight:700; color:#fff; background:var(--accent2); border-radius:99px; padding:3px 11px }
-  .pill{ font-size:12px; font-weight:700; padding:4px 12px; border-radius:99px; background:var(--surface3); color:var(--text2); border:1px solid var(--border) }
-  .pill.ok{ background:var(--accentSoft); color:var(--ok); border-color:#b4cda0 }
-  .pill.err{ background:#f7e6e2; color:var(--err); border-color:#e3bdb4 }
-  .conn{ padding:10px 20px; background:var(--surface2); border-bottom:1px solid var(--border); display:flex; gap:8px; align-items:center; flex-wrap:wrap }
-  .conn input{ width:230px }
-  .hint{ font-size:11px; color:var(--muted) }
-  /* 버튼·인풋 변형도 saizen-ops.css 미제공 → 타 페이지와 동일하게 inline */
-  input,select{ font-family:inherit }
-  .inp{ padding:7px 11px; border:1px solid var(--border2); border-radius:6px; background:var(--surface); color:var(--text); font-size:13px }
-  .inp:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accentSoft) }
-  .btn{ font-family:inherit; font-size:13px; font-weight:700; border-radius:7px; padding:7px 16px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; transition:.15s }
-  .btn:hover:not(:disabled){ background:var(--accentDeep) }
-  .btn:disabled{ opacity:.4; cursor:not-allowed }
-  .btn.ghost{ background:transparent; color:var(--accent) }
-  .btn.ghost:hover:not(:disabled){ background:var(--accentSoft) }
-  .btn.sm{ font-size:12px; padding:5px 12px }
-  .btn.connected{ background:var(--ok); border-color:var(--ok); color:#fff }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh;
+  }
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);
+    padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none}
+  .navhome:hover{text-decoration:underline}
+  .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .btn.xs{font-size:12px;padding:3px 9px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .hint{font-size:11px;color:var(--muted)}
   .inv-wrap{ padding:14px 20px 80px; max-width:1180px; margin:0 auto; }
   .inv-bar{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px }
   .dept-toggle{ display:flex; gap:6px }
@@ -81,6 +94,7 @@
   .toast.ok{ border-left-color:#3f7d4e; background:#e7efe1; color:#234d2f }
   .toast.warn{ border-left-color:#b8860b; background:#fbf3e2; color:#7a5a16 }
 </style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.66">
 </head>
 <body>
 <script>(function(){var d=new URLSearchParams(location.search).get('dept');document.body.setAttribute('data-so-area', d==='room'?'room':'kitchen');})();</script>
