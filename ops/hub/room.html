@@ -337,7 +337,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.74">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.75">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -439,7 +439,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=2"></script>
-<script src="../assets/saizen-ops.js?v=14.74"></script>
+<script src="../assets/saizen-ops.js?v=14.75"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -1584,8 +1584,8 @@ async function assign(seq,inv){
 //   · 대상: 야마나미 호텔(트윈/소형트윈/관내별장→호텔동) + 돔하우스·간지·쿠주·시즈노야도
 //   · 제외: 소보별장/아소별장(비워둠) — autoRoute 가 null 반환
 //   · 회원 판정: 공란·'일반고객'·'일반' = 일반, 그 외(회원권/다이아몬드1/EWRC…) = 회원
-//   · 룸메 짝: 명단 순서 2명. 외톨이 회원은 같은 팀 일반 1명을 디럭스로 끌어올림.
-//   · 디럭스 부족 시 일반 예약종류로 자동 강등. 3명팀·진짜 홀수잔여는 보류.
+//   · 룸메 짝(A 규칙): 명단 순서 연속 2명(1-2,3-4). 짝에 회원이 1명이라도 있으면 디럭스, 없으면 예약종류.
+//   · 디럭스 부족 시 예약종류로 자동 강등. 3명팀·진짜 홀수잔여는 보류(미배정).
 //   · assign_source='auto' 만 재정렬(수기 배정·잠금은 안 건드림) → 재실행=승급 반영.
 // ════════════════════════════════════════════════════════════════════════
 const DELUXE_TYPES=['디럭스더블트윈','디럭스트윈']; // 우선순위 순(최상급 먼저)
@@ -1698,25 +1698,31 @@ function pickFloor(pool,needRooms,dep,arr,pending,occ){
 // list 를 2명씩 짝지어 primaryPool 에 배정. 없으면 fallbackPool(강등). 홀수 1명은 보류.
 //   ★ 같은 팀 같은 층 원칙: 2방 이상이면 팀 전체가 들어갈 가장 높은 한 층으로 묶고,
 //      그 층이 모자라면 전체 풀로 폴백(자리 없는 것보단 분산 배정).
+// 명단 평탄 리스트 → 연속 짝(1-2,3-4)으로 묶어 위임. 홀수 잔여는 보류.
 function placePairs(g,list,primaryPool,fallbackPool,label,pending,holds,occ){
+  const pairs=[]; let i=0;
+  for(; i+1<list.length; i+=2) pairs.push([list[i], list[i+1]]);
+  if(i<list.length){ const gc=teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq)); holds.push(`${gc} ${list[i].name_kr||''}: 홀수 잔여`); }
+  placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,occ);
+}
+// 미리 구성된 짝 배열을 받아 같은 층 묶기 + 방 배정(부족 시 fallbackPool로 강등).
+function placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,occ){
+  if(!pairs||!pairs.length) return;
   const gc=teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq));
-  const needRooms=Math.floor(list.length/2);
   let usePool=primaryPool;
-  if(needRooms>=2){
-    const f=pickFloor(primaryPool,needRooms,g.dep,g.arr,pending,occ);
+  if(pairs.length>=2){
+    const f=pickFloor(primaryPool,pairs.length,g.dep,g.arr,pending,occ);
     if(f!=null) usePool=primaryPool.filter(inv=>floorOf(inv)===f);   // 그 팀은 이 층으로 묶기
   }
-  let i=0;
-  for(; i+1<list.length; i+=2){
+  for(const pair of pairs){
     let inv=pickRoom(usePool,g.dep,g.arr,2,pending,occ);
     if(!inv && usePool!==primaryPool) inv=pickRoom(primaryPool,g.dep,g.arr,2,pending,occ); // 같은 층 소진 → 전체 풀
     if(!inv && fallbackPool && fallbackPool!==primaryPool)
       inv=pickRoom(fallbackPool,g.dep,g.arr,2,pending,occ);
-    if(!inv){ holds.push(`${gc} ${list[i].name_kr||''}·${list[i+1].name_kr||''}: ${label} 객실부족`); continue; }
-    pending.push(mkRow(g,list[i],inv));
-    pending.push(mkRow(g,list[i+1],inv));
+    if(!inv){ holds.push(`${gc} ${pair[0].name_kr||''}·${pair[1].name_kr||''}: ${label} 객실부족`); continue; }
+    pending.push(mkRow(g,pair[0],inv));
+    pending.push(mkRow(g,pair[1],inv));
   }
-  if(i<list.length) holds.push(`${gc} ${list[i].name_kr||''}: 홀수 잔여`);
 }
 
 async function autoAssign(){
@@ -1761,18 +1767,21 @@ async function autoAssign(){
       if(!roster.length) continue;
       if(roster.length===3){ holds.push(`${teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq))} 3명팀 보류`); continue; }
 
-      let mem = route.deluxe ? roster.filter(m=>isMember(m)) : [];
-      let gen = route.deluxe ? roster.filter(m=>!isMember(m)) : roster.slice();
-      // 외톨이 회원: 명단 앞 일반 1명을 디럭스로 끌어올려 짝 채움(룸메 유지)
-      if(route.deluxe && mem.length%2===1 && gen.length>0) mem.push(gen.shift());
-
       if(route.deluxe){
+        // A 규칙: 명단 순서대로 짝(1-2,3-4) → 짝에 회원이 1명이라도 있으면 디럭스, 없으면 예약종류.
+        //  · 회원의 디럭스 혜택이 같은 방 룸메(명단 짝)에게 자연히 적용. 회원끼리 강제로 묶지 않음.
         const dlx=roomPool(route,'deluxe'), gp=roomPool(route,'general');
-        placePairs(g, mem, dlx, gp, '디럭스', pending, holds, occ); // 부족 시 일반종류로 강등
-        placePairs(g, gen, gp, null, '일반', pending, holds, occ);
+        const memberPairs=[], generalPairs=[]; let pi=0;
+        for(; pi+1<roster.length; pi+=2){
+          const pair=[roster[pi], roster[pi+1]];
+          (pair.some(isMember) ? memberPairs : generalPairs).push(pair);
+        }
+        placeGivenPairs(g, memberPairs, dlx, gp, '디럭스', pending, holds, occ);  // 부족 시 예약종류로 강등
+        placeGivenPairs(g, generalPairs, gp, null, '예약종류', pending, holds, occ);
+        if(pi<roster.length){ const gc=teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq)); holds.push(`${gc} ${roster[pi].name_kr||''}: 홀수 잔여`); }
       }else{
         const gp=roomPool(route,'general');
-        placePairs(g, gen, gp, null, route.fac, pending, holds, occ);
+        placePairs(g, roster, gp, null, route.fac, pending, holds, occ);   // 비디럭스: 명단순 짝 그대로
       }
     }
 
