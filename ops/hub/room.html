@@ -316,7 +316,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.69">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.70">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -395,10 +395,23 @@
   </div>
 </div>
 
+<details id="histbox" style="margin:0 20px 30px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+  <summary style="cursor:pointer;padding:12px 16px;font-weight:800;font-size:14px;color:var(--accent);list-style:none">🕘 방배정 변경 이력 <span style="font-weight:600;color:var(--muted);font-size:12px">— 누가·언제·어디로 (자동배정=요약 1건)</span></summary>
+  <div style="padding:0 16px 16px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <input class="inp" id="hist-q" placeholder="이름·방번호·그룹코드 검색" style="flex:1;min-width:200px;max-width:380px">
+      <button class="btn ghost sm" id="hist-search" type="button">검색</button>
+      <span class="hint" id="hist-cnt" style="margin-left:auto"></span>
+    </div>
+    <div id="hist-list"><div class="empty-hint" style="padding:14px">펼치면 최근 변경 이력이 표시됩니다.</div></div>
+    <div style="text-align:center;margin-top:10px"><button class="btn ghost sm" id="hist-more" type="button" style="display:none">더 보기 (다음 40건)</button></div>
+  </div>
+</details>
+
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=2"></script>
-<script src="../assets/saizen-ops.js?v=14.69"></script>
+<script src="../assets/saizen-ops.js?v=14.70"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -1305,6 +1318,7 @@ async function commitSplit(inv){
   state.rooms.push(data);
   state.splitPending=null;
   rebuildAssignMap(); render();
+  logAssign('분할', `${sp.name||''}(${teamGroupCode(sp.event_seq)||evNo(sp.event_seq)||''}) ${sp.from}부터 → ${inv.facility||''} ${inv.room_no}`);
   toast(`분할 완료 — ${sp.from}부터 ${inv.room_no}`,'ok');
 }
 function cancelSplit(){ if(state.splitPending){ state.splitPending=null; render(); } }
@@ -1410,7 +1424,7 @@ async function assignMembers(memberIds, inv, opts={}){
   }
   if(!targets.length){toast('배정할 인원이 없습니다','warn');return;}
 
-  let ok=0, blocked=0; const blockMsg=[]; const byeolcheList=[];
+  let ok=0, blocked=0; const blockMsg=[]; const byeolcheList=[]; const _logAssignNames=[];
   for(const m of targets){
     const g=state.guests.find(x=>x.event_seq===m.event_seq);
     if(!g){blocked++;continue;}
@@ -1443,6 +1457,7 @@ async function assignMembers(memberIds, inv, opts={}){
     state.rooms.push(data);
     if(state.sel) state.sel.delete(m.id);
     ok++;
+    _logAssignNames.push(`${m.name_kr||m.name_en||m.id}(${teamGroupCode(m.event_seq)||evNo(m.event_seq)||''})`);
     // 1인실 추가요금(간지) — 사람 단위 1명이므로 그대로 적용
     const nights=g.dep&&g.arr?Math.round((new Date(g.arr)-new Date(g.dep))/864e5):0;
     if(FEE_SINGLE[inv.facility] && nights>0){
@@ -1455,6 +1470,7 @@ async function assignMembers(memberIds, inv, opts={}){
     }
   }
   rebuildAssignMap(); render();
+  if(_logAssignNames.length) logAssign('배정', `${inv.facility} ${inv.room_no} ← ${_logAssignNames.join(', ')}`);
   if(ok)   toast(`${inv.room_no} ← ${ok}명 배정`+(blocked?` (${blocked}명 보류)`:''), blocked?'warn':'ok');
   else     toast(blockMsg[0]||'배정 실패','warn');
   // 별채 온천 사전신청 추가요금: 확정 경로면 바로 기록, 수기 배정이면 모달로 확인
@@ -1703,6 +1719,7 @@ async function autoAssign(){
     if(error){toast('자동배정 저장 실패: '+error.message,'err');return;}
     (data||[]).forEach(r=>state.rooms.push(r));
     rebuildAssignMap(); render();
+    logAssign('자동배정', `${state.from||''}~${state.to||''} 자동배정 재실행 — ${pending.length}명 재배치${holds.length?` · 보류 ${holds.length}건`:''}`);
     toast(`자동배정 ${pending.length}명 완료${holds.length?` · 보류 ${holds.length}건(콘솔)`:''}`, holds.length?'warn':'ok');
     if(holds.length) console.warn('[자동배정 보류 '+holds.length+'건]\n'+holds.join('\n'));
   }finally{ btn.disabled=false; btn.textContent=old; }
@@ -1923,6 +1940,7 @@ async function unassign(roomId, opts){
   const snap=_roomSnap(row);
   const {error}=await supa.from('rooms').delete().eq('id',roomId);
   if(error){toast('취소 실패: '+error.message,'err');return null;}
+  if(row){ const _mm=memberById(row.member_id); logAssign('해제', `${row.facility||''} ${row.room_no} ✕ ${(_mm&&(_mm.name_kr||_mm.name_en))||''}(${teamGroupCode(row.event_seq)||evNo(row.event_seq)||''})`); }
   // 연동 추가요금 정리(같은 팀·해당 객실 설명 매칭)
   if(row){
     const inv=invById(row.inventory_id);
@@ -2013,6 +2031,56 @@ async function saveHotelRooms(bg,types,cur){
 //  객실 폐쇄(기간 잠금) 관리 — room_closures
 // ════════════════════════════════════════════════════════════════════════
 function _curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
+// 방배정 변경이력 — change_log(entity='room_assign') 재사용. 자동배정=요약 1건, 수기=개별.
+async function logAssign(action, label){
+  if(!supa) return;
+  try{ await supa.from('change_log').insert({ entity:'room_assign', action, label:String(label||'').slice(0,300), changed_by:_curUser() }); }
+  catch(e){ /* 이력 실패는 무시 */ }
+}
+// 변경이력 조회 — 40건씩 페이지네이션, label ilike 검색. 데이터 부담 없이 전체 열람 가능.
+const HIST_PAGE=40;
+let _histOff=0, _histQ='', _histLoading=false;
+const HIST_ICON={ '배정':'🛏', '해제':'✕', '분할':'✂', '자동배정':'🪄', '충돌정리':'🧹' };
+async function loadHist(reset){
+  if(!supa){ $('#hist-list').innerHTML='<div class="empty-hint" style="padding:14px">먼저 연결하세요.</div>'; return; }
+  if(_histLoading) return; _histLoading=true;
+  if(reset){ _histOff=0; $('#hist-list').innerHTML='<div class="empty-hint" style="padding:14px">불러오는 중…</div>'; }
+  try{
+    let q=supa.from('change_log').select('action,label,changed_by,changed_at',{count:'exact'})
+      .eq('entity','room_assign').order('changed_at',{ascending:false})
+      .range(_histOff,_histOff+HIST_PAGE-1);
+    if(_histQ) q=q.ilike('label','%'+_histQ+'%');
+    const {data,error,count}=await q;
+    if(error) throw error;
+    const rows=data||[];
+    const html=rows.map(r=>{
+      const ic=HIST_ICON[r.action]||'•';
+      const when=(r.changed_at||'').replace('T',' ').slice(5,16);
+      const who=r.changed_by?` · <span style="color:var(--text2)">${_lsEsc(r.changed_by)}</span>`:'';
+      return `<div style="display:flex;gap:8px;align-items:baseline;padding:7px 4px;border-top:1px solid var(--border);font-size:12.5px">
+        <span style="flex:0 0 16px;text-align:center">${ic}</span>
+        <span style="flex:0 0 86px;font-family:var(--mono);color:var(--muted)">${when}</span>
+        <span style="flex:0 0 60px;font-weight:600">${_lsEsc(r.action)}</span>
+        <span style="flex:1;min-width:0">${_lsEsc(r.label)}${who}</span>
+      </div>`;
+    }).join('');
+    if(reset) $('#hist-list').innerHTML = html||'<div class="empty-hint" style="padding:14px">이력이 없습니다.</div>';
+    else $('#hist-list').insertAdjacentHTML('beforeend', html);
+    _histOff+=rows.length;
+    $('#hist-cnt').textContent = (count!=null)?`총 ${count}건${_histQ?' (검색)':''}`:'';
+    $('#hist-more').style.display = (count!=null && _histOff<count)?'':'none';
+  }catch(e){
+    $('#hist-list').innerHTML='<div class="empty-hint" style="padding:14px">이력 조회 실패: '+_lsEsc(e.message||e)+'</div>';
+  }finally{ _histLoading=false; }
+}
+function _histSearch(){ _histQ=($('#hist-q').value||'').trim(); loadHist(true); }
+(function bindHist(){
+  const box=$('#histbox'); if(!box) return;
+  box.addEventListener('toggle', ()=>{ if(box.open && !_histOff) loadHist(true); });
+  $('#hist-search').addEventListener('click', _histSearch);
+  $('#hist-q').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); _histSearch(); } });
+  $('#hist-more').addEventListener('click', ()=>loadHist(false));
+})();
 function openClosureModal(){
   if(!supa){toast('먼저 연결하세요','warn');return;}
   const today=new Date().toISOString().slice(0,10);
