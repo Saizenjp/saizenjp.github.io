@@ -68,6 +68,19 @@
   .ded-grid .hd{font-size:10px;color:var(--muted)}
   .ded-grid input,.ded-grid select{border:1px solid var(--border2);border-radius:5px;padding:5px 7px;font-size:12px}
   .ded-x{background:#f7e6e2;border:1px solid #e3bdb4;color:var(--err);border-radius:5px;cursor:pointer;font-size:12px;padding:4px 8px}
+  /* 인쇄 — 화면 chrome·컨트롤 숨기고 정산표(요약·차감·명세)만 깔끔히 */
+  .print-only{display:none}
+  @media print{
+    .topbar,.conn,.page-help,.no-print,.ded-x,#btn-add-ded{display:none!important}
+    .print-only{display:block!important;margin-bottom:10px}
+    body{background:#fff}
+    .wrap{padding:0;max-width:none}
+    .panel{box-shadow:none;border:1px solid #ccc;margin:0 0 10px;padding:10px 12px;break-inside:avoid}
+    .panel h3{font-size:13px}
+    table.list{font-size:10px}
+    .ded-row input{border:none!important;background:transparent!important;padding:2px 0!important}
+    @page{size:A4 landscape;margin:10mm}
+  }
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
   .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
@@ -162,7 +175,8 @@ async function connect(){
 
 function renderUI(){
   $('#content').innerHTML=`
-    <div class="panel">
+    <div class="print-only" id="print-head"></div>
+    <div class="panel no-print">
       <h3>월 선택 · 필터</h3>
       <div class="row">
         <div class="ymctrl">
@@ -175,7 +189,8 @@ function renderUI(){
         <div id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
-        <button class="btn" id="btn-xlsx" type="button" disabled>⬇ 現地精算表 xlsx</button>
+        <button class="btn" id="btn-print" type="button" disabled style="background:#15803d;border-color:#15803d">🖨 인쇄</button>
+        <button class="btn ghost" id="btn-xlsx" type="button" disabled>⬇ 엑셀</button>
       </div>
     </div>
     <div class="panel">
@@ -195,7 +210,14 @@ function renderUI(){
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
   $('#btn-xlsx').addEventListener('click',downloadXlsx);
+  $('#btn-print').addEventListener('click',printReport);
   $('#btn-add-ded').addEventListener('click',addDed);
+}
+function printReport(){
+  const ph=$('#print-head');
+  if(ph) ph.innerHTML=`<div style="font-size:18px;font-weight:800;color:#1a2540">現地精算表 — ${YM}</div>`
+    +`<div style="font-size:11px;color:#555">アソ ヤマナミリゾート ／ 株式会社SaiZen · 発行 ${new Date().toISOString().slice(0,10)}</div>`;
+  window.print();
 }
 function renderAccomChips(){
   const accoms=[...new Set(ROWS.map(r=>r.accom).filter(Boolean))].sort((a,b)=>accIdx(a)-accIdx(b));
@@ -207,7 +229,7 @@ function renderAccomChips(){
 
 async function load(){
   if(!supa)return;
-  $('#ym-label').textContent=YM; $('#stat').textContent='불러오는 중…'; $('#btn-xlsx').disabled=true;
+  $('#ym-label').textContent=YM; $('#stat').textContent='불러오는 중…'; $('#btn-xlsx').disabled=true; { const p=$('#btn-print'); if(p)p.disabled=true; }
   try{
     const {data:bs,error:e1}=await supa.from('bookings')
       .select('event_seq,event_no,status,member_type,rep_name,dep_date,arr_date,nights_label,product_name,pax')
@@ -263,7 +285,7 @@ function visibleRows(){ return ROWS.filter(r=>ACCOMSEL.size===0||ACCOMSEL.has(r.
 
 function renderAll(){
   const rows=visibleRows();
-  $('#btn-xlsx').disabled=!rows.length;
+  $('#btn-xlsx').disabled=!rows.length; { const p=$('#btn-print'); if(p)p.disabled=!rows.length; }
   // 요약 박스
   const stayT=rows.reduce((s,r)=>s+r.stay,0), transT=rows.reduce((s,r)=>s+r.transport,0), totalT=rows.reduce((s,r)=>s+r.total,0), paxT=rows.reduce((s,r)=>s+r.pax,0);
   $('#boxes').innerHTML=ACCOM_ORDER.map(a=>{ const g=rows.filter(r=>r.accom===a); if(!g.length)return '';
