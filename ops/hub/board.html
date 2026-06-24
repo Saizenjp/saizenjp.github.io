@@ -54,7 +54,13 @@
   .ann .at{font-size:15px;font-weight:800}
   .ann .ameta{margin-left:auto;font-size:11.5px;color:var(--muted)}
   .ann .abody{font-size:13.5px;color:var(--text);margin-top:6px;white-space:pre-wrap;line-height:1.55}
-  .ann .actions{margin-top:9px;display:flex;gap:7px}
+  .ann .actions{margin-top:9px;display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+  .ann .draghandle{cursor:grab;color:var(--muted);font-size:16px;font-weight:800;padding:0 4px;user-select:none}
+  .ann[draggable=true]{cursor:default}
+  .ann.dragover{outline:2px dashed var(--accent2);outline-offset:2px}
+  .ann .pinperiod{font-size:11.5px;color:var(--text2);display:inline-flex;align-items:center;gap:4px}
+  .ann .pinperiod input{font-size:11.5px;padding:3px 6px;border:1px solid var(--border2);border-radius:6px}
+  .ann .pinuntil-meta{font-size:11px;font-weight:700;color:var(--accent2)}
   .dbadge{font-size:10.5px;font-weight:800;border-radius:99px;padding:2px 9px;background:var(--surface3);color:var(--text2);border:1px solid var(--border2)}
   .dbadge.all{background:var(--accentSoft);color:var(--accent);border-color:#b4cda0}
   .chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
@@ -107,6 +113,7 @@
       <div class="opts">
         <label><span data-i18n="bd_deptLabel"></span> <select class="inp" id="w-dept" style="width:auto;padding:6px 9px"></select></label>
         <label><input type="checkbox" id="w-pin"> <span data-i18n="bd_pin"></span></label>
+        <label id="w-pinuntil-wrap" style="display:none;font-size:12px;color:var(--text2)">고정 기간(까지) <input type="date" class="inp" id="w-pinuntil" style="width:auto;padding:5px 8px"></label>
         <button class="btn" id="w-post" type="button" style="margin-left:auto" data-i18n="bd_post"></button>
       </div>
     </div>
@@ -176,7 +183,7 @@ function renderSummary(){
 
 async function loadAnns(){
   const {data,error}=await supa.from('announcements').select('*')
-    .order('pinned',{ascending:false}).order('created_at',{ascending:false});
+    .order('pinned',{ascending:false}).order('sort_order',{ascending:true}).order('created_at',{ascending:false});
   if(error){ toast('공지 로드 실패: '+error.message,'err'); return; }
   anns=data||[]; renderAnns();
 }
@@ -222,23 +229,59 @@ function renderAnns(){
   const box=$('#ann-list');
   const list = curDept ? anns.filter(a=>(a.dept||'')===curDept) : anns;
   if(!list.length){ box.innerHTML='<div class="empty">'+(curDept?deptLabel(curDept)+' ':'')+t('bd_empty')+'</div>'; return; }
-  box.innerHTML=list.map(a=>`
-    <div class="ann${a.pinned?' pin':''}">
+  const canDrag = canWrite && !curDept;   // 순서 변경은 '전체' 보기에서만(필터 중엔 비활성)
+  box.innerHTML=list.map(a=>{
+    const act=pinActive(a);
+    return `
+    <div class="ann${act?' pin':''}" data-id="${a.id}"${canDrag?' draggable="true"':''}>
       <div class="ah">
-        <span class="at">${a.pinned?'':''}${esc(a.title)}</span>
+        ${canDrag?'<span class="draghandle" title="드래그하여 순서 변경">≡</span>':''}
+        <span class="at">${esc(a.title)}</span>
+        ${act&&a.pin_until?`<span class="pinuntil-meta">📌 ~${fmtTs(a.pin_until).slice(0,10)}</span>`:''}
         <span class="dbadge${a.dept?'':' all'}">${esc(deptLabel(a.dept))}</span>
         <span class="ameta">${esc(a.author||'')} · ${fmtTs(a.created_at)}</span>
       </div>
       ${a.body?`<div class="abody">${esc(a.body)}</div>`:''}
       ${canWrite?`<div class="actions">
         <button class="btn sm ghost" data-pin="${a.id}">${a.pinned?t('bd_unpin'):t('bd_doPin')}</button>
+        ${a.pinned?`<label class="pinperiod">고정~ <input type="date" data-pinuntil="${a.id}" value="${a.pin_until?String(a.pin_until).slice(0,10):''}"></label>`:''}
         <button class="btn sm danger" data-del="${a.id}">${t('bd_del')}</button>
       </div>`:''}
-    </div>`).join('');
+    </div>`;}).join('');
   if(canWrite){
     box.querySelectorAll('[data-pin]').forEach(b=>b.addEventListener('click',()=>togglePin(b.dataset.pin)));
     box.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>delAnn(b.dataset.del)));
+    box.querySelectorAll('[data-pinuntil]').forEach(inp=>inp.addEventListener('change',()=>setPinUntil(inp.dataset.pinuntil, inp.value)));
+    if(canDrag) wireDrag(box);
   }
+}
+function pinActive(a){ return !!a.pinned && (!a.pin_until || new Date(a.pin_until).getTime() > Date.now()); }
+let _dragId=null;
+function wireDrag(box){
+  box.querySelectorAll('.ann[draggable=true]').forEach(el=>{
+    el.addEventListener('dragstart',()=>{ _dragId=el.dataset.id; el.style.opacity='.45'; });
+    el.addEventListener('dragend',()=>{ el.style.opacity=''; box.querySelectorAll('.ann').forEach(x=>x.classList.remove('dragover')); });
+    el.addEventListener('dragover',e=>{ e.preventDefault(); el.classList.add('dragover'); });
+    el.addEventListener('dragleave',()=>el.classList.remove('dragover'));
+    el.addEventListener('drop',e=>{ e.preventDefault(); el.classList.remove('dragover'); const tgt=el.dataset.id; if(_dragId&&tgt&&_dragId!==tgt) reorderAnns(_dragId,tgt); });
+  });
+}
+async function reorderAnns(fromId,toId){
+  const arr=anns.slice();
+  const fi=arr.findIndex(a=>String(a.id)===String(fromId)), ti=arr.findIndex(a=>String(a.id)===String(toId));
+  if(fi<0||ti<0) return;
+  const [m]=arr.splice(fi,1); arr.splice(ti,0,m);
+  anns=arr; renderAnns();   // 즉시 반영
+  try{
+    for(let i=0;i<arr.length;i++){ const so=(i+1)*10; if(arr[i].sort_order!==so){ await supa.from('announcements').update({sort_order:so}).eq('id',arr[i].id); arr[i].sort_order=so; } }
+    toast('순서 변경됨','ok');
+  }catch(e){ toast('순서 저장 실패: '+e.message,'err'); loadAnns(); }
+}
+async function setPinUntil(id,val){
+  const until = val ? new Date(val+'T23:59:59').toISOString() : null;
+  const {error}=await supa.from('announcements').update({pin_until:until,updated_at:new Date().toISOString()}).eq('id',id);
+  if(error){ toast('고정 기간 저장 실패: '+error.message,'err'); return; }
+  toast(until?'고정 기간 설정됨':'고정 기간 해제','ok'); loadAnns();
 }
 
 async function postAnn(){
@@ -246,9 +289,12 @@ async function postAnn(){
   if(!title){ toast('제목을 입력하세요','err'); return; }
   const author=authorName();
   const dept=($('#w-dept')&&$('#w-dept').value)||null;
-  const {error}=await supa.from('announcements').insert({title,body,pinned,author,dept});
+  const pu=$('#w-pinuntil')&&$('#w-pinuntil').value;
+  const pin_until=(pinned&&pu)?new Date(pu+'T23:59:59').toISOString():null;
+  const {error}=await supa.from('announcements').insert({title,body,pinned,author,dept,pin_until,sort_order:0});
   if(error){ toast('등록 실패: '+error.message,'err'); return; }
   $('#w-title').value=''; $('#w-body').value=''; $('#w-pin').checked=false;
+  if($('#w-pinuntil')){ $('#w-pinuntil').value=''; $('#w-pinuntil-wrap').style.display='none'; }
   toast('공지 등록됨','ok'); loadAnns();
 }
 async function togglePin(id){
@@ -264,6 +310,7 @@ async function delAnn(id){
 
 $('#btn-connect').addEventListener('click',connect);
 $('#w-post').addEventListener('click',postAnn);
+if($('#w-pin')) $('#w-pin').addEventListener('change',e=>{ const w=$('#w-pinuntil-wrap'); if(w) w.style.display=e.target.checked?'inline-flex':'none'; });
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }
 
