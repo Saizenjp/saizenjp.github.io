@@ -174,19 +174,6 @@ function renderUI(){
       <div class="desc" style="margin-top:10px">날짜 1일 = A3 가로 1페이지(夕食オーダー 명단 + 朝食·昼食·夕食 식수표). <b>A3 가로, 배율 100%</b>로 인쇄. ※테이블No·끼니제외·ウォークイン·일본고객 식수는 /app/ 수기항목이라 비어 있습니다(식수 자동집계는 동일 규칙).</div>
     </div>
     <div class="panel">
-      <h3>날짜별 식수 미리보기 <span class="cnt" id="pv-cnt"></span></h3>
-      <div id="preview" class="preview"></div>
-    </div>
-    <div class="panel">
-      <h3>팀 夕食除外·묶기 <span class="cnt">— 夕食除外는 <b>석식 수량에서만</b> 빠짐(朝·昼食 식수 유지). 묶기(🔗)는 レストラン名札 1장으로 합석(인원 합산·대표/태그 모두 표기). 태그코드·인원은 step1 데이터 기준(수정 불가)</span></h3>
-      <div id="tedit-tools" style="display:flex;gap:8px;align-items:center;margin:0 0 8px;flex-wrap:wrap">
-        <button class="btn ghost sm" id="dg-link" type="button">🔗 선택 묶기</button>
-        <button class="btn ghost sm" id="dg-unlink" type="button">✂ 묶음 해제</button>
-        <span class="hint">같은 식당 명패로 합석할 팀을 체크 → 묶기. 명패엔 합산 인원 + 대표자·태그 모두 나옵니다.</span>
-      </div>
-      <div style="overflow:auto"><table class="tedit" id="tedit"><thead></thead><tbody></tbody></table></div>
-    </div>
-    <div class="panel">
       <h3>別注 · 알레르기 <span class="cnt">— 추가/업그레이드 메뉴 · 알레르기. 날짜+팀 선택 후 등록. <b>업그레이드는 인분만큼 석식 기본 수량 자동 차감</b>. 夕食オーダー 인쇄에 빨강 표기</span></h3>
       <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
         <label class="adf">날짜<br><select id="ad-date"></select></label>
@@ -210,6 +197,19 @@ function renderUI(){
         <button class="btn sm" id="ad-add" type="button">＋ 등록</button>
       </div>
       <div id="ad-list" style="margin-top:12px"></div>
+    </div>
+    <div class="panel">
+      <h3>날짜별 식수 미리보기 <span class="cnt" id="pv-cnt"></span></h3>
+      <div id="preview" class="preview"></div>
+    </div>
+    <div class="panel">
+      <h3>팀 夕食除外·묶기 <span class="cnt">— 夕食除外는 <b>석식 수량에서만</b> 빠짐(朝·昼食 식수 유지). 묶기(🔗)는 レストラン名札 1장으로 합석(인원 합산·대표/태그 모두 표기). 태그코드·인원은 step1 데이터 기준(수정 불가)</span></h3>
+      <div id="tedit-tools" style="display:flex;gap:8px;align-items:center;margin:0 0 8px;flex-wrap:wrap">
+        <button class="btn ghost sm" id="dg-link" type="button">🔗 선택 묶기</button>
+        <button class="btn ghost sm" id="dg-unlink" type="button">✂ 묶음 해제</button>
+        <span class="hint">같은 식당 명패로 합석할 팀을 체크 → 묶기. 명패엔 합산 인원 + 대표자·태그 모두 나옵니다.</span>
+      </div>
+      <div style="overflow:auto"><table class="tedit" id="tedit"><thead></thead><tbody></tbody></table></div>
     </div>`;
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
@@ -295,7 +295,9 @@ function renderAddonList(){
 }
 function renderTeamEdit(){
   const thead=$('#tedit thead'), tbody=$('#tedit tbody'); if(!thead)return;
-  const rows=TEAMS.filter(t=>ACCOMSEL.size===0||ACCOMSEL.has(t.accom)).slice()
+  // 선택한 날짜(들)에 묵는 팀만 — 날짜 토글 선택 시 그날 목록만 노출(전체 선택=전월)
+  const _dsel=selectedDates();
+  const rows=TEAMS.filter(t=>(ACCOMSEL.size===0||ACCOMSEL.has(t.accom)) && _dsel.some(d=>t.dep<=d&&t.arr>d)).slice()
     .sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||accomIdx(a.accom)-accomIdx(b.accom)||(a.repName||'').localeCompare(b.repName||''));
   thead.innerHTML='<tr><th><input type="checkbox" id="te-all" title="전체 선택"></th><th>入国</th><th>施設</th><th>代表者</th><th>タグコード</th><th>人数</th><th>묶음</th><th title="석식만 제외(朝·昼食 식수는 유지)">夕食除外</th></tr>';
   if(!rows.length){ tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:18px">팀 없음</td></tr>'; return; }
