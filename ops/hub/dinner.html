@@ -55,6 +55,9 @@
   table.tedit input{border:1px solid var(--border2);border-radius:5px;padding:4px 6px;font-size:12px;font-family:inherit}
   .dg-badge{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:999px;border:1px solid var(--border2);white-space:nowrap}
   .exr{font-size:10.5px;color:var(--err);font-weight:700}
+  label.adf{font-size:11.5px;color:var(--muted);font-weight:700;line-height:1.5}
+  label.adf select,label.adf input{font-family:inherit;font-size:13px;border:1px solid var(--border2);border-radius:5px;padding:5px 7px;color:var(--text)}
+  #ad-list .btn.sm{padding:2px 8px}
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
   .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
@@ -94,12 +97,27 @@
 <script src="../assets/saizen-ops.js?v=14.75"></script>
 <script>
 const $=s=>document.querySelector(s);
-let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set(), OVR={};
+let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set(), OVR={}, ADDONS=[];
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
 const OFFSITE=new Set(['간지호텔','시즈노야도 료칸']);
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+// 동그라미 숫자(①~⑳) — 인쇄물 팀 인원 표기(예 ←DJわ④名). 범위 밖은 (n).
+function circ(n){ n=parseInt(n,10)||0; return (n>=1&&n<=20)?'①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳'[n-1]:`(${n})`; }
+// 그 날짜·팀의 업그레이드 인분 합계(기본 석식에서 차감할 수)
+function upQtyFor(date,seq){ return ADDONS.filter(a=>a.kind==='upgrade'&&a.order_date===date&&String(a.event_seq)===String(seq))
+  .reduce((s,a)=>s+(parseInt(a.qty,10)||0),0); }
+const ADDON_LABEL={add:'追加',upgrade:'アップグレード',allergy:'アレルギー'};
+// 그 날짜의 別注·알레르기 목록(팀 태그·인원 결합, 숙소 필터 반영). 알레르기는 뒤로 정렬.
+function addonsForDate(date){
+  const _accomSet=ACCOMSEL.size?ACCOMSEL:null;
+  return ADDONS.filter(a=>a.order_date===date).map(a=>{
+    const t=TEAMS.find(x=>String(x.seq)===String(a.event_seq));
+    return Object.assign({}, a, {tag:(t&&t.tag)||'', pax:(t?parseInt(t.pax,10)||0:0), accom:(t&&t.accom)||'', repName:(t&&t.repName)||''});
+  }).filter(a=> !_accomSet || _accomSet.has(a.accom))
+    .sort((x,y)=> (x.kind==='allergy'?1:0)-(y.kind==='allergy'?1:0) || String(x.tag).localeCompare(String(y.tag)) || x.id-y.id);
+}
 function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
 function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
@@ -160,13 +178,38 @@ function renderUI(){
       <div id="preview" class="preview"></div>
     </div>
     <div class="panel">
-      <h3>팀 제외·묶기 <span class="cnt">— 제외는 夕食オーダー 식수에서 빠짐. 묶기(🔗)는 レストラン名札 1장으로 합석(인원 합산·대표/태그 모두 표기). 태그코드·인원은 step1 데이터 기준(수정 불가)</span></h3>
+      <h3>팀 夕食除外·묶기 <span class="cnt">— 夕食除外는 <b>석식 수량에서만</b> 빠짐(朝·昼食 식수 유지). 묶기(🔗)는 レストラン名札 1장으로 합석(인원 합산·대표/태그 모두 표기). 태그코드·인원은 step1 데이터 기준(수정 불가)</span></h3>
       <div id="tedit-tools" style="display:flex;gap:8px;align-items:center;margin:0 0 8px;flex-wrap:wrap">
         <button class="btn ghost sm" id="dg-link" type="button">🔗 선택 묶기</button>
         <button class="btn ghost sm" id="dg-unlink" type="button">✂ 묶음 해제</button>
         <span class="hint">같은 식당 명패로 합석할 팀을 체크 → 묶기. 명패엔 합산 인원 + 대표자·태그 모두 나옵니다.</span>
       </div>
       <div style="overflow:auto"><table class="tedit" id="tedit"><thead></thead><tbody></tbody></table></div>
+    </div>
+    <div class="panel">
+      <h3>別注 · 알레르기 <span class="cnt">— 추가/업그레이드 메뉴 · 알레르기. 날짜+팀 선택 후 등록. <b>업그레이드는 인분만큼 석식 기본 수량 자동 차감</b>. 夕食オーダー 인쇄에 빨강 표기</span></h3>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <label class="adf">날짜<br><select id="ad-date"></select></label>
+        <label class="adf">팀<br><select id="ad-team" style="min-width:200px"></select></label>
+        <label class="adf">종류<br><select id="ad-kind">
+          <option value="add">추가메뉴</option>
+          <option value="upgrade">업그레이드(기본 차감)</option>
+          <option value="allergy">알레르기/식이</option>
+        </select></label>
+        <label class="adf" style="flex:1;min-width:150px"><span id="ad-item-lb">메뉴명</span><br><input id="ad-item" placeholder="例) ステーキ" style="width:100%"></label>
+        <span id="ad-menu-fields" style="display:flex;gap:8px;align-items:flex-end">
+          <label class="adf">단가¥<br><input id="ad-price" type="number" min="0" placeholder="5000" style="width:92px"></label>
+          <label class="adf">수량<br><input id="ad-qty" type="number" min="1" value="1" style="width:60px"></label>
+          <label class="adf">단위<br><input id="ad-unit" value="人前" style="width:70px"></label>
+        </span>
+        <span id="ad-allergy-quick" style="display:none;gap:5px;align-items:center">
+          <button class="btn ghost sm" type="button" data-al="肉×">고기×</button>
+          <button class="btn ghost sm" type="button" data-al="魚×">생선×</button>
+          <button class="btn ghost sm" type="button" data-al="豚肉×">돼지×</button>
+        </span>
+        <button class="btn sm" id="ad-add" type="button">＋ 등록</button>
+      </div>
+      <div id="ad-list" style="margin-top:12px"></div>
     </div>`;
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
@@ -174,23 +217,98 @@ function renderUI(){
   $('#btn-nameplate').addEventListener('click',printNameplates);
   $('#dg-link').addEventListener('click',groupSelected);
   $('#dg-unlink').addEventListener('click',ungroupSelected);
+  $('#ad-date').addEventListener('change',fillAddonTeams);
+  $('#ad-kind').addEventListener('change',toggleAddonKind);
+  $('#ad-add').addEventListener('click',addAddon);
+  $('#ad-allergy-quick').querySelectorAll('[data-al]').forEach(b=>b.addEventListener('click',()=>{ $('#ad-item').value=b.dataset.al; }));
+}
+// ── 別注·알레르기 폼/목록 ──
+function toggleAddonKind(){
+  const k=$('#ad-kind').value;
+  $('#ad-menu-fields').style.display = k==='allergy'?'none':'flex';
+  $('#ad-allergy-quick').style.display = k==='allergy'?'flex':'none';
+  $('#ad-item-lb').textContent = k==='allergy'?'내용':'메뉴명';
+  $('#ad-item').placeholder = k==='allergy'?'例) 肉× / 甲殻類アレルギー':'例) ステーキ';
+}
+function fillAddonDates(){
+  const sel=$('#ad-date'); if(!sel)return; const prev=sel.value;
+  const ds=allDates();
+  sel.innerHTML=ds.map(d=>`<option value="${d}">${d.slice(5).replace('-','/')}${getWD(d)}</option>`).join('');
+  if(prev&&ds.includes(prev)) sel.value=prev; else if(DATESEL.size) sel.value=[...DATESEL][0];
+  fillAddonTeams();
+}
+function fillAddonTeams(){
+  const sel=$('#ad-team'); if(!sel)return; const prev=sel.value; const date=$('#ad-date').value;
+  const teams=TEAMS.filter(t=>t.dep<=date&&t.arr>date)
+    .sort((a,b)=>accomIdx(a.accom)-accomIdx(b.accom)||String(a.tag).localeCompare(String(b.tag)));
+  sel.innerHTML=teams.length? teams.map(t=>`<option value="${t.seq}">${esc(t.tag||'(태그없음)')} · ${esc(t.repName||'')} (${parseInt(t.pax,10)||0}名) · ${esc(t.accom)}</option>`).join('')
+    : '<option value="">— 그날 묵는 팀 없음 —</option>';
+  if(prev&&teams.some(t=>String(t.seq)===prev)) sel.value=prev;
+}
+async function addAddon(){
+  if(!supa){toast('먼저 연결하세요','warn');return;}
+  const date=$('#ad-date').value, seq=$('#ad-team').value, kind=$('#ad-kind').value;
+  const item=$('#ad-item').value.trim();
+  if(!date||!seq){toast('날짜·팀을 선택하세요','warn');return;}
+  if(!item){toast('메뉴명/내용을 입력하세요','warn');return;}
+  const row={ order_date:date, event_seq:Number(seq), kind, item, session_ym:YM, created_by:curUser() };
+  if(kind!=='allergy'){
+    row.price=parseInt($('#ad-price').value,10)||null;
+    row.qty=parseInt($('#ad-qty').value,10)||1;
+    row.unit=$('#ad-unit').value.trim()||'人前';
+  }
+  try{
+    const {data,error}=await supa.from('dinner_addons').insert(row).select('id,order_date,event_seq,kind,item,price,qty,unit,note').single();
+    if(error)throw error;
+    data.order_date=fmtDate(data.order_date); ADDONS.push(data);
+    $('#ad-item').value='';
+    renderAddonList(); renderPreview();
+    toast(kind==='allergy'?'알레르기 등록':'別注 등록','ok');
+  }catch(e){ toast('등록 실패: '+e.message,'err'); }
+}
+async function delAddon(id){
+  if(!supa)return;
+  try{
+    const {error}=await supa.from('dinner_addons').delete().eq('id',id); if(error)throw error;
+    ADDONS=ADDONS.filter(a=>String(a.id)!==String(id));
+    renderAddonList(); renderPreview(); toast('삭제','ok');
+  }catch(e){ toast('삭제 실패: '+e.message,'err'); }
+}
+function renderAddonList(){
+  const box=$('#ad-list'); if(!box)return;
+  if(!ADDONS.length){ box.innerHTML='<div style="color:var(--muted);font-size:12.5px">등록된 別注·알레르기가 없습니다.</div>'; return; }
+  const byDate={}; ADDONS.forEach(a=>{ (byDate[a.order_date]=byDate[a.order_date]||[]).push(a); });
+  const dates=Object.keys(byDate).sort();
+  box.innerHTML=dates.map(d=>{
+    const lines=byDate[d].slice().sort((x,y)=>(x.kind==='allergy'?1:0)-(y.kind==='allergy'?1:0)||x.id-y.id).map(a=>{
+      const t=TEAMS.find(x=>String(x.seq)===String(a.event_seq)); const tag=(t&&t.tag)||a.event_seq;
+      const detail = a.kind==='allergy' ? `⚠ ${esc(a.item)}`
+        : `${a.kind==='upgrade'?'⬆':'＋'} ${esc(a.item)}${a.price?` ¥${(parseInt(a.price,10)||0).toLocaleString()}`:''}${a.qty?`×${a.qty}${esc(a.unit||'')}`:''}`;
+      const col=a.kind==='allergy'?'#dc2626':(a.kind==='upgrade'?'#9a7322':'var(--text)');
+      return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px">
+        <span style="color:${col};font-weight:700;flex:1">${detail} <span style="color:var(--muted);font-weight:500">← ${esc(String(tag))}${t?` ${esc(t.repName||'')}`:''}</span></span>
+        <button class="btn ghost sm" type="button" onclick="delAddon(${a.id})" style="color:var(--err)">✕</button>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:10px"><div style="font-weight:800;font-size:12.5px;color:var(--accent2);border-bottom:1px solid var(--border);padding-bottom:3px;margin-bottom:4px">${d.slice(5).replace('-','/')}${getWD(d)}</div>${lines}</div>`;
+  }).join('');
 }
 function renderTeamEdit(){
   const thead=$('#tedit thead'), tbody=$('#tedit tbody'); if(!thead)return;
   const rows=TEAMS.filter(t=>ACCOMSEL.size===0||ACCOMSEL.has(t.accom)).slice()
     .sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||accomIdx(a.accom)-accomIdx(b.accom)||(a.repName||'').localeCompare(b.repName||''));
-  thead.innerHTML='<tr><th><input type="checkbox" id="te-all" title="전체 선택"></th><th>入国</th><th>施設</th><th>代表者</th><th>タグコード</th><th>人数</th><th>묶음</th><th>除外</th></tr>';
+  thead.innerHTML='<tr><th><input type="checkbox" id="te-all" title="전체 선택"></th><th>入国</th><th>施設</th><th>代表者</th><th>タグコード</th><th>人数</th><th>묶음</th><th title="석식만 제외(朝·昼食 식수는 유지)">夕食除外</th></tr>';
   if(!rows.length){ tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:18px">팀 없음</td></tr>'; return; }
   tbody.innerHTML=rows.map(t=>{ const ex=!!t.excluded;
     return `<tr data-seq="${t.seq}" style="${ex?'opacity:.45':''}">
       <td class="c"><input type="checkbox" class="te-ck" data-seq="${t.seq}"></td>
       <td class="c mono">${esc((t.dep||'').slice(5))}</td>
       <td class="c">${esc(t.accom)}</td>
-      <td>${ex?`<span style="text-decoration:line-through">${esc(t.repName||'')}</span>${t.excludeReason?`<br><span class="exr" title="제외 사유">除外: ${esc(t.excludeReason)}</span>`:''}`:esc(t.repName||'')}</td>
+      <td>${ex?`<span style="text-decoration:line-through">${esc(t.repName||'')}</span>${t.excludeReason?`<br><span class="exr" title="夕食除外 사유">夕食除外: ${esc(t.excludeReason)}</span>`:''}`:esc(t.repName||'')}</td>
       <td class="c mono">${esc(t.tag)}</td>
       <td class="c mono">${parseInt(t.pax,10)||0}</td>
       <td class="c">${dgBadge(t.dgroup)}</td>
-      <td class="c"><button type="button" class="te-ex" data-seq="${t.seq}" data-ex="${ex?1:0}" style="font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:6px;cursor:pointer;border:1px solid ${ex?'var(--accent)':'var(--border2)'};background:${ex?'var(--accent)':'var(--surface)'};color:${ex?'#fff':'var(--err)'}">${ex?'복원':'제외'}</button></td>
+      <td class="c"><button type="button" class="te-ex" data-seq="${t.seq}" data-ex="${ex?1:0}" style="font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:6px;cursor:pointer;border:1px solid ${ex?'var(--accent)':'var(--border2)'};background:${ex?'var(--accent)':'var(--surface)'};color:${ex?'#fff':'var(--err)'}">${ex?'夕食除外 해제':'夕食除外'}</button></td>
     </tr>`; }).join('');
   tbody.querySelectorAll('.te-ex').forEach(b=>b.addEventListener('click',()=>saveDinnerOverride(b.dataset.seq,'excluded',b.dataset.ex!=='1')));
   const all=$('#te-all'); if(all) all.addEventListener('change',()=>{ tbody.querySelectorAll('.te-ck').forEach(c=>{c.checked=all.checked;}); });
@@ -233,7 +351,7 @@ async function saveDinnerOverride(seq,field,val){
   const excluded=!!val;
   let reason='';
   if(excluded){
-    const r=prompt('제외 사유를 입력하세요 (선택 — 비워도 제외됩니다)\n예: 현장 합류 / 노쇼 / 타팀 병합', t.excludeReason||'');
+    const r=prompt('夕食除外 사유를 입력하세요 (선택 — 비워도 제외됩니다)\n※석식 수량에서만 빠지고 朝·昼食 식수는 유지됩니다\n예: 외식 / 업그레이드 / 노쇼', t.excludeReason||'');
     if(r===null) return;               // 취소 → 제외하지 않음
     reason=String(r).trim();
   }
@@ -242,7 +360,7 @@ async function saveDinnerOverride(seq,field,val){
     const merged={event_seq:Number(seq),session_ym:YM,updated_by:curUser(),excluded,exclude_reason:reason||null,dining_group:cur.dining_group||null};
     const {error}=await supa.from('print_overrides').upsert(merged,{onConflict:'event_seq'}); if(error)throw error;
     OVR[seq]=merged;
-    toast(excluded?(reason?'제외 — '+reason:'제외 — 명단·식수에서 빠짐'):'복원','ok');
+    toast(excluded?(reason?'夕食除外 — '+reason:'夕食除外 — 석식 수량에서만 빠짐(朝·昼食 유지)'):'夕食除外 해제','ok');
     renderTeamEdit(); renderPreview();   // 사유 표시 위해 표 재렌더
   }catch(e){ toast('저장 실패: '+e.message,'err'); }
 }
@@ -316,6 +434,12 @@ async function load(){
       const {data:ov}=await supa.from('print_overrides').select('event_seq,excluded,exclude_reason,dining_group').in('event_seq',chunk);
       (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
     }
+    // 別注(추가/업그레이드 메뉴) + 알레르기 — event_seq 기준(월경계 포함)
+    ADDONS=[];
+    for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
+      const {data:ad}=await supa.from('dinner_addons').select('id,order_date,event_seq,kind,item,price,qty,unit,note').in('event_seq',chunk).order('id');
+      (ad||[]).forEach(a=>{ a.order_date=fmtDate(a.order_date); ADDONS.push(a); });
+    }
     TEAMS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{}; const r=REP[b.event_seq]||{}; const o=ORI[b.event_seq]||{}; const ov=OVR[b.event_seq]||{};
       const origin=(o.byRep?o.origin:'')||o.origin||b.origin||'';
       const basePax=b.pax||g.pax||0;
@@ -324,11 +448,15 @@ async function load(){
         repName:b.rep_name||r.name||'', engName:r.eng||o.eng||'',
         tag:r.tag||g.team_tag||g.group_code||'', isPus:isPusOf(origin) };
     }).filter(t=>t.accom);
+    // 숙소 기본 선택 = 야마나미리조트·쿠주힐즈(데이터에 있는 것만). 「전체」 토글로 전체.
     ACCOMSEL.clear();
+    { const _ac=new Set(TEAMS.map(t=>t.accom));
+      ['야마나미리조트','쿠주힐즈'].forEach(a=>{ if(_ac.has(a)) ACCOMSEL.add(a); }); }
     // 기본 선택 = 첫날 하루만(전체 인쇄 시 랙 방지). 「전체」 토글로 전 날짜 선택 가능.
     const _ds=allDates(); DATESEL.clear(); if(_ds.length) DATESEL.add(_ds[0]);
     $('#stat').textContent=`${TEAMS.length}팀 · ${_ds.length}일`;
     renderDateChips(); renderAccomChips(); renderPreview();
+    fillAddonDates(); toggleAddonKind(); renderAddonList();
   }catch(e){ $('#stat').textContent='로드 실패'; toast('로드 실패: '+e.message,'err'); }
 }
 
@@ -340,9 +468,9 @@ function mealCounts(date){
   const _wd=parseLocalDate(date).getDay();
   const isWTS=(_wd===3||_wd===4||_wd===0), isSatSun=(_wd===6||_wd===0);
   let breakfastN=0, lunchContinue=0, lunchArrICN=0;
+  // 夕食除外는 '석식만' 제외 → 朝食·昼食 식수는 그대로 계산(제외 skip 안 함)
   TEAMS.forEach(t=>{
     if(_accomSet && !_accomSet.has(t.accom)) return;
-    if(t.excluded) return;                       // 제외(병합) 팀은 집계 제외
     const pax=parseInt(t.pax,10)||0; if(!pax) return;
     const isPus=t.isPus, isIn=(t.dep===date), isOut=(t.arr===date), isMid=(t.dep<date&&t.arr>date);
     const eatsBreakfast = OFFSITE.has(t.accom) ? (isOut&&isWTS) : (t.dep<date && t.arr>=date);
@@ -352,10 +480,14 @@ function mealCounts(date){
     else{ if(isIn&&isWTS&&!isPus)lunchKind='arr'; else if(isIn&&isSatSun&&t.accom==='간지호텔')lunchKind='arr'; else if(isOut&&isWTS&&isPus)lunchKind='cont'; }
     if(lunchKind){ if(lunchKind==='arr')lunchArrICN+=pax; else lunchContinue+=pax; }
   });
-  // 석식 = 그날 묵는 전원(dep<=date<arr)
-  let dinnerN=0, teamCnt=0;
-  TEAMS.forEach(t=>{ if(_accomSet&&!_accomSet.has(t.accom))return; if(t.excluded)return; if(t.dep<=date&&t.arr>date){ dinnerN+=parseInt(t.pax,10)||0; teamCnt++; } });
-  return {breakfastN, lunchN:lunchContinue+lunchArrICN, lunchArrICN, dinnerN, teamCnt};
+  // 석식 = 그날 묵는 전원(dep<=date<arr) − 夕食除外 팀 − 업그레이드 인분(기본메뉴 안 나감)
+  let dinnerN=0, teamCnt=0, exDinnerN=0, exTeamCnt=0, upN=0;
+  TEAMS.forEach(t=>{ if(_accomSet&&!_accomSet.has(t.accom))return; if(!(t.dep<=date&&t.arr>date))return;
+    const pax=parseInt(t.pax,10)||0;
+    if(t.excluded){ exDinnerN+=pax; exTeamCnt++; return; }
+    const up=Math.min(pax, upQtyFor(date,t.seq)); upN+=up;   // 업그레이드 인분만큼 기본 차감
+    dinnerN+=Math.max(0,pax-up); teamCnt++; });
+  return {breakfastN, lunchN:lunchContinue+lunchArrICN, lunchArrICN, dinnerN, teamCnt, exDinnerN, exTeamCnt, upN};
 }
 
 function renderPreview(){
@@ -366,9 +498,9 @@ function renderPreview(){
   $('#pv-cnt').textContent=dates.length?`(${dates.length}일)`:'';
   const box=$('#preview');
   if(!dates.length){ box.innerHTML='<div class="deny" style="color:var(--muted);padding:24px">출력할 날짜가 없습니다.</div>'; return; }
-  box.innerHTML=dates.map(d=>{ const mc=mealCounts(d);
-    return `<div class="pv-day"><b>${d.slice(5).replace('-','/')}${getWD(d)}</b> · ${mc.teamCnt}チーム ${mc.dinnerN}名
-      <div class="pv-meal">朝食 ${mc.breakfastN} ・ 昼食 ${mc.lunchN}${mc.lunchArrICN?`(入国${mc.lunchArrICN})`:''} ・ 夕食 ${mc.dinnerN}</div></div>`;
+  box.innerHTML=dates.map(d=>{ const mc=mealCounts(d); const ad=addonsForDate(d);
+    return `<div class="pv-day"><b>${d.slice(5).replace('-','/')}${getWD(d)}</b> · ${mc.teamCnt}チーム ${mc.dinnerN}名${mc.exTeamCnt?` <span style="color:var(--err);font-weight:700">夕食除外 ${mc.exTeamCnt}팀/${mc.exDinnerN}名</span>`:''}${mc.upN?` <span style="color:#9a7322;font-weight:700">UP −${mc.upN}</span>`:''}${ad.length?` <span style="color:#9a7322">· 別注 ${ad.filter(a=>a.kind!=='allergy').length} · ⚠${ad.filter(a=>a.kind==='allergy').length}</span>`:''}
+      <div class="pv-meal">朝食 ${mc.breakfastN} ・ 昼食 ${mc.lunchN}${mc.lunchArrICN?`(入国${mc.lunchArrICN})`:''} ・ 夕食 ${mc.dinnerN}${mc.upN?` <span style="color:#9a7322">(업그레이드 ${mc.upN}인분 별도)</span>`:''}</div></div>`;
   }).join('');
 }
 
@@ -407,10 +539,22 @@ function printOrder(){
       </tr>`;
     }).join('');
     const mc=mealCounts(date);
-    // 제외 팀 흔적 — 명단·식수에선 빠지지만 "무엇을 왜 뺐는지" 인쇄물에 남김
+    // 夕食除外 팀 흔적 — 석식에서만 빠짐(朝·昼食은 유지) "무엇을 왜 뺐는지" 인쇄물에 남김
     const excl=TEAMS.filter(t=>(!_accomSet||_accomSet.has(t.accom)) && t.excluded && t.dep<=date && t.arr>date)
       .sort((a,b)=>(accIdx(a.accom)-accIdx(b.accom))||(a.repName||'').localeCompare(b.repName||''));
-    const exclHTML=excl.length?`<div class="do-excl"><b>除外 ${excl.length}チーム:</b> ${excl.map(t=>`${esc(t.tag||'')} ${esc(t.repName||'')}様${t.excludeReason?`（${esc(t.excludeReason)}）`:''}`).join(' ／ ')}</div>`:'';
+    const exclHTML=excl.length?`<div class="do-excl"><b>夕食除外 ${excl.length}チーム:</b> ${excl.map(t=>`${esc(t.tag||'')} ${esc(t.repName||'')}様${t.excludeReason?`（${esc(t.excludeReason)}）`:''}`).join(' ／ ')}</div>`:'';
+    // 別注(추가/업그레이드) + 알레르기 — 빨강 굵게(캡처 양식): 別注）刺身盛¥7,500×1台 ←DJわ④名
+    const addons=addonsForDate(date);
+    const addonHTML = addons.length ? `<div class="do-addons">${addons.map(a=>{
+      const paxC=circ(a.pax);
+      if(a.kind==='allergy'){
+        return `<div class="da-line">⚠アレルギー）${esc(a.item)}${a.note?`（${esc(a.note)}）`:''}　<span class="da-team">←${esc(a.tag)}${paxC}名</span></div>`;
+      }
+      const price=(a.price!=null&&a.price!=='')?`¥${(parseInt(a.price,10)||0).toLocaleString()}`:'';
+      const qty=(a.qty!=null&&a.qty!=='')?`×${a.qty}${esc(a.unit||'')}`:'';
+      const up=a.kind==='upgrade'?` <span class="da-up">⟨基本なし⟩</span>`:'';
+      return `<div class="da-line">別注）${esc(a.item)}${price}${qty}${up}　<span class="da-team">←${esc(a.tag)}${paxC}名</span></div>`;
+    }).join('')}</div>` : '';
     return `<div class="do-page">
       <div class="do-head">
         <div class="do-date">${date.slice(5).replace('-','/')}${getWD(date)}</div>
@@ -438,11 +582,12 @@ function printOrder(){
       <table class="do-mealsum">
         <thead><tr><th class="ms-rowh"></th><th>朝食</th><th>昼食</th><th>夕食</th></tr></thead>
         <tbody>
-          <tr class="ms-resv"><td class="ms-rowh">予約</td><td>${mc.breakfastN}</td><td>${mc.lunchN}${mc.lunchArrICN?`<span class="ms-sub">入国${mc.lunchArrICN}</span>`:''}</td><td>${mc.dinnerN}</td></tr>
+          <tr class="ms-resv"><td class="ms-rowh">予約</td><td>${mc.breakfastN}</td><td>${mc.lunchN}${mc.lunchArrICN?`<span class="ms-sub">入国${mc.lunchArrICN}</span>`:''}</td><td>${mc.dinnerN}${mc.exTeamCnt?`<span class="ms-sub">夕食除外 ${mc.exTeamCnt}チーム ${mc.exDinnerN}名</span>`:''}${mc.upN?`<span class="ms-sub">アップグレード ${mc.upN}名 別</span>`:''}</td></tr>
           <tr class="ms-jp"><td class="ms-rowh">日本</td><td></td><td></td><td></td></tr>
           <tr class="ms-total"><td class="ms-rowh">合計</td><td>${mc.breakfastN}</td><td>${mc.lunchN}</td><td>${mc.dinnerN}</td></tr>
         </tbody>
       </table>
+      ${addonHTML}
       ${exclHTML}
     </div>`;
   }).filter(Boolean).join('');
@@ -491,6 +636,11 @@ function printOrder(){
   .do-mealsum .ms-total .ms-rowh { color: #1A2540; background: #fff; font-size: 18pt; }
   .do-excl { margin-top: 4mm; font-size: 11pt; color: #8a2a1c; font-weight: 700; line-height: 1.5; }
   .do-excl b { color: #B45309; }
+  /* 別注(추가/업그레이드) + 알레르기 — 빨강 굵게 강조 */
+  .do-addons { margin-top: 4mm; padding: 3mm 2mm 0; border-top: 1.5pt dashed #dc2626; }
+  .da-line { color: #dc2626; font-weight: 800; font-size: 17pt; line-height: 1.55; letter-spacing: .5pt; }
+  .da-line .da-team { font-size: 13pt; font-weight: 700; }
+  .da-line .da-up { font-size: 12pt; font-weight: 700; }
   @media print {
     html, body { background: #fff; }
     .do-toolbar { display: none; }
@@ -544,18 +694,29 @@ function printNameplates(){
   const cellHTML=(c)=>{
     if(!c) return `<div class="rn-card rn-card-empty"></div>`;
     const repName=(c.repName||'').trim();
+    const merged=(c.nTeams||1)>1;   // 묶음(합석) 명패 = 이름이 ' · '로 길어짐
     const hasKorean=/[가-힣]/.test(repName); const nameLen=repName.length; let nameSize;
-    // 묶음으로 이름이 길어지면 칸에 맞게 자동 축소(' · ' 구분 포함 길이 기준).
-    if(hasKorean){ nameSize = nameLen<=2?'100pt': nameLen===3?'82pt': nameLen===4?'62pt': nameLen<=6?'48pt': nameLen<=9?'38pt': nameLen<=13?'30pt':'24pt'; }
-    else { nameSize = nameLen<=5?'86pt': nameLen<=7?'68pt': nameLen<=10?'54pt': nameLen<=14?'42pt': nameLen<=20?'32pt':'26pt'; }
+    // 한글명을 최대한 크게. 묶음이면 '일행'·태그·날짜를 줄여 이름에 자리를 양보.
+    if(hasKorean){
+      if(merged) nameSize = nameLen<=6?'58pt': nameLen<=9?'46pt': nameLen<=13?'38pt': nameLen<=18?'30pt':'24pt';
+      else       nameSize = nameLen<=2?'112pt': nameLen===3?'92pt': nameLen===4?'72pt': nameLen<=6?'56pt': nameLen<=9?'44pt': nameLen<=13?'34pt':'26pt';
+    }else{
+      if(merged) nameSize = nameLen<=10?'48pt': nameLen<=16?'38pt': nameLen<=24?'30pt':'24pt';
+      else       nameSize = nameLen<=5?'92pt': nameLen<=7?'74pt': nameLen<=10?'58pt': nameLen<=14?'46pt': nameLen<=20?'34pt':'28pt';
+    }
     const tagLen=(c.tagCode||'').length;
-    const tagSize = tagLen<=5?'54pt': tagLen<=9?'40pt': tagLen<=14?'30pt':'24pt';
-    return `<div class="rn-card">
+    const tagSize = merged ? (tagLen<=8?'30pt': tagLen<=14?'24pt':'20pt')
+                           : (tagLen<=5?'48pt': tagLen<=9?'38pt': tagLen<=14?'30pt':'24pt');
+    const ilSize   = merged ? '22pt' : '54pt';   // '일행' 글씨: 묶음이면 작게
+    const dateSize = merged ? '13pt' : '18pt';
+    // 묶음이면 이름 행을 키우고 '일행'·날짜 행을 줄여 자리 확보.
+    const rows = merged ? '66mm 9mm 13mm 24mm 10mm 20mm 18mm' : '50mm 10mm 34mm 28mm 12mm 24mm 18mm';
+    return `<div class="rn-card" style="grid-template-rows:${rows}">
       <div class="rn-r1" style="font-size:${nameSize}">${esc(repName)}<span class="rn-honorific">님</span></div>
       <div class="rn-r1b">${esc(c.engName||'')}</div>
-      <div class="rn-r2">일  행</div>
+      <div class="rn-r2" style="font-size:${ilSize}">일  행</div>
       <div class="rn-r3">${c.pax}名</div>
-      <div class="rn-r4">${esc(c.period)}</div>
+      <div class="rn-r4" style="font-size:${dateSize}">${esc(c.period)}</div>
       <div class="rn-r5" style="font-size:${tagSize}">${esc(c.tagCode)}</div>
       <div class="rn-table"></div>
     </div>`;
