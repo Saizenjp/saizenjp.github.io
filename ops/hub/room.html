@@ -1618,6 +1618,37 @@ function autoRoute(g){
 // 라우팅+종류 → 후보 객실 풀(활성, 우선순위 정렬)
 // 층 번호(3~12). 비호텔/별장 등은 0. 정렬에서 '높은 층 우선·3층 맨 뒤'에 사용.
 function floorOf(r){ const m=String(r.zone||'').match(/^(\d+)층$/); return m?+m[1]:0; }
+
+// ── 청소 효율 박수→층 배정 규칙 (야마나미 호텔동 전용) ──
+//   · 같은 층은 같은 박수(=같은 퇴실일)로 맞춰야 청소를 한 번에 빠르게 끝낼 수 있음.
+//   · 3·4박 → 9·6·3층(무조건) / 7박 → 11·10·7·4층(무조건) / 그 외 박수 → 유동층 12·8·5
+//   · 유동층(12·8·5)은 박수가 정해져 있지 않지만 '층마다 한 가지 박수'로만 채운다(혼합 금지).
+const FLOOR_FIXED = { 3:[9,6,3], 4:[9,6,3], 7:[11,10,7,4] };
+const FLOOR_FLEX  = [12,8,5];
+// 한 층에 지금 들어있는(=DB 점유 occ + 이번 배치 pending) 서로 다른 박수 집합.
+function floorNightSet(f, occ, pending){
+  const s=new Set();
+  const add=r=>{ if(!r.check_in||!r.check_out) return;
+    const n=Math.round((new Date(r.check_out)-new Date(r.check_in))/864e5); if(n>0) s.add(n); };
+  (occ||[]).forEach(r=>{ const inv=invById(r.inventory_id); if(inv&&floorOf(inv)===f) add(r); });
+  (pending||[]).forEach(r=>{ const inv=invById(r.inventory_id); if(inv&&floorOf(inv)===f) add(r); });
+  return s;
+}
+// 이 박수 팀이 들어갈 수 있는 층(우선순위 순). 없으면 빈 배열.
+//   · 3·4·7박 = 지정 층만(무조건, 유동층으로 흘리지 않음)
+//   · 그 외 박수 = 유동층(12·8·5) 중 비었거나 같은 박수만 있는 층(청소 동질성 유지)
+function nightFloors(nights, occ, pending){
+  const fixed = FLOOR_FIXED[nights];
+  if(fixed) return fixed.slice();
+  return FLOOR_FLEX.filter(f=>{ const set=floorNightSet(f,occ,pending);
+    return set.size===0 || (set.size===1 && set.has(nights)); });
+}
+// 풀을 허용 층만 남기고 floorOrder 우선순위로 정렬(같은 층 내부 순서는 stable 정렬로 보존).
+function poolByFloorOrder(pool, floorOrder){
+  const rank=new Map(floorOrder.map((f,i)=>[f,i]));
+  return pool.filter(inv=>rank.has(floorOf(inv)))
+             .sort((a,b)=>rank.get(floorOf(a))-rank.get(floorOf(b)));
+}
 function roomPool(route, kind){
   let rooms=state.inventory.filter(r=>r.facility===route.fac && r.active);
   if(route.floorOnly)      rooms=rooms.filter(r=>/^\d+층$/.test(r.zone||''));
@@ -1682,10 +1713,13 @@ function mkRow(g,m,inv){
 
 // 그 팀 needRooms개가 '한 층에' 다 들어갈 수 있는 가장 높은 층(층 정보 있는 방만). 없으면 null.
 //   → 같은 팀은 되도록 같은 층(기본 원칙). 별장·돔하우스 등 층 없는 방(floor 0)은 묶지 않음.
-function pickFloor(pool,needRooms,dep,arr,pending,occ){
+function pickFloor(pool,needRooms,dep,arr,pending,occ,floorOrder){
   const byFloor={};
   pool.forEach(inv=>{ const f=floorOf(inv); if(f>0) (byFloor[f]=byFloor[f]||[]).push(inv); });
-  const floors=Object.keys(byFloor).map(Number).sort((a,b)=>b-a);  // 높은 층 먼저
+  // floorOrder 가 있으면 그 우선순위(고정층→유동층)만, 없으면 기존대로 높은 층 먼저.
+  const floors = (floorOrder&&floorOrder.length)
+    ? floorOrder.filter(f=>byFloor[f])
+    : Object.keys(byFloor).map(Number).sort((a,b)=>b-a);
   for(const f of floors){
     let free=0;
     for(const inv of byFloor[f]){
@@ -1702,19 +1736,20 @@ function pickFloor(pool,needRooms,dep,arr,pending,occ){
 //   ★ 같은 팀 같은 층 원칙: 2방 이상이면 팀 전체가 들어갈 가장 높은 한 층으로 묶고,
 //      그 층이 모자라면 전체 풀로 폴백(자리 없는 것보단 분산 배정).
 // 명단 평탄 리스트 → 연속 짝(1-2,3-4)으로 묶어 위임. 홀수 잔여는 보류.
-function placePairs(g,list,primaryPool,fallbackPool,label,pending,holds,occ){
+function placePairs(g,list,primaryPool,fallbackPool,label,pending,holds,occ,floorOrder){
   const pairs=[]; let i=0;
   for(; i+1<list.length; i+=2) pairs.push([list[i], list[i+1]]);
   if(i<list.length){ const gc=teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq)); holds.push(`${gc} ${list[i].name_kr||''}: 홀수 잔여`); }
-  placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,occ);
+  placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,occ,floorOrder);
 }
 // 미리 구성된 짝 배열을 받아 같은 층 묶기 + 방 배정(부족 시 fallbackPool로 강등).
-function placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,occ){
+//   floorOrder 가 있으면(야마나미 호텔동) 박수 규칙 허용 층만 우선순위대로 사용.
+function placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,occ,floorOrder){
   if(!pairs||!pairs.length) return;
   const gc=teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq));
   let usePool=primaryPool;
   if(pairs.length>=2){
-    const f=pickFloor(primaryPool,pairs.length,g.dep,g.arr,pending,occ);
+    const f=pickFloor(primaryPool,pairs.length,g.dep,g.arr,pending,occ,floorOrder);
     if(f!=null) usePool=primaryPool.filter(inv=>floorOf(inv)===f);   // 그 팀은 이 층으로 묶기
   }
   for(const pair of pairs){
@@ -1770,21 +1805,33 @@ async function autoAssign(){
       if(!roster.length) continue;
       if(roster.length===3){ holds.push(`${teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq))} 3명팀 보류`); continue; }
 
+      // ── 청소 효율 박수→층 규칙: 야마나미 호텔동(floorOnly) 팀만 허용 층으로 제한 ──
+      //   허용 층이 없거나(규칙 외 박수+유동층 만석) 만석이면 hold(객실부족) → 수기 배정으로.
+      let floorOrder=null;
+      if(route.floorOnly){
+        floorOrder=nightFloors(teamNights(g), occ, pending);
+        if(!floorOrder.length){
+          const gc=teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq));
+          holds.push(`${gc} ${teamNights(g)}박: 박수 규칙 가능 층 없음(유동층 만석) — 수기 확인`); continue;
+        }
+      }
+      const flr = floorOrder ? (p=>poolByFloorOrder(p,floorOrder)) : (p=>p); // 호텔동만 허용 층으로 필터·정렬
+
       if(route.deluxe){
         // A 규칙: 명단 순서대로 짝(1-2,3-4) → 짝에 회원이 1명이라도 있으면 디럭스, 없으면 예약종류.
         //  · 회원의 디럭스 혜택이 같은 방 룸메(명단 짝)에게 자연히 적용. 회원끼리 강제로 묶지 않음.
-        const dlx=roomPool(route,'deluxe'), gp=roomPool(route,'general');
+        const dlx=flr(roomPool(route,'deluxe')), gp=flr(roomPool(route,'general'));
         const memberPairs=[], generalPairs=[]; let pi=0;
         for(; pi+1<roster.length; pi+=2){
           const pair=[roster[pi], roster[pi+1]];
           (pair.some(isMember) ? memberPairs : generalPairs).push(pair);
         }
-        placeGivenPairs(g, memberPairs, dlx, gp, '디럭스', pending, holds, occ);  // 부족 시 예약종류로 강등
-        placeGivenPairs(g, generalPairs, gp, null, '예약종류', pending, holds, occ);
+        placeGivenPairs(g, memberPairs, dlx, gp, '디럭스', pending, holds, occ, floorOrder);  // 부족 시 예약종류로 강등
+        placeGivenPairs(g, generalPairs, gp, null, '예약종류', pending, holds, occ, floorOrder);
         if(pi<roster.length){ const gc=teamGroupCode(g.event_seq)||('팀'+evNo(g.event_seq)); holds.push(`${gc} ${roster[pi].name_kr||''}: 홀수 잔여`); }
       }else{
-        const gp=roomPool(route,'general');
-        placePairs(g, roster, gp, null, route.fac, pending, holds, occ);   // 비디럭스: 명단순 짝 그대로
+        const gp=flr(roomPool(route,'general'));
+        placePairs(g, roster, gp, null, route.fac, pending, holds, occ, floorOrder);   // 비디럭스: 명단순 짝 그대로
       }
     }
 
