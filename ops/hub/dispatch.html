@@ -93,6 +93,7 @@ let MASK=(function(){ try{ return localStorage.getItem('saizen_dispatch_mask')!=
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
 function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
@@ -120,7 +121,7 @@ function dispatchNoteSegments(rec){ const segs=[]; const nl=()=>{ if(segs.length
   const remarks=String(rec.noteRemarks||'').trim(); const bigo=String(rec.remark||'').trim(); const memo=String(rec.noteMemo||'').trim();
   if(remarks){ nl(); segs.push(...bigoSegments(remarks,true)); }
   if(bigo){ nl(); segs.push(...bigoSegments(bigo,false)); }
-  if(memo){ nl(); segs.push({t:'【現地メモ】 ',b:true},{t:memo,b:false}); }
+  // ※現地メモ(memo)는 参考事項에서 분리 → 아래 별도 '現地メモ' 박스로 출력
   while(segs.length&&segs[0].t==='\n') segs.shift(); return segs; }
 function dispatchNotesHTML(rec){ return dispatchNoteSegments(rec).map(s=>s.b?`<b>${esc(s.t)}</b>`:esc(s.t)).join(''); }
 
@@ -295,9 +296,9 @@ function renderList(){
   $('#btn-print').disabled=!visible.length;
   $('#list-cnt').textContent=ROWS.length?`(${visible.length}件 표시 / 전체 ${ROWS.length}件 · 一括印刷은 표시분만)`:'';
   const thead=$('#list thead'), tbody=$('#list tbody');
-  thead.innerHTML='<tr><th>No</th><th>タグコード</th><th>イベント番号</th><th>代表者</th><th>英文名</th><th>出発日</th><th>到着日</th><th>泊</th><th>人数</th><th>施設</th><th>会員権</th><th>操作</th></tr>';
-  if(!ROWS.length){ tbody.innerHTML='<tr><td colspan="12" class="c" style="color:var(--muted);padding:24px">該当データなし</td></tr>'; return; }
-  if(!visible.length){ tbody.innerHTML='<tr><td colspan="12" class="c" style="color:var(--muted);padding:24px">검색·필터 결과가 없습니다</td></tr>'; return; }
+  thead.innerHTML='<tr><th>No</th><th>タグコード</th><th>イベント番号</th><th>代表者</th><th>英文名</th><th>出発日</th><th>到着日</th><th>泊</th><th>人数</th><th>施設</th><th>会員権</th><th>現地メモ</th><th>操作</th></tr>';
+  if(!ROWS.length){ tbody.innerHTML='<tr><td colspan="13" class="c" style="color:var(--muted);padding:24px">該当データなし</td></tr>'; return; }
+  if(!visible.length){ tbody.innerHTML='<tr><td colspan="13" class="c" style="color:var(--muted);padding:24px">검색·필터 결과가 없습니다</td></tr>'; return; }
   tbody.innerHTML=visible.map(d=>`<tr>
     <td class="c">${d.no}</td>
     <td class="c mono" style="font-weight:700">${esc(d.tagCode)}</td>
@@ -310,8 +311,21 @@ function renderList(){
     <td class="c">${d.rec.pax}名</td>
     <td class="c">${esc(d.accom||'')}</td>
     <td class="c">${esc(d.rec.memberType||'-')}</td>
+    <td><input class="dm-inp" data-seq="${d.seq}" value="${esc(d.rec.noteMemo||'')}" placeholder="現地メモ" style="width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border2);border-radius:5px"></td>
     <td class="c"><button class="btn sm" onclick="printDispatch('${d.seq}')">미리보기</button></td>
   </tr>`).join('');
+  tbody.querySelectorAll('.dm-inp').forEach(inp=>inp.addEventListener('change',()=>saveDispatchMemo(inp.dataset.seq,inp.value)));
+}
+// 現地メモ(event_notes.memo) 편집 — print 영역도 가능한 RPC 경유(memo만 갱신 + 변경이력 기록)
+async function saveDispatchMemo(seq,val){
+  if(!supa){toast('먼저 연결하세요','warn');return;}
+  const d=ROWS.find(x=>String(x.seq)===String(seq)); if(!d)return;
+  try{
+    const {error}=await supa.rpc('dispatch_set_memo',{p_event_seq:Number(seq),p_session_ym:YM,p_memo:val,p_user:curUser()});
+    if(error)throw error;
+    d.rec.noteMemo=String(val||'').trim();
+    toast('現地メモ 저장','ok');
+  }catch(e){ toast('메모 저장 실패: '+e.message,'err'); }
 }
 
 // ── 인쇄용 HTML (/app/ dispatchFrontHTML / dispatchBackHTML 완전 동일) ──
@@ -370,6 +384,8 @@ function dispatchFrontHTML(d,masked){
     </table>
     <div class="hp-sec">参考事項</div>
     <div class="hp-memo">${notesHTML}</div>
+    <div class="hp-sec">現地メモ</div>
+    <div class="hp-memo hp-memo-local">${esc(r.noteMemo||'').replace(/\n/g,'<br>')}</div>
   </div>`;
 }
 function dispatchBackHTML(d){
@@ -432,6 +448,7 @@ function printDispatch(seq){
   .hp-t.g-xs{font-size:7.4pt} .hp-t.g-xs th, .hp-t.g-xs td{padding:.7mm 1.2mm}
   .c{text-align:center} .mono{font-family:Consolas,Menlo,monospace}
   .hp-memo{border:1px solid #555;min-height:30mm;padding:2mm;font-size:9.5pt;white-space:pre-wrap}
+  .hp-memo-local{min-height:20mm}
   .hp-legend{font-size:9.5pt;margin-bottom:2mm;padding:1.6mm 2.5mm;background:#f0f2f6;border:1px solid #bbb}
   .hp-form .hp-fill td{height:12.5mm}
   .hp-cat{font-size:8.5pt;letter-spacing:.5px;color:#555}
