@@ -54,6 +54,7 @@
   table.tedit td.mono{font-family:var(--mono)}
   table.tedit input{border:1px solid var(--border2);border-radius:5px;padding:4px 6px;font-size:12px;font-family:inherit}
   .dg-badge{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:999px;border:1px solid var(--border2);white-space:nowrap}
+  .exr{font-size:10.5px;color:var(--err);font-weight:700}
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
   .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
@@ -185,7 +186,7 @@ function renderTeamEdit(){
       <td class="c"><input type="checkbox" class="te-ck" data-seq="${t.seq}"></td>
       <td class="c mono">${esc((t.dep||'').slice(5))}</td>
       <td class="c">${esc(t.accom)}</td>
-      <td style="${ex?'text-decoration:line-through':''}">${esc(t.repName||'')}</td>
+      <td>${ex?`<span style="text-decoration:line-through">${esc(t.repName||'')}</span>${t.excludeReason?`<br><span class="exr" title="제외 사유">除外: ${esc(t.excludeReason)}</span>`:''}`:esc(t.repName||'')}</td>
       <td class="c mono">${esc(t.tag)}</td>
       <td class="c mono">${parseInt(t.pax,10)||0}</td>
       <td class="c">${dgBadge(t.dgroup)}</td>
@@ -224,20 +225,25 @@ async function saveDiningGroup(seqs,key){
   }catch(e){ toast('저장 실패: '+e.message,'err'); }
 }
 function accomIdx(ac){ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; }
-// 夕食オー더 끼니 제외 토글만 저장(태그·인원 수정은 폐지 — step1 데이터 기준).
+// 夕食オーダー 제외 토글 + 제외 사유(선택 입력). 태그·인원 수정은 폐지(step1 데이터 기준).
 async function saveDinnerOverride(seq,field,val){
   if(field!=='excluded')return;
   const t=TEAMS.find(x=>x.seq===String(seq)); if(!t)return;
   const cur=OVR[seq]||{};
-  const excluded=!!val; t.excluded=excluded;
+  const excluded=!!val;
+  let reason='';
+  if(excluded){
+    const r=prompt('제외 사유를 입력하세요 (선택 — 비워도 제외됩니다)\n예: 현장 합류 / 노쇼 / 타팀 병합', t.excludeReason||'');
+    if(r===null) return;               // 취소 → 제외하지 않음
+    reason=String(r).trim();
+  }
+  t.excluded=excluded; t.excludeReason=reason;
   try{
-    const merged={event_seq:Number(seq),session_ym:YM,updated_by:curUser(),excluded,dining_group:cur.dining_group||null};
+    const merged={event_seq:Number(seq),session_ym:YM,updated_by:curUser(),excluded,exclude_reason:reason||null,dining_group:cur.dining_group||null};
     const {error}=await supa.from('print_overrides').upsert(merged,{onConflict:'event_seq'}); if(error)throw error;
-    OVR[seq]=merged; const b=document.querySelector(`#tedit .te-ex[data-seq="${seq}"]`);
-    if(b){ b.dataset.ex=excluded?'1':'0'; b.textContent=excluded?'복원':'제외';
-      b.style.border='1px solid '+(excluded?'var(--accent)':'var(--border2)'); b.style.background=excluded?'var(--accent)':'var(--surface)'; b.style.color=excluded?'#fff':'var(--err)';
-      const tr=b.closest('tr'); if(tr){ tr.style.opacity=excluded?'.45':''; const rn=tr.children[3]; if(rn) rn.style.textDecoration=excluded?'line-through':''; } }
-    toast(excluded?'제외 — 명단·식수에서 빠짐':'복원','ok'); renderPreview();
+    OVR[seq]=merged;
+    toast(excluded?(reason?'제외 — '+reason:'제외 — 명단·식수에서 빠짐'):'복원','ok');
+    renderTeamEdit(); renderPreview();   // 사유 표시 위해 표 재렌더
   }catch(e){ toast('저장 실패: '+e.message,'err'); }
 }
 function renderDateChips(){
@@ -307,14 +313,14 @@ async function load(){
     // 제외·묶기(print_overrides) — 태그·인원 수정은 폐지(step1 데이터 기준). 묶기는 航空カバー 영향 없음. event_seq 기준(월경계 포함)
     OVR={};
     for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
-      const {data:ov}=await supa.from('print_overrides').select('event_seq,excluded,dining_group').in('event_seq',chunk);
+      const {data:ov}=await supa.from('print_overrides').select('event_seq,excluded,exclude_reason,dining_group').in('event_seq',chunk);
       (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
     }
     TEAMS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{}; const r=REP[b.event_seq]||{}; const o=ORI[b.event_seq]||{}; const ov=OVR[b.event_seq]||{};
       const origin=(o.byRep?o.origin:'')||o.origin||b.origin||'';
       const basePax=b.pax||g.pax||0;
       return { seq:String(b.event_seq), accom:g.accom||'', dep:fmtDate(b.dep_date), arr:fmtDate(b.arr_date),
-        pax:basePax, basePax, excluded:!!ov.excluded, dgroup:ov.dining_group||null,
+        pax:basePax, basePax, excluded:!!ov.excluded, excludeReason:ov.exclude_reason||'', dgroup:ov.dining_group||null,
         repName:b.rep_name||r.name||'', engName:r.eng||o.eng||'',
         tag:r.tag||g.team_tag||g.group_code||'', isPus:isPusOf(origin) };
     }).filter(t=>t.accom);
@@ -401,6 +407,10 @@ function printOrder(){
       </tr>`;
     }).join('');
     const mc=mealCounts(date);
+    // 제외 팀 흔적 — 명단·식수에선 빠지지만 "무엇을 왜 뺐는지" 인쇄물에 남김
+    const excl=TEAMS.filter(t=>(!_accomSet||_accomSet.has(t.accom)) && t.excluded && t.dep<=date && t.arr>date)
+      .sort((a,b)=>(accIdx(a.accom)-accIdx(b.accom))||(a.repName||'').localeCompare(b.repName||''));
+    const exclHTML=excl.length?`<div class="do-excl"><b>除外 ${excl.length}チーム:</b> ${excl.map(t=>`${esc(t.tag||'')} ${esc(t.repName||'')}様${t.excludeReason?`（${esc(t.excludeReason)}）`:''}`).join(' ／ ')}</div>`:'';
     return `<div class="do-page">
       <div class="do-head">
         <div class="do-date">${date.slice(5).replace('-','/')}${getWD(date)}</div>
@@ -433,6 +443,7 @@ function printOrder(){
           <tr class="ms-total"><td class="ms-rowh">合計</td><td>${mc.breakfastN}</td><td>${mc.lunchN}</td><td>${mc.dinnerN}</td></tr>
         </tbody>
       </table>
+      ${exclHTML}
     </div>`;
   }).filter(Boolean).join('');
   if(!pagesHTML){ toast('출력할 데이터가 없습니다','err'); return; }
@@ -478,6 +489,8 @@ function printOrder(){
   .do-mealsum .ms-jp td { color: #1A4D8F; }
   .do-mealsum .ms-total td { font-size: 30pt; font-weight: 800; color: #1A4D8F; background: #fff; }
   .do-mealsum .ms-total .ms-rowh { color: #1A2540; background: #fff; font-size: 18pt; }
+  .do-excl { margin-top: 4mm; font-size: 11pt; color: #8a2a1c; font-weight: 700; line-height: 1.5; }
+  .do-excl b { color: #B45309; }
   @media print {
     html, body { background: #fff; }
     .do-toolbar { display: none; }
