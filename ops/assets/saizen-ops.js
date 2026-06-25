@@ -1372,16 +1372,18 @@
     document.body.insertBefore(b, document.body.firstChild);
   }
   function guardPage() {
-    var area = document.body.getAttribute('data-so-area');
-    if (!area) return;
+    var raw = document.body.getAttribute('data-so-area');
+    if (!raw) return;
     if (!authClient()) return;   // 접속정보 없음(이론상 내장으로 항상 있음)
+    var areas = raw.split(/[\s,]+/).filter(Boolean);   // 여러 영역 = OR(하나라도 있으면 통과)
     meAccess().then(function (acc) {
       if (!acc) { showGuard('login'); return; }                 // 미로그인
-      if (area === 'admin') { if (acc.role === 'admin') return; showGuard('deny'); return; }
+      if (areas.indexOf('admin') >= 0) { if (acc.role === 'admin') return; showGuard('deny'); return; }
       if (acc.role === 'admin' || acc.role === 'manager') return; // 전 접근
-      if ((acc.areas || []).indexOf(area) >= 0) return;          // 쓰기 영역 → 전체
-      if ((acc.read_areas || []).indexOf(area) >= 0) { showReadOnly(); return; } // 읽기 전용 → 보기 허용
-      showGuard('deny');
+      var w = acc.areas || [], r = acc.read_areas || [];
+      if (areas.some(function (a) { return w.indexOf(a) >= 0; })) return;                      // 쓰기 영역 보유 → 전체
+      if (areas.some(function (a) { return r.indexOf(a) >= 0; })) { showReadOnly(); return; }  // 읽기 영역 → 보기 허용
+      showGuard('deny');   // 어느 영역도 없음 → 차단 오버레이(링크 타고 들어와도 막힘)
     });
   }
 
