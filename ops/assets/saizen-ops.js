@@ -1273,6 +1273,79 @@
   global.__so_meAccess = meAccess;
   global.__so_authClient = authClient;
 
+  // ── 공통 변경 이력 패널 — <details class="so-audit" data-audit-tables="folios,charges"> ──
+  //   audit_feed RPC(값 비노출: 누가·무슨 필드·언제) 호출. 페이지에서 연결 후 __so_bindAudit(supa) 1회.
+  var SO_AUDIT_OP = { INSERT: '등록', UPDATE: '수정', DELETE: '삭제' };
+  var SO_AUDIT_TBL = { rooms:'방배정', room_inventory:'객실', room_closures:'객실폐쇄', print_overrides:'태그/제외/묶기',
+    dinner_addons:'別注/알레르기', folios:'정산 folio', charges:'청구', payments:'결제', transactions:'거래',
+    dining:'식음', rounds:'라운딩', settle_remarks:'정산비고', settle_deductions:'정산차감', announcements:'공지',
+    inv_items:'재고', kitchen_tickets:'주방티켓', user_access:'권한', member_codes:'회원코드' };
+  function soAuditFmt(ts){ try{ var x=new Date(ts); return x.toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ts; } }
+  function bindAudit(supa){
+    if(!supa) return;
+    var nodes = document.querySelectorAll('details.so-audit[data-audit-tables]');
+    Array.prototype.forEach.call(nodes, function(d){
+      if(d._soBound) return; d._soBound = true;
+      var body = d.querySelector('.so-audit-body'); if(!body){ body=document.createElement('div'); body.className='so-audit-body'; d.appendChild(body); }
+      var tables = d.getAttribute('data-audit-tables');
+      var pk = d.getAttribute('data-audit-pk') || null;
+      var offset = 0;
+      function row(r){
+        var nm = SO_AUDIT_TBL[r.table_name] || r.table_name;
+        var fields = (r.changed_fields && r.changed_fields.length) ? '<span class="so-audit-fields">'+r.changed_fields.join(', ')+'</span>' : '';
+        return '<div class="so-audit-row"><span class="so-audit-op op-'+r.op+'">'+(SO_AUDIT_OP[r.op]||r.op)+'</span> <b>'+nm+'</b> <span class="so-audit-pk">#'+(r.row_pk||'')+'</span> '+fields+'<span class="so-audit-meta">'+(r.changed_by||'?')+' · '+soAuditFmt(r.changed_at)+'</span></div>';
+      }
+      function load(reset){
+        var sb = supa || authClient();
+        if(!sb){ body.innerHTML='<div class="so-audit-empty">로그인 후 이용 가능합니다.</div>'; return; }
+        if(reset){ offset=0; body.innerHTML='<div class="so-audit-empty">불러오는 중…</div>'; }
+        sb.rpc('audit_feed',{ p_table: tables, p_row_pk: pk, p_limit: 40, p_offset: offset }).then(function(res){
+          if(res.error){ body.innerHTML='<div class="so-audit-empty">이력 조회 실패: '+res.error.message+'</div>'; return; }
+          var rows = res.data || [];
+          if(reset) body.innerHTML='';
+          var more = body.querySelector('.so-audit-more'); if(more) more.remove();
+          if(!rows.length && offset===0){ body.innerHTML='<div class="so-audit-empty">변경 이력이 없습니다.</div>'; return; }
+          body.insertAdjacentHTML('beforeend', rows.map(row).join(''));
+          offset += rows.length;
+          if(rows.length===40){ var b=document.createElement('button'); b.className='so-audit-more'; b.type='button'; b.textContent='더 보기'; b.onclick=function(){ load(false); }; body.appendChild(b); }
+        });
+      }
+      d.addEventListener('toggle', function(){ if(d.open && !d._loaded){ d._loaded=true; load(true); } });
+      d._reloadAudit = function(){ d._loaded=true; if(d.open) load(true); else d._loaded=false; };
+    });
+  }
+  global.__so_bindAudit = bindAudit;
+
+  // 영역(또는 파일명)별 감사 대상 테이블 — 자동 변경이력 패널
+  var SO_AREA_AUDIT = {
+    room:   'rooms,room_inventory,room_closures,print_overrides,inv_items',
+    print:  'print_overrides,dinner_addons',
+    settle: 'folios,charges,payments,transactions,dining,rounds,settle_remarks,settle_deductions',
+    pos:    'charges,payments,folios,kitchen_tickets',
+    kitchen:'kitchen_tickets,inv_items',
+    front:  'rooms,print_overrides,folios,payments',
+    admin:  'user_access,member_codes,announcements'
+  };
+  var SO_PATH_AUDIT = { 'board.html':'announcements', 'groupcodes.html':'member_codes', 'inventory.html':'inv_items' };
+  // 페이지에 변경 이력 패널 자동 주입(카드별 코드 수정 불필요). menu/notes/step1은 전용 이력 보유 → 제외.
+  function mountAudit() {
+    if (!document.body) return;
+    if (document.querySelector('details.so-audit[data-audit-auto]')) return;
+    var area = document.body.getAttribute('data-so-area') || '';
+    var file = (location.pathname.split('/').pop() || '').toLowerCase();
+    var tables = SO_AREA_AUDIT[area] || SO_PATH_AUDIT[file];
+    if (!tables) return;
+    var host = document.querySelector('.wrap') || document.getElementById('content') || document.body;
+    var det = document.createElement('details');
+    det.className = 'so-audit';
+    det.setAttribute('data-audit-tables', tables);
+    det.setAttribute('data-audit-auto', '1');
+    det.innerHTML = '<summary>🕘 변경 이력 — 누가·언제·무엇을 바꿨는지</summary><div class="so-audit-body"></div>';
+    host.appendChild(det);
+    bindAudit(null);
+  }
+  global.__so_mountAudit = mountAudit;
+
   // ── 페이지 가드 — <body data-so-area="settle"> 선언 시, 권한 없으면 차단 오버레이. ──
   function showGuard(kind) {
     if (document.getElementById('so-guard')) return;
@@ -1543,7 +1616,7 @@
   function boot() {
     mountHead();
     if (handleAuthRedirect()) { applyLang(); return; }   // 초대/재설정 모드면 비번 설정만
-    mountAuth(); mountFooter(); applyLang(); guardPage(); mountConnToggle(); mountHelp(); mountToTop();
+    mountAuth(); mountFooter(); applyLang(); guardPage(); mountConnToggle(); mountHelp(); mountToTop(); mountAudit();
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
