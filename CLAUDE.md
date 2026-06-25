@@ -41,6 +41,7 @@
 - **`/app/`는 단일 HTML 바이브 코딩** — 한 파일 안에서 작업, 외부 라이브러리는 CDN.
   **`/ops/`는 다중 페이지 + 공유 asset** — 공통 변경은 `saizen-ops.js/css`에서.
 - **설계 먼저 제안 → 확인 → 구현.** Min은 짧고 직접적인 한국어로 결정하며, 제안을 중간에 멈추기도 한다("그냥 진행하지말아주세요"). 긴 설명보다 간결한 결정을 선호.
+- **상시 자동 배포 (Min 결정 2026-06).** 작업·검증이 끝나면 **확인 없이 바로 `main`에 머지·푸시해 배포**한다(GitHub Pages가 `main` 루트 자동 배포 → 라이브 즉시 반영). Min이 라이브에서 바로 확인하길 원함. 실사용자 소수(2~3명). ⚠ 단, 푸시 전 §4 검증(문법검사 `node scripts/check-syntax.mjs`)은 반드시 통과시키고, **되돌리기 어려운 파괴적 변경**(DB 마이그레이션 실행·대량 삭제 등)은 여전히 먼저 확인한다.
 - **데이터 저장 (네임스페이스)**:
   - `/app/` localStorage: `manualData`(월별 수기입력 — `saveManual()`/`loadManual()`), `memberMasterMap`·`memberMasterMeta`·`memberMasterFile`·`memberMasterCount`, `learnedMasterMap`·`learnedMasterMeta`, `tagCodeManualMap`, `saizen_dispatch_mask`(송영 마스킹), `saizen_lang`(화면 언어 ja/ko/en — `/ops/`와 공유).
   - `/ops/` Supabase 접속정보 localStorage: `saizen_sb_url` / `saizen_sb_key`.

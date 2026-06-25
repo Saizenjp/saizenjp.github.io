@@ -41,6 +41,9 @@
   .datebar{padding:10px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border)}
   .datebar label{font-size:12px;color:var(--text2);font-weight:600}
   .accombar{padding:8px 20px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--surface2)}
+  .accombar .fds{margin-left:auto;min-width:230px;padding:7px 11px;border:1px solid var(--border2);border-radius:8px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--text)}
+  .accombar .fds:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  @media(max-width:560px){.accombar .fds{margin-left:0;width:100%}}
   .accombar > label{font-size:12px;color:var(--text2);font-weight:700;margin-right:2px}
   .chip{font-size:12px;font-weight:700;padding:5px 12px;border-radius:99px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer}
   .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
@@ -56,7 +59,9 @@
   .kpi.due .v{color:var(--err)}
 
   .stage{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
-  @media(max-width:900px){.stage{grid-template-columns:1fr}}
+  /* 오른쪽 정산표 셀을 고정 — 왼쪽 목록을 내려도 따라옴(방배정과 동일 원리). 패널이 화면보다 길면 내부 스크롤. */
+  .stage>.col:last-child{position:sticky;top:74px;align-self:start;max-height:calc(100vh - 90px);overflow:auto}
+  @media(max-width:900px){.stage{grid-template-columns:1fr}.stage>.col:last-child{position:static;max-height:none;overflow:visible}}
   .col h3{font-size:13px;font-weight:800;color:var(--accent);margin:6px 0 8px;display:flex;align-items:center;gap:8px}
   .col h3 .c{font-size:11.5px;color:var(--text2);font-weight:700}
   .sect{margin-bottom:16px}
@@ -76,7 +81,7 @@
   .empty{padding:14px;text-align:center;color:var(--muted);font-size:12.5px;border:1px dashed var(--border);border-radius:9px}
 
   /* 상세 패널 */
-  .detail{position:sticky;top:74px;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:16px 17px}
+  .detail{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:16px 17px}
   .detail .dh{font-size:16px;font-weight:800;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .detail .dh .tag{font-family:var(--mono);color:var(--accent)}
   .detail .dsub{font-size:12px;color:var(--text2);margin-top:3px}
@@ -128,7 +133,7 @@
   <span class="hint" id="day-label" style="margin-left:auto"></span>
 </div>
 
-<div class="accombar"><label>숙소</label><span id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></span></div>
+<div class="accombar"><label>숙소</label><span id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></span><input id="team-search" class="fds" type="search" placeholder="🔍 팀·대표·동행자·방번호 검색" autocomplete="off"></div>
 
 <main>
   <div class="kpis" id="kpis"></div>
@@ -143,7 +148,7 @@
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
-let state={ day:'', teams:[], byId:{}, selSeq:null, accomSel:new Set(['야마나미리조트','쿠주힐즈']) };
+let state={ day:'', teams:[], byId:{}, selSeq:null, accomSel:new Set(['야마나미리조트','쿠주힐즈']), q:'' };
 function accomPass(ac){ return state.accomSel.size===0 || state.accomSel.has(ac); }
 function renderAccomChips(){
   const box=$('#accomchips'); if(!box) return;
@@ -196,21 +201,29 @@ async function load(){
     const {data:bs,error:e1}=await supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax,product_name').lte('dep_date',day).gte('arr_date',day);
     if(e1)throw e1;
     const seqs=(bs||[]).map(b=>b.event_seq);
-    const G={},R={},BAL={},NOTE={};
+    const G={},R={},BAL={},NOTE={},MEM={};
     for(let i=0;i<seqs.length;i+=300){
       const chunk=seqs.slice(i,i+300);
       const {data:gs}=await supa.from('guests').select('event_seq,team_tag,group_code,accom,pax').in('event_seq',chunk); (gs||[]).forEach(g=>G[g.event_seq]=g);
       const rr=await pagedQuery(()=>supa.from('rooms').select('event_seq,room_no').in('event_seq',chunk)); (rr.data||[]).forEach(r=>{if(r.room_no){(R[r.event_seq]=R[r.event_seq]||new Set()).add(r.room_no);}});
       const {data:nt}=await supa.from('event_notes').select('event_seq,remarks,memo,team_label').in('event_seq',chunk); (nt||[]).forEach(n=>NOTE[n.event_seq]=n);
+      // 동행자 명단 — "누구와 누가 팀인지" 검색·표시용
+      const mq=await pagedQuery(()=>supa.from('guest_members').select('event_seq,seq_in_team,name_kr,name_en').in('event_seq',chunk).order('event_seq').order('seq_in_team'));
+      (mq.data||[]).forEach(m=>{const nm=(m.name_kr||m.name_en||'').trim(); if(nm)(MEM[m.event_seq]=MEM[m.event_seq]||[]).push(nm);});
     }
     // 잔액: v_folio_balance(월) → event_seq 합산
     const fb=await pagedQuery(()=>supa.from('v_folio_balance').select('event_seq,balance,gross_total,paid_total,charge_count').eq('session_ym',ym));
     (fb.data||[]).forEach(f=>{const b=BAL[f.event_seq]=BAL[f.event_seq]||{bal:0,gross:0,paid:0,cnt:0};b.bal+=Number(f.balance||0);b.gross+=Number(f.gross_total||0);b.paid+=Number(f.paid_total||0);b.cnt+=Number(f.charge_count||0);});
     state.teams=(bs||[]).map(b=>{const g=G[b.event_seq]||{};const bal=BAL[b.event_seq]||{bal:0,gross:0,paid:0,cnt:0};const n=NOTE[b.event_seq]||{};
-      return {seq:b.event_seq,no:b.event_no||b.event_seq,rep:b.rep_name||'',pax:g.pax||b.pax||0,dep:b.dep_date,arr:b.arr_date,
-        accom:g.accom||'',tag:g.team_tag||g.group_code||('팀'+(b.event_no||b.event_seq)),
-        rooms:R[b.event_seq]?[...R[b.event_seq]]:[],bal:bal.bal,gross:bal.gross,paid:bal.paid,cnt:bal.cnt,
-        memo:[n.remarks,n.memo].filter(Boolean).join(' / '),teamLabel:n.team_label||''};
+      const tag=g.team_tag||g.group_code||('팀'+(b.event_no||b.event_seq));
+      const rep=b.rep_name||'';
+      const rooms=R[b.event_seq]?[...R[b.event_seq]]:[];
+      const memo=[n.remarks,n.memo].filter(Boolean).join(' / ');
+      const members=MEM[b.event_seq]||[];
+      const search=[tag,rep,g.accom,memo,n.team_label,...members,...rooms].filter(Boolean).join(' ').toLowerCase();
+      return {seq:b.event_seq,no:b.event_no||b.event_seq,rep,pax:g.pax||b.pax||0,dep:b.dep_date,arr:b.arr_date,
+        accom:g.accom||'',tag,rooms,bal:bal.bal,gross:bal.gross,paid:bal.paid,cnt:bal.cnt,
+        memo,teamLabel:n.team_label||'',members,search};
     });
     state.byId={}; state.teams.forEach(t=>state.byId[t.seq]=t);
     render();
@@ -238,10 +251,12 @@ function render(){
     const off=((document.querySelector('.topbar')||{}).offsetHeight||56)+8;   // 상단 고정바 가림 보정 → 라인명부터 보이게
     window.scrollTo({top: tg.getBoundingClientRect().top+window.scrollY-off, behavior:'smooth'});
   }));
-  $('#lists').innerHTML=
-    sect('arr','🛬 오늘 체크인',arr)+
-    sect('dep','🛫 오늘 체크아웃',dep)+
-    sect('stay','🏨 체류중(연박)',stay);
+  // 검색은 목록에만 적용(KPI는 그날 전체 기준 유지). 검색 중엔 빈 섹션 숨김.
+  const q=(state.q||'').trim().toLowerCase();
+  const qp=t=>!q||(t.search||'').includes(q);
+  const block=(kind,title,list)=>{const f=list.filter(qp);return (q&&!f.length)?'':sect(kind,title,f);};
+  const html=block('arr','🛬 오늘 체크인',arr)+block('dep','🛫 오늘 체크아웃',dep)+block('stay','🏨 체류중(연박)',stay);
+  $('#lists').innerHTML = html || `<div class="empty">${q?'검색 결과 없음 — 다른 이름·태그·방번호로 검색해 보세요':'해당 없음'}</div>`;
   $('#lists').querySelectorAll('[data-seq]').forEach(el=>el.addEventListener('click',()=>selectTeam(Number(el.dataset.seq))));
   if(state.selSeq && state.byId[state.selSeq]) renderDetail(state.byId[state.selSeq]);
 }
@@ -266,6 +281,7 @@ function renderDetail(t){
   $('#detail').innerHTML=`
     <div class="dh"><span class="tag">${esc(t.tag)}</span> ${esc(t.rep)}様</div>
     <div class="dsub">#${esc(String(t.no))} · ${esc(t.accom)} · ${t.pax}名 · ${esc((t.dep||'').slice(5))}~${esc((t.arr||'').slice(5))}</div>
+    <div style="font-size:12.5px;color:var(--text2);margin-top:7px;line-height:1.5"><b style="color:var(--text)">👥 명단</b> ${t.members&&t.members.length?esc(t.members.join(' · ')):'<span style="color:var(--muted)">-</span>'}</div>
     <div style="margin-top:12px">
       <div class="drow"><b>🛏 방번호</b><span>${t.rooms.length?esc(t.rooms.join(', ')):'<span style="color:var(--muted)">미배정</span>'}</span></div>
       <div class="drow"><b>청구</b><span>${t.cnt}건 · ${yen(t.gross)}</span></div>
@@ -291,6 +307,7 @@ $('#d-prev').addEventListener('click',()=>shiftDay(-1));
 $('#d-next').addEventListener('click',()=>shiftDay(1));
 $('#d-today').addEventListener('click',()=>{$('#day-pick').value=isoToday();if(supa)load();});
 $('#day-pick').addEventListener('change',()=>{if(supa)load();});
+$('#team-search').addEventListener('input',e=>{state.q=e.target.value;render();});
 // 맨 위로 버튼 = 공통(saizen-ops.js mountToTop) 사용
 (function init(){ $('#day-pick').value=isoToday(); loadCreds(); if($('#sb-url').value&&$('#sb-key').value) connect(); })();
 </script>
