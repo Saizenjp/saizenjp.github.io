@@ -51,6 +51,12 @@
   .rolesel{min-width:108px}
   .areas{display:flex;flex-wrap:wrap;gap:10px 14px;max-width:460px}
   .areas label{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);white-space:nowrap}
+  .areas .arealine{display:flex;align-items:center;gap:10px;justify-content:space-between;min-width:236px}
+  .areas .arealine .aname{display:inline-flex;align-items:center;gap:4px}
+  .areas .lvl{display:inline-flex;gap:10px;white-space:nowrap}
+  .areas .lw{color:var(--accent,#3d5424);font-weight:700}
+  .areas .lr{color:#9a7322;font-weight:700}
+  .areas .lw input,.areas .lr input{margin-right:3px;vertical-align:-1px}
   .areas.dim{opacity:.4;pointer-events:none}
   .areas .allnote{font-size:11.5px;color:var(--accent2);font-weight:700}
   .deptgrp{border:1px solid var(--border);border-radius:8px;padding:7px 9px;background:var(--surface2)}
@@ -145,11 +151,12 @@ const ROLE_LABEL={admin:'마스터',manager:'관리담당',staff:'일반'};
 const PROF_DEPTS=(window.__so_DEPTS||[['front','프론트·객실'],['fnb','식음'],['golf','골프'],['acct','회계']]);
 function deptOpts(cur){ return '<option value="">(부서 없음)</option>'+PROF_DEPTS.map(([k,l])=>`<option value="${k}" ${k===cur?'selected':''}>${l}</option>`).join(''); }
 
-// 부서별로 묶은 카드 체크박스 HTML
-function buildAreas(checked){
-  const set=new Set(checked||[]);
+// 부서별로 묶은 카드 권한 HTML — 영역별 [수정]/[보기] 2단계
+//   수정 체크=쓰기(읽기 포함) · 보기만 체크=읽기 전용 · 둘 다 해제=접근 없음
+function buildAreas(checked, readChecked){
+  const set=new Set(checked||[]); const rset=new Set(readChecked||[]);
   return DEPTS.map(([dlab,keys])=>{
-    const kids=keys.map(k=>`<label><input type="checkbox" data-area="${k}" ${set.has(k)?'checked':''}> ${AREA_LABEL[k]||k}${AREA_CARDS[k]?`<span class="areahint">${AREA_CARDS[k]}</span>`:''}</label>`).join('');
+    const kids=keys.map(k=>`<label class="arealine"><span class="aname">${AREA_LABEL[k]||k}${AREA_CARDS[k]?`<span class="areahint">${AREA_CARDS[k]}</span>`:''}</span><span class="lvl"><span class="lw"><input type="checkbox" data-area="${k}" ${set.has(k)?'checked':''}> 수정</span><span class="lr"><input type="checkbox" data-read-area="${k}" ${rset.has(k)?'checked':''}> 보기</span></span></label>`).join('');
     return `<div class="deptgrp">
         <label class="depthead"><input type="checkbox" data-deptall="${keys.join(',')}"> <b>${dlab}</b> <span class="dnote">부서 전체</span></label>
         <div class="deptkids">${kids}</div>
@@ -209,11 +216,11 @@ async function load(){
 function render(){
   const box=$('#users');
   if(!rows.length){ box.innerHTML='<div class="deny" style="color:var(--muted)">계정이 없습니다.</div>'; return; }
-  let html='<table class="users"><thead><tr><th>계정(이메일)</th><th>이름·부서·직급</th><th>역할</th><th>접근 카드(관리담당·일반)</th><th></th></tr></thead><tbody>';
+  let html='<table class="users"><thead><tr><th>계정(이메일)</th><th>이름·부서·직급</th><th>역할</th><th>접근 카드(<span style="color:var(--accent,#3d5424)">수정</span> / <span style="color:#9a7322">보기</span>)</th><th></th></tr></thead><tbody>';
   rows.forEach(u=>{
     const roleOpts=['admin','manager','staff'].map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_LABEL[r]}</option>`).join('');
     const showAreas=u.role!=='admin';
-    const areaBoxes=buildAreas(u.areas||[]);
+    const areaBoxes=buildAreas(u.areas||[], u.read_areas||[]);
     html+=`<tr data-id="${u.user_id}">
       <td><div class="uemail">${esc(u.email||'')}</div></td>
       <td><div class="prof">
@@ -236,7 +243,7 @@ function render(){
       if(sel.value!=='admin'){
         ar.classList.remove('dim');
         if(!ar.querySelector('[data-area]')){   // allnote 상태면 체크박스 생성(기존 체크는 보존)
-          ar.innerHTML=buildAreas([]); wireDeptAll(ar);
+          ar.innerHTML=buildAreas([],[]); wireDeptAll(ar);
         }
       }else{
         ar.classList.add('dim'); ar.innerHTML='<span class="allnote">전 카드 접근(마스터)</span>';
@@ -255,7 +262,12 @@ async function saveRow(tr){
   const areas=role!=='admin'
     ? [...tr.querySelectorAll('[data-area]')].filter(c=>c.checked).map(c=>c.dataset.area)
     : [];
-  const {error}=await supa.rpc('admin_set_access',{p_user:id,p_role:role,p_areas:areas,p_name:name,p_dept:dept,p_title:title});
+  // 보기 체크 영역(수정에 이미 있으면 제외 — 수정이 읽기 포함)
+  const wset=new Set(areas);
+  const read_areas=role!=='admin'
+    ? [...tr.querySelectorAll('[data-read-area]')].filter(c=>c.checked).map(c=>c.dataset.readArea).filter(a=>!wset.has(a))
+    : [];
+  const {error}=await supa.rpc('admin_set_access',{p_user:id,p_role:role,p_areas:areas,p_read_areas:read_areas,p_name:name,p_dept:dept,p_title:title});
   if(error){toast('저장 실패: '+error.message,'err');return;}
   toast('저장됨','ok');
   await load();

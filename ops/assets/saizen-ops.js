@@ -1263,10 +1263,10 @@
     _meP = c.auth.getSession().then(function (r) {
       if (!r || !r.data || !r.data.session) return null;
       return c.rpc('me_access').then(function (rr) {
-        if (rr.error || !rr.data || !rr.data[0]) return { role: 'staff', areas: [], name: '', dept: '', title: '' };
+        if (rr.error || !rr.data || !rr.data[0]) return { role: 'staff', areas: [], read_areas: [], name: '', dept: '', title: '' };
         var a = rr.data[0];
-        return { role: a.role, areas: a.areas || [], name: a.name || '', dept: a.dept || '', title: a.title || '' };
-      }).catch(function () { return { role: 'staff', areas: [], name: '', dept: '', title: '' }; });
+        return { role: a.role, areas: a.areas || [], read_areas: a.read_areas || [], name: a.name || '', dept: a.dept || '', title: a.title || '' };
+      }).catch(function () { return { role: 'staff', areas: [], read_areas: [], name: '', dept: '', title: '' }; });
     }).catch(function () { return null; });
     return _meP;
   }
@@ -1363,6 +1363,14 @@
     }
     document.body.appendChild(d);
   }
+  function showReadOnly() {
+    if (document.getElementById('so-readonly')) return;
+    var b = document.createElement('div');
+    b.id = 'so-readonly';
+    b.setAttribute('style', 'position:sticky;top:0;z-index:24;background:#9a7322;color:#fff;font-size:12.5px;font-weight:800;text-align:center;padding:6px 12px;letter-spacing:.3px');
+    b.textContent = '👁 읽기 전용 — 이 영역은 조회만 가능합니다(수정 권한 없음). 변경은 서버에서 차단됩니다.';
+    document.body.insertBefore(b, document.body.firstChild);
+  }
   function guardPage() {
     var area = document.body.getAttribute('data-so-area');
     if (!area) return;
@@ -1371,7 +1379,8 @@
       if (!acc) { showGuard('login'); return; }                 // 미로그인
       if (area === 'admin') { if (acc.role === 'admin') return; showGuard('deny'); return; }
       if (acc.role === 'admin' || acc.role === 'manager') return; // 전 접근
-      if ((acc.areas || []).indexOf(area) >= 0) return;          // 허용 영역
+      if ((acc.areas || []).indexOf(area) >= 0) return;          // 쓰기 영역 → 전체
+      if ((acc.read_areas || []).indexOf(area) >= 0) { showReadOnly(); return; } // 읽기 전용 → 보기 허용
       showGuard('deny');
     });
   }
