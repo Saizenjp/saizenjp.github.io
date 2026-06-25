@@ -53,9 +53,7 @@
   table.tedit td.c{text-align:center}
   table.tedit td.mono{font-family:var(--mono)}
   table.tedit input{border:1px solid var(--border2);border-radius:5px;padding:4px 6px;font-size:12px;font-family:inherit}
-  table.tedit input.te-tag{font-family:var(--mono);font-weight:700;color:var(--accent2)}
   .dg-badge{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:999px;border:1px solid var(--border2);white-space:nowrap}
-  .te-edited{color:var(--accent2);font-weight:800}
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
   .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
@@ -161,8 +159,7 @@ function renderUI(){
       <div id="preview" class="preview"></div>
     </div>
     <div class="panel">
-      <h3>팀별 태그·인원·묶기 <span class="cnt">— 태그·인원·제외는 夕食オーダー에만 반영. 묶기(🔗)는 レストラン名札 1장으로 합석(인원 합산·대표/태그 모두 표기). 항공커버는 영향 없음</span></h3>
-      <div id="tedit-reco" style="font-size:12.5px;margin:2px 0 10px;color:var(--muted)"></div>
+      <h3>팀 제외·묶기 <span class="cnt">— 제외는 夕食オーダー 식수에서 빠짐. 묶기(🔗)는 レストラン名札 1장으로 합석(인원 합산·대표/태그 모두 표기). 태그코드·인원은 step1 데이터 기준(수정 불가)</span></h3>
       <div id="tedit-tools" style="display:flex;gap:8px;align-items:center;margin:0 0 8px;flex-wrap:wrap">
         <button class="btn ghost sm" id="dg-link" type="button">🔗 선택 묶기</button>
         <button class="btn ghost sm" id="dg-unlink" type="button">✂ 묶음 해제</button>
@@ -181,31 +178,19 @@ function renderTeamEdit(){
   const thead=$('#tedit thead'), tbody=$('#tedit tbody'); if(!thead)return;
   const rows=TEAMS.filter(t=>ACCOMSEL.size===0||ACCOMSEL.has(t.accom)).slice()
     .sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||accomIdx(a.accom)-accomIdx(b.accom)||(a.repName||'').localeCompare(b.repName||''));
-  // 분배 정합성: 원래 합계(basePax) vs 수정 후 합계(제외=0, 오버라이드 반영). 병합 시 총원 보존 확인.
-  const origN=rows.reduce((s,t)=>s+(parseInt(t.basePax,10)||0),0);
-  const editN=rows.reduce((s,t)=>s+(t.excluded?0:(parseInt(t.pax,10)||0)),0);
-  const exCnt=rows.filter(t=>t.excluded).length;
-  const reco=$('#tedit-reco');
-  if(reco){ const diff=editN-origN; const sc=(ACCOMSEL.size?'선택 숙소':'전체')+(exCnt?` · 제외 ${exCnt}팀`:'');
-    reco.innerHTML = diff===0
-      ? `<span style="color:var(--ok);font-weight:800">✓ 분배 일치</span> — 원래 ${origN}名 = 수정 후 ${editN}名 <span style="color:var(--muted)">(${sc})</span>`
-      : `<span style="color:var(--err);font-weight:800">⚠ 분배 불일치 (${diff>0?'+':''}${diff}名)</span> — 원래 ${origN}名 → 수정 후 ${editN}名 <span style="color:var(--muted)">(${sc}) · 취합이 맞는지 확인</span>`;
-  }
-  thead.innerHTML='<tr><th><input type="checkbox" id="te-all" title="전체 선택"></th><th>入国</th><th>施設</th><th>代表者</th><th>묶음</th><th>タグコード</th><th>人数</th><th>除外</th></tr>';
+  thead.innerHTML='<tr><th><input type="checkbox" id="te-all" title="전체 선택"></th><th>入国</th><th>施設</th><th>代表者</th><th>タグコード</th><th>人数</th><th>묶음</th><th>除外</th></tr>';
   if(!rows.length){ tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:18px">팀 없음</td></tr>'; return; }
-  tbody.innerHTML=rows.map(t=>{ const ov=OVR[t.seq]||{}; const edited=(ov.team_tag&&ov.team_tag.trim())||(ov.pax_override!=null); const ex=!!t.excluded;
+  tbody.innerHTML=rows.map(t=>{ const ex=!!t.excluded;
     return `<tr data-seq="${t.seq}" style="${ex?'opacity:.45':''}">
       <td class="c"><input type="checkbox" class="te-ck" data-seq="${t.seq}"></td>
       <td class="c mono">${esc((t.dep||'').slice(5))}</td>
       <td class="c">${esc(t.accom)}</td>
-      <td style="${ex?'text-decoration:line-through':''}">${esc(t.repName||'')}${edited&&!ex?' <span class="te-edited" title="오버라이드 적용됨">✎</span>':''}</td>
+      <td style="${ex?'text-decoration:line-through':''}">${esc(t.repName||'')}</td>
+      <td class="c mono">${esc(t.tag)}</td>
+      <td class="c mono">${parseInt(t.pax,10)||0}</td>
       <td class="c">${dgBadge(t.dgroup)}</td>
-      <td><input class="te-tag" data-seq="${t.seq}" value="${esc(t.tag)}" style="width:120px" ${ex?'disabled':''}></td>
-      <td><input class="te-pax" data-seq="${t.seq}" type="number" min="0" value="${parseInt(t.pax,10)||0}" style="width:64px;text-align:center" ${ex?'disabled':''}></td>
       <td class="c"><button type="button" class="te-ex" data-seq="${t.seq}" data-ex="${ex?1:0}" style="font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:6px;cursor:pointer;border:1px solid ${ex?'var(--accent)':'var(--border2)'};background:${ex?'var(--accent)':'var(--surface)'};color:${ex?'#fff':'var(--err)'}">${ex?'복원':'제외'}</button></td>
     </tr>`; }).join('');
-  tbody.querySelectorAll('.te-tag').forEach(inp=>inp.addEventListener('change',()=>saveDinnerOverride(inp.dataset.seq,'team_tag',inp.value)));
-  tbody.querySelectorAll('.te-pax').forEach(inp=>inp.addEventListener('change',()=>saveDinnerOverride(inp.dataset.seq,'pax_override',inp.value)));
   tbody.querySelectorAll('.te-ex').forEach(b=>b.addEventListener('click',()=>saveDinnerOverride(b.dataset.seq,'excluded',b.dataset.ex!=='1')));
   const all=$('#te-all'); if(all) all.addEventListener('change',()=>{ tbody.querySelectorAll('.te-ck').forEach(c=>{c.checked=all.checked;}); });
 }
@@ -231,7 +216,6 @@ async function saveDiningGroup(seqs,key){
     for(const seq of seqs){
       const cur=OVR[seq]||{};
       const merged={event_seq:Number(seq),session_ym:YM,updated_by:curUser(),
-        team_tag:cur.team_tag||null, pax_override:(cur.pax_override!=null?cur.pax_override:null),
         excluded:!!cur.excluded, dining_group:key};
       const {error}=await supa.from('print_overrides').upsert(merged,{onConflict:'event_seq'}); if(error)throw error;
       OVR[seq]=merged; const t=TEAMS.find(x=>x.seq===String(seq)); if(t) t.dgroup=key;
@@ -240,19 +224,20 @@ async function saveDiningGroup(seqs,key){
   }catch(e){ toast('저장 실패: '+e.message,'err'); }
 }
 function accomIdx(ac){ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; }
+// 夕食オー더 끼니 제외 토글만 저장(태그·인원 수정은 폐지 — step1 데이터 기준).
 async function saveDinnerOverride(seq,field,val){
+  if(field!=='excluded')return;
   const t=TEAMS.find(x=>x.seq===String(seq)); if(!t)return;
   const cur=OVR[seq]||{};
-  let team_tag=cur.team_tag||null;
-  let pax_override=(cur.pax_override!=null?cur.pax_override:null);
-  let excluded=!!cur.excluded;
-  if(field==='team_tag'){ const v=String(val||'').trim(); team_tag=v||null; t.tag=v||(OVR[seq]&&OVR[seq]._autoTag)||t.tag; }
-  else if(field==='pax_override'){ const n=String(val).trim()===''?null:(parseInt(val,10)||0); pax_override=n; t.pax=(n!=null?n:t.basePax); }
-  else if(field==='excluded'){ excluded=!!val; t.excluded=excluded; }
+  const excluded=!!val; t.excluded=excluded;
   try{
-    const merged={event_seq:Number(seq),session_ym:YM,updated_by:curUser(),team_tag,pax_override,excluded};
+    const merged={event_seq:Number(seq),session_ym:YM,updated_by:curUser(),excluded,dining_group:cur.dining_group||null};
     const {error}=await supa.from('print_overrides').upsert(merged,{onConflict:'event_seq'}); if(error)throw error;
-    OVR[seq]=merged; toast(field==='excluded'?(excluded?'제외 — 명단·식수에서 빠짐':'복원'):'저장','ok'); renderPreview();
+    OVR[seq]=merged; const b=document.querySelector(`#tedit .te-ex[data-seq="${seq}"]`);
+    if(b){ b.dataset.ex=excluded?'1':'0'; b.textContent=excluded?'복원':'제외';
+      b.style.border='1px solid '+(excluded?'var(--accent)':'var(--border2)'); b.style.background=excluded?'var(--accent)':'var(--surface)'; b.style.color=excluded?'#fff':'var(--err)';
+      const tr=b.closest('tr'); if(tr){ tr.style.opacity=excluded?'.45':''; const rn=tr.children[3]; if(rn) rn.style.textDecoration=excluded?'line-through':''; } }
+    toast(excluded?'제외 — 명단·식수에서 빠짐':'복원','ok'); renderPreview();
   }catch(e){ toast('저장 실패: '+e.message,'err'); }
 }
 function renderDateChips(){
@@ -319,19 +304,19 @@ async function load(){
         if(!data||data.length<1000)break; pg+=1000;
       }
     }
-    // 팀 태그·인원 오버라이드(print_overrides) — 航空カバー와 공유. event_seq 기준(월경계 포함)
+    // 제외·묶기(print_overrides) — 태그·인원 수정은 폐지(step1 데이터 기준). 묶기는 航空カバー 영향 없음. event_seq 기준(월경계 포함)
     OVR={};
     for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
-      const {data:ov}=await supa.from('print_overrides').select('event_seq,team_tag,pax_override,excluded,dining_group').in('event_seq',chunk);
+      const {data:ov}=await supa.from('print_overrides').select('event_seq,excluded,dining_group').in('event_seq',chunk);
       (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
     }
     TEAMS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{}; const r=REP[b.event_seq]||{}; const o=ORI[b.event_seq]||{}; const ov=OVR[b.event_seq]||{};
       const origin=(o.byRep?o.origin:'')||o.origin||b.origin||'';
       const basePax=b.pax||g.pax||0;
       return { seq:String(b.event_seq), accom:g.accom||'', dep:fmtDate(b.dep_date), arr:fmtDate(b.arr_date),
-        pax:(ov.pax_override!=null?ov.pax_override:basePax), basePax, excluded:!!ov.excluded, dgroup:ov.dining_group||null,
+        pax:basePax, basePax, excluded:!!ov.excluded, dgroup:ov.dining_group||null,
         repName:b.rep_name||r.name||'', engName:r.eng||o.eng||'',
-        tag:(ov.team_tag&&ov.team_tag.trim())||r.tag||g.team_tag||g.group_code||'', isPus:isPusOf(origin) };
+        tag:r.tag||g.team_tag||g.group_code||'', isPus:isPusOf(origin) };
     }).filter(t=>t.accom);
     ACCOMSEL.clear();
     // 기본 선택 = 첫날 하루만(전체 인쇄 시 랙 방지). 「전체」 토글로 전 날짜 선택 가능.
