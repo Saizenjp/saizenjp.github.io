@@ -101,6 +101,13 @@ let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set(), OVR={},
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
 const OFFSITE=new Set(['간지호텔','시즈노야도 료칸']);
+// 요일별 기본 석식 메뉴 (getDay: 0=일~6=토). 코드에서 수정 가능.
+const BASE_DINNER=['해물전골','일본산 삼겹살','매운탕','소불고기 코스','해물 순두부찌개','일본산 삼겹살','흑돼지 샤브샤브'];
+function baseDinnerFor(date){ try{ return BASE_DINNER[parseLocalDate(date).getDay()]||''; }catch(e){ return ''; } }
+// 별주 입력 자동완성용 메뉴(업그레이드 ¥3,000/인 · 추가/안주)
+const MENU_SUGGEST=['카이세키 요리','스키야키','소고기 샤브샤브','바베큐',
+  '도미 스가타츠쿠리(회 모듬)','왕새우(이세에비) 추가','우나기 카바야키(장어구이)','와규 스테이크','말고기 육회',
+  '낙지튀김','감자튀김','닭튀김','우엉튀김','타코와사비'];
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 // 동그라미 숫자(①~⑳) — 인쇄물 팀 인원 표기(예 ←DJわ④名). 범위 밖은 (n).
@@ -183,7 +190,8 @@ function renderUI(){
           <option value="upgrade">업그레이드(기본 차감)</option>
           <option value="allergy">알레르기/식이</option>
         </select></label>
-        <label class="adf" style="flex:1;min-width:150px"><span id="ad-item-lb">메뉴명</span><br><input id="ad-item" placeholder="例) ステーキ" style="width:100%"></label>
+        <label class="adf" style="flex:1;min-width:150px"><span id="ad-item-lb">메뉴명</span><br><input id="ad-item" list="ad-menu-list" placeholder="例) ステーキ" style="width:100%"></label>
+        <datalist id="ad-menu-list">${MENU_SUGGEST.map(m=>`<option value="${esc(m)}">`).join('')}</datalist>
         <span id="ad-menu-fields" style="display:flex;gap:8px;align-items:flex-end">
           <label class="adf">단가¥<br><input id="ad-price" type="number" min="0" placeholder="5000" style="width:92px"></label>
           <label class="adf">수량<br><input id="ad-qty" type="number" min="1" value="1" style="width:60px"></label>
@@ -197,6 +205,21 @@ function renderUI(){
         <button class="btn sm" id="ad-add" type="button">＋ 등록</button>
       </div>
       <div id="ad-list" style="margin-top:12px"></div>
+      <details class="menu-ref" style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+        <summary style="cursor:pointer;font-weight:800;font-size:12.5px;color:var(--accent)">📋 석식 메뉴 · 신청 안내 (요일별 기본메뉴 · 업그레이드 · 추가 · 안주)</summary>
+        <div style="font-size:12.5px;color:var(--text2);line-height:1.7;margin-top:8px">
+          <b style="color:var(--text)">■ 요일별 기본 석식</b><br>
+          일 해물전골 · 월 일본산 삼겹살 · 화 매운탕 · 수 소불고기 코스 · 목 해물 순두부찌개 · 금 일본산 삼겹살 · 토 흑돼지 샤브샤브<br><br>
+          <b style="color:var(--text)">■ 신청 마감</b><br>
+          메리트투어 출발 <b>3일 전</b>까지 · 체류 중에는 <b>전일 오후 2시</b>까지 호텔 프론트<br><br>
+          <b style="color:var(--text)">■ 업그레이드 메뉴</b> <span style="color:var(--muted)">(기본 메뉴 제공X · 전원 같은 메뉴 신청 필수)</span><br>
+          카이세키 요리 ¥3,000/인 · 스키야키 ¥3,000/인 · 소고기 샤브샤브 ¥3,000/인 · 바베큐 ¥3,000/인 <span style="color:var(--muted)">(바베큐는 4인 이상)</span><br><br>
+          <b style="color:var(--text)">■ 추가 메뉴</b><br>
+          도미 스가타츠쿠리(회 모듬) ¥150,000 단품 <span style="color:var(--muted)">(왕새우/이세에비 추가 시 +¥20,000)</span> · 우나기 카바야키(장어구이) ¥5,000/마리 · 와규 스테이크 ¥5,000/인분 · 말고기 육회 ¥5,000/인분<br><br>
+          <b style="color:var(--text)">■ 안주</b><br>
+          낙지튀김 · 감자튀김 · 닭튀김 · 우엉튀김 · 타코와사비 — 각 ¥800
+        </div>
+      </details>
     </div>
     <div class="panel">
       <h3>날짜별 식수 미리보기 <span class="cnt" id="pv-cnt"></span></h3>
@@ -502,7 +525,8 @@ function renderPreview(){
   if(!dates.length){ box.innerHTML='<div class="deny" style="color:var(--muted);padding:24px">출력할 날짜가 없습니다.</div>'; return; }
   box.innerHTML=dates.map(d=>{ const mc=mealCounts(d); const ad=addonsForDate(d);
     return `<div class="pv-day"><b>${d.slice(5).replace('-','/')}${getWD(d)}</b> · ${mc.teamCnt}チーム ${mc.dinnerN}名${mc.exTeamCnt?` <span style="color:var(--err);font-weight:700">夕食除外 ${mc.exTeamCnt}팀/${mc.exDinnerN}名</span>`:''}${mc.upN?` <span style="color:#9a7322;font-weight:700">UP −${mc.upN}</span>`:''}${ad.length?` <span style="color:#9a7322">· 別注 ${ad.filter(a=>a.kind!=='allergy').length} · ⚠${ad.filter(a=>a.kind==='allergy').length}</span>`:''}
-      <div class="pv-meal">朝食 ${mc.breakfastN} ・ 昼食 ${mc.lunchN}${mc.lunchArrICN?`(入国${mc.lunchArrICN})`:''} ・ 夕食 ${mc.dinnerN}${mc.upN?` <span style="color:#9a7322">(업그레이드 ${mc.upN}인분 별도)</span>`:''}</div></div>`;
+      <div class="pv-meal">朝食 ${mc.breakfastN} ・ 昼食 ${mc.lunchN}${mc.lunchArrICN?`(入国${mc.lunchArrICN})`:''} ・ 夕食 ${mc.dinnerN}${mc.upN?` <span style="color:#9a7322">(업그레이드 ${mc.upN}인분 별도)</span>`:''}</div>
+      <div style="font-size:11.5px;color:#1A4D8F;font-weight:700;margin-top:2px">기본 석식: ${esc(baseDinnerFor(d))}</div></div>`;
   }).join('');
 }
 
@@ -560,7 +584,7 @@ function printOrder(){
     return `<div class="do-page">
       <div class="do-head">
         <div class="do-date">${date.slice(5).replace('-','/')}${getWD(date)}</div>
-        <div class="do-title">夕食オーダー</div>
+        <div><div class="do-title">夕食オーダー</div><div class="do-base">本日の基本夕食 ： ${esc(baseDinnerFor(date))}</div></div>
         <div class="do-meta">${mc.teamCnt}チーム · ${mc.dinnerN}名<br>${todayStr}</div>
       </div>
       <table class="do-table">
@@ -614,6 +638,7 @@ function printOrder(){
   .do-head { display: grid; grid-template-columns: 1fr 2fr 1fr; align-items: center; margin-bottom: 4mm; padding-bottom: 2mm; border-bottom: 2.5pt solid #1A2540; }
   .do-date { font-size: 28pt; font-weight: 800; color: #1A2540; }
   .do-title { font-size: 30pt; font-weight: 800; text-align: center; letter-spacing: 6pt; color: #1A2540; }
+  .do-base { font-size: 12pt; font-weight: 700; text-align: center; color: #1A4D8F; margin-top: 1.5mm; }
   .do-meta { font-size: 11pt; text-align: right; color: #555; line-height: 1.4; }
   .do-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .do-table th { background: #fff; color: #1A2540; font-size: 12pt; font-weight: 800; padding: 4mm 1mm; text-align: center; border: 0.5pt solid #1A2540; border-bottom: 1.5pt solid #1A2540; letter-spacing: 1pt; }
