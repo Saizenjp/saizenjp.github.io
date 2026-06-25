@@ -156,12 +156,21 @@ function deptOpts(cur){ return '<option value="">(부서 없음)</option>'+PROF_
 function buildAreas(checked, readChecked){
   const set=new Set(checked||[]); const rset=new Set(readChecked||[]);
   return DEPTS.map(([dlab,keys])=>{
-    const kids=keys.map(k=>`<label class="arealine"><span class="aname">${AREA_LABEL[k]||k}${AREA_CARDS[k]?`<span class="areahint">${AREA_CARDS[k]}</span>`:''}</span><span class="lvl"><span class="lw"><input type="checkbox" data-area="${k}" ${set.has(k)?'checked':''}> 수정</span><span class="lr"><input type="checkbox" data-read-area="${k}" ${rset.has(k)?'checked':''}> 보기</span></span></label>`).join('');
+    const kids=keys.map(k=>`<label class="arealine"><span class="aname">${AREA_LABEL[k]||k}${AREA_CARDS[k]?`<span class="areahint">${AREA_CARDS[k]}</span>`:''}</span><span class="lvl"><span class="lw"><input type="checkbox" data-area="${k}" ${set.has(k)?'checked':''}> 수정</span><span class="lr"><input type="checkbox" data-read-area="${k}" ${rset.has(k)&&!set.has(k)?'checked':''}> 보기</span></span></label>`).join('');
     return `<div class="deptgrp">
         <label class="depthead"><input type="checkbox" data-deptall="${keys.join(',')}"> <b>${dlab}</b> <span class="dnote">부서 전체</span></label>
         <div class="deptkids">${kids}</div>
       </div>`;
   }).join('');
+}
+// 수정 ↔ 보기 상호배타: 한 영역에 둘 다 체크 불가
+//   수정=쓰기(보기 포함) / 보기=읽기 전용 / 둘 다 해제=접근 없음
+function wireAreaExclusive(scope){
+  scope.querySelectorAll('[data-area]').forEach(w=>{
+    const k=w.dataset.area; const r=scope.querySelector(`[data-read-area="${k}"]`); if(!r)return;
+    w.addEventListener('change',()=>{ if(w.checked) r.checked=false; });
+    r.addEventListener('change',()=>{ if(r.checked) w.checked=false; });
+  });
 }
 // 부서 전체 체크박스 ↔ 하위 카드 동기화
 function wireDeptAll(scope){
@@ -169,7 +178,7 @@ function wireDeptAll(scope){
     const keys=master.dataset.deptall.split(',');
     const kids=()=>keys.map(k=>scope.querySelector(`[data-area="${k}"]`)).filter(Boolean);
     const sync=()=>{const ks=kids();master.checked=ks.length&&ks.every(c=>c.checked);master.indeterminate=!master.checked&&ks.some(c=>c.checked);};
-    master.addEventListener('change',()=>{kids().forEach(c=>c.checked=master.checked);});
+    master.addEventListener('change',()=>{kids().forEach(c=>{c.checked=master.checked; if(master.checked){const r=scope.querySelector(`[data-read-area="${c.dataset.area}"]`); if(r)r.checked=false;}});});
     kids().forEach(c=>c.addEventListener('change',sync));
     sync();
   });
@@ -235,7 +244,7 @@ function render(){
   });
   html+='</tbody></table>';
   box.innerHTML=html;
-  box.querySelectorAll('[data-areas]').forEach(ar=>{ if(ar.querySelector('[data-area]')) wireDeptAll(ar); });
+  box.querySelectorAll('[data-areas]').forEach(ar=>{ if(ar.querySelector('[data-area]')){ wireAreaExclusive(ar); wireDeptAll(ar); } });
   // 역할 변경 시 카드 영역 활성/비활성 토글
   box.querySelectorAll('select[data-f="role"]').forEach(sel=>{
     sel.addEventListener('change',()=>{
