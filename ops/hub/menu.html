@@ -182,7 +182,7 @@ let supa=null;
 
 // ── i18n (한·일 직원 공용. ja 기본. me_* 등은 saizen-ops.js, 나머지 로컬 키는 여기서) ──
 const L={
-  ja:{ phCode:'自動', tipNextCode:'場所に合う次のコードを生成(FR1·GS1…)', phNameKo:'生ビール(韓国語名)',
+  ja:{ phCode:'自動', tipNextCode:'場所に合う次のコードを生成(FR1·GS1…)', phNameKo:'생맥주',
     saveAll:'💾 一括保存', saveVenue:'💾 この場所を一括保存', tipCodeLock:'適用済みのコードは修正不可',
     histTitle:'🕘 変更履歴', histEmptyConnect:'接続後に表示されます。', histEmptyNone:'まだ変更履歴がありません。',
     histTblMissing:'履歴テーブル未設置(29_change_log.sql の実行が必要)', histRecent:n=>`(直近 ${n}件)`,
@@ -212,7 +212,7 @@ const L={
     flCode:'코드', flNameJa:'日本語名', flNameKo:'한국어명', flCat:'구분', flVenue:'장소', flStation:'station', flPrice:'단가', flSort:'정렬', flActive:'활성',
     catRound:'라운딩', catFb:'식음', catRoom:'룸', catProshop:'골프샵', catEtc:'기타',
     venRestaurant:'레스토랑', venProshop:'골프샵', venBanquet:'연회', venEtc:'기타', all:'전체' },
-  en:{ phCode:'Auto', tipNextCode:'Generate next code for this venue (FR1·GS1…)', phNameKo:'Name (KO)',
+  en:{ phCode:'Auto', tipNextCode:'Generate next code for this venue (FR1·GS1…)', phNameKo:'생맥주',
     saveAll:'💾 Save all', saveVenue:'💾 Save this venue', tipCodeLock:'Applied code cannot be edited',
     histTitle:'🕘 Change history', histEmptyConnect:'Shown after connecting.', histEmptyNone:'No change history yet.',
     histTblMissing:'History table missing (run 29_change_log.sql)', histRecent:n=>`(last ${n})`,
@@ -527,20 +527,21 @@ function fmtDt(s){ if(!s) return ''; const d=new Date(s); const p=n=>String(n).p
 async function loadHistory(){
   const body=$('#hist-body'); if(!body||!supa) return;
   const {data,error}=await supa.from('change_log').select('*').eq('entity','menu_item').order('changed_at',{ascending:false}).limit(40);
-  if(error){ body.innerHTML='<div class="empty-hint">이력 테이블 미설치(29_change_log.sql 실행 필요)</div>'; $('#hist-cnt').textContent=''; return; }
+  if(error){ body.innerHTML='<div class="empty-hint">'+esc(tx('histTblMissing'))+'</div>'; $('#hist-cnt').textContent=''; return; }
   renderHistory(data||[]);
 }
-const HIST_FLABEL={code:'코드',name_ja:'日本語名',name_ko:'한국어명',category:'구분',venue:'장소',station:'station',unit_price:'단가',sort_order:'정렬',active:'활성'};
+const HIST_FKEY={code:'flCode',name_ja:'flNameJa',name_ko:'flNameKo',category:'flCat',venue:'flVenue',station:'flStation',unit_price:'flPrice',sort_order:'flSort',active:'flActive'};
+function histFLabel(f){ const k=HIST_FKEY[f]; return k?tx(k):f; }
 function renderHistory(list){
-  $('#hist-cnt').textContent=list.length?`(최근 ${list.length}건)`:'';
+  $('#hist-cnt').textContent=list.length?tx('histRecent')(list.length):'';
   const body=$('#hist-body');
-  if(!list.length){ body.innerHTML='<div class="empty-hint">아직 수정 이력이 없습니다.</div>'; return; }
-  const AL={insert:'추가',update:'수정',delete:'삭제'};
+  if(!list.length){ body.innerHTML='<div class="empty-hint">'+esc(tx('histEmptyNone'))+'</div>'; return; }
+  const AL={insert:tx('actInsert'),update:tx('actUpdate'),delete:tx('actDelete')};
   body.innerHTML=list.map(r=>{
     let diff='';
     let c=r.changes; if(typeof c==='string'){ try{c=JSON.parse(c);}catch(e){c=null;} }
-    if(c && typeof c==='object'){ diff=Object.keys(c).map(k=>`${HIST_FLABEL[k]||k}: ${esc(c[k]&&c[k].from)}→${esc(c[k]&&c[k].to)}`).join(' · '); }
-    else if(r.field){ diff=`${HIST_FLABEL[r.field]||r.field}: ${esc(r.old_value)}→${esc(r.new_value)}`; }
+    if(c && typeof c==='object'){ diff=Object.keys(c).map(k=>`${histFLabel(k)}: ${esc(c[k]&&c[k].from)}→${esc(c[k]&&c[k].to)}`).join(' · '); }
+    else if(r.field){ diff=`${histFLabel(r.field)}: ${esc(r.old_value)}→${esc(r.new_value)}`; }
     return `<div class="hrow"><span class="ht">${fmtDt(r.changed_at)}</span>`
       +`<span class="ha ha-${esc(r.action)}">${AL[r.action]||r.action}</span>`
       +`<span class="hby">${esc(r.label||'')}</span>`
@@ -556,9 +557,20 @@ $('#btn-saveall').addEventListener('click',saveAll);
 $('#btn-nextcode').addEventListener('click',()=>fillNextCode(true));
 $('#n-venue').addEventListener('change',()=>fillNextCode());   // 장소 바꾸면 그 장소의 다음 코드
 fillVenueSelect();
+fillCatSelect();
+applyStatic();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
-window.onSaizenLangChange=function(){ try{ render(); }catch(e){} };
+// 언어 토글 시: 정적 chrome + 폼 select 라벨 + 동적 목록·이력 재렌더(선택값 보존)
+window.onSaizenLangChange=function(){
+  applyStatic();
+  const vsel=$('#n-venue'), csel=$('#n-cat');
+  const vcur=vsel?vsel.value:null, ccur=csel?csel.value:null;
+  fillVenueSelect(); if(vsel&&vcur)vsel.value=vcur;
+  fillCatSelect();   if(csel&&ccur)csel.value=ccur;
+  try{ if(state.items.length) render(); }catch(e){}
+  try{ if(supa) loadHistory(); }catch(e){}   // 이력 패널 라벨도 언어 반영
+};
 </script>
 </body>
 </html>

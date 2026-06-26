@@ -212,6 +212,7 @@ function applyStatic(){
   const d0=$('#t-deny0'); if(d0) d0.textContent=tx('deny0');
   $('#sb-url').placeholder='Supabase Project URL';
   $('#sb-key').placeholder='Publishable key';
+  const cs=$('#conn-state'); if(cs && !cs.className.replace('pill','').trim()) cs.textContent=tx('notConn');
 }
 
 // ── 그룹코드 정책 + 빈코드 피커 (app과 동일 · 소스=member_codes) ──
@@ -307,48 +308,48 @@ async function connect(){
 }
 
 function renderUI(){
-  const clsOpts=CLASSES.map(c=>`<option value="${c}">${c||'(등급 없음)'}</option>`).join('');
+  const clsOpts=CLASSES.map(c=>`<option value="${esc(c)}">${esc(c?gradeLabel(c):tx('clsNone'))}</option>`).join('');
   $('#content').innerHTML=`
     <div id="gc-regbar" style="display:none;align-items:center;flex-wrap:wrap;gap:8px 14px;background:#e3f8ec;border:1px solid #1fb257;border-left:4px solid #1fb257;border-radius:10px;padding:10px 16px;margin-bottom:14px;color:var(--text)">
-      <span style="font-weight:800;color:#127a3b;white-space:nowrap">👥 회원 마스터</span>
+      <span style="font-weight:800;color:#127a3b;white-space:nowrap">${esc(tx('masterTitle'))}</span>
       <span id="gc-regbar-info" style="font-size:12.5px"></span>
     </div>
     <div class="panel">
-      <h3>회원 추가 / 수정</h3>
-      <div class="desc">키 = <b>성명 + 생년6자리</b>(예: 황보관현590611). 같은 키면 덮어씁니다(수정).</div>
+      <h3>${esc(tx('addTitle'))}</h3>
+      <div class="desc">${tx('addDesc')}</div>
       <div class="form-row">
-        <input class="inp" id="f-name" placeholder="성명" style="width:120px">
-        <input class="inp" id="f-birth" placeholder="생년6(590611)" maxlength="6" style="width:110px">
+        <input class="inp" id="f-name" placeholder="${esc(tx('phName'))}" style="width:120px">
+        <input class="inp" id="f-birth" placeholder="${esc(tx('phBirth'))}" maxlength="6" style="width:110px">
         <select class="inp" id="f-class" style="width:140px">${clsOpts}</select>
-        <input class="inp" id="f-code" placeholder="← 빈코드 선택" style="width:120px;font-family:var(--mono);font-weight:700;color:var(--accent2)" readonly>
-        <button class="btn sm" id="f-pick" type="button">🔍 빈코드 선택</button>
-        <button class="btn" id="f-save" type="button">저장</button>
-        <button class="btn ghost sm" id="f-clear" type="button">비우기</button>
+        <input class="inp" id="f-code" placeholder="${esc(tx('phCode'))}" style="width:120px;font-family:var(--mono);font-weight:700;color:var(--accent2)" readonly>
+        <button class="btn sm" id="f-pick" type="button">${esc(tx('pickBtn'))}</button>
+        <button class="btn" id="f-save" type="button">${esc(tx('save'))}</button>
+        <button class="btn ghost sm" id="f-clear" type="button">${esc(tx('clear'))}</button>
       </div>
-      <div class="desc" style="margin:8px 0 0">그룹코드는 <b>[🔍 빈코드 선택]</b>으로 등급별 빈/채워진 코드 표에서 고릅니다(직접 타이핑 대신).</div>
+      <div class="desc" style="margin:8px 0 0">${tx('addHint')}</div>
     </div>
     <div class="panel">
-      <h3>일괄 등록 (xlsx) — 최초 1회</h3>
-      <div class="desc">회원그룹코드 / <b>회원_배정_현황</b> 엑셀을 올리면 <b>코드·그룹 내 배정된 아이디·고객 구분·성명</b> 컬럼을 읽어 한 번에 등록(같은 키 덮어쓰기)합니다. 이후에는 위에서 직접 관리하세요.</div>
+      <h3>${esc(tx('impTitle'))}</h3>
+      <div class="desc">${tx('impDesc')}</div>
       <div class="form-row">
         <input class="inp" id="imp-file" type="file" accept=".xlsx,.xls">
-        <button class="btn" id="imp-go" type="button" disabled>등록</button>
+        <button class="btn" id="imp-go" type="button" disabled>${esc(tx('impGo'))}</button>
         <span class="cnt" id="imp-stat"></span>
       </div>
     </div>
     <div class="panel">
-      <h3>검색 <span class="cnt" id="gc-cnt"></span></h3>
+      <h3>${esc(tx('searchTitle'))} <span class="cnt" id="gc-cnt"></span></h3>
       <div class="form-row" style="margin-bottom:8px">
-        <input class="inp" id="q" placeholder="성명·그룹코드·키로 검색" style="width:260px">
-        <button class="btn sm" id="btn-search" type="button">검색</button>
-        <span class="cnt">※ 최대 200건 표시</span>
+        <input class="inp" id="q" placeholder="${esc(tx('searchPh'))}" style="width:260px">
+        <button class="btn sm" id="btn-search" type="button">${esc(tx('search'))}</button>
+        <span class="cnt">${esc(tx('searchMax'))}</span>
       </div>
       <div id="gc-list"></div>
     </div>`;
   $('#f-save').addEventListener('click',saveMember);
   $('#f-pick').addEventListener('click',()=>{
     const cls=$('#f-class').value;
-    if(!gcNormGrade(cls)){ toast('사전배정 등급(다이아·골드·특별·EWRC…)을 먼저 선택하세요','err'); return; }
+    if(!gcNormGrade(cls)){ toast(tx('pickNeedGrade'),'err'); return; }
     gcOpenPicker(cls, c=>{ $('#f-code').value=c; });
   });
   $('#f-clear').addEventListener('click',()=>{['f-name','f-birth','f-code'].forEach(id=>$('#'+id).value='');$('#f-class').value='';});
@@ -363,16 +364,16 @@ async function loadMasterStatus(){
   const bar=$('#gc-regbar'), info=$('#gc-regbar-info'); if(!bar||!info||!supa) return;
   try{
     const {count}=await supa.from('member_codes').select('*',{count:'exact',head:true});
-    if(!count){ info.textContent='아직 등록된 회원 마스터가 없습니다 — 아래 [일괄 등록]으로 회원_배정_현황을 올리세요.'; bar.style.display='flex'; return; }
+    if(!count){ info.textContent=tx('masterEmpty'); bar.style.display='flex'; return; }
     const {count:learned}=await supa.from('member_codes').select('*',{count:'exact',head:true}).eq('is_learned',true);
     const {data:first}=await supa.from('member_codes').select('created_at').order('created_at',{ascending:true}).limit(1);
     const {data:last}=await supa.from('member_codes').select('updated_at').order('updated_at',{ascending:false}).limit(1);
     const fmt=s=>{ if(!s) return '-'; const d=new Date(s),p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
     const master=(count||0)-(learned||0);
-    info.innerHTML=`총 <b>${(count||0).toLocaleString()}</b>행`
-      + ` <span style="color:var(--muted)">(마스터 ${master.toLocaleString()} · 학습 ${(learned||0).toLocaleString()})</span>`
-      + ` · 최초 등록 <b>${fmt(first&&first[0]&&first[0].created_at)}</b>`
-      + ` · 최근 갱신 <b>${fmt(last&&last[0]&&last[0].updated_at)}</b>`;
+    info.innerHTML=`<b>${(count||0).toLocaleString()}</b>${esc(tx('masterRows'))}`
+      + ` <span style="color:var(--muted)">(${esc(tx('masterMaster'))} ${master.toLocaleString()} · ${esc(tx('masterLearned'))} ${(learned||0).toLocaleString()})</span>`
+      + ` · ${esc(tx('masterFirst'))} <b>${fmt(first&&first[0]&&first[0].created_at)}</b>`
+      + ` · ${esc(tx('masterLast'))} <b>${fmt(last&&last[0]&&last[0].updated_at)}</b>`;
     bar.style.display='flex';
   }catch(e){ /* 권한·네트워크 오류 시 조용히 숨김 */ }
 }
@@ -396,9 +397,9 @@ function wireImport(){
           name_kr:String(r['성명']||'').trim()||null,
           is_learned:false
         })).filter(x=>x.code&&x.member_key);
-        $('#imp-stat').textContent=`${impRows.length.toLocaleString()}건 인식 (시트: ${sh})`;
+        $('#imp-stat').textContent=`${impRows.length.toLocaleString()}${tx('impRecog')}${sh}${tx('impSheetEnd')}`;
         $('#imp-go').disabled=!impRows.length;
-      }catch(err){ impRows=[]; $('#imp-go').disabled=true; $('#imp-stat').textContent='읽기 실패: '+err.message; toast('읽기 실패: '+err.message,'err'); }
+      }catch(err){ impRows=[]; $('#imp-go').disabled=true; $('#imp-stat').textContent=tx('impReadFail')+err.message; toast(tx('impReadFail')+err.message,'err'); }
     };
     rd.readAsArrayBuffer(file);
   });
@@ -413,23 +414,23 @@ async function importGo(){
       const chunk=impRows.slice(i,i+CH);
       const {error}=await supa.from('member_codes').upsert(chunk,{onConflict:'code,member_key'});
       if(error) throw error;
-      done+=chunk.length; $('#imp-stat').textContent=`${done.toLocaleString()}/${impRows.length.toLocaleString()} 등록…`;
+      done+=chunk.length; $('#imp-stat').textContent=`${done.toLocaleString()}/${impRows.length.toLocaleString()}${tx('impProg')}`;
     }
-    $('#imp-stat').textContent=`${done.toLocaleString()}건 등록 완료`;
-    toast(`${done.toLocaleString()}건 등록 완료`,'ok');
+    $('#imp-stat').textContent=`${done.toLocaleString()}${tx('impDone')}`;
+    toast(`${done.toLocaleString()}${tx('impDone')}`,'ok');
     $('#imp-file').value=''; impRows=[]; _gcUsed=null; search(); loadMasterStatus();
-  }catch(e){ toast('등록 실패: '+e.message,'err'); $('#imp-go').disabled=false; }
+  }catch(e){ toast(tx('impFail')+e.message,'err'); $('#imp-go').disabled=false; }
 }
 
 async function saveMember(){
   const name=$('#f-name').value.trim(), birth=$('#f-birth').value.trim(), code=$('#f-code').value.trim(), cls=$('#f-class').value;
-  if(!name||!birth){ toast('성명·생년6자리는 필수','err'); return; }
-  if(!/^\d{6}$/.test(birth)){ toast('생년은 6자리 숫자(590611)','err'); return; }
-  if(!code){ toast('그룹코드를 입력하세요','err'); return; }
+  if(!name||!birth){ toast(tx('needNameBirth'),'err'); return; }
+  if(!/^\d{6}$/.test(birth)){ toast(tx('needBirth6'),'err'); return; }
+  if(!code){ toast(tx('needCode'),'err'); return; }
   const member_key=name+birth;
   const {error}=await supa.from('member_codes').upsert({code,member_key,name_kr:name,member_class:cls||null,is_learned:false},{onConflict:'code,member_key'});
-  if(error){ toast('저장 실패: '+error.message,'err'); return; }
-  toast('저장됨: '+member_key,'ok'); _gcUsed=null; search(); loadMasterStatus();
+  if(error){ toast(tx('saveFail')+error.message,'err'); return; }
+  toast(tx('saved')+member_key,'ok'); _gcUsed=null; search(); loadMasterStatus();
 }
 
 async function search(){
@@ -437,22 +438,22 @@ async function search(){
   let query=supa.from('member_codes').select('*').order('name_kr').limit(200);
   if(q) query=query.or(`name_kr.ilike.%${q}%,member_key.ilike.%${q}%,code.ilike.%${q}%`);
   const {data,error}=await query;
-  if(error){ toast('검색 실패: '+error.message,'err'); return; }
+  if(error){ toast(tx('searchFail')+error.message,'err'); return; }
   renderList(data||[]);
 }
 function renderList(rows){
-  $('#gc-cnt').textContent=rows.length?`(${rows.length}건)`:'';
+  $('#gc-cnt').textContent=rows.length?`(${rows.length}${tx('cntUnit')})`:'';
   const box=$('#gc-list');
-  if(!rows.length){ box.innerHTML='<div class="deny" style="color:var(--muted);padding:24px">결과 없음 (검색어를 입력해 보세요)</div>'; return; }
-  box.innerHTML='<table class="gc"><thead><tr><th>그룹코드</th><th>성명</th><th>키(member_key)</th><th>등급</th><th></th></tr></thead><tbody>'
+  if(!rows.length){ box.innerHTML='<div class="deny" style="color:var(--muted);padding:24px">'+esc(tx('listEmpty'))+'</div>'; return; }
+  box.innerHTML='<table class="gc"><thead><tr><th>'+esc(tx('thCode'))+'</th><th>'+esc(tx('thName'))+'</th><th>'+esc(tx('thKey'))+'</th><th>'+esc(tx('thGrade'))+'</th><th></th></tr></thead><tbody>'
     + rows.map(r=>`<tr data-code="${esc(r.code)}" data-key="${esc(r.member_key)}">
         <td class="mono"><b>${esc(r.code)}</b></td>
         <td>${esc(r.name_kr||'')}</td>
         <td class="mono" style="font-size:11px;color:var(--muted)">${esc(r.member_key)}</td>
-        <td>${esc(r.member_class||'')}</td>
+        <td>${esc(gradeLabel(r.member_class||''))}</td>
         <td style="text-align:right;white-space:nowrap">
-          <button class="btn sm ghost" data-edit>수정</button>
-          <button class="btn sm danger" data-del>삭제</button>
+          <button class="btn sm ghost" data-edit>${esc(tx('edit'))}</button>
+          <button class="btn sm danger" data-del>${esc(tx('del'))}</button>
         </td></tr>`).join('')
     + '</tbody></table>';
   box.querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click',e=>{
@@ -467,13 +468,20 @@ function renderList(rows){
   }));
 }
 async function delMember(code,key){
-  if(!confirm(`삭제할까요?\n${code} · ${key}`)) return;
+  if(!confirm(tx('delConfirm')+`${code} · ${key}`)) return;
   const {error}=await supa.from('member_codes').delete().eq('code',code).eq('member_key',key);
-  if(error){ toast('삭제 실패: '+error.message,'err'); return; }
-  toast('삭제됨','ok'); _gcUsed=null; search(); loadMasterStatus();
+  if(error){ toast(tx('delFail')+error.message,'err'); return; }
+  toast(tx('deleted'),'ok'); _gcUsed=null; search(); loadMasterStatus();
 }
 
+// 언어 토글 시: 정적 chrome + (연결됨이면) UI 재렌더 → 모든 패널·표 라벨 갱신
+window.onSaizenLangChange=function(){
+  applyStatic();
+  const cs=$('#conn-state'); if(cs && cs.classList.contains('ok')) setConn(tx('connOk'),'ok');
+  if(supa){ const btn=$('#btn-connect'); if(btn && !btn.disabled) btn.textContent=tx('connectedBtn'); if($('#content').querySelector('#gc-list')){ renderUI(); search(); } }
+};
 $('#btn-connect').addEventListener('click',connect);
+applyStatic();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }
 </script>
