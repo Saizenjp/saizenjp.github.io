@@ -176,13 +176,13 @@
 
   <!-- ── 월 데이터 삭제 ── -->
   <div class="panel" id="month-del-panel" style="display:none">
-    <h2>월 데이터 삭제 <span style="font-weight:500;color:var(--muted);font-size:11px">— 업로드와 무관하게 특정 월 전체 정리</span></h2>
+    <h2 id="t-mdH"></h2>
     <div style="padding:14px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <span style="font-size:12px;color:var(--text2);font-weight:600">삭제할 월</span>
+      <span id="t-mdLbl" style="font-size:12px;color:var(--text2);font-weight:600"></span>
       <select id="month-del-sel" style="padding:8px 11px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);font-size:13px;font-family:var(--mono);min-width:120px"></select>
-      <button class="btn ghost" id="btn-month-del" type="button" disabled style="border-color:var(--err);color:var(--err)">🗑 이 달 데이터 삭제</button>
-      <button class="btn ghost" id="btn-month-refresh" type="button" style="font-size:12px;padding:8px 12px" title="월 목록 새로고침">↻</button>
-      <span style="flex-basis:100%;font-size:11px;color:var(--muted)">선택한 월의 팀·명단·방배정·현장기록을 모두 삭제(cascade)합니다. 다른 달은 영향 없습니다. 되돌릴 수 없습니다.</span>
+      <button class="btn ghost" id="btn-month-del" type="button" disabled style="border-color:var(--err);color:var(--err)"></button>
+      <button class="btn ghost" id="btn-month-refresh" type="button" style="font-size:12px;padding:8px 12px"></button>
+      <span id="t-mdNote" style="flex-basis:100%;font-size:11px;color:var(--muted)"></span>
     </div>
   </div>
 
@@ -200,8 +200,8 @@
     <h3 style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px" data-i18n="s1_doneTitle"></h3>
     <p id="done-summary" style="font-size:13px;color:var(--text2);margin-bottom:14px"></p>
     <div style="background:#fbeee9;border:1px solid #e3bdb4;border-radius:10px;padding:12px 14px;margin-bottom:20px;text-align:left">
-      <div style="font-size:13px;font-weight:800;color:#b13b2c;margin-bottom:4px">⚠ 원본 엑셀 파일 삭제 필수</div>
-      <div style="font-size:12px;color:#8a2a1c;line-height:1.55">등록이 완료되어 데이터는 서버에 안전히 저장되었습니다. 고객 개인정보가 담긴 <b>예약리스트·일행별예약 엑셀 파일</b>을 이 PC(다운로드 폴더·바탕화면 등)에서 <b>즉시 삭제</b>해 주세요.<br><span style="color:#9a7322">※個人情報保護のため、元のExcelファイルはこのPCから必ず削除してください。</span></div>
+      <div id="t-delHead" style="font-size:13px;font-weight:800;color:#b13b2c;margin-bottom:4px"></div>
+      <div id="t-delBody" style="font-size:12px;color:#8a2a1c;line-height:1.55"></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
       <a class="btn" href="../index.html" data-i18n="s1_btnHome" style="text-decoration:none"></a>
@@ -222,6 +222,131 @@
 const $ = s => document.querySelector(s);
 const logEl = $('#log');
 let supa = null;
+
+// ── 로컬 i18n (saizen-ops.js t()의 s1_* 키로 덮지 못한 잔여 하드코딩 문자열. 한·일 직원 공용, ja 기본) ──
+//   ※ DB 저장값(예: status·check_status)·엑셀 컬럼명은 번역하지 않는다. 화면 표시만.
+const L = {
+  ja:{
+    mdH:'月データ削除', mdHsub:'アップロードと無関係に特定の月を全体整理',
+    mdLbl:'削除する月', mdDelBtn:'🗑 この月のデータ削除', mdRefreshTitle:'月リスト更新',
+    mdNote:'選択した月のチーム・名簿・客室割当・現地記録をすべて削除(cascade)します。他の月には影響しません。元に戻せません。',
+    mdNoMonths:'(登録された月なし)',
+    delHead:'⚠ 元のExcelファイルの削除必須',
+    delBody:'登録が完了し、データはサーバーに安全に保存されました。お客様の個人情報が含まれる<b>予約リスト・同行者別予約のExcelファイル</b>を、このPC(ダウンロードフォルダ・デスクトップ等)から<b>直ちに削除</b>してください。',
+    clearFileTitle:'このファイルを初期化',
+    clearFileConfirm:'このファイルをアップロードフォームから消します。\n(すでに登録済みのDBデータは削除されません)\n\n進めますか?',
+    sessionWord:'セッション',
+    badDate:n=>`⚠ 出発日を認識できなかったチーム ${n}個 → セッション月で推定処理されました。該当月が抜けたり別の月に混ざる恐れがあるので、予約リスト「出発日」欄の形式を確認してください。`,
+    badDateSess:ym=>`(セッション月: ${ym||'?'})`,
+    snapFail:'· 修正履歴スナップショット失敗(無視): ',
+    codeMatched:n=>`· グループコードxlsxなしでmember_codesから${n}件マッチ`,
+    codeMatchFail:'· member_codesマッチ失敗(SQL 22?): ',
+    guestsSummary:(mem,nm,full)=>`  └ 会員 ${mem}チーム · 非会員Fプール ${nm}チーム${full?` · プール枯渇 ${full}チーム`:''}`,
+    syncCleaned:(months,del)=>`✓ ${months} 残存チーム ${del}個整理 — ファイル基準で最新化`,
+    syncKept:n=>`· 残存チーム ${n}個 — データ累積(削除しない)`,
+    syncDelFail:'· 残存整理失敗: ',
+    syncCheckFail:'· 月単位同期チェック失敗: ',
+    loadDone:'■ 登録完了。運営層 rooms/rounds/dining/transactions は2段階モジュールで埋めます。',
+    statBookings:'予約(チーム)', statPax:'同行(個人)', statMember:'グループコード', statGuests:'運営チーム', statMembers:'運営個人', statUnit:'件',
+    cleared:'初期化しました',
+    chTeamCancel:n=>`取消 ${n}チーム`, chTeamAdd:n=>`➕追加 ${n}チーム`, chPerOut:n=>`➖抜け ${n}`, chPerAdd:n=>`➕同行 ${n}`, chGrade:n=>`等級 ${n}`,
+    chRowCancel:(no,rep,n)=>`取消 ${no} ${rep||''}(${n||0}名)`, chRowNew:no=>`➕ 新規チーム ${no}`,
+    chRowOut:(no,nm)=>`➖ ${no} <b>${nm||''}</b> 抜け`, chRowIn:(no,nm)=>`➕ ${no} <b>${nm||''}</b> 追加`,
+    chRowGrade:(no,nm,fr,to)=>`${no} ${nm||''} 等級 ${fr}→${to}`,
+    omTitle:months=>`${months} 登録 — 同期`,
+    omBody:(months,count)=>`今回のファイルに<b>ない</b> ${months} チームがDBに<b style="color:var(--err)">${count}個</b>残っています。<br>どう処理しますか? <span style="color:var(--muted)">(他の月は影響なし)</span>`,
+    omKeep:'データ累積', omKeepSub:'そのまま · 何も消さない(安全)',
+    omSync:'ないチーム整理', omSyncSub:count=>`ファイルから抜けた${count}個削除(cascade)`,
+    monthListFail:'· 月リスト読み込み失敗: ',
+    delMonthConfirm:ym=>`${ym} データを全て削除しますか?\n\n· その月のチーム・名簿・客室割当・現地記録すべて削除(cascade)\n· 他の月は影響なし\n\n元に戻せません。`,
+    delMonthDone:(ym,del)=>`✓ ${ym} データ削除 — ${del}チーム除去(名簿・客室割当・現地記録 cascade)`,
+    delMonthFail:'· 月削除失敗: '
+  },
+  ko:{
+    mdH:'월 데이터 삭제', mdHsub:'업로드와 무관하게 특정 월 전체 정리',
+    mdLbl:'삭제할 월', mdDelBtn:'🗑 이 달 데이터 삭제', mdRefreshTitle:'월 목록 새로고침',
+    mdNote:'선택한 월의 팀·명단·방배정·현장기록을 모두 삭제(cascade)합니다. 다른 달은 영향 없습니다. 되돌릴 수 없습니다.',
+    mdNoMonths:'(등록된 월 없음)',
+    delHead:'⚠ 원본 엑셀 파일 삭제 필수',
+    delBody:'등록이 완료되어 데이터는 서버에 안전히 저장되었습니다. 고객 개인정보가 담긴 <b>예약리스트·일행별예약 엑셀 파일</b>을 이 PC(다운로드 폴더·바탕화면 등)에서 <b>즉시 삭제</b>해 주세요.',
+    clearFileTitle:'이 파일 초기화',
+    clearFileConfirm:'이 파일을 업로드 폼에서 비웁니다.\n(이미 등록된 DB 데이터는 삭제되지 않습니다)\n\n진행할까요?',
+    sessionWord:'세션',
+    badDate:n=>`⚠ 출발일자를 인식하지 못한 팀 ${n}개 → 세션월로 추정 처리됨. 해당 월이 누락되거나 다른 달에 섞일 수 있으니 예약리스트 「출발일자」 칸 형식을 확인하세요.`,
+    badDateSess:ym=>`(세션월: ${ym||'?'})`,
+    snapFail:'· 수정이력 스냅샷 실패(무시): ',
+    codeMatched:n=>`· 그룹코드 xlsx 없이 member_codes에서 ${n}건 매칭`,
+    codeMatchFail:'· member_codes 매칭 실패(22번 SQL?): ',
+    guestsSummary:(mem,nm,full)=>`  └ 회원 ${mem}팀 · 비회원 F풀 ${nm}팀${full?` · 풀소진 ${full}팀`:''}`,
+    syncCleaned:(months,del)=>`✓ ${months} 잔존 팀 ${del}개 정리 — 파일 기준 최신화`,
+    syncKept:n=>`· 잔존 팀 ${n}개 — 데이터 누적(삭제 안 함)`,
+    syncDelFail:'· 잔존 정리 실패: ',
+    syncCheckFail:'· 월 단위 동기화 점검 실패: ',
+    loadDone:'■ 적재 완료. 운영층 rooms/rounds/dining/transactions는 2단계 모듈에서 채웁니다.',
+    statBookings:'예약(팀)', statPax:'일행(개인)', statMember:'그룹코드', statGuests:'운영팀', statMembers:'운영개인', statUnit:'건',
+    cleared:'초기화됨',
+    chTeamCancel:n=>`취소 ${n}팀`, chTeamAdd:n=>`➕추가 ${n}팀`, chPerOut:n=>`➖빠짐 ${n}`, chPerAdd:n=>`➕일행 ${n}`, chGrade:n=>`등급 ${n}`,
+    chRowCancel:(no,rep,n)=>`취소 ${no} ${rep||''}(${n||0}명)`, chRowNew:no=>`➕ 신규팀 ${no}`,
+    chRowOut:(no,nm)=>`➖ ${no} <b>${nm||''}</b> 빠짐`, chRowIn:(no,nm)=>`➕ ${no} <b>${nm||''}</b> 추가`,
+    chRowGrade:(no,nm,fr,to)=>`${no} ${nm||''} 등급 ${fr}→${to}`,
+    omTitle:months=>`${months} 등록 — 동기화`,
+    omBody:(months,count)=>`이번 파일에 <b>없는</b> ${months} 팀이 DB에 <b style="color:var(--err)">${count}개</b> 남아 있습니다.<br>어떻게 처리할까요? <span style="color:var(--muted)">(다른 달은 영향 없음)</span>`,
+    omKeep:'데이터 누적', omKeepSub:'그대로 둠 · 아무것도 안 지움(안전)',
+    omSync:'없는 팀 정리', omSyncSub:count=>`파일에 빠진 ${count}개 삭제(cascade)`,
+    monthListFail:'· 월 목록 로드 실패: ',
+    delMonthConfirm:ym=>`${ym} 데이터 전체를 삭제할까요?\n\n· 그 달 팀·명단·방배정·현장기록 모두 삭제(cascade)\n· 다른 달은 영향 없음\n\n되돌릴 수 없습니다.`,
+    delMonthDone:(ym,del)=>`✓ ${ym} 데이터 삭제 — ${del}팀 제거(명단·방배정·현장기록 cascade)`,
+    delMonthFail:'· 월 삭제 실패: '
+  },
+  en:{
+    mdH:'Delete month data', mdHsub:'Clean an entire month regardless of uploads',
+    mdLbl:'Month to delete', mdDelBtn:'🗑 Delete this month', mdRefreshTitle:'Refresh month list',
+    mdNote:'Deletes all teams, rosters, room assignments and field records for the selected month (cascade). Other months are unaffected. This cannot be undone.',
+    mdNoMonths:'(no registered months)',
+    delHead:'⚠ You must delete the original Excel files',
+    delBody:'Registration is complete and the data is safely stored on the server. Please <b>delete immediately</b> the <b>reservation-list and per-companion Excel files</b> containing customer personal data from this PC (Downloads folder, Desktop, etc.).',
+    clearFileTitle:'Reset this file',
+    clearFileConfirm:'This clears the file from the upload form.\n(DB data already registered is not deleted)\n\nProceed?',
+    sessionWord:'Session',
+    badDate:n=>`⚠ ${n} team(s) had an unreadable departure date → estimated using the session month. The month may be missing or mixed into another; please check the "Departure date" column format in the reservation list.`,
+    badDateSess:ym=>`(session month: ${ym||'?'})`,
+    snapFail:'· Change-history snapshot failed (ignored): ',
+    codeMatched:n=>`· Matched ${n} from member_codes without a group-code xlsx`,
+    codeMatchFail:'· member_codes match failed (SQL 22?): ',
+    guestsSummary:(mem,nm,full)=>`  └ Members ${mem} teams · Non-member F-pool ${nm} teams${full?` · Pool exhausted ${full} teams`:''}`,
+    syncCleaned:(months,del)=>`✓ ${months} cleaned ${del} leftover team(s) — synced to the file`,
+    syncKept:n=>`· ${n} leftover team(s) — data accumulated (not deleted)`,
+    syncDelFail:'· Leftover cleanup failed: ',
+    syncCheckFail:'· Monthly sync check failed: ',
+    loadDone:'■ Load complete. Operational tables (rooms/rounds/dining/transactions) are filled in the stage-2 module.',
+    statBookings:'Reservations (team)', statPax:'Companions (person)', statMember:'Group codes', statGuests:'Ops teams', statMembers:'Ops persons', statUnit:'cases',
+    cleared:'Cleared',
+    chTeamCancel:n=>`Cancelled ${n} teams`, chTeamAdd:n=>`➕Added ${n} teams`, chPerOut:n=>`➖Removed ${n}`, chPerAdd:n=>`➕Companions ${n}`, chGrade:n=>`Grade ${n}`,
+    chRowCancel:(no,rep,n)=>`Cancelled ${no} ${rep||''}(${n||0} ppl)`, chRowNew:no=>`➕ New team ${no}`,
+    chRowOut:(no,nm)=>`➖ ${no} <b>${nm||''}</b> removed`, chRowIn:(no,nm)=>`➕ ${no} <b>${nm||''}</b> added`,
+    chRowGrade:(no,nm,fr,to)=>`${no} ${nm||''} grade ${fr}→${to}`,
+    omTitle:months=>`${months} registration — sync`,
+    omBody:(months,count)=>`<b style="color:var(--err)">${count}</b> ${months} team(s) <b>not</b> in this file remain in the DB.<br>How should they be handled? <span style="color:var(--muted)">(other months unaffected)</span>`,
+    omKeep:'Accumulate', omKeepSub:'Leave as is · delete nothing (safe)',
+    omSync:'Clean missing teams', omSyncSub:count=>`Delete ${count} missing from the file (cascade)`,
+    monthListFail:'· Month list load failed: ',
+    delMonthConfirm:ym=>`Delete all ${ym} data?\n\n· All teams, rosters, room assignments and field records for that month (cascade)\n· Other months unaffected\n\nThis cannot be undone.`,
+    delMonthDone:(ym,del)=>`✓ ${ym} data deleted — ${del} team(s) removed (rosters, room assignments, field records cascade)`,
+    delMonthFail:'· Month delete failed: '
+  }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+// 잔여 정적 라벨(month-del-panel·done-modal 경고)을 현재 언어로 — saizen-ops t()가 못 덮는 부분
+function applyStaticLocal(){
+  const md=$('#t-mdH'); if(md) md.innerHTML=tx('mdH')+' <span style="font-weight:500;color:var(--muted);font-size:11px">— '+tx('mdHsub')+'</span>';
+  const mdLbl=$('#t-mdLbl'); if(mdLbl) mdLbl.textContent=tx('mdLbl');
+  const mdDel=$('#btn-month-del'); if(mdDel) mdDel.textContent=tx('mdDelBtn');
+  const mdRef=$('#btn-month-refresh'); if(mdRef){ mdRef.textContent='↻'; mdRef.title=tx('mdRefreshTitle'); }
+  const mdNote=$('#t-mdNote'); if(mdNote) mdNote.textContent=tx('mdNote');
+  const dh=$('#t-delHead'); if(dh) dh.textContent=tx('delHead');
+  const db=$('#t-delBody'); if(db) db.innerHTML=tx('delBody');
+}
 
 // ── 파일 슬롯 정의 ──
 const SLOTS = [
@@ -249,7 +374,7 @@ function renderDrops(){
     card.className = 'drop' + (slot.data?' done':'');
     card.innerHTML = `
       <span class="dot"></span>
-      ${slot.file ? `<button type="button" class="drop-x" data-clear="${slot.id}" title="이 파일 초기화">✕</button>` : ''}
+      ${slot.file ? `<button type="button" class="drop-x" data-clear="${slot.id}" title="${tx('clearFileTitle')}">✕</button>` : ''}
       <div class="tag">${slotText(slot,'tag')}</div>
       <div class="name">${slotText(slot,'name')}</div>
       <div class="desc">${slotText(slot,'desc')}</div>
@@ -260,7 +385,7 @@ function renderDrops(){
     const xb = card.querySelector('[data-clear]');
     if(xb) xb.addEventListener('click', e=>{
       e.preventDefault(); e.stopPropagation();
-      if(!confirm('이 파일을 업로드 폼에서 비웁니다.\n(이미 등록된 DB 데이터는 삭제되지 않습니다)\n\n진행할까요?')) return;
+      if(!confirm(tx('clearFileConfirm'))) return;
       clearSlot(slot.id);
     });
     card.addEventListener('dragover', e=>{e.preventDefault();card.classList.add('over');});
@@ -309,7 +434,7 @@ function detectSession(){
   const months = [...new Set(res.map(r=>(fmtDate(r['출발일자'])||'').slice(0,7)).filter(Boolean))].sort();
   if(months.length){
     window._sessionYM = months[0];   // 폴백용 최솟값
-    $('#session-label').innerHTML = `세션 <b>${months.join(', ')}</b>`;
+    $('#session-label').innerHTML = `${tx('sessionWord')} <b>${months.join(', ')}</b>`;
   }
 }
 
@@ -472,10 +597,10 @@ async function run(){
       }
     });
 
-    if(badDate) log(`⚠ 출발일자를 인식하지 못한 팀 ${badDate}개 → 세션월(${ym||'?'})로 추정 처리됨. 해당 월이 누락되거나 다른 달에 섞일 수 있으니 예약리스트 「출발일자」 칸 형식을 확인하세요.`,'warn');
+    if(badDate) log(tx('badDate')(badDate)+' '+tx('badDateSess')(ym),'warn');
     // 이 업로드에 포함된 월(여러 달일 수 있음) — 동기화·스냅샷·이력 범위
     const fileMonths = [...new Set(Object.values(ymBySeq))].filter(Boolean).sort();
-    if(fileMonths.length){ $('#session-label').innerHTML = '세션 <b>'+fileMonths.join(', ')+'</b>'; }
+    if(fileMonths.length){ $('#session-label').innerHTML = tx('sessionWord')+' <b>'+fileMonths.join(', ')+'</b>'; }
 
     // ── 수정이력용: 업로드 전 그 달 기존 상태 스냅샷 (upsert 전에 떠야 추가/삭제 구분 가능) ──
     const _oldBk = {};   // event_seq -> rep_name
@@ -488,7 +613,7 @@ async function run(){
       pg=0;
       while(true){ const {data,error}=await supa.from('passengers').select('event_seq,name_kr,birth_yymmdd,member_grade,bookings!inner(session_ym)').in('bookings.session_ym',fileMonths).range(pg,pg+999);
         if(error||!data||!data.length) break; data.forEach(p=>{const k=(p.name_kr||'')+(p.birth_yymmdd||''); (_oldPx[p.event_seq]=_oldPx[p.event_seq]||{})[k]={name:p.name_kr,grade:p.member_grade};}); if(data.length<1000) break; pg+=1000; }
-    } catch(e){ log('· 수정이력 스냅샷 실패(무시): '+e.message,'dim'); }
+    } catch(e){ log(tx('snapFail')+e.message,'dim'); }
 
     stat['bookings'] = await upsertChunked('bookings', bookingRows, 'event_seq');
     log(`✓ ${t('s1_dyn_log_booking')} ${stat['bookings']}${t('s1_dyn_cases')} (${t('s1_dyn_cntTarget')} ${Object.keys(procMap).length}${t('s1_dyn_teams')})`,'ok');
@@ -584,8 +709,8 @@ async function run(){
         try{
           const {data:mc}=await supa.rpc('match_group_codes',{p_keys:repKeys});
           (mc||[]).forEach(r=>{ if(r.member_key && r.code) codeMap[r.member_key]=r.code; });
-          log(`· 그룹코드 xlsx 없이 member_codes에서 ${Object.keys(codeMap).length}건 매칭`,'dim');
-        }catch(e){ log('· member_codes 매칭 실패(22번 SQL?): '+e.message,'warn'); }
+          log(tx('codeMatched')(Object.keys(codeMap).length),'dim');
+        }catch(e){ log(tx('codeMatchFail')+e.message,'warn'); }
       }
     }
 
@@ -612,7 +737,7 @@ async function run(){
     });
     stat['guests'] = await upsertChunked('guests', guestRows, 'event_seq');
     log(`✓ ${t('s1_dyn_log_guests')} ${stat['guests']}${t('s1_dyn_teams')}`,'ok');
-    log(`  └ 회원 ${memCnt}팀 · 비회원 F풀 ${nmCnt}팀${nmFull?` · 풀소진 ${nmFull}팀`:''}`,'dim');
+    log(tx('guestsSummary')(memCnt,nmCnt,nmFull),'dim');
 
     // ── 4) guest_members (개인) — 운영대상 팀의 passengers로 생성 ──
     const guestSeqSet = new Set(guestRows.map(g=>g.event_seq));
@@ -671,18 +796,18 @@ async function run(){
             for(let i=0;i<orphans.length;i+=50){
               const chunk=orphans.slice(i,i+50);
               const { error } = await supa.from('bookings').delete().in('event_seq',chunk);
-              if(error){ log('· 잔존 정리 실패: '+error.message,'warn'); break; }
+              if(error){ log(tx('syncDelFail')+error.message,'warn'); break; }
               del += chunk.length;
             }
-            log(`✓ ${fileMonths.join('·')} 잔존 팀 ${del}개 정리 — 파일 기준 최신화`,'ok');
+            log(tx('syncCleaned')(fileMonths.join('·'),del),'ok');
           } else {
-            log(`· 잔존 팀 ${orphans.length}개 — 데이터 누적(삭제 안 함)`,'dim');
+            log(tx('syncKept')(orphans.length),'dim');
           }
         }
       }
-    } catch(e){ log('· 월 단위 동기화 점검 실패: '+e.message,'warn'); }
+    } catch(e){ log(tx('syncCheckFail')+e.message,'warn'); }
 
-    log('■ 적재 완료. 운영층 rooms/rounds/dining/transactions는 2단계 모듈에서 채웁니다.','ok');
+    log(tx('loadDone'),'ok');
     showStats(stat);
     loadMonths();   // 월 삭제 패널 목록 갱신
     // ── 수정이력 diff 계산 (이름+생년6자리 = 사람 단위) ──
@@ -731,12 +856,12 @@ function showStats(stat){
   const panel = $('#stats-panel'); panel.style.display='block';
   const box = $('#stats'); box.innerHTML='';
   const items = [
-    ['bookings','예약(팀)'],['passengers','일행(개인)'],['member_codes','그룹코드'],
-    ['guests','운영팀'],['guest_members','운영개인']
+    ['bookings',tx('statBookings')],['passengers',tx('statPax')],['member_codes',tx('statMember')],
+    ['guests',tx('statGuests')],['guest_members',tx('statMembers')]
   ];
   items.forEach(([k,label])=>{
     const div = document.createElement('div'); div.className='stat';
-    div.innerHTML = `<div class="k">${label}</div><div class="v">${(stat[k]??0).toLocaleString()}<small> 건</small></div>`;
+    div.innerHTML = `<div class="k">${label}</div><div class="v">${(stat[k]??0).toLocaleString()}<small> ${tx('statUnit')}</small></div>`;
     box.appendChild(div);
   });
 }
@@ -753,7 +878,7 @@ function clearAll(){
   window._sessionYM = null;
   $('#session-label').textContent='';
   $('#stats-panel').style.display='none';
-  clearLog(); log('초기화됨','dim');
+  clearLog(); log(tx('cleared'),'dim');
   renderDrops();
 }
 
@@ -762,16 +887,16 @@ function fmtChanges(ch){
   if(!ch || typeof ch!=='object') return '';
   const ta=(ch.teams_added||[]), tr=(ch.teams_removed||[]), pa=(ch.persons_added||[]), pr=(ch.persons_removed||[]), gc=(ch.grade_changed||[]);
   if(!(ta.length+tr.length+pa.length+pr.length+gc.length)) return '';
-  const sum=[]; if(tr.length)sum.push(`취소 ${tr.length}팀`); if(ta.length)sum.push(`➕추가 ${ta.length}팀`);
-  if(pr.length)sum.push(`➖빠짐 ${pr.length}`); if(pa.length)sum.push(`➕일행 ${pa.length}`); if(gc.length)sum.push(`등급 ${gc.length}`);
+  const sum=[]; if(tr.length)sum.push(tx('chTeamCancel')(tr.length)); if(ta.length)sum.push(tx('chTeamAdd')(ta.length));
+  if(pr.length)sum.push(tx('chPerOut')(pr.length)); if(pa.length)sum.push(tx('chPerAdd')(pa.length)); if(gc.length)sum.push(tx('chGrade')(gc.length));
   // 표시는 행사번호(no). 과거 로그(no 없음)는 seq 폴백. 숫자형(구 teams_added=seq)도 호환.
   const nof = x => (x && typeof x==='object') ? (x.no!=null?x.no:x.seq) : x;
   let d='';
-  tr.forEach(t=>d+=`<div style="margin-left:20px;color:var(--err)">취소 ${nof(t)} ${t.rep||''}(${t.n||0}명)</div>`);
-  ta.forEach(s=>d+=`<div style="margin-left:20px;color:var(--ok)">➕ 신규팀 ${nof(s)}</div>`);
-  pr.forEach(x=>d+=`<div style="margin-left:20px">➖ ${nof(x)} <b>${x.name||''}</b> 빠짐</div>`);
-  pa.forEach(x=>d+=`<div style="margin-left:20px">➕ ${nof(x)} <b>${x.name||''}</b> 추가</div>`);
-  gc.forEach(x=>d+=`<div style="margin-left:20px">${nof(x)} ${x.name||''} 등급 ${x.from}→${x.to}</div>`);
+  tr.forEach(t=>d+=`<div style="margin-left:20px;color:var(--err)">${tx('chRowCancel')(nof(t),t.rep,t.n)}</div>`);
+  ta.forEach(s=>d+=`<div style="margin-left:20px;color:var(--ok)">${tx('chRowNew')(nof(s))}</div>`);
+  pr.forEach(x=>d+=`<div style="margin-left:20px">${tx('chRowOut')(nof(x),x.name)}</div>`);
+  pa.forEach(x=>d+=`<div style="margin-left:20px">${tx('chRowIn')(nof(x),x.name)}</div>`);
+  gc.forEach(x=>d+=`<div style="margin-left:20px">${tx('chRowGrade')(nof(x),x.name,x.from,x.to)}</div>`);
   return `<div style="margin-left:14px;color:var(--accent2);font-weight:700">↳ ${sum.join(' · ')}</div>${d}`;
 }
 // ── 변경이력 로드 (import_log) ──
@@ -812,11 +937,11 @@ function confirmOrphan(months, count){
     const bg = document.createElement('div');
     bg.style.cssText='position:fixed;inset:0;z-index:300;background:rgba(31,42,24,.45);display:flex;align-items:center;justify-content:center;padding:20px';
     bg.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;max-width:460px;width:100%;padding:26px;box-shadow:0 16px 48px rgba(15,23,42,.22)">
-      <h3 style="font-size:16px;font-weight:800;color:var(--text);margin:0 0 8px">${months.join('·')} 등록 — 동기화</h3>
-      <p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0 0 20px">이번 파일에 <b>없는</b> ${months.join('·')} 팀이 DB에 <b style="color:var(--err)">${count}개</b> 남아 있습니다.<br>어떻게 처리할까요? <span style="color:var(--muted)">(다른 달은 영향 없음)</span></p>
+      <h3 style="font-size:16px;font-weight:800;color:var(--text);margin:0 0 8px">${tx('omTitle')(months.join('·'))}</h3>
+      <p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0 0 20px">${tx('omBody')(months.join('·'),count)}</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button id="om-keep" class="btn" type="button" style="flex:1;min-width:150px;line-height:1.3">데이터 누적<br><span style="font-size:10px;font-weight:500;opacity:.85">그대로 둠 · 아무것도 안 지움(안전)</span></button>
-        <button id="om-sync" class="btn ghost" type="button" style="flex:1;min-width:150px;border-color:var(--err);color:var(--err);line-height:1.3">없는 팀 정리<br><span style="font-size:10px;font-weight:500;opacity:.85">파일에 빠진 ${count}개 삭제(cascade)</span></button>
+        <button id="om-keep" class="btn" type="button" style="flex:1;min-width:150px;line-height:1.3">${tx('omKeep')}<br><span style="font-size:10px;font-weight:500;opacity:.85">${tx('omKeepSub')}</span></button>
+        <button id="om-sync" class="btn ghost" type="button" style="flex:1;min-width:150px;border-color:var(--err);color:var(--err);line-height:1.3">${tx('omSync')}<br><span style="font-size:10px;font-weight:500;opacity:.85">${tx('omSyncSub')(count)}</span></button>
       </div>
     </div>`;
     document.body.appendChild(bg);
@@ -844,16 +969,16 @@ async function loadMonths(){
       sel.innerHTML = arr.map(m=>`<option value="${m}">${m}</option>`).join('');
       $('#btn-month-del').disabled = false;
     } else {
-      sel.innerHTML = '<option value="">(등록된 월 없음)</option>';
+      sel.innerHTML = '<option value="">'+tx('mdNoMonths')+'</option>';
       $('#btn-month-del').disabled = true;
     }
     panel.style.display = 'block';
-  }catch(e){ log('· 월 목록 로드 실패: '+e.message,'warn'); }
+  }catch(e){ log(tx('monthListFail')+e.message,'warn'); }
 }
 async function deleteMonth(){
   const ym = $('#month-del-sel').value;
   if(!ym || !supa) return;
-  if(!confirm(`${ym} 데이터 전체를 삭제할까요?\n\n· 그 달 팀·명단·방배정·현장기록 모두 삭제(cascade)\n· 다른 달은 영향 없음\n\n되돌릴 수 없습니다.`)) return;
+  if(!confirm(tx('delMonthConfirm')(ym))) return;
   $('#btn-month-del').disabled = true;
   try{
     let seqs = [], pg = 0;
@@ -871,8 +996,8 @@ async function deleteMonth(){
       if(error) throw error;
       del += chunk.length;
     }
-    log(`✓ ${ym} 데이터 삭제 — ${del}팀 제거(명단·방배정·현장기록 cascade)`,'ok');
-  }catch(e){ log('· 월 삭제 실패: '+e.message,'warn'); }
+    log(tx('delMonthDone')(ym,del),'ok');
+  }catch(e){ log(tx('delMonthFail')+e.message,'warn'); }
   await loadMonths();
 }
 $('#btn-month-del') && $('#btn-month-del').addEventListener('click', deleteMonth);
@@ -884,12 +1009,13 @@ $('#done-stay') && $('#done-stay').addEventListener('click', ()=>{ const m=$('#d
 $('#done-modal') && $('#done-modal').addEventListener('click', e=>{ if(e.target.id==='done-modal') e.target.style.display='none'; });
 loadCreds();
 try{ const u=localStorage.getItem('saizen_hub_uploader'); if(u){ const el=$('#uploader'); if(el) el.value=u; } }catch(e){}
+applyStaticLocal();
 renderDrops();
 log(t('s1_logWait'),'dim');
 // 저장된 키가 있으면 자동 연결 (재진입 시 연결 상태·변경이력 복원)
 if($('#sb-url').value.trim() && $('#sb-key').value.trim()) connect();
-// 언어 전환 시 동적 카드 다시 렌더
-window.onSaizenLangChange = function(){ try{ renderDrops(); }catch(e){} };
+// 언어 전환 시: 잔여 정적 라벨 + 동적 카드 다시 렌더
+window.onSaizenLangChange = function(){ try{ applyStaticLocal(); renderDrops(); }catch(e){} };
 </script>
 </body>
 </html>
