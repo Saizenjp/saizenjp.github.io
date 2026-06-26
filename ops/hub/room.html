@@ -381,6 +381,7 @@
   <button class="btn ghost sm" id="btn-clear-all" type="button" disabled title="불러온 범위의 모든 배정 해제(수기·자동 전부)" style="color:var(--err);border-color:#e3bdb4">전체 비우기</button>
   <button class="btn ghost sm" id="btn-conflicts" type="button" disabled title="정원 초과(겹침) 방을 스캔 → 초과 auto 배정을 정리(수기·분할은 보호)" style="color:var(--warn);border-color:#e6cf95">⚠ 충돌 점검</button>
   <button class="btn ghost sm" id="btn-closure" type="button" disabled title="특정 객실을 기간 지정해 폐쇄(잠금) — 대표님 사용 중·점검 등. 폐쇄 기간엔 배정 불가" style="color:var(--err);border-color:#e3bdb4">🔒 객실 폐쇄</button>
+  <!-- 위 버튼 라벨/타이틀은 applyStaticRoom()이 언어별로 채움(월/오늘/자동배정/전체 비우기/충돌 점검/객실 폐쇄) -->
   <button class="btn ghost sm" id="btn-export" type="button" data-i18n-title="rm_btnExportTitle" data-i18n="rm_btnExport"></button>
   <span class="hint" id="session-hint"></span>
   <span id="sel-bar" style="display:none;align-items:center;gap:8px;margin-left:auto">
@@ -396,7 +397,7 @@
   </div>
 </div>
 <div class="rsearch">
-  <input class="inp" id="room-search" type="search" autocomplete="off" placeholder="🔎 배정 검색 — 태그코드·한글명·영문명·행사번호">
+  <input class="inp" id="room-search" type="search" autocomplete="off" placeholder="🔎 배정 검색 — 태그코드·한글명·영문명·행사번호"><!-- placeholder는 applyStaticRoom()이 언어별로 채움 -->
   <span class="hint" id="room-search-cnt"></span>
   <div id="room-search-results"></div>
 </div>
@@ -418,6 +419,7 @@
       <span class="view-toggle">
         <button class="vbtn active" id="view-card" type="button">카드</button>
         <button class="vbtn" id="view-timeline" type="button" title="객실×날짜 점유 한눈에">타임라인</button>
+        <!-- 카드/타임라인 라벨·타이틀은 applyStaticRoom()이 언어별로 채움 -->
       </span>
     </h2>
     <div class="fac-filter" id="fac-filter"></div>
@@ -427,7 +429,7 @@
 </div>
 
 <details id="histbox" style="margin:0 20px 30px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
-  <summary style="cursor:pointer;padding:12px 16px;font-weight:800;font-size:14px;color:var(--accent);list-style:none">🕘 방배정 변경 이력 <span style="font-weight:600;color:var(--muted);font-size:12px">— 누가·언제·어디로 (자동배정=요약 1건)</span></summary>
+  <summary id="hist-title" style="cursor:pointer;padding:12px 16px;font-weight:800;font-size:14px;color:var(--accent);list-style:none">🕘 방배정 변경 이력 <span style="font-weight:600;color:var(--muted);font-size:12px">— 누가·언제·어디로 (자동배정=요약 1건)</span></summary>
   <div style="padding:0 16px 16px">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
       <input class="inp" id="hist-q" placeholder="이름·방번호·그룹코드 검색" style="flex:1;min-width:200px;max-width:380px">
@@ -436,6 +438,7 @@
     </div>
     <div id="hist-list"><div class="empty-hint" style="padding:14px">펼치면 최근 변경 이력이 표시됩니다.</div></div>
     <div style="text-align:center;margin-top:10px"><button class="btn ghost sm" id="hist-more" type="button" style="display:none">더 보기 (다음 40건)</button></div>
+    <!-- 이력 패널 정적 텍스트는 applyStaticRoom()이 언어별로 채움 -->
   </div>
 </details>
 
@@ -451,6 +454,376 @@
 //  · 판매분류→현장등급 매핑은 ROOMTYPE_MAP 한 곳에서만 관리(예약정책 바뀌면 여기만 수정).
 // ════════════════════════════════════════════════════════════════════════
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+
+// ── 로컬 i18n (이 페이지의 JS 생성 문자열·정적 chrome 전용) ─────────────────
+//   · data-i18n / rm_* 키는 saizen-ops.js 전역 사전이 처리(건드리지 않음).
+//   · 여기 L 은 그 외 토스트·확인창·카드/타임라인·이력 등 동적 문자열만 담당.
+//   · DB 저장값(시설명·assign_source·member_grade)은 절대 번역하지 않음 — 표시 라벨만.
+//   · 미존재 키는 ja 폴백 → 키 그대로(frontdesk 패턴 동일).
+const L={
+  ja:{
+    prevMonth:'前月', nextMonth:'翌月', thisMonthToday:'今月・今日', monthLbl:'月', today:'今日',
+    btnAuto:'自動割当', btnAutoT:'会員→デラックス優先、一般→予約種別。予約順・既存の手動割当を保護',
+    btnClearAll:'全クリア', btnClearAllT:'読み込んだ範囲の全割当を解除(手動・自動すべて)',
+    btnConflicts:'⚠ 競合チェック', btnConflictsT:'定員超過(重複)の客室をスキャン → 超過autoを整理(手動・分割は保護)',
+    btnClosure:'🔒 客室閉鎖', btnClosureT:'特定の客室を期間指定で閉鎖(ロック) — 代表使用中・点検など。閉鎖期間は割当不可',
+    roomSearchPh:'🔎 割当検索 — タグコード・氏名・英文名・イベント番号',
+    viewCard:'カード', viewTimeline:'タイムライン', viewTimelineT:'客室×日付の占有を一覧',
+    histTitle:'🕘 客室割当 変更履歴', histTitleSub:'— 誰が・いつ・どこへ (自動割当=要約1件)',
+    histQph:'氏名・部屋番号・グループコード 検索', histSearch:'検索',
+    histEmpty:'開くと最近の変更履歴が表示されます。', histMore:'もっと見る (次の40件)',
+    // ── 토스트/확인/렌더 ──
+    needUrlKey:'URL・key 必要', connecting:'接続中…', connOk:'接続済', connFail:'接続失敗',
+    connOkToast:'Supabase 接続済', connBtnOk:'✓ 接続済', connBtnRetry:'接続失敗・再試行',
+    connFailToast:e=>'接続失敗: '+e+' (SQL実行・key確認)',
+    invFail:e=>'マスター読み込み失敗: '+e,
+    pickDate:'日付を選択してください', teamLoadFail:e=>'チーム読み込み失敗: '+e,
+    roomLoadFail:e=>'割当読み込み失敗: '+e, rosterLoadFail:e=>'名簿読み込み失敗: '+e,
+    loadedTeams:(label,n)=>`${label} · 占有 ${n}チーム 読み込み`,
+    undoFail:e=>'元に戻すのに失敗: '+e, undone:'↩ 元に戻しました',
+    basisSuffix:' 基準', teamPrefix:'チーム', codeUndecided:'(コード未定)', rosterNone:'名簿情報なし',
+    evnoT:'イベント番号(予約順 — 早いほど良い客室優先)',
+    nameUnit:'名', leftN:n=>'残り '+n, repBadge:'REP', todayCheckin:'本日チェックイン', nightUnit:'泊',
+    onsiteFix:'現地指定', assignedDone:'割当済', unassignClear:'✕解除', unassignClearT:'割当解除 → 名簿へ',
+    assignedRoomT:'割当客室',
+    coLeave:(md,n)=>`🚪 ${md} 退室 <b>${n}チーム</b> — これらの客室が空きます(同日チェックイン可)`,
+    noAssign:'割当なし',
+    arrSec:(md,n,p)=>`📍 ${md} 現地到着 <b>${n}チーム · ${p}名</b>`,
+    noArrUnassigned:'この日の現地到着で未割当なし ✓',
+    carrySec:(n,p)=>`⏳ 以前到着・未割当 <b>${n}チーム · ${p}名</b> — 上の日付チップの <b style="color:var(--err)">未N</b> からその日へ移動して処理してください`,
+    dcChipT:(d,cin,un)=>`${d} · チェックイン ${cin}チーム · 未割当到着 ${un}チーム`,
+    unShort:'未', dcAll:'全体', tlDays:'タイムライン日付', tlMulti:'複数選択', dateOne:'日付', dayOne:'1日ずつ',
+    tlAllDates:'すべての日付', tlLoadDate:'日付を読み込んでください',
+    tlLegDlx:'デラックス', tlLegTwin:'ツイン', tlLegCmp:'コンパクト', tlLegEtc:'その他施設',
+    tlHover:'バーにカーソル → チーム・人数・期間', tlRoom:'客室',
+    splitMode:(name,from,to)=>`分割モード — <b>${name}</b> ${from}~${to} 割り当てる客室をクリックしてください`,
+    cancel:'キャンセル',
+    spanNote:(dep,arr)=>`🧭 選択人員の割当基準 — カード占有は <b>${dep}~${arr}</b> 期間基準です。(その期間に埋まっていれば今日空いて見えても <b>満室</b> 表示)`,
+    rangeNote:(focus)=>`カードは <b>${focus}</b> 一泊基準です。上の <b>日別</b> チップで日付を変え、期間全体の占有は <b>タイムライン</b> で見てください。`,
+    flagIn:'チェックイン', flagCont:'連泊', over:'超過',
+    lockOnT:'使用可 — クリックでロック(無効化)', lockOffT:'ロック(無効化) — クリックで使用可',
+    closedNote:(from,to,reason)=>`🔒 閉鎖 ${from}~${to}${reason?' · '+reason:''}`,
+    used:'使用', roomsUnit:'室', under:n=>`⚠定員未満 ${n}室`, floorplan:'平面図', floorplanT:'断面図(円形配置)を見る',
+    clearZone:'クリア', clearZoneT:z=>`${z} 割当を全解除`, zoneLabel:z=>'— '+z,
+    facUtil:(used,cap)=>`${used}/${cap}名`,
+    noHotelRooms:'ホテル棟客室 未登録 — 05_room_inventory_real.sql を実行してください。',
+    noRooms:'登録された客室がありません。',
+    // 빈 방 클릭 피커
+    inactiveRoomT:'非活性(ロック)客室 — 🔓で解除してください', inactiveRoom:'非活性客室',
+    closedRange:(rno,from,to,reason)=>`${rno}: 閉鎖期間(${from}~${to}${reason?' · '+reason:''})`,
+    pickerTitle:(fac,rno)=>`${fac} ${rno}`, pickerScope:scope=>`· ${scope} 割当`,
+    pickerCap:(now,cap,remain)=>`現在 ${now}/${cap} · 空き ${remain}`,
+    thisLodging:'この施設', remainN:n=>'残り '+n,
+    pickerNoCandidates:'この日付に割当可能な未割当人員がいません。',
+    selN:(n,remain,over)=>`選択 ${n}名`+(remain?` · 空き ${remain}`:'')+(over?` · ⚠ 定員超過分は保留されます`:''),
+    close:'閉じる', assignTo:rno=>`${rno}に割当`,
+    // 배정/분할/해제
+    splitOnlyMember:'分割は個人割当のみ可能です', splitMidOnly:'滞在中間日でのみ分割できます。上の日別チップで移す初日を選んでください。',
+    splitPick:(name,from,to)=>`${name} ${from}~${to} 移す客室をクリックしてください (Esc=キャンセル)`,
+    sameRoom:'同じ客室です — 別の客室をクリックしてください',
+    splitFailSrc:e=>'分割失敗(元行修正): '+e, splitFailNew:e=>'分割失敗(新規行): '+e,
+    capOverShort:(rno,from,to)=>`${rno}: ${from}~${to} 定員超過`,
+    splitClosedT:(rno,from,to,reason)=>`${rno}: 閉鎖期間(${from}~${to}${reason?' · '+reason:''}) — 分割割当不可`,
+    splitDone:(from,rno)=>`分割完了 — ${from}から ${rno}`,
+    invActiveToggleFail:e=>'状態変更失敗: '+e, roomNowUsable:'使用可', roomNowInactive:'無効化',
+    toggleConfirm:rno=>`${rno}に割り当てられたチームがあります。それでも無効化に変えますか?\n(既存の割当は維持されますが新規割当は止まります)`,
+    floorplanTitle:z=>`${z} 平面図`, floorplanSub:'断面図配置 · ドラッグ割当可能',
+    noTargetMembers:'割当する人員がいません', alreadyAssignedTeam:'すでに全員割当済のチーム',
+    assignBlocked:(rno,others)=>`${rno} 定員超過 — 使用中: ${others||'-'}`, unknown:'不明',
+    assignClosedT:(rno,from,to,reason)=>`${rno}: 閉鎖期間(${from}~${to}${reason?' · '+reason:''}) — 割当不可`,
+    assignedN:(rno,ok,blocked)=>`${rno} ← ${ok}名 割当`+(blocked?` (${blocked}名 保留)`:''), assignFail:'割当失敗',
+    inactiveRoomShort:'非活性客室',
+    // 자동배정/충돌
+    connectFirst:'先に接続してください', loadDateFirst:'先に日付を読み込んでください',
+    autoBtnBusy:'割当中…', autoClearFail:e=>'既存の自動割当の整理に失敗: '+e,
+    holdOddTeam:gc=>`${gc} 3名チーム 保留`, holdNoFloor:(gc,n)=>`${gc} ${n}泊: 泊数ルールで可能な階なし(フレックス階満室) — 手動確認`,
+    holdOddLeft:(gc,name)=>`${gc} ${name}: 奇数残り`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} 客室不足`,
+    deluxe:'デラックス', byReservation:'予約種別',
+    autoNoTarget:n=>n?`自動割当対象なし · 保留 ${n}件`:'自動割当する未割当人員がいません',
+    autoSaveFail:e=>'自動割当の保存に失敗: '+e,
+    autoDone:(n,h)=>`自動割当 ${n}名 完了`+(h?` · 保留 ${h}件(コンソール)`:''),
+    autoHoldsLog:n=>'[自動割当 保留 '+n+'件]\n',
+    conflBtnBusy:'チェック中…', conflFail:e=>'チェック失敗: '+e, conflErr:e=>'チェックエラー: '+e,
+    conflNone:'✓ 定員超過(競合)なし',
+    srcAuto:'自動', srcManual:'手動/分割', conflWorstAt:d=>`${d} 基準`,
+    conflStuck:'⚠ 手動確認が必要(手動/分割が超過 — 自動整理不可)', conflAutoOk:n=>`自動整理可能: 超過auto ${n}名 解除`,
+    conflModalTitle:n=>`⚠ 客室割当 競合 ${n}件 (定員超過)`,
+    conflModalDesc:(drop,stuck)=>`同じ客室・重複する日に定員を超過した客室です。<b>超過auto割当 ${drop}名</b>を解除して定員内に収めます(手動・分割は保護)。${stuck?` <b style="color:var(--warn)">手動確認 ${stuck}件</b>は直接調整してください。`:''}`,
+    conflResolveBtn:n=>`超過auto ${n}名 整理`,
+    resolveNoAuto:stuck=>stuck?`autoで解消できない競合 ${stuck}件 — 手動確認`:'整理するauto超過なし',
+    resolveBusy:'整理中…', resolveFail:e=>'整理失敗: '+e,
+    resolveDone:(n,stuck)=>`✓ 超過 ${n}名 解除 — 「自動割当」を再実行すると空き客室に再配置されます${stuck?` · 手動確認 ${stuck}件`:''}`,
+    zoneNoAssign:z=>`${z}: 割当なし`, zoneClearConfirm:(z,n)=>`${z}の割当 ${n}件をすべて外しますか?`,
+    zoneClearFail:e=>'階クリア失敗: '+e, zoneCleared:(z,n)=>`${z} ${n}件 解除`,
+    clearAllNone:'クリアする割当がありません', clearAllScopeAll:'読み込んだ範囲全体',
+    clearAllConfirm:(scope,n)=>`${scope}の割当 ${n}件をすべて外しますか?\n(手動・自動割当すべて解除されます)`,
+    clearAllFail:e=>'全クリア失敗: '+e, clearedN:n=>`${n}件 割当解除`,
+    // 폐쇄/이력
+    closeFirstConnect:'先に接続してください', closeLoadInv:'客室情報を先に読み込んでください(接続/日付読み込み)',
+    closureManageTitle:'🔒 客室閉鎖(ロック) 管理',
+    closureDesc:'特定の客室を <b>期間指定</b> で閉じます(例: 代表使用中・点検)。閉鎖期間は自動・手動割当が止まり、カードに理由が表示されます。<b>終了日含む</b>。',
+    closureNone:'現在読み込んだ期間に閉鎖はありません。',
+    closureRoom:'客室', closureFrom:'開始日', closureTo:'終了日', closureReason:'理由',
+    closureReasonPh:'例: 代表使用中 / 使用しない / 点検', closureAdd:'＋ 閉鎖追加', closureListTitle:'読み込んだ期間の閉鎖リスト',
+    del:'削除', pickRoom:'客室を選択してください', pickRange:'期間を入力してください', toAfterFrom:'終了日は開始日以降にしてください',
+    closureAdding:'登録中…', closureAdded:'客室閉鎖を登録', closureAddFail:e=>'登録失敗: '+e,
+    closureReleased:'閉鎖解除', closureReleaseFail:e=>'解除失敗: '+e,
+    histConnectFirst:'先に接続してください。', histLoading:'読み込み中…', histNone:'履歴がありません。',
+    histTotal:(n,q)=>`計 ${n}件${q?' (検索)':''}`, histQueryFail:e=>'履歴照会失敗: '+e,
+    actAssign:'割当', actUnassign:'解除', actSplit:'分割', actAuto:'自動割当', actMove:'移動', actResolve:'競合整理',
+    // 엑셀
+    exportNoData:'先に日付を読み込んでください', exportDone:'様式書き出し完了 — 部屋番号欄を埋めて再アップロードしてください',
+    importTagNotFound:tag=>`タグ '${tag}' が名簿にありません`, importRoomNotFound:(tag,rn)=>`${tag}: 部屋番号 '${rn}' 見つからず`,
+    importResult:(ok,skip,fail)=>`一括割当: 成功 ${ok} · スキップ ${skip} · 失敗 ${fail}`,
+    // 칩 액션 타이틀
+    chipSplitT:'基準日から別の客室へ分割', chipCancelT:'割当取消', undoBtn:'↩ 元に戻す',
+    splitToOther:'割当キャンセル', assignCancelled:'割当をキャンセルしました', undoneAssign:'割当キャンセル済',
+    singleChargeFailToast:e=>'料金記録失敗: '+e,
+  },
+  ko:{
+    prevMonth:'이전 달', nextMonth:'다음 달', thisMonthToday:'이번 달·오늘', monthLbl:'월', today:'오늘',
+    btnAuto:'자동배정', btnAutoT:'회원→디럭스 우선, 일반→예약종류. 예약순·기존 수기배정 보호',
+    btnClearAll:'전체 비우기', btnClearAllT:'불러온 범위의 모든 배정 해제(수기·자동 전부)',
+    btnConflicts:'⚠ 충돌 점검', btnConflictsT:'정원 초과(겹침) 방을 스캔 → 초과 auto 배정을 정리(수기·분할은 보호)',
+    btnClosure:'🔒 객실 폐쇄', btnClosureT:'특정 객실을 기간 지정해 폐쇄(잠금) — 대표님 사용 중·점검 등. 폐쇄 기간엔 배정 불가',
+    roomSearchPh:'🔎 배정 검색 — 태그코드·한글명·영문명·행사번호',
+    viewCard:'카드', viewTimeline:'타임라인', viewTimelineT:'객실×날짜 점유 한눈에',
+    histTitle:'🕘 방배정 변경 이력', histTitleSub:'— 누가·언제·어디로 (자동배정=요약 1건)',
+    histQph:'이름·방번호·그룹코드 검색', histSearch:'검색',
+    histEmpty:'펼치면 최근 변경 이력이 표시됩니다.', histMore:'더 보기 (다음 40건)',
+    needUrlKey:'URL·key 필요', connecting:'연결 중…', connOk:'연결됨', connFail:'연결 실패',
+    connOkToast:'Supabase 연결됨', connBtnOk:'✓ 연결됨', connBtnRetry:'연결 실패 · 재시도',
+    connFailToast:e=>'연결 실패: '+e+' (SQL 실행·키 확인)',
+    invFail:e=>'마스터 로드 실패: '+e,
+    pickDate:'날짜를 선택하세요', teamLoadFail:e=>'팀 로드 실패: '+e,
+    roomLoadFail:e=>'배정 로드 실패: '+e, rosterLoadFail:e=>'명단 로드 실패: '+e,
+    loadedTeams:(label,n)=>`${label} · 점유 ${n}팀 로드`,
+    undoFail:e=>'되돌리기 실패: '+e, undone:'↩ 되돌렸습니다',
+    basisSuffix:' 기준', teamPrefix:'팀', codeUndecided:'(코드미정)', rosterNone:'명단 정보 없음',
+    evnoT:'행사번호(예약순 — 빠를수록 좋은 객실 우선)',
+    nameUnit:'명', leftN:n=>'잔여 '+n, repBadge:'REP', todayCheckin:'오늘 체크인', nightUnit:'박',
+    onsiteFix:'현장지정', assignedDone:'배정완료', unassignClear:'✕해제', unassignClearT:'배정 해제 → 명단으로',
+    assignedRoomT:'배정된 객실',
+    coLeave:(md,n)=>`🚪 ${md} 퇴실 <b>${n}팀</b> — 이 방들이 비워집니다(같은 날 체크인 가능)`,
+    noAssign:'배정없음',
+    arrSec:(md,n,p)=>`📍 ${md} 현지도착 <b>${n}팀 · ${p}명</b>`,
+    noArrUnassigned:'이 날 현지도착 미배정 없음 ✓',
+    carrySec:(n,p)=>`⏳ 이전 도착·미배정 <b>${n}팀 · ${p}명</b> — 위 날짜 칩의 <b style="color:var(--err)">미N</b> 에서 그 날로 가 처리하세요`,
+    dcChipT:(d,cin,un)=>`${d} · 체크인 ${cin}팀 · 미배정 도착 ${un}팀`,
+    unShort:'미', dcAll:'전체', tlDays:'타임라인 일자', tlMulti:'복수 선택', dateOne:'날짜', dayOne:'하루씩',
+    tlAllDates:'전체', tlLoadDate:'날짜를 불러오세요',
+    tlLegDlx:'디럭스', tlLegTwin:'트윈', tlLegCmp:'컴팩트', tlLegEtc:'기타시설',
+    tlHover:'막대에 커서 → 팀·인원·기간', tlRoom:'객실',
+    splitMode:(name,from,to)=>`분할 모드 — <b>${name}</b> ${from}~${to} 배정할 방을 클릭하세요`,
+    cancel:'취소',
+    spanNote:(dep,arr)=>`🧭 선택 인원 배정 기준 — 카드 점유는 <b>${dep}~${arr}</b> 기간 기준입니다. (그 기간에 차 있으면 오늘 비어 보여도 <b>꽉 참</b>으로 표시)`,
+    rangeNote:(focus)=>`카드는 <b>${focus}</b> 하룻밤 기준이에요. 위 <b>일별</b> 칩으로 날짜를 바꾸고, 기간 전체 점유는 <b>타임라인</b> 으로 보세요.`,
+    flagIn:'체크인', flagCont:'연박', over:'초과',
+    lockOnT:'사용 가능 — 클릭하면 잠금(비활성)', lockOffT:'잠금(비활성) — 클릭하면 사용 가능',
+    closedNote:(from,to,reason)=>`🔒 폐쇄 ${from}~${to}${reason?' · '+reason:''}`,
+    used:'사용', roomsUnit:'실', under:n=>`⚠정원미만 ${n}실`, floorplan:'평면도', floorplanT:'단면도(원형 배치) 보기',
+    clearZone:'비우기', clearZoneT:z=>`${z} 배정 전체 해제`, zoneLabel:z=>'— '+z,
+    facUtil:(used,cap)=>`${used}/${cap}명`,
+    noHotelRooms:'호텔동 객실 미등록 — 05_room_inventory_real.sql을 실행하세요.',
+    noRooms:'등록된 객실이 없습니다.',
+    inactiveRoomT:'비활성(잠금) 객실 — 🔓로 풀어주세요', inactiveRoom:'비활성 객실',
+    closedRange:(rno,from,to,reason)=>`${rno}: 폐쇄 기간(${from}~${to}${reason?' · '+reason:''})`,
+    pickerTitle:(fac,rno)=>`${fac} ${rno}`, pickerScope:scope=>`· ${scope} 배정`,
+    pickerCap:(now,cap,remain)=>`현재 ${now}/${cap} · 남은자리 ${remain}`,
+    thisLodging:'이 숙소', remainN:n=>'잔여 '+n,
+    pickerNoCandidates:'이 날짜에 배정 가능한 미배정 인원이 없습니다.',
+    selN:(n,remain,over)=>`선택 ${n}명`+(remain?` · 남은자리 ${remain}`:'')+(over?` · ⚠ 정원 초과분은 보류됨`:''),
+    close:'닫기', assignTo:rno=>`${rno}에 배정`,
+    splitOnlyMember:'분할은 개인 배정에서만 됩니다', splitMidOnly:'체류 중간 날에서만 분할됩니다. 위 일별 칩에서 옮길 첫 날을 고르세요.',
+    splitPick:(name,from,to)=>`${name} ${from}~${to} 옮길 방을 클릭하세요 (Esc=취소)`,
+    sameRoom:'같은 방입니다 — 다른 방을 클릭하세요',
+    splitFailSrc:e=>'분할 실패(원행 수정): '+e, splitFailNew:e=>'분할 실패(새 행): '+e,
+    capOverShort:(rno,from,to)=>`${rno}: ${from}~${to} 정원 초과`,
+    splitClosedT:(rno,from,to,reason)=>`${rno}: 폐쇄 기간(${from}~${to}${reason?' · '+reason:''}) — 분할 배정 불가`,
+    splitDone:(from,rno)=>`분할 완료 — ${from}부터 ${rno}`,
+    invActiveToggleFail:e=>'상태 변경 실패: '+e, roomNowUsable:'사용 가능', roomNowInactive:'비활성',
+    toggleConfirm:rno=>`${rno}에 배정된 팀이 있습니다. 그래도 비활성으로 바꿀까요?\n(기존 배정은 유지되지만 새 배정은 막힙니다)`,
+    floorplanTitle:z=>`${z} 평면도`, floorplanSub:'단면도 배치 · 드래그 배정 가능',
+    noTargetMembers:'배정할 인원이 없습니다', alreadyAssignedTeam:'이미 전원 배정된 팀',
+    assignBlocked:(rno,others)=>`${rno} 정원 초과 — 사용중: ${others||'-'}`, unknown:'미상',
+    assignClosedT:(rno,from,to,reason)=>`${rno}: 폐쇄 기간(${from}~${to}${reason?' · '+reason:''}) — 배정 불가`,
+    assignedN:(rno,ok,blocked)=>`${rno} ← ${ok}명 배정`+(blocked?` (${blocked}명 보류)`:''), assignFail:'배정 실패',
+    inactiveRoomShort:'비활성 객실',
+    connectFirst:'먼저 연결하세요', loadDateFirst:'먼저 날짜를 불러오세요',
+    autoBtnBusy:'배정 중…', autoClearFail:e=>'기존 자동배정 정리 실패: '+e,
+    holdOddTeam:gc=>`${gc} 3명팀 보류`, holdNoFloor:(gc,n)=>`${gc} ${n}박: 박수 규칙 가능 층 없음(유동층 만석) — 수기 확인`,
+    holdOddLeft:(gc,name)=>`${gc} ${name}: 홀수 잔여`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} 객실부족`,
+    deluxe:'디럭스', byReservation:'예약종류',
+    autoNoTarget:n=>n?`자동배정 대상 없음 · 보류 ${n}건`:'자동배정할 미배정 인원이 없습니다',
+    autoSaveFail:e=>'자동배정 저장 실패: '+e,
+    autoDone:(n,h)=>`자동배정 ${n}명 완료`+(h?` · 보류 ${h}건(콘솔)`:''),
+    autoHoldsLog:n=>'[자동배정 보류 '+n+'건]\n',
+    conflBtnBusy:'점검 중…', conflFail:e=>'점검 실패: '+e, conflErr:e=>'점검 오류: '+e,
+    conflNone:'✓ 정원 초과(충돌) 없음',
+    srcAuto:'자동', srcManual:'수기/분할', conflWorstAt:d=>`${d} 기준`,
+    conflStuck:'⚠ 수기확인 필요(수기/분할이 초과 — 자동 정리 불가)', conflAutoOk:n=>`자동 정리 가능: 초과 auto ${n}명 해제`,
+    conflModalTitle:n=>`⚠ 방배정 충돌 ${n}건 (정원 초과)`,
+    conflModalDesc:(drop,stuck)=>`같은 방·겹치는 날에 정원을 초과한 방입니다. <b>초과 auto 배정 ${drop}명</b>을 해제해 정원 안으로 맞춥니다(수기·분할은 보호).${stuck?` <b style="color:var(--warn)">수기확인 ${stuck}건</b>은 직접 조정하세요.`:''}`,
+    conflResolveBtn:n=>`초과 auto ${n}명 정리`,
+    resolveNoAuto:stuck=>stuck?`auto로 풀 수 없는 충돌 ${stuck}건 — 수기 확인`:'정리할 auto 초과 없음',
+    resolveBusy:'정리 중…', resolveFail:e=>'정리 실패: '+e,
+    resolveDone:(n,stuck)=>`✓ 초과 ${n}명 해제 — 「자동배정」 다시 실행하면 빈 방으로 재배치됩니다${stuck?` · 수기확인 ${stuck}건`:''}`,
+    zoneNoAssign:z=>`${z}: 배정 없음`, zoneClearConfirm:(z,n)=>`${z}의 배정 ${n}건을 모두 뺄까요?`,
+    zoneClearFail:e=>'층 비우기 실패: '+e, zoneCleared:(z,n)=>`${z} ${n}건 해제`,
+    clearAllNone:'비울 배정이 없습니다', clearAllScopeAll:'불러온 범위 전체',
+    clearAllConfirm:(scope,n)=>`${scope}의 배정 ${n}건을 모두 뺄까요?\n(수기·자동 배정 전부 해제됩니다)`,
+    clearAllFail:e=>'전체 비우기 실패: '+e, clearedN:n=>`${n}건 배정 해제`,
+    closeFirstConnect:'먼저 연결하세요', closeLoadInv:'객실 정보를 먼저 불러오세요(연결/날짜 로드)',
+    closureManageTitle:'🔒 객실 폐쇄(잠금) 관리',
+    closureDesc:'특정 객실을 <b>기간 지정</b>해 닫습니다(예: 대표님 사용 중·점검). 폐쇄 기간엔 자동·수기 배정이 막히고 카드에 사유가 표시됩니다. <b>종료일 포함</b>.',
+    closureNone:'현재 불러온 기간에 폐쇄가 없습니다.',
+    closureRoom:'객실', closureFrom:'시작일', closureTo:'종료일', closureReason:'사유',
+    closureReasonPh:'예: 대표님 사용 중 / 사용 안 함 / 점검', closureAdd:'＋ 폐쇄 추가', closureListTitle:'불러온 기간 폐쇄 목록',
+    del:'삭제', pickRoom:'객실을 선택하세요', pickRange:'기간을 입력하세요', toAfterFrom:'종료일은 시작일 이후여야 합니다',
+    closureAdding:'등록 중…', closureAdded:'객실 폐쇄 등록', closureAddFail:e=>'등록 실패: '+e,
+    closureReleased:'폐쇄 해제', closureReleaseFail:e=>'해제 실패: '+e,
+    histConnectFirst:'먼저 연결하세요.', histLoading:'불러오는 중…', histNone:'이력이 없습니다.',
+    histTotal:(n,q)=>`총 ${n}건${q?' (검색)':''}`, histQueryFail:e=>'이력 조회 실패: '+e,
+    actAssign:'배정', actUnassign:'해제', actSplit:'분할', actAuto:'자동배정', actMove:'이동', actResolve:'충돌정리',
+    exportNoData:'먼저 날짜를 불러오세요', exportDone:'양식 내보내기 완료 — 호수 칸을 채워 다시 올리세요',
+    importTagNotFound:tag=>`태그 '${tag}' 명단에 없음`, importRoomNotFound:(tag,rn)=>`${tag}: 호수 '${rn}' 못찾음`,
+    importResult:(ok,skip,fail)=>`일괄 배정: 성공 ${ok} · 건너뜀 ${skip} · 실패 ${fail}`,
+    chipSplitT:'기준일부터 다른 방으로 분할', chipCancelT:'배정 취소', undoBtn:'↩ 되돌리기',
+    splitToOther:'배정 취소', assignCancelled:'배정 취소됨', undoneAssign:'배정 취소됨',
+    singleChargeFailToast:e=>'요금 기록 실패: '+e,
+  },
+  en:{
+    prevMonth:'Prev month', nextMonth:'Next month', thisMonthToday:'This month · today', monthLbl:'Month', today:'Today',
+    btnAuto:'Auto-assign', btnAutoT:'Member→Deluxe priority, standard→reservation type. Reservation order · protects existing manual assignments',
+    btnClearAll:'Clear all', btnClearAllT:'Release all assignments in the loaded range (manual + auto)',
+    btnConflicts:'⚠ Conflict check', btnConflictsT:'Scan capacity-over (overlapping) rooms → resolve over-capacity auto assignments (manual/split protected)',
+    btnClosure:'🔒 Room closure', btnClosureT:'Close (lock) a specific room for a period — in use by chairman / inspection, etc. No assignment during closure',
+    roomSearchPh:'🔎 Search assignment — tag code · Korean name · English name · event no.',
+    viewCard:'Card', viewTimeline:'Timeline', viewTimelineT:'Room × date occupancy at a glance',
+    histTitle:'🕘 Room assignment change history', histTitleSub:'— who · when · where (auto-assign = 1 summary)',
+    histQph:'Search name · room no. · group code', histSearch:'Search',
+    histEmpty:'Expand to see recent change history.', histMore:'Show more (next 40)',
+    needUrlKey:'URL·key required', connecting:'Connecting…', connOk:'Connected', connFail:'Connection failed',
+    connOkToast:'Supabase connected', connBtnOk:'✓ Connected', connBtnRetry:'Failed · retry',
+    connFailToast:e=>'Connection failed: '+e+' (check SQL run · key)',
+    invFail:e=>'Master load failed: '+e,
+    pickDate:'Please select a date', teamLoadFail:e=>'Team load failed: '+e,
+    roomLoadFail:e=>'Assignment load failed: '+e, rosterLoadFail:e=>'Roster load failed: '+e,
+    loadedTeams:(label,n)=>`${label} · loaded ${n} occupying teams`,
+    undoFail:e=>'Undo failed: '+e, undone:'↩ Undone',
+    basisSuffix:' basis', teamPrefix:'Team', codeUndecided:'(code TBD)', rosterNone:'No roster info',
+    evnoT:'Event no. (reservation order — earlier = better room priority)',
+    nameUnit:' ppl', leftN:n=>'left '+n, repBadge:'REP', todayCheckin:'Check-in today', nightUnit:'n',
+    onsiteFix:'On-site', assignedDone:'Assigned', unassignClear:'✕ unassign', unassignClearT:'Unassign → back to roster',
+    assignedRoomT:'Assigned room',
+    coLeave:(md,n)=>`🚪 ${md} check-out <b>${n} teams</b> — these rooms free up (same-day check-in possible)`,
+    noAssign:'No assignment',
+    arrSec:(md,n,p)=>`📍 ${md} arrivals <b>${n} teams · ${p} ppl</b>`,
+    noArrUnassigned:'No unassigned arrivals this day ✓',
+    carrySec:(n,p)=>`⏳ Earlier arrivals · unassigned <b>${n} teams · ${p} ppl</b> — go to that day via the <b style="color:var(--err)">unN</b> on the date chips above`,
+    dcChipT:(d,cin,un)=>`${d} · check-in ${cin} teams · unassigned arrivals ${un} teams`,
+    unShort:'un', dcAll:'All', tlDays:'Timeline dates', tlMulti:'Multi-select', dateOne:'Date', dayOne:'One day',
+    tlAllDates:'All', tlLoadDate:'Please load dates',
+    tlLegDlx:'Deluxe', tlLegTwin:'Twin', tlLegCmp:'Compact', tlLegEtc:'Other facilities',
+    tlHover:'Hover a bar → team · ppl · period', tlRoom:'Rooms',
+    splitMode:(name,from,to)=>`Split mode — <b>${name}</b> ${from}~${to} click the room to assign`,
+    cancel:'Cancel',
+    spanNote:(dep,arr)=>`🧭 Selected-guest assignment basis — card occupancy is based on the <b>${dep}~${arr}</b> period. (If full in that period, it shows <b>Full</b> even if empty today)`,
+    rangeNote:(focus)=>`Card is based on the <b>${focus}</b> single night. Change the date via the <b>per-day</b> chips above; view whole-period occupancy in <b>Timeline</b>.`,
+    flagIn:'Check-in', flagCont:'Staying', over:'Over',
+    lockOnT:'Usable — click to lock (disable)', lockOffT:'Locked (disabled) — click to enable',
+    closedNote:(from,to,reason)=>`🔒 Closed ${from}~${to}${reason?' · '+reason:''}`,
+    used:'Used', roomsUnit:' rooms', under:n=>`⚠ under capacity ${n} rooms`, floorplan:'Floor plan', floorplanT:'View floor plan (circular layout)',
+    clearZone:'Clear', clearZoneT:z=>`Release all assignments on ${z}`, zoneLabel:z=>'— '+z,
+    facUtil:(used,cap)=>`${used}/${cap} ppl`,
+    noHotelRooms:'Hotel-block rooms not registered — run 05_room_inventory_real.sql.',
+    noRooms:'No registered rooms.',
+    inactiveRoomT:'Inactive (locked) room — unlock with 🔓', inactiveRoom:'Inactive room',
+    closedRange:(rno,from,to,reason)=>`${rno}: closed period (${from}~${to}${reason?' · '+reason:''})`,
+    pickerTitle:(fac,rno)=>`${fac} ${rno}`, pickerScope:scope=>`· ${scope} assignment`,
+    pickerCap:(now,cap,remain)=>`Now ${now}/${cap} · free ${remain}`,
+    thisLodging:'This lodging', remainN:n=>'left '+n,
+    pickerNoCandidates:'No unassigned guests available for this date.',
+    selN:(n,remain,over)=>`Selected ${n}`+(remain?` · free ${remain}`:'')+(over?` · ⚠ over-capacity will be held`:''),
+    close:'Close', assignTo:rno=>`Assign to ${rno}`,
+    splitOnlyMember:'Split is only for individual assignments', splitMidOnly:'Split only on a mid-stay day. Choose the first day to move via the per-day chips above.',
+    splitPick:(name,from,to)=>`${name} ${from}~${to} click the room to move to (Esc=cancel)`,
+    sameRoom:'Same room — click a different room',
+    splitFailSrc:e=>'Split failed (source row): '+e, splitFailNew:e=>'Split failed (new row): '+e,
+    capOverShort:(rno,from,to)=>`${rno}: ${from}~${to} over capacity`,
+    splitClosedT:(rno,from,to,reason)=>`${rno}: closed period (${from}~${to}${reason?' · '+reason:''}) — split assignment not allowed`,
+    splitDone:(from,rno)=>`Split done — from ${from} to ${rno}`,
+    invActiveToggleFail:e=>'Status change failed: '+e, roomNowUsable:'Usable', roomNowInactive:'Inactive',
+    toggleConfirm:rno=>`${rno} has assigned teams. Disable it anyway?\n(Existing assignments stay, but new ones are blocked)`,
+    floorplanTitle:z=>`${z} floor plan`, floorplanSub:'Floor-plan layout · drag to assign',
+    noTargetMembers:'No guests to assign', alreadyAssignedTeam:'Team already fully assigned',
+    assignBlocked:(rno,others)=>`${rno} over capacity — in use: ${others||'-'}`, unknown:'Unknown',
+    assignClosedT:(rno,from,to,reason)=>`${rno}: closed period (${from}~${to}${reason?' · '+reason:''}) — assignment not allowed`,
+    assignedN:(rno,ok,blocked)=>`${rno} ← assigned ${ok}`+(blocked?` (${blocked} held)`:''), assignFail:'Assignment failed',
+    inactiveRoomShort:'Inactive room',
+    connectFirst:'Connect first', loadDateFirst:'Load a date first',
+    autoBtnBusy:'Assigning…', autoClearFail:e=>'Failed to clear existing auto assignments: '+e,
+    holdOddTeam:gc=>`${gc} 3-person team held`, holdNoFloor:(gc,n)=>`${gc} ${n}n: no floor available by night-count rule (flex floors full) — manual check`,
+    holdOddLeft:(gc,name)=>`${gc} ${name}: odd leftover`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} not enough rooms`,
+    deluxe:'Deluxe', byReservation:'Reservation type',
+    autoNoTarget:n=>n?`No auto-assign target · held ${n}`:'No unassigned guests to auto-assign',
+    autoSaveFail:e=>'Auto-assign save failed: '+e,
+    autoDone:(n,h)=>`Auto-assign ${n} done`+(h?` · held ${h} (console)`:''),
+    autoHoldsLog:n=>'[Auto-assign held '+n+']\n',
+    conflBtnBusy:'Checking…', conflFail:e=>'Check failed: '+e, conflErr:e=>'Check error: '+e,
+    conflNone:'✓ No capacity overflow (conflicts)',
+    srcAuto:'Auto', srcManual:'Manual/split', conflWorstAt:d=>`at ${d}`,
+    conflStuck:'⚠ Manual check needed (manual/split over — auto-resolve impossible)', conflAutoOk:n=>`Auto-resolvable: release ${n} over-capacity auto`,
+    conflModalTitle:n=>`⚠ Room-assignment conflicts ${n} (over capacity)`,
+    conflModalDesc:(drop,stuck)=>`Rooms over capacity on the same room/overlapping days. Releasing <b>${drop} over-capacity auto assignments</b> to fit within capacity (manual/split protected).${stuck?` <b style="color:var(--warn)">${stuck} manual-check</b> need direct adjustment.`:''}`,
+    conflResolveBtn:n=>`Resolve ${n} over-capacity auto`,
+    resolveNoAuto:stuck=>stuck?`${stuck} conflicts not resolvable by auto — manual check`:'No auto over-capacity to resolve',
+    resolveBusy:'Resolving…', resolveFail:e=>'Resolve failed: '+e,
+    resolveDone:(n,stuck)=>`✓ Released ${n} over-capacity — re-run "Auto-assign" to re-place into free rooms${stuck?` · manual-check ${stuck}`:''}`,
+    zoneNoAssign:z=>`${z}: no assignment`, zoneClearConfirm:(z,n)=>`Release all ${n} assignments on ${z}?`,
+    zoneClearFail:e=>'Floor clear failed: '+e, zoneCleared:(z,n)=>`${z} released ${n}`,
+    clearAllNone:'No assignments to clear', clearAllScopeAll:'whole loaded range',
+    clearAllConfirm:(scope,n)=>`Release all ${n} assignments in ${scope}?\n(All manual + auto assignments released)`,
+    clearAllFail:e=>'Clear all failed: '+e, clearedN:n=>`Released ${n} assignments`,
+    closeFirstConnect:'Connect first', closeLoadInv:'Load room info first (connect / load date)',
+    closureManageTitle:'🔒 Room closure (lock) management',
+    closureDesc:'Close a specific room for a <b>specified period</b> (e.g., chairman in use · inspection). During closure, auto/manual assignment is blocked and the reason shows on the card. <b>End date inclusive</b>.',
+    closureNone:'No closures in the currently loaded period.',
+    closureRoom:'Room', closureFrom:'Start date', closureTo:'End date', closureReason:'Reason',
+    closureReasonPh:'e.g.: chairman in use / not used / inspection', closureAdd:'＋ Add closure', closureListTitle:'Closures in loaded period',
+    del:'Delete', pickRoom:'Please select a room', pickRange:'Please enter a period', toAfterFrom:'End date must be on or after the start date',
+    closureAdding:'Registering…', closureAdded:'Room closure registered', closureAddFail:e=>'Registration failed: '+e,
+    closureReleased:'Closure released', closureReleaseFail:e=>'Release failed: '+e,
+    histConnectFirst:'Connect first.', histLoading:'Loading…', histNone:'No history.',
+    histTotal:(n,q)=>`Total ${n}${q?' (search)':''}`, histQueryFail:e=>'History query failed: '+e,
+    actAssign:'Assign', actUnassign:'Unassign', actSplit:'Split', actAuto:'Auto-assign', actMove:'Move', actResolve:'Resolve conflict',
+    exportNoData:'Load a date first', exportDone:'Template export done — fill room numbers and re-upload',
+    importTagNotFound:tag=>`Tag '${tag}' not in roster`, importRoomNotFound:(tag,rn)=>`${tag}: room '${rn}' not found`,
+    importResult:(ok,skip,fail)=>`Bulk assign: success ${ok} · skipped ${skip} · failed ${fail}`,
+    chipSplitT:'Split to another room from the focus date', chipCancelT:'Cancel assignment', undoBtn:'↩ Undo',
+    splitToOther:'Assignment cancelled', assignCancelled:'Assignment cancelled', undoneAssign:'Assignment cancelled',
+    singleChargeFailToast:e=>'Charge record failed: '+e,
+  }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k,...a){ const d=L[lang()]||L.ja; let v=d[k]; if(v===undefined) v=L.ja[k]; if(v===undefined) return k; return (typeof v==='function')?v(...a):v; }
+// 정적 chrome(버튼·라벨·placeholder·title) 언어 적용. data-i18n/rm_* 는 saizen-ops.js가 처리하므로 여기선 미커버 항목만.
+function applyStaticRoom(){
+  const set=(sel,prop,key)=>{ const el=$(sel); if(el) el[prop]=tx(key); };
+  set('#date-prev','title','prevMonth'); set('#date-next','title','nextMonth');
+  set('#date-today','title','thisMonthToday'); set('#date-today','textContent','today');
+  set('#lbl-from','textContent','monthLbl');
+  set('#btn-auto','textContent','btnAuto'); set('#btn-auto','title','btnAutoT');
+  set('#btn-clear-all','textContent','btnClearAll'); set('#btn-clear-all','title','btnClearAllT');
+  set('#btn-conflicts','textContent','btnConflicts'); set('#btn-conflicts','title','btnConflictsT');
+  set('#btn-closure','textContent','btnClosure'); set('#btn-closure','title','btnClosureT');
+  set('#room-search','placeholder','roomSearchPh');
+  set('#view-card','textContent','viewCard'); set('#view-timeline','textContent','viewTimeline'); set('#view-timeline','title','viewTimelineT');
+  set('#hist-q','placeholder','histQph'); set('#hist-search','textContent','histSearch');
+  const ht=$('#hist-title'); if(ht) ht.innerHTML=`${tx('histTitle')} <span style="font-weight:600;color:var(--muted);font-size:12px">${tx('histTitleSub')}</span>`;
+  const hm=$('#hist-more'); if(hm) hm.textContent=tx('histMore');
+}
+
 let _selInit=true;
 let supa=null;
 let state={ date:null, guests:[], rooms:[], inventory:[], assignMap:{}, members:{} }; // members: event_seq → [guest_members]
@@ -509,7 +882,7 @@ function toast(msg,cls){
 // 되돌리기 버튼이 달린 토스트(6초) — 배정 해제 직후 같은 방으로 즉시 복구. 취소 알림이라 빨강.
 function toastUndo(msg,onUndo){
   const t=document.createElement('div'); t.className='toast err';
-  t.innerHTML=`<span></span> <button type="button" class="tu-btn" style="margin-left:10px;border:1px solid currentColor;background:transparent;color:inherit;border-radius:6px;padding:2px 9px;font-weight:800;cursor:pointer;font-family:inherit">↩ 되돌리기</button>`;
+  t.innerHTML=`<span></span> <button type="button" class="tu-btn" style="margin-left:10px;border:1px solid currentColor;background:transparent;color:inherit;border-radius:6px;padding:2px 9px;font-weight:800;cursor:pointer;font-family:inherit">${tx('undoBtn')}</button>`;
   t.querySelector('span').textContent=msg;
   t.querySelector('.tu-btn').addEventListener('click',()=>{ t.remove(); onUndo(); });
   $('#toast').appendChild(t);
@@ -522,10 +895,10 @@ async function restoreRooms(snaps){
     facility:s.facility, room_type:s.room_type, room_no:s.room_no,
     check_in:s.check_in, check_out:s.check_out, assigned_pax:s.assigned_pax, assign_source:s.assign_source }));
   const {data,error}=await supa.from('rooms').insert(rows).select();
-  if(error){ toast('되돌리기 실패: '+error.message,'err'); return; }
+  if(error){ toast(tx('undoFail',error.message),'err'); return; }
   (data||[]).forEach(r=>state.rooms.push(r));
   rebuildAssignMap(); render();
-  toast('↩ 되돌렸습니다','ok');
+  toast(tx('undone'),'ok');
 }
 function _roomSnap(row){ if(!row) return null; const s={...row}; delete s.id; return s; }
 function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
@@ -575,12 +948,12 @@ function roomUsedPax(inv){
 }
 // 한 사람의 배정 객실(분할이면 여러 개) · 라벨 · 일괄 해제
 function memberRooms(mid){return state.rooms.filter(r=>r.member_id===mid);}
-function memberRoomLabel(mid){const rs=memberRooms(mid);return rs.length?[...new Set(rs.map(r=>r.room_no))].join(', '):'배정완료';}
+function memberRoomLabel(mid){const rs=memberRooms(mid);return rs.length?[...new Set(rs.map(r=>r.room_no))].join(', '):tx('assignedDone');}
 async function unassignMember(mid){
   const rs=memberRooms(mid); const snaps=[];
   for(const r of rs){ const s=await unassign(r.id,{silent:true}); if(s) snaps.push(s); }
   rebuildAssignMap(); render();
-  if(snaps.length) toastUndo(`배정 해제${snaps.length>1?` (${snaps.length}건)`:''}`, ()=>restoreRooms(snaps));
+  if(snaps.length) toastUndo(tx('actUnassign')+(snaps.length>1?` (${snaps.length})`:''), ()=>restoreRooms(snaps));
 }
 // ── 월 선택: 그 달 1일~말일을 범위로, 일별 칩은 그 달 전체 ──
 function lastDayOfMonth(ym){ const [y,m]=ym.split('-').map(Number); return `${ym}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`; }
@@ -604,24 +977,24 @@ function gotoToday(){ const t=isoToday(); loadMonth(t.slice(0,7), t); }
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn('URL·key 필요','err');return;}
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
   const btn=$('#btn-connect');
-  btn.textContent='연결 중…'; btn.disabled=true; btn.classList.remove('connected');
+  btn.textContent=tx('connecting'); btn.disabled=true; btn.classList.remove('connected');
   try{
     supa=window.supabase.createClient(url,key);
     const {error}=await supa.from('room_inventory').select('id',{count:'exact',head:true});
     if(error) throw error;
-    setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
-    btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
+    setConn(tx('connOk'),'ok'); toast(tx('connOkToast'),'ok');
+    btn.textContent=tx('connBtnOk'); btn.classList.add('connected'); btn.disabled=false;
     $('#btn-load').disabled=false; $('#btn-auto').disabled=false; $('#btn-clear-all').disabled=false; $('#btn-conflicts').disabled=false; $('#btn-closure').disabled=false;
     await loadInventory();
     if($('#month-pick').value){ await loadDay(); }   // 연결 후 이번 달 자동 로드
     if(window._deepDate){ state.focus=window._deepDate; window._deepDate=null; render(); }   // 프론트 데스크 딥링크: 그 날짜로
   }catch(e){
-    setConn('연결 실패','err');
-    toast('연결 실패: '+e.message+' (SQL 실행·키 확인)','err');
-    btn.textContent='연결 실패 · 재시도'; btn.classList.remove('connected'); btn.disabled=false;
+    setConn(tx('connFail'),'err');
+    toast(tx('connFailToast',e.message),'err');
+    btn.textContent=tx('connBtnRetry'); btn.classList.remove('connected'); btn.disabled=false;
     supa=null; $('#btn-load').disabled=true;
   }
 }
@@ -629,7 +1002,7 @@ async function connect(){
 // ── 객실 마스터 로드 ──
 async function loadInventory(){
   const {data,error}=await supa.from('room_inventory').select('*').order('facility').order('sort_order');
-  if(error){toast('마스터 로드 실패: '+error.message,'err');return;}
+  if(error){toast(tx('invFail',error.message),'err');return;}
   state.inventory=data||[];
 }
 
@@ -665,7 +1038,7 @@ async function pagedQuery(buildFn){
 async function loadDay(){
   const from=$('#date-pick').value;
   let to = $('#date-to').value || from;     // 종료 비우면 단일일
-  if(!from){toast('날짜를 선택하세요','warn');return;}
+  if(!from){toast(tx('pickDate'),'warn');return;}
   if(to<from) to=from;                       // 종료<시작이면 단일일로 보정
   state.from=from; state.to=to; state.date=from; state.focus=from; state.days=new Set(); state.splitPending=null;   // 기준일=시작, 일별선택·분할모드 초기화
 
@@ -677,7 +1050,7 @@ async function loadDay(){
     .lte('bookings.dep_date',to)
     .gt('bookings.arr_date',from)
     .order('event_seq'));
-  if(gres.error){toast('팀 로드 실패: '+gres.error.message,'err');return;}
+  if(gres.error){toast(tx('teamLoadFail',gres.error.message),'err');return;}
   const g=gres.data;
   state.guests=(g||[]).map(x=>({
     event_seq:x.event_seq, team_tag:x.team_tag, group_code:x.group_code,
@@ -695,10 +1068,10 @@ async function loadDay(){
   state.members={};
   if(seqs.length){
     const rr=await pagedInSeq('rooms','*',seqs);
-    if(rr.error){toast('배정 로드 실패: '+rr.error.message,'err');return;}
+    if(rr.error){toast(tx('roomLoadFail',rr.error.message),'err');return;}
     state.rooms=rr.data||[];
     const mm=await pagedInSeq('guest_members','id,event_seq,seq_in_team,name_kr,name_en,is_rep,member_grade,member_class,member_div',seqs);
-    if(mm.error){toast('명단 로드 실패: '+mm.error.message,'warn');}
+    if(mm.error){toast(tx('rosterLoadFail',mm.error.message),'warn');}
     else (mm.data||[]).forEach(x=>{(state.members[x.event_seq]=state.members[x.event_seq]||[]).push(x);});
   }
   // 기간 폐쇄(잠금) 로드 — 범위에 겹치는 폐쇄(from_date<=to AND to_date>=from)
@@ -711,7 +1084,7 @@ async function loadDay(){
   rebuildAssignMap();
   render();
   const label = (state.from===state.to) ? state.from : `${state.from}~${state.to}`;
-  toast(`${label} · 점유 ${state.guests.length}팀 로드`,'ok');
+  toast(tx('loadedTeams',label,state.guests.length),'ok');
 }
 
 function guessSaleType(pname,accom){
@@ -761,15 +1134,16 @@ function renderDayStrip(){
   const unByDate={}; state.guests.forEach(g=>{ if(g.dep && unassignedMembers(g.event_seq).length>0) unByDate[g.dep]=(unByDate[g.dep]||0)+1; });
   const chip=(d,active)=>{
     const wd=WD[new Date(d+'T00:00:00').getDay()]; const we=(wd==='토'||wd==='일'); const cin=inByDate[d]||0; const un=unByDate[d]||0;
-    return `<button class="day-chip${active?' active':''}${we?' we':''}" data-d="${d}" title="${d} · 체크인 ${cin}팀 · 미배정 도착 ${un}팀">${fmtMD(d)}<small>${wd}</small>${cin?`<span class="dcnt">+${cin}</span>`:''}${un?`<span class="dun">미${un}</span>`:''}</button>`;
+    return `<button class="day-chip${active?' active':''}${we?' we':''}" data-d="${d}" title="${tx('dcChipT',d,cin,un)}">${fmtMD(d)}<small>${wd}</small>${cin?`<span class="dcnt">+${cin}</span>`:''}${un?`<span class="dun">${tx('unShort')}${un}</span>`:''}</button>`;
   };
   if(viewMode==='timeline'){
     const all=state.days.size===0;
-    box.innerHTML='<span class="ds-lbl">타임라인 일자 <small>복수 선택</small></span>'
-      +`<button class="day-chip ds-all${all?' active':''}" data-d="전체" title="모든 날짜">${all?'✓ ':''}전체</button>`
+    // data-d="전체" 는 클릭 핸들러의 비교 키 — 절대 번역하지 않음(표시 라벨만 번역)
+    box.innerHTML=`<span class="ds-lbl">${tx('tlDays')} <small>${tx('tlMulti')}</small></span>`
+      +`<button class="day-chip ds-all${all?' active':''}" data-d="전체" title="${tx('tlAllDates')}">${all?'✓ ':''}${tx('dcAll')}</button>`
       + dates.map(d=>chip(d, all || state.days.has(d))).join('');   // 전체면 전부 하이라이트
   } else {
-    box.innerHTML='<span class="ds-lbl">날짜 <small>하루씩</small></span>'
+    box.innerHTML=`<span class="ds-lbl">${tx('dateOne')} <small>${tx('dayOne')}</small></span>`
       + dates.map(d=>chip(d, d===(state.focus||state.from))).join('');
   }
 }
@@ -788,18 +1162,18 @@ function tlTypeClass(rt){
 }
 function renderTimeline(){
   const box=$('#timeline'); if(!box) return;
-  if(!state.from){ box.innerHTML='<div class="empty-hint">날짜를 불러오세요</div>'; return; }
+  if(!state.from){ box.innerHTML=`<div class="empty-hint">${tx('tlLoadDate')}</div>`; return; }
   const dates=(state.days && state.days.size) ? [...state.days].sort() : dateRangeList(state.from,state.to);
   const WD=['일','월','화','수','목','금','토'];
   const rooms=[...state.inventory].filter(r=>r.active && roomMatch(r))
     .sort((a,b)=>(a.facility||'').localeCompare(b.facility||'')||(a.sort_order||0)-(b.sort_order||0));
   let html='<div class="tl-legend">'
-    +'<span><span class="sw" style="background:#ecddb5"></span>디럭스</span>'
-    +'<span><span class="sw" style="background:#d6e2f2"></span>트윈</span>'
-    +'<span><span class="sw" style="background:#e6eef7"></span>컴팩트</span>'
-    +'<span><span class="sw" style="background:var(--accentSoft)"></span>기타시설</span>'
-    +'<span style="margin-left:auto;color:var(--muted)">막대에 커서 → 팀·인원·기간</span></div>';
-  html+='<table class="tl"><thead><tr><th class="tl-room">객실 ('+rooms.length+')</th>';
+    +`<span><span class="sw" style="background:#ecddb5"></span>${tx('tlLegDlx')}</span>`
+    +`<span><span class="sw" style="background:#d6e2f2"></span>${tx('tlLegTwin')}</span>`
+    +`<span><span class="sw" style="background:#e6eef7"></span>${tx('tlLegCmp')}</span>`
+    +`<span><span class="sw" style="background:var(--accentSoft)"></span>${tx('tlLegEtc')}</span>`
+    +`<span style="margin-left:auto;color:var(--muted)">${tx('tlHover')}</span></div>`;
+  html+='<table class="tl"><thead><tr><th class="tl-room">'+tx('tlRoom')+' ('+rooms.length+')</th>';
   dates.forEach(d=>{
     const wd=WD[new Date(d+'T00:00:00').getDay()];
     html+=`<th class="${(wd==='토'||wd==='일')?'tl-we':''}">${fmtMD(d)}<small>${wd}</small></th>`;
@@ -819,7 +1193,7 @@ function renderTimeline(){
       if(occ.length){
         const used=occ.reduce((s,x)=>s+(x.assigned_pax||0),0);
         const r0=occ[0];
-        const tag=teamGroupCode(r0.event_seq)||('팀'+evNo(r0.event_seq));
+        const tag=teamGroupCode(r0.event_seq)||(tx('teamPrefix')+evNo(r0.event_seq));
         const names=[...new Set(occ.map(x=>{const m=x.member_id!=null?memberById(x.member_id):null;return m?m.name_kr:'';}).filter(Boolean))].join(', ');
         html+=`<td class="tl-c occ ${tlTypeClass(inv.room_type)}${used>cap?' tl-over':''}" `
           +`title="${tag} · ${names} · ${r0.check_in}~${r0.check_out} (${used}/${cap})">`
@@ -851,7 +1225,7 @@ function teamInDayScope(g){
   return g.dep<=d && d<g.arr;                                       // 그 하루에 점유
 }
 function dayScopeLabel(){
-  if(viewMode==='timeline') return (state.days && state.days.size) ? [...state.days].sort().map(fmtMD).join('·') : '전체';
+  if(viewMode==='timeline') return (state.days && state.days.size) ? [...state.days].sort().map(fmtMD).join('·') : tx('dcAll');
   return fmtMD(state.focus||state.from);
 }
 function renderUnassigned(){
@@ -861,7 +1235,7 @@ function renderUnassigned(){
   // 미배정 인원이 남은 팀만 (+ 숙소 필터 + 선택 날짜 점유)
   const list=state.guests.filter(g=>!teamFullyAssigned(g.event_seq) && teamMatch(g) && teamInDayScope(g));
   const totalLeft=list.reduce((s,g)=>s+unassignedMembers(g.event_seq).length,0);
-  $('#unassigned-cnt').innerHTML=`${dayScopeLabel()} 기준 · ${list.length}${t('rm_cntTeam')} · ${totalLeft}${t('rm_cntPpl')}`;
+  $('#unassigned-cnt').innerHTML=`${dayScopeLabel()}${tx('basisSuffix')} · ${list.length}${t('rm_cntTeam')} · ${totalLeft}${t('rm_cntPpl')}`;
   // ── 🚪 오늘 퇴실(체크아웃) — 그날 나가는 팀 + 방번호(이 방들이 비워짐 → 같은 날 체크인 가능) ──
   const _coDay = (viewMode!=='timeline') ? (state.focus||state.from) : null;
   if(_coDay){
@@ -870,12 +1244,12 @@ function renderUnassigned(){
     if(checkouts.length){
       const sh=document.createElement('div'); sh.className='ua-sec';
       sh.style.cssText='background:#fbf4e6;color:#7a5a16;border:1px solid #e6d3a3';
-      sh.innerHTML=`🚪 ${fmtMD(_coDay)} 퇴실 <b>${checkouts.length}팀</b> — 이 방들이 비워집니다(같은 날 체크인 가능)`;
+      sh.innerHTML=tx('coLeave',fmtMD(_coDay),checkouts.length);
       box.appendChild(sh);
       checkouts.forEach(g=>{
         const rooms=[...new Set(state.rooms.filter(r=>String(r.event_seq)===String(g.event_seq)).map(r=>r.room_no).filter(Boolean))];
         const row=document.createElement('div'); row.className='checkout-row';
-        row.innerHTML=`<span class="co-gc">${teamGroupCode(g.event_seq)||evNo(g.event_seq)}</span> <b>${g.rep||''}</b> <span class="co-pax">${g.pax}명</span> <span class="co-rooms">${rooms.length?'🛏 '+rooms.join(', '):'<i style="color:var(--muted)">배정없음</i>'}</span>`;
+        row.innerHTML=`<span class="co-gc">${teamGroupCode(g.event_seq)||evNo(g.event_seq)}</span> <b>${g.rep||''}</b> <span class="co-pax">${g.pax}${tx('nameUnit')}</span> <span class="co-rooms">${rooms.length?'🛏 '+rooms.join(', '):`<i style="color:var(--muted)">${tx('noAssign')}</i>`}</span>`;
         box.appendChild(row);
       });
     }
@@ -887,28 +1261,28 @@ function renderUnassigned(){
     const card=document.createElement('div');
     card.className='team-card acc-'+g.pfx;
     card.dataset.seq=g.event_seq;
-    const gcode=teamGroupCode(g.event_seq)||'(코드미정)';
+    const gcode=teamGroupCode(g.event_seq)||tx('codeUndecided');
     const rosterHtml=roster.length? roster.map(m=>{
       const isDone=done.has(m.id);
       const checked=state.sel.has(m.id);
       return `<div class="rmember${m.is_rep?' rep':''}${isDone?' done':''}${checked?' sel':''}" data-mid="${m.id}" ${isDone?'':'draggable="true"'}>
         <input type="checkbox" class="mchk" data-mid="${m.id}" ${isDone?'disabled':''} ${checked?'checked':''}>
         <span class="rtag">${m.tag||(m.num)}</span>
-        <span class="rname">${m.name_kr||'-'}${m.is_rep?'<i class="repbadge">REP</i>':''}<i class="gbadge${isMember(m)?' mem':''}">${gradeLabel(m)}</i></span>
+        <span class="rname">${m.name_kr||'-'}${m.is_rep?`<i class="repbadge">${tx('repBadge')}</i>`:''}<i class="gbadge${isMember(m)?' mem':''}">${gradeLabel(m)}</i></span>
         <span class="ren">${m.name_en||''}</span>
-        ${isDone?`<span class="rdone" title="배정된 객실">${memberRoomLabel(m.id)} <button class="runassign" data-mid="${m.id}" title="배정 해제 → 명단으로">✕해제</button></span>`:''}
+        ${isDone?`<span class="rdone" title="${tx('assignedRoomT')}">${memberRoomLabel(m.id)} <button class="runassign" data-mid="${m.id}" title="${tx('unassignClearT')}">${tx('unassignClear')}</button></span>`:''}
       </div>`;
-    }).join('') : '<div class="rmember dim">명단 정보 없음</div>';
+    }).join('') : `<div class="rmember dim">${tx('rosterNone')}</div>`;
     const isNonMem=(g.group_code||'').startsWith('F');
     card.innerHTML=`
       <div class="tag-row">
         <span class="tag">${gcode}</span>
         <span class="mbadge ${isNonMem?'mb-non':'mb-mem'}">${isNonMem?t('rm_nonmember'):t('rm_member')}</span>
-        ${g.event_no?`<span class="evno" title="행사번호(예약순 — 빠를수록 좋은 객실 우선)">${g.event_no}</span>`:''}
-        <span class="meta"><span class="pax">${g.pax}명</span> · 잔여 ${leftN} · ${g.accom}</span>
+        ${g.event_no?`<span class="evno" title="${tx('evnoT')}">${g.event_no}</span>`:''}
+        <span class="meta"><span class="pax">${g.pax}${tx('nameUnit')}</span> · ${tx('leftN',leftN)} · ${g.accom}</span>
       </div>
-      <div class="cdates">${fmtMD(g.dep)} → ${fmtMD(g.arr)} · ${teamNights(g)}박${g.isNewCheckin?'<b class="cnew">오늘 체크인</b>':''}</div>
-      <div class="rtype">${g.sale_type} → ${ROOMTYPE_MAP[g.sale_type]||'현장지정'}</div>
+      <div class="cdates">${fmtMD(g.dep)} → ${fmtMD(g.arr)} · ${teamNights(g)}${tx('nightUnit')}${g.isNewCheckin?`<b class="cnew">${tx('todayCheckin')}</b>`:''}</div>
+      <div class="rtype">${g.sale_type} → ${ROOMTYPE_MAP[g.sale_type]||tx('onsiteFix')}</div>
       <div class="roster">${rosterHtml}</div>`;
     // 행 선택 토글 (행 어디를 눌러도 1회 토글). 체크박스/행 클릭 일원화.
     function setSel(mid,on,rowEl){
@@ -2419,8 +2793,9 @@ loadCreds();
 (function(){ const q=new URLSearchParams(location.search); const m=q.get('ym')||isoToday().slice(0,7); $('#month-pick').value=m; $('#date-pick').value=m+'-01'; $('#date-to').value=lastDayOfMonth(m); window._deepDate=q.get('date')||null; })();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
-// 언어 전환 시 현재 화면 다시 그리기(로드된 데이터가 있으면)
-window.onSaizenLangChange = function(){ try{ if(typeof render==='function' && state && state.guests) render(); }catch(e){} try{ renderSelBar(); }catch(e){} };
+// 언어 전환 시 정적 chrome + 현재 화면 다시 그리기(로드된 데이터가 있으면)
+window.onSaizenLangChange = function(){ try{ applyStaticRoom(); }catch(e){} try{ if(typeof render==='function' && state && state.guests) render(); }catch(e){} try{ renderSelBar(); }catch(e){} };
+try{ applyStaticRoom(); }catch(e){}
 
 // 고정 컨트롤 바 높이 동기화 — topbar 높이로 ctrlbar top을 맞추고, (topbar+ctrlbar) 높이를
 //   --stick2 로 내려 좌측 패널이 그 아래에 붙게. 스크롤 핸들러 없이 ResizeObserver만(랙 없음).
