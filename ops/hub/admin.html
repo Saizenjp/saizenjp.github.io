@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Yamanami 운영 관리 · 권한 관리(마스터)</title>
+<title>Yamanami 運営管理 · 権限管理(マスター)</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
@@ -80,8 +80,8 @@
   <a class="so-logo" href="../index.html" title="홈 / ホーム">
     <img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen">
   </a>
-  <span class="step">권한 관리 · 마스터</span>
-  <a class="navhome" href="../index.html" style="margin-left:14px">← 홈</a>
+  <span class="step" id="t-step">権限管理 · マスター</span>
+  <a class="navhome" href="../index.html" style="margin-left:14px" id="t-home">← ホーム</a>
   <div class="grow so-spacer"></div>
   <div class="so-controls">
     <div class="so-lang">
@@ -90,30 +90,27 @@
       <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
     </div>
   </div>
-  <span class="pill" id="conn-state">미연결</span>
+  <span class="pill" id="conn-state">未接続</span>
 </div>
 
 <div class="conn">
   <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
   <input class="inp" id="sb-key" type="password" placeholder="Publishable key (sb_publishable_…)" autocomplete="off">
-  <button class="btn sm" id="btn-connect" type="button">연결</button>
-  <span class="hint">로그인 후 마스터(admin)만 사용할 수 있습니다.</span>
+  <button class="btn sm" id="btn-connect" type="button">接続</button>
+  <span class="hint" id="t-connhint">ログイン後、マスター(admin)のみ利用できます。</span>
 </div>
 
 <div class="wrap">
   <div class="panel" id="req-panel" style="display:none">
-    <h3>가입 요청 <span class="pill" id="req-badge" style="display:none"></span></h3>
-    <div class="desc">처음 접속자가 보낸 <b>계정 발급 요청</b>입니다. 확인 후 <b>Supabase Dashboard → Authentication → Invite</b> 로 계정을 발급하고,
-      아래에서 <b>[처리완료]</b>로 표시하세요. (자가 회원가입은 OFF — 요청은 계정이 아닙니다)</div>
-    <div id="req-list"><div class="deny" style="color:var(--muted)">불러오는 중…</div></div>
+    <h3 id="t-req-h"><span data-i18n="reqTitle">登録申請</span> <span class="pill" id="req-badge" style="display:none"></span></h3>
+    <div class="desc" id="t-req-desc"></div>
+    <div id="req-list"><div class="deny" id="t-req-loading" style="color:var(--muted)">読み込み中…</div></div>
   </div>
 
   <div class="panel">
-    <h3>담당자 권한 관리</h3>
-    <div class="desc">각 계정의 <b>역할</b>(마스터·관리담당·일반)과 들어갈 수 있는 <b>카드</b>를 지정합니다.
-      마스터는 전 카드. <b>관리담당·일반은 체크한 카드만</b>(전부 주려면 모두 체크). 기본값은 <b>일반·권한 없음</b>입니다.
-      <br>※ <b>이 「권한 관리」 화면 자체</b>는 카드 체크와 무관하게 <b>마스터(admin) 전용</b>입니다 — 보안상 위임할 수 없습니다(다른 사람에게 맡기려면 그 계정을 마스터로 지정).</div>
-    <div id="users"><div class="deny" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+    <h3 id="t-users-h">担当者権限管理</h3>
+    <div class="desc" id="t-users-desc"></div>
+    <div id="users"><div class="deny" id="t-users-empty" style="color:var(--muted)">接続後に表示されます。</div></div>
   </div>
 </div>
 
@@ -125,40 +122,172 @@
 // ════════════════════════════════════════════════════════════════════════
 const $=s=>document.querySelector(s);
 let supa=null, myRole=null, rows=[];
-const AREAS=[['step1','데이터등록'],['room','방배정'],['print','인쇄'],['front','프론트데스크'],['settle','정산'],['notes','팀메모'],['pos','POS'],['kitchen','주방'],['menu','메뉴']];
-const AREA_LABEL=Object.fromEntries(AREAS);
-// 각 area(=권한 카드 묶음)가 실제로 여는 카드 목록 — 권한 부여 시 무엇이 열리는지 표시
-const AREA_CARDS={
-  step1:'데이터 등록(STEP1)',
-  room:'방배정 · 객실 재고 · 키택/체크인',
-  print:'네임택 · 航空カバー · 現地手配書 · 夕食オーダー(레스토랑 명찰)',
-  front:'프론트 데스크 통합 화면',
-  settle:'現地精算表(Merit B2B) · 현장 정산 · 정산 folio',
-  notes:'팀 운영 메모',
-  pos:'레스토랑·연회 POS · 프론트 매점 POS · 골프샵 POS',
-  kitchen:'주방 KDS · 바·프론트 화면 · F&B 재고',
-  menu:'메뉴 관리',
+
+// ── i18n (한·일 직원 공용. ja 기본) ──
+const L={
+  ja:{
+    step:'権限管理 · マスター', home:'← ホーム',
+    connHint:'ログイン後、マスター(admin)のみ利用できます。',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続 · 再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL·key必要', needLogin:'ログイン必要',
+    // 가입 요청 패널
+    reqTitle:'登録申請',
+    reqDesc:'初回アクセスの方から届いた<b>アカウント発行申請</b>です。確認後、<b>Supabase Dashboard → Authentication → Invite</b> でアカウントを発行し、'
+      +'下の<b>[処理済]</b>で記録してください。(自己登録はOFF — 申請はアカウントではありません)',
+    reqLoading:'読み込み中…', reqWaiting:'待機', reqNone:'まだ申請はありません。',
+    reqRequester:'申請者', reqEmail:'メール', reqDeptMemo:'部署・メモ', reqTime:'申請時刻', reqStatus:'状態',
+    stPending:'待機', stApproved:'処理済', stRejected:'却下',
+    btnDone:'処理済', btnReject:'却下', btnDelete:'削除',
+    confirmDelete:'この申請を削除しますか?',
+    toastDeleted:'削除しました', toastDeleteFail:'削除失敗: ', toastHandleFail:'処理失敗: ',
+    toastMarkApproved:'処理済にしました', toastMarkRejected:'却下にしました',
+    // 담당자 권한 관리 패널
+    usersTitle:'担当者権限管理',
+    usersDesc:'各アカウントの<b>役割</b>(マスター・管理担当・一般)と入れる<b>カード</b>を指定します。'
+      +'マスターは全カード。<b>管理担当・一般はチェックしたカードのみ</b>(全部許可するなら全チェック)。既定は<b>一般・権限なし</b>です。'
+      +'<br>※ <b>この「権限管理」画面そのもの</b>はカードのチェックに関係なく<b>マスター(admin)専用</b>です — セキュリティ上、委任できません(他の人に任せるにはそのアカウントをマスターに指定)。',
+    usersEmpty:'接続後に表示されます。',
+    needConnLogin:'ログインが必要です。', needConnLoginSub:'右上の[ログイン]でマスターアカウントにログインしてから再接続してください。',
+    adminOnly:'マスター(管理者)専用ページです。', currentRole:'現在の役割: ', noAccess:' · アクセス権限がありません。',
+    noAccounts:'アカウントがありません。',
+    thAccount:'アカウント(メール)', thProfile:'氏名・部署・役職', thRole:'役割', thCards:'アクセスカード', thEdit:'編集', thView:'閲覧',
+    phName:'氏名(担当者)', phTitle:'役職(例: 課長)',
+    deptNone:'(部署なし)', deptAll:'部署全体', allCardsMaster:'全カードアクセス(マスター)',
+    save:'保存', toastSaved:'保存しました', toastSaveFail:'保存失敗: ',
+    toastListFail:'一覧の読み込み失敗: ', toastConnFail:'接続失敗: ', connFailHint:' (18_access_control.sql 実行・ログイン確認)',
+    // area cards (각 area가 여는 카드 목록)
+    ac_step1:'データ登録(STEP1)',
+    ac_room:'客室割当 · 客室在庫 · キーピック/チェックイン',
+    ac_print:'ネームタグ · 航空カバー · 現地手配書 · 夕食オーダー(レストラン名札)',
+    ac_front:'フロントデスク統合画面',
+    ac_settle:'現地精算表(Merit B2B) · 現場精算 · 精算folio',
+    ac_notes:'チーム運営メモ',
+    ac_pos:'レストラン・宴会POS · フロント売店POS · ゴルフショップPOS',
+    ac_kitchen:'厨房KDS · バー・フロント画面 · F&B在庫',
+    ac_menu:'メニュー管理',
+    // area labels
+    a_step1:'データ登録', a_room:'客室割当', a_print:'印刷', a_front:'フロントデスク', a_settle:'精算', a_notes:'チームメモ', a_pos:'POS', a_kitchen:'厨房', a_menu:'メニュー',
+    // dept groups
+    dg_data:'データ登録', dg_frontroom:'フロント・客室', dg_fnb:'食飲(F&B)', dg_common:'共通',
+    // profile depts
+    pd_front:'フロント・客室', pd_fnb:'食飲', pd_golf:'ゴルフ', pd_acct:'会計',
+    // roles
+    role_admin:'マスター', role_manager:'管理担当', role_staff:'一般',
+  },
+  ko:{
+    step:'권한 관리 · 마스터', home:'← 홈',
+    connHint:'로그인 후 마스터(admin)만 사용할 수 있습니다.',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 · 재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
+    reqTitle:'가입 요청',
+    reqDesc:'처음 접속자가 보낸 <b>계정 발급 요청</b>입니다. 확인 후 <b>Supabase Dashboard → Authentication → Invite</b> 로 계정을 발급하고, '
+      +'아래에서 <b>[처리완료]</b>로 표시하세요. (자가 회원가입은 OFF — 요청은 계정이 아닙니다)',
+    reqLoading:'불러오는 중…', reqWaiting:'대기', reqNone:'아직 요청이 없습니다.',
+    reqRequester:'요청자', reqEmail:'이메일', reqDeptMemo:'부서·메모', reqTime:'요청시각', reqStatus:'상태',
+    stPending:'대기', stApproved:'처리완료', stRejected:'거절',
+    btnDone:'처리완료', btnReject:'거절', btnDelete:'삭제',
+    confirmDelete:'이 요청을 삭제할까요?',
+    toastDeleted:'삭제됨', toastDeleteFail:'삭제 실패: ', toastHandleFail:'처리 실패: ',
+    toastMarkApproved:'처리완료로 표시', toastMarkRejected:'거절로 표시',
+    usersTitle:'담당자 권한 관리',
+    usersDesc:'각 계정의 <b>역할</b>(마스터·관리담당·일반)과 들어갈 수 있는 <b>카드</b>를 지정합니다. '
+      +'마스터는 전 카드. <b>관리담당·일반은 체크한 카드만</b>(전부 주려면 모두 체크). 기본값은 <b>일반·권한 없음</b>입니다.'
+      +'<br>※ <b>이 「권한 관리」 화면 자체</b>는 카드 체크와 무관하게 <b>마스터(admin) 전용</b>입니다 — 보안상 위임할 수 없습니다(다른 사람에게 맡기려면 그 계정을 마스터로 지정).',
+    usersEmpty:'연결 후 표시됩니다.',
+    needConnLogin:'로그인이 필요합니다.', needConnLoginSub:'상단 우측 [로그인]으로 마스터 계정 로그인 후 다시 연결하세요.',
+    adminOnly:'마스터(관리자) 전용 페이지입니다.', currentRole:'현재 역할: ', noAccess:' · 접근 권한이 없습니다.',
+    noAccounts:'계정이 없습니다.',
+    thAccount:'계정(이메일)', thProfile:'이름·부서·직급', thRole:'역할', thCards:'접근 카드', thEdit:'수정', thView:'보기',
+    phName:'이름(작성자)', phTitle:'직급(예: 과장)',
+    deptNone:'(부서 없음)', deptAll:'부서 전체', allCardsMaster:'전 카드 접근(마스터)',
+    save:'저장', toastSaved:'저장됨', toastSaveFail:'저장 실패: ',
+    toastListFail:'목록 로드 실패: ', toastConnFail:'연결 실패: ', connFailHint:' (18_access_control.sql 실행·로그인 확인)',
+    ac_step1:'데이터 등록(STEP1)',
+    ac_room:'방배정 · 객실 재고 · 키택/체크인',
+    ac_print:'네임택 · 航空カバー · 現地手配書 · 夕食オーダー(레스토랑 명찰)',
+    ac_front:'프론트 데스크 통합 화면',
+    ac_settle:'現地精算表(Merit B2B) · 현장 정산 · 정산 folio',
+    ac_notes:'팀 운영 메모',
+    ac_pos:'레스토랑·연회 POS · 프론트 매점 POS · 골프샵 POS',
+    ac_kitchen:'주방 KDS · 바·프론트 화면 · F&B 재고',
+    ac_menu:'메뉴 관리',
+    a_step1:'데이터등록', a_room:'방배정', a_print:'인쇄', a_front:'프론트데스크', a_settle:'정산', a_notes:'팀메모', a_pos:'POS', a_kitchen:'주방', a_menu:'메뉴',
+    dg_data:'데이터 등록', dg_frontroom:'프론트·객실', dg_fnb:'식음(F&B)', dg_common:'공통',
+    pd_front:'프론트·객실', pd_fnb:'식음', pd_golf:'골프', pd_acct:'회계',
+    role_admin:'마스터', role_manager:'관리담당', role_staff:'일반',
+  },
+  en:{
+    step:'Access control · Master', home:'← Home',
+    connHint:'After login, only the Master (admin) can use this page.',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Connect · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
+    reqTitle:'Access request',
+    reqDesc:'<b>Account requests</b> sent by first-time visitors. After review, issue the account via <b>Supabase Dashboard → Authentication → Invite</b>, '
+      +'then mark it <b>[Done]</b> below. (Self sign-up is OFF — a request is not an account.)',
+    reqLoading:'Loading…', reqWaiting:'Pending', reqNone:'No requests yet.',
+    reqRequester:'Requester', reqEmail:'Email', reqDeptMemo:'Dept · memo', reqTime:'Requested at', reqStatus:'Status',
+    stPending:'Pending', stApproved:'Done', stRejected:'Rejected',
+    btnDone:'Done', btnReject:'Reject', btnDelete:'Delete',
+    confirmDelete:'Delete this request?',
+    toastDeleted:'Deleted', toastDeleteFail:'Delete failed: ', toastHandleFail:'Update failed: ',
+    toastMarkApproved:'Marked as done', toastMarkRejected:'Marked as rejected',
+    usersTitle:'Staff access control',
+    usersDesc:'Set each account’s <b>role</b> (Master · Manager · Staff) and the <b>cards</b> they can open. '
+      +'Master gets all cards. <b>Manager · Staff get only the checked cards</b> (check all to grant everything). Default is <b>Staff · no access</b>.'
+      +'<br>※ <b>This “Access control” screen itself</b> is <b>Master (admin) only</b> regardless of card checks — it cannot be delegated for security (to hand it off, set that account as Master).',
+    usersEmpty:'Shown after connecting.',
+    needConnLogin:'Login required.', needConnLoginSub:'Log in with a Master account via [Login] at the top-right, then reconnect.',
+    adminOnly:'Master (admin) only page.', currentRole:'Current role: ', noAccess:' · No access permission.',
+    noAccounts:'No accounts.',
+    thAccount:'Account (email)', thProfile:'Name · dept · title', thRole:'Role', thCards:'Access cards', thEdit:'Edit', thView:'View',
+    phName:'Name (staff)', phTitle:'Title (e.g. Manager)',
+    deptNone:'(no dept)', deptAll:'Whole dept', allCardsMaster:'All-card access (Master)',
+    save:'Save', toastSaved:'Saved', toastSaveFail:'Save failed: ',
+    toastListFail:'List load failed: ', toastConnFail:'Connection failed: ', connFailHint:' (run 18_access_control.sql · check login)',
+    ac_step1:'Data registration (STEP1)',
+    ac_room:'Room assignment · Room inventory · Key pick/check-in',
+    ac_print:'Nametag · Air cover · Local arrangement sheet · Dinner order (restaurant nameplate)',
+    ac_front:'Front desk integrated screen',
+    ac_settle:'Local settlement (Merit B2B) · On-site settlement · Settlement folio',
+    ac_notes:'Team ops memo',
+    ac_pos:'Restaurant/banquet POS · Front shop POS · Golf shop POS',
+    ac_kitchen:'Kitchen KDS · Bar/front screen · F&B inventory',
+    ac_menu:'Menu management',
+    a_step1:'Data registration', a_room:'Room assignment', a_print:'Print', a_front:'Front desk', a_settle:'Settlement', a_notes:'Team memo', a_pos:'POS', a_kitchen:'Kitchen', a_menu:'Menu',
+    dg_data:'Data registration', dg_frontroom:'Front · Rooms', dg_fnb:'F&B', dg_common:'Common',
+    pd_front:'Front · Rooms', pd_fnb:'F&B', pd_golf:'Golf', pd_acct:'Accounting',
+    role_admin:'Master', role_manager:'Manager', role_staff:'Staff',
+  }
 };
-// 부서(부서 단위로 카드를 묶어 한 번에 체크) — area는 그대로 카드별 저장
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+
+// ── 데이터 키(저장값)는 불변 — 라벨만 언어별로 파생 ──
+const AREA_KEYS=['step1','room','print','front','settle','notes','pos','kitchen','menu'];
+function AREA_LABEL_(k){ return tx('a_'+k)||k; }
+function AREA_CARDS_(k){ return tx('ac_'+k)||''; }
+// 부서(부서 단위로 카드를 묶어 한 번에 체크) — area 키는 그대로 카드별 저장
 const DEPTS=[
-  ['데이터 등록',['step1']],
-  ['프론트·객실',['front','room','print','settle']],
-  ['식음(F&B)',['pos','kitchen','menu']],
-  ['공통',['notes']],
+  ['dg_data',['step1']],
+  ['dg_frontroom',['front','room','print','settle']],
+  ['dg_fnb',['pos','kitchen','menu']],
+  ['dg_common',['notes']],
 ];
-const ROLE_LABEL={admin:'마스터',manager:'관리담당',staff:'일반'};
-// 프로필 부서 선택지(전 페이지 공유 부서 목록)
-const PROF_DEPTS=(window.__so_DEPTS||[['front','프론트·객실'],['fnb','식음'],['golf','골프'],['acct','회계']]);
-function deptOpts(cur){ return '<option value="">(부서 없음)</option>'+PROF_DEPTS.map(([k,l])=>`<option value="${k}" ${k===cur?'selected':''}>${l}</option>`).join(''); }
+const ROLE_KEYS=['admin','manager','staff'];
+function ROLE_LABEL_(r){ return tx('role_'+r)||r; }
+// 프로필 부서 선택지(전 페이지 공유 부서 목록) — 키는 front/fnb/golf/acct 고정
+const PROF_DEPTS=(window.__so_DEPTS||[['front','pd_front'],['fnb','pd_fnb'],['golf','pd_golf'],['acct','pd_acct']]);
+function profDeptLabel(k){ const tk='pd_'+k; const v=tx(tk); return v!==tk?v:k; }
+function deptOpts(cur){ return `<option value="">${esc(tx('deptNone'))}</option>`+PROF_DEPTS.map(([k])=>`<option value="${k}" ${k===cur?'selected':''}>${esc(profDeptLabel(k))}</option>`).join(''); }
 
 // 부서별로 묶은 카드 권한 HTML — 영역별 [수정]/[보기] 2단계
 //   수정 체크=쓰기(읽기 포함) · 보기만 체크=읽기 전용 · 둘 다 해제=접근 없음
 function buildAreas(checked, readChecked){
   const set=new Set(checked||[]); const rset=new Set(readChecked||[]);
-  return DEPTS.map(([dlab,keys])=>{
-    const kids=keys.map(k=>`<label class="arealine"><span class="aname">${AREA_LABEL[k]||k}${AREA_CARDS[k]?`<span class="areahint">${AREA_CARDS[k]}</span>`:''}</span><span class="lvl"><span class="lw"><input type="checkbox" data-area="${k}" ${set.has(k)?'checked':''}> 수정</span><span class="lr"><input type="checkbox" data-read-area="${k}" ${rset.has(k)&&!set.has(k)?'checked':''}> 보기</span></span></label>`).join('');
+  return DEPTS.map(([dlabKey,keys])=>{
+    const kids=keys.map(k=>{const ac=AREA_CARDS_(k);return `<label class="arealine"><span class="aname">${esc(AREA_LABEL_(k))}${ac?`<span class="areahint">${esc(ac)}</span>`:''}</span><span class="lvl"><span class="lw"><input type="checkbox" data-area="${k}" ${set.has(k)?'checked':''}> ${esc(tx('thEdit'))}</span><span class="lr"><input type="checkbox" data-read-area="${k}" ${rset.has(k)&&!set.has(k)?'checked':''}> ${esc(tx('thView'))}</span></span></label>`;}).join('');
     return `<div class="deptgrp">
-        <label class="depthead"><input type="checkbox" data-deptall="${keys.join(',')}"> <b>${dlab}</b> <span class="dnote">부서 전체</span></label>
+        <label class="depthead"><input type="checkbox" data-deptall="${keys.join(',')}"> <b>${esc(tx(dlabKey))}</b> <span class="dnote">${esc(tx('deptAll'))}</span></label>
         <div class="deptkids">${kids}</div>
       </div>`;
   }).join('');
@@ -191,55 +320,55 @@ function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'
 
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn('URL·key 필요','err');return;}
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  const btn=$('#btn-connect');btn.textContent=tx('connecting');btn.disabled=true;
   try{
     supa=window.supabase.createClient(url,key);
     const {data:sess}=await supa.auth.getSession();
-    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
-      $('#users').innerHTML='<div class="deny">로그인이 필요합니다.<small>상단 우측 [로그인]으로 마스터 계정 로그인 후 다시 연결하세요.</small></div>'; return; }
+    if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
+      $('#users').innerHTML='<div class="deny">'+esc(tx('needConnLogin'))+'<small>'+esc(tx('needConnLoginSub'))+'</small></div>'; return; }
     const {data:acc,error}=await supa.rpc('me_access');
     if(error) throw error;
     myRole=(acc&&acc[0]&&acc[0].role)||'staff';
-    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.classList.add('connected');btn.disabled=false;
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.classList.add('connected');btn.disabled=false;
     if(myRole!=='admin'){
-      $('#users').innerHTML='<div class="deny">마스터(관리자) 전용 페이지입니다.<small>현재 역할: '+esc(ROLE_LABEL[myRole]||myRole)+' · 접근 권한이 없습니다.</small></div>';
+      $('#users').innerHTML='<div class="deny">'+esc(tx('adminOnly'))+'<small>'+esc(tx('currentRole'))+esc(ROLE_LABEL_(myRole))+esc(tx('noAccess'))+'</small></div>';
       return;
     }
     await load();
     await loadRequests();
   }catch(e){
-    setConn('연결 실패','err'); btn.textContent='연결 · 재시도';btn.disabled=false; supa=null;
-    toast('연결 실패: '+e.message+' (18_access_control.sql 실행·로그인 확인)','err');
+    setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null;
+    toast(tx('toastConnFail')+e.message+tx('connFailHint'),'err');
   }
 }
 
 async function load(){
   const {data,error}=await supa.rpc('admin_list_users');
-  if(error){toast('목록 로드 실패: '+error.message,'err');return;}
+  if(error){toast(tx('toastListFail')+error.message,'err');return;}
   rows=data||[];
   render();
 }
 
 function render(){
   const box=$('#users');
-  if(!rows.length){ box.innerHTML='<div class="deny" style="color:var(--muted)">계정이 없습니다.</div>'; return; }
-  let html='<table class="users"><thead><tr><th>계정(이메일)</th><th>이름·부서·직급</th><th>역할</th><th>접근 카드(<span style="color:#d8e7c2">수정</span> / <span style="color:#f0cd7a">보기</span>)</th><th></th></tr></thead><tbody>';
+  if(!rows.length){ box.innerHTML='<div class="deny" style="color:var(--muted)">'+esc(tx('noAccounts'))+'</div>'; return; }
+  let html='<table class="users"><thead><tr><th>'+esc(tx('thAccount'))+'</th><th>'+esc(tx('thProfile'))+'</th><th>'+esc(tx('thRole'))+'</th><th>'+esc(tx('thCards'))+'(<span style="color:#d8e7c2">'+esc(tx('thEdit'))+'</span> / <span style="color:#f0cd7a">'+esc(tx('thView'))+'</span>)</th><th></th></tr></thead><tbody>';
   rows.forEach(u=>{
-    const roleOpts=['admin','manager','staff'].map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_LABEL[r]}</option>`).join('');
+    const roleOpts=ROLE_KEYS.map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${esc(ROLE_LABEL_(r))}</option>`).join('');
     const showAreas=u.role!=='admin';
     const areaBoxes=buildAreas(u.areas||[], u.read_areas||[]);
     html+=`<tr data-id="${u.user_id}">
       <td><div class="uemail">${esc(u.email||'')}</div></td>
       <td><div class="prof">
-        <input class="inp psm" data-f="name" value="${esc(u.name||'')}" placeholder="이름(작성자)">
+        <input class="inp psm" data-f="name" value="${esc(u.name||'')}" placeholder="${esc(tx('phName'))}">
         <select class="inp psm" data-f="dept">${deptOpts(u.dept)}</select>
-        <input class="inp psm" data-f="title" value="${esc(u.title||'')}" placeholder="직급(예: 과장)">
+        <input class="inp psm" data-f="title" value="${esc(u.title||'')}" placeholder="${esc(tx('phTitle'))}">
       </div></td>
       <td><select class="inp rolesel" data-f="role">${roleOpts}</select></td>
-      <td><div class="areas${showAreas?'':' dim'}" data-areas>${showAreas?areaBoxes:'<span class="allnote">전 카드 접근(마스터)</span>'}</div></td>
-      <td><button class="btn sm" data-save>저장</button></td>
+      <td><div class="areas${showAreas?'':' dim'}" data-areas>${showAreas?areaBoxes:`<span class="allnote">${esc(tx('allCardsMaster'))}</span>`}</div></td>
+      <td><button class="btn sm" data-save>${esc(tx('save'))}</button></td>
     </tr>`;
   });
   html+='</tbody></table>';
@@ -255,7 +384,7 @@ function render(){
           ar.innerHTML=buildAreas([],[]); wireDeptAll(ar);
         }
       }else{
-        ar.classList.add('dim'); ar.innerHTML='<span class="allnote">전 카드 접근(마스터)</span>';
+        ar.classList.add('dim'); ar.innerHTML=`<span class="allnote">${esc(tx('allCardsMaster'))}</span>`;
       }
     });
   });
@@ -277,8 +406,8 @@ async function saveRow(tr){
     ? [...tr.querySelectorAll('[data-read-area]')].filter(c=>c.checked).map(c=>c.dataset.readArea).filter(a=>!wset.has(a))
     : [];
   const {error}=await supa.rpc('admin_set_access',{p_user:id,p_role:role,p_areas:areas,p_read_areas:read_areas,p_name:name,p_dept:dept,p_title:title});
-  if(error){toast('저장 실패: '+error.message,'err');return;}
-  toast('저장됨','ok');
+  if(error){toast(tx('toastSaveFail')+error.message,'err');return;}
+  toast(tx('toastSaved'),'ok');
   await load();
 }
 
@@ -293,11 +422,11 @@ async function loadRequests(){
 function renderRequests(list){
   const pend=list.filter(r=>r.status==='pending');
   const badge=$('#req-badge');
-  if(badge){ badge.style.display=''; badge.className='pill'+(pend.length?' err':' ok'); badge.textContent='대기 '+pend.length; }
+  if(badge){ badge.style.display=''; badge.className='pill'+(pend.length?' err':' ok'); badge.textContent=tx('reqWaiting')+' '+pend.length; }
   const box=$('#req-list');
-  if(!list.length){ box.innerHTML='<div class="deny" style="color:var(--muted)">아직 요청이 없습니다.</div>'; return; }
-  const STAT={pending:['대기','rb-staff'],approved:['처리완료','rb-manager'],rejected:['거절','rb-admin']};
-  let html='<table class="users"><thead><tr><th>요청자</th><th>이메일</th><th>부서·메모</th><th>요청시각</th><th>상태</th><th></th></tr></thead><tbody>';
+  if(!list.length){ box.innerHTML='<div class="deny" style="color:var(--muted)">'+esc(tx('reqNone'))+'</div>'; return; }
+  const STAT={pending:[tx('stPending'),'rb-staff'],approved:[tx('stApproved'),'rb-manager'],rejected:[tx('stRejected'),'rb-admin']};
+  let html='<table class="users"><thead><tr><th>'+esc(tx('reqRequester'))+'</th><th>'+esc(tx('reqEmail'))+'</th><th>'+esc(tx('reqDeptMemo'))+'</th><th>'+esc(tx('reqTime'))+'</th><th>'+esc(tx('reqStatus'))+'</th><th></th></tr></thead><tbody>';
   list.forEach(r=>{
     const st=STAT[r.status]||[r.status,'rb-staff'];
     html+=`<tr data-id="${esc(r.id)}">
@@ -305,11 +434,11 @@ function renderRequests(list){
       <td><span class="uemail">${esc(r.email||'')}</span></td>
       <td style="font-size:12px;color:var(--text2)">${esc(r.dept||'')}${r.message?('<div style="color:var(--muted);margin-top:2px">'+esc(r.message)+'</div>'):''}</td>
       <td style="font-size:11.5px;color:var(--muted);white-space:nowrap">${fmtDt(r.created_at)}</td>
-      <td><span class="rbadge ${st[1]}">${st[0]}</span>${r.handled_by?('<div style="font-size:10.5px;color:var(--muted);margin-top:3px">'+esc(r.handled_by)+'</div>'):''}</td>
+      <td><span class="rbadge ${st[1]}">${esc(st[0])}</span>${r.handled_by?('<div style="font-size:10.5px;color:var(--muted);margin-top:3px">'+esc(r.handled_by)+'</div>'):''}</td>
       <td style="white-space:nowrap">
-        ${r.status!=='approved'?'<button class="btn sm" data-act="approved">처리완료</button> ':''}
-        ${r.status!=='rejected'?'<button class="btn sm" data-act="rejected" style="background:transparent;color:var(--err);border-color:#e3bdb4">거절</button> ':''}
-        <button class="btn sm" data-act="delete" style="background:transparent;color:var(--muted);border-color:var(--border2)">삭제</button>
+        ${r.status!=='approved'?`<button class="btn sm" data-act="approved">${esc(tx('btnDone'))}</button> `:''}
+        ${r.status!=='rejected'?`<button class="btn sm" data-act="rejected" style="background:transparent;color:var(--err);border-color:#e3bdb4">${esc(tx('btnReject'))}</button> `:''}
+        <button class="btn sm" data-act="delete" style="background:transparent;color:var(--muted);border-color:var(--border2)">${esc(tx('btnDelete'))}</button>
       </td>
     </tr>`;
   });
@@ -319,15 +448,15 @@ function renderRequests(list){
 }
 async function handleReq(id,act){
   if(act==='delete'){
-    if(!confirm('이 요청을 삭제할까요?')) return;
+    if(!confirm(tx('confirmDelete'))) return;
     const {error}=await supa.from('access_requests').delete().eq('id',id);
-    if(error){toast('삭제 실패: '+error.message,'err');return;}
-    toast('삭제됨','ok');
+    if(error){toast(tx('toastDeleteFail')+error.message,'err');return;}
+    toast(tx('toastDeleted'),'ok');
   }else{
     const who=(window.__so_getUser&&__so_getUser())||'';
     const {error}=await supa.from('access_requests').update({status:act,handled_by:who||null,handled_at:new Date().toISOString()}).eq('id',id);
-    if(error){toast('처리 실패: '+error.message,'err');return;}
-    toast(act==='approved'?'처리완료로 표시':'거절로 표시','ok');
+    if(error){toast(tx('toastHandleFail')+error.message,'err');return;}
+    toast(act==='approved'?tx('toastMarkApproved'):tx('toastMarkRejected'),'ok');
   }
   await loadRequests();
 }
