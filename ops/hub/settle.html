@@ -340,6 +340,11 @@ function applyStatic(){
   const ba=$('#btn-day-all'); if(ba){ ba.textContent=tx('monthAll'); ba.title=tx('monthAllTitle'); }
   const sq=$('#settle-q'); if(sq) sq.placeholder=tx('searchPh');
 }
+// 연결 상태 표시(핀·버튼)를 현재 언어로 갱신 — 연결 후 언어 토글 시 사용. data-i18n 버튼은 saizen-ops가 처리.
+function refreshConn(){
+  const btn=$('#btn-connect'); if(!btn) return;
+  if(supa){ setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn'); }
+}
 
 // ── 연결 (room.html 패턴 재사용) ──
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
@@ -854,10 +859,10 @@ async function previewStatement(f){
   table.pay td{border:1px solid #b9c4d6;padding:5px 14px;text-align:right}
   @media print{ body{background:#fff} .toolbar{display:none} .page{margin:0;box-shadow:none;width:auto;min-height:auto;padding:0} }
 </style></head><body>
-  <div class="toolbar"><h1>御請求書 미리보기</h1><div class="meta">${esc(tag)} · ${esc(f.rep_name||'')} · ${today}</div><div style="flex:1"></div>
-    <button onclick="window.print()">🖨 인쇄</button>
-    <button class="x" onclick="try{window.opener&&window.opener.__settleDownloadStmt&&window.opener.__settleDownloadStmt()}catch(e){alert('원래 창에서 다운로드해 주세요')}">⬇ 엑셀</button>
-    <button class="c" onclick="window.close()">✕ 닫기</button></div>
+  <div class="toolbar"><h1>${tx('stmtPreviewTitle')}</h1><div class="meta">${esc(tag)} · ${esc(f.rep_name||'')} · ${today}</div><div style="flex:1"></div>
+    <button onclick="window.print()">🖨 ${tx('printBtn')}</button>
+    <button class="x" onclick="try{window.opener&&window.opener.__settleDownloadStmt&&window.opener.__settleDownloadStmt()}catch(e){alert('${tx('downloadFromOpener')}')}">⬇ ${tx('excelBtn')}</button>
+    <button class="c" onclick="window.close()">✕ ${tx('closeXBtn')}</button></div>
   <div class="page">
     <div class="h1">御　請　求　書</div>
     <div class="sub">アソ ヤマナミリゾート ／ 株式会社SaiZen</div>
@@ -877,7 +882,7 @@ async function previewStatement(f){
     </div>
     ${paysHTML}
   </div></body></html>`;
-  const w=window.open('','_blank'); if(!w){ toast('팝업 차단 — 허용 필요','err'); return; }
+  const w=window.open('','_blank'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
   w.document.write(html); w.document.close();
 }
 window.__settleDownloadStmt=function(){ if(window.__curStmtF) exportStatement(window.__curStmtF); };
@@ -971,14 +976,14 @@ async function exportStatement(f){
   }
 
   await downloadWB(wb,`Statement_${state.ym}_event${evNo(f.event_seq)}.xlsx`);
-  toast('御請求書 다운로드','ok');
+  toast(tx('stmtDownloaded'),'ok');
 }
 
 // ── 매출요약 HTML 미리보기 팝업(→ 인쇄). [엑셀]은 팝업 안 버튼으로 유지. ──
 async function previewSalesSummary(){
-  if(!supa){toast('먼저 연결하세요','warn');return;}
+  if(!supa){toast(tx('needConnect'),'warn');return;}
   const {data,error}=await supa.from('v_settlement_by_category').select('*').eq('session_ym',state.ym);
-  if(error){toast('매출요약 로드 실패: '+error.message,'err');return;}
+  if(error){toast(tx('salesLoadFail')+': '+error.message,'err');return;}
   const rows=data||[]; const Y=n=>'¥'+Number(n||0).toLocaleString('ja-JP');
   const catJ={'라운딩':'ラウンド','식음':'飲食','숙박':'宿泊','골프샵':'ゴルフショップ','기타':'その他'};
   let tC=0,tS=0,tT=0,tG=0, body='';
@@ -1001,24 +1006,24 @@ async function previewSalesSummary(){
   tr.tot td{background:#eaf0f7;font-weight:800;border-top:2px solid #1a2540}
   @media print{body{background:#fff}.toolbar{display:none}.page{margin:0;box-shadow:none;width:auto;padding:0}}
 </style></head><body>
-  <div class="toolbar"><h1>売上要約 미리보기</h1><div class="meta">${state.ym}</div><div style="flex:1"></div>
-    <button onclick="window.print()">🖨 인쇄</button>
-    <button class="x" onclick="try{window.opener&&window.opener.__settleDownloadSales&&window.opener.__settleDownloadSales()}catch(e){alert('원래 창에서 다운로드해 주세요')}">⬇ 엑셀</button>
-    <button class="c" onclick="window.close()">✕ 닫기</button></div>
+  <div class="toolbar"><h1>${tx('salesPreviewTitle')}</h1><div class="meta">${state.ym}</div><div style="flex:1"></div>
+    <button onclick="window.print()">🖨 ${tx('printBtn')}</button>
+    <button class="x" onclick="try{window.opener&&window.opener.__settleDownloadSales&&window.opener.__settleDownloadSales()}catch(e){alert('${tx('downloadFromOpener')}')}">⬇ ${tx('excelBtn')}</button>
+    <button class="c" onclick="window.close()">✕ ${tx('closeXBtn')}</button></div>
   <div class="page"><div class="h1">売上要約　${state.ym}</div>
     <table><thead><tr><th class="l">区分</th><th>件数</th><th>小計(税抜)</th><th>消費税</th><th>合計</th></tr></thead>
-    <tbody>${body||'<tr><td colspan="5" style="text-align:center;color:#888;padding:18px">데이터 없음</td></tr>'}
+    <tbody>${body||'<tr><td colspan="5" style="text-align:center;color:#888;padding:18px">'+tx('noData')+'</td></tr>'}
     <tr class="tot"><td class="l">合計</td><td class="r">${tC}</td><td class="r">${Y(tS)}</td><td class="r">${Y(tT)}</td><td class="r">${Y(tG)}</td></tr>
     </tbody></table></div></body></html>`;
-  const w=window.open('','_blank'); if(!w){ toast('팝업 차단 — 허용 필요','err'); return; }
+  const w=window.open('','_blank'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
   w.document.write(html); w.document.close();
 }
 window.__settleDownloadSales=function(){ exportSalesSummary(); };
 
 async function exportSalesSummary(){
-  if(!supa){toast('먼저 연결하세요','warn');return;}
+  if(!supa){toast(tx('needConnect'),'warn');return;}
   const {data,error}=await supa.from('v_settlement_by_category').select('*').eq('session_ym',state.ym);
-  if(error){toast('매출요약 로드 실패: '+error.message,'err');return;}
+  if(error){toast(tx('salesLoadFail')+': '+error.message,'err');return;}
   const rows=data||[];
   const wb=new ExcelJS.Workbook(); wb.creator='SaiZen';
   const ws=wb.addWorksheet('売上要約');
@@ -1046,7 +1051,7 @@ async function exportSalesSummary(){
   tot.getCell(1).value='合計'; tot.getCell(2).value=tC; tot.getCell(3).value=tS; tot.getCell(4).value=tT; tot.getCell(5).value=tG;
   for(let i=1;i<=5;i++){ const c=tot.getCell(i); c.font={bold:true,color:{argb:XLM.navy}}; c.fill=xFill(XLM.soft); c.border=xBorderAll(); c.alignment={horizontal:i?'right':'left'}; if(i>=3) c.numFmt='¥#,##0'; }
   await downloadWB(wb,`SalesSummary_${state.ym}.xlsx`);
-  toast('매출요약 다운로드','ok');
+  toast(tx('salesDownloaded'),'ok');
 }
 
 async function downloadWB(wb,filename){
@@ -1065,13 +1070,20 @@ $('#settle-day').addEventListener('change',e=>{ state.day=e.target.value||''; re
 $('#btn-day-all').addEventListener('click',()=>{ state.day=''; $('#settle-day').value=''; renderFolioList(); });
 $('#settle-q').addEventListener('input',e=>{ state.q=e.target.value||''; renderFolioList(); });
 $('#session-ym').value=nowYM();
+applyStatic();   // 정적 라벨(날짜·월전체·검색)을 현재 언어로
 // 프론트 데스크 등에서 ?ym=&seq= 딥링크 → 그 달 로드 후 그 팀 정산 자동 선택(없으면 월 전체에 노출, 자동생성 안 함)
 (function(){ const q=new URLSearchParams(location.search); if(q.get('ym')) $('#session-ym').value=q.get('ym'); window._deepSeq=q.get('seq')?Number(q.get('seq')):null; })();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
-// 언어 전환 시 상세 라벨 다시 그리기
-window.onSaizenLangChange=function(){ try{ renderDetail(); }catch(e){} };
+// 언어 전환 시 정적 라벨 + 동적 목록/상세 다시 그리기
+window.onSaizenLangChange=function(){
+  try{ applyStatic(); }catch(e){}
+  try{ renderAccomChips(); }catch(e){}
+  try{ renderFolioList(); }catch(e){}
+  try{ renderDetail(); }catch(e){}
+  try{ refreshConn(); }catch(e){}
+};
 </script>
 </body>
 </html>
