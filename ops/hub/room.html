@@ -1327,14 +1327,14 @@ function renderUnassigned(){
   if(focusDay){
     const arrivals=list.filter(g=>g.dep===focusDay);
     const carry   =list.filter(g=>g.dep!==focusDay);
-    box.appendChild(secHead(`📍 ${fmtMD(focusDay)} 현지도착 <b>${arrivals.length}팀 · ${arrivals.reduce((s,g)=>s+leftOf(g),0)}명</b>`));
+    box.appendChild(secHead(tx('arrSec',fmtMD(focusDay),arrivals.length,arrivals.reduce((s,g)=>s+leftOf(g),0))));
     if(arrivals.length) arrivals.forEach(g=>box.appendChild(mkCard(g)));
-    else { const e=document.createElement('div'); e.className='empty-hint'; e.style.cssText='padding:14px 10px;font-size:13px;color:var(--ok)'; e.textContent='이 날 현지도착 미배정 없음 ✓'; box.appendChild(e); }
+    else { const e=document.createElement('div'); e.className='empty-hint'; e.style.cssText='padding:14px 10px;font-size:13px;color:var(--ok)'; e.textContent=tx('noArrUnassigned'); box.appendChild(e); }
     // 이전 도착·미배정 잔류는 카드로 안 띄움(헷갈림 방지) — 한 줄 안내 + 날짜 칩 「미N」으로 유도
     if(carry.length){
       const note=document.createElement('div');
       note.className='ua-sec'; note.style.cssText='background:transparent;border:1px dashed var(--border2);color:var(--text2);margin-top:8px';
-      note.innerHTML=`⏳ 이전 도착·미배정 <b>${carry.length}팀 · ${carry.reduce((s,g)=>s+leftOf(g),0)}명</b> — 위 날짜 칩의 <b style="color:var(--err)">미N</b> 에서 그 날로 가 처리하세요`;
+      note.innerHTML=tx('carrySec',carry.length,carry.reduce((s,g)=>s+leftOf(g),0));
       box.appendChild(note);
     }
   } else {
@@ -1356,9 +1356,9 @@ function closeAssignPicker(){ const m=$('#assign-picker'); if(m) m.remove(); }
 // ── 빈 방 클릭 → "이 방·이 날짜에 배정 가능한 미배정 인원" 팝업 ──
 function openAssignPicker(inv){
   closeAssignPicker();
-  if(!inv.active){ toast(inv.room_no+': 비활성(잠금) 객실 — 🔓로 풀어주세요','warn'); return; }
+  if(!inv.active){ toast(inv.room_no+': '+tx('inactiveRoomT'),'warn'); return; }
   const _cloF=roomClosedFocus(inv.id);
-  if(_cloF){ toast(`${inv.room_no}: 폐쇄 기간(${_cloF.from_date}~${_cloF.to_date}${_cloF.reason?' · '+_cloF.reason:''})`,'warn'); return; }
+  if(_cloF){ toast(tx('closedRange',inv.room_no,_cloF.from_date,_cloF.to_date,_cloF.reason),'warn'); return; }
   const cap=inv.max_capacity||inv.capacity;
   const usedNow=roomUsedPax(inv);
   const remain=Math.max(0, cap-usedNow);
@@ -1372,23 +1372,23 @@ function openAssignPicker(inv){
   const gbadge=(m)=>`<i class="gbadge${isMember(m)?' mem':''}">${gradeLabel(m)}</i>`;
   const body = teams.length ? teams.map(g=>{
     const fit=roomFitsTeam(inv,g);
-    const gcode=teamGroupCode(g.event_seq)||'(코드미정)';
+    const gcode=teamGroupCode(g.event_seq)||tx('codeUndecided');
     const mem=unassignedMembers(g.event_seq);
     const rows=mem.map(m=>`<label style="display:flex;align-items:center;gap:7px;padding:5px 9px;cursor:pointer;border-top:1px solid var(--border)">
         <input type="checkbox" class="ap-chk" data-mid="${m.id}" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer">
         <span style="font-family:var(--mono);font-size:11px;color:var(--text2);min-width:30px">${m.tag||m.num||''}</span>
-        <span style="font-size:13px;font-weight:600">${m.name_kr||'-'}${m.is_rep?' <i style="font-size:8px;font-weight:800;color:var(--accent2)">REP</i>':''}${gbadge(m)}</span>
+        <span style="font-size:13px;font-weight:600">${m.name_kr||'-'}${m.is_rep?` <i style="font-size:8px;font-weight:800;color:var(--accent2)">${tx('repBadge')}</i>`:''}${gbadge(m)}</span>
         <span style="margin-left:auto;font-size:11px;color:var(--muted)">${m.name_en||''}</span>
       </label>`).join('');
     return `<div style="border:1px solid ${fit?'var(--accent)':'var(--border)'};border-radius:9px;margin-bottom:8px;overflow:hidden;${fit?'box-shadow:0 0 0 1px var(--accent) inset':''}">
       <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2)">
         <span style="font-family:var(--mono);font-weight:800;color:var(--accent)">${gcode}</span>
-        ${fit?'<span style="font-size:9.5px;font-weight:800;color:#fff;background:var(--accent);border-radius:99px;padding:1px 8px">이 숙소</span>':''}
-        <span style="margin-left:auto;font-size:11.5px;color:var(--text2)">${fmtMD(g.dep)}→${fmtMD(g.arr)} · ${g.accom} · 잔여 ${mem.length}</span>
+        ${fit?`<span style="font-size:9.5px;font-weight:800;color:#fff;background:var(--accent);border-radius:99px;padding:1px 8px">${tx('thisLodging')}</span>`:''}
+        <span style="margin-left:auto;font-size:11.5px;color:var(--text2)">${fmtMD(g.dep)}→${fmtMD(g.arr)} · ${g.accom} · ${tx('remainN',mem.length)}</span>
       </div>
       ${rows}
     </div>`;
-  }).join('') : '<div style="padding:28px;text-align:center;color:var(--muted)">이 날짜에 배정 가능한 미배정 인원이 없습니다.</div>';
+  }).join('') : `<div style="padding:28px;text-align:center;color:var(--muted)">${tx('pickerNoCandidates')}</div>`;
 
   const bg=document.createElement('div'); bg.className='modal-bg'; bg.id='assign-picker';
   bg.innerHTML=`<div class="modal" style="max-width:580px">
