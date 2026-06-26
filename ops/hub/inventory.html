@@ -94,7 +94,7 @@
   .toast.ok{ border-left-color:#3f7d4e; background:#e7efe1; color:#234d2f }
   .toast.warn{ border-left-color:#b8860b; background:#fbf3e2; color:#7a5a16 }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.76">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.77">
 </head>
 <body data-so-area="room kitchen">
 <script>(function(){var d=new URLSearchParams(location.search).get('dept');document.body.setAttribute('data-so-area', d==='room'?'room':'kitchen');})();</script>
@@ -102,7 +102,7 @@
   <a class="so-logo" href="../index.html" title="홈 / ホーム">
     <img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen">
   </a>
-  <span class="step">재고 · 내부 관리 / 在庫管理</span>
+  <span class="step" id="t-step">在庫・内部管理</span>
   <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
   <div class="grow so-spacer"></div>
   <div class="so-controls">
@@ -113,51 +113,27 @@
     </div>
     <button class="so-furi" id="so-furi" onclick="__so_toggleFuri()"></button>
   </div>
-  <span class="pill" id="conn-state">미연결</span>
+  <span class="pill" id="conn-state">未接続</span>
 </div>
 
 <div class="conn">
   <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
   <input class="inp" id="sb-key" type="password" placeholder="publishable key" autocomplete="off">
-  <button class="btn sm" id="btn-connect" type="button">연결</button>
-  <span class="hint">연결 정보는 이 브라우저에만 저장됩니다.</span>
+  <button class="btn sm" id="btn-connect" type="button">接続</button>
+  <span class="hint" id="t-connhint"></span>
 </div>
 
 <div class="inv-wrap">
   <details class="page-help">
-    <summary>📖 이 페이지 설명 · 계산 방식</summary>
-    <div class="ph-body">
-      현장에서 쓰는 물건의 <b>수량을 등록하고, 들어오고 나가는 것을 기록</b>하는 화면입니다. F&amp;B(식자재·음료)와 객실(비품·린넨 등)을 같은 방식으로 관리합니다.
-
-      <h4>부서(F&amp;B / 객실) 토글</h4>
-      위쪽 <b>🍽 F&amp;B / 🛏 객실</b> 버튼으로 부서를 바꿉니다. 두 부서는 같은 시스템이지만 품목 목록은 서로 분리되어 보입니다. (랜딩에서 들어온 부서가 기본 선택됩니다.)
-
-      <h4>현재고 · 적정재고 · 부족 알림</h4>
-      <ul>
-        <li><b>현재고</b> = 지금 보유한 수량. 입고·사용·실사로만 바뀝니다.</li>
-        <li><b>적정재고</b> = "이 밑으로 떨어지면 채워야 한다"는 기준선.</li>
-        <li><b>부족 판정</b>: <code>현재고 ≤ 적정재고</code> 이면 빨강 <b>「부족」</b> 뱃지 (적정재고를 0으로 두면 알림 안 함). 현재고 0이면 회색 <b>「없음」</b>.</li>
-        <li>상단 요약의 <b>⚠ 부족 N</b> = 그 부서에서 부족한 품목 수.</li>
-      </ul>
-
-      <h4>입고 / 사용 / 실사 — 계산 방식</h4>
-      <ul>
-        <li><b>＋입고</b>: 입력한 수량만큼 현재고를 <b>더합니다</b> (<code>현재고 + N</code>).</li>
-        <li><b>－사용</b>: 입력한 수량만큼 <b>뺍니다</b> (<code>현재고 − N</code>).</li>
-        <li><b>실사</b>: 실제로 세어본 수량을 입력하면 그 값으로 <b>맞춥니다</b>. 차이(=실제−기존)는 <code>실사조정</code>으로 자동 기록됩니다.</li>
-        <li>모든 변동은 <b>최근 입출고 이력</b>에 <b>누가·언제·±수량·사유</b>로 남습니다(되돌아보기·감사용).</li>
-      </ul>
-
-      <h4>권한 · 데이터</h4>
-      읽기는 로그인한 전원, <b>쓰기(추가·입출고·수정)는 주방(F&amp;B)·객실 영역 담당자</b>만 가능합니다. 저장 위치 — 품목=<code>inv_items</code>(현재고), 변동 기록=<code>inv_txns</code>(원장). ※POS 판매 시 자동 차감 연결은 다음 단계 예정(현재는 수동 입출고).
-    </div>
+    <summary id="t-helpsum">📖 このページの説明・計算方法</summary>
+    <div class="ph-body" id="t-helpbody"></div>
   </details>
   <div class="inv-bar">
     <div class="dept-toggle">
       <button id="dept-fnb" type="button">🍽 F&amp;B</button>
-      <button id="dept-room" type="button">🛏 객실</button>
+      <button id="dept-room" type="button">🛏 客室</button>
     </div>
-    <button class="btn ghost sm" id="btn-reload" type="button" title="다시 불러오기">↻ 새로고침</button>
+    <button class="btn ghost sm" id="btn-reload" type="button">↻ 更新</button>
     <span class="inv-sum" id="inv-sum"></span>
   </div>
 
@@ -165,37 +141,159 @@
 
   <div class="addrow">
     <select class="inp" id="add-cat" style="width:120px"></select>
-    <input class="inp" id="add-name" placeholder="품목명 (예: 생수 500ml)" style="flex:1;min-width:180px">
-    <input class="inp" id="add-unit" placeholder="단위" value="개" style="width:70px">
-    <input class="inp" id="add-loc" placeholder="보관 위치" style="width:120px">
-    <input class="inp" id="add-par" type="number" min="0" placeholder="적정재고" style="width:90px" title="이 수량 미만이면 부족 알림">
-    <input class="inp" id="add-qty" type="number" min="0" placeholder="현재고" style="width:80px" title="현재 보유 수량">
-    <button class="btn sm" id="btn-add" type="button">＋ 품목 추가</button>
+    <input class="inp" id="add-name" style="flex:1;min-width:180px">
+    <input class="inp" id="add-unit" style="width:70px">
+    <input class="inp" id="add-loc" style="width:120px">
+    <input class="inp" id="add-par" type="number" min="0" style="width:90px">
+    <input class="inp" id="add-qty" type="number" min="0" style="width:80px">
+    <button class="btn sm" id="btn-add" type="button">＋ 品目追加</button>
   </div>
 
-  <div id="inv-list"><div class="inv-empty">상단에서 Supabase 연결 후, 부서(F&amp;B / 객실)를 선택하면 품목이 표시됩니다.</div></div>
+  <div id="inv-list"><div class="inv-empty" id="t-empty"></div></div>
 
   <div class="txn-panel" id="txn-panel" style="display:none">
-    <h3>🕘 최근 입출고 이력 <span style="font-weight:600;color:var(--muted);font-size:12px">(최근 30건)</span></h3>
+    <h3 id="t-txnh"></h3>
     <div id="txn-list"></div>
   </div>
 </div>
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=14.76"></script>
+<script src="../assets/saizen-ops.js?v=14.77"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
+
+// ── i18n (한·일 직원 공용. ja 기본) ──
+const L={
+  ja:{ step:'在庫・内部管理', connHint:'接続情報はこのブラウザにのみ保存されます。',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', connectedToast:'Supabaseに接続しました',
+    deptRoom:'🛏 客室', reload:'↻ 更新',
+    phName:'品目名 (例: ミネラルウォーター500ml)', phUnit:'単位', phLoc:'保管場所', phPar:'適正在庫', phQty:'現在庫',
+    tipPar:'この数量未満で不足アラート', tipQty:'現在の保有数量', btnAdd:'＋ 品目追加', unitDefault:'個',
+    emptyConnect:'上部でSupabaseに接続し、部署(F&B / 客室)を選ぶと品目が表示されます。',
+    emptyNoItems:'品目がありません。上から追加してください。',
+    thItem:'品目', thLoc:'場所', thUnit:'単位', thQty:'現在庫', thPar:'適正', thStat:'状態', thAct:'入出庫 / 管理',
+    stOk:'十分', stLow:'不足', stZero:'なし', all:'全体',
+    sumTotal:'品目', sumLow:'⚠ 不足', sumLow0:'不足 0',
+    actIn:'＋入庫', actOut:'－使用', actStk:'棚卸', actEdit:'修正', actDelTitle:'削除',
+    txnH:'🕘 最近の入出庫履歴', txnHsub:'(直近30件)', delItemGone:'(削除された品目)',
+    needConn:'先に接続してください', needName:'品目名を入力してください', added:'追加しました', addFail:'追加失敗: ',
+    saved:'修正しました', saveFail:'修正失敗: ', deleted:'削除しました', delFail:'削除失敗: ',
+    noChange:'変動なし', actFail:'処理失敗: ', loadFail:'読み込み失敗: ',
+    promptIn:n=>`[入庫] ${n.name}\n現在 ${n.cur}${n.unit} → 何個入庫しますか?`,
+    promptOut:n=>`[使用/出庫] ${n.name}\n現在 ${n.cur}${n.unit} → 何個使用しましたか?`,
+    promptStk:n=>`[棚卸調整] ${n.name}\n実際の保有数量を入力するとその値に合わせます。(現在 ${n.cur})`,
+    pEditName:'品目名', pEditPar:'適正在庫(不足基準)', pEditLoc:'保管場所',
+    confirmDel:n=>`「${n}」 品目を削除しますか? (入出庫履歴も一緒に削除されます)`,
+    helpSum:'📖 このページの説明・計算方法',
+    helpBody:'現場で使う物の<b>数量を登録し、入庫・出庫を記録</b>する画面です。F&amp;B(食材・飲料)と客室(備品・リネン等)を同じ方式で管理します。'
+      +'<h4>部署(F&amp;B / 客室)トグル</h4>上の<b>🍽 F&amp;B / 🛏 客室</b>ボタンで部署を切り替えます。両部署は同じ仕組みですが品目リストは別々に表示されます。(ランディングから入った部署が初期選択。)'
+      +'<h4>現在庫・適正在庫・不足アラート</h4><ul><li><b>現在庫</b> = 今の保有数量。入庫・使用・棚卸でのみ変わります。</li><li><b>適正在庫</b> = 「これを下回ったら補充する」基準線。</li><li><b>不足判定</b>: <code>現在庫 ≤ 適正在庫</code> なら赤の<b>「不足」</b>バッジ(適正在庫を0にするとアラートなし)。現在庫0なら灰色の<b>「なし」</b>。</li><li>上部要約の<b>⚠ 不足 N</b> = その部署で不足している品目数。</li></ul>'
+      +'<h4>入庫 / 使用 / 棚卸 — 計算方法</h4><ul><li><b>＋入庫</b>: 入力した数量だけ現在庫を<b>足します</b> (<code>現在庫 + N</code>)。</li><li><b>－使用</b>: 入力した数量だけ<b>引きます</b> (<code>現在庫 − N</code>)。</li><li><b>棚卸</b>: 実際に数えた数量を入力するとその値に<b>合わせます</b>。差分(=実際−既存)は<code>棚卸調整</code>として自動記録。</li><li>すべての変動は<b>最近の入出庫履歴</b>に<b>誰が・いつ・±数量・理由</b>で残ります(振り返り・監査用)。</li></ul>'
+      +'<h4>権限・データ</h4>閲覧はログイン全員、<b>書き込み(追加・入出庫・修正)は厨房(F&amp;B)・客室エリア担当者</b>のみ可能です。保存先 — 品目=<code>inv_items</code>(現在庫)、変動記録=<code>inv_txns</code>(元帳)。※POS販売時の自動差引は次段階予定(現在は手動入出庫)。' },
+  ko:{ step:'재고 · 내부 관리', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패 · 재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', connectedToast:'Supabase 연결됨',
+    deptRoom:'🛏 객실', reload:'↻ 새로고침',
+    phName:'품목명 (예: 생수 500ml)', phUnit:'단위', phLoc:'보관 위치', phPar:'적정재고', phQty:'현재고',
+    tipPar:'이 수량 미만이면 부족 알림', tipQty:'현재 보유 수량', btnAdd:'＋ 품목 추가', unitDefault:'개',
+    emptyConnect:'상단에서 Supabase 연결 후, 부서(F&B / 객실)를 선택하면 품목이 표시됩니다.',
+    emptyNoItems:'품목이 없습니다. 위에서 추가하세요.',
+    thItem:'품목', thLoc:'위치', thUnit:'단위', thQty:'현재고', thPar:'적정', thStat:'상태', thAct:'입출고 / 관리',
+    stOk:'충분', stLow:'부족', stZero:'없음', all:'전체',
+    sumTotal:'품목', sumLow:'⚠ 부족', sumLow0:'부족 0',
+    actIn:'＋입고', actOut:'－사용', actStk:'실사', actEdit:'수정', actDelTitle:'삭제',
+    txnH:'🕘 최근 입출고 이력', txnHsub:'(최근 30건)', delItemGone:'(삭제된 품목)',
+    needConn:'먼저 연결하세요', needName:'품목명을 입력하세요', added:'추가됨', addFail:'추가 실패: ',
+    saved:'수정됨', saveFail:'수정 실패: ', deleted:'삭제됨', delFail:'삭제 실패: ',
+    noChange:'변동 없음', actFail:'처리 실패: ', loadFail:'로드 실패: ',
+    promptIn:n=>`[입고] ${n.name}\n현재 ${n.cur}${n.unit} → 몇 개 입고할까요?`,
+    promptOut:n=>`[사용/출고] ${n.name}\n현재 ${n.cur}${n.unit} → 몇 개 사용했나요?`,
+    promptStk:n=>`[실사 보정] ${n.name}\n실제 보유 수량을 입력하면 그 값으로 맞춥니다. (현재 ${n.cur})`,
+    pEditName:'품목명', pEditPar:'적정재고(부족 기준)', pEditLoc:'보관 위치',
+    confirmDel:n=>`'${n}' 품목을 삭제할까요? (입출고 이력도 함께 삭제됩니다)`,
+    helpSum:'📖 이 페이지 설명 · 계산 방식',
+    helpBody:'현장에서 쓰는 물건의 <b>수량을 등록하고, 들어오고 나가는 것을 기록</b>하는 화면입니다. F&amp;B(식자재·음료)와 객실(비품·린넨 등)을 같은 방식으로 관리합니다.'
+      +'<h4>부서(F&amp;B / 객실) 토글</h4>위쪽 <b>🍽 F&amp;B / 🛏 객실</b> 버튼으로 부서를 바꿉니다. 두 부서는 같은 시스템이지만 품목 목록은 서로 분리되어 보입니다. (랜딩에서 들어온 부서가 기본 선택됩니다.)'
+      +'<h4>현재고 · 적정재고 · 부족 알림</h4><ul><li><b>현재고</b> = 지금 보유한 수량. 입고·사용·실사로만 바뀝니다.</li><li><b>적정재고</b> = "이 밑으로 떨어지면 채워야 한다"는 기준선.</li><li><b>부족 판정</b>: <code>현재고 ≤ 적정재고</code> 이면 빨강 <b>「부족」</b> 뱃지 (적정재고를 0으로 두면 알림 안 함). 현재고 0이면 회색 <b>「없음」</b>.</li><li>상단 요약의 <b>⚠ 부족 N</b> = 그 부서에서 부족한 품목 수.</li></ul>'
+      +'<h4>입고 / 사용 / 실사 — 계산 방식</h4><ul><li><b>＋입고</b>: 입력한 수량만큼 현재고를 <b>더합니다</b> (<code>현재고 + N</code>).</li><li><b>－사용</b>: 입력한 수량만큼 <b>뺍니다</b> (<code>현재고 − N</code>).</li><li><b>실사</b>: 실제로 세어본 수량을 입력하면 그 값으로 <b>맞춥니다</b>. 차이(=실제−기존)는 <code>실사조정</code>으로 자동 기록됩니다.</li><li>모든 변동은 <b>최근 입출고 이력</b>에 <b>누가·언제·±수량·사유</b>로 남습니다(되돌아보기·감사용).</li></ul>'
+      +'<h4>권한 · 데이터</h4>읽기는 로그인한 전원, <b>쓰기(추가·입출고·수정)는 주방(F&amp;B)·객실 영역 담당자</b>만 가능합니다. 저장 위치 — 품목=<code>inv_items</code>(현재고), 변동 기록=<code>inv_txns</code>(원장). ※POS 판매 시 자동 차감 연결은 다음 단계 예정(현재는 수동 입출고).' },
+  en:{ step:'Inventory · Internal', connHint:'Connection info is stored only in this browser.',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', connectedToast:'Connected to Supabase',
+    deptRoom:'🛏 Rooms', reload:'↻ Reload',
+    phName:'Item name (e.g. Water 500ml)', phUnit:'Unit', phLoc:'Location', phPar:'Par level', phQty:'On hand',
+    tipPar:'Alert when below this qty', tipQty:'Current quantity on hand', btnAdd:'＋ Add item', unitDefault:'pcs',
+    emptyConnect:'Connect to Supabase above, then pick a department (F&B / Rooms) to see items.',
+    emptyNoItems:'No items. Add one above.',
+    thItem:'Item', thLoc:'Location', thUnit:'Unit', thQty:'On hand', thPar:'Par', thStat:'Status', thAct:'In/Out / Manage',
+    stOk:'OK', stLow:'Low', stZero:'None', all:'All',
+    sumTotal:'items', sumLow:'⚠ Low', sumLow0:'Low 0',
+    actIn:'＋In', actOut:'－Use', actStk:'Count', actEdit:'Edit', actDelTitle:'Delete',
+    txnH:'🕘 Recent stock movements', txnHsub:'(last 30)', delItemGone:'(deleted item)',
+    needConn:'Connect first', needName:'Enter an item name', added:'Added', addFail:'Add failed: ',
+    saved:'Saved', saveFail:'Save failed: ', deleted:'Deleted', delFail:'Delete failed: ',
+    noChange:'No change', actFail:'Failed: ', loadFail:'Load failed: ',
+    promptIn:n=>`[Stock in] ${n.name}\nNow ${n.cur}${n.unit} → how many to add?`,
+    promptOut:n=>`[Use/Out] ${n.name}\nNow ${n.cur}${n.unit} → how many used?`,
+    promptStk:n=>`[Stocktake] ${n.name}\nEnter the actual quantity to set it. (now ${n.cur})`,
+    pEditName:'Item name', pEditPar:'Par level (low threshold)', pEditLoc:'Location',
+    confirmDel:n=>`Delete item "${n}"? (its movement history is removed too)`,
+    helpSum:'📖 About this page · how it works',
+    helpBody:'Register the <b>quantity of items used on site and record stock in/out</b>. F&amp;B (ingredients/drinks) and Rooms (amenities/linen) are managed the same way.'
+      +'<h4>Department (F&amp;B / Rooms) toggle</h4>Switch with the <b>🍽 F&amp;B / 🛏 Rooms</b> buttons. Same system, separate item lists. (The department you entered from is selected first.)'
+      +'<h4>On hand · Par · Low alert</h4><ul><li><b>On hand</b> = current quantity. Changes only via in/use/stocktake.</li><li><b>Par level</b> = the line below which you should restock.</li><li><b>Low</b>: if <code>on hand ≤ par</code>, red <b>“Low”</b> badge (set par to 0 for no alert). On hand 0 → grey <b>“None”</b>.</li><li><b>⚠ Low N</b> in the summary = items short in that department.</li></ul>'
+      +'<h4>In / Use / Stocktake — how it computes</h4><ul><li><b>＋In</b>: adds the entered qty (<code>on hand + N</code>).</li><li><b>－Use</b>: subtracts it (<code>on hand − N</code>).</li><li><b>Stocktake</b>: enter the counted qty to set it; the difference is logged as <code>stocktake adj.</code></li><li>Every change is logged in <b>recent movements</b> with who/when/±qty/reason.</li></ul>'
+      +'<h4>Permissions · data</h4>Anyone logged in can read; <b>writing (add/move/edit) is for Kitchen (F&amp;B)/Rooms area staff</b>. Stored in <code>inv_items</code> (on hand) and <code>inv_txns</code> (ledger). *Auto-deduction on POS sales is planned next (manual for now).' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+
+// 카테고리·사유는 DB 저장값(한국어 키) — 저장은 유지, 표시만 번역
+const CATL={
+  '식자재':{ja:'食材',en:'Ingredients'}, '음료':{ja:'飲料',en:'Beverages'}, '주류':{ja:'酒類',en:'Alcohol'},
+  '주방소모품':{ja:'厨房消耗品',en:'Kitchen supplies'}, '기타':{ja:'その他',en:'Other'},
+  '객실비품':{ja:'客室備品',en:'Room amenities'}, '린넨':{ja:'リネン',en:'Linen'}, '어메니티':{ja:'アメニティ',en:'Amenities'},
+  '청소용품':{ja:'清掃用品',en:'Cleaning'}, '미니바':{ja:'ミニバー',en:'Minibar'}
+};
+function catLabel(c){ const m=CATL[c]; if(!m) return c; const lg=lang(); return lg==='ja'?m.ja:(lg==='en'?m.en:c); }
+const REASONL={ '입고':{ja:'入庫',en:'Stock in'}, '사용':{ja:'使用',en:'Use'}, '실사조정':{ja:'棚卸調整',en:'Stocktake adj.'} };
+function reasonLabel(r){ const m=REASONL[r]; if(!m) return r; const lg=lang(); return lg==='ja'?m.ja:(lg==='en'?m.en:r); }
+
 const DEPTS={
   fnb:{ label:'F&B', cats:['식자재','음료','주류','주방소모품','기타'] },
   room:{ label:'객실', cats:['객실비품','린넨','어메니티','청소용품','미니바','기타'] }
 };
-const state={ dept:'fnb', catFilter:'__all', items:[], txns:[] };
+const state={ dept:'fnb', catFilter:'__all', items:[], txns:[], conn:'none' };
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function curUser(){ return (window.__so_getUser?(__so_getUser()||''):'')||localStorage.getItem('saizen_ops_user')||''; }
 function setConn(t,c){ const e=$('#conn-state'); if(e){ e.textContent=t; e.className='pill'+(c?' '+c:''); } }
+function refreshConn(){
+  const b=$('#btn-connect'); if(!b) return;
+  if(state.conn==='ok'){ setConn(tx('connOk'),'ok'); b.textContent=tx('connectedBtn'); b.classList.add('connected'); }
+  else if(state.conn==='fail'){ setConn(tx('connFail'),'err'); b.textContent=tx('connFailBtn'); b.classList.remove('connected'); }
+  else if(state.conn==='connecting'){ b.textContent=tx('connecting'); b.classList.remove('connected'); }
+  else { setConn(tx('notConn'),''); b.textContent=tx('connect'); b.classList.remove('connected'); }
+}
+function applyStatic(){
+  $('#t-step').textContent=tx('step');
+  $('#t-connhint').textContent=tx('connHint');
+  $('#dept-room').textContent=tx('deptRoom');
+  $('#btn-reload').textContent=tx('reload');
+  $('#add-name').placeholder=tx('phName');
+  $('#add-unit').placeholder=tx('phUnit');
+  $('#add-loc').placeholder=tx('phLoc');
+  $('#add-par').placeholder=tx('phPar'); $('#add-par').title=tx('tipPar');
+  $('#add-qty').placeholder=tx('phQty'); $('#add-qty').title=tx('tipQty');
+  $('#btn-add').textContent=tx('btnAdd');
+  const emp=$('#t-empty'); if(emp) emp.textContent=tx('emptyConnect');
+  $('#t-helpsum').textContent=tx('helpSum');
+  $('#t-helpbody').innerHTML=tx('helpBody');
+  refreshConn();
+}
 function toast(msg,cls){ const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.textContent=msg;
   $('#toast').appendChild(t); setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); },2400); }
 function num(v){ const n=Number(v); return isFinite(n)?n:0; }
@@ -205,19 +303,18 @@ function fmtQ(n){ const x=num(n); return Number.isInteger(x)?String(x):x.toFixed
 function loadCreds(){ $('#sb-url').value=localStorage.getItem('saizen_sb_url')||''; $('#sb-key').value=localStorage.getItem('saizen_sb_key')||''; }
 async function connect(){
   const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
-  if(!url||!key){ setConn('URL·key 필요','err'); return; }
+  if(!url||!key){ state.conn='fail'; setConn(tx('needUrlKey'),'err'); return; }
   localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect'); btn.disabled=true; btn.textContent='연결 중…'; btn.classList.remove('connected');
+  const btn=$('#btn-connect'); btn.disabled=true; state.conn='connecting'; refreshConn();
   try{
     supa=window.supabase.createClient(url,key);
     const { error }=await supa.from('inv_items').select('id',{count:'exact',head:true});
     if(error) throw error;
-    setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
-    btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
+    state.conn='ok'; refreshConn(); toast(tx('connectedToast'),'ok'); btn.disabled=false;
     await load();
   }catch(e){
-    setConn('연결 실패','err'); toast('연결 실패: '+e.message+' (SQL 36 실행·키 확인)','err');
-    btn.textContent='연결 실패 · 재시도'; btn.classList.remove('connected'); btn.disabled=false; supa=null;
+    state.conn='fail'; refreshConn(); toast(tx('connFail')+': '+e.message+' (SQL 36 / key)','err');
+    btn.disabled=false; supa=null;
   }
 }
 
@@ -235,18 +332,18 @@ async function load(){
       state.txns=txns||[];
     }
     render();
-  }catch(e){ toast('로드 실패: '+e.message,'err'); }
+  }catch(e){ toast(tx('loadFail')+e.message,'err'); }
 }
 
 /* ── 렌더 ── */
 function setDeptBtns(){ $('#dept-fnb').classList.toggle('on',state.dept==='fnb'); $('#dept-room').classList.toggle('on',state.dept==='room'); }
-function renderAddCats(){ $('#add-cat').innerHTML=DEPTS[state.dept].cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join(''); }
+function renderAddCats(){ $('#add-cat').innerHTML=DEPTS[state.dept].cats.map(c=>`<option value="${esc(c)}">${esc(catLabel(c))}</option>`).join(''); }
 function renderCatChips(){
   const cats=DEPTS[state.dept].cats.filter(c=>state.items.some(i=>(i.category||'기타')===c));
   const extra=[...new Set(state.items.map(i=>i.category||'기타').filter(c=>!DEPTS[state.dept].cats.includes(c)))];
   const all=[...cats,...extra];
   const chip=(k,l)=>`<div class="catchip${state.catFilter===k?' on':''}" data-cat="${esc(k)}">${esc(l)}</div>`;
-  $('#catchips').innerHTML=chip('__all','전체')+all.map(c=>chip(c,c)).join('');
+  $('#catchips').innerHTML=chip('__all',tx('all'))+all.map(c=>chip(c,catLabel(c))).join('');
   $('#catchips').querySelectorAll('[data-cat]').forEach(c=>c.addEventListener('click',()=>{ state.catFilter=c.dataset.cat; render(); }));
 }
 function isLow(i){ return num(i.par_level)>0 && num(i.current_qty)<=num(i.par_level); }
@@ -254,16 +351,16 @@ function render(){
   setDeptBtns(); renderAddCats(); renderCatChips();
   const rows=state.items.filter(i=>state.catFilter==='__all'||(i.category||'기타')===state.catFilter);
   const lowN=state.items.filter(isLow).length;
-  $('#inv-sum').innerHTML=`전체 ${state.items.length}품목`+(lowN?` · <span class="low">⚠ 부족 ${lowN}</span>`:' · 부족 0');
+  $('#inv-sum').innerHTML=`${tx('all')} ${state.items.length}${tx('sumTotal')}`+(lowN?` · <span class="low">${tx('sumLow')} ${lowN}</span>`:` · ${tx('sumLow0')}`);
   const box=$('#inv-list');
-  if(!rows.length){ box.innerHTML='<div class="inv-empty">품목이 없습니다. 위에서 추가하세요.</div>'; renderTxns(); return; }
-  let html='<table class="inv-table"><thead><tr><th>품목</th><th>위치</th><th>단위</th><th style="text-align:right">현재고</th><th style="text-align:right">적정</th><th>상태</th><th>입출고 / 관리</th></tr></thead><tbody>';
+  if(!rows.length){ box.innerHTML=`<div class="inv-empty">${tx('emptyNoItems')}</div>`; renderTxns(); return; }
+  let html=`<table class="inv-table"><thead><tr><th>${tx('thItem')}</th><th>${tx('thLoc')}</th><th>${tx('thUnit')}</th><th style="text-align:right">${tx('thQty')}</th><th style="text-align:right">${tx('thPar')}</th><th>${tx('thStat')}</th><th>${tx('thAct')}</th></tr></thead><tbody>`;
   let lastCat=null;
   rows.forEach(i=>{
     const cat=i.category||'기타';
-    if(cat!==lastCat){ lastCat=cat; html+=`<tr class="cat-h"><td colspan="7">▸ ${esc(cat)}</td></tr>`; }
+    if(cat!==lastCat){ lastCat=cat; html+=`<tr class="cat-h"><td colspan="7">▸ ${esc(catLabel(cat))}</td></tr>`; }
     const low=isLow(i), zero=num(i.current_qty)<=0;
-    const badge=zero?'<span class="st-badge st-zero">없음</span>':(low?'<span class="st-badge st-low">부족</span>':'<span class="st-badge st-ok">충분</span>');
+    const badge=zero?`<span class="st-badge st-zero">${tx('stZero')}</span>`:(low?`<span class="st-badge st-low">${tx('stLow')}</span>`:`<span class="st-badge st-ok">${tx('stOk')}</span>`);
     html+=`<tr class="${low?'low':''}" data-id="${i.id}">
       <td><b>${esc(i.name_ko)}</b>${i.name_ja?` <span style="color:var(--muted);font-size:11px">${esc(i.name_ja)}</span>`:''}</td>
       <td style="color:var(--text2)">${esc(i.location||'')}</td>
@@ -272,54 +369,54 @@ function render(){
       <td style="text-align:right;color:var(--muted)">${num(i.par_level)?fmtQ(i.par_level):'-'}</td>
       <td>${badge}</td>
       <td class="actbtns">
-        <button class="b-in"  data-act="in"  data-id="${i.id}">＋입고</button>
-        <button class="b-out" data-act="out" data-id="${i.id}">－사용</button>
-        <button class="b-stk" data-act="stk" data-id="${i.id}">실사</button>
-        <button data-act="edit" data-id="${i.id}">수정</button>
-        <button data-act="del"  data-id="${i.id}" title="삭제">✕</button>
+        <button class="b-in"  data-act="in"  data-id="${i.id}">${tx('actIn')}</button>
+        <button class="b-out" data-act="out" data-id="${i.id}">${tx('actOut')}</button>
+        <button class="b-stk" data-act="stk" data-id="${i.id}">${tx('actStk')}</button>
+        <button data-act="edit" data-id="${i.id}">${tx('actEdit')}</button>
+        <button data-act="del"  data-id="${i.id}" title="${tx('actDelTitle')}">✕</button>
       </td></tr>`;
   });
   html+='</tbody></table>';
   box.innerHTML=html;
   box.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',()=>onAct(b.dataset.act,b.dataset.id)));
   renderTxns();
-  if(window.SaizenOps) window.SaizenOps.apply();
 }
 function renderTxns(){
   const p=$('#txn-panel'), l=$('#txn-list');
+  $('#t-txnh').innerHTML=`${tx('txnH')} <span style="font-weight:600;color:var(--muted);font-size:12px">${tx('txnHsub')}</span>`;
   if(!state.txns.length){ p.style.display='none'; return; }
   const byId=Object.fromEntries(state.items.map(i=>[i.id,i]));
   p.style.display='';
   l.innerHTML=state.txns.map(t=>{
-    const it=byId[t.item_id]; const nm=it?it.name_ko:'(삭제된 품목)';
+    const it=byId[t.item_id]; const nm=it?it.name_ko:tx('delItemGone');
     const d=num(t.delta), cls=d>=0?'d-in':'d-out', sign=d>=0?'+':'';
     const when=String(t.created_at||'').slice(5,16).replace('T',' ');
     return `<div class="txn-row"><span style="color:var(--muted);width:90px">${when}</span>
       <span class="tn">${esc(nm)}</span>
       <span class="${cls}">${sign}${fmtQ(d)}</span>
-      <span style="width:80px">${esc(t.reason||'')}</span>
+      <span style="width:80px">${esc(reasonLabel(t.reason||''))}</span>
       <span style="width:110px;text-align:right;color:var(--muted)">${esc(t.created_by||'')}</span></div>`;
   }).join('');
 }
 
 /* ── 품목 추가 ── */
 async function addItem(){
-  if(!supa){ toast('먼저 연결하세요','err'); return; }
+  if(!supa){ toast(tx('needConn'),'err'); return; }
   const name=$('#add-name').value.trim();
-  if(!name){ toast('품목명을 입력하세요','err'); return; }
+  if(!name){ toast(tx('needName'),'err'); return; }
   const row={ dept:state.dept, category:$('#add-cat').value, name_ko:name,
-    unit:$('#add-unit').value.trim()||'개', location:$('#add-loc').value.trim()||null,
+    unit:$('#add-unit').value.trim()||tx('unitDefault'), location:$('#add-loc').value.trim()||null,
     par_level:num($('#add-par').value), current_qty:num($('#add-qty').value) };
   try{
     const { data, error }=await supa.from('inv_items').insert(row).select().single();
     if(error) throw error;
-    // 초기 현재고가 있으면 입고 이력 1건
+    // 초기 현재고가 있으면 입고 이력 1건 (reason=DB 저장값 '입고')
     if(num(row.current_qty)>0){
       await supa.from('inv_txns').insert({ item_id:data.id, delta:num(row.current_qty), reason:'입고', note:'초기 등록', qty_after:num(row.current_qty), created_by:curUser() });
     }
     $('#add-name').value=''; $('#add-loc').value=''; $('#add-par').value=''; $('#add-qty').value='';
-    toast('추가됨','ok'); await load();
-  }catch(e){ toast('추가 실패: '+e.message,'err'); }
+    toast(tx('added'),'ok'); await load();
+  }catch(e){ toast(tx('addFail')+e.message,'err'); }
 }
 
 /* ── 입출고 / 실사 / 수정 / 삭제 ── */
@@ -328,39 +425,43 @@ async function onAct(act,id){
   if(act==='edit') return editItem(it);
   if(act==='del') return delItem(it);
   let delta=0, reason='';
+  const arg={ name:it.name_ko, cur:fmtQ(it.current_qty), unit:it.unit||'' };
   if(act==='in'){
-    const q=num(prompt(`[입고] ${it.name_ko}\n현재 ${fmtQ(it.current_qty)}${it.unit||''} → 몇 개 입고할까요?`,''));
+    const q=num(prompt(tx('promptIn')(arg),''));
     if(q<=0) return; delta=q; reason='입고';
   } else if(act==='out'){
-    const q=num(prompt(`[사용/출고] ${it.name_ko}\n현재 ${fmtQ(it.current_qty)}${it.unit||''} → 몇 개 사용했나요?`,''));
+    const q=num(prompt(tx('promptOut')(arg),''));
     if(q<=0) return; delta=-q; reason='사용';
   } else if(act==='stk'){
-    const v=prompt(`[실사 보정] ${it.name_ko}\n실제 보유 수량을 입력하면 그 값으로 맞춥니다. (현재 ${fmtQ(it.current_qty)})`, fmtQ(it.current_qty));
+    const v=prompt(tx('promptStk')(arg), fmtQ(it.current_qty));
     if(v===null||v==='') return; const target=num(v); delta=target-num(it.current_qty); reason='실사조정';
-    if(delta===0){ toast('변동 없음'); return; }
+    if(delta===0){ toast(tx('noChange')); return; }
   }
   const after=num(it.current_qty)+delta;
   try{
     const { error:e1 }=await supa.from('inv_items').update({ current_qty:after }).eq('id',id);
     if(e1) throw e1;
     await supa.from('inv_txns').insert({ item_id:id, delta, reason, qty_after:after, created_by:curUser() });
-    toast(`${reason} ${delta>0?'+':''}${fmtQ(delta)} → ${fmtQ(after)}`,'ok'); await load();
-  }catch(e){ toast('처리 실패: '+e.message,'err'); }
+    toast(`${reasonLabel(reason)} ${delta>0?'+':''}${fmtQ(delta)} → ${fmtQ(after)}`,'ok'); await load();
+  }catch(e){ toast(tx('actFail')+e.message,'err'); }
 }
 async function editItem(it){
-  const name=prompt('품목명', it.name_ko); if(name===null) return;
-  const par=prompt('적정재고(부족 기준)', fmtQ(it.par_level)); if(par===null) return;
-  const loc=prompt('보관 위치', it.location||''); if(loc===null) return;
+  const name=prompt(tx('pEditName'), it.name_ko); if(name===null) return;
+  const par=prompt(tx('pEditPar'), fmtQ(it.par_level)); if(par===null) return;
+  const loc=prompt(tx('pEditLoc'), it.location||''); if(loc===null) return;
   try{
     const { error }=await supa.from('inv_items').update({ name_ko:name.trim()||it.name_ko, par_level:num(par), location:loc.trim()||null }).eq('id',it.id);
-    if(error) throw error; toast('수정됨','ok'); await load();
-  }catch(e){ toast('수정 실패: '+e.message,'err'); }
+    if(error) throw error; toast(tx('saved'),'ok'); await load();
+  }catch(e){ toast(tx('saveFail')+e.message,'err'); }
 }
 async function delItem(it){
-  if(!confirm(`'${it.name_ko}' 품목을 삭제할까요? (입출고 이력도 함께 삭제됩니다)`)) return;
-  try{ const { error }=await supa.from('inv_items').delete().eq('id',it.id); if(error) throw error; toast('삭제됨','ok'); await load(); }
-  catch(e){ toast('삭제 실패: '+e.message,'err'); }
+  if(!confirm(tx('confirmDel')(it.name_ko))) return;
+  try{ const { error }=await supa.from('inv_items').delete().eq('id',it.id); if(error) throw error; toast(tx('deleted'),'ok'); await load(); }
+  catch(e){ toast(tx('delFail')+e.message,'err'); }
 }
+
+// 언어 토글 시 정적 라벨 + 동적 목록 재렌더
+window.onSaizenLangChange=function(){ applyStatic(); if(supa){ render(); } else { setDeptBtns(); renderAddCats(); } };
 
 /* ── 부팅 ── */
 $('#btn-connect').addEventListener('click',connect);
@@ -371,7 +472,7 @@ $('#dept-fnb').addEventListener('click',()=>{ state.dept='fnb'; state.catFilter=
 $('#dept-room').addEventListener('click',()=>{ state.dept='room'; state.catFilter='__all'; if(supa)load(); else { setDeptBtns(); renderAddCats(); } });
 (function init(){
   const d=new URLSearchParams(location.search).get('dept'); if(d==='room') state.dept='room';
-  setDeptBtns(); renderAddCats();
+  applyStatic(); setDeptBtns(); renderAddCats();
   loadCreds();
   if($('#sb-url').value && $('#sb-key').value) connect();
 })();

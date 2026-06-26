@@ -98,12 +98,12 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.76">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.77">
 </head>
 <body data-so-area="front">
 <div class="topbar so-bar">
   <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
-  <span class="step">프론트 데스크 / フロント</span>
+  <span class="step" id="t-step">フロントデスク</span>
   <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
   <div class="grow so-spacer"></div>
   <div class="so-controls">
@@ -113,49 +113,98 @@
       <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
     </div>
   </div>
-  <span class="pill" id="conn-state">미연결</span>
+  <span class="pill" id="conn-state">未接続</span>
 </div>
 
 <div class="conn">
   <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
   <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
-  <button class="btn sm" id="btn-connect" type="button">연결</button>
-  <span class="hint">실시간 도착·출발·재실 + 팀별 방번호·잔액·메모. 읽기 중심.</span>
+  <button class="btn sm" id="btn-connect" type="button">接続</button>
+  <span class="hint" id="t-connhint"></span>
 </div>
 
 <div class="datebar">
-  <label>날짜</label>
-  <button class="btn ghost sm" id="d-prev" type="button" title="전날">◀</button>
+  <label id="t-datelbl">日付</label>
+  <button class="btn ghost sm" id="d-prev" type="button">◀</button>
   <input class="inp" id="day-pick" type="date" style="width:160px">
-  <button class="btn ghost sm" id="d-next" type="button" title="다음날">▶</button>
-  <button class="btn ghost sm" id="d-today" type="button">오늘</button>
-  <button class="btn sm" id="btn-reload" type="button" disabled>↻ 새로고침</button>
+  <button class="btn ghost sm" id="d-next" type="button">▶</button>
+  <button class="btn ghost sm" id="d-today" type="button">今日</button>
+  <button class="btn sm" id="btn-reload" type="button" disabled>↻</button>
   <span class="hint" id="day-label" style="margin-left:auto"></span>
 </div>
 
-<div class="accombar"><label>숙소</label><span id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></span><input id="team-search" class="fds" type="search" placeholder="🔍 팀·대표·동행자·방번호 검색" autocomplete="off"></div>
+<div class="accombar"><label id="t-accomlbl">宿泊施設</label><span id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></span><input id="team-search" class="fds" type="search" autocomplete="off"></div>
 
 <main>
   <div class="kpis" id="kpis"></div>
   <div class="stage">
-    <div class="col" id="lists"><div class="empty">상단에서 연결하면 오늘 현황이 표시됩니다.</div></div>
-    <div class="col"><div class="detail" id="detail"><div class="none">팀을 선택하면<br>방·잔액·메모가 여기 표시됩니다.</div></div></div>
+    <div class="col" id="lists"><div class="empty" id="t-empty"></div></div>
+    <div class="col"><div class="detail" id="detail"><div class="none" id="t-none"></div></div></div>
   </div>
 </main>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=14.76"></script>
+<script src="../assets/saizen-ops.js?v=14.77"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
-let state={ day:'', teams:[], byId:{}, selSeq:null, accomSel:new Set(['야마나미리조트','쿠주힐즈']), q:'' };
+
+// ── i18n (한·일 직원 공용. ja 기본) ──
+const L={
+  ja:{ step:'フロントデスク', connHint:'リアルタイム到着・出発・在室 ＋ チーム別の客室番号・残高・メモ。閲覧中心。',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要',
+    dateLbl:'日付', prevDay:'前日', nextDay:'翌日', today:'今日', reload:'↻ 更新',
+    accomLbl:'宿泊施設', all:'全体', searchPh:'🔍 チーム・代表・同行者・部屋番号 検索',
+    emptyConnect:'上部で接続すると本日の状況が表示されます。', detailNone:'チームを選択すると<br>客室・残高・メモがここに表示されます。',
+    kpiIn:'🛬 チェックイン', kpiOut:'🛫 チェックアウト', kpiStay:'🏨 滞在中(連泊)', kpiDinner:'🍽 本日夕食', kpiDue:'💴 未収残高',
+    secIn:'🛬 本日チェックイン', secOut:'🛫 本日チェックアウト', secStay:'🏨 滞在中(連泊)',
+    teamWord:'チーム', nameWord:'名', teamPrefix:'チーム', unassigned:'未割当', noneApplicable:'該当なし',
+    searchNone:'検索結果なし — 別の名前・タグ・部屋番号で検索してください', honor:'様',
+    roster:'👥 名簿', roomNo:'🛏 部屋番号', charge:'請求', payment:'支払', balance:'残高',
+    cntUnit:'件', memo:'📝 メモ', noMemo:'メモなし',
+    linkRoom:'🛏 客室割当', linkRoomT:'その日付の客室割当へ', linkSettle:'💴 精算', linkSettleT:'このチームの精算へ',
+    linkMemo:'📝 メモ', linkMemoT:'メモ編集', loadFail:'読み込み失敗', noMemoTxt:'メモなし' },
+  ko:{ step:'프론트 데스크', connHint:'실시간 도착·출발·재실 + 팀별 방번호·잔액·메모. 읽기 중심.',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패 · 재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요',
+    dateLbl:'날짜', prevDay:'전날', nextDay:'다음날', today:'오늘', reload:'↻ 새로고침',
+    accomLbl:'숙소', all:'전체', searchPh:'🔍 팀·대표·동행자·방번호 검색',
+    emptyConnect:'상단에서 연결하면 오늘 현황이 표시됩니다.', detailNone:'팀을 선택하면<br>방·잔액·메모가 여기 표시됩니다.',
+    kpiIn:'🛬 체크인', kpiOut:'🛫 체크아웃', kpiStay:'🏨 체류중(연박)', kpiDinner:'🍽 오늘 석식', kpiDue:'💴 미수 잔액',
+    secIn:'🛬 오늘 체크인', secOut:'🛫 오늘 체크아웃', secStay:'🏨 체류중(연박)',
+    teamWord:'팀', nameWord:'名', teamPrefix:'팀', unassigned:'미배정', noneApplicable:'해당 없음',
+    searchNone:'검색 결과 없음 — 다른 이름·태그·방번호로 검색해 보세요', honor:'様',
+    roster:'👥 명단', roomNo:'🛏 방번호', charge:'청구', payment:'결제', balance:'잔액',
+    cntUnit:'건', memo:'📝 메모', noMemo:'메모 없음',
+    linkRoom:'🛏 방배정', linkRoomT:'그 날짜 방배정으로', linkSettle:'💴 정산', linkSettleT:'이 팀 정산으로',
+    linkMemo:'📝 메모', linkMemoT:'메모 편집', loadFail:'로드 실패', noMemoTxt:'메모 없음' },
+  en:{ step:'Front Desk', connHint:'Real-time arrivals / departures / in-house + room no., balance & memo per team. Read-only.',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required',
+    dateLbl:'Date', prevDay:'Prev', nextDay:'Next', today:'Today', reload:'↻ Reload',
+    accomLbl:'Lodging', all:'All', searchPh:'🔍 Search team / rep / companion / room',
+    emptyConnect:'Connect above to see today’s status.', detailNone:'Select a team to see<br>room, balance &amp; memo here.',
+    kpiIn:'🛬 Check-in', kpiOut:'🛫 Check-out', kpiStay:'🏨 In-house (staying)', kpiDinner:'🍽 Dinner today', kpiDue:'💴 Outstanding',
+    secIn:'🛬 Check-in today', secOut:'🛫 Check-out today', secStay:'🏨 In-house (staying)',
+    teamWord:'teams', nameWord:' ppl', teamPrefix:'Team', unassigned:'Unassigned', noneApplicable:'None',
+    searchNone:'No results — try another name / tag / room', honor:'',
+    roster:'👥 Roster', roomNo:'🛏 Room', charge:'Charges', payment:'Paid', balance:'Balance',
+    cntUnit:' items', memo:'📝 Memo', noMemo:'No memo',
+    linkRoom:'🛏 Rooms', linkRoomT:'Room assignment for that date', linkSettle:'💴 Settle', linkSettleT:'Settlement for this team',
+    linkMemo:'📝 Memo', linkMemoT:'Edit memo', loadFail:'Load failed', noMemoTxt:'No memo' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+
+let state={ day:'', teams:[], byId:{}, selSeq:null, accomSel:new Set(['야마나미리조트','쿠주힐즈']), q:'', conn:'none' };
 function accomPass(ac){ return state.accomSel.size===0 || state.accomSel.has(ac); }
 function renderAccomChips(){
   const box=$('#accomchips'); if(!box) return;
   const accoms=[...new Set(state.teams.map(t=>t.accom).filter(Boolean))]
     .sort((a,b)=>{const O=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];const ai=O.indexOf(a),bi=O.indexOf(b);return (ai<0?9:ai)-(bi<0?9:bi);});
   const chip=(k,l,on)=>`<div class="chip${on?' on':''}" data-a="${esc(k)}">${esc(l)}</div>`;
-  box.innerHTML=chip('__all','전체',state.accomSel.size===0)+accoms.map(a=>chip(a,a,state.accomSel.has(a))).join('');
+  box.innerHTML=chip('__all',tx('all'),state.accomSel.size===0)+accoms.map(a=>chip(a,a,state.accomSel.has(a))).join('');
   box.querySelectorAll('[data-a]').forEach(c=>c.addEventListener('click',()=>{
     const a=c.dataset.a;
     if(a==='__all') state.accomSel.clear();
@@ -167,6 +216,25 @@ function renderAccomChips(){
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function yen(n){const v=Math.round(Number(n)||0);return '¥'+v.toLocaleString('ja-JP');}
 function setConn(t,c){const e=$('#conn-state');if(e){e.textContent=t;e.className='pill'+(c?' '+c:'');}}
+function refreshConn(){
+  const b=$('#btn-connect'); if(!b) return;
+  if(state.conn==='ok'){ setConn(tx('connOk'),'ok'); b.textContent=tx('connectedBtn'); b.classList.add('connected'); }
+  else if(state.conn==='fail'){ setConn(tx('connFail'),'err'); b.textContent=tx('connFailBtn'); b.classList.remove('connected'); }
+  else if(state.conn==='connecting'){ b.textContent=tx('connecting'); b.classList.remove('connected'); }
+  else { setConn(tx('notConn'),''); b.textContent=tx('connect'); b.classList.remove('connected'); }
+}
+function applyStatic(){
+  $('#t-step').textContent=tx('step');
+  $('#t-connhint').textContent=tx('connHint');
+  $('#t-datelbl').textContent=tx('dateLbl');
+  $('#d-prev').title=tx('prevDay'); $('#d-next').title=tx('nextDay');
+  $('#d-today').textContent=tx('today'); $('#btn-reload').textContent=tx('reload');
+  $('#t-accomlbl').textContent=tx('accomLbl');
+  $('#team-search').placeholder=tx('searchPh');
+  const emp=$('#t-empty'); if(emp) emp.textContent=tx('emptyConnect');
+  const none=$('#t-none'); if(none) none.innerHTML=tx('detailNone');
+  refreshConn();
+}
 function toast(msg,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.textContent=msg;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2400);}
 function isoToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function ymOf(d){return (d||'').slice(0,7);}
@@ -177,16 +245,16 @@ function wd(d){const n=['日','月','火','水','木','金','土'][new Date(d).g
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn('URL·key 필요','err');return;}
+  if(!url||!key){ state.conn='fail'; setConn(tx('needUrlKey'),'err'); return; }
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect');btn.disabled=true;btn.textContent='연결 중…';btn.classList.remove('connected');
+  const btn=$('#btn-connect');btn.disabled=true;state.conn='connecting';refreshConn();
   try{
     supa=window.supabase.createClient(url,key);
     const {error}=await supa.from('bookings').select('event_seq',{count:'exact',head:true});
     if(error)throw error;
-    setConn('연결됨','ok');btn.textContent='✓ 연결됨';btn.classList.add('connected');btn.disabled=false;
+    state.conn='ok';refreshConn();btn.disabled=false;
     $('#btn-reload').disabled=false; await load();
-  }catch(e){setConn('연결 실패','err');toast('연결 실패: '+e.message,'err');btn.textContent='연결 실패 · 재시도';btn.disabled=false;supa=null;}
+  }catch(e){state.conn='fail';refreshConn();toast(tx('connFail')+': '+e.message,'err');btn.disabled=false;supa=null;}
 }
 async function pagedQuery(buildFn){let out=[],pg=0;while(true){const {data,error}=await buildFn().range(pg,pg+999);if(error)return{error};out=out.concat(data||[]);if(!data||data.length<1000)break;pg+=1000;}return{data:out};}
 
@@ -215,7 +283,7 @@ async function load(){
     const fb=await pagedQuery(()=>supa.from('v_folio_balance').select('event_seq,balance,gross_total,paid_total,charge_count').eq('session_ym',ym));
     (fb.data||[]).forEach(f=>{const b=BAL[f.event_seq]=BAL[f.event_seq]||{bal:0,gross:0,paid:0,cnt:0};b.bal+=Number(f.balance||0);b.gross+=Number(f.gross_total||0);b.paid+=Number(f.paid_total||0);b.cnt+=Number(f.charge_count||0);});
     state.teams=(bs||[]).map(b=>{const g=G[b.event_seq]||{};const bal=BAL[b.event_seq]||{bal:0,gross:0,paid:0,cnt:0};const n=NOTE[b.event_seq]||{};
-      const tag=g.team_tag||g.group_code||('팀'+(b.event_no||b.event_seq));
+      const tag=g.team_tag||g.group_code||(tx('teamPrefix')+(b.event_no||b.event_seq));
       const rep=b.rep_name||'';
       const rooms=R[b.event_seq]?[...R[b.event_seq]]:[];
       const memo=[n.remarks,n.memo].filter(Boolean).join(' / ');
@@ -227,12 +295,13 @@ async function load(){
     });
     state.byId={}; state.teams.forEach(t=>state.byId[t.seq]=t);
     render();
-  }catch(e){toast('로드 실패: '+e.message,'err');}
+  }catch(e){toast(tx('loadFail')+': '+e.message,'err');}
 }
 
 function render(){
   renderAccomChips();
   const day=state.day;
+  const tw=tx('teamWord'), nw=tx('nameWord');
   const pool=state.teams.filter(t=>accomPass(t.accom));     // 숙소 필터 적용
   const arr=pool.filter(t=>t.dep===day);                    // 체크인
   const dep=pool.filter(t=>t.arr===day);                    // 체크아웃
@@ -241,11 +310,11 @@ function render(){
   const ppl=a=>a.reduce((s,t)=>s+(parseInt(t.pax,10)||0),0);
   const dueSum=pool.reduce((s,t)=>s+Math.max(0,t.bal),0);
   $('#kpis').innerHTML=
-    kpi('🛬 체크인',`${arr.length}<small>팀 ${ppl(arr)}名</small>`,'','sec-arr')+
-    kpi('🛫 체크아웃',`${dep.length}<small>팀 ${ppl(dep)}名</small>`,'','sec-dep')+
-    kpi('🏨 체류중(연박)',`${stay.length}<small>팀 ${ppl(stay)}名</small>`,'','sec-stay')+
-    kpi('🍽 오늘 석식',`${ppl(dine)}<small>名 ${dine.length}팀</small>`)+
-    kpi('💴 미수 잔액',`${yen(dueSum)}`,dueSum>0?'due':'');
+    kpi(tx('kpiIn'),`${arr.length}<small>${tw} · ${ppl(arr)}${nw}</small>`,'','sec-arr')+
+    kpi(tx('kpiOut'),`${dep.length}<small>${tw} · ${ppl(dep)}${nw}</small>`,'','sec-dep')+
+    kpi(tx('kpiStay'),`${stay.length}<small>${tw} · ${ppl(stay)}${nw}</small>`,'','sec-stay')+
+    kpi(tx('kpiDinner'),`${ppl(dine)}<small>${nw} · ${dine.length}${tw}</small>`)+
+    kpi(tx('kpiDue'),`${yen(dueSum)}`,dueSum>0?'due':'');
   $('#kpis').querySelectorAll('[data-go]').forEach(el=>el.addEventListener('click',()=>{
     const tg=document.getElementById(el.dataset.go); if(!tg) return;
     const off=((document.querySelector('.topbar')||{}).offsetHeight||56)+8;   // 상단 고정바 가림 보정 → 라인명부터 보이게
@@ -255,50 +324,54 @@ function render(){
   const q=(state.q||'').trim().toLowerCase();
   const qp=t=>!q||(t.search||'').includes(q);
   const block=(kind,title,list)=>{const f=list.filter(qp);return (q&&!f.length)?'':sect(kind,title,f);};
-  const html=block('arr','🛬 오늘 체크인',arr)+block('dep','🛫 오늘 체크아웃',dep)+block('stay','🏨 체류중(연박)',stay);
-  $('#lists').innerHTML = html || `<div class="empty">${q?'검색 결과 없음 — 다른 이름·태그·방번호로 검색해 보세요':'해당 없음'}</div>`;
+  const html=block('arr',tx('secIn'),arr)+block('dep',tx('secOut'),dep)+block('stay',tx('secStay'),stay);
+  $('#lists').innerHTML = html || `<div class="empty">${q?tx('searchNone'):tx('noneApplicable')}</div>`;
   $('#lists').querySelectorAll('[data-seq]').forEach(el=>el.addEventListener('click',()=>selectTeam(Number(el.dataset.seq))));
   if(state.selSeq && state.byId[state.selSeq]) renderDetail(state.byId[state.selSeq]);
 }
 function kpi(l,v,cls,go){return `<div class="kpi ${cls||''}"${go?` data-go="${go}" style="cursor:pointer"`:''}><div class="l">${l}</div><div class="v">${v}</div></div>`;}
 function sect(kind,title,list){
+  const nw=tx('nameWord'), tw=tx('teamWord');
   let rows = list.length? list.sort((a,b)=>(a.accom||'').localeCompare(b.accom||'')||(a.rep||'').localeCompare(b.rep||'')).map(t=>{
     const balCls=t.bal>0?'due':(t.cnt?'':'zero');
     return `<div class="trow ${t.seq===state.selSeq?'sel':''}" data-seq="${t.seq}">
       <span class="tag">${esc(t.tag)}</span>
       <span class="rep">${esc(t.rep)}</span>
-      <span class="pax">${t.pax}名</span>
-      <span class="room">${t.rooms.length?'🛏 '+t.rooms.join(','):'<span style="color:var(--muted)">미배정</span>'}</span>
+      <span class="pax">${t.pax}${nw}</span>
+      <span class="room">${t.rooms.length?'🛏 '+t.rooms.join(','):`<span style="color:var(--muted)">${tx('unassigned')}</span>`}</span>
       <span class="accom">${esc(t.accom)}</span>
       <span class="bal ${balCls}">${t.cnt?yen(t.bal):'-'}</span>
     </div>`;
-  }).join('') : '<div class="empty">해당 없음</div>';
-  return `<div class="sect" id="sec-${kind}"><div class="sh ${kind}">${title}<span class="c">${list.length}팀</span></div>${rows}</div>`;
+  }).join('') : `<div class="empty">${tx('noneApplicable')}</div>`;
+  return `<div class="sect" id="sec-${kind}"><div class="sh ${kind}">${title}<span class="c">${list.length}${tw}</span></div>${rows}</div>`;
 }
 function selectTeam(seq){state.selSeq=seq;render();}
 function renderDetail(t){
-  const balCls=t.bal>0?'due':'zero';
+  const balCls=t.bal>0?'due':'zero', nw=tx('nameWord');
   $('#detail').innerHTML=`
-    <div class="dh"><span class="tag">${esc(t.tag)}</span> ${esc(t.rep)}様</div>
-    <div class="dsub">#${esc(String(t.no))} · ${esc(t.accom)} · ${t.pax}名 · ${esc((t.dep||'').slice(5))}~${esc((t.arr||'').slice(5))}</div>
-    <div style="font-size:12.5px;color:var(--text2);margin-top:7px;line-height:1.5"><b style="color:var(--text)">👥 명단</b> ${t.members&&t.members.length?esc(t.members.join(' · ')):'<span style="color:var(--muted)">-</span>'}</div>
+    <div class="dh"><span class="tag">${esc(t.tag)}</span> ${esc(t.rep)}${tx('honor')}</div>
+    <div class="dsub">#${esc(String(t.no))} · ${esc(t.accom)} · ${t.pax}${nw} · ${esc((t.dep||'').slice(5))}~${esc((t.arr||'').slice(5))}</div>
+    <div style="font-size:12.5px;color:var(--text2);margin-top:7px;line-height:1.5"><b style="color:var(--text)">${tx('roster')}</b> ${t.members&&t.members.length?esc(t.members.join(' · ')):'<span style="color:var(--muted)">-</span>'}</div>
     <div style="margin-top:12px">
-      <div class="drow"><b>🛏 방번호</b><span>${t.rooms.length?esc(t.rooms.join(', ')):'<span style="color:var(--muted)">미배정</span>'}</span></div>
-      <div class="drow"><b>청구</b><span>${t.cnt}건 · ${yen(t.gross)}</span></div>
-      <div class="drow"><b>결제</b><span>${yen(t.paid)}</span></div>
+      <div class="drow"><b>${tx('roomNo')}</b><span>${t.rooms.length?esc(t.rooms.join(', ')):`<span style="color:var(--muted)">${tx('unassigned')}</span>`}</span></div>
+      <div class="drow"><b>${tx('charge')}</b><span>${t.cnt}${tx('cntUnit')} · ${yen(t.gross)}</span></div>
+      <div class="drow"><b>${tx('payment')}</b><span>${yen(t.paid)}</span></div>
     </div>
     <div style="margin-top:10px;text-align:center">
-      <div style="font-size:11.5px;color:var(--text2);font-weight:700">잔액</div>
+      <div style="font-size:11.5px;color:var(--text2);font-weight:700">${tx('balance')}</div>
       <div class="big ${balCls}">${yen(t.bal)}</div>
     </div>
-    <div style="font-size:11.5px;color:var(--text2);font-weight:700;margin-top:10px">📝 메모</div>
-    <div class="memo">${t.memo?esc(t.memo):'<span style="color:var(--muted)">메모 없음</span>'}</div>
+    <div style="font-size:11.5px;color:var(--text2);font-weight:700;margin-top:10px">${tx('memo')}</div>
+    <div class="memo">${t.memo?esc(t.memo):`<span style="color:var(--muted)">${tx('noMemoTxt')}</span>`}</div>
     <div class="links">
-      <a class="btn ghost sm" href="room.html?ym=${ymOf(t.dep)}&date=${state.day}" title="그 날짜 방배정으로">🛏 방배정</a>
-      <a class="btn ghost sm" href="settle.html?ym=${ymOf(t.dep)}&seq=${t.seq}" title="이 팀 정산으로">💴 정산</a>
-      <a class="btn ghost sm" href="notes.html" title="메모 편집">📝 메모</a>
+      <a class="btn ghost sm" href="room.html?ym=${ymOf(t.dep)}&date=${state.day}" title="${tx('linkRoomT')}">${tx('linkRoom')}</a>
+      <a class="btn ghost sm" href="settle.html?ym=${ymOf(t.dep)}&seq=${t.seq}" title="${tx('linkSettleT')}">${tx('linkSettle')}</a>
+      <a class="btn ghost sm" href="notes.html" title="${tx('linkMemoT')}">${tx('linkMemo')}</a>
     </div>`;
 }
+
+// 언어 토글 시 정적 라벨 + 동적 목록 재렌더
+window.onSaizenLangChange=function(){ applyStatic(); if(state.teams.length||state.day) render(); };
 
 /* ── 부팅 ── */
 $('#btn-connect').addEventListener('click',connect);
@@ -309,7 +382,7 @@ $('#d-today').addEventListener('click',()=>{$('#day-pick').value=isoToday();if(s
 $('#day-pick').addEventListener('change',()=>{if(supa)load();});
 $('#team-search').addEventListener('input',e=>{state.q=e.target.value;render();});
 // 맨 위로 버튼 = 공통(saizen-ops.js mountToTop) 사용
-(function init(){ $('#day-pick').value=isoToday(); loadCreds(); if($('#sb-url').value&&$('#sb-key').value) connect(); })();
+(function init(){ applyStatic(); $('#day-pick').value=isoToday(); loadCreds(); if($('#sb-url').value&&$('#sb-key').value) connect(); })();
 </script>
 </body>
 </html>
