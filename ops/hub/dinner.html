@@ -713,7 +713,10 @@ function printNameplates(){
       const pax=grp.reduce((s,t)=>s+(parseInt(t.pax,10)||0),0);
       const f=grp[0];
       cards.push({ repName:names.join(' · '), engName:engs.join(' · '), pax,
-        period:`${fmtJP(f.dep)} 〜 ${fmtJP(f.arr)}`, tagCode:tags.join('  '), nTeams:grp.length });
+        period:`${fmtJP(f.dep)} 〜 ${fmtJP(f.arr)}`, tagCode:tags.join('  '), nTeams:grp.length,
+        members: grp.map(t=>({ name:(t.repName||'').trim(),
+          eng:(t.engName&&t.engName!=='(미등록)')?t.engName.trim():'',
+          tag:(t.tag||'').trim(), pax:parseInt(t.pax,10)||0 })) });
     });
   });
   if(!cards.length){ toast('출력할 데이터가 없습니다','err'); return; }
@@ -721,7 +724,27 @@ function printNameplates(){
   const cellHTML=(c)=>{
     if(!c) return `<div class="rn-card rn-card-empty"></div>`;
     const repName=(c.repName||'').trim();
-    const merged=(c.nTeams||1)>1;   // 묶음(합석) 명패 = 이름이 ' · '로 길어짐
+    const merged=(c.nTeams||1)>1;   // 묶음(합석) 명패
+    // 묶음=세로로 쌓아 각 이름을 크게 유지(가로로 이어붙여 작아지지 않게).
+    if(merged && c.members && c.members.length){
+      const n=c.members.length;
+      const nameBase = n<=2?56: n===3?46: n===4?38: 32;   // 팀 수에 따른 기본 크기(작아도 32pt)
+      const tagBase  = n<=2?28: n===3?24: n===4?22: 20;
+      const rowsHTML=c.members.map(m=>{
+        const len=(m.name||'').length;
+        let ns=nameBase; if(len>9) ns=Math.round(nameBase*0.7); else if(len>6) ns=Math.round(nameBase*0.85);
+        return `<div class="rn-mrow">
+          <div class="rn-mname" style="font-size:${ns}pt">${esc(m.name)}<span class="rn-honorific">님</span>${m.eng?`<span class="rn-meng">${esc(m.eng)}</span>`:''}</div>
+          <div class="rn-mtag" style="font-size:${tagBase}pt">${esc(m.tag)}　<span class="rn-mpax">${m.pax}名</span></div>
+        </div>`;
+      }).join('');
+      return `<div class="rn-card rn-merged">
+        <div class="rn-mhead">🍽 合席 ${n}チーム</div>
+        <div class="rn-mlist">${rowsHTML}</div>
+        <div class="rn-mfoot">合計 ${c.pax}名　${esc(c.period)}</div>
+        <div class="rn-table"></div>
+      </div>`;
+    }
     const hasKorean=/[가-힣]/.test(repName); const nameLen=repName.length; let nameSize;
     // 한글명을 최대한 크게. 묶음이면 '일행'·태그·날짜를 줄여 이름에 자리를 양보.
     if(hasKorean){
@@ -764,8 +787,19 @@ function printNameplates(){
   .rn-container { padding: 20px; -webkit-user-select: none; user-select: none; }
   .rn-page { width: 281mm; height: 194mm; margin: 0 auto 20px; background: #fff; display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; box-shadow: 0 2px 12px rgba(0,0,0,.08); page-break-after: always; }
   .rn-page:last-child { page-break-after: auto; }
-  .rn-card { border: 3pt solid #1A2540; border-radius: 4mm; padding: 4mm 4mm; display: grid; grid-template-rows: 48mm 10mm 36mm 28mm 12mm 24mm 18mm; align-items: center; text-align: center; overflow: hidden; color: #000; }
+  .rn-card { border: 3pt solid #1A2540; border-radius: 4mm; padding: 4mm 4mm; display: grid; grid-template-rows: 48mm 10mm 36mm 28mm 12mm 24mm 18mm; align-items: center; align-content: center; text-align: center; overflow: hidden; color: #000; }
   .rn-card-empty { border: 3pt dashed #ddd; }
+  /* 묶음(합석) = 세로 스택: 이름을 가로로 붙이지 않고 줄마다 크게 */
+  .rn-merged { display: flex; flex-direction: column; justify-content: center; gap: 4mm; }
+  .rn-mhead { font-size: 15pt; font-weight: 700; color: #1A4D8F; letter-spacing: 2pt; }
+  .rn-mlist { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 5mm; }
+  .rn-mrow { border-bottom: 1.2pt dashed #aab; padding-bottom: 4mm; }
+  .rn-mrow:last-child { border-bottom: none; padding-bottom: 0; }
+  .rn-mname { font-weight: 800; line-height: 1.05; letter-spacing: -1pt; }
+  .rn-meng { display: block; font-size: 13pt; font-weight: 500; color: #333; letter-spacing: 1pt; font-family: 'Arial','Meiryo',sans-serif; margin-top: 1mm; }
+  .rn-mtag { font-weight: 700; line-height: 1; font-family: 'Arial','Meiryo',sans-serif; letter-spacing: 2pt; color: #1A2540; margin-top: 2.5mm; }
+  .rn-mpax { font-family: 'Malgun Gothic','Meiryo',sans-serif; }
+  .rn-mfoot { font-size: 16pt; font-weight: 700; color: #1A2540; letter-spacing: 1pt; }
   .rn-r1 { font-size: 100pt; font-weight: 700; line-height: 1; letter-spacing: -2pt; }
   .rn-honorific { font-size: 0.55em; margin-left: 0.25em; font-weight: 700; opacity: 0.85; }
   .rn-r1b { font-size: 16pt; font-weight: 500; line-height: 1; letter-spacing: 1.5pt; color: #333; font-family: 'Arial', 'Meiryo', sans-serif; }
