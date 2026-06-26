@@ -59,8 +59,8 @@
 <body data-so-area="print">
 <div class="topbar so-bar">
   <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
-  <span class="step">現地手配書 인쇄</span>
-  <a class="navhome" href="../index.html">← 홈</a>
+  <span class="step" id="t-step">現地手配書 인쇄</span>
+  <a class="navhome" href="../index.html" id="t-navhome">← 홈</a>
   <div class="grow so-spacer"></div>
   <div class="so-controls">
     <div class="so-lang">
@@ -69,18 +69,18 @@
       <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
     </div>
   </div>
-  <span class="pill" id="conn-state">미연결</span>
+  <span class="pill" id="conn-state">未接続</span>
 </div>
 
 <div class="conn">
   <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
   <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
-  <button class="btn sm" id="btn-connect" type="button">연결</button>
-  <span class="hint">행사별 現地手配書(앞면) + 現地発生分 記入表(뒷면) A4 양면 인쇄. step1 데이터 기준.</span>
+  <button class="btn sm" id="btn-connect" type="button">接続</button>
+  <span class="hint" id="t-connhint"></span>
 </div>
 
 <div class="wrap" id="content">
-  <div class="panel"><div class="deny" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+  <div class="panel"><div class="deny" id="t-pre" style="color:var(--muted)"></div></div>
 </div>
 
 <div id="toast"></div>
@@ -88,6 +88,83 @@
 <script src="../assets/saizen-ops.js?v=14.79"></script>
 <script>
 const $=s=>document.querySelector(s);
+
+// ── i18n (한·일 직원 공용 · 화면 chrome만. 인쇄 산출물(手配書/記入表)은 일본어 유지) ──
+const L={
+  ja:{ step:'現地手配書 印刷', navHome:'← ホーム',
+    connHint:'イベント別 現地手配書(表面) + 現地発生分 記入表(裏面) A4両面印刷。step1データ基準。',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL·key必要',
+    needLogin:'ログインが必要です', loginDeny:'ログインが必要です。', loginDenySub:'中央のログインカードでログインしてから再接続してください。',
+    pre:'接続すると表示されます。',
+    panelTitle:'月選択 · フィルター', searchPh:'代表者·イベント番号·タグコード 検索', maskLbl:'個人情報マスキング(生年月日まで)',
+    printAll:'🖨 一括印刷(両面)', depDate:'出発日', accom:'宿泊施設', all:'全体',
+    panelDesc:'イベント1件 = 表面 現地手配書 + 裏面 現地発生分 記入表(2ページ)。<b>A4縦 · 両面(長辺とじ)</b>で印刷してください。記入表は現場手書き用(<b>メリットツアーB2B ⑤現地精算表とは別管理</b>)。',
+    listTitle:'対象イベント', loading:'読み込み中…', noMonthData:'該当月データなし', cntUnit:'件',
+    showStat:(v,t)=>`(${v}件 表示 / 全体 ${t}件 · 一括印刷は表示分のみ)`,
+    noData:'該当データなし', noFilterResult:'検索·フィルター結果がありません',
+    preview:'プレビュー', loadFail:'読み込み失敗',
+    memoSaved:'現地メモ 保存', memoSaveFail:'メモ保存失敗: ', connectFirst:'先に接続してください', popupBlocked:'ポップアップブロック — 許可が必要', noTargets:'対象イベントがありません',
+    pvTitle:'現地手配書 プレビュー', pvMaskOn:'マスキング ON (生年月日まで)', pvMaskOff:'マスキング OFF (全体表記)',
+    pvMeta:(n,m,t)=>`A4縦 · ${n}イベント × 両面2ページ = 計 ${n*2}ページ · ${m} · ${t}<br>※ 印刷設定で <b>両面印刷 (長辺とじ)</b> を選択してください — 表面 手配書 / 裏面 記入表が自動で揃います。`,
+    pvPrint:'印刷', pvClose:'✕ 閉じる',
+    thNo:'No', thTag:'タグコード', thEventNo:'イベント番号', thRep:'代表者', thEng:'英文名', thDep:'出発日', thArr:'到着日', thNights:'泊', thPax:'人数', thFac:'施設', thMember:'会員権', thMemo:'現地メモ', thOp:'操作', memoPh:'現地メモ' },
+  ko:{ step:'現地手配書 인쇄', navHome:'← 홈',
+    connHint:'행사별 現地手配書(앞면) + 現地発生分 記入表(뒷면) A4 양면 인쇄. step1 데이터 기준.',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결·재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요',
+    needLogin:'로그인 필요', loginDeny:'로그인이 필요합니다.', loginDenySub:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
+    pre:'연결 후 표시됩니다.',
+    panelTitle:'월 선택 · 필터', searchPh:'代表者·イベント番号·タグコード 검색', maskLbl:'個人情報マスキング(생년월일까지)',
+    printAll:'🖨 일괄 인쇄(양면)', depDate:'出発日', accom:'숙소', all:'전체',
+    panelDesc:'행사 1건 = 앞면 現地手配書 + 뒷면 現地発生分 記入表(2페이지). <b>A4 세로 · 양면(긴 가장자리 제본)</b>으로 인쇄하세요. 記入表는 현장 손기입용(<b>메리트투어 B2B ⑤現地精算表와 별도</b>).',
+    listTitle:'대상 행사', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', cntUnit:'件',
+    showStat:(v,t)=>`(${v}件 표시 / 전체 ${t}件 · 一括印刷은 표시분만)`,
+    noData:'該当データなし', noFilterResult:'검색·필터 결과가 없습니다',
+    preview:'미리보기', loadFail:'로드 실패',
+    memoSaved:'現地メモ 저장', memoSaveFail:'메모 저장 실패: ', connectFirst:'먼저 연결하세요', popupBlocked:'팝업 차단 — 허용 필요', noTargets:'대상 행사가 없습니다',
+    pvTitle:'現地手配書 미리보기', pvMaskOn:'마스킹 ON (생년월일까지)', pvMaskOff:'마스킹 OFF (전체 표기)',
+    pvMeta:(n,m,t)=>`A4 세로 · ${n}행사 × 양면 2페이지 = 총 ${n*2}페이지 · ${m} · ${t}<br>※ 인쇄 설정에서 <b>양면 인쇄 (긴 가장자리 제본)</b>을 선택하세요 — 앞면 手配書 / 뒷면 記入表가 자동으로 맞춰집니다.`,
+    pvPrint:'인쇄', pvClose:'✕ 닫기',
+    thNo:'No', thTag:'タグコード', thEventNo:'イベント番号', thRep:'代表者', thEng:'英文名', thDep:'出発日', thArr:'到着日', thNights:'泊', thPax:'人数', thFac:'施設', thMember:'会員権', thMemo:'現地メモ', thOp:'조작', memoPh:'現地メモ' },
+  en:{ step:'Dispatch sheet · Print', navHome:'← Home',
+    connHint:'Per-event 現地手配書 (front) + 現地発生分 記入表 (back), A4 double-sided. Based on step1 data.',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required',
+    needLogin:'Login required', loginDeny:'Login required.', loginDenySub:'Sign in via the center login card, then reconnect.',
+    pre:'Shown after connecting.',
+    panelTitle:'Month · Filters', searchPh:'Search rep / event no. / tag code', maskLbl:'Mask personal info (down to birth date)',
+    printAll:'🖨 Print all (double-sided)', depDate:'Departure', accom:'Lodging', all:'All',
+    panelDesc:'1 event = front 現地手配書 + back 現地発生分 記入表 (2 pages). Print <b>A4 portrait · double-sided (long-edge binding)</b>. The 記入表 is for on-site handwriting (<b>separate from the Merit B2B ⑤現地精算表</b>).',
+    listTitle:'Target events', loading:'Loading…', noMonthData:'No data for this month', cntUnit:' items',
+    showStat:(v,t)=>`(${v} shown / ${t} total · Print all = shown only)`,
+    noData:'No data', noFilterResult:'No search/filter results',
+    preview:'Preview', loadFail:'Load failed',
+    memoSaved:'Local memo saved', memoSaveFail:'Memo save failed: ', connectFirst:'Connect first', popupBlocked:'Popup blocked — allow it', noTargets:'No target events',
+    pvTitle:'現地手配書 Preview', pvMaskOn:'Masking ON (down to birth date)', pvMaskOff:'Masking OFF (full info)',
+    pvMeta:(n,m,t)=>`A4 portrait · ${n} events × 2 pages = ${n*2} pages total · ${m} · ${t}<br>※ Choose <b>double-sided (long-edge binding)</b> in print settings — front 手配書 / back 記入表 align automatically.`,
+    pvPrint:'Print', pvClose:'✕ Close',
+    thNo:'No', thTag:'Tag', thEventNo:'Event no.', thRep:'Rep', thEng:'Eng name', thDep:'Departure', thArr:'Arrival', thNights:'Nts', thPax:'Pax', thFac:'Facility', thMember:'Member', thMemo:'Local memo', thOp:'Action', memoPh:'Local memo' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+function applyStatic(){
+  const set=(sel,v)=>{const e=$(sel);if(e)e.textContent=v;};
+  set('#t-step',tx('step')); set('#t-navhome',tx('navHome'));
+  set('#t-connhint',tx('connHint')); set('#t-pre',tx('pre'));
+  refreshConn();
+  if($('#ym-label')) applyUIStatic();
+}
+function refreshConn(){
+  const b=$('#btn-connect'); if(!b) return;
+  if(state.conn==='ok'){ setConn(tx('connOk'),'ok'); b.textContent=tx('connectedBtn'); }
+  else if(state.conn==='fail'){ setConn(tx('connFail'),'err'); b.textContent=tx('connFailBtn'); }
+  else if(state.conn==='connecting'){ b.textContent=tx('connecting'); }
+  else if(state.conn==='login'){ setConn(tx('needLogin'),'err'); b.textContent=tx('connect'); }
+  else { setConn(tx('notConn'),''); b.textContent=tx('connect'); }
+}
+const state={ conn:'none' };
+
 let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DATESEL=new Set(), SEARCHQ='';
 let MASK=(function(){ try{ return localStorage.getItem('saizen_dispatch_mask')!=='0'; }catch(e){ return true; } })();
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
@@ -143,24 +220,24 @@ const DISPATCH_CHARGE_CATS=[ {key:'room',ja:'ルームチャージ'},{key:'cart'
 
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn('URL·key 필요','err');return;}
+  if(!url||!key){ state.conn='fail'; setConn(tx('needUrlKey'),'err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  const btn=$('#btn-connect');state.conn='connecting';btn.textContent=tx('connecting');btn.disabled=true;
   try{
     supa=window.supabase.createClient(url,key);
     const {data:sess}=await supa.auth.getSession();
-    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
-      $('#content').innerHTML='<div class="panel"><div class="deny">로그인이 필요합니다.<small>가운데 로그인 카드에서 로그인 후 다시 연결하세요.</small></div></div>'; return; }
-    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.disabled=false;
+    if(!sess||!sess.session){ state.conn='login'; setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">'+esc(tx('loginDeny'))+'<small>'+esc(tx('loginDenySub'))+'</small></div></div>'; return; }
+    state.conn='ok'; setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
     YM=YM||thisYM();
     renderUI(); load();
-  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결·재시도';btn.disabled=false; supa=null; toast('연결 실패: '+e.message,'err'); }
+  }catch(e){ state.conn='fail'; setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
 }
 
 function renderUI(){
   $('#content').innerHTML=`
     <div class="panel">
-      <h3>월 선택 · 필터</h3>
+      <h3 id="u-paneltitle"></h3>
       <div class="row">
         <div class="ymctrl">
           <button class="btn sm ghost" id="ym-prev" type="button">◀</button>
@@ -168,24 +245,24 @@ function renderUI(){
           <button class="btn sm ghost" id="ym-next" type="button">▶</button>
         </div>
         <span style="width:1px;height:20px;background:var(--border)"></span>
-        <input class="inp" id="search" type="text" placeholder="代表者·イベント番号·タグコード 검색" style="width:240px">
-        <label class="lbl-check"><input type="checkbox" id="mask-cb"> 個人情報マスキング(생년월일까지)</label>
+        <input class="inp" id="search" type="text" style="width:240px">
+        <label class="lbl-check"><input type="checkbox" id="mask-cb"> <span id="u-masklbl"></span></label>
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
-        <button class="btn" id="btn-print" type="button" disabled>🖨 일괄 인쇄(양면)</button>
+        <button class="btn" id="btn-print" type="button" disabled></button>
       </div>
       <div class="row" style="margin-top:10px">
-        <span class="cnt" style="min-width:46px">出発日</span>
+        <span class="cnt" id="u-deplbl" style="min-width:46px"></span>
         <div id="datechips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
       <div class="row" style="margin-top:8px">
-        <span class="cnt" style="min-width:46px">숙소</span>
+        <span class="cnt" id="u-accomlbl" style="min-width:46px"></span>
         <div id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
-      <div class="desc" style="margin-top:10px">행사 1건 = 앞면 現地手配書 + 뒷면 現地発生分 記入表(2페이지). <b>A4 세로 · 양면(긴 가장자리 제본)</b>으로 인쇄하세요. 記入表는 현장 손기입용(<b>메리트투어 B2B ⑤現地精算表와 별도</b>).</div>
+      <div class="desc" id="u-paneldesc" style="margin-top:10px"></div>
     </div>
     <div class="panel">
-      <h3>대상 행사 <span class="cnt" id="list-cnt"></span></h3>
+      <h3><span id="u-listtitle"></span> <span class="cnt" id="list-cnt"></span></h3>
       <div style="overflow:auto"><table class="list" id="list"><thead></thead><tbody></tbody></table></div>
     </div>`;
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
@@ -193,25 +270,37 @@ function renderUI(){
   $('#btn-print').addEventListener('click',()=>printDispatch(null));
   $('#search').addEventListener('input',e=>{SEARCHQ=String(e.target.value||'').trim().toLowerCase();renderList();});
   const mc=$('#mask-cb'); mc.checked=MASK; mc.addEventListener('change',e=>{ MASK=!!e.target.checked; try{localStorage.setItem('saizen_dispatch_mask',MASK?'1':'0');}catch(x){} });
+  applyUIStatic();
+}
+function applyUIStatic(){
+  const set=(sel,v)=>{const e=$(sel);if(e)e.textContent=v;};
+  set('#u-paneltitle',tx('panelTitle'));
+  const s=$('#search'); if(s) s.placeholder=tx('searchPh');
+  set('#u-masklbl',tx('maskLbl'));
+  set('#btn-print',tx('printAll'));
+  set('#u-deplbl',tx('depDate')); set('#u-accomlbl',tx('accom'));
+  const pd=$('#u-paneldesc'); if(pd) pd.innerHTML=tx('panelDesc');
+  set('#u-listtitle',tx('listTitle'));
+  if(ROWS.length||$('#list tbody').children.length) renderList();
 }
 function renderDateChips(){
   const dates=[...new Set(ROWS.map(r=>r.dep).filter(Boolean))].sort();
   const box=$('#datechips'); if(!box)return;
-  box.innerHTML=`<div class="chip ${DATESEL.size===0?'on':''}" data-d="__all">전체</div>`
+  box.innerHTML=`<div class="chip ${DATESEL.size===0?'on':''}" data-d="__all">${tx('all')}</div>`
     + dates.map(d=>`<div class="chip ${DATESEL.has(d)?'on':''}" data-d="${d}">${d.slice(5)}${getWD(d)}</div>`).join('');
   box.querySelectorAll('.chip[data-d]').forEach(c=>c.addEventListener('click',()=>{ const d=c.dataset.d; if(d==='__all'){DATESEL.clear();}else{DATESEL.has(d)?DATESEL.delete(d):DATESEL.add(d);} renderDateChips(); renderList(); }));
 }
 function renderAccomChips(){
   const accoms=[...new Set(ROWS.map(r=>r.accom).filter(Boolean))].sort((a,b)=>{const ai=ACCOM_ORDER.indexOf(a),bi=ACCOM_ORDER.indexOf(b);return (ai<0?9:ai)-(bi<0?9:bi);});
   const box=$('#accomchips'); if(!box)return;
-  box.innerHTML=`<div class="chip ${ACCOMSEL.size===0?'on':''}" data-a="__all">전체</div>`
+  box.innerHTML=`<div class="chip ${ACCOMSEL.size===0?'on':''}" data-a="__all">${tx('all')}</div>`
     + accoms.map(a=>`<div class="chip ${ACCOMSEL.has(a)?'on':''}" data-a="${esc(a)}">${esc(a)}</div>`).join('');
   box.querySelectorAll('.chip[data-a]').forEach(c=>c.addEventListener('click',()=>{ const a=c.dataset.a; if(a==='__all'){ACCOMSEL.clear();}else{ACCOMSEL.has(a)?ACCOMSEL.delete(a):ACCOMSEL.add(a);} renderAccomChips(); renderList(); }));
 }
 
 async function load(){
   if(!supa)return;
-  $('#ym-label').textContent=YM; $('#stat').textContent='불러오는 중…'; $('#btn-print').disabled=true;
+  $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true;
   try{
     const {data:bs,error:e1}=await supa.from('bookings')
       .select('event_seq,event_no,rep_name,member_type,dep_date,arr_date,nights_label,origin,airline,product_name,pax,remark,team_label')
@@ -219,7 +308,7 @@ async function load(){
     if(e1)throw e1;
     const BMAP={}; (bs||[]).forEach(b=>{BMAP[b.event_seq]=b;});
     const seqs=Object.keys(BMAP).map(Number);
-    if(!seqs.length){ ROWS=[]; $('#stat').textContent='해당 월 데이터 없음'; DATESEL.clear();ACCOMSEL.clear(); renderDateChips();renderAccomChips();renderList(); return; }
+    if(!seqs.length){ ROWS=[]; $('#stat').textContent=tx('noMonthData'); DATESEL.clear();ACCOMSEL.clear(); renderDateChips();renderAccomChips();renderList(); return; }
     const {data:gs}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,accom_prefix,pax').eq('session_ym',YM);
     const GMAP={}; (gs||[]).forEach(g=>{GMAP[g.event_seq]=g;});
     const {data:ns}=await supa.from('event_notes').select('event_seq,remarks,memo').eq('session_ym',YM);
@@ -280,9 +369,9 @@ async function load(){
     }).sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||(a.rec.repName||'').localeCompare(b.rec.repName||''))
       .map((d,i)=>{ d.no=i+1; return d; });
     DATESEL.clear(); ACCOMSEL.clear();
-    $('#stat').textContent=`${ROWS.length}件`;
+    $('#stat').textContent=`${ROWS.length}${tx('cntUnit')}`;
     renderDateChips(); renderAccomChips(); renderList();
-  }catch(e){ $('#stat').textContent='로드 실패'; toast('로드 실패: '+e.message,'err'); }
+  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
 
 function pass(d){
@@ -294,11 +383,11 @@ function pass(d){
 function renderList(){
   const visible=ROWS.filter(pass);
   $('#btn-print').disabled=!visible.length;
-  $('#list-cnt').textContent=ROWS.length?`(${visible.length}件 표시 / 전체 ${ROWS.length}件 · 一括印刷은 표시분만)`:'';
+  $('#list-cnt').textContent=ROWS.length?tx('showStat')(visible.length,ROWS.length):'';
   const thead=$('#list thead'), tbody=$('#list tbody');
-  thead.innerHTML='<tr><th>No</th><th>タグコード</th><th>イベント番号</th><th>代表者</th><th>英文名</th><th>出発日</th><th>到着日</th><th>泊</th><th>人数</th><th>施設</th><th>会員権</th><th>現地メモ</th><th>操作</th></tr>';
-  if(!ROWS.length){ tbody.innerHTML='<tr><td colspan="13" class="c" style="color:var(--muted);padding:24px">該当データなし</td></tr>'; return; }
-  if(!visible.length){ tbody.innerHTML='<tr><td colspan="13" class="c" style="color:var(--muted);padding:24px">검색·필터 결과가 없습니다</td></tr>'; return; }
+  thead.innerHTML=`<tr><th>${esc(tx('thNo'))}</th><th>${esc(tx('thTag'))}</th><th>${esc(tx('thEventNo'))}</th><th>${esc(tx('thRep'))}</th><th>${esc(tx('thEng'))}</th><th>${esc(tx('thDep'))}</th><th>${esc(tx('thArr'))}</th><th>${esc(tx('thNights'))}</th><th>${esc(tx('thPax'))}</th><th>${esc(tx('thFac'))}</th><th>${esc(tx('thMember'))}</th><th>${esc(tx('thMemo'))}</th><th>${esc(tx('thOp'))}</th></tr>`;
+  if(!ROWS.length){ tbody.innerHTML=`<tr><td colspan="13" class="c" style="color:var(--muted);padding:24px">${esc(tx('noData'))}</td></tr>`; return; }
+  if(!visible.length){ tbody.innerHTML=`<tr><td colspan="13" class="c" style="color:var(--muted);padding:24px">${esc(tx('noFilterResult'))}</td></tr>`; return; }
   tbody.innerHTML=visible.map(d=>`<tr>
     <td class="c">${d.no}</td>
     <td class="c mono" style="font-weight:700">${esc(d.tagCode)}</td>
@@ -311,21 +400,21 @@ function renderList(){
     <td class="c">${d.rec.pax}名</td>
     <td class="c">${esc(d.accom||'')}</td>
     <td class="c">${esc(d.rec.memberType||'-')}</td>
-    <td><input class="dm-inp" data-seq="${d.seq}" value="${esc(d.rec.noteMemo||'')}" placeholder="現地メモ" style="width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border2);border-radius:5px"></td>
-    <td class="c"><button class="btn sm" onclick="printDispatch('${d.seq}')">미리보기</button></td>
+    <td><input class="dm-inp" data-seq="${d.seq}" value="${esc(d.rec.noteMemo||'')}" placeholder="${esc(tx('memoPh'))}" style="width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border2);border-radius:5px"></td>
+    <td class="c"><button class="btn sm" onclick="printDispatch('${d.seq}')">${esc(tx('preview'))}</button></td>
   </tr>`).join('');
   tbody.querySelectorAll('.dm-inp').forEach(inp=>inp.addEventListener('change',()=>saveDispatchMemo(inp.dataset.seq,inp.value)));
 }
 // 現地メモ(event_notes.memo) 편집 — print 영역도 가능한 RPC 경유(memo만 갱신 + 변경이력 기록)
 async function saveDispatchMemo(seq,val){
-  if(!supa){toast('먼저 연결하세요','warn');return;}
+  if(!supa){toast(tx('connectFirst'),'warn');return;}
   const d=ROWS.find(x=>String(x.seq)===String(seq)); if(!d)return;
   try{
     const {error}=await supa.rpc('dispatch_set_memo',{p_event_seq:Number(seq),p_session_ym:YM,p_memo:val,p_user:curUser()});
     if(error)throw error;
     d.rec.noteMemo=String(val||'').trim();
-    toast('現地メモ 저장','ok');
-  }catch(e){ toast('메모 저장 실패: '+e.message,'err'); }
+    toast(tx('memoSaved'),'ok');
+  }catch(e){ toast(tx('memoSaveFail')+e.message,'err'); }
 }
 
 // ── 인쇄용 HTML (/app/ dispatchFrontHTML / dispatchBackHTML 완전 동일) ──
@@ -419,7 +508,7 @@ function printDispatch(seq){
   let data=ROWS.slice();
   if(seq) data=data.filter(d=>String(d.seq)===String(seq).trim());
   else data=data.filter(pass);
-  if(!data.length){ toast('대상 행사가 없습니다','err'); return; }
+  if(!data.length){ toast(tx('noTargets'),'err'); return; }
   // 대표 표시(_isRep): 대표 passenger id 와 일치하는 행에 플래그
   data.forEach(d=>{ d.paxList.forEach(p=>{ p._isRep=(d.repPid!=null && p.id===d.repPid); }); if(!d.paxList.some(p=>p._isRep)&&d.paxList[0]) d.paxList[0]._isRep=true; });
   const masked=MASK;
@@ -462,19 +551,23 @@ function printDispatch(seq){
   }
 </style></head><body>
   <div class="hp-toolbar">
-    <h1>現地手配書 미리보기</h1>
-    <div class="meta">A4 세로 · ${data.length}행사 × 양면 2페이지 = 총 ${data.length*2}페이지 · ${masked?'마스킹 ON (생년월일까지)':'마스킹 OFF (전체 표기)'} · ${today()}<br>※ 인쇄 설정에서 <b>양면 인쇄 (긴 가장자리 제본)</b>을 선택하세요 — 앞면 手配書 / 뒷면 記入表가 자동으로 맞춰집니다.</div>
+    <h1>${esc(tx('pvTitle'))}</h1>
+    <div class="meta">${tx('pvMeta')(data.length,masked?tx('pvMaskOn'):tx('pvMaskOff'),today())}</div>
     <div style="flex:1"></div>
-    <button onclick="window.print()">인쇄</button>
-    <button class="hp-close" onclick="window.close()">✕ 닫기</button>
+    <button onclick="window.print()">${esc(tx('pvPrint'))}</button>
+    <button class="hp-close" onclick="window.close()">${esc(tx('pvClose'))}</button>
   </div>
   <div class="hp-container">${pages}</div>
 </body></html>`;
-  const w=window.open('','_blank','width=920,height=950'); if(!w){ toast('팝업 차단 — 허용 필요','err'); return; }
+  const w=window.open('','_blank','width=920,height=950'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
   w.document.write(fullHTML); w.document.close();
 }
 
+// 언어 토글 시 화면 chrome만 재적용(인쇄 산출물은 일본어 유지)
+window.onSaizenLangChange=function(){ applyStatic(); };
+
 $('#btn-connect').addEventListener('click',connect);
+applyStatic();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }
 </script>

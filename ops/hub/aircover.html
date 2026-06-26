@@ -58,7 +58,7 @@
 <body data-so-area="print">
 <div class="topbar so-bar">
   <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
-  <span class="step">航空カバー置き場 인쇄</span>
+  <span class="step" id="t-step">航空カバー置き場 인쇄</span>
   <a class="navhome" href="../index.html">← 홈</a>
   <div class="grow so-spacer"></div>
   <div class="so-controls">
@@ -75,17 +75,60 @@
   <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
   <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
   <button class="btn sm" id="btn-connect" type="button">연결</button>
-  <span class="hint">팀별 航空カバー置き場 카드(A5 가로 1장/팀)를 인쇄합니다. step1 데이터 기준.</span>
+  <span class="hint" id="t-connhint">팀별 航空カバー置き場 카드(A5 가로 1장/팀)를 인쇄합니다. step1 데이터 기준.</span>
 </div>
 
 <div class="wrap" id="content">
-  <div class="panel"><div class="deny" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+  <div class="panel"><div class="deny" id="t-empty" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
 </div>
 
 <div id="toast"></div>
 <script src="../assets/saizen-ops.js?v=14.79"></script>
 <script>
 const $=s=>document.querySelector(s);
+const L={
+  ja:{ step:'航空カバー置き場 印刷',
+    connHint:'チーム別の航空カバー置き場カード(A5横・1枚/チーム)を印刷します。step1データ基準。',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connRetryBtn:'接続・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要',
+    needLogin:'ログイン必要', loginNeeded:'ログインが必要です。', loginHint:'中央のログインカードでログイン後、再度接続してください。',
+    emptyConnect:'接続後に表示されます。',
+    monthFilter:'月選択 · フィルター', origin:'出発地', all:'全体', dateLbl:'日付', accomLbl:'宿泊施設',
+    print:'🖨 カード印刷',
+    cardDesc:'チーム別1枚(タグコード・出発地・番号・人数・入国/帰国便・施設)。<b>A5横、倍率100%</b>で印刷してください。',
+    preview:'プレビュー', loading:'読み込み中…', noMonthData:'当月データなし', loadFail:'読み込み失敗',
+    teamUnit:'チーム', noTeams:'表示するチームがありません。',
+    previewNote:(n)=>`※ プレビューは90チームまで · 印刷は全${n}チーム`,
+    noTeamsPrint:'印刷するチームがありません', popupBlocked:'ポップアップブロック — 許可が必要です' },
+  ko:{ step:'航空カバー置き場 인쇄',
+    connHint:'팀별 航空カバー置き場 카드(A5 가로 1장/팀)를 인쇄합니다. step1 데이터 기준.',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connRetryBtn:'연결·재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요',
+    needLogin:'로그인 필요', loginNeeded:'로그인이 필요합니다.', loginHint:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
+    emptyConnect:'연결 후 표시됩니다.',
+    monthFilter:'월 선택 · 필터', origin:'출발지', all:'전체', dateLbl:'날짜', accomLbl:'숙소',
+    print:'🖨 카드 인쇄',
+    cardDesc:'팀별 1장(태그코드·出発地·番号·人数·入国/帰国 항공편·施設). <b>A5 가로, 배율 100%</b>로 인쇄하세요.',
+    preview:'미리보기', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', loadFail:'로드 실패',
+    teamUnit:'팀', noTeams:'표시할 팀이 없습니다.',
+    previewNote:(n)=>`※ 미리보기 90팀까지 · 인쇄는 전체 ${n}팀`,
+    noTeamsPrint:'인쇄할 팀이 없음', popupBlocked:'팝업 차단 — 허용 필요' },
+  en:{ step:'Air cover · Print',
+    connHint:'Print per-team air cover cards (A5 landscape, 1 sheet/team). Based on step1 data.',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connRetryBtn:'Connect · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required',
+    needLogin:'Login required', loginNeeded:'Login required.', loginHint:'Log in with the central login card, then connect again.',
+    emptyConnect:'Shown after connecting.',
+    monthFilter:'Month · Filter', origin:'Origin', all:'All', dateLbl:'Date', accomLbl:'Lodging',
+    print:'🖨 Print cards',
+    cardDesc:'One sheet per team (tag code·出発地·番号·人数·入国/帰国 flights·施設). Print at <b>A5 landscape, 100% scale</b>.',
+    preview:'Preview', loading:'Loading…', noMonthData:'No data for this month', loadFail:'Load failed',
+    teamUnit:' teams', noTeams:'No teams to display.',
+    previewNote:(n)=>`※ Preview up to 90 teams · Print covers all ${n} teams`,
+    noTeamsPrint:'No teams to print', popupBlocked:'Popup blocked — please allow' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
 let supa=null, YM=null, CARDS=[], ORIGIN='all', SELDATES=new Set(), SELACCOMS=new Set();
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
@@ -109,24 +152,24 @@ function portOf(inFlight,outFlight,origin){
 
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn('URL·key 필요','err');return;}
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  const btn=$('#btn-connect');btn.textContent=tx('connecting');btn.disabled=true;
   try{
     supa=window.supabase.createClient(url,key);
     const {data:sess}=await supa.auth.getSession();
-    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
-      $('#content').innerHTML='<div class="panel"><div class="deny">로그인이 필요합니다.<small>가운데 로그인 카드에서 로그인 후 다시 연결하세요.</small></div></div>'; return; }
-    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.disabled=false;
+    if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
+      $('#content').innerHTML=`<div class="panel"><div class="deny">${tx('loginNeeded')}<small>${tx('loginHint')}</small></div></div>`; return; }
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
     YM=YM||thisYM();
     renderUI(); load();
-  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결·재시도';btn.disabled=false; supa=null; toast('연결 실패: '+e.message,'err'); }
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connRetryBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
 }
 
 function renderUI(){
   $('#content').innerHTML=`
     <div class="panel">
-      <h3>월 선택 · 필터</h3>
+      <h3 id="t-monthfilter">${tx('monthFilter')}</h3>
       <div class="row">
         <div class="ymctrl">
           <button class="btn sm ghost" id="ym-prev" type="button">◀</button>
@@ -134,26 +177,26 @@ function renderUI(){
           <button class="btn sm ghost" id="ym-next" type="button">▶</button>
         </div>
         <span style="width:1px;height:20px;background:var(--border)"></span>
-        <span class="cnt">출발지</span>
-        <div class="chip on" data-o="all">전체</div>
+        <span class="cnt" id="t-origin">${tx('origin')}</span>
+        <div class="chip on" data-o="all">${tx('all')}</div>
         <div class="chip" data-o="icn">ICN(인천)</div>
         <div class="chip" data-o="pus">PUS(부산)</div>
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
-        <button class="btn" id="btn-print" type="button" disabled>🖨 카드 인쇄</button>
+        <button class="btn" id="btn-print" type="button" disabled>${tx('print')}</button>
       </div>
       <div class="row" style="margin-top:10px">
-        <span class="cnt" style="min-width:46px">날짜</span>
+        <span class="cnt" id="t-datelbl" style="min-width:46px">${tx('dateLbl')}</span>
         <div id="daychips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
       <div class="row" style="margin-top:8px">
-        <span class="cnt" style="min-width:46px">숙소</span>
+        <span class="cnt" id="t-accomlbl" style="min-width:46px">${tx('accomLbl')}</span>
         <div id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
-      <div class="desc" style="margin-top:10px">팀별 1장(태그코드·出発地·番号·人数·入国/帰国 항공편·施設). <b>A5 가로, 배율 100%</b>로 인쇄하세요.</div>
+      <div class="desc" id="t-carddesc" style="margin-top:10px">${tx('cardDesc')}</div>
     </div>
     <div class="panel">
-      <h3>미리보기 <span class="cnt" id="prev-cnt"></span></h3>
+      <h3><span id="t-preview">${tx('preview')}</span> <span class="cnt" id="prev-cnt"></span></h3>
       <div id="prev"></div>
     </div>`;
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
@@ -167,7 +210,7 @@ function renderUI(){
 function renderDayChips(){
   const dates=[...new Set(CARDS.map(c=>c.depRaw).filter(Boolean))].sort();
   const box=$('#daychips'); if(!box) return;
-  box.innerHTML=`<div class="chip ${SELDATES.size===0?'on':''}" data-d="__all">전체</div>`
+  box.innerHTML=`<div class="chip ${SELDATES.size===0?'on':''}" data-d="__all">${tx('all')}</div>`
     + dates.map(d=>`<div class="chip ${SELDATES.has(d)?'on':''}" data-d="${d}">${mmdd(d)}</div>`).join('');
   box.querySelectorAll('.chip[data-d]').forEach(c=>c.addEventListener('click',()=>{
     const d=c.dataset.d; if(d==='__all'){SELDATES.clear();}else{SELDATES.has(d)?SELDATES.delete(d):SELDATES.add(d);}
@@ -178,7 +221,7 @@ function renderAccomChips(){
   const accoms=[...new Set(CARDS.map(c=>c.accom).filter(Boolean))]
     .sort((a,b)=>{const ai=ACCOM_ORDER.indexOf(a),bi=ACCOM_ORDER.indexOf(b);return (ai<0?9:ai)-(bi<0?9:bi);});
   const box=$('#accomchips'); if(!box) return;
-  box.innerHTML=`<div class="chip ${SELACCOMS.size===0?'on':''}" data-a="__all">전체</div>`
+  box.innerHTML=`<div class="chip ${SELACCOMS.size===0?'on':''}" data-a="__all">${tx('all')}</div>`
     + accoms.map(a=>`<div class="chip ${SELACCOMS.has(a)?'on':''}" data-a="${esc(a)}">${esc(a)}</div>`).join('');
   box.querySelectorAll('.chip[data-a]').forEach(c=>c.addEventListener('click',()=>{
     const a=c.dataset.a; if(a==='__all'){SELACCOMS.clear();}else{SELACCOMS.has(a)?SELACCOMS.delete(a):SELACCOMS.add(a);}
@@ -188,7 +231,7 @@ function renderAccomChips(){
 
 async function load(){
   if(!supa) return;
-  $('#ym-label').textContent=YM; $('#stat').textContent='불러오는 중…'; $('#btn-print').disabled=true;
+  $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true;
   try{
     const {data:gs,error:e1}=await supa.from('guests')
       .select('event_seq,group_code,accom,accom_prefix,pax,bookings!inner(rep_name,dep_date,arr_date,origin,pax,session_ym)')
@@ -196,7 +239,7 @@ async function load(){
     if(e1) throw e1;
     const gmap={}; (gs||[]).forEach(g=>{ const b=g.bookings||{}; gmap[g.event_seq]={accom:g.accom,accom_prefix:g.accom_prefix,pax:g.pax||b.pax||0,dep:b.dep_date,arr:b.arr_date,origin:b.origin}; });
     const seqs=Object.keys(gmap).map(Number);
-    if(!seqs.length){ CARDS=[]; $('#stat').textContent='해당 월 데이터 없음'; SELDATES.clear();SELACCOMS.clear(); renderDayChips();renderAccomChips();renderPreview(); return; }
+    if(!seqs.length){ CARDS=[]; $('#stat').textContent=tx('noMonthData'); SELDATES.clear();SELACCOMS.clear(); renderDayChips();renderAccomChips();renderPreview(); return; }
     // 대표(guest_members is_rep || 최소 seq) + 항공편(passengers)
     const reps={};
     for(let i=0;i<seqs.length;i+=200){
@@ -234,9 +277,9 @@ async function load(){
       };
     }).filter(c=>c.tag);
     SELDATES.clear(); SELACCOMS.clear();
-    $('#stat').textContent=`${CARDS.length}팀`;
+    $('#stat').textContent=`${CARDS.length}${tx('teamUnit')}`;
     renderDayChips(); renderAccomChips(); renderPreview();
-  }catch(e){ $('#stat').textContent='로드 실패'; toast('로드 실패: '+e.message,'err'); }
+  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
 
 function sortCards(a,b){
@@ -257,9 +300,9 @@ function filtered(){
 }
 function renderPreview(){
   const list=filtered(); $('#btn-print').disabled=!list.length;
-  $('#prev-cnt').textContent=list.length?`(${list.length}팀)`:'';
+  $('#prev-cnt').textContent=list.length?`(${list.length}${tx('teamUnit')})`:'';
   const box=$('#prev');
-  if(!list.length){ box.innerHTML='<div class="deny" style="color:var(--muted);padding:24px">표시할 팀이 없습니다.</div>'; return; }
+  if(!list.length){ box.innerHTML=`<div class="deny" style="color:var(--muted);padding:24px">${tx('noTeams')}</div>`; return; }
   box.innerHTML='<div class="prev-grid">'+list.slice(0,90).map(c=>`
     <div class="prev-card" style="border-color:${c.accomColor}">
       <div class="prev-tag" style="color:${c.accomColor}">${esc(c.tag)}</div>
@@ -268,13 +311,13 @@ function renderPreview(){
       <div class="prev-line">帰 ${esc(c.outFlight)} ${esc(c.outTime)} (${esc(c.outDate)})</div>
       <div class="prev-line">施設 ${esc(c.accomLabel)}</div>
     </div>`).join('')+'</div>'
-    +(list.length>90?`<div class="cnt" style="margin-top:8px">※ 미리보기 90팀까지 · 인쇄는 전체 ${list.length}팀</div>`:'');
+    +(list.length>90?`<div class="cnt" style="margin-top:8px">${tx('previewNote')(list.length)}</div>`:'');
 }
 
 // A5 가로 카드 1장/팀 인쇄(app 航空カバー置き場 동일 레이아웃)
 function printCards(){
   const list=filtered();
-  if(!list.length){ toast('인쇄할 팀이 없음','err'); return; }
+  if(!list.length){ toast(tx('noTeamsPrint'),'err'); return; }
   const card=c=>`<div class="ac-page"><div class="ac-card" style="border-color:${c.accomColor}">
     <div class="ac-tag" style="color:${c.accomColor}">${esc(c.tag)}</div>
     <div class="ac-hero" style="border-color:${c.accomColor}">
@@ -321,10 +364,32 @@ function printCards(){
   </div>
   <div class="ac-container">${list.map(card).join('')}</div>
   </body></html>`;
-  const w=window.open('','_blank','width=1100,height=900'); if(!w){ toast('팝업 차단 — 허용 필요','err'); return; }
+  const w=window.open('','_blank','width=1100,height=900'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
   w.document.write(html); w.document.close();
 }
 
+function applyStatic(){
+  const s=$('#t-step'); if(s) s.textContent=tx('step');
+  const h=$('#t-connhint'); if(h) h.textContent=tx('connHint');
+  const e=$('#t-empty'); if(e) e.textContent=tx('emptyConnect');
+  // 미연결 상태(아직 setConn 호출 전)일 때만 기본 pill 라벨 갱신
+  const p=$('#conn-state'); if(p && (!p.className.includes('ok')&&!p.className.includes('err'))) p.textContent=tx('notConn');
+  // renderUI로 만들어진 정적 라벨(접속 후에만 존재)
+  const mf=$('#t-monthfilter'); if(mf) mf.textContent=tx('monthFilter');
+  const og=$('#t-origin'); if(og) og.textContent=tx('origin');
+  const dl=$('#t-datelbl'); if(dl) dl.textContent=tx('dateLbl');
+  const al=$('#t-accomlbl'); if(al) al.textContent=tx('accomLbl');
+  const cd=$('#t-carddesc'); if(cd) cd.innerHTML=tx('cardDesc');
+  const pv=$('#t-preview'); if(pv) pv.textContent=tx('preview');
+  const bp=$('#btn-print'); if(bp) bp.textContent=tx('print');
+  const bc=$('#btn-connect'); if(bc && !bc.disabled){
+    if(supa) bc.textContent=tx('connectedBtn'); else bc.textContent=tx('connect');
+  }
+}
+// 언어 토글 시 정적 라벨 + 화면 미리보기만 재렌더(인쇄 산출물 미변경)
+window.onSaizenLangChange=function(){ applyStatic(); if(supa){ renderDayChips(); renderAccomChips(); renderPreview(); } };
+
+applyStatic();
 $('#btn-connect').addEventListener('click',connect);
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }

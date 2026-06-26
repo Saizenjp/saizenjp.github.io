@@ -186,10 +186,10 @@
 <div class="toolbar">
   <span class="pill" id="outlet-tag" style="display:none;background:var(--accentSoft);color:var(--accent);border-color:#b4cda0;font-size:13px"></span>
   <label data-i18n="po_dateLabel"></label>
-  <button class="btn ghost sm" id="btn-day-prev" type="button" title="전날" style="padding:5px 9px">◀</button>
+  <button class="btn ghost sm" id="btn-day-prev" type="button" style="padding:5px 9px">◀</button>
   <input class="inp" id="date-pick" type="date">
-  <button class="btn ghost sm" id="btn-day-next" type="button" title="다음날" style="padding:5px 9px">▶</button>
-  <button class="btn ghost sm" id="btn-today" type="button" title="오늘로">오늘</button>
+  <button class="btn ghost sm" id="btn-day-next" type="button" style="padding:5px 9px">▶</button>
+  <button class="btn ghost sm" id="btn-today" type="button"></button>
   <button class="btn sm" id="btn-load" type="button" disabled data-i18n="po_btnLoad"></button>
   <button class="btn ghost sm" id="btn-back" type="button" style="display:none" data-i18n="po_btnBack"></button>
   <span class="hint" data-i18n="st_taxHint"></span>
@@ -214,7 +214,7 @@
     <div class="order-head">
       <div class="ot"><span class="otag" id="oh-tag"></span> <span id="oh-rep"></span></div>
       <div class="orun"><span data-i18n="po_runningTotal"></span> <b id="oh-run">¥0</b></div>
-      <button class="btn ghost sm" id="btn-cust-display" type="button" title="이 팀 계산서를 손님 확인 화면에 표시/해제" style="margin-left:10px">🖥 손님 화면 표시</button>
+      <button class="btn ghost sm" id="btn-cust-display" type="button" style="margin-left:10px"></button>
     </div>
     <div class="order-stage">
       <div>
@@ -239,7 +239,7 @@
 <!-- 주문 현황 — 주방 접수/완료를 프론트가 실시간 확인(오늘 전체) -->
 <div class="wrap" id="ko-status" style="display:none;margin-top:6px">
   <div class="sec-title" style="display:flex;align-items:center;gap:10px">
-    <span>注文状況 · 주문 현황</span>
+    <span id="ko-title"></span>
     <span class="pill" id="ko-meta"></span>
     <button class="btn ghost sm" id="ko-refresh" type="button" style="margin-left:auto">↻</button>
   </div>
@@ -259,13 +259,83 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
 const TAX_RATE=0.10;   // 内税: 메뉴가=최종가(税込). 단가에서 소비세를 빼내 표시(더하지 않음)
-const VENUE_LABEL={restaurant:'レストラン / 레스토랑',banquet:'宴会場 / 연회장',proshop:'ゴルフショップ / 골프샵',front:'フロント / 프론트 매점',etc:'その他 / 기타'};
-// 매장(outlet) = venue 묶음. ?outlet= 로 해당 매장만 노출(레스토랑/골프샵/프론트 분리).
-const OUTLETS={
-  front:     {label:'フロント / 프론트 매점', venues:['front']},
-  restaurant:{label:'レストラン·宴会 / 레스토랑·연회', venues:['restaurant','banquet']},
-  golf:      {label:'ゴルフショップ / 골프샵', venues:['proshop']}
+
+// ── i18n (한·일 직원 공용. ja 기본) — saizen-ops.js 의 data-i18n/t() 와 병행, 동적 JS 문자열용 ──
+const L={
+  ja:{ today:'今日', prevDay:'前日', nextDay:'翌日', backToday:'今日へ',
+    needUrlKey:'URL・key必要', connecting:'接続中…', connectedBtn:'✓ 接続済', connOk:'接続済', connectedToast:'Supabaseに接続しました',
+    connFail:'接続失敗', connFailBtn:'接続失敗・再試行', connFailToast:e=>'接続失敗: '+e+' (精算SQL 09・11・12 実行・key確認)',
+    menuLoadFail:e=>'メニュー読み込み失敗: '+e, needConn:'先に接続してください', teamLoadFail:e=>'チーム読み込み失敗: '+e,
+    stayToast:(d,n)=>`${d} · 滞在 ${n}チーム`,
+    custOnTitle:'このチームの請求を客先確認画面に表示/解除', custShow:'🖥 お客様画面表示', custHide:'🖥 表示を消す',
+    custShown:'お客様画面に表示しました', custCleared:'お客様画面を消しました', custFail:e=>'お客様画面表示失敗: '+e,
+    teamFallback:s=>'チーム'+s, member:'会',
+    payTeam:'チーム共通', paySplit:'個人指定 / N分の1',
+    noRoster:'個人名簿がありません — step1で同行者名簿を登録してください。',
+    pickPayer:'支払う人を選択してください', payerOne:'選択1名が全額負担', payerN:k=>k+'名でN分の1に分割',
+    paAll:'全体', paNone:'解除',
+    catRoom:'ルーム',
+    promptAmount:'金額(円·税込·最終価格)を入力してください', needAmount:'金額を入力してください', promptDesc:'内容を入力してください',
+    ticketFail:e=>'厨房チケット発行失敗(請求は完了): '+e,
+    splitN:n=>'個人 '+n+'名', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n}品目 ${amt} 送信${kn?` · 厨房 ${kn}件`:''}`,
+    sendFail:e=>'送信失敗: '+e,
+    koTitle:'注文状況', allVenues:'全体',
+    vRestaurant:'レストラン', vBanquet:'宴会場', vProshop:'ゴルフショップ', vFront:'フロント売店', vEtc:'その他',
+    oFront:'フロント売店', oRestaurant:'レストラン·宴会', oGolf:'ゴルフショップ' },
+  ko:{ today:'오늘', prevDay:'전날', nextDay:'다음날', backToday:'오늘로',
+    needUrlKey:'URL·key 필요', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connOk:'연결됨', connectedToast:'Supabase 연결됨',
+    connFail:'연결 실패', connFailBtn:'연결 실패 · 재시도', connFailToast:e=>'연결 실패: '+e+' (정산 SQL 09·11·12 실행·키 확인)',
+    menuLoadFail:e=>'메뉴 로드 실패: '+e, needConn:'먼저 연결하세요', teamLoadFail:e=>'팀 로드 실패: '+e,
+    stayToast:(d,n)=>`${d} · 체류 ${n}팀`,
+    custOnTitle:'이 팀 계산서를 손님 확인 화면에 표시/해제', custShow:'🖥 손님 화면 표시', custHide:'🖥 표시 끄기',
+    custShown:'손님 화면에 표시했습니다', custCleared:'손님 화면을 비웠습니다', custFail:e=>'손님 화면 표시 실패: '+e,
+    teamFallback:s=>'팀'+s, member:'회',
+    payTeam:'팀 공통', paySplit:'개인 지정 / N분의1',
+    noRoster:'개인 명단이 없습니다 — step1에서 일행별 명단을 등록하세요.',
+    pickPayer:'결제할 인원을 선택하세요', payerOne:'선택 1명이 전액 부담', payerN:k=>k+'명이 N분의 1로 분할',
+    paAll:'전체', paNone:'해제',
+    catRoom:'룸',
+    promptAmount:'금액(엔, 税込·최종가)을 입력하세요', needAmount:'금액을 입력하세요', promptDesc:'내역을 입력하세요',
+    ticketFail:e=>'주방 티켓 발행 실패(청구는 완료): '+e,
+    splitN:n=>'개인 '+n+'명', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n}품목 ${amt} 전송됨${kn?` · 주방 ${kn}건`:''}`,
+    sendFail:e=>'전송 실패: '+e,
+    koTitle:'주문 현황', allVenues:'전체',
+    vRestaurant:'레스토랑', vBanquet:'연회장', vProshop:'골프샵', vFront:'프론트 매점', vEtc:'기타',
+    oFront:'프론트 매점', oRestaurant:'레스토랑·연회', oGolf:'골프샵' },
+  en:{ today:'Today', prevDay:'Prev', nextDay:'Next', backToday:'Go to today',
+    needUrlKey:'URL·key required', connecting:'Connecting…', connectedBtn:'✓ Connected', connOk:'Connected', connectedToast:'Connected to Supabase',
+    connFail:'Connection failed', connFailBtn:'Failed · retry', connFailToast:e=>'Connection failed: '+e+' (run settlement SQL 09·11·12 / check key)',
+    menuLoadFail:e=>'Menu load failed: '+e, needConn:'Connect first', teamLoadFail:e=>'Team load failed: '+e,
+    stayToast:(d,n)=>`${d} · ${n} teams in-house`,
+    custOnTitle:'Show/clear this team’s bill on the customer display', custShow:'🖥 Show customer display', custHide:'🖥 Turn off',
+    custShown:'Shown on customer display', custCleared:'Customer display cleared', custFail:e=>'Customer display failed: '+e,
+    teamFallback:s=>'Team'+s, member:'M',
+    payTeam:'Team-wide', paySplit:'One person / Split evenly',
+    noRoster:'No roster — register companions in step1.',
+    pickPayer:'Select who pays', payerOne:'1 selected pays in full', payerN:k=>'Split evenly among '+k,
+    paAll:'All', paNone:'Clear',
+    catRoom:'Room',
+    promptAmount:'Enter amount (JPY, tax-incl. final price)', needAmount:'Enter an amount', promptDesc:'Enter a description',
+    ticketFail:e=>'Kitchen ticket failed (charge done): '+e,
+    splitN:n=>n+' people', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n} items ${amt} sent${kn?` · kitchen ${kn}`:''}`,
+    sendFail:e=>'Send failed: '+e,
+    koTitle:'Order status', allVenues:'All',
+    vRestaurant:'Restaurant', vBanquet:'Banquet', vProshop:'Pro shop', vFront:'Front shop', vEtc:'Other',
+    oFront:'Front shop', oRestaurant:'Restaurant·Banquet', oGolf:'Pro shop' }
 };
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+
+// venue = DB 저장값(영문 키: restaurant/banquet/proshop/front/etc). 저장 유지, 표시만 번역.
+const VENUE_TXK={restaurant:'vRestaurant',banquet:'vBanquet',proshop:'vProshop',front:'vFront',etc:'vEtc'};
+function venueLabel(v){ const k=VENUE_TXK[v]; return k?tx(k):v; }
+// 매장(outlet) = venue 묶음. ?outlet= 로 해당 매장만 노출. 라벨은 언어별, venues 는 DB 키 그대로.
+const OUTLETS={
+  front:     {labelKey:'oFront',      venues:['front']},
+  restaurant:{labelKey:'oRestaurant', venues:['restaurant','banquet']},
+  golf:      {labelKey:'oGolf',       venues:['proshop']}
+};
+function outletLabel(o){ return tx(OUTLETS[o].labelKey); }
 const _outletParam=new URLSearchParams(location.search).get('outlet')||'';
 let state={ date:'', teams:[], menu:[], venue:'__all__', team:null, folioId:null, runningGross:0, cart:[],
   roster:[], payerMode:'team', payerSel:new Set(), memberFolio:{},
@@ -287,46 +357,54 @@ function toast(msg,cls){
   setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);
 }
 function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
+// data-i18n(saizen-ops.js) 미사용 정적 요소 — 언어 토글 시 직접 갱신
+function applyStatic(){
+  const today=$('#btn-today'); if(today){ today.textContent=tx('today'); today.title=tx('backToday'); }
+  const dp=$('#btn-day-prev'); if(dp) dp.title=tx('prevDay');
+  const dn=$('#btn-day-next'); if(dn) dn.title=tx('nextDay');
+  const kt=$('#ko-title'); if(kt) kt.textContent=tx('koTitle');
+  const cb=$('#btn-cust-display'); if(cb) cb.title=tx('custOnTitle');
+}
 
 // ── 연결 ──
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn('URL·key 필요','err');return;}
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect'); btn.textContent='연결 중…'; btn.disabled=true;
+  const btn=$('#btn-connect'); btn.textContent=tx('connecting'); btn.disabled=true;
   try{
     supa=window.supabase.createClient(url,key);
     const {error}=await supa.from('menu_items').select('id',{count:'exact',head:true});
     if(error) throw error;
-    setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
-    btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
+    setConn(tx('connOk'),'ok'); toast(tx('connectedToast'),'ok');
+    btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
     $('#btn-load').disabled=false;
     await loadMenu();
     await loadTeams();
     $('#ko-status').style.display=''; koRefresh(); startKoPoll();
   }catch(e){
-    setConn('연결 실패','err');
-    toast('연결 실패: '+e.message+' (정산 SQL 09·11·12 실행·키 확인)','err');
-    btn.textContent='연결 실패 · 재시도'; btn.classList.remove('connected'); btn.disabled=false;
+    setConn(tx('connFail'),'err');
+    toast(tx('connFailToast')(e.message),'err');
+    btn.textContent=tx('connFailBtn'); btn.classList.remove('connected'); btn.disabled=false;
     supa=null; $('#btn-load').disabled=true;
   }
 }
 
 async function loadMenu(){
   const {data,error}=await supa.from('menu_items').select('*').eq('active',true).order('venue').order('sort_order');
-  if(error){toast('메뉴 로드 실패: '+error.message,'err');return;}
+  if(error){toast(tx('menuLoadFail')(error.message),'err');return;}
   state.menu=data||[];
 }
 
 // ── 오늘 체크인(체류) 팀 로드 (room.html loadDay 패턴) ──
 async function loadTeams(){
-  if(!supa){toast('먼저 연결하세요','warn');return;}
+  if(!supa){toast(tx('needConn'),'warn');return;}
   const d=$('#date-pick').value||isoToday(); state.date=d; $('#date-pick').value=d;
   const {data,error}=await supa.from('guests')
     .select('event_seq,team_tag,group_code,accom,pax,session_ym,bookings!inner(event_no,rep_name,dep_date,arr_date)')
     .lte('bookings.dep_date',d).gt('bookings.arr_date',d);
-  if(error){toast('팀 로드 실패: '+error.message,'err');return;}
+  if(error){toast(tx('teamLoadFail')(error.message),'err');return;}
   state.teams=(data||[]).map(x=>({
     event_seq:x.event_seq, team_tag:x.team_tag, group_code:x.group_code, accom:x.accom, pax:x.pax,
     session_ym:x.session_ym||ymOf(d), rep:x.bookings?.rep_name||'', event_no:x.bookings?.event_no||'',
@@ -337,7 +415,7 @@ async function loadTeams(){
   await loadRooms();    // 방배정 호수(그날 점유) — 표시·검색용
   renderAccomPos();     // 숙소 토글(기본 야마나미+쿠주)
   backToTeams();
-  toast(`${d} · 체류 ${state.teams.length}팀`,'ok');
+  toast(tx('stayToast')(d,state.teams.length),'ok');
 }
 
 // 그날 점유 방번호(event_seq → [호수…]) — 방배정 후 POS/검색에 표기
@@ -371,7 +449,7 @@ function renderAccomPos(){
   if(state.accomSel===null) state.accomSel=new Set(ACCOM_DEFAULT);
   const sel=state.accomSel; const allOn=(sel.size===ACCOM_ALL.length);
   const chip=(label,on,key)=>`<button type="button" class="ac-chip" data-k="${key}" style="font-size:13px;font-weight:700;padding:6px 13px;border-radius:99px;cursor:pointer;border:1px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent)':'var(--surface3)'};color:${on?'#fff':'var(--text2)'}">${label}</button>`;
-  box.innerHTML=chip('전체',allOn,'__all')+ACCOM_ALL.map(a=>chip(a,sel.has(a),a)).join('');
+  box.innerHTML=chip(tx('allVenues'),allOn,'__all')+ACCOM_ALL.map(a=>chip(a,sel.has(a),a)).join('');
   box.querySelectorAll('.ac-chip').forEach(b=>b.addEventListener('click',()=>{
     const k=b.dataset.k;
     if(k==='__all'){ state.accomSel = allOn ? new Set() : new Set(ACCOM_ALL); }
@@ -428,13 +506,14 @@ async function pushCustomerDisplay(seq){
       {onConflict:'station'});
     if(error) throw error;
     custShownSeq=seq; updateCustBtn();
-    toast(seq?'손님 화면에 표시했습니다':'손님 화면을 비웠습니다','ok');
-  }catch(e){ toast('손님 화면 표시 실패: '+e.message,'err'); }
+    toast(seq?tx('custShown'):tx('custCleared'),'ok');
+  }catch(e){ toast(tx('custFail')(e.message),'err'); }
 }
 function updateCustBtn(){
   const b=$('#btn-cust-display'); if(!b) return;
   const on=!!(state.team && custShownSeq===state.team.event_seq);
-  b.textContent = on?'🖥 표시 끄기':'🖥 손님 화면 표시';
+  b.textContent = on?tx('custHide'):tx('custShow');
+  b.title = tx('custOnTitle');
   b.style.background = on?'var(--accent)':''; b.style.color = on?'#fff':'';
 }
 
@@ -476,7 +555,7 @@ function renderTeams(){
         const tm=teamBySeq(m.event_seq); if(!tm) return;
         const isMem=posIsMember(m);
         const btn=document.createElement('button'); btn.type='button'; btn.className='mhit';
-        btn.innerHTML=`<span class="mh-name">${escP(m.name_kr||m.name_en||'-')}${isMem?'<span class="mh-mem">회</span>':''}</span>`
+        btn.innerHTML=`<span class="mh-name">${escP(m.name_kr||m.name_en||'-')}${isMem?`<span class="mh-mem">${tx('member')}</span>`:''}</span>`
           +`<span class="mh-team">${teamTag(tm)} · ${escP(tm.rep||'')} · #${teamNo(tm)}${tm.accom?(' · '+escP(tm.accom)):''}${roomLabel(tm.event_seq)?(' · '+roomLabel(tm.event_seq)):''}</span>`;
         btn.addEventListener('click',()=>selectTeam(tm));
         wrap.appendChild(btn);
@@ -499,7 +578,7 @@ function renderTeams(){
   });
 }
 // 팀 라벨 통일: 상단 = 그룹코드, # 뒤 = 행사번호(event_no)
-function teamTag(tm){ return tm.group_code||tm.team_tag||('팀'+tm.event_seq); }
+function teamTag(tm){ return tm.group_code||tm.team_tag||tx('teamFallback')(tm.event_seq); }
 function teamNo(tm){ return tm.event_no||tm.event_seq; }
 function escP(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -535,25 +614,25 @@ function renderPayer(){
   const box=$('#payer'); if(!box) return;
   const mode=state.payerMode;
   let h=`<div class="payer-mode">
-    <button type="button" class="pm${mode==='team'?' on':''}" data-pm="team">팀 공통</button>
-    <button type="button" class="pm${mode==='split'?' on':''}" data-pm="split">개인 지정 / N분의1</button>
+    <button type="button" class="pm${mode==='team'?' on':''}" data-pm="team">${tx('payTeam')}</button>
+    <button type="button" class="pm${mode==='split'?' on':''}" data-pm="split">${tx('paySplit')}</button>
   </div>`;
   if(mode==='split'){
     if(!state.roster.length){
-      h+='<div class="payer-hint">개인 명단이 없습니다 — step1에서 일행별 명단을 등록하세요.</div>';
+      h+=`<div class="payer-hint">${tx('noRoster')}</div>`;
     } else {
       const chips=state.roster.map(m=>{
         const on=state.payerSel.has(String(m.id));
         const isMem=posIsMember(m);
         return `<button type="button" class="pchip${on?' on':''}" data-mid="${m.id}">`
           +`<span class="pc-top">${m.seq_in_team!=null?m.seq_in_team+'. ':''}${escP(m.name_kr||m.name_en||'-')}`
-          +`${isMem?'<span class="mbadge">회</span>':''}</span>`
+          +`${isMem?`<span class="mbadge">${tx('member')}</span>`:''}</span>`
           +`${m.name_en&&m.name_kr?`<span class="pc-en">${escP(m.name_en)}</span>`:''}</button>`;
       }).join('');
       const k=state.payerSel.size;
-      const hint=k===0?'결제할 인원을 선택하세요':(k===1?'선택 1명이 전액 부담':k+'명이 N분의 1로 분할');
+      const hint=k===0?tx('pickPayer'):(k===1?tx('payerOne'):tx('payerN')(k));
       h+=`<div class="payer-roster">${chips}</div>`
-        +`<div class="payer-act"><button type="button" id="pa-all">전체</button><button type="button" id="pa-none">해제</button></div>`
+        +`<div class="payer-act"><button type="button" id="pa-all">${tx('paAll')}</button><button type="button" id="pa-none">${tx('paNone')}</button></div>`
         +`<div class="payer-hint">${hint}</div>`;
     }
   }
@@ -578,7 +657,7 @@ function renderVenueTabs(){
   if(ov) venues=ov.filter(v=>venues.includes(v));
   // venue 1개뿐이면 탭 숨김(프론트·골프샵 등)
   if(ov && venues.length<=1){ state.venue='__all__'; return; }
-  const tabs=[['__all__',t('po_allVenues')]].concat(venues.map(v=>[v,VENUE_LABEL[v]||v]));
+  const tabs=[['__all__',t('po_allVenues')]].concat(venues.map(v=>[v,venueLabel(v)]));
   tabs.forEach(([v,label])=>{
     const b=document.createElement('button'); b.type='button';
     b.className='venue-tab'+(state.venue===v?' active':'');
@@ -589,7 +668,10 @@ function renderVenueTabs(){
 }
 
 const POS_CAT_ORDER=['라운딩','식음','숙박','골프샵','기타'];
-function posCatLabel(c){ return c==='숙박'?'룸':(c||'기타'); }
+// category = DB 저장값(한국어 키, CSS class·정렬에도 사용) — 저장·키 유지, 표시 라벨만 번역
+const POS_CATL={ '라운딩':{ja:'ラウンド',en:'Round'}, '식음':{ja:'飲食',en:'F&B'},
+  '숙박':{ja:'ルーム',en:'Room'}, '골프샵':{ja:'ゴルフショップ',en:'Pro shop'}, '기타':{ja:'その他',en:'Other'} };
+function posCatLabel(c){ const m=POS_CATL[c||'기타']; const lg=lang(); return m?(lg==='ja'?m.ja:(lg==='en'?m.en:c)):(c||'기타'); }
 function renderMenu(){
   const box=$('#menu-grid'); box.innerHTML='';
   const ov=outletVenues();
@@ -624,11 +706,11 @@ function renderMenu(){
 function addToCart(m){
   let price=Number(m.unit_price||0), desc=m.name_ja||m.name_ko||'';
   if(price<=0){ // 기타(수동) — 금액·내역 직접 입력
-    const v=prompt('금액(엔, 税込·최종가)을 입력하세요','');
+    const v=prompt(tx('promptAmount'),'');
     if(v===null) return;
     price=Math.round(Number(v)||0);
-    if(price<=0){toast('금액을 입력하세요','warn');return;}
-    const d=prompt('내역을 입력하세요',desc); if(d) desc=d;
+    if(price<=0){toast(tx('needAmount'),'warn');return;}
+    const d=prompt(tx('promptDesc'),desc); if(d) desc=d;
   }
   const key=m.id+'|'+price+'|'+desc;
   const exist=state.cart.find(l=>l.key===key);
@@ -712,7 +794,7 @@ async function sendCart(){
     let rows=[];
     if(state.payerMode==='split'){
       const mids=[...state.payerSel];
-      if(!mids.length){ toast('결제할 인원을 선택하세요','warn'); $('#btn-send').disabled=false; return; }
+      if(!mids.length){ toast(tx('pickPayer'),'warn'); $('#btn-send').disabled=false; return; }
       const folioOf={};
       for(const mid of mids){ folioOf[mid]=await ensureMemberFolio(mid); }
       const k=mids.length;
@@ -752,16 +834,16 @@ async function sendCart(){
       station:l.station, item_name:l.name_ja, qty:l.qty, created_by:by }));
     if(tickets.length){
       const {error:te}=await supa.from('kitchen_tickets').insert(tickets);
-      if(te) toast('주방 티켓 발행 실패(청구는 완료): '+te.message,'warn');
+      if(te) toast(tx('ticketFail')(te.message),'warn');
     }
     const total=rows.reduce((s,r)=>s+r.amount+r.tax,0);
-    const who=state.payerMode==='split'?`개인 ${state.payerSel.size}명`:'팀 공통';
-    toast(`${teamTag(state.team)} · ${who} · ${state.cart.length}품목 ${yen(total)} 전송됨${tickets.length?` · 주방 ${tickets.length}건`:''}`,'ok');
+    const who=state.payerMode==='split'?tx('splitN')(state.payerSel.size):tx('payTeam');
+    toast(tx('sendToast')(teamTag(state.team),who,state.cart.length,yen(total),tickets.length),'ok');
     state.runningGross+=total; $('#oh-run').textContent=yen(state.runningGross);
     state.cart=[]; renderCart();
     if(tickets.length) koRefresh();   // 방금 보낸 주문이 현황에 바로 뜨도록
   }catch(e){
-    toast('전송 실패: '+e.message,'err'); $('#btn-send').disabled=false;
+    toast(tx('sendFail')(e.message),'err'); $('#btn-send').disabled=false;
   }
 }
 
@@ -804,8 +886,8 @@ function koRender(rows){
 // 매장 고정 표시(?outlet=) — 지정 시 그 매장만, 미지정이면 전 매장(기존 동작)
 function applyOutlet(){
   const tag=$('#outlet-tag'); if(!tag) return;
-  if(state.outlet){ tag.textContent=OUTLETS[state.outlet].label; tag.style.display='';
-    try{ document.title='POS · '+OUTLETS[state.outlet].label.replace(/^[^ ]+ /,''); }catch(e){} }
+  if(state.outlet){ const lbl=outletLabel(state.outlet); tag.textContent=lbl; tag.style.display='';
+    try{ document.title='POS · '+lbl; }catch(e){} }
   else tag.style.display='none';
 }
 
@@ -833,12 +915,18 @@ $('#team-q') && $('#team-q').addEventListener('input',e=>{ state.teamQ=e.target.
 $('#btn-send').addEventListener('click',sendCart);
 $('#ko-refresh').addEventListener('click',koRefresh);
 $('#date-pick').value=isoToday();
+applyStatic();
 applyOutlet();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
 window.onSaizenLangChange=function(){
-  try{ if(state.team){ renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); } else renderTeams(); if(supa) koRefresh(); }catch(e){}
+  try{
+    applyStatic(); applyOutlet();
+    if(state.team){ renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); }
+    else { if(state.teams.length) renderAccomPos(); renderTeams(); }
+    if(supa) koRefresh();
+  }catch(e){}
 };
 </script>
 </body>

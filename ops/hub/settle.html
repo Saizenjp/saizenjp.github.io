@@ -179,7 +179,7 @@
   <input class="inp" id="session-ym" type="month">
   <button class="btn sm" id="btn-load" type="button" disabled data-i18n="st_btnLoad"></button>
   <span style="width:1px;height:18px;background:var(--border)"></span>
-  <label style="font-size:12px;color:var(--text2)">날짜</label>
+  <label style="font-size:12px;color:var(--text2)" id="lbl-day">날짜</label>
   <input class="inp" id="settle-day" type="date">
   <button class="btn ghost sm" id="btn-day-all" type="button" title="이 달 전체 팀 보기">월 전체</button>
   <button class="btn ghost sm" id="btn-sales" type="button" disabled data-i18n="st_btnSales"></button>
@@ -220,7 +220,104 @@ let supa=null;
 const TAX_RATE=0.10;                                  // 内税: 단가=최종가(税込). 소비세를 빼내 표시(더하지 않음)
 const CATEGORIES=['라운딩','식음','숙박','골프샵','기타']; // 고정 5종(Min 확정)
 const METHODS=['현금','카드'];                         // 결제수단(Min 확정)
-const STATUS_LABEL={open:'열림',closed:'마감',settled:'결제완료'};
+const STATUS_LABEL={open:'열림',closed:'마감',settled:'결제완료'};  // DB값(open/closed/settled) 표시 폴백 — 표시는 statusLabel()로 다국어
+
+// ── i18n (한·일 직원 공용. ja 기본. data-i18n 정적 라벨은 saizen-ops.js 사전이 담당,
+//     여기 L은 JS가 생성하는 동적 문자열·토스트·confirm·고정 카테고리/결제수단 표시 전용) ──
+const L={
+  ja:{ dayLbl:'日付', monthAll:'月全体', monthAllTitle:'当月の全チーム表示', searchPh:'氏名・部屋番号・代表者・グループコード 検索',
+    needUrlKey:'URL・key必要', connecting:'接続中…', connectedShort:'✓ 接続済', connOk:'接続済', connOkToast:'Supabase 接続済',
+    connectedBtn:'✓ 接続済', connFail:'接続失敗', connFailRetry:'接続失敗・再試行', connFailHint:'(09_settlement_core.sqlの実行・keyをご確認ください)',
+    needConnect:'先に接続してください', folioLoadFail:'フォリオ読み込み失敗', loadedFolios:'件 計上口座 読込', noChargeYet:'このチームはまだ請求がありません — 一覧からクリックして開始',
+    chargeWord:'件', balance:'残高', monthWhole:'月全体', allChip:'全体',
+    cardHint:'クリックすると追加料金を入力できます', checkout:'チェックアウト', chargeCount0:'請求 0件', balanceLabel:'残高',
+    splitN:'個人分割', personUnit:'名', teamTotalBal:'チーム合計残高', personBadge:'個人',
+    chargeMeta:'請求', totalWord:'合計', paidWord:'支払',
+    teamUnit:'チーム', teamPrefix:'チーム', noTargetTeam:'対象チームがありません。(日付・宿泊施設フィルタをご確認、または「月全体」)',
+    chargeLoadFail:'請求読み込み失敗', payLoadFail:'支払読み込み失敗',
+    voidBtn:'取消', noCharges:'請求内訳がありません。', noPays:'支払内訳がありません。',
+    personPrefix:'個人', teamEventUnit:'チーム(行事)単位',
+    thCat:'区分', thDesc:'内訳', thQty:'数量', thUnit:'単価', thSub:'小計', thTax:'消費税', thTotal:'合計',
+    phUnit:'単価(税込・最終価格)', thMethod:'方法', thAmount:'金額', thDate:'日付', thBy:'担当',
+    calcTotal:'合計(税込)', calcPretax:'税抜', calcIntax:'内税',
+    needQtyUnit:'単価・数量を入力してください', chargeAdded:'請求を追加しました', voidConfirmCharge:'この請求を取消(無効化)しますか？',
+    voidFail:'取消失敗', chargeVoided:'請求を取消しました', needPayAmount:'支払金額を入力してください', payAddFail:'支払追加失敗',
+    chargeAddFail:'請求追加失敗', payAdded:'支払を追加しました', payVoidConfirm:'この支払を取消(無効化)しますか？', payVoided:'支払を取消しました',
+    statusChangeFail:'状態変更失敗', statusTo:'状態 → ',
+    noBookings:'この月の予約(bookings)がありません。STEP1の登録をご確認ください', alreadyOpen:'既に開設',
+    openModalTitle:'計上口座を開く (チーム単位)', openModalLabel:'行事(チーム)を選択してください。選択した行事に計上口座を1つ開きます。',
+    openFilterPh:'代表者/商品名 検索', closeBtn:'閉じる', folioOpenFail:'口座開設失敗', folioOpened:'計上口座を開きました',
+    stmtPreviewTitle:'御請求書 プレビュー', printBtn:'印刷', excelBtn:'Excel', closeXBtn:'閉じる', downloadFromOpener:'元の画面でダウンロードしてください',
+    popupBlocked:'ポップアップがブロックされました — 許可が必要です', stmtDownloaded:'御請求書をダウンロードしました',
+    salesPreviewTitle:'売上要約 プレビュー', noData:'データなし', salesLoadFail:'売上要約読み込み失敗', salesDownloaded:'売上要約をダウンロードしました',
+    stOpen:'開設中', stClosed:'締め', stSettled:'決済完了',
+    catRound:'ラウンド', catFood:'飲食', catStay:'宿泊', catShop:'ゴルフショップ', catEtc:'その他',
+    mCash:'現金', mCard:'カード' },
+  ko:{ dayLbl:'날짜', monthAll:'월 전체', monthAllTitle:'이 달 전체 팀 보기', searchPh:'이름·호수·대표자·그룹코드 검색',
+    needUrlKey:'URL·key 필요', connecting:'연결 중…', connectedShort:'✓ 연결됨', connOk:'연결됨', connOkToast:'Supabase 연결됨',
+    connectedBtn:'✓ 연결됨', connFail:'연결 실패', connFailRetry:'연결 실패 · 재시도', connFailHint:'(09_settlement_core.sql 실행·키 확인)',
+    needConnect:'먼저 연결하세요', folioLoadFail:'folio 로드 실패', loadedFolios:'건 정산계정 로드', noChargeYet:'이 팀은 아직 청구 없음 — 목록에서 클릭해 시작',
+    chargeWord:'건', balance:'잔액', monthWhole:'월 전체', allChip:'전체',
+    cardHint:'클릭하면 청구를 추가할 수 있습니다', checkout:'체크아웃', chargeCount0:'청구 0건', balanceLabel:'잔액',
+    splitN:'개인 분할', personUnit:'명', teamTotalBal:'팀 합계 잔액', personBadge:'개인',
+    chargeMeta:'청구', totalWord:'합계', paidWord:'결제',
+    teamUnit:'팀', teamPrefix:'팀', noTargetTeam:'대상 팀이 없습니다. (날짜·숙소 필터를 확인하거나 「월 전체」)',
+    chargeLoadFail:'청구 로드 실패', payLoadFail:'결제 로드 실패',
+    voidBtn:'취소', noCharges:'청구 내역이 없습니다.', noPays:'결제 내역이 없습니다.',
+    personPrefix:'개인', teamEventUnit:'팀(행사) 단위',
+    thCat:'구분', thDesc:'내역', thQty:'수량', thUnit:'단가', thSub:'소계', thTax:'소비세', thTotal:'합계',
+    phUnit:'단가(税込·최종가)', thMethod:'수단', thAmount:'금액', thDate:'일자', thBy:'담당',
+    calcTotal:'합계(税込)', calcPretax:'세전', calcIntax:'内税',
+    needQtyUnit:'단가·수량을 입력하세요', chargeAdded:'청구 추가됨', voidConfirmCharge:'이 청구를 취소(무효화)할까요?',
+    voidFail:'취소 실패', chargeVoided:'청구 취소됨', needPayAmount:'결제 금액을 입력하세요', payAddFail:'결제 추가 실패',
+    chargeAddFail:'청구 추가 실패', payAdded:'결제 추가됨', payVoidConfirm:'이 결제를 취소(무효화)할까요?', payVoided:'결제 취소됨',
+    statusChangeFail:'상태 변경 실패', statusTo:'상태 → ',
+    noBookings:'이 월의 예약(bookings)이 없습니다. STEP1 등록을 확인하세요', alreadyOpen:'이미 열림',
+    openModalTitle:'정산계정 열기 (팀 단위)', openModalLabel:'행사(팀)를 선택하세요. 선택한 행사에 정산 계정 1개를 엽니다.',
+    openFilterPh:'대표자/상품명 검색', closeBtn:'닫기', folioOpenFail:'계정 열기 실패', folioOpened:'정산 계정 열림',
+    stmtPreviewTitle:'御請求書 미리보기', printBtn:'인쇄', excelBtn:'엑셀', closeXBtn:'닫기', downloadFromOpener:'원래 창에서 다운로드해 주세요',
+    popupBlocked:'팝업 차단 — 허용 필요', stmtDownloaded:'御請求書 다운로드',
+    salesPreviewTitle:'売上要約 미리보기', noData:'데이터 없음', salesLoadFail:'매출요약 로드 실패', salesDownloaded:'매출요약 다운로드',
+    stOpen:'열림', stClosed:'마감', stSettled:'결제완료',
+    catRound:'라운딩', catFood:'식음', catStay:'숙박', catShop:'골프샵', catEtc:'기타',
+    mCash:'현금', mCard:'카드' },
+  en:{ dayLbl:'Date', monthAll:'Whole month', monthAllTitle:'Show all teams this month', searchPh:'Search name / room / rep / group code',
+    needUrlKey:'URL·key required', connecting:'Connecting…', connectedShort:'✓ Connected', connOk:'Connected', connOkToast:'Supabase connected',
+    connectedBtn:'✓ Connected', connFail:'Connection failed', connFailRetry:'Failed · retry', connFailHint:'(run 09_settlement_core.sql · check key)',
+    needConnect:'Connect first', folioLoadFail:'Folio load failed', loadedFolios:' folios loaded', noChargeYet:'No charges yet — click in the list to start',
+    chargeWord:' items', balance:'Balance', monthWhole:'Whole month', allChip:'All',
+    cardHint:'Click to add an extra charge', checkout:'check-out', chargeCount0:'0 charges', balanceLabel:'Balance',
+    splitN:'Per-person split', personUnit:' ppl', teamTotalBal:'Team total balance', personBadge:'Person',
+    chargeMeta:'Charges', totalWord:'Total', paidWord:'Paid',
+    teamUnit:' teams', teamPrefix:'Team ', noTargetTeam:'No target team. (Check date / lodging filter, or use “Whole month”.)',
+    chargeLoadFail:'Charge load failed', payLoadFail:'Payment load failed',
+    voidBtn:'Void', noCharges:'No charges.', noPays:'No payments.',
+    personPrefix:'Person', teamEventUnit:'Team (event) level',
+    thCat:'Category', thDesc:'Description', thQty:'Qty', thUnit:'Unit', thSub:'Subtotal', thTax:'Tax', thTotal:'Total',
+    phUnit:'Unit price (incl. tax · final)', thMethod:'Method', thAmount:'Amount', thDate:'Date', thBy:'By',
+    calcTotal:'Total (incl. tax)', calcPretax:'pre-tax', calcIntax:'incl. tax',
+    needQtyUnit:'Enter unit price · qty', chargeAdded:'Charge added', voidConfirmCharge:'Void this charge?',
+    voidFail:'Void failed', chargeVoided:'Charge voided', needPayAmount:'Enter payment amount', payAddFail:'Add payment failed',
+    chargeAddFail:'Add charge failed', payAdded:'Payment added', payVoidConfirm:'Void this payment?', payVoided:'Payment voided',
+    statusChangeFail:'Status change failed', statusTo:'Status → ',
+    noBookings:'No bookings for this month. Check STEP1 registration', alreadyOpen:'already open',
+    openModalTitle:'Open folio (per team)', openModalLabel:'Select an event (team). One folio is opened for the selected event.',
+    openFilterPh:'Search rep / product', closeBtn:'Close', folioOpenFail:'Open folio failed', folioOpened:'Folio opened',
+    stmtPreviewTitle:'御請求書 preview', printBtn:'Print', excelBtn:'Excel', closeXBtn:'Close', downloadFromOpener:'Please download from the original window',
+    popupBlocked:'Popup blocked — please allow', stmtDownloaded:'御請求書 downloaded',
+    salesPreviewTitle:'売上要約 preview', noData:'No data', salesLoadFail:'Sales summary load failed', salesDownloaded:'Sales summary downloaded',
+    stOpen:'Open', stClosed:'Closed', stSettled:'Settled',
+    catRound:'Round', catFood:'F&B', catStay:'Lodging', catShop:'Pro shop', catEtc:'Other',
+    mCash:'Cash', mCard:'Card' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+// 상태(DB값 open/closed/settled) 표시 다국어 — 저장값은 불변, 표시만 번역
+function statusLabel(s){ const m={open:'stOpen',closed:'stClosed',settled:'stSettled'}; return m[s]?tx(m[s]):(STATUS_LABEL[s]||s); }
+// 고정 카테고리(저장값=한글 5종) 화면 표시 다국어 — 저장/비교값은 불변
+function catLabel(c){ const m={'라운딩':'catRound','식음':'catFood','숙박':'catStay','골프샵':'catShop','기타':'catEtc'}; return m[c]?tx(m[c]):c; }
+// 고정 결제수단(저장값=한글 현금/카드) 화면 표시 다국어 — 저장/비교값은 불변
+function methodLabel(m){ const k={'현금':'mCash','카드':'mCard'}; return k[m]?tx(k[m]):m; }
 
 let state={ ym:'', folios:[], selId:null, charges:[], payments:[], bookings:[], noBySeq:{}, day:'', q:'', roomsBySeq:{}, tagBySeq:{}, accomSel:null };
 const ACCOM_ALL=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
@@ -237,26 +334,32 @@ function toast(msg,cls){
   setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);
 }
 function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
+// JS가 생성하지 않는 정적 라벨(data-i18n 미적용분)을 현재 언어로 갱신
+function applyStatic(){
+  const dl=$('#lbl-day'); if(dl) dl.textContent=tx('dayLbl');
+  const ba=$('#btn-day-all'); if(ba){ ba.textContent=tx('monthAll'); ba.title=tx('monthAllTitle'); }
+  const sq=$('#settle-q'); if(sq) sq.placeholder=tx('searchPh');
+}
 
 // ── 연결 (room.html 패턴 재사용) ──
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn('URL·key 필요','err');return;}
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect'); btn.textContent='연결 중…'; btn.disabled=true; btn.classList.remove('connected');
+  const btn=$('#btn-connect'); btn.textContent=tx('connecting'); btn.disabled=true; btn.classList.remove('connected');
   try{
     supa=window.supabase.createClient(url,key);
     const {error}=await supa.from('folios').select('id',{count:'exact',head:true});
     if(error) throw error;
-    setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
-    btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
+    setConn(tx('connOk'),'ok'); toast(tx('connOkToast'),'ok');
+    btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
     $('#btn-load').disabled=false; $('#btn-sales').disabled=false;
     loadSession();
   }catch(e){
-    setConn('연결 실패','err');
-    toast('연결 실패: '+e.message+' (09_settlement_core.sql 실행·키 확인)','err');
-    btn.textContent='연결 실패 · 재시도'; btn.classList.remove('connected'); btn.disabled=false;
+    setConn(tx('connFail'),'err');
+    toast(tx('connFail')+': '+e.message+' '+tx('connFailHint'),'err');
+    btn.textContent=tx('connFailRetry'); btn.classList.remove('connected'); btn.disabled=false;
     supa=null; $('#btn-load').disabled=true; $('#btn-sales').disabled=true;
   }
 }
@@ -275,10 +378,10 @@ async function pagedQuery(buildFn){
 }
 // ── 세션(월) 로드 — folio + 팀(bookings) + 숙소·태그(guests) + 호수(rooms) ──
 async function loadSession(){
-  if(!supa){toast('먼저 연결하세요','warn');return;}
+  if(!supa){toast(tx('needConnect'),'warn');return;}
   const ym=$('#session-ym').value||nowYM(); state.ym=ym; $('#session-ym').value=ym;
   const fres=await pagedQuery(()=>supa.from('v_folio_balance').select('*').eq('session_ym',ym).order('opened_at').order('folio_id'));
-  if(fres.error){toast('folio 로드 실패: '+fres.error.message,'err');return;}
+  if(fres.error){toast(tx('folioLoadFail')+': '+fres.error.message,'err');return;}
   state.folios=fres.data||[];
   const {data:bk,error:be}=await supa.from('bookings')
     .select('event_seq,event_no,rep_name,product_name,dep_date,arr_date').eq('session_ym',ym).order('arr_date');
@@ -295,7 +398,7 @@ async function loadSession(){
   if($('#settle-day')) $('#settle-day').value=state.day;
   state.selId=null; state.charges=[]; state.payments=[];
   renderAccomChips(); renderFolioList(); renderDetail();
-  toast(`${ym} · 정산계정 ${state.folios.length}건 로드`,'ok');
+  toast(`${ym} · ${state.folios.length}${tx('loadedFolios')}`,'ok');
   // 딥링크(?seq): 그 팀 folio 있으면 자동 열기, 없으면 월 전체에 노출(자동 생성 안 함)
   if(window._deepSeq){
     const s=window._deepSeq; window._deepSeq=null;
@@ -303,7 +406,7 @@ async function loadSession(){
     const tf=state.folios.find(f=>f.event_seq===s && f.subject==='team');
     renderFolioList();
     if(tf) selectFolio(tf.folio_id);
-    else toast('이 팀은 아직 청구 없음 — 목록에서 클릭해 시작','warn');
+    else toast(tx('noChargeYet'),'warn');
   }
 }
 function isoTodayS(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
@@ -331,7 +434,7 @@ function renderAccomChips(){
   const sel=state.accomSel||new Set(ACCOM_DEFAULT);
   const allOn=(sel.size===ACCOM_ALL.length);
   const chip=(label,on,key)=>`<button type="button" class="ac-chip" data-k="${key}" style="font-size:12px;font-weight:700;padding:4px 11px;border-radius:99px;cursor:pointer;border:1px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent)':'var(--surface3)'};color:${on?'#fff':'var(--text2)'}">${label}</button>`;
-  box.innerHTML=chip('전체',allOn,'__all')+ACCOM_ALL.map(a=>chip(a,sel.has(a),a)).join('');
+  box.innerHTML=chip(tx('allChip'),allOn,'__all')+ACCOM_ALL.map(a=>chip(a,sel.has(a),a)).join('');
   box.querySelectorAll('.ac-chip').forEach(b=>b.addEventListener('click',()=>{
     const k=b.dataset.k;
     if(k==='__all'){ state.accomSel = allOn ? new Set() : new Set(ACCOM_ALL); }
@@ -354,13 +457,13 @@ function settleHay(b){
 // folio 미개설 팀 카드 — 청구가 없으니 잔액은 ¥0. 클릭하면 청구 추가(계정 자동 개설).
 function pendingCard(b){
   const card=document.createElement('div'); card.className='folio-card';
-  const tag=(state.tagBySeq[b.event_seq])||('팀'+(b.event_no||b.event_seq));
+  const tag=(state.tagBySeq[b.event_seq])||(tx('teamPrefix')+(b.event_no||b.event_seq));
   const rl=roomLabelS(b.event_seq);
-  card.title='클릭하면 청구를 추가할 수 있습니다';
+  card.title=tx('cardHint');
   card.innerHTML=`
     <div class="fh"><span class="ftag">${tag}</span><span class="frep">${b.rep_name||''}</span></div>
-    <div class="fmeta">${state.accomBySeq[b.event_seq]||''}${rl?' · '+rl:''} · ${(b.arr_date||'').slice(5)} 체크아웃 · 청구 0건</div>
-    <div class="fbal zero">잔액 ${yen(0)}</div>`;
+    <div class="fmeta">${state.accomBySeq[b.event_seq]||''}${rl?' · '+rl:''} · ${(b.arr_date||'').slice(5)} ${tx('checkout')} · ${tx('chargeCount0')}</div>
+    <div class="fbal zero">${tx('balanceLabel')} ${yen(0)}</div>`;
   card.addEventListener('click',()=>ensureFolioAndSelect(b.event_seq));
   return card;
 }
@@ -375,7 +478,7 @@ function renderTeamFolios(box, seq, list){
   const members=list.filter(f=>f.subject==='member');
   if(!members.length){ list.forEach(f=>box.appendChild(folioCard(f))); return; }
   const teamF=list.find(f=>f.subject==='team')||list[0];
-  const tag=teamF.team_tag||('팀'+seq);
+  const tag=teamF.team_tag||(tx('teamPrefix')+seq);
   const gGross=list.reduce((s,f)=>s+Number(f.gross_total||0),0);
   const gPaid =list.reduce((s,f)=>s+Number(f.paid_total||0),0);
   const gBal=gGross-gPaid; const gCls=gBal<=0?'zero':'due';
@@ -384,8 +487,8 @@ function renderTeamFolios(box, seq, list){
     <div class="fg-head">
       <span class="fg-tag">${tag}</span>
       <span class="fg-rep">${teamF.rep_name||''}</span>
-      <span class="fg-split">개인 분할 ${members.length}명</span>
-      <span class="fg-bal ${gCls}">팀 합계 잔액 ${yen(gBal)}</span>
+      <span class="fg-split">${tx('splitN')} ${members.length}${tx('personUnit')}</span>
+      <span class="fg-bal ${gCls}">${tx('teamTotalBal')} ${yen(gBal)}</span>
     </div>`;
   const body=document.createElement('div'); body.className='fg-body';
   list.forEach(f=>body.appendChild(folioCard(f)));
@@ -398,23 +501,23 @@ function folioCard(f){
   const isMember=f.subject==='member';
   card.className='folio-card'+(isMember?' member':'')+(f.folio_id===state.selId?' sel':'');
   card.dataset.id=f.folio_id;
-  const tag=f.team_tag||('팀'+evNo(f.event_seq));
+  const tag=f.team_tag||(tx('teamPrefix')+evNo(f.event_seq));
   const bal=Number(f.balance||0);
   const balCls=bal<=0?'zero':'due';
   // 개인 folio: 작은 팀태그 + 개인명 강조 / 팀 folio: 팀태그 + 대표자
   const head=isMember
     ? `<span class="ftag">${tag}</span>
        <span class="frep">${f.member_name||f.rep_name||''}</span>
-       <span class="sbadge s-${f.status}">${STATUS_LABEL[f.status]||f.status}</span>
-       <span class="sbadge s-member">개인</span>`
+       <span class="sbadge s-${f.status}">${statusLabel(f.status)}</span>
+       <span class="sbadge s-member">${tx('personBadge')}</span>`
     : `<span class="ftag">${tag}</span>
        <span class="frep">${f.rep_name||''}</span>
-       <span class="sbadge s-${f.status}">${STATUS_LABEL[f.status]||f.status}</span>`;
+       <span class="sbadge s-${f.status}">${statusLabel(f.status)}</span>`;
   const rl=(!isMember)?roomLabelS(f.event_seq):'';
   card.innerHTML=`
     <div class="fh">${head}</div>
-    <div class="fmeta">${rl?rl+' · ':''}청구 ${f.charge_count||0}건 · 합계 ${yen(f.gross_total)} · 결제 ${yen(f.paid_total)}</div>
-    <div class="fbal ${balCls}">잔액 ${yen(bal)}</div>`;
+    <div class="fmeta">${rl?rl+' · ':''}${tx('chargeMeta')} ${f.charge_count||0}${tx('chargeWord')} · ${tx('totalWord')} ${yen(f.gross_total)} · ${tx('paidWord')} ${yen(f.paid_total)}</div>
+    <div class="fbal ${balCls}">${tx('balanceLabel')} ${yen(bal)}</div>`;
   card.addEventListener('click',()=>selectFolio(f.folio_id));
   return card;
 }
@@ -431,8 +534,8 @@ function renderFolioList(){
   if(q) teams=teams.filter(b=>settleHay(b).includes(q));
   // 정렬: 체크아웃(arr) 빠른 순 → 잔액 있는 팀 우선 → 대표자
   teams.sort((a,b)=>String(a.arr_date||'').localeCompare(String(b.arr_date||''))||String(a.rep_name||'').localeCompare(String(b.rep_name||'')));
-  $('#folio-cnt').textContent=`${teams.length}팀${state.day?' · '+state.day.slice(5):' · 월 전체'}`;
-  if(!teams.length){ box.innerHTML='<div class="empty-hint">대상 팀이 없습니다. (날짜·숙소 필터를 확인하거나 「월 전체」)</div>'; return; }
+  $('#folio-cnt').textContent=`${teams.length}${tx('teamUnit')}${state.day?' · '+state.day.slice(5):' · '+tx('monthWhole')}`;
+  if(!teams.length){ box.innerHTML='<div class="empty-hint">'+tx('noTargetTeam')+'</div>'; return; }
   teams.forEach(b=>{
     const flist=folioByTeam.get(b.event_seq);
     if(flist&&flist.length) renderTeamFolios(box, b.event_seq, flist);
@@ -443,10 +546,10 @@ function renderFolioList(){
 async function selectFolio(id){
   state.selId=id;
   const {data:c,error:ce}=await supa.from('charges').select('*').eq('folio_id',id).order('charged_at');
-  if(ce){toast('청구 로드 실패: '+ce.message,'err');return;}
+  if(ce){toast(tx('chargeLoadFail')+': '+ce.message,'err');return;}
   state.charges=c||[];
   const {data:p,error:pe}=await supa.from('payments').select('*').eq('folio_id',id).order('paid_at');
-  if(pe){toast('결제 로드 실패: '+pe.message,'err');return;}
+  if(pe){toast(tx('payLoadFail')+': '+pe.message,'err');return;}
   state.payments=p||[];
   renderFolioList(); renderDetail();
 }
@@ -457,7 +560,7 @@ function renderDetail(){
   const box=$('#detail');
   const f=curFolio();
   if(!f){ box.innerHTML='<div class="empty-hint">'+t('st_selectFolio')+'</div>'; return; }
-  const tag=f.team_tag||('팀'+evNo(f.event_seq));
+  const tag=f.team_tag||(tx('teamPrefix')+evNo(f.event_seq));
   const charges=state.charges.filter(c=>!c.voided);
   const subTotal=charges.reduce((s,c)=>s+Number(c.amount||0),0);
   const taxTotal=charges.reduce((s,c)=>s+Number(c.tax||0),0);
@@ -468,34 +571,34 @@ function renderDetail(){
 
   const chargeRows=state.charges.map(c=>`
     <tr class="${c.voided?'voided':''}">
-      <td><span class="catpill cat-${c.category}">${c.category}</span></td>
+      <td><span class="catpill cat-${c.category}">${catLabel(c.category)}</span></td>
       <td>${c.description||''}</td>
       <td class="num">${Number(c.qty||0)}</td>
       <td class="num">${yen(c.unit_price)}</td>
       <td class="num">${yen(c.amount)}</td>
       <td class="num">${yen(c.tax)}</td>
       <td class="num">${yen(Number(c.amount||0)+Number(c.tax||0)+Number(c.service_charge||0))}</td>
-      <td>${c.voided?'':'<button class="vbtn" data-void-charge="'+c.id+'">취소</button>'}</td>
-    </tr>`).join('') || '<tr><td colspan="8" class="empty-hint">청구 내역이 없습니다.</td></tr>';
+      <td>${c.voided?'':'<button class="vbtn" data-void-charge="'+c.id+'">'+tx('voidBtn')+'</button>'}</td>
+    </tr>`).join('') || '<tr><td colspan="8" class="empty-hint">'+tx('noCharges')+'</td></tr>';
 
   const payRows=state.payments.map(p=>`
     <tr class="${p.voided?'voided':''}">
-      <td>${p.method}</td>
+      <td>${methodLabel(p.method)}</td>
       <td class="num">${yen(p.amount)}</td>
       <td>${(p.paid_at||'').slice(0,10)}</td>
       <td>${p.received_by||''}</td>
-      <td>${p.voided?'':'<button class="vbtn" data-void-pay="'+p.id+'">취소</button>'}</td>
-    </tr>`).join('') || '<tr><td colspan="5" class="empty-hint">결제 내역이 없습니다.</td></tr>';
+      <td>${p.voided?'':'<button class="vbtn" data-void-pay="'+p.id+'">'+tx('voidBtn')+'</button>'}</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="empty-hint">'+tx('noPays')+'</td></tr>';
 
-  const catOpts=CATEGORIES.map(c=>`<option value="${c}">${c}</option>`).join('');
-  const methOpts=METHODS.map(m=>`<option value="${m}">${m}</option>`).join('');
+  const catOpts=CATEGORIES.map(c=>`<option value="${c}">${catLabel(c)}</option>`).join('');
+  const methOpts=METHODS.map(m=>`<option value="${m}">${methodLabel(m)}</option>`).join('');
   const editable=f.status==='open';
 
   box.innerHTML=`
     <div class="det-head">
       <div>
-        <div class="dt">${tag} <span class="sbadge s-${f.status}">${STATUS_LABEL[f.status]||f.status}</span></div>
-        <div class="ds">${f.rep_name||''} · ${f.subject==='member'?('개인 '+(f.member_name||'')):'팀(행사) 단위'} · event #${evNo(f.event_seq)}</div>
+        <div class="dt">${tag} <span class="sbadge s-${f.status}">${statusLabel(f.status)}</span></div>
+        <div class="ds">${f.rep_name||''} · ${f.subject==='member'?(tx('personPrefix')+' '+(f.member_name||'')):tx('teamEventUnit')} · event #${evNo(f.event_seq)}</div>
       </div>
       <div class="dactions">
         <button class="btn ghost sm" id="btn-statement" type="button" data-i18n="st_btnStatement"></button>
