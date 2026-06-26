@@ -68,7 +68,7 @@
 <body data-so-area="print">
 <div class="topbar so-bar">
   <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
-  <span class="step">夕食オーダー 인쇄</span>
+  <span class="step" id="t-step">夕食オーダー 인쇄</span>
   <a class="navhome" href="../index.html">← 홈</a>
   <div class="grow so-spacer"></div>
   <div class="so-controls">
@@ -85,11 +85,11 @@
   <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
   <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
   <button class="btn sm" id="btn-connect" type="button">연결</button>
-  <span class="hint">날짜별 夕食オーダー(A3 가로) 인쇄 + 朝/昼/夕 식수 자동 집계. step1 데이터 기준.</span>
+  <span class="hint" id="t-connhint">날짜별 夕食オーダー(A3 가로) 인쇄 + 朝/昼/夕 식수 자동 집계. step1 데이터 기준.</span>
 </div>
 
 <div class="wrap" id="content">
-  <div class="panel"><div class="deny" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+  <div class="panel"><div class="deny" id="t-wait" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
 </div>
 
 <div id="toast"></div>
@@ -97,6 +97,92 @@
 <script src="../assets/saizen-ops.js?v=14.79"></script>
 <script>
 const $=s=>document.querySelector(s);
+// ── i18n: 화면 chrome 전용(印刷 산출물·도메인 데이터는 미번역) ──
+const L={
+  ja:{ step:'夕食オーダー 印刷', connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', loginNeed:'ログイン必要',
+    connHint:'日付別 夕食オーダー(A3横) 印刷 ＋ 朝/昼/夕の食数自動集計。step1データ基準。',
+    waitConn:'接続後に表示されます。', loginCard:'ログインが必要です。', loginCardSub:'中央のログインカードでログイン後、再接続してください。',
+    monthFilter:'月選択 · フィルター', btnPrint:'🖨 夕食オーダー A3 印刷', btnNameplate:'🍽 レストラン名札 印刷',
+    dateLbl:'日付', accomLbl:'宿泊施設', all:'全体',
+    printDesc:'日付1日 = A3横1ページ(夕食オーダー名簿 + 朝食・昼食・夕食 食数表)。<b>A3横・倍率100%</b>で印刷。※テーブルNo・食事除外・ウォークイン・日本客の食数は /app/ 手入力項目のため空欄です(食数自動集計は同一ルール)。',
+    addonH:'別注 · アレルギー', addonHint:'— 追加/アップグレードメニュー · アレルギー。日付＋チーム選択後に登録。<b>アップグレードは人前分の夕食基本数量を自動控除</b>。夕食オーダー印刷に赤字表記',
+    fDate:'日付', fTeam:'チーム', fKind:'種類', kAdd:'追加メニュー', kUp:'アップグレード(基本控除)', kAllergy:'アレルギー/食事制限',
+    fItem:'メニュー名', fItemAllergy:'内容', fPrice:'単価¥', fQty:'数量', fUnit:'単位', addBtn:'＋ 登録',
+    alMeat:'肉×', alFish:'魚×', alPork:'豚肉×',
+    selDate:'— 日付 —', selTeam:'— チーム選択 —', noTeamDay:'— その日宿泊チームなし —', noTag:'(タグなし)',
+    addonEmpty:'登録された別注・アレルギーはありません。',
+    pvH:'日付別 食数プレビュー', teditH:'チーム 夕食除外·まとめ(合席)',
+    teditHint:'— 夕食除外は<b>夕食数量のみ</b>から控除(朝・昼食の食数は維持)。まとめ(🔗)はレストラン名札1枚で合席(人数合算・代表/タグを全て表記)。タグコード・人数はstep1データ基準(編集不可)',
+    dgLink:'🔗 選択をまとめる', dgUnlink:'✂ まとめ解除', dgHint:'同じレストラン名札で合席するチームをチェック → まとめる。名札には合算人数 ＋ 代表者・タグが全て表示されます。',
+    thSel:'全体選択', thIn:'入国', thFac:'施設', thRep:'代表者', thTag:'タグコード', thPax:'人数', thGroup:'まとめ', thEx:'夕食除外', thExTitle:'夕食のみ控除(朝・昼食の食数は維持)',
+    noTeam:'チームなし', exReleaseBtn:'夕食除外 解除', exBtn:'夕食除外', exReasonTitle:'夕食除外 理由',
+    pvNoDate:'出力する日付がありません。', baseDinner:'基本夕食', upgradeBadge:'別', upgradeNote:'人前 別途',
+    statLoading:'読み込み中…', statNoData:'当該月データなし', statFail:'読み込み失敗', loadFail:'読み込み失敗',
+    tNoConn:'先に接続してください', tNoDateTeam:'日付・チームを選択してください', tNoItem:'メニュー名/内容を入力してください',
+    tAllergyOk:'アレルギー登録', tAddonOk:'別注登録', tAddFail:'登録失敗', tDelFail:'削除失敗', tDel:'削除',
+    tGroupMin:'合席するチームを2つ以上チェックしてください', tGrouped:'チーム まとめ — 名札1枚で合席', tUngroupSel:'解除するチームをチェックしてください', tUngrouped:'まとめ解除', tSaveFail:'保存失敗',
+    promptReason:'夕食除外の理由を入力してください (任意 — 空欄でも除外されます)\n※夕食数量のみ控除し、朝・昼食の食数は維持されます\n例: 外食 / アップグレード / ノーショー',
+    tExReason:'夕食除外 — ', tExOnly:'夕食除外 — 夕食数量のみ控除(朝・昼食は維持)', tExRelease:'夕食除外 解除',
+    popupBlock:'ポップアップブロック — 許可が必要', noOutDate:'出力する日付がありません', noOutData:'出力するデータがありません',
+    teams:'チーム', day:'日', teamUnit:'チーム', paxUnit:'名', cntUnit:'日' },
+  ko:{ step:'夕食オーダー 인쇄', connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결·재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', loginNeed:'로그인 필요',
+    connHint:'날짜별 夕食オーダー(A3 가로) 인쇄 + 朝/昼/夕 식수 자동 집계. step1 데이터 기준.',
+    waitConn:'연결 후 표시됩니다.', loginCard:'로그인이 필요합니다.', loginCardSub:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
+    monthFilter:'월 선택 · 필터', btnPrint:'🖨 夕食オーダー A3 인쇄', btnNameplate:'🍽 レストラン名札 인쇄',
+    dateLbl:'날짜', accomLbl:'숙소', all:'전체',
+    printDesc:'날짜 1일 = A3 가로 1페이지(夕食オーダー 명단 + 朝食·昼食·夕食 식수표). <b>A3 가로, 배율 100%</b>로 인쇄. ※테이블No·끼니제외·ウォークイン·일본고객 식수는 /app/ 수기항목이라 비어 있습니다(식수 자동집계는 동일 규칙).',
+    addonH:'別注 · 알레르기', addonHint:'— 추가/업그레이드 메뉴 · 알레르기. 날짜+팀 선택 후 등록. <b>업그레이드는 인분만큼 석식 기본 수량 자동 차감</b>. 夕食オーダー 인쇄에 빨강 표기',
+    fDate:'날짜', fTeam:'팀', fKind:'종류', kAdd:'추가메뉴', kUp:'업그레이드(기본 차감)', kAllergy:'알레르기/식이',
+    fItem:'메뉴명', fItemAllergy:'내용', fPrice:'단가¥', fQty:'수량', fUnit:'단위', addBtn:'＋ 등록',
+    alMeat:'고기×', alFish:'생선×', alPork:'돼지×',
+    selDate:'— 날짜 —', selTeam:'— 팀 선택 —', noTeamDay:'— 그날 묵는 팀 없음 —', noTag:'(태그없음)',
+    addonEmpty:'등록된 別注·알레르기가 없습니다.',
+    pvH:'날짜별 식수 미리보기', teditH:'팀 夕食除外·묶기',
+    teditHint:'— 夕食除外는 <b>석식 수량에서만</b> 빠짐(朝·昼食 식수 유지). 묶기(🔗)는 レストラン名札 1장으로 합석(인원 합산·대표/태그 모두 표기). 태그코드·인원은 step1 데이터 기준(수정 불가)',
+    dgLink:'🔗 선택 묶기', dgUnlink:'✂ 묶음 해제', dgHint:'같은 식당 명패로 합석할 팀을 체크 → 묶기. 명패엔 합산 인원 + 대표자·태그 모두 나옵니다.',
+    thSel:'전체 선택', thIn:'入国', thFac:'施設', thRep:'代表者', thTag:'タグコード', thPax:'人数', thGroup:'묶음', thEx:'夕食除外', thExTitle:'석식만 제외(朝·昼食 식수는 유지)',
+    noTeam:'팀 없음', exReleaseBtn:'夕食除外 해제', exBtn:'夕食除外', exReasonTitle:'夕食除外 사유',
+    pvNoDate:'출력할 날짜가 없습니다.', baseDinner:'기본 석식', upgradeBadge:'別', upgradeNote:'인분 별도',
+    statLoading:'불러오는 중…', statNoData:'해당 월 데이터 없음', statFail:'로드 실패', loadFail:'로드 실패',
+    tNoConn:'먼저 연결하세요', tNoDateTeam:'날짜·팀을 선택하세요', tNoItem:'메뉴명/내용을 입력하세요',
+    tAllergyOk:'알레르기 등록', tAddonOk:'別注 등록', tAddFail:'등록 실패', tDelFail:'삭제 실패', tDel:'삭제',
+    tGroupMin:'합석할 팀을 2개 이상 체크하세요', tGrouped:'팀 묶음 — 명패 1장으로 합석', tUngroupSel:'해제할 팀을 체크하세요', tUngrouped:'묶음 해제', tSaveFail:'저장 실패',
+    promptReason:'夕食除外 사유를 입력하세요 (선택 — 비워도 제외됩니다)\n※석식 수량에서만 빠지고 朝·昼食 식수는 유지됩니다\n예: 외식 / 업그레이드 / 노쇼',
+    tExReason:'夕食除外 — ', tExOnly:'夕食除外 — 석식 수량에서만 빠짐(朝·昼食 유지)', tExRelease:'夕食除外 해제',
+    popupBlock:'팝업 차단 — 허용 필요', noOutDate:'출력할 날짜가 없습니다', noOutData:'출력할 데이터가 없습니다',
+    teams:'팀', day:'일', teamUnit:'팀', paxUnit:'名', cntUnit:'일' },
+  en:{ step:'夕食オーダー Print', connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', loginNeed:'Login required',
+    connHint:'Per-date 夕食オーダー (A3 landscape) print + auto meal-count for 朝/昼/夕. Based on step1 data.',
+    waitConn:'Shown after connecting.', loginCard:'Login required.', loginCardSub:'Log in from the central login card, then reconnect.',
+    monthFilter:'Month · Filter', btnPrint:'🖨 夕食オーダー A3 Print', btnNameplate:'🍽 レストラン名札 Print',
+    dateLbl:'Date', accomLbl:'Lodging', all:'All',
+    printDesc:'1 date = 1 A3-landscape page (夕食オーダー list + 朝食·昼食·夕食 meal-count table). Print at <b>A3 landscape, 100% scale</b>. ※Table No / meal-exclusion / ウォークイン / Japanese-guest counts are /app/ manual fields, so blank here (auto meal-count uses the same rules).',
+    addonH:'別注 · Allergy', addonHint:'— Add/upgrade menu · allergy. Select date + team, then register. <b>Upgrades auto-deduct the base dinner count by the number of servings</b>. Shown in red on the 夕食オーダー print',
+    fDate:'Date', fTeam:'Team', fKind:'Type', kAdd:'Add menu', kUp:'Upgrade (base deducted)', kAllergy:'Allergy/dietary',
+    fItem:'Menu name', fItemAllergy:'Detail', fPrice:'Price¥', fQty:'Qty', fUnit:'Unit', addBtn:'＋ Add',
+    alMeat:'Meat×', alFish:'Fish×', alPork:'Pork×',
+    selDate:'— Date —', selTeam:'— Select team —', noTeamDay:'— No team staying that day —', noTag:'(no tag)',
+    addonEmpty:'No 別注·allergy registered.',
+    pvH:'Per-date meal-count preview', teditH:'Team 夕食除外·Group',
+    teditHint:'— 夕食除外 deducts <b>from dinner count only</b> (朝·昼食 meal counts kept). Group (🔗) merges into one レストラン名札 (sums people, shows all reps/tags). Tag code & count follow step1 data (not editable)',
+    dgLink:'🔗 Group selected', dgUnlink:'✂ Ungroup', dgHint:'Check teams to seat together on one restaurant nameplate → Group. The nameplate shows the combined people count plus all reps & tags.',
+    thSel:'Select all', thIn:'入国', thFac:'施設', thRep:'代表者', thTag:'タグコード', thPax:'人数', thGroup:'Group', thEx:'夕食除外', thExTitle:'Dinner only excluded (朝·昼食 counts kept)',
+    noTeam:'No team', exReleaseBtn:'夕食除外 release', exBtn:'夕食除外', exReasonTitle:'夕食除外 reason',
+    pvNoDate:'No date to output.', baseDinner:'Base dinner', upgradeBadge:'sep', upgradeNote:' servings separate',
+    statLoading:'Loading…', statNoData:'No data for this month', statFail:'Load failed', loadFail:'Load failed',
+    tNoConn:'Connect first', tNoDateTeam:'Select date & team', tNoItem:'Enter menu name/detail',
+    tAllergyOk:'Allergy registered', tAddonOk:'別注 registered', tAddFail:'Add failed', tDelFail:'Delete failed', tDel:'Deleted',
+    tGroupMin:'Check 2+ teams to seat together', tGrouped:'teams grouped — one nameplate', tUngroupSel:'Check teams to ungroup', tUngrouped:'Ungrouped', tSaveFail:'Save failed',
+    promptReason:'Enter the 夕食除外 reason (optional — excluded even if blank)\n※Deducted from dinner count only; 朝·昼食 meal counts kept\ne.g. dining out / upgrade / no-show',
+    tExReason:'夕食除外 — ', tExOnly:'夕食除外 — dinner count only (朝·昼食 kept)', tExRelease:'夕食除外 release',
+    popupBlock:'Popup blocked — allow it', noOutDate:'No date to output', noOutData:'No data to output',
+    teams:'teams', day:'days', teamUnit:'teams', paxUnit:'ppl', cntUnit:'d' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
 let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set(), OVR={}, ADDONS=[];
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
@@ -140,24 +226,24 @@ function monthBounds(ym){ const [y,m]=ym.split('-').map(Number); const start=`${
 
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn('URL·key 필요','err');return;}
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  const btn=$('#btn-connect');btn.textContent=tx('connecting');btn.disabled=true;
   try{
     supa=window.supabase.createClient(url,key);
     const {data:sess}=await supa.auth.getSession();
-    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
-      $('#content').innerHTML='<div class="panel"><div class="deny">로그인이 필요합니다.<small>가운데 로그인 카드에서 로그인 후 다시 연결하세요.</small></div></div>'; return; }
-    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.disabled=false;
+    if(!sess||!sess.session){ setConn(tx('loginNeed'),'err'); btn.textContent=tx('connect');btn.disabled=false;
+      $('#content').innerHTML=`<div class="panel"><div class="deny">${tx('loginCard')}<small>${tx('loginCardSub')}</small></div></div>`; return; }
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
     YM=YM||thisYM();
     renderUI(); load();
-  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결·재시도';btn.disabled=false; supa=null; toast('연결 실패: '+e.message,'err'); }
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
 }
 
 function renderUI(){
   $('#content').innerHTML=`
     <div class="panel">
-      <h3>월 선택 · 필터</h3>
+      <h3>${tx('monthFilter')}</h3>
       <div class="row">
         <div class="ymctrl">
           <button class="btn sm ghost" id="ym-prev" type="button">◀</button>
@@ -167,42 +253,42 @@ function renderUI(){
         <span style="width:1px;height:20px;background:var(--border)"></span>
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
-        <button class="btn" id="btn-print" type="button" disabled>🖨 夕食オーダー A3 인쇄</button>
-        <button class="btn ghost" id="btn-nameplate" type="button" disabled>🍽 レストラン名札 인쇄</button>
+        <button class="btn" id="btn-print" type="button" disabled>${tx('btnPrint')}</button>
+        <button class="btn ghost" id="btn-nameplate" type="button" disabled>${tx('btnNameplate')}</button>
       </div>
       <div class="row" style="margin-top:10px">
-        <span class="cnt" style="min-width:46px">날짜</span>
+        <span class="cnt" style="min-width:46px">${tx('dateLbl')}</span>
         <div id="datechips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
       <div class="row" style="margin-top:8px">
-        <span class="cnt" style="min-width:46px">숙소</span>
+        <span class="cnt" style="min-width:46px">${tx('accomLbl')}</span>
         <div id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
-      <div class="desc" style="margin-top:10px">날짜 1일 = A3 가로 1페이지(夕食オーダー 명단 + 朝食·昼食·夕食 식수표). <b>A3 가로, 배율 100%</b>로 인쇄. ※테이블No·끼니제외·ウォークイン·일본고객 식수는 /app/ 수기항목이라 비어 있습니다(식수 자동집계는 동일 규칙).</div>
+      <div class="desc" style="margin-top:10px">${tx('printDesc')}</div>
     </div>
     <div class="panel">
-      <h3>別注 · 알레르기 <span class="cnt">— 추가/업그레이드 메뉴 · 알레르기. 날짜+팀 선택 후 등록. <b>업그레이드는 인분만큼 석식 기본 수량 자동 차감</b>. 夕食オーダー 인쇄에 빨강 표기</span></h3>
+      <h3>${tx('addonH')} <span class="cnt">${tx('addonHint')}</span></h3>
       <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
-        <label class="adf">날짜<br><select id="ad-date"></select></label>
-        <label class="adf">팀<br><select id="ad-team" style="min-width:200px"></select></label>
-        <label class="adf">종류<br><select id="ad-kind">
-          <option value="add">추가메뉴</option>
-          <option value="upgrade">업그레이드(기본 차감)</option>
-          <option value="allergy">알레르기/식이</option>
+        <label class="adf">${tx('fDate')}<br><select id="ad-date"></select></label>
+        <label class="adf">${tx('fTeam')}<br><select id="ad-team" style="min-width:200px"></select></label>
+        <label class="adf">${tx('fKind')}<br><select id="ad-kind">
+          <option value="add">${tx('kAdd')}</option>
+          <option value="upgrade">${tx('kUp')}</option>
+          <option value="allergy">${tx('kAllergy')}</option>
         </select></label>
-        <label class="adf" style="flex:1;min-width:150px"><span id="ad-item-lb">메뉴명</span><br><input id="ad-item" list="ad-menu-list" placeholder="例) ステーキ" style="width:100%"></label>
+        <label class="adf" style="flex:1;min-width:150px"><span id="ad-item-lb">${tx('fItem')}</span><br><input id="ad-item" list="ad-menu-list" placeholder="例) ステーキ" style="width:100%"></label>
         <datalist id="ad-menu-list">${MENU_SUGGEST.map(m=>`<option value="${esc(m)}">`).join('')}</datalist>
         <span id="ad-menu-fields" style="display:flex;gap:8px;align-items:flex-end">
-          <label class="adf">단가¥<br><input id="ad-price" type="number" min="0" placeholder="5000" style="width:92px"></label>
-          <label class="adf">수량<br><input id="ad-qty" type="number" min="1" value="1" style="width:60px"></label>
-          <label class="adf">단위<br><input id="ad-unit" value="人前" style="width:70px"></label>
+          <label class="adf">${tx('fPrice')}<br><input id="ad-price" type="number" min="0" placeholder="5000" style="width:92px"></label>
+          <label class="adf">${tx('fQty')}<br><input id="ad-qty" type="number" min="1" value="1" style="width:60px"></label>
+          <label class="adf">${tx('fUnit')}<br><input id="ad-unit" value="人前" style="width:70px"></label>
         </span>
         <span id="ad-allergy-quick" style="display:none;gap:5px;align-items:center">
-          <button class="btn ghost sm" type="button" data-al="肉×">고기×</button>
-          <button class="btn ghost sm" type="button" data-al="魚×">생선×</button>
-          <button class="btn ghost sm" type="button" data-al="豚肉×">돼지×</button>
+          <button class="btn ghost sm" type="button" data-al="肉×">${tx('alMeat')}</button>
+          <button class="btn ghost sm" type="button" data-al="魚×">${tx('alFish')}</button>
+          <button class="btn ghost sm" type="button" data-al="豚肉×">${tx('alPork')}</button>
         </span>
-        <button class="btn sm" id="ad-add" type="button">＋ 등록</button>
+        <button class="btn sm" id="ad-add" type="button">${tx('addBtn')}</button>
       </div>
       <div id="ad-list" style="margin-top:12px"></div>
       <details class="menu-ref" style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
@@ -222,15 +308,15 @@ function renderUI(){
       </details>
     </div>
     <div class="panel">
-      <h3>날짜별 식수 미리보기 <span class="cnt" id="pv-cnt"></span></h3>
+      <h3>${tx('pvH')} <span class="cnt" id="pv-cnt"></span></h3>
       <div id="preview" class="preview"></div>
     </div>
     <div class="panel">
-      <h3>팀 夕食除外·묶기 <span class="cnt">— 夕食除外는 <b>석식 수량에서만</b> 빠짐(朝·昼食 식수 유지). 묶기(🔗)는 レストラン名札 1장으로 합석(인원 합산·대표/태그 모두 표기). 태그코드·인원은 step1 데이터 기준(수정 불가)</span></h3>
+      <h3>${tx('teditH')} <span class="cnt">${tx('teditHint')}</span></h3>
       <div id="tedit-tools" style="display:flex;gap:8px;align-items:center;margin:0 0 8px;flex-wrap:wrap">
-        <button class="btn ghost sm" id="dg-link" type="button">🔗 선택 묶기</button>
-        <button class="btn ghost sm" id="dg-unlink" type="button">✂ 묶음 해제</button>
-        <span class="hint">같은 식당 명패로 합석할 팀을 체크 → 묶기. 명패엔 합산 인원 + 대표자·태그 모두 나옵니다.</span>
+        <button class="btn ghost sm" id="dg-link" type="button">${tx('dgLink')}</button>
+        <button class="btn ghost sm" id="dg-unlink" type="button">${tx('dgUnlink')}</button>
+        <span class="hint">${tx('dgHint')}</span>
       </div>
       <div style="overflow:auto"><table class="tedit" id="tedit"><thead></thead><tbody></tbody></table></div>
     </div>`;
