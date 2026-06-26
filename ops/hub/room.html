@@ -1393,20 +1393,20 @@ function openAssignPicker(inv){
   const bg=document.createElement('div'); bg.className='modal-bg'; bg.id='assign-picker';
   bg.innerHTML=`<div class="modal" style="max-width:580px">
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>${inv.facility||''} ${inv.room_no} <span style="font-size:12px;font-weight:600;color:var(--muted)">· ${dayScopeLabel()} 배정</span></span>
-      <span style="font-size:12px;font-weight:700;color:${remain?'var(--accent2)':'var(--err)'}">현재 ${usedNow}/${cap} · 남은자리 ${remain}</span>
+      <span>${inv.facility||''} ${inv.room_no} <span style="font-size:12px;font-weight:600;color:var(--muted)">${tx('pickerScope',dayScopeLabel())}</span></span>
+      <span style="font-size:12px;font-weight:700;color:${remain?'var(--accent2)':'var(--err)'}">${tx('pickerCap',usedNow,cap,remain)}</span>
     </h2>
     <div class="mbody" style="max-height:58vh;overflow:auto">${body}</div>
     <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center">
-      <span id="ap-cnt" style="margin-right:auto;font-size:12px;color:var(--text2)">선택 0명</span>
-      <button class="btn ghost sm" type="button" id="ap-close">닫기</button>
-      <button class="btn sm" type="button" id="ap-go" disabled>${inv.room_no}에 배정</button>
+      <span id="ap-cnt" style="margin-right:auto;font-size:12px;color:var(--text2)">${tx('selN',0,0,false)}</span>
+      <button class="btn ghost sm" type="button" id="ap-close">${tx('close')}</button>
+      <button class="btn sm" type="button" id="ap-go" disabled>${tx('assignTo',inv.room_no)}</button>
     </div>
   </div>`;
   bg.addEventListener('click',e=>{ if(e.target===bg) closeAssignPicker(); });
   document.body.appendChild(bg);
   const upd=()=>{ const n=bg.querySelectorAll('.ap-chk:checked').length;
-    $('#ap-cnt').textContent=`선택 ${n}명`+(remain?` · 남은자리 ${remain}`:'')+(n>remain&&remain?` · ⚠ 정원 초과분은 보류됨`:'');
+    $('#ap-cnt').textContent=tx('selN',n,remain,(n>remain&&remain));
     $('#ap-go').disabled=!n; };
   bg.querySelectorAll('.ap-chk').forEach(c=>c.addEventListener('change',upd));
   $('#ap-close').addEventListener('click',closeAssignPicker);
@@ -1457,7 +1457,7 @@ function renderFacilities(){
   if(state.splitPending){
     const b=document.createElement('div');
     b.style.cssText='font-size:12.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:10px';
-    b.innerHTML=`분할 모드 — <b>${state.splitPending.name||''}</b> ${state.splitPending.from}~${state.splitPending.to} 배정할 방을 클릭하세요 <button class="btn ghost sm" id="split-cancel" type="button" style="margin-left:auto;color:#fff;border-color:#fff">취소</button>`;
+    b.innerHTML=`${tx('splitMode',state.splitPending.name||'',state.splitPending.from,state.splitPending.to)} <button class="btn ghost sm" id="split-cancel" type="button" style="margin-left:auto;color:#fff;border-color:#fff">${tx('cancel')}</button>`;
     box.appendChild(b);
     b.querySelector('#split-cancel').addEventListener('click',cancelSplit);
   }
@@ -1465,12 +1465,12 @@ function renderFacilities(){
   if(_span){
     const h=document.createElement('div');
     h.style.cssText='font-size:12px;color:#fff;background:var(--accent2);border-radius:7px;padding:7px 12px;margin-bottom:10px;font-weight:700';
-    h.innerHTML=`🧭 선택 인원 배정 기준 — 카드 점유는 <b>${fmtMD(_span.dep)}~${fmtMD(_span.arr)}</b> 기간 기준입니다. (그 기간에 차 있으면 오늘 비어 보여도 <b>꽉 참</b>으로 표시)`;
+    h.innerHTML=tx('spanNote',fmtMD(_span.dep),fmtMD(_span.arr));
     box.appendChild(h);
   } else if(state.from && state.to && state.from!==state.to){
     const h=document.createElement('div');
     h.style.cssText='font-size:12px;color:var(--text2);background:var(--surface3);border-radius:7px;padding:7px 12px;margin-bottom:10px';
-    h.innerHTML=`카드는 <b>${state.focus||state.from}</b> 하룻밤 기준이에요. 위 <b>일별</b> 칩으로 날짜를 바꾸고, 기간 전체 점유는 <b>타임라인</b> 으로 보세요.`;
+    h.innerHTML=tx('rangeNote',state.focus||state.from);
     box.appendChild(h);
   }
   const FACS=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
@@ -1484,7 +1484,7 @@ function renderFacilities(){
     const fd=state.focus||state.from;
     const totalCap=rooms.filter(r=>r.active).reduce((s,r)=>s+r.capacity,0);
     const used=rooms.reduce((s,inv)=>s+roomUsedPax(inv),0);   // span-aware(선택 시 그 기간 기준)
-    facDiv.innerHTML=`<h3><span class="dot"></span>${fac}<span class="util">${used}/${totalCap}명</span></h3>`;
+    facDiv.innerHTML=`<h3><span class="dot"></span>${fac}<span class="util">${tx('facUtil',used,totalCap)}</span></h3>`;
     // zone별 그룹 — 호텔동은 3층→12층 순 정렬, 별장 등은 등장 순
     const zones=[...new Set(rooms.map(r=>r.zone||fac))].sort((a,b)=>{
       const fa=a.match(/^(\d+)층$/), fb=b.match(/^(\d+)층$/);
@@ -1502,7 +1502,7 @@ function renderFacilities(){
           // 층 라벨 + 단면도 보기 버튼
           const btn=document.createElement('button');
           btn.className='floorplan-btn'; btn.type='button';
-          btn.textContent='평면도'; btn.title='단면도(원형 배치) 보기';
+          btn.textContent=tx('floorplan'); btn.title=tx('floorplanT');
           btn.addEventListener('click',()=>openFloorplanModal(zone,zr));
           zl.appendChild(btn);
         }
@@ -1512,11 +1512,11 @@ function renderFacilities(){
         const ppl=act.reduce((s,inv)=>s+roomUsedPax(inv),0);
         const under=act.filter(inv=>{const u=roomUsedPax(inv);return u>0&&u<inv.capacity;}).length;
         zl.insertAdjacentHTML('beforeend',
-          `<span class="zstat">사용 ${usedRooms}/${act.length}실 · ${ppl}명${under?` · <span class="zwarn">⚠정원미만 ${under}실</span>`:''}</span>`);
+          `<span class="zstat">${tx('used')} ${usedRooms}/${act.length}${tx('roomsUnit')} · ${ppl}${tx('nameUnit')}${under?` · <span class="zwarn">${tx('under',under)}</span>`:''}</span>`);
         if(ppl>0){
           const cbtn=document.createElement('button');
           cbtn.className='floorplan-btn'; cbtn.type='button';
-          cbtn.textContent='비우기'; cbtn.title=`${zone} 배정 전체 해제`;
+          cbtn.textContent=tx('clearZone'); cbtn.title=tx('clearZoneT',zone);
           cbtn.style.color='var(--err)'; cbtn.style.background='#f7e6e2'; cbtn.style.borderColor='#e3bdb4';
           cbtn.addEventListener('click',()=>clearZone(fac,zone));
           zl.appendChild(cbtn);
@@ -1530,8 +1530,8 @@ function renderFacilities(){
     if(!rooms.length){
       const e=document.createElement('div'); e.className='empty-hint';
       e.innerHTML=fac==='야마나미리조트'
-        ?'호텔동 객실 미등록 — 05_room_inventory_real.sql을 실행하세요.'
-        :'등록된 객실이 없습니다.';
+        ?tx('noHotelRooms')
+        :tx('noRooms');
       facDiv.appendChild(e);
     }
     box.appendChild(facDiv);
@@ -1640,19 +1640,19 @@ function renderRoom(inv){
   const byTeam={}; assigned.forEach(r=>{ (byTeam[r.event_seq]=byTeam[r.event_seq]||[]).push(r); });
   let chips=Object.keys(byTeam).map(seq=>{
     const rows=byTeam[seq], r0=rows[0];
-    const gcode=teamGroupCode(seq)||('팀'+evNo(seq));
+    const gcode=teamGroupCode(seq)||(tx('teamPrefix')+evNo(seq));
     const isIn = refDay && r0.check_in===refDay;                       // 오늘 입실 팀
     const chipCls = !refDay ? '' : (isIn?' chip-in' : ' chip-cont');
-    const flag = !refDay ? '' : (isIn?'<span class="cflag cf-in">체크인</span>' : '<span class="cflag cf-cont">연박</span>');
+    const flag = !refDay ? '' : (isIn?`<span class="cflag cf-in">${tx('flagIn')}</span>` : `<span class="cflag cf-cont">${tx('flagCont')}</span>`);
     const mems=rows.map(r=>{
       const m=r.member_id!=null?memberById(r.member_id):null;
       const nameKr=m?(m.name_kr||'-'):gcode;
       const nameEn=m?(m.name_en||''):'';
       const gb=m?`<i class="gbadge${isMember(m)?' mem':''}">${gradeLabel(m)}</i>`:'';
-      return `<div class="cmem"><b>${nameKr}</b><span class="cmen">${nameEn}</span>${gb}<span class="cmem-act"><span class="csplit" data-room-id="${r.id}" title="기준일부터 다른 방으로 분할">✂</span><span class="cx" data-room-id="${r.id}" title="배정 취소">✕</span></span></div>`;
+      return `<div class="cmem"><b>${nameKr}</b><span class="cmen">${nameEn}</span>${gb}<span class="cmem-act"><span class="csplit" data-room-id="${r.id}" title="${tx('chipSplitT')}">✂</span><span class="cx" data-room-id="${r.id}" title="${tx('chipCancelT')}">✕</span></span></div>`;
     }).join('');
     return `<div class="chip${chipCls}">
-      <div class="chip-head"><span class="ctag">${gcode}</span>${flag}<span class="cnum">${rows.length}명</span><span class="cdate">${fmtMD(r0.check_in)}~${fmtMD(r0.check_out)}</span></div>
+      <div class="chip-head"><span class="ctag">${gcode}</span>${flag}<span class="cnum">${rows.length}${tx('nameUnit')}</span><span class="cdate">${fmtMD(r0.check_in)}~${fmtMD(r0.check_out)}</span></div>
       <div class="cmems">${mems}</div>
     </div>`;
   }).join('');
