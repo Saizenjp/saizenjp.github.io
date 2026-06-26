@@ -73,7 +73,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.79">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.80">
 </head>
 <body data-so-area="admin">
 <div class="topbar so-bar">
@@ -115,7 +115,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=14.79"></script>
+<script src="../assets/saizen-ops.js?v=14.80"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 권한 관리(마스터 전용). 18_access_control.sql 의 RPC를 호출.
@@ -173,6 +173,9 @@ const L={
     pd_front:'フロント・客室', pd_fnb:'食飲', pd_golf:'ゴルフ', pd_acct:'会計',
     // roles
     role_admin:'マスター', role_manager:'管理担当', role_staff:'一般',
+    btnBlock:'遮断', btnUnblock:'解除', blockedBadge:'遮断済',
+    confirmBlock:'このアカウントを遮断しますか？\nログイン後も全ページがブロックされます（解除でいつでも復帰）。',
+    toastBlocked:'遮断しました', toastUnblocked:'解除しました', toastBlockFail:'処理失敗: ',
   },
   ko:{
     step:'권한 관리 · 마스터', home:'← 홈',
@@ -215,6 +218,9 @@ const L={
     dg_data:'데이터 등록', dg_frontroom:'프론트·객실', dg_fnb:'식음(F&B)', dg_common:'공통',
     pd_front:'프론트·객실', pd_fnb:'식음', pd_golf:'골프', pd_acct:'회계',
     role_admin:'마스터', role_manager:'관리담당', role_staff:'일반',
+    btnBlock:'차단', btnUnblock:'해제', blockedBadge:'차단됨',
+    confirmBlock:'이 계정을 차단할까요?\n로그인해도 전 페이지가 막힙니다(해제로 언제든 복구).',
+    toastBlocked:'차단됨', toastUnblocked:'차단 해제됨', toastBlockFail:'처리 실패: ',
   },
   en:{
     step:'Access control · Master', home:'← Home',
@@ -257,6 +263,9 @@ const L={
     dg_data:'Data registration', dg_frontroom:'Front · Rooms', dg_fnb:'F&B', dg_common:'Common',
     pd_front:'Front · Rooms', pd_fnb:'F&B', pd_golf:'Golf', pd_acct:'Accounting',
     role_admin:'Master', role_manager:'Manager', role_staff:'Staff',
+    btnBlock:'Block', btnUnblock:'Unblock', blockedBadge:'Blocked',
+    confirmBlock:'Block this account?\nAll pages are blocked even after login (unblock to restore anytime).',
+    toastBlocked:'Blocked', toastUnblocked:'Unblocked', toastBlockFail:'Failed: ',
   }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
@@ -359,8 +368,12 @@ function render(){
     const roleOpts=ROLE_KEYS.map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${esc(ROLE_LABEL_(r))}</option>`).join('');
     const showAreas=u.role!=='admin';
     const areaBoxes=buildAreas(u.areas||[], u.read_areas||[]);
-    html+=`<tr data-id="${u.user_id}">
-      <td><div class="uemail">${esc(u.email||'')}</div></td>
+    const blocked=u.active===false;
+    // 마스터는 차단 불가(서버에서도 거부). 일반·관리담당만 차단/해제 버튼.
+    const blockBtn = u.role==='admin' ? '' :
+      `<button class="btn sm" data-block style="margin-top:5px;${blocked?'background:var(--ok);border-color:var(--ok);color:#fff':'background:transparent;color:var(--err);border-color:#e3bdb4'}">${esc(blocked?tx('btnUnblock'):tx('btnBlock'))}</button>`;
+    html+=`<tr data-id="${u.user_id}" data-active="${!blocked}"${blocked?' style="background:#fbeeeb"':''}>
+      <td><div class="uemail">${esc(u.email||'')}</div>${blocked?` <span class="rbadge" style="background:var(--err);color:#fff;margin-top:4px;display:inline-block">🚫 ${esc(tx('blockedBadge'))}</span>`:''}</td>
       <td><div class="prof">
         <input class="inp psm" data-f="name" value="${esc(u.name||'')}" placeholder="${esc(tx('phName'))}">
         <select class="inp psm" data-f="dept">${deptOpts(u.dept)}</select>
@@ -368,7 +381,7 @@ function render(){
       </div></td>
       <td><select class="inp rolesel" data-f="role">${roleOpts}</select></td>
       <td><div class="areas${showAreas?'':' dim'}" data-areas>${showAreas?areaBoxes:`<span class="allnote">${esc(tx('allCardsMaster'))}</span>`}</div></td>
-      <td><button class="btn sm" data-save>${esc(tx('save'))}</button></td>
+      <td><button class="btn sm" data-save>${esc(tx('save'))}</button>${blockBtn?'<br>'+blockBtn:''}</td>
     </tr>`;
   });
   html+='</tbody></table>';
@@ -389,6 +402,18 @@ function render(){
     });
   });
   box.querySelectorAll('button[data-save]').forEach(b=>b.addEventListener('click',()=>saveRow(b.closest('tr'))));
+  box.querySelectorAll('button[data-block]').forEach(b=>b.addEventListener('click',()=>toggleBlock(b.closest('tr'))));
+}
+// 계정 차단/해제 — admin_set_active(마스터·본인은 서버에서 거부)
+async function toggleBlock(tr){
+  const id=tr.dataset.id, active=tr.getAttribute('data-active')!=='false';
+  if(active && !confirm(tx('confirmBlock'))) return;   // 차단 시에만 확인
+  try{
+    const {error}=await supa.rpc('admin_set_active',{p_user:id,p_active:!active});
+    if(error) throw error;
+    toast(active?tx('toastBlocked'):tx('toastUnblocked'),'ok');
+    await load();
+  }catch(e){ toast(tx('toastBlockFail')+(e.message||e),'err'); }
 }
 
 async function saveRow(tr){

@@ -1192,6 +1192,7 @@
     var c = authClient(); if (!c) return;
     c.auth.signOut().then(function () { location.reload(); }).catch(function () { location.reload(); });
   }
+  global.__so_logout = authLogout;
 
   // ── 가운데 정식 로그인 카드 — 게이트(랜딩·페이지 가드) 공용. 이메일·비번 칸을 처음부터 노출. ──
   function loginCard() {
@@ -1297,10 +1298,10 @@
     _meP = c.auth.getSession().then(function (r) {
       if (!r || !r.data || !r.data.session) return null;
       return c.rpc('me_access').then(function (rr) {
-        if (rr.error || !rr.data || !rr.data[0]) return { role: 'staff', areas: [], read_areas: [], name: '', dept: '', title: '' };
+        if (rr.error || !rr.data || !rr.data[0]) return { role: 'staff', areas: [], read_areas: [], name: '', dept: '', title: '', active: true };
         var a = rr.data[0];
-        return { role: a.role, areas: a.areas || [], read_areas: a.read_areas || [], name: a.name || '', dept: a.dept || '', title: a.title || '' };
-      }).catch(function () { return { role: 'staff', areas: [], read_areas: [], name: '', dept: '', title: '' }; });
+        return { role: a.role, areas: a.areas || [], read_areas: a.read_areas || [], name: a.name || '', dept: a.dept || '', title: a.title || '', active: a.active !== false };
+      }).catch(function () { return { role: 'staff', areas: [], read_areas: [], name: '', dept: '', title: '', active: true }; });
     }).catch(function () { return null; });
     return _meP;
   }
@@ -1388,6 +1389,12 @@
     d.setAttribute('style', 'position:fixed;inset:0;z-index:25;background:rgba(238,241,234,.97);display:flex;align-items:center;justify-content:center;text-align:center;padding:24px');
     if (kind === 'login') {
       d.appendChild(loginCard());   // 미로그인 → 가운데 정식 로그인 카드
+    } else if (kind === 'blocked') {
+      var bw = document.createElement('div');
+      bw.innerHTML = '<div style="font-size:18px;font-weight:800;color:#b13b2c">🚫 차단된 계정</div>'
+        + '<div style="margin-top:10px;color:#566049;font-size:13.5px">이 계정은 사용이 정지되었습니다. 마스터(관리자)에게 문의하세요.</div>'
+        + '<div style="margin-top:16px"><button onclick="window.__so_logout&&window.__so_logout()" style="border:1px solid #cdd2d8;background:#fff;color:#566049;font-weight:700;border-radius:6px;padding:6px 14px;cursor:pointer">로그아웃</button></div>';
+      d.appendChild(bw);
     } else {
       var wrap = document.createElement('div');
       wrap.innerHTML = '<div style="font-size:18px;font-weight:800;color:#b13b2c">접근 권한이 없습니다</div>'
@@ -1412,6 +1419,7 @@
     var areas = raw.split(/[\s,]+/).filter(Boolean);   // 여러 영역 = OR(하나라도 있으면 통과)
     meAccess().then(function (acc) {
       if (!acc) { showGuard('login'); return; }                 // 미로그인
+      if (acc.active === false) { showGuard('blocked'); return; }  // 차단된 계정 → 전면 차단
       if (areas.indexOf('admin') >= 0) { if (acc.role === 'admin') return; showGuard('deny'); return; }
       if (acc.role === 'admin' || acc.role === 'manager') return; // 전 접근
       var w = acc.areas || [], r = acc.read_areas || [];
