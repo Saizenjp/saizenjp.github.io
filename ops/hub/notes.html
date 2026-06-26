@@ -90,7 +90,7 @@
   <a class="so-logo" href="../index.html" title="홈 / ホーム">
     <img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen">
   </a>
-  <span class="step">STEP · 팀 운영 메모 / 運営メモ</span>
+  <span class="step" id="t-step">STEP · 팀 운영 메모 / 運営メモ</span>
   <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
   <div class="grow so-spacer"></div>
   <div class="so-controls">
@@ -101,34 +101,34 @@
     </div>
     <button class="so-furi" id="so-furi" onclick="__so_toggleFuri()"></button>
   </div>
-  <span class="pill" id="conn-state" data-i18n="connState_none">미연결</span>
+  <span class="pill" id="conn-state">미연결</span>
 </div>
 
 <div class="conn">
   <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
-  <input class="inp" id="sb-key" type="password" placeholder="anon key" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
   <button class="btn sm" id="btn-connect" type="button">연결</button>
-  <span class="hint">연결 정보는 이 브라우저에만 저장됩니다.</span>
+  <span class="hint" id="t-connhint">연결 정보는 이 브라우저에만 저장됩니다.</span>
 </div>
 
 <div class="datebar">
-  <label>월</label>
-  <button class="btn ghost sm" id="date-prev" type="button" title="이전 달" style="padding:5px 9px">◀</button>
+  <label id="t-monthlbl">월</label>
+  <button class="btn ghost sm" id="date-prev" type="button" style="padding:5px 9px">◀</button>
   <input class="inp" id="month-pick" type="month" style="width:140px">
-  <button class="btn ghost sm" id="date-next" type="button" title="다음 달" style="padding:5px 9px">▶</button>
-  <button class="btn ghost sm" id="date-today" type="button" title="이번 달">오늘</button>
-  <button class="btn sm" id="btn-load" type="button" disabled title="다시 불러오기(다른 담당자 변경분 갱신)">↻ 새로고침</button>
+  <button class="btn ghost sm" id="date-next" type="button" style="padding:5px 9px">▶</button>
+  <button class="btn ghost sm" id="date-today" type="button">오늘</button>
+  <button class="btn sm" id="btn-load" type="button" disabled>↻ 새로고침</button>
   <span class="hint" id="session-hint"></span>
-  <span class="hint" style="margin-left:auto">담당자는 우측 상단 에서 설정 — 모든 수정이 그 이름으로 기록됩니다.</span>
+  <span class="hint" id="t-userhint" style="margin-left:auto">담당자는 우측 상단 에서 설정 — 모든 수정이 그 이름으로 기록됩니다.</span>
 </div>
 
 <main>
-  <div class="intro">
+  <div class="intro" id="t-intro">
     <b>팀 운영 메모</b> — 월별 팀(행사)에 <b>팀 라벨·야마나미 코스·비고·메모</b>를 남깁니다.
-    여러 담당자가 같은 DB를 공유하며, 모든 수정은 <b>누가·언제·이전→이후</b>로 이력에 남습니다().
+    여러 담당자가 같은 DB를 공유하며, 모든 수정은 <b>누가·언제·이전→이후</b>로 이력에 남습니다.
     값은 입력 후 <b>포커스를 벗어나면 자동 저장</b>됩니다.
   </div>
-  <div id="notes"><div class="empty">상단에서 Supabase 연결하면 이번 달이 자동으로 표시됩니다. (다른 달은 월 선택 · <b>↻ 새로고침</b>으로 다시 받기)</div></div>
+  <div id="notes"><div class="empty" id="t-empty"></div></div>
 </main>
 
 <div id="toast"></div>
@@ -138,8 +138,75 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
 const state={ ym:'', rows:[], notes:{} };
-const FIELD_LABEL={ team_label:'팀 라벨', yama_course:'야마나미 코스', remarks:'비고', memo:'메모' };
-function fieldLabel(f){ return FIELD_LABEL[f]||f; }
+
+// ── i18n (한·일 직원 공용. ja 기본) ──
+const L={
+  ja:{ step:'STEP · 運営メモ', connHint:'接続情報はこのブラウザにのみ保存されます。',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', connToast:'Supabaseに接続しました',
+    monthLbl:'月', prevMonth:'前月', nextMonth:'翌月', thisMonth:'今月', today:'今日', reload:'↻ 更新',
+    userHint:'担当者は右上で設定 — すべての修正がその名前で記録されます。',
+    introHtml:'<b>チーム運営メモ</b> — 月別のチーム(イベント)に <b>チームラベル・やまなみコース・備考・メモ</b> を残します。'
+      +' 複数の担当者が同じDBを共有し、すべての修正は <b>誰が・いつ・変更前→変更後</b> で履歴に残ります。'
+      +' 値は入力後 <b>フォーカスを外すと自動保存</b> されます。',
+    emptyConnect:'上部でSupabaseに接続すると今月が自動で表示されます。(他の月は月選択 · <b>↻ 更新</b> で再取得)',
+    selectMonth:'月を選択してください', loading:'読み込み中…', loadFail:'読み込み失敗',
+    bkLoadFail:'予約の読み込み失敗', ntLoadFail:'メモの読み込み失敗(16番SQL実行済?)',
+    noTeams:'この月に登録されたチームがありません。step1でデータを先に登録してください。',
+    teamUnit:'チーム',
+    thEvent:'イベント番号', thRep:'代表者', thPeriod:'期間', thPax:'人数',
+    thTeamLabel:'チームラベル', thYama:'やまなみコース', thRemarks:'備考(運営)', thMemo:'メモ', thHist:'履歴',
+    histBtn:'履歴', histBtnT:'修正履歴',
+    fl_team_label:'チームラベル', fl_yama_course:'やまなみコース', fl_remarks:'備考', fl_memo:'メモ',
+    userUnset:'担当者名を右上で先に入力してください', userUnknown:'不明',
+    saveFail:'保存失敗', saved:'保存しました', histLoadFail:'履歴の読み込み失敗', noHist:'変更履歴がありません。',
+    histTitle:'修正履歴 — イベント', hTime:'時刻', hUser:'担当者', hField:'項目', hOld:'変更前', hNew:'変更後' },
+  ko:{ step:'STEP · 팀 운영 메모', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패 · 재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', connToast:'Supabase 연결됨',
+    monthLbl:'월', prevMonth:'이전 달', nextMonth:'다음 달', thisMonth:'이번 달', today:'오늘', reload:'↻ 새로고침',
+    userHint:'담당자는 우측 상단 에서 설정 — 모든 수정이 그 이름으로 기록됩니다.',
+    introHtml:'<b>팀 운영 메모</b> — 월별 팀(행사)에 <b>팀 라벨·야마나미 코스·비고·메모</b>를 남깁니다.'
+      +' 여러 담당자가 같은 DB를 공유하며, 모든 수정은 <b>누가·언제·이전→이후</b>로 이력에 남습니다.'
+      +' 값은 입력 후 <b>포커스를 벗어나면 자동 저장</b>됩니다.',
+    emptyConnect:'상단에서 Supabase 연결하면 이번 달이 자동으로 표시됩니다. (다른 달은 월 선택 · <b>↻ 새로고침</b>으로 다시 받기)',
+    selectMonth:'월을 선택하세요', loading:'불러오는 중…', loadFail:'로드 실패',
+    bkLoadFail:'예약 로드 실패', ntLoadFail:'주석 로드 실패(16번 SQL 실행?)',
+    noTeams:'해당 월에 등록된 팀이 없습니다. step1에서 데이터를 먼저 등록하세요.',
+    teamUnit:'팀',
+    thEvent:'행사번호', thRep:'대표', thPeriod:'기간', thPax:'인원',
+    thTeamLabel:'팀 라벨', thYama:'야마나미 코스', thRemarks:'비고(운영)', thMemo:'메모', thHist:'이력',
+    histBtn:'이력', histBtnT:'수정 이력',
+    fl_team_label:'팀 라벨', fl_yama_course:'야마나미 코스', fl_remarks:'비고', fl_memo:'메모',
+    userUnset:'우측 상단 담당자명을 먼저 입력하세요', userUnknown:'미상',
+    saveFail:'저장 실패', saved:'저장됨', histLoadFail:'이력 로드 실패', noHist:'변경 이력이 없습니다.',
+    histTitle:'수정 이력 — 행사', hTime:'시각', hUser:'담당자', hField:'항목', hOld:'이전', hNew:'이후' },
+  en:{ step:'STEP · Team memo', connHint:'Connection info is stored only in this browser.',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', connToast:'Connected to Supabase',
+    monthLbl:'Month', prevMonth:'Prev month', nextMonth:'Next month', thisMonth:'This month', today:'Today', reload:'↻ Reload',
+    userHint:'Set the operator at the top right — every edit is recorded under that name.',
+    introHtml:'<b>Team memo</b> — leave a <b>team label / Yamanami course / remarks / memo</b> for each monthly team (event).'
+      +' Multiple operators share the same DB, and every edit is logged as <b>who · when · before→after</b>.'
+      +' Values <b>auto-save when focus leaves</b> the field.',
+    emptyConnect:'Connect Supabase above and this month shows automatically. (Pick a month · <b>↻ Reload</b> to refetch others.)',
+    selectMonth:'Please select a month', loading:'Loading…', loadFail:'Load failed',
+    bkLoadFail:'Booking load failed', ntLoadFail:'Notes load failed (ran SQL #16?)',
+    noTeams:'No teams registered for this month. Register data in step1 first.',
+    teamUnit:'teams',
+    thEvent:'Event no.', thRep:'Rep', thPeriod:'Period', thPax:'Pax',
+    thTeamLabel:'Team label', thYama:'Yamanami course', thRemarks:'Remarks (ops)', thMemo:'Memo', thHist:'History',
+    histBtn:'History', histBtnT:'Change history',
+    fl_team_label:'Team label', fl_yama_course:'Yamanami course', fl_remarks:'Remarks', fl_memo:'Memo',
+    userUnset:'Set the operator name at the top right first', userUnknown:'Unknown',
+    saveFail:'Save failed', saved:'Saved', histLoadFail:'History load failed', noHist:'No change history.',
+    histTitle:'Change history — event', hTime:'Time', hUser:'Operator', hField:'Field', hOld:'Before', hNew:'After' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+
+// 필드명은 화면 표시만 번역. DB에 저장되는 field 컬럼 값(team_label 등 키)은 불변.
+function fieldLabel(f){ const k='fl_'+f; const v=tx(k); return v===k?f:v; }
 
 /* ── 헬퍼 ── */
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -150,6 +217,27 @@ function fmtDT(iso){ if(!iso) return '-'; const d=new Date(iso); if(isNaN(d)) re
   return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function setConn(txt,cls){ const e=$('#conn-state'); e.textContent=txt; e.className='pill'+(cls?' '+cls:''); }
 function setMsg(txt){ $('#session-hint').textContent=txt||''; }
+// 연결 버튼·상태 칩을 현재 상태(state.conn)에 맞춰 다시 칠함 — 언어 토글 대응
+let connState='none';
+function refreshConn(){
+  const b=$('#btn-connect'); if(!b) return;
+  if(connState==='ok'){ setConn(tx('connOk'),'ok'); b.textContent=tx('connectedBtn'); b.classList.add('connected'); }
+  else if(connState==='fail'){ setConn(tx('connFail'),'err'); b.textContent=tx('connFailBtn'); b.classList.remove('connected'); }
+  else if(connState==='connecting'){ b.textContent=tx('connecting'); b.classList.remove('connected'); }
+  else { setConn(tx('notConn'),''); b.textContent=tx('connect'); b.classList.remove('connected'); }
+}
+function applyStatic(){
+  $('#t-step').textContent=tx('step');
+  $('#t-connhint').textContent=tx('connHint');
+  $('#t-monthlbl').textContent=tx('monthLbl');
+  $('#date-prev').title=tx('prevMonth'); $('#date-next').title=tx('nextMonth');
+  $('#date-today').title=tx('thisMonth'); $('#date-today').textContent=tx('today');
+  $('#btn-load').textContent=tx('reload');
+  $('#t-userhint').textContent=tx('userHint');
+  $('#t-intro').innerHTML=tx('introHtml');
+  const emp=$('#t-empty'); if(emp) emp.innerHTML=tx('emptyConnect');
+  refreshConn();
+}
 function toast(msg,cls){ const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.textContent=msg;
   $('#toast').appendChild(t); setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); },2400); }
 function getUser(){ return localStorage.getItem('saizen_ops_user')||''; }
@@ -159,20 +247,20 @@ function setUser(v){ localStorage.setItem('saizen_ops_user', v||''); }
 function loadCreds(){ $('#sb-url').value=localStorage.getItem('saizen_sb_url')||''; $('#sb-key').value=localStorage.getItem('saizen_sb_key')||''; }
 async function connect(){
   const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
-  if(!url||!key){ setConn('URL·key 필요','err'); return; }
+  if(!url||!key){ connState='fail'; setConn(tx('needUrlKey'),'err'); return; }
   localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect'); btn.disabled=true; btn.textContent='연결 중…'; btn.classList.remove('connected');
+  const btn=$('#btn-connect'); btn.disabled=true; connState='connecting'; refreshConn();
   try{
     supa=window.supabase.createClient(url,key);
     const { error }=await supa.from('bookings').select('event_seq',{count:'exact',head:true});
     if(error) throw error;
-    setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
-    btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
+    connState='ok'; refreshConn(); toast(tx('connToast'),'ok');
+    btn.disabled=false;
     $('#btn-load').disabled=false;
     if($('#month-pick').value) await loadData();
   }catch(e){
-    setConn('연결 실패','err'); toast('연결 실패: '+e.message+' (SQL·키 확인)','err');
-    btn.textContent='연결 실패 · 재시도'; btn.classList.remove('connected'); btn.disabled=false; supa=null; $('#btn-load').disabled=true;
+    connState='fail'; refreshConn(); toast(tx('connFail')+': '+e.message,'err');
+    btn.disabled=false; supa=null; $('#btn-load').disabled=true;
   }
 }
 
@@ -200,28 +288,28 @@ async function pagedQuery(buildFn){
 /* ── 데이터 로드: 그 달 팀(bookings) + 주석(event_notes) ── */
 async function loadData(){
   if(!supa) return;
-  const ym=$('#month-pick').value; if(!ym){ setMsg('월을 선택하세요'); return; }
-  state.ym=ym; setMsg('불러오는 중…');
+  const ym=$('#month-pick').value; if(!ym){ setMsg(tx('selectMonth')); return; }
+  state.ym=ym; setMsg(tx('loading'));
   const bkres=await pagedQuery(()=>supa.from('bookings')
     .select('event_seq,event_no,rep_name,dep_date,arr_date,pax,team_label,remark,session_ym')
     .eq('session_ym',ym).order('dep_date',{ascending:true}).order('event_seq',{ascending:true}));
-  if(bkres.error){ toast('예약 로드 실패: '+bkres.error.message,'err'); setMsg('로드 실패'); return; }
+  if(bkres.error){ toast(tx('bkLoadFail')+': '+bkres.error.message,'err'); setMsg(tx('loadFail')); return; }
   state.rows=bkres.data||[]; state.notes={};
   const ntres=await pagedQuery(()=>supa.from('event_notes').select('*').eq('session_ym',ym).order('event_seq'));
-  if(ntres.error){ toast('주석 로드 실패(16번 SQL 실행?): '+ntres.error.message,'err'); }
+  if(ntres.error){ toast(tx('ntLoadFail')+': '+ntres.error.message,'err'); }
   (ntres.data||[]).forEach(n=>{ state.notes[n.event_seq]=n; });
   render();
-  setMsg(`${state.rows.length}팀 · ${ym}`);
+  setMsg(`${state.rows.length}${tx('teamUnit')} · ${ym}`);
 }
 
 /* ── 렌더 ── */
 function render(){
   const box=$('#notes');
-  if(!state.rows.length){ box.innerHTML='<div class="empty">해당 월에 등록된 팀이 없습니다. step1에서 데이터를 먼저 등록하세요.</div>'; return; }
+  if(!state.rows.length){ box.innerHTML='<div class="empty">'+esc(tx('noTeams'))+'</div>'; return; }
   const cell=(seq,field,val)=>`<td><input class="ntin" data-seq="${seq}" data-f="${field}" value="${esc(val)}" placeholder="—"></td>`;
   let h='<table class="nt"><thead><tr>'
-    +'<th>행사번호</th><th>대표</th><th>기간</th><th>인원</th>'
-    +'<th>팀 라벨</th><th>야마나미 코스</th><th>비고(운영)</th><th>메모</th><th>이력</th>'
+    +`<th>${esc(tx('thEvent'))}</th><th>${esc(tx('thRep'))}</th><th>${esc(tx('thPeriod'))}</th><th>${esc(tx('thPax'))}</th>`
+    +`<th>${esc(tx('thTeamLabel'))}</th><th>${esc(tx('thYama'))}</th><th>${esc(tx('thRemarks'))}</th><th>${esc(tx('thMemo'))}</th><th>${esc(tx('thHist'))}</th>`
     +'</tr></thead><tbody>';
   state.rows.forEach(r=>{
     const n=state.notes[r.event_seq]||{};
@@ -235,7 +323,7 @@ function render(){
       +cell(r.event_seq,'yama_course', n.yama_course!=null?n.yama_course:'')
       +cell(r.event_seq,'remarks', n.remarks!=null?n.remarks:'')
       +cell(r.event_seq,'memo', n.memo!=null?n.memo:'')
-      +`<td class="ctr"><button class="btn ghost xs" data-hist="${r.event_seq}" title="수정 이력">이력</button></td>`
+      +`<td class="ctr"><button class="btn ghost xs" data-hist="${r.event_seq}" title="${esc(tx('histBtnT'))}">${esc(tx('histBtn'))}</button></td>`
       +'</tr>';
   });
   h+='</tbody></table>';
@@ -250,32 +338,35 @@ async function onEdit(e){
   const cur=state.notes[seq]||{ event_seq:seq };
   const old=cur[field]!=null?String(cur[field]):'';
   if(old===val) return;
+  // DB에는 담당자명(실데이터)을 그대로 기록. 미설정 시 sentinel '미상' 저장(언어 무관 — 표시만 번역).
   const user=getUser()||'미상';
-  if(user==='미상'){ toast('우측 상단 담당자명을 먼저 입력하세요','warn'); }
+  if(user==='미상'){ toast(tx('userUnset'),'warn'); }
   const row=Object.assign({}, cur, { event_seq:seq, session_ym:state.ym, [field]:val, updated_by:user });
   delete row.updated_at; delete row.created_at;
   const { data, error }=await supa.from('event_notes').upsert(row,{ onConflict:'event_seq' }).select().single();
-  if(error){ toast('저장 실패: '+error.message,'err'); return; }
+  if(error){ toast(tx('saveFail')+': '+error.message,'err'); return; }
   state.notes[seq]=data;
   const { error:le }=await supa.from('event_note_log')
     .insert({ event_seq:seq, field, old_value:old||null, new_value:val||null, changed_by:user });
   if(le) console.warn('log insert', le.message);
   inp.classList.add('saved'); setTimeout(()=>inp.classList.remove('saved'),900);
-  toast(`저장됨 · ${fieldLabel(field)}`,'ok');
+  toast(`${tx('saved')} · ${fieldLabel(field)}`,'ok');
 }
+// 저장된 담당자 sentinel '미상'을 화면 표시용으로만 번역(저장값은 한국어 유지).
+function userLabel(u){ return u==='미상'?tx('userUnknown'):(u||''); }
 
 /* ── 수정 이력 모달 ── */
 async function showHistory(seq){
   if(!supa) return;
   const { data, error }=await supa.from('event_note_log').select('*')
     .eq('event_seq',Number(seq)).order('changed_at',{ascending:false}).limit(80);
-  if(error){ toast('이력 로드 실패: '+error.message,'err'); return; }
+  if(error){ toast(tx('histLoadFail')+': '+error.message,'err'); return; }
   const rows=(data||[]).map(l=>
-    `<tr><td class="mono">${fmtDT(l.changed_at)}</td><td>${esc(l.changed_by||'')}</td><td>${esc(fieldLabel(l.field))}</td>`
+    `<tr><td class="mono">${fmtDT(l.changed_at)}</td><td>${esc(userLabel(l.changed_by))}</td><td>${esc(fieldLabel(l.field))}</td>`
     +`<td class="old">${esc(l.old_value||'—')}</td><td>→</td><td class="new">${esc(l.new_value||'—')}</td></tr>`
-  ).join('') || '<tr><td colspan="6" class="empty">변경 이력이 없습니다.</td></tr>';
-  openModal(`수정 이력 — 행사 ${esc(seq)}`,
-    `<table class="hist"><thead><tr><th>시각</th><th>담당자</th><th>항목</th><th>이전</th><th></th><th>이후</th></tr></thead><tbody>${rows}</tbody></table>`);
+  ).join('') || `<tr><td colspan="6" class="empty">${esc(tx('noHist'))}</td></tr>`;
+  openModal(`${tx('histTitle')} ${esc(seq)}`,
+    `<table class="hist"><thead><tr><th>${esc(tx('hTime'))}</th><th>${esc(tx('hUser'))}</th><th>${esc(tx('hField'))}</th><th>${esc(tx('hOld'))}</th><th></th><th>${esc(tx('hNew'))}</th></tr></thead><tbody>${rows}</tbody></table>`);
 }
 function openModal(title, bodyHtml){
   const bg=document.createElement('div'); bg.className='modal-bg';
@@ -286,6 +377,7 @@ function openModal(title, bodyHtml){
 }
 
 /* ── init ── */
+applyStatic();
 loadCreds();
 $('#month-pick').value=isoToday().slice(0,7);
 $('#btn-connect').addEventListener('click',connect);
@@ -294,7 +386,8 @@ $('#date-prev').addEventListener('click',()=>shiftMonth(-1));
 $('#date-next').addEventListener('click',()=>shiftMonth(1));
 $('#date-today').addEventListener('click',gotoToday);
 $('#month-pick').addEventListener('change',()=>{ if(supa) loadData(); });
-window.onSaizenLangChange=function(){};
+// 언어 토글 시 정적 라벨 + 동적 표(헤더·이력버튼) 재렌더
+window.onSaizenLangChange=function(){ applyStatic(); if(state.rows.length) render(); };
 if($('#sb-url').value && $('#sb-key').value){ connect(); }
 </script>
 </body>

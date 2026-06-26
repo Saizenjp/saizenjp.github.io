@@ -117,7 +117,7 @@
     <button data-station="front" data-i18n="ki_stFront"></button>
   </div>
   <label><input type="checkbox" id="auto" checked> <span data-i18n="ki_auto"></span></label>
-  <label title="신규 주문 알림음"><input type="checkbox" id="snd" checked> 알림</label>
+  <label id="snd-label" title=""><input type="checkbox" id="snd" checked> <span id="t-snd"></span></label>
   <button class="btn ghost sm" id="btn-refresh" type="button" data-i18n="ki_refresh"></button>
   <span class="hint" id="updated"></span>
 </div>
@@ -137,6 +137,34 @@
 // ════════════════════════════════════════════════════════════════════════
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
+
+// ── i18n (한·일 직원 공용. ja 기본) ──
+//  화면 chrome 대부분은 saizen-ops.js의 data-i18n(t())이 처리. 여기 L은
+//  data-i18n으로 못 거는 동적 JS 문자열(토스트·상태·alert)과 정적 일부만 담당.
+const L={
+  ja:{ sndLabel:'通知', sndTitle:'新規注文の通知音',
+    needUrlKey:'URL・key必要', connecting:'接続中…', connectedTxt:'接続済', connectedBtn:'✓ 接続済',
+    connOkToast:'Supabaseに接続しました', connFail:'接続失敗', connFailBtn:'接続失敗・再試行',
+    connFailToast:'接続失敗', connFailHint:'（厨房SQL 12を実行・keyを確認）',
+    reconnecting:'再接続中…', acceptFail:'受付処理に失敗しました', doneFail:'完了処理に失敗しました' },
+  ko:{ sndLabel:'알림', sndTitle:'신규 주문 알림음',
+    needUrlKey:'URL·key 필요', connecting:'연결 중…', connectedTxt:'연결됨', connectedBtn:'✓ 연결됨',
+    connOkToast:'Supabase 연결됨', connFail:'연결 실패', connFailBtn:'연결 실패 · 재시도',
+    connFailToast:'연결 실패', connFailHint:'(주방 SQL 12 실행·키 확인)',
+    reconnecting:'재연결 중…', acceptFail:'접수 처리 실패', doneFail:'완료 처리 실패' },
+  en:{ sndLabel:'Sound', sndTitle:'New order alert sound',
+    needUrlKey:'URL·key required', connecting:'Connecting…', connectedTxt:'Connected', connectedBtn:'✓ Connected',
+    connOkToast:'Connected to Supabase', connFail:'Connection failed', connFailBtn:'Failed · retry',
+    connFailToast:'Connection failed', connFailHint:'(run kitchen SQL 12 · check key)',
+    reconnecting:'Reconnecting…', acceptFail:'Accept failed', doneFail:'Done update failed' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+function applyStatic(){
+  const sl=$('#t-snd'); if(sl) sl.textContent=tx('sndLabel');
+  const lab=$('#snd-label'); if(lab) lab.title=tx('sndTitle');
+}
+
 const POLL_MS=7000;
 const AGE_WARN=600, AGE_OLD=1200;   // 10분 경과 주의 · 20분 경과 지연(초)
 // ?view=front 로 들어오면 바·프론트(주방+바 전체) 화면으로 시작.
@@ -178,21 +206,21 @@ function agoText(sec){
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn('URL·key 필요','err');return;}
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
   initAudio();   // 연결 클릭=사용자 제스처 → 알림음 언락
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect'); btn.textContent='연결 중…'; btn.disabled=true;
+  const btn=$('#btn-connect'); btn.textContent=tx('connecting'); btn.disabled=true;
   try{
     supa=window.supabase.createClient(url,key);
     const {error}=await supa.from('kitchen_tickets').select('id',{count:'exact',head:true});
     if(error) throw error;
-    setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
-    btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
+    setConn(tx('connectedTxt'),'ok'); toast(tx('connOkToast'),'ok');
+    btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
     await refresh(); startPoll();
   }catch(e){
-    setConn('연결 실패','err');
-    toast('연결 실패: '+e.message+' (주방 SQL 12 실행·키 확인)','err');
-    btn.textContent='연결 실패 · 재시도'; btn.disabled=false; supa=null;
+    setConn(tx('connFail'),'err');
+    toast(tx('connFailToast')+': '+e.message+' '+tx('connFailHint'),'err');
+    btn.textContent=tx('connFailBtn'); btn.disabled=false; supa=null;
   }
 }
 
@@ -254,14 +282,14 @@ async function markAccept(id){
   const by=(window.__so_getUser&&window.__so_getUser())||'';
   const {error}=await supa.from('kitchen_tickets')
     .update({status:'accepted',accepted_at:new Date().toISOString(),accepted_by:by}).eq('id',id);
-  if(error){toast('접수 처리 실패: '+error.message,'err'); refresh();}
+  if(error){toast(tx('acceptFail')+': '+error.message,'err'); refresh();}
 }
 
 async function markDone(id){
   // 낙관적 제거 후 서버 반영
   state.tickets=state.tickets.filter(x=>x.id!==id); render();
   const {error}=await supa.from('kitchen_tickets').update({status:'done',done_at:new Date().toISOString()}).eq('id',id);
-  if(error){toast('완료 처리 실패: '+error.message,'err'); refresh();}
+  if(error){toast(tx('doneFail')+': '+error.message,'err'); refresh();}
 }
 
 function startPoll(){
@@ -272,7 +300,7 @@ function stopPoll(){ if(pollTimer){clearInterval(pollTimer);pollTimer=null;} }
 function handleConnLoss(err){
   // 연결 끊김 → 끊고 워치독이 자동 재연결. 재연결 후 기존 큐로 알림 안 울리게 firstLoad 리셋.
   if(reconnecting) return; reconnecting=true;
-  setConn('재연결 중…','err'); supa=null; stopPoll(); firstLoad=true;
+  setConn(tx('reconnecting'),'err'); supa=null; stopPoll(); firstLoad=true;
 }
 
 // ── 부팅 ──
@@ -289,12 +317,13 @@ $('#station-seg').querySelectorAll('button').forEach(b=>b.classList.toggle('acti
 window.addEventListener('pointerdown',initAudio);   // 첫 터치/클릭에 알림음 언락
 // 연결 끊김 자동 재연결(10초마다 점검)
 setInterval(()=>{ if(!supa && $('#sb-url').value && $('#sb-key').value){ connect(); } }, 10000);
+applyStatic();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
 // 경과시간 라벨만 갱신(폴링과 별개로 매 20초 다시 그림)
 setInterval(()=>{ if(state.tickets.length) render(); }, 20000);
-window.onSaizenLangChange=function(){ try{ render(); }catch(e){} };
+window.onSaizenLangChange=function(){ try{ applyStatic(); render(); }catch(e){} };
 </script>
 </body>
 </html>

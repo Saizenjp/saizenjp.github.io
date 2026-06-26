@@ -88,7 +88,7 @@
       <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
     </div>
   </div>
-  <span class="pill" id="conn-state">미연결</span>
+  <span class="pill" id="conn-state"></span>
 </div>
 
 <div class="conn">
@@ -100,7 +100,7 @@
 
 <div class="wrap">
   <!-- 오늘 요약 -->
-  <div class="sm-date" id="sm-date">오늘 요약</div>
+  <div class="sm-date" id="sm-date"></div>
   <div class="summary" id="summary"></div>
 
   <!-- 공지 작성(admin/manager) -->
@@ -113,7 +113,7 @@
       <div class="opts">
         <label><span data-i18n="bd_deptLabel"></span> <select class="inp" id="w-dept" style="width:auto;padding:6px 9px"></select></label>
         <label><input type="checkbox" id="w-pin"> <span data-i18n="bd_pin"></span></label>
-        <label id="w-pinuntil-wrap" style="display:none;font-size:12px;color:var(--text2)">고정 기간(까지) <input type="date" class="inp" id="w-pinuntil" style="width:auto;padding:5px 8px"></label>
+        <label id="w-pinuntil-wrap" style="display:none;font-size:12px;color:var(--text2)"><span id="t-pinuntil-lbl"></span> <input type="date" class="inp" id="w-pinuntil" style="width:auto;padding:5px 8px"></label>
         <button class="btn" id="w-post" type="button" style="margin-left:auto" data-i18n="bd_post"></button>
       </div>
     </div>
@@ -131,6 +131,49 @@
 <script src="../assets/saizen-ops.js?v=14.79"></script>
 <script>
 const $=s=>document.querySelector(s);
+
+// ── i18n (한·일 직원 공용. ja 기본) — saizen-ops.js bd_*/ix_d* 키로 커버되지 않는 동적 문자열만 ──
+const L={
+  ja:{ connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connOk:'接続済',
+    connRetry:'接続・再試行', notConn:'未接続', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
+    needLoginMsg:'ログインが必要です。上部の[ログイン]後に再接続してください。',
+    connFail:'接続失敗', connFailHint:'(SQL 21 実行を確認)',
+    todaySummary:'本日のサマリー', pinUntilLbl:'固定期間（まで）', pinShort:'固定～',
+    dragReorder:'ドラッグして並び替え',
+    annLoadFail:'お知らせ読み込み失敗', reordered:'並び替えました', reorderFail:'並び順の保存失敗',
+    pinUntilFail:'固定期間の保存失敗', pinUntilSet:'固定期間を設定しました', pinUntilOff:'固定期間を解除',
+    needTitle:'タイトルを入力してください', postFail:'登録失敗', posted:'お知らせを登録しました',
+    pinChangeFail:'変更失敗', delConfirm:'このお知らせを削除しますか？', delFail:'削除失敗' },
+  ko:{ connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connOk:'연결됨',
+    connRetry:'연결·재시도', notConn:'미연결', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
+    needLoginMsg:'로그인이 필요합니다. 상단 [로그인] 후 다시 연결하세요.',
+    connFail:'연결 실패', connFailHint:'(SQL 21 실행 확인)',
+    todaySummary:'오늘 요약', pinUntilLbl:'고정 기간(까지)', pinShort:'고정~',
+    dragReorder:'드래그하여 순서 변경',
+    annLoadFail:'공지 로드 실패', reordered:'순서 변경됨', reorderFail:'순서 저장 실패',
+    pinUntilFail:'고정 기간 저장 실패', pinUntilSet:'고정 기간 설정됨', pinUntilOff:'고정 기간 해제',
+    needTitle:'제목을 입력하세요', postFail:'등록 실패', posted:'공지 등록됨',
+    pinChangeFail:'변경 실패', delConfirm:'이 공지를 삭제할까요?', delFail:'삭제 실패' },
+  en:{ connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connOk:'Connected',
+    connRetry:'Connect · retry', notConn:'Not connected', needUrlKey:'URL·key required', needLogin:'Login required',
+    needLoginMsg:'Login required. Sign in at the top, then connect again.',
+    connFail:'Connection failed', connFailHint:'(check SQL 21 was run)',
+    todaySummary:'Today summary', pinUntilLbl:'Pinned until', pinShort:'Pin ~',
+    dragReorder:'Drag to reorder',
+    annLoadFail:'Failed to load announcements', reordered:'Reordered', reorderFail:'Failed to save order',
+    pinUntilFail:'Failed to save pin period', pinUntilSet:'Pin period set', pinUntilOff:'Pin period cleared',
+    needTitle:'Enter a title', postFail:'Post failed', posted:'Announcement posted',
+    pinChangeFail:'Change failed', delConfirm:'Delete this announcement?', delFail:'Delete failed' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+function applyStatic(){
+  const ds=$('#sm-date'); if(ds && !lastSummary) ds.textContent=(window.t?t('bd_today'):tx('todaySummary'));
+  const pl=$('#t-pinuntil-lbl'); if(pl) pl.textContent=tx('pinUntilLbl');
+  // 연결 상태 pill(아직 연결 안 됐을 때만 기본 라벨)
+  const cs=$('#conn-state'); if(cs && !cs.dataset.set) cs.textContent=tx('notConn');
+}
+
 let supa=null, canWrite=false, anns=[], myAcc=null, lastSummary=null;
 // 부서 키 ↔ (이모지, i18n키) — 라벨은 언어 토글 따라 번역
 const DEPT_KEYS=['front','fnb','golf','acct'];
@@ -141,28 +184,28 @@ let curDept=new URLSearchParams(location.search).get('dept')||'';
 if(curDept && DEPT_KEYS.indexOf(curDept)<0) curDept='';
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
-function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.dataset.set='1';e.className='pill'+(c?' '+c:'');}
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
 function yen(n){return '¥'+Number(n||0).toLocaleString('ja-JP');}
 
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn('URL·key 필요','err');return;}
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  const btn=$('#btn-connect');btn.textContent=tx('connecting');btn.disabled=true;
   try{
     supa=window.supabase.createClient(url,key);
     const {data:sess}=await supa.auth.getSession();
-    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
-      $('#ann-list').innerHTML='<div class="empty">로그인이 필요합니다. 상단 [로그인] 후 다시 연결하세요.</div>'; return; }
+    if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
+      $('#ann-list').innerHTML='<div class="empty">'+esc(tx('needLoginMsg'))+'</div>'; return; }
     const acc=(window.__so_meAccess)?await __so_meAccess():null;
     myAcc=acc;
     canWrite = !!(acc && (acc.role==='admin'||acc.role==='manager'));
     $('#write-panel').style.display = canWrite ? '' : 'none';
     if(canWrite) fillWriteDept();
-    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.disabled=false;
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
     await Promise.all([loadSummary(), loadAnns()]);
-  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결·재시도';btn.disabled=false; supa=null; toast('연결 실패: '+e.message+' (SQL 21 실행 확인)','err'); }
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connRetry');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message+' '+tx('connFailHint'),'err'); }
 }
 
 async function loadSummary(){
@@ -184,7 +227,7 @@ function renderSummary(){
 async function loadAnns(){
   const {data,error}=await supa.from('announcements').select('*')
     .order('pinned',{ascending:false}).order('sort_order',{ascending:true}).order('created_at',{ascending:false});
-  if(error){ toast('공지 로드 실패: '+error.message,'err'); return; }
+  if(error){ toast(tx('annLoadFail')+': '+error.message,'err'); return; }
   anns=data||[]; renderAnns();
 }
 function fmtTs(ts){ const d=new Date(ts); return isNaN(d)?'':`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
@@ -235,7 +278,7 @@ function renderAnns(){
     return `
     <div class="ann${act?' pin':''}" data-id="${a.id}"${canDrag?' draggable="true"':''}>
       <div class="ah">
-        ${canDrag?'<span class="draghandle" title="드래그하여 순서 변경">≡</span>':''}
+        ${canDrag?'<span class="draghandle" title="'+esc(tx('dragReorder'))+'">≡</span>':''}
         <span class="at">${esc(a.title)}</span>
         ${act&&a.pin_until?`<span class="pinuntil-meta">📌 ~${fmtTs(a.pin_until).slice(0,10)}</span>`:''}
         <span class="dbadge${a.dept?'':' all'}">${esc(deptLabel(a.dept))}</span>
@@ -244,7 +287,7 @@ function renderAnns(){
       ${a.body?`<div class="abody">${esc(a.body)}</div>`:''}
       ${canWrite?`<div class="actions">
         <button class="btn sm ghost" data-pin="${a.id}">${a.pinned?t('bd_unpin'):t('bd_doPin')}</button>
-        ${a.pinned?`<label class="pinperiod">고정~ <input type="date" data-pinuntil="${a.id}" value="${a.pin_until?String(a.pin_until).slice(0,10):''}"></label>`:''}
+        ${a.pinned?`<label class="pinperiod">${esc(tx('pinShort'))} <input type="date" data-pinuntil="${a.id}" value="${a.pin_until?String(a.pin_until).slice(0,10):''}"></label>`:''}
         <button class="btn sm danger" data-del="${a.id}">${t('bd_del')}</button>
       </div>`:''}
     </div>`;}).join('');
@@ -274,49 +317,51 @@ async function reorderAnns(fromId,toId){
   anns=arr; renderAnns();   // 즉시 반영
   try{
     for(let i=0;i<arr.length;i++){ const so=(i+1)*10; if(arr[i].sort_order!==so){ await supa.from('announcements').update({sort_order:so}).eq('id',arr[i].id); arr[i].sort_order=so; } }
-    toast('순서 변경됨','ok');
-  }catch(e){ toast('순서 저장 실패: '+e.message,'err'); loadAnns(); }
+    toast(tx('reordered'),'ok');
+  }catch(e){ toast(tx('reorderFail')+': '+e.message,'err'); loadAnns(); }
 }
 async function setPinUntil(id,val){
   const until = val ? new Date(val+'T23:59:59').toISOString() : null;
   const {error}=await supa.from('announcements').update({pin_until:until,updated_at:new Date().toISOString()}).eq('id',id);
-  if(error){ toast('고정 기간 저장 실패: '+error.message,'err'); return; }
-  toast(until?'고정 기간 설정됨':'고정 기간 해제','ok'); loadAnns();
+  if(error){ toast(tx('pinUntilFail')+': '+error.message,'err'); return; }
+  toast(until?tx('pinUntilSet'):tx('pinUntilOff'),'ok'); loadAnns();
 }
 
 async function postAnn(){
   const title=$('#w-title').value.trim(), body=$('#w-body').value.trim(), pinned=$('#w-pin').checked;
-  if(!title){ toast('제목을 입력하세요','err'); return; }
+  if(!title){ toast(tx('needTitle'),'err'); return; }
   const author=authorName();
   const dept=($('#w-dept')&&$('#w-dept').value)||null;
   const pu=$('#w-pinuntil')&&$('#w-pinuntil').value;
   const pin_until=(pinned&&pu)?new Date(pu+'T23:59:59').toISOString():null;
   const {error}=await supa.from('announcements').insert({title,body,pinned,author,dept,pin_until,sort_order:0});
-  if(error){ toast('등록 실패: '+error.message,'err'); return; }
+  if(error){ toast(tx('postFail')+': '+error.message,'err'); return; }
   $('#w-title').value=''; $('#w-body').value=''; $('#w-pin').checked=false;
   if($('#w-pinuntil')){ $('#w-pinuntil').value=''; $('#w-pinuntil-wrap').style.display='none'; }
-  toast('공지 등록됨','ok'); loadAnns();
+  toast(tx('posted'),'ok'); loadAnns();
 }
 async function togglePin(id){
   const a=anns.find(x=>String(x.id)===String(id)); if(!a) return;
   const {error}=await supa.from('announcements').update({pinned:!a.pinned,updated_at:new Date().toISOString()}).eq('id',id);
-  if(error){ toast('변경 실패: '+error.message,'err'); return; } loadAnns();
+  if(error){ toast(tx('pinChangeFail')+': '+error.message,'err'); return; } loadAnns();
 }
 async function delAnn(id){
-  if(!confirm('이 공지를 삭제할까요?')) return;
+  if(!confirm(tx('delConfirm'))) return;
   const {error}=await supa.from('announcements').delete().eq('id',id);
-  if(error){ toast('삭제 실패: '+error.message,'err'); return; } loadAnns();
+  if(error){ toast(tx('delFail')+': '+error.message,'err'); return; } loadAnns();
 }
 
 $('#btn-connect').addEventListener('click',connect);
 $('#w-post').addEventListener('click',postAnn);
 if($('#w-pin')) $('#w-pin').addEventListener('change',e=>{ const w=$('#w-pinuntil-wrap'); if(w) w.style.display=e.target.checked?'inline-flex':'none'; });
+applyStatic();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }
 
-// 언어 토글 시 동적 부분(요약·칩·목록·작성부서) 다시 그리기
+// 언어 토글 시 정적 라벨 + 동적 부분(요약·칩·목록·작성부서) 다시 그리기
 window.onSaizenLangChange=function(){
   try{
+    applyStatic();
     if(lastSummary) renderSummary();
     if(canWrite) fillWriteDept();
     if(anns.length || supa) renderAnns();
