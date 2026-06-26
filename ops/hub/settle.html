@@ -725,8 +725,8 @@ async function setStatus(id,status){
   const patch={status}; if(status==='closed') patch.closed_at=new Date().toISOString();
   if(status==='open') patch.closed_at=null;
   const {error}=await supa.from('folios').update(patch).eq('id',id);
-  if(error){toast('상태 변경 실패: '+error.message,'err');return;}
-  toast('상태 → '+(STATUS_LABEL[status]||status),'ok');
+  if(error){toast(tx('statusChangeFail')+': '+error.message,'err');return;}
+  toast(tx('statusTo')+statusLabel(status),'ok');
   await refreshAfterChange(id);
 }
 
@@ -740,8 +740,8 @@ async function refreshAfterChange(folioId){
 
 // ── 정산계정 열기(팀/개인) ──
 async function openFolioModal(){
-  if(!supa){toast('먼저 연결하세요','warn');return;}
-  if(!state.bookings.length){toast('이 월의 예약(bookings)이 없습니다. STEP1 등록을 확인하세요','warn');return;}
+  if(!supa){toast(tx('needConnect'),'warn');return;}
+  if(!state.bookings.length){toast(tx('noBookings'),'warn');return;}
   const opened=new Set(state.folios.filter(f=>f.subject==='team').map(f=>f.event_seq));
   const bg=document.createElement('div'); bg.className='modal-bg';
   const m=document.createElement('div'); m.className='modal';
@@ -749,17 +749,17 @@ async function openFolioModal(){
     const already=opened.has(b.event_seq);
     return `<div class="pickitem" data-seq="${b.event_seq}" data-rep="${(b.rep_name||'').replace(/"/g,'')}">
       <span class="pi-tag">#${b.event_no||b.event_seq}</span> ${b.rep_name||''} · ${b.product_name||''}
-      <span style="color:var(--muted);font-size:11px"> ${(b.dep_date||'')}~${(b.arr_date||'')}${already?' · 이미 열림':''}</span>
+      <span style="color:var(--muted);font-size:11px"> ${(b.dep_date||'')}~${(b.arr_date||'')}${already?' · '+tx('alreadyOpen'):''}</span>
     </div>`;
   }).join('');
-  m.innerHTML=`<h2>정산계정 열기 (팀 단위)</h2>
+  m.innerHTML=`<h2>${tx('openModalTitle')}</h2>
     <div class="mbody">
-      <label>행사(팀)를 선택하세요. 선택한 행사에 정산 계정 1개를 엽니다.</label>
-      <input class="inp" id="open-filter" type="text" placeholder="대표자/상품명 검색">
+      <label>${tx('openModalLabel')}</label>
+      <input class="inp" id="open-filter" type="text" placeholder="${tx('openFilterPh')}">
       <div id="open-list" style="display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto">${items}</div>
     </div>
     <div class="mfoot">
-      <button class="btn ghost sm" id="open-cancel" type="button">닫기</button>
+      <button class="btn ghost sm" id="open-cancel" type="button">${tx('closeBtn')}</button>
     </div>`;
   bg.appendChild(m); document.body.appendChild(bg);
   const close=()=>bg.remove();
@@ -783,8 +783,8 @@ async function openFolio(event_seq){
   const row={ event_seq, subject:'team', status:'open', session_ym:state.ym,
     created_by:(window.__so_getUser&&__so_getUser())||null };
   const {data,error}=await supa.from('folios').insert(row).select('id').single();
-  if(error){toast('계정 열기 실패: '+error.message,'err');return;}
-  toast('정산 계정 열림 (#'+evNo(event_seq)+')','ok');
+  if(error){toast(tx('folioOpenFail')+': '+error.message,'err');return;}
+  toast(tx('folioOpened')+' (#'+evNo(event_seq)+')','ok');
   await loadSession();
   if(data&&data.id) await selectFolio(data.id);
 }
