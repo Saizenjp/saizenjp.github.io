@@ -126,14 +126,14 @@
     <div class="formgrid">
       <div class="f"><label data-i18n="me_code"></label>
         <div style="display:flex;gap:4px">
-          <input class="inp code" id="n-code" type="text" placeholder="자동">
-          <button class="btn ghost sm" id="btn-nextcode" type="button" title="장소에 맞는 다음 코드 생성(FR1·GS1…)" style="padding:5px 9px">↻</button>
+          <input class="inp code" id="n-code" type="text">
+          <button class="btn ghost sm" id="btn-nextcode" type="button" style="padding:5px 9px">↻</button>
         </div>
       </div>
       <div class="f"><label data-i18n="me_nameJa"></label><input class="inp" id="n-ja" type="text" placeholder="生ビール"></div>
-      <div class="f"><label data-i18n="me_nameKo"></label><input class="inp" id="n-ko" type="text" placeholder="생맥주"></div>
+      <div class="f"><label data-i18n="me_nameKo"></label><input class="inp" id="n-ko" type="text"></div>
       <div class="f"><label data-i18n="me_cat"></label>
-        <select class="inp" id="n-cat"><option value="라운딩">라운딩</option><option value="식음" selected>식음</option><option value="숙박">룸</option><option value="골프샵">골프샵</option><option value="기타">기타</option></select></div>
+        <select class="inp" id="n-cat"></select></div>
       <div class="f"><label data-i18n="me_venue"></label><select class="inp" id="n-venue"></select></div>
       <div class="f"><label data-i18n="me_price"></label><input class="inp price" id="n-price" type="number" min="0" step="100" value="0"></div>
       <div class="f"><label data-i18n="me_sort"></label><input class="inp sort" id="n-sort" type="number" value="0"></div>
@@ -144,7 +144,7 @@
   <!-- 메뉴 목록 -->
   <div class="panel">
     <h3><span data-i18n="me_listTitle"></span>
-      <button class="btn sm" id="btn-saveall" type="button" disabled style="margin-left:8px">💾 전체 저장</button>
+      <button class="btn sm" id="btn-saveall" type="button" disabled style="margin-left:8px"></button>
       <span class="cnt" id="list-cnt"></span></h3>
     <div class="venue-tabs" id="venue-tabs"></div>
     <div style="overflow:auto">
@@ -162,8 +162,8 @@
   <!-- 수정 이력 -->
   <div class="panel">
     <details id="hist-wrap">
-      <summary style="cursor:pointer;font-size:14px;font-weight:800;color:var(--accent)">🕘 수정 이력 <span class="cnt" id="hist-cnt" style="font-weight:700;color:var(--text2)"></span></summary>
-      <div class="hist" id="hist-body" style="margin-top:10px"><div class="empty-hint">연결 후 표시됩니다.</div></div>
+      <summary style="cursor:pointer;font-size:14px;font-weight:800;color:var(--accent)"><span id="t-histtitle"></span> <span class="cnt" id="hist-cnt" style="font-weight:700;color:var(--text2)"></span></summary>
+      <div class="hist" id="hist-body" style="margin-top:10px"><div class="empty-hint" id="t-histempty"></div></div>
     </details>
   </div>
 </div>
@@ -179,27 +179,80 @@
 // ════════════════════════════════════════════════════════════════════════
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
+
+// ── i18n (한·일 직원 공용. ja 기본. me_* 등은 saizen-ops.js, 나머지 로컬 키는 여기서) ──
+const L={
+  ja:{ phCode:'自動', tipNextCode:'場所に合う次のコードを生成(FR1·GS1…)', phNameKo:'生ビール(韓国語名)',
+    saveAll:'💾 一括保存', saveVenue:'💾 この場所を一括保存', tipCodeLock:'適用済みのコードは修正不可',
+    histTitle:'🕘 変更履歴', histEmptyConnect:'接続後に表示されます。', histEmptyNone:'まだ変更履歴がありません。',
+    histTblMissing:'履歴テーブル未設置(29_change_log.sql の実行が必要)', histRecent:n=>`(直近 ${n}件)`,
+    needUrlKey:'URL・key必要', connecting:'接続中…', connOk:'接続済', connectedToast:'Supabaseに接続しました',
+    connectedBtn:'✓ 接続済', connFail:'接続失敗', connFailToast:e=>'接続失敗: '+e+' (メニュー SQL 11·12 実行・key確認)', connFailBtn:'接続失敗・再試行',
+    loadFail:'読み込み失敗: ', needJaName:'日本語名は必須', noChange:'変更なし',
+    saveFail:'保存失敗: ', saved:'保存しました', needConn:'先に接続してください',
+    bulkNeedJa:x=>`日本語名なし: ${x}`, noRowsToSave:'保存する行がありません', bulkSaveFail:'一括保存失敗: ',
+    bulkSaved:(n,m)=>`${n}件 保存 · 変更 ${m}件`, delFail:'削除失敗: ', deleted:'削除しました', confirmDel:'このメニューを削除しますか?(過去の請求記録には影響しません)',
+    addNeedJa:'日本語名を入力してください', addFail:'追加失敗: ', added:'メニューを追加しました',
+    actInsert:'追加', actUpdate:'修正', actDelete:'削除',
+    flCode:'コード', flNameJa:'日本語名', flNameKo:'韓国語名', flCat:'区分', flVenue:'場所', flStation:'station', flPrice:'単価', flSort:'並び順', flActive:'有効',
+    catRound:'ラウンド', catFb:'飲食', catRoom:'ルーム', catProshop:'ゴルフショップ', catEtc:'その他',
+    venRestaurant:'レストラン', venProshop:'ゴルフショップ', venBanquet:'宴会', venEtc:'その他', all:'全体' },
+  ko:{ phCode:'자동', tipNextCode:'장소에 맞는 다음 코드 생성(FR1·GS1…)', phNameKo:'생맥주',
+    saveAll:'💾 전체 저장', saveVenue:'💾 이 장소 전체 저장', tipCodeLock:'적용된 코드는 수정 불가',
+    histTitle:'🕘 수정 이력', histEmptyConnect:'연결 후 표시됩니다.', histEmptyNone:'아직 수정 이력이 없습니다.',
+    histTblMissing:'이력 테이블 미설치(29_change_log.sql 실행 필요)', histRecent:n=>`(최근 ${n}건)`,
+    needUrlKey:'URL·key 필요', connecting:'연결 중…', connOk:'연결됨', connectedToast:'Supabase 연결됨',
+    connectedBtn:'✓ 연결됨', connFail:'연결 실패', connFailToast:e=>'연결 실패: '+e+' (메뉴 SQL 11·12 실행·키 확인)', connFailBtn:'연결 실패 · 재시도',
+    loadFail:'로드 실패: ', needJaName:'日本語名은 필수', noChange:'변경 없음',
+    saveFail:'저장 실패: ', saved:'저장됨', needConn:'먼저 연결하세요',
+    bulkNeedJa:x=>`日本語名 누락: ${x}`, noRowsToSave:'저장할 행이 없습니다', bulkSaveFail:'일괄 저장 실패: ',
+    bulkSaved:(n,m)=>`${n}건 저장됨 · 변경 ${m}건`, delFail:'삭제 실패: ', deleted:'삭제됨', confirmDel:'이 메뉴를 삭제할까요? (과거 청구 기록은 영향 없음)',
+    addNeedJa:'日本語名을 입력하세요', addFail:'추가 실패: ', added:'메뉴 추가됨',
+    actInsert:'추가', actUpdate:'수정', actDelete:'삭제',
+    flCode:'코드', flNameJa:'日本語名', flNameKo:'한국어명', flCat:'구분', flVenue:'장소', flStation:'station', flPrice:'단가', flSort:'정렬', flActive:'활성',
+    catRound:'라운딩', catFb:'식음', catRoom:'룸', catProshop:'골프샵', catEtc:'기타',
+    venRestaurant:'레스토랑', venProshop:'골프샵', venBanquet:'연회', venEtc:'기타', all:'전체' },
+  en:{ phCode:'Auto', tipNextCode:'Generate next code for this venue (FR1·GS1…)', phNameKo:'Name (KO)',
+    saveAll:'💾 Save all', saveVenue:'💾 Save this venue', tipCodeLock:'Applied code cannot be edited',
+    histTitle:'🕘 Change history', histEmptyConnect:'Shown after connecting.', histEmptyNone:'No change history yet.',
+    histTblMissing:'History table missing (run 29_change_log.sql)', histRecent:n=>`(last ${n})`,
+    needUrlKey:'URL·key required', connecting:'Connecting…', connOk:'Connected', connectedToast:'Connected to Supabase',
+    connectedBtn:'✓ Connected', connFail:'Connection failed', connFailToast:e=>'Connection failed: '+e+' (run menu SQL 11·12 / check key)', connFailBtn:'Failed · retry',
+    loadFail:'Load failed: ', needJaName:'Japanese name required', noChange:'No change',
+    saveFail:'Save failed: ', saved:'Saved', needConn:'Connect first',
+    bulkNeedJa:x=>`Missing Japanese name: ${x}`, noRowsToSave:'No rows to save', bulkSaveFail:'Bulk save failed: ',
+    bulkSaved:(n,m)=>`${n} saved · ${m} changed`, delFail:'Delete failed: ', deleted:'Deleted', confirmDel:'Delete this menu item? (past billing records are unaffected)',
+    addNeedJa:'Enter a Japanese name', addFail:'Add failed: ', added:'Menu item added',
+    actInsert:'Add', actUpdate:'Edit', actDelete:'Delete',
+    flCode:'Code', flNameJa:'Name (JA)', flNameKo:'Name (KO)', flCat:'Category', flVenue:'Venue', flStation:'station', flPrice:'Price', flSort:'Sort', flActive:'Active',
+    catRound:'Round', catFb:'F&B', catRoom:'Room', catProshop:'Pro shop', catEtc:'Other',
+    venRestaurant:'Restaurant', venProshop:'Pro shop', venBanquet:'Banquet', venEtc:'Other', all:'All' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; const v=d[k]!==undefined?d[k]:(L.ja[k]||k); return v; }
+
 const CATS=['라운딩','식음','숙박','골프샵','기타'];
-// 라인(구분) 표시 라벨 — 저장값은 그대로(정산·御請求書 영향 없음), 화면만 '숙박'→'룸'
-const CAT_LABEL={'라운딩':'라운딩','식음':'식음','숙박':'룸','골프샵':'골프샵','기타':'기타'};
-function catLabel(c){ return CAT_LABEL[c]||c||'기타'; }
+// 라인(구분) 표시 라벨 — 저장값(한국어)은 그대로(정산·御請求書 영향 없음), 표시만 언어별 번역('숙박'→룸/ルーム/Room)
+const CAT_TXKEY={'라운딩':'catRound','식음':'catFb','숙박':'catRoom','골프샵':'catProshop','기타':'catEtc'};
+function catLabel(c){ const k=CAT_TXKEY[c]; return k?tx(k):(c||tx('catEtc')); }
 const STATIONS=['kitchen','bar','none'];
 let state={ items:[], venueFilter:'__all' };
 
-// ── 장소(venue) 레지스트리: 저장값(key)은 그대로, 화면은 라벨, 신규코드는 prefix+번호 ──
+// ── 장소(venue) 레지스트리: 저장값(key)은 그대로, 화면은 라벨(언어별), 신규코드는 prefix+번호 ──
 const VENUES=[
-  {key:'restaurant', label:'레스토랑', prefix:'FR'},
-  {key:'proshop',    label:'골프샵',   prefix:'GS'},
-  {key:'banquet',    label:'연회',     prefix:'BQ'},
-  {key:'etc',        label:'기타',     prefix:'ET'},
+  {key:'restaurant', txkey:'venRestaurant', prefix:'FR'},
+  {key:'proshop',    txkey:'venProshop',    prefix:'GS'},
+  {key:'banquet',    txkey:'venBanquet',    prefix:'BQ'},
+  {key:'etc',        txkey:'venEtc',        prefix:'ET'},
 ];
 const VENUE_BY_KEY=Object.fromEntries(VENUES.map(v=>[v.key,v]));
-function venueLabel(k){ return (VENUE_BY_KEY[k]&&VENUE_BY_KEY[k].label) || k || 'etc'; }
+function venueLabel(k){ const v=VENUE_BY_KEY[k]; return v?tx(v.txkey):(k||'etc'); }
 function venuePrefix(k){ return (VENUE_BY_KEY[k]&&VENUE_BY_KEY[k].prefix) || 'X'; }
 function venueIdx(k){ const i=VENUES.findIndex(v=>v.key===k); return i===-1?99:i; }
-// 데이터에 등장하는 모든 venue(레지스트리 + 미등록 venue) 를 순서대로
+// 데이터에 등장하는 모든 venue(레지스트리 + 미등록 venue) 를 순서대로. label=현재 언어 라벨로 해석
 function allVenues(){
-  const seen=new Set(VENUES.map(v=>v.key)); const list=VENUES.slice();
+  const seen=new Set(VENUES.map(v=>v.key));
+  const list=VENUES.map(v=>({key:v.key,label:venueLabel(v.key),prefix:v.prefix}));
   state.items.forEach(it=>{ const k=it.venue||'etc'; if(!seen.has(k)){ seen.add(k); list.push({key:k,label:k,prefix:'X'}); } });
   return list;
 }
@@ -226,8 +279,34 @@ function fillNextCode(force){
 function fillVenueSelect(){
   const sel=$('#n-venue'); if(!sel) return;
   const cur=sel.value||'restaurant';
-  sel.innerHTML=VENUES.map(v=>`<option value="${v.key}">${esc(v.label)} (${v.prefix})</option>`).join('');
+  sel.innerHTML=VENUES.map(v=>`<option value="${v.key}">${esc(venueLabel(v.key))} (${v.prefix})</option>`).join('');
   sel.value=VENUE_BY_KEY[cur]?cur:'restaurant';
+}
+// 새 메뉴 폼 구분(category) select 채우기 — 저장값(한국어 key)은 유지, 라벨만 언어별
+function fillCatSelect(){
+  const sel=$('#n-cat'); if(!sel) return;
+  const cur=sel.value||'식음';
+  sel.innerHTML=CATS.map(c=>`<option value="${esc(c)}" ${c===cur?'selected':''}>${esc(catLabel(c))}</option>`).join('');
+  if(CATS.indexOf(cur)<0) sel.value='식음';
+}
+// 정적 chrome(데이터-i18n 외) 갱신
+function applyStatic(){
+  const cd=$('#n-code'); if(cd) cd.placeholder=tx('phCode');
+  const nc=$('#btn-nextcode'); if(nc) nc.title=tx('tipNextCode');
+  const ko=$('#n-ko'); if(ko) ko.placeholder=tx('phNameKo');
+  const sa=$('#btn-saveall'); if(sa) sa.textContent=tx('saveAll');
+  const ht=$('#t-histtitle'); if(ht) ht.textContent=tx('histTitle');
+  refreshHistEmpty();
+  refreshConnBtn();
+}
+// 이력 비어있을 때 안내문(연결 전/이력 0건은 render에서 갱신)
+function refreshHistEmpty(){
+  const he=$('#t-histempty'); if(he && !supa) he.textContent=tx('histEmptyConnect');
+}
+// 연결 버튼/배지 — 현재 conn 상태 텍스트만 언어 반영(미연결은 data-i18n connState_none이 처리)
+function refreshConnBtn(){
+  const b=$('#btn-connect'); if(!b) return;
+  if(b.classList.contains('connected')) b.textContent=tx('connectedBtn');
 }
 
 function toast(msg,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.textContent=msg;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
@@ -237,27 +316,27 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn('URL·key 필요','err');return;}
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect'); btn.textContent='연결 중…'; btn.disabled=true;
+  const btn=$('#btn-connect'); btn.textContent=tx('connecting'); btn.disabled=true;
   try{
     supa=window.supabase.createClient(url,key);
     const {error}=await supa.from('menu_items').select('id',{count:'exact',head:true});
     if(error) throw error;
-    setConn('연결됨','ok'); toast('Supabase 연결됨','ok');
-    btn.textContent='✓ 연결됨'; btn.classList.add('connected'); btn.disabled=false;
+    setConn(tx('connOk'),'ok'); toast(tx('connectedToast'),'ok');
+    btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
     $('#btn-add').disabled=false; $('#btn-saveall').disabled=false;
     await load();
   }catch(e){
-    setConn('연결 실패','err');
-    toast('연결 실패: '+e.message+' (메뉴 SQL 11·12 실행·키 확인)','err');
-    btn.textContent='연결 실패 · 재시도'; btn.disabled=false; supa=null;
+    setConn(tx('connFail'),'err');
+    toast(tx('connFailToast')(e.message),'err');
+    btn.textContent=tx('connFailBtn'); btn.disabled=false; supa=null;
   }
 }
 
 async function load(){
   const {data,error}=await supa.from('menu_items').select('*').order('venue').order('sort_order').order('id');
-  if(error){toast('로드 실패: '+error.message,'err');return;}
+  if(error){toast(tx('loadFail')+error.message,'err');return;}
   state.items=data||[];
   render();
   fillNextCode();   // 현재 DB 기준 다음 코드 자동 채움
@@ -270,7 +349,7 @@ function renderVenueTabs(){
   const vs=allVenues();
   const cnt=k=>state.items.filter(m=>(m.venue||'etc')===k).length;
   const tab=(key,label,n)=>`<button class="vtab${state.venueFilter===key?' active':''}" data-vtab="${esc(key)}">${esc(label)}<span class="vc">${n}</span></button>`;
-  let html=tab('__all','전체',state.items.length);
+  let html=tab('__all',tx('all'),state.items.length);
   vs.forEach(v=>{ html+=tab(v.key, v.label, cnt(v.key)); });
   box.innerHTML=html;
   box.querySelectorAll('[data-vtab]').forEach(b=>b.addEventListener('click',()=>{ state.venueFilter=b.dataset.vtab; render(); }));
@@ -302,7 +381,7 @@ function render(){
       const vr=document.createElement('tr');
       vr.innerHTML=`<td colspan="10" class="venue-h"><div style="display:flex;align-items:center;gap:10px">
         <span>${esc(venueLabel(venue))} <span style="color:var(--muted);font-weight:600">(${esc(venuePrefix(venue))})</span></span>
-        <button class="btn ghost sm" type="button" data-savevenue style="margin-left:auto">💾 이 장소 전체 저장</button>
+        <button class="btn ghost sm" type="button" data-savevenue style="margin-left:auto">${esc(tx('saveVenue'))}</button>
       </div></td>`;
       const sb=vr.querySelector('[data-savevenue]'); if(sb) sb.addEventListener('click',()=>saveVenue(venue));
       body.appendChild(vr);
@@ -320,7 +399,7 @@ function render(){
     const catOpts=CATS.map(c=>`<option value="${esc(c)}" ${c===m.category?'selected':''}>${esc(catLabel(c))}</option>`).join('');
     const stOpts=STATIONS.map(s=>`<option value="${s}" ${s===m.station?'selected':''}>${s}</option>`).join('');
     tr.innerHTML=`
-      <td><input class="inp code" data-f="code" value="${esc(m.code)}" readonly title="적용된 코드는 수정 불가"></td>
+      <td><input class="inp code" data-f="code" value="${esc(m.code)}" readonly title="${esc(tx('tipCodeLock'))}"></td>
       <td><input class="inp" data-f="name_ja" value="${esc(m.name_ja)}"></td>
       <td><input class="inp" data-f="name_ko" value="${esc(m.name_ko)}"></td>
       <td><select class="inp" data-f="category">${catOpts}</select></td>
@@ -384,42 +463,42 @@ async function saveRow(id){
   const tr=$(`tr[data-id="${id}"]`); if(!tr) return;
   const before=state.items.find(m=>String(m.id)===String(id));
   const patch=rowPatch(tr);
-  if(!patch.name_ja){toast('日本語名は必須','warn');return;}
+  if(!patch.name_ja){toast(tx('needJaName'),'warn');return;}
   const ch=diffItem(before,patch);
-  if(!Object.keys(ch).length){toast('변경 없음','warn');return;}
+  if(!Object.keys(ch).length){toast(tx('noChange'),'warn');return;}
   const {error}=await supa.from('menu_items').update(patch).eq('id',id);
-  if(error){toast('저장 실패: '+error.message,'err');return;}
+  if(error){toast(tx('saveFail')+error.message,'err');return;}
   await logChange('update',{id,label:patch.code||patch.name_ja,changes:ch});
-  toast('저장됨','ok'); await load();
+  toast(tx('saved'),'ok'); await load();
 }
 // ── 일괄 저장: 여러 행을 한 번의 upsert 로 묶어 저장 + 변경분만 이력 기록 ──
 async function saveMany(items){
-  if(!supa){toast('먼저 연결하세요','warn');return;}
+  if(!supa){toast(tx('needConn'),'warn');return;}
   const rows=[]; const logs=[];
   for(const m of items){
     const tr=$(`tr[data-id="${m.id}"]`); if(!tr) continue;
     const p=rowPatch(tr);
-    if(!p.name_ja){toast(`日本語名 누락: ${m.code||m.name_ko||m.id}`,'warn');return;}
+    if(!p.name_ja){toast(tx('bulkNeedJa')(m.code||m.name_ko||m.id),'warn');return;}
     const ch=diffItem(m,p);
     p.id=m.id; rows.push(p);
     if(Object.keys(ch).length) logs.push({action:'update',id:m.id,label:p.code||p.name_ja,changes:ch});
   }
-  if(!rows.length){toast('저장할 행이 없습니다','warn');return;}
+  if(!rows.length){toast(tx('noRowsToSave'),'warn');return;}
   const {error}=await supa.from('menu_items').upsert(rows);
-  if(error){toast('일괄 저장 실패: '+error.message,'err');return;}
+  if(error){toast(tx('bulkSaveFail')+error.message,'err');return;}
   await logMany(logs);
-  toast(`${rows.length}건 저장됨 · 변경 ${logs.length}건`,'ok'); await load();
+  toast(tx('bulkSaved')(rows.length,logs.length),'ok'); await load();
 }
 function saveVenue(venue){ saveMany(state.items.filter(m=>(m.venue||'etc')===venue)); }
 function saveAll(){ saveMany(state.items); }
 
 async function delRow(id){
   const before=state.items.find(m=>String(m.id)===String(id));
-  if(!confirm('이 메뉴를 삭제할까요? (과거 청구 기록은 영향 없음)')) return;
+  if(!confirm(tx('confirmDel'))) return;
   const {error}=await supa.from('menu_items').delete().eq('id',id);
-  if(error){toast('삭제 실패: '+error.message,'err');return;}
+  if(error){toast(tx('delFail')+error.message,'err');return;}
   await logChange('delete',{id,label:(before&&(before.code||before.name_ja))||id,changes:diffItem(before,{})});
-  toast('삭제됨','warn'); await load();
+  toast(tx('deleted'),'warn'); await load();
 }
 
 async function addOne(){
@@ -434,11 +513,11 @@ async function addOne(){
     unit_price:Math.round(Number($('#n-price').value||0)),
     sort_order:Math.round(Number($('#n-sort').value||0)),
   };
-  if(!row.name_ja){toast('日本語名을 입력하세요','warn');return;}
+  if(!row.name_ja){toast(tx('addNeedJa'),'warn');return;}
   const {data:ins,error}=await supa.from('menu_items').insert(row).select().single();
-  if(error){toast('추가 실패: '+error.message,'err');return;}
+  if(error){toast(tx('addFail')+error.message,'err');return;}
   await logChange('insert',{id:ins&&ins.id,label:row.code||row.name_ja,changes:diffItem({},row)});
-  toast('메뉴 추가됨','ok');
+  toast(tx('added'),'ok');
   ['n-code','n-ja','n-ko'].forEach(id=>$('#'+id).value=''); $('#n-price').value=0; lastAuto='';
   await load();   // load()가 다음 코드 자동 채움
 }

@@ -91,8 +91,8 @@
 <body data-so-area="settle">
 <div class="topbar so-bar">
   <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
-  <span class="step">現地精算表 (Merit B2B)</span>
-  <a class="navhome" href="../index.html">← 홈</a>
+  <span class="step" id="t-step">現地精算表 (Merit B2B)</span>
+  <a class="navhome" href="../index.html" id="t-navhome">← 홈</a>
   <div class="grow so-spacer"></div>
   <div class="so-controls">
     <div class="so-lang">
@@ -101,18 +101,18 @@
       <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
     </div>
   </div>
-  <span class="pill" id="conn-state">미연결</span>
+  <span class="pill" id="conn-state">未接続</span>
 </div>
 
 <div class="conn">
   <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
   <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
-  <button class="btn sm" id="btn-connect" type="button">연결</button>
-  <span class="hint">메리트투어↔사이젠 B2B 선계약 정산(숙박비+송영비). 현장 추가요금(추가라운드·미니바 등)은 別 시스템.</span>
+  <button class="btn sm" id="btn-connect" type="button">接続</button>
+  <span class="hint" id="t-connhint"></span>
 </div>
 
 <div class="wrap" id="content">
-  <div class="panel"><div class="deny" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+  <div class="panel"><div class="deny" id="t-preconn" style="color:var(--muted)"></div></div>
 </div>
 
 <div id="toast"></div>
@@ -125,7 +125,114 @@ const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야�
 const ACCOM_RATE={'야마나미리조트':14000,'쿠주힐즈':14000,'간지호텔':16000,'시즈노야도 료칸':17000};
 const TRANSPORT_PER=6000;
 const DED_TYPES=['보증금 예약 쿠폰','장기숙박 쿠폰','야마나미 이용권','포인트','싱글차지 선납','기타 선납'];
-const HDRS_SETTLE=['No','イベント番号','区分','会員権区分','代表者名','英文名','出発日','到着日','泊数','人数','施設','部屋タイプ','料金(¥/人/泊)','宿泊費(¥)','送迎費(¥)','合計(¥)','備考'];
+// HDRS_SETTLE: 표시 헤더는 언어별로 (xlsx 출력용 일본어 헤더는 HDRS_SETTLE_XLSX로 고정)
+const HDRS_SETTLE_XLSX=['No','イベント番号','区分','会員権区分','代表者名','英文名','出発日','到着日','泊数','人数','施設','部屋タイプ','料金(¥/人/泊)','宿泊費(¥)','送迎費(¥)','合計(¥)','備考'];
+
+// ── i18n (한·일 직원 공용. ja 기본) ──
+const L={
+  ja:{ step:'現地精算表 (Merit B2B)', navHome:'← ホーム',
+    connect:'接続', connecting:'接続中…', connected:'✓ 接続済', connRetry:'接続失敗・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要',
+    needLogin:'ログインが必要です。', needLoginSub:'中央のログインカードでログイン後、再接続してください。', loginNeededPill:'ログイン必要',
+    connHint:'メリットツアー↔サイゼンのB2B事前契約精算(宿泊費＋送迎費)。現地追加料金(追加ラウンド・ミニバー等)は別システム。',
+    preConn:'接続すると表示されます。',
+    panelFilter:'月選択 · フィルター', lodging:'宿泊施設', all:'全体', print:'🖨 印刷', xlsx:'⬇ Excel',
+    panelSummary:'宿泊施設別サマリー', panelDed:'控除項目', dedHint:'— クーポン・前納等(¥)。Supabase保存(月別共有)', addDed:'＋ 項目追加',
+    panelDetail:'精算明細',
+    rate:'単価', perPaxNight:'/人/泊', cntLabel:'件数', lodgeFee:'宿泊費', transFee:'送迎費', subtotal:'合計',
+    noData:'表示するデータなし', loading:'読み込み中…', noMonthData:'当月のデータなし', loadFail:'読み込み失敗',
+    cntN:n=>n+'件', cntPaxN:(c,p)=>c+'件 / '+p+'名', detailNoData:'データなし',
+    grossB2B:'総売上(B2B)', dedTotal:'控除合計', net:'精算額(Net)', lodgeTrans:'宿泊 / 送迎', cntPax:'件数 / 人数',
+    cntPaxV:(c,p)=>c+'件 / '+p+'名',
+    dedEmpty:'控除項目がありません。[＋ 項目追加]を押して追加してください。',
+    dedColType:'種別', dedColAmt:'控除金額(¥)', dedColLabel:'項目内容', dedColTarget:'対象グループ/顧客',
+    dedAmtPh:'例: 5000', dedLabelPh:'例: 春シーズンクーポン', dedTargetPh:'例: 260501-97866 / 山田',
+    secLine:(a,c,p,t)=>'◎ '+a+' — '+c+'件 · '+p+'名 · '+t,
+    totalTotal:'合計 Total', remarkPh:'備考',
+    remarkSaved:'備考保存', remarkFail:'備考保存失敗', addFail:'追加失敗', editFail:'修正失敗', delFail:'削除失敗',
+    xlsxNoData:'データなし', xlsxFail:'ExcelJS 読み込み失敗', xlsxDone:'xlsx ダウンロード',
+    paxWarnV:(l,b)=>'名簿 '+l+'/予約 '+b, paxWarnTitle:'名簿人数と予約人数が異なります — 大きい値で請求',
+    rateWarn:'単価未登録',
+    // 区分(status)·会員権区分(memberType) 표시
+    hdrs:['No','イベント番号','区分','会員権区分','代表者名','英文名','出発日','到着日','泊数','人数','施設','部屋タイプ','料金(¥/人/泊)','宿泊費(¥)','送迎費(¥)','合計(¥)','備考'] },
+  ko:{ step:'現地精算表 (Merit B2B)', navHome:'← 홈',
+    connect:'연결', connecting:'연결 중…', connected:'✓ 연결됨', connRetry:'연결·재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요',
+    needLogin:'로그인이 필요합니다.', needLoginSub:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.', loginNeededPill:'로그인 필요',
+    connHint:'메리트투어↔사이젠 B2B 선계약 정산(숙박비+송영비). 현장 추가요금(추가라운드·미니바 등)은 別 시스템.',
+    preConn:'연결 후 표시됩니다.',
+    panelFilter:'월 선택 · 필터', lodging:'숙소', all:'전체', print:'🖨 인쇄', xlsx:'⬇ 엑셀',
+    panelSummary:'숙소별 요약', panelDed:'차감 항목', dedHint:'— 쿠폰·선납 등(¥). Supabase 저장(월별 공유)', addDed:'＋ 항목 추가',
+    panelDetail:'정산 명세',
+    rate:'단가', perPaxNight:'/인/박', cntLabel:'건수', lodgeFee:'숙박비', transFee:'송영비', subtotal:'합계',
+    noData:'표시할 데이터 없음', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', loadFail:'로드 실패',
+    cntN:n=>n+'건', cntPaxN:(c,p)=>c+'건 / '+p+'명', detailNoData:'데이터 없음',
+    grossB2B:'총 매출(B2B)', dedTotal:'차감 합계', net:'정산액(Net)', lodgeTrans:'숙박 / 송영', cntPax:'건수 / 인원',
+    cntPaxV:(c,p)=>c+'건 / '+p+'명',
+    dedEmpty:'차감 항목이 없습니다. [＋ 항목 추가]를 눌러 추가하세요.',
+    dedColType:'유형', dedColAmt:'차감 금액(¥)', dedColLabel:'항목 내용', dedColTarget:'대상 그룹/고객',
+    dedAmtPh:'예: 5000', dedLabelPh:'예: 봄 시즌 쿠폰', dedTargetPh:'예: 260501-97866 / 홍길동',
+    secLine:(a,c,p,t)=>'◎ '+a+' — '+c+'건 · '+p+'명 · '+t,
+    totalTotal:'合計 Total', remarkPh:'비고',
+    remarkSaved:'비고 저장', remarkFail:'비고 저장 실패', addFail:'추가 실패', editFail:'수정 실패', delFail:'삭제 실패',
+    xlsxNoData:'데이터 없음', xlsxFail:'ExcelJS 로드 실패', xlsxDone:'xlsx 다운로드',
+    paxWarnV:(l,b)=>'명단 '+l+'/예약 '+b, paxWarnTitle:'명단 인원과 예약 인원이 다릅니다 — 큰 값으로 청구',
+    rateWarn:'단가 미등록',
+    hdrs:['No','이벤트번호','구분','회원권구분','대표자명','영문명','출발일','도착일','박수','인원','시설','객실타입','단가(¥/인/박)','숙박비(¥)','송영비(¥)','합계(¥)','비고'] },
+  en:{ step:'B2B Settlement (Merit)', navHome:'← Home',
+    connect:'Connect', connecting:'Connecting…', connected:'✓ Connected', connRetry:'Failed · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required',
+    needLogin:'Login required.', needLoginSub:'Log in with the central login card, then reconnect.', loginNeededPill:'Login required',
+    connHint:'Merit Tour↔SaiZen B2B pre-contract settlement (lodging + transfer). On-site extras (added rounds, minibar, etc.) are a separate system.',
+    preConn:'Shown after connecting.',
+    panelFilter:'Month · Filter', lodging:'Lodging', all:'All', print:'🖨 Print', xlsx:'⬇ Excel',
+    panelSummary:'Summary by lodging', panelDed:'Deductions', dedHint:'— coupons / prepayments (¥). Saved in Supabase (shared per month)', addDed:'＋ Add item',
+    panelDetail:'Settlement details',
+    rate:'Unit price', perPaxNight:'/pax/night', cntLabel:'Count', lodgeFee:'Lodging', transFee:'Transfer', subtotal:'Total',
+    noData:'No data to show', loading:'Loading…', noMonthData:'No data for this month', loadFail:'Load failed',
+    cntN:n=>n+' items', cntPaxN:(c,p)=>c+' items / '+p+' ppl', detailNoData:'No data',
+    grossB2B:'Gross (B2B)', dedTotal:'Deduction total', net:'Net', lodgeTrans:'Lodging / Transfer', cntPax:'Items / Pax',
+    cntPaxV:(c,p)=>c+' items / '+p+' ppl',
+    dedEmpty:'No deductions. Press [＋ Add item] to add.',
+    dedColType:'Type', dedColAmt:'Amount (¥)', dedColLabel:'Item', dedColTarget:'Target group/customer',
+    dedAmtPh:'e.g. 5000', dedLabelPh:'e.g. spring coupon', dedTargetPh:'e.g. 260501-97866 / Hong',
+    secLine:(a,c,p,t)=>'◎ '+a+' — '+c+' items · '+p+' ppl · '+t,
+    totalTotal:'合計 Total', remarkPh:'Remarks',
+    remarkSaved:'Remark saved', remarkFail:'Remark save failed', addFail:'Add failed', editFail:'Edit failed', delFail:'Delete failed',
+    xlsxNoData:'No data', xlsxFail:'ExcelJS load failed', xlsxDone:'xlsx downloaded',
+    paxWarnV:(l,b)=>'roster '+l+'/booked '+b, paxWarnTitle:'Roster pax differs from booked pax — billed at the larger value',
+    rateWarn:'Unit price not set',
+    hdrs:['No','Event No.','Status','Membership','Rep name','Eng name','Departure','Arrival','Nights','Pax','Facility','Room type','Rate(¥/pax/nt)','Lodging(¥)','Transfer(¥)','Total(¥)','Remarks'] }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+// 차감 유형(DB 저장값 한국어) — 저장은 유지, 표시만 번역
+const DEDTL={
+  '보증금 예약 쿠폰':{ja:'保証金予約クーポン',en:'Deposit booking coupon'},
+  '장기숙박 쿠폰':{ja:'長期宿泊クーポン',en:'Long-stay coupon'},
+  '야마나미 이용권':{ja:'ヤマナミ利用券',en:'Yamanami voucher'},
+  '포인트':{ja:'ポイント',en:'Points'},
+  '싱글차지 선납':{ja:'シングルチャージ前納',en:'Single charge prepaid'},
+  '기타 선납':{ja:'その他前納',en:'Other prepaid'}
+};
+function dedTypeLabel(c){ const m=DEDTL[c]; if(!m) return c; const lg=lang(); return lg==='ja'?m.ja:(lg==='en'?m.en:c); }
+function applyStatic(){
+  const set=(id,v,html)=>{ const e=$('#'+id); if(e){ if(html) e.innerHTML=v; else e.textContent=v; } };
+  set('t-step',tx('step'));
+  set('t-navhome',tx('navHome'));
+  set('t-connhint',tx('connHint'));
+  set('t-preconn',tx('preConn'));
+  refreshConn();
+}
+function refreshConn(){
+  const b=$('#btn-connect'); if(!b) return;
+  // 연결 상태는 setConn으로 직접 갱신되므로 버튼 라벨만 현재 상태에 맞춰 — 단순화: 미연결 기본 라벨만 동기화
+  if(b.dataset.state==='ok'){ b.textContent=tx('connected'); setConn(tx('connOk'),'ok'); }
+  else if(b.dataset.state==='fail'){ b.textContent=tx('connRetry'); setConn(tx('connFail'),'err'); }
+  else if(b.dataset.state==='connecting'){ b.textContent=tx('connecting'); }
+  else if(b.dataset.state==='login'){ b.textContent=tx('connect'); setConn(tx('loginNeededPill'),'err'); }
+  else { b.textContent=tx('connect'); if(!supa) setConn(tx('notConn'),''); }
+}
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
@@ -159,25 +266,26 @@ function parseProduct(name){
 
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn('URL·key 필요','err');return;}
+  const btn=$('#btn-connect');
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  btn.dataset.state='connecting';btn.textContent=tx('connecting');btn.disabled=true;
   try{
     supa=window.supabase.createClient(url,key);
     const {data:sess}=await supa.auth.getSession();
-    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
-      $('#content').innerHTML='<div class="panel"><div class="deny">로그인이 필요합니다.<small>가운데 로그인 카드에서 로그인 후 다시 연결하세요.</small></div></div>'; return; }
-    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.disabled=false;
+    if(!sess||!sess.session){ btn.dataset.state='login'; setConn(tx('loginNeededPill'),'err'); btn.textContent=tx('connect');btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">'+esc(tx('needLogin'))+'<small>'+esc(tx('needLoginSub'))+'</small></div></div>'; return; }
+    btn.dataset.state='ok'; setConn(tx('connOk'),'ok'); btn.textContent=tx('connected');btn.disabled=false;
     YM=YM||thisYM();
     renderUI(); load();
-  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결·재시도';btn.disabled=false; supa=null; toast('연결 실패: '+e.message,'err'); }
+  }catch(e){ btn.dataset.state='fail'; setConn(tx('connFail'),'err'); btn.textContent=tx('connRetry');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
 }
 
 function renderUI(){
   $('#content').innerHTML=`
     <div class="print-only" id="print-head"></div>
     <div class="panel no-print">
-      <h3>월 선택 · 필터</h3>
+      <h3>${esc(tx('panelFilter'))}</h3>
       <div class="row">
         <div class="ymctrl">
           <button class="btn sm ghost" id="ym-prev" type="button">◀</button>
@@ -185,26 +293,26 @@ function renderUI(){
           <button class="btn sm ghost" id="ym-next" type="button">▶</button>
         </div>
         <span style="width:1px;height:20px;background:var(--border)"></span>
-        <span class="cnt" style="min-width:46px">숙소</span>
+        <span class="cnt" style="min-width:46px">${esc(tx('lodging'))}</span>
         <div id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
-        <button class="btn" id="btn-print" type="button" disabled style="background:#15803d;border-color:#15803d">🖨 인쇄</button>
-        <button class="btn ghost" id="btn-xlsx" type="button" disabled>⬇ 엑셀</button>
+        <button class="btn" id="btn-print" type="button" disabled style="background:#15803d;border-color:#15803d">${esc(tx('print'))}</button>
+        <button class="btn ghost" id="btn-xlsx" type="button" disabled>${esc(tx('xlsx'))}</button>
       </div>
     </div>
     <div class="panel">
-      <h3>숙소별 요약</h3>
+      <h3>${esc(tx('panelSummary'))}</h3>
       <div id="boxes" class="boxes"></div>
       <div class="grand" id="grand"></div>
     </div>
     <div class="panel">
-      <h3>차감 항목 <span class="cnt">— 쿠폰·선납 등(¥). Supabase 저장(월별 공유)</span></h3>
+      <h3>${esc(tx('panelDed'))} <span class="cnt">${esc(tx('dedHint'))}</span></h3>
       <div id="ded-rows"></div>
-      <div class="row" style="margin-top:8px"><button class="btn sm ghost" id="btn-add-ded" type="button">＋ 항목 추가</button></div>
+      <div class="row" style="margin-top:8px"><button class="btn sm ghost" id="btn-add-ded" type="button">${esc(tx('addDed'))}</button></div>
     </div>
     <div class="panel">
-      <h3>정산 명세</h3>
+      <h3>${esc(tx('panelDetail'))}</h3>
       <div style="overflow:auto"><table class="list" id="list"><thead></thead><tbody></tbody></table></div>
     </div>`;
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
@@ -222,21 +330,21 @@ function printReport(){
 function renderAccomChips(){
   const accoms=[...new Set(ROWS.map(r=>r.accom).filter(Boolean))].sort((a,b)=>accIdx(a)-accIdx(b));
   const box=$('#accomchips'); if(!box)return;
-  box.innerHTML=`<div class="chip ${ACCOMSEL.size===0?'on':''}" data-a="__all">전체</div>`
+  box.innerHTML=`<div class="chip ${ACCOMSEL.size===0?'on':''}" data-a="__all">${esc(tx('all'))}</div>`
     + accoms.map(a=>`<div class="chip ${ACCOMSEL.has(a)?'on':''}" data-a="${esc(a)}">${esc(a)}</div>`).join('');
   box.querySelectorAll('.chip[data-a]').forEach(c=>c.addEventListener('click',()=>{ const a=c.dataset.a; if(a==='__all'){ACCOMSEL.clear();}else{ACCOMSEL.has(a)?ACCOMSEL.delete(a):ACCOMSEL.add(a);} renderAccomChips(); renderAll(); }));
 }
 
 async function load(){
   if(!supa)return;
-  $('#ym-label').textContent=YM; $('#stat').textContent='불러오는 중…'; $('#btn-xlsx').disabled=true; { const p=$('#btn-print'); if(p)p.disabled=true; }
+  $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-xlsx').disabled=true; { const p=$('#btn-print'); if(p)p.disabled=true; }
   try{
     const {data:bs,error:e1}=await supa.from('bookings')
       .select('event_seq,event_no,status,member_type,rep_name,dep_date,arr_date,nights_label,product_name,pax')
       .eq('session_ym',YM);
     if(e1)throw e1;
     const seqs=(bs||[]).map(b=>b.event_seq);
-    if(!seqs.length){ ROWS=[]; DEDS=[]; $('#stat').textContent='해당 월 데이터 없음'; ACCOMSEL.clear(); renderAccomChips(); renderAll(); return; }
+    if(!seqs.length){ ROWS=[]; DEDS=[]; $('#stat').textContent=tx('noMonthData'); ACCOMSEL.clear(); renderAccomChips(); renderAll(); return; }
     // guests(accom), passengers(실제 인원·英文名), settle_remarks(비고)
     const GMAP={}, PCNT={}, ENG={}, REM={};
     for(let i=0;i<seqs.length;i+=200){
@@ -276,9 +384,9 @@ async function load(){
         rate, rateWarn, stay, transport, total:stay+transport, remark:REM[b.event_seq]||'' };
     }).filter(r=>r.accom);
     ACCOMSEL.clear();
-    $('#stat').textContent=`${ROWS.length}건`;
+    $('#stat').textContent=tx('cntN')(ROWS.length);
     renderAccomChips(); renderAll();
-  }catch(e){ $('#stat').textContent='로드 실패'; toast('로드 실패: '+e.message,'err'); }
+  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
 
 function visibleRows(){ return ROWS.filter(r=>ACCOMSEL.size===0||ACCOMSEL.has(r.accom)); }
@@ -291,20 +399,20 @@ function renderAll(){
   $('#boxes').innerHTML=ACCOM_ORDER.map(a=>{ const g=rows.filter(r=>r.accom===a); if(!g.length)return '';
     const s=g.reduce((x,r)=>x+r.stay,0), tr=g.reduce((x,r)=>x+r.transport,0), tot=g.reduce((x,r)=>x+r.total,0);
     return `<div class="sbox"><div class="lab">${esc(a)}</div>
-      <div class="sr"><span>단가</span><span class="v">${yen(ACCOM_RATE[a])}/인/박</span></div>
-      <div class="sr"><span>건수</span><span class="v">${g.length}건 / ${g.reduce((x,r)=>x+r.pax,0)}명</span></div>
-      <div class="sr"><span>숙박비</span><span class="v">${yen(s)}</span></div>
-      <div class="sr"><span>송영비</span><span class="v">${yen(tr)}</span></div>
-      <div class="sr tot"><span>합계</span><span class="v">${yen(tot)}</span></div></div>`;
-  }).join('')||'<div class="cnt" style="color:var(--muted)">표시할 데이터 없음</div>';
+      <div class="sr"><span>${esc(tx('rate'))}</span><span class="v">${yen(ACCOM_RATE[a])}${esc(tx('perPaxNight'))}</span></div>
+      <div class="sr"><span>${esc(tx('cntLabel'))}</span><span class="v">${tx('cntPaxV')(g.length,g.reduce((x,r)=>x+r.pax,0))}</span></div>
+      <div class="sr"><span>${esc(tx('lodgeFee'))}</span><span class="v">${yen(s)}</span></div>
+      <div class="sr"><span>${esc(tx('transFee'))}</span><span class="v">${yen(tr)}</span></div>
+      <div class="sr tot"><span>${esc(tx('subtotal'))}</span><span class="v">${yen(tot)}</span></div></div>`;
+  }).join('')||`<div class="cnt" style="color:var(--muted)">${esc(tx('noData'))}</div>`;
   // 차감·합계
   const dedT=DEDS.reduce((s,d)=>s+(Number(d.amount)||0),0);
   $('#grand').innerHTML=`
-    <div class="g"><span class="gl">총 매출(B2B)</span><span class="gv">${yen(totalT)}</span></div>
-    <div class="g"><span class="gl">차감 합계</span><span class="gv" style="color:#ff9d8a">- ${yen(dedT)}</span></div>
-    <div class="g"><span class="gl">정산액(Net)</span><span class="gv net">${yen(totalT-dedT)}</span></div>
-    <div class="g"><span class="gl">숙박 / 송영</span><span class="gv" style="font-size:14px">${yen(stayT)} / ${yen(transT)}</span></div>
-    <div class="g"><span class="gl">건수 / 인원</span><span class="gv" style="font-size:14px">${rows.length}건 / ${paxT}명</span></div>`;
+    <div class="g"><span class="gl">${esc(tx('grossB2B'))}</span><span class="gv">${yen(totalT)}</span></div>
+    <div class="g"><span class="gl">${esc(tx('dedTotal'))}</span><span class="gv" style="color:#ff9d8a">- ${yen(dedT)}</span></div>
+    <div class="g"><span class="gl">${esc(tx('net'))}</span><span class="gv net">${yen(totalT-dedT)}</span></div>
+    <div class="g"><span class="gl">${esc(tx('lodgeTrans'))}</span><span class="gv" style="font-size:14px">${yen(stayT)} / ${yen(transT)}</span></div>
+    <div class="g"><span class="gl">${esc(tx('cntPax'))}</span><span class="gv" style="font-size:14px">${tx('cntPaxV')(rows.length,paxT)}</span></div>`;
   renderDeds();
   // 명세 테이블
   const thead=$('#list thead'), tbody=$('#list tbody');

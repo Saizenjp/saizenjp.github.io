@@ -56,8 +56,8 @@
 <body data-so-area="admin">
 <div class="topbar so-bar">
   <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
-  <span class="step">그룹코드 관리 · 마스터</span>
-  <a class="navhome" href="../index.html">← 홈</a>
+  <span class="step" id="t-step">그룹코드 관리 · 마스터</span>
+  <a class="navhome" href="../index.html" id="t-home">← 홈</a>
   <div class="grow so-spacer"></div>
   <div class="so-controls">
     <div class="so-lang">
@@ -73,11 +73,11 @@
   <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
   <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
   <button class="btn sm" id="btn-connect" type="button">연결</button>
-  <span class="hint">회원 마스터(PII) — 마스터(admin)만 사용. 그룹코드 xlsx 없이 여기서 직접 관리.</span>
+  <span class="hint" id="t-connhint">회원 마스터(PII) — 마스터(admin)만 사용. 그룹코드 xlsx 없이 여기서 직접 관리.</span>
 </div>
 
 <div class="wrap" id="content">
-  <div class="panel"><div class="deny" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+  <div class="panel"><div class="deny" id="t-deny0" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
 </div>
 
 <div id="toast"></div>
@@ -87,6 +87,132 @@ const $=s=>document.querySelector(s);
 let supa=null;
 const CLASSES=['다이아몬드','다이아몬드Ⅱ','골드','특별','EWRC','EWRCⅡ','EWRC이용권',''];
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+// ── i18n (한·일 직원 공용. ja 기본) ──
+const L={
+  ja:{ step:'グループコード管理 · マスター', home:'← ホーム',
+    connHint:'会員マスター(PII) — マスター(admin)のみ使用。グループコード xlsx なしでここで直接管理。',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connRetryBtn:'接続・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
+    deny0:'接続すると表示されます。',
+    denyLogin:'ログインが必要です。', denyLoginSub:'上部の[ログイン]後に再接続してください。',
+    denyAdmin:'マスター(管理者)専用です。', denyAdminSub:'会員マスターは個人情報のためマスターのみ管理します。',
+    connFailToast:'接続失敗',
+    // 회원 마스터 현황 바
+    masterTitle:'👥 会員マスター',
+    masterEmpty:'まだ登録された会員マスターがありません — 下の[一括登録]で会員_配置_現況をアップロードしてください。',
+    masterRows:'行', masterMaster:'マスター', masterLearned:'学習', masterFirst:'初回登録', masterLast:'最終更新',
+    // 회원 추가/수정
+    addTitle:'会員追加 / 修正',
+    addDesc:'キー = <b>氏名 + 生年6桁</b>(例: 황보관현590611)。同じキーなら上書き(修正)します。',
+    phName:'氏名', phBirth:'生年6(590611)', clsNone:'(等級なし)', phCode:'← 空きコード選択',
+    pickBtn:'🔍 空きコード選択', save:'保存', clear:'クリア',
+    addHint:'グループコードは <b>[🔍 空きコード選択]</b> で等級別の空き/使用済コード表から選びます(直接入力ではなく)。',
+    // 일괄 등록
+    impTitle:'一括登録 (xlsx) — 初回1回',
+    impDesc:'会員グループコード / <b>회원_배정_현황</b> エクセルをアップロードすると <b>コード・グループ内割当ID・顧客区分・氏名</b> 列を読んで一括登録(同じキーは上書き)します。以降は上で直接管理してください。',
+    impGo:'登録', impRecog:'件 認識 (シート: ', impSheetEnd:')', impReadFail:'読み込み失敗: ',
+    impProg:' 登録…', impDone:'件 登録完了', impFail:'登録失敗: ',
+    // 검색
+    searchTitle:'検索', searchPh:'氏名・グループコード・キーで検索', search:'検索', searchMax:'※ 最大200件表示',
+    cntUnit:'件', searchFail:'検索失敗: ',
+    listEmpty:'結果なし (検索語を入力してください)',
+    thCode:'グループコード', thName:'氏名', thKey:'キー(member_key)', thGrade:'等級', edit:'修正', del:'削除',
+    // 저장/삭제 메시지
+    needNameBirth:'氏名・生年6桁は必須', needBirth6:'生年は6桁の数字(590611)', needCode:'グループコードを入力してください',
+    saveFail:'保存失敗: ', saved:'保存しました: ', delConfirm:'削除しますか?\n', delFail:'削除失敗: ', deleted:'削除しました',
+    pickNeedGrade:'事前割当等級(ダイヤ・ゴールド・特別・EWRC…)を先に選択してください',
+    // 빈코드 피커
+    pickCalc:'空きコード計算中…', loadFail:'読み込み失敗: ', kanaCol:'\\かな',
+    pickTitle:'グループコード選択', pickClose:'閉じる ✕',
+    legendEmpty:'空きコード', legendEmptyD:'(0名, すぐ割当) ·', legendFull:'使用済コード', legendFullD:'(既に割当済 — クリックで追加確認)',
+    legendNote:'セル数字=現在人数 · <b>セルクリック = そのコードで割当</b> · 横=英文(2番目), 縦=かな(3番目)。',
+    cellPpl:'名: ', cellEmpty:'空きコード',
+    pickConfirm1:'既に割当済のグループコードです (', pickConfirm2:'名)。\nこのコードに追加で割り当てますか?' },
+  ko:{ step:'그룹코드 관리 · 마스터', home:'← 홈',
+    connHint:'회원 마스터(PII) — 마스터(admin)만 사용. 그룹코드 xlsx 없이 여기서 직접 관리.',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connRetryBtn:'연결·재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
+    deny0:'연결 후 표시됩니다.',
+    denyLogin:'로그인이 필요합니다.', denyLoginSub:'상단 [로그인] 후 다시 연결하세요.',
+    denyAdmin:'마스터(관리자) 전용입니다.', denyAdminSub:'회원 마스터는 개인정보라 마스터만 관리합니다.',
+    connFailToast:'연결 실패',
+    masterTitle:'👥 회원 마스터',
+    masterEmpty:'아직 등록된 회원 마스터가 없습니다 — 아래 [일괄 등록]으로 회원_배정_현황을 올리세요.',
+    masterRows:'행', masterMaster:'마스터', masterLearned:'학습', masterFirst:'최초 등록', masterLast:'최근 갱신',
+    addTitle:'회원 추가 / 수정',
+    addDesc:'키 = <b>성명 + 생년6자리</b>(예: 황보관현590611). 같은 키면 덮어씁니다(수정).',
+    phName:'성명', phBirth:'생년6(590611)', clsNone:'(등급 없음)', phCode:'← 빈코드 선택',
+    pickBtn:'🔍 빈코드 선택', save:'저장', clear:'비우기',
+    addHint:'그룹코드는 <b>[🔍 빈코드 선택]</b>으로 등급별 빈/채워진 코드 표에서 고릅니다(직접 타이핑 대신).',
+    impTitle:'일괄 등록 (xlsx) — 최초 1회',
+    impDesc:'회원그룹코드 / <b>회원_배정_현황</b> 엑셀을 올리면 <b>코드·그룹 내 배정된 아이디·고객 구분·성명</b> 컬럼을 읽어 한 번에 등록(같은 키 덮어쓰기)합니다. 이후에는 위에서 직접 관리하세요.',
+    impGo:'등록', impRecog:'건 인식 (시트: ', impSheetEnd:')', impReadFail:'읽기 실패: ',
+    impProg:' 등록…', impDone:'건 등록 완료', impFail:'등록 실패: ',
+    searchTitle:'검색', searchPh:'성명·그룹코드·키로 검색', search:'검색', searchMax:'※ 최대 200건 표시',
+    cntUnit:'건', searchFail:'검색 실패: ',
+    listEmpty:'결과 없음 (검색어를 입력해 보세요)',
+    thCode:'그룹코드', thName:'성명', thKey:'키(member_key)', thGrade:'등급', edit:'수정', del:'삭제',
+    needNameBirth:'성명·생년6자리는 필수', needBirth6:'생년은 6자리 숫자(590611)', needCode:'그룹코드를 입력하세요',
+    saveFail:'저장 실패: ', saved:'저장됨: ', delConfirm:'삭제할까요?\n', delFail:'삭제 실패: ', deleted:'삭제됨',
+    pickNeedGrade:'사전배정 등급(다이아·골드·특별·EWRC…)을 먼저 선택하세요',
+    pickCalc:'빈 코드 계산 중…', loadFail:'로드 실패: ', kanaCol:'\\가나',
+    pickTitle:'그룹코드 선택', pickClose:'닫기 ✕',
+    legendEmpty:'빈 코드', legendEmptyD:'(0명, 바로 배정) ·', legendFull:'채워진 코드', legendFullD:'(이미 배정됨 — 클릭 시 추가 확인)',
+    legendNote:'셀 숫자=현재 인원 · <b>칸 클릭 = 그 코드로 배정</b> · 가로=영문(2번째), 세로=가나(3번째).',
+    cellPpl:'명: ', cellEmpty:'빈 코드',
+    pickConfirm1:'이미 배정된 그룹코드입니다 (', pickConfirm2:'명).\n이 코드에 추가로 배정하시겠습니까?' },
+  en:{ step:'Group code · Master', home:'← Home',
+    connHint:'Member master (PII) — admin master only. Manage group codes here directly without xlsx.',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connRetryBtn:'Connect · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
+    deny0:'Shown after connecting.',
+    denyLogin:'Login required.', denyLoginSub:'Log in via [Login] above, then reconnect.',
+    denyAdmin:'Master (admin) only.', denyAdminSub:'The member master is personal data, managed by master only.',
+    connFailToast:'Connection failed',
+    masterTitle:'👥 Member master',
+    masterEmpty:'No member master registered yet — upload 회원_배정_현황 via [Bulk register] below.',
+    masterRows:'rows', masterMaster:'master', masterLearned:'learned', masterFirst:'First registered', masterLast:'Last updated',
+    addTitle:'Add / edit member',
+    addDesc:'Key = <b>name + birth (6 digits)</b> (e.g. 황보관현590611). Same key overwrites (edit).',
+    phName:'Name', phBirth:'Birth 6 (590611)', clsNone:'(no grade)', phCode:'← Pick empty code',
+    pickBtn:'🔍 Pick empty code', save:'Save', clear:'Clear',
+    addHint:'Pick the group code via <b>[🔍 Pick empty code]</b> from the per-grade empty/used table (instead of typing).',
+    impTitle:'Bulk register (xlsx) — first time',
+    impDesc:'Upload the 회원그룹코드 / <b>회원_배정_현황</b> Excel to read the <b>code · assigned ID · customer type · name</b> columns and register at once (same key overwrites). Afterward manage directly above.',
+    impGo:'Register', impRecog:' rows recognized (sheet: ', impSheetEnd:')', impReadFail:'Read failed: ',
+    impProg:' registering…', impDone:' rows registered', impFail:'Register failed: ',
+    searchTitle:'Search', searchPh:'Search by name · group code · key', search:'Search', searchMax:'※ Up to 200 shown',
+    cntUnit:'', searchFail:'Search failed: ',
+    listEmpty:'No results (try entering a search term)',
+    thCode:'Group code', thName:'Name', thKey:'Key (member_key)', thGrade:'Grade', edit:'Edit', del:'Delete',
+    needNameBirth:'Name · birth (6 digits) required', needBirth6:'Birth must be 6 digits (590611)', needCode:'Enter a group code',
+    saveFail:'Save failed: ', saved:'Saved: ', delConfirm:'Delete?\n', delFail:'Delete failed: ', deleted:'Deleted',
+    pickNeedGrade:'Select a pre-assigned grade (Diamond · Gold · Special · EWRC…) first',
+    pickCalc:'Calculating empty codes…', loadFail:'Load failed: ', kanaCol:'\\kana',
+    pickTitle:'Pick group code', pickClose:'Close ✕',
+    legendEmpty:'Empty code', legendEmptyD:'(0 ppl, assign now) ·', legendFull:'Used code', legendFullD:'(already assigned — confirm on click)',
+    legendNote:'Cell number = current count · <b>Click a cell = assign that code</b> · across = letter (2nd), down = kana (3rd).',
+    cellPpl:' ppl: ', cellEmpty:'empty code',
+    pickConfirm1:'This group code is already assigned (', pickConfirm2:' ppl).\nAssign an additional member to this code?' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+// 등급명 표시 전용 라벨(DB 값/사전 키는 한글 그대로 유지 — 표시만 번역)
+const GRADE_LABEL={
+  ja:{'다이아몬드':'ダイヤモンド','다이아몬드Ⅱ':'ダイヤモンドⅡ','골드':'ゴールド','특별':'特別','EWRC':'EWRC','EWRCⅡ':'EWRCⅡ','EWRC이용권':'EWRC利用券'},
+  ko:{'다이아몬드':'다이아몬드','다이아몬드Ⅱ':'다이아몬드Ⅱ','골드':'골드','특별':'특별','EWRC':'EWRC','EWRCⅡ':'EWRCⅡ','EWRC이용권':'EWRC이용권'},
+  en:{'다이아몬드':'Diamond','다이아몬드Ⅱ':'Diamond II','골드':'Gold','특별':'Special','EWRC':'EWRC','EWRCⅡ':'EWRCⅡ','EWRC이용권':'EWRC pass'}
+};
+function gradeLabel(g){ if(!g) return ''; const m=GRADE_LABEL[lang()]||GRADE_LABEL.ja; return m[g]!==undefined?m[g]:g; }
+function applyStatic(){
+  const set=(id,v)=>{const e=$('#'+id);if(e)e.textContent=v;};
+  set('t-step',tx('step')); set('t-home',tx('home'));
+  const ch=$('#t-connhint'); if(ch) ch.textContent=tx('connHint');
+  const d0=$('#t-deny0'); if(d0) d0.textContent=tx('deny0');
+  $('#sb-url').placeholder='Supabase Project URL';
+  $('#sb-key').placeholder='Publishable key';
+}
 
 // ── 그룹코드 정책 + 빈코드 피커 (app과 동일 · 소스=member_codes) ──
 const GC_POS2=['A','B','F','G','H','J','K','L','M','O','P','R','S','T','W','X','Y','Z'];
@@ -111,41 +237,41 @@ async function gcOpenPicker(grade, onPick){
   let bg=document.getElementById('gc-pick-bg'); if(bg) bg.remove();
   bg=document.createElement('div'); bg.id='gc-pick-bg';
   bg.style.cssText='position:fixed;inset:0;z-index:300;background:rgba(31,42,24,.5);display:flex;align-items:center;justify-content:center;padding:18px';
-  bg.innerHTML='<div style="background:#fff;border-radius:12px;padding:28px 36px;font-weight:700;color:#566049">빈 코드 계산 중…</div>';
+  bg.innerHTML='<div style="background:#fff;border-radius:12px;padding:28px 36px;font-weight:700;color:#566049">'+esc(tx('pickCalc'))+'</div>';
   document.body.appendChild(bg);
   bg.addEventListener('click',e=>{if(e.target===bg){bg.remove();_gcPickCb=null;}});
-  let used; try{ used=await gcLoadUsed(); }catch(e){ bg.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px;color:#b13b2c">로드 실패: '+esc(e.message)+'</div>'; return; }
+  let used; try{ used=await gcLoadUsed(); }catch(e){ bg.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px;color:#b13b2c">'+esc(tx('loadFail'))+esc(e.message)+'</div>'; return; }
   gcRenderPicker(bg, grade, used);
 }
 function gcRenderPicker(bg, grade, used){
   const prefixes=GC_GRADE_PREFIX[grade];
   const thS='padding:5px 9px;text-align:center;background:var(--surface2);color:var(--text2);font-weight:700;font-size:12px;border:.5px solid var(--border);position:sticky';
   const grid=prefixes.map(pfx=>{
-    const head=`<tr><th style="${thS};left:0;z-index:2">${pfx}\\가나</th>${GC_POS2.map(c=>`<th style="${thS};top:0">${c}</th>`).join('')}</tr>`;
+    const head=`<tr><th style="${thS};left:0;z-index:2">${pfx}${tx('kanaCol')}</th>${GC_POS2.map(c=>`<th style="${thS};top:0">${c}</th>`).join('')}</tr>`;
     const rows=GC_KANA.map(kana=>{
       const cells=GC_POS2.map(c2=>{
         const code=pfx+c2+kana; const mem=used[code]||[]; const n=mem.length;
         let cb,cf; if(n===0){cb='#e4ecd9';cf='#2f7d4f';}else{cb='#f5ecd6';cf='#9a7322';}
-        const t=n?code+' · '+n+'명: '+mem.join(', '):code+' · 빈 코드';
+        const t=n?code+' · '+n+tx('cellPpl')+mem.join(', '):code+' · '+tx('cellEmpty');
         return `<td title="${esc(t)}" onclick="gcPick('${code}',${n})" style="cursor:pointer;text-align:center;font-family:var(--mono);font-size:13px;font-weight:700;padding:7px 10px;min-width:30px;background:${cb};color:${cf};border:.5px solid var(--border)">${n||''}</td>`;
       }).join('');
       return `<tr><th style="${thS};left:0">${kana}</th>${cells}</tr>`;
     }).join('');
     return `<div style="margin-bottom:14px"><div style="font-weight:700;font-size:12px;color:var(--accent2);margin-bottom:4px">prefix「${pfx}」 18×33=594</div><div style="overflow:auto;max-height:44vh;border:1px solid var(--border);border-radius:6px"><table style="border-collapse:collapse">${head}${rows}</table></div></div>`;
   }).join('');
-  const gradeSel=Object.keys(GC_GRADE_PREFIX).map(g=>`<option value="${g}" ${g===grade?'selected':''}>${g}</option>`).join('');
+  const gradeSel=Object.keys(GC_GRADE_PREFIX).map(g=>`<option value="${esc(g)}" ${g===grade?'selected':''}>${esc(gradeLabel(g))}</option>`).join('');
   bg.innerHTML=`<div style="background:#fff;border-radius:12px;max-width:1120px;width:100%;max-height:90vh;display:flex;flex-direction:column">
     <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border)">
-      <b style="font-size:15px;color:var(--accent)">그룹코드 선택</b>
+      <b style="font-size:15px;color:var(--accent)">${esc(tx('pickTitle'))}</b>
       <select onchange="gcReopen(this.value)" class="inp" style="padding:4px 8px;font-weight:700;color:var(--accent2)">${gradeSel}</select>
       <span style="flex:1"></span>
-      <button onclick="document.getElementById('gc-pick-bg').remove();_gcPickCb=null" class="btn ghost sm">닫기 ✕</button>
+      <button onclick="document.getElementById('gc-pick-bg').remove();_gcPickCb=null" class="btn ghost sm">${esc(tx('pickClose'))}</button>
     </div>
     <div style="padding:14px 18px;overflow:auto">
       <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.7;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
-        <span style="display:inline-block;width:11px;height:11px;background:#e4ecd9;border:1px solid #b4cda0;vertical-align:middle"></span> <b style="color:#2f7d4f">빈 코드</b>(0명, 바로 배정) ·
-        <span style="display:inline-block;width:11px;height:11px;background:#f5ecd6;border:1px solid #e0c48f;vertical-align:middle"></span> <b style="color:#9a7322">채워진 코드</b>(이미 배정됨 — 클릭 시 추가 확인)<br>
-        셀 숫자=현재 인원 · <b>칸 클릭 = 그 코드로 배정</b> · 가로=영문(2번째), 세로=가나(3번째).
+        <span style="display:inline-block;width:11px;height:11px;background:#e4ecd9;border:1px solid #b4cda0;vertical-align:middle"></span> <b style="color:#2f7d4f">${esc(tx('legendEmpty'))}</b>${esc(tx('legendEmptyD'))}
+        <span style="display:inline-block;width:11px;height:11px;background:#f5ecd6;border:1px solid #e0c48f;vertical-align:middle"></span> <b style="color:#9a7322">${esc(tx('legendFull'))}</b>${esc(tx('legendFullD'))}<br>
+        ${tx('legendNote')}
       </div>
       ${grid}
     </div>
@@ -153,7 +279,7 @@ function gcRenderPicker(bg, grade, used){
 }
 function gcReopen(g){ const bg=document.getElementById('gc-pick-bg'); if(bg && _gcUsed) gcRenderPicker(bg, gcNormGrade(g)||g, _gcUsed); }
 function gcPick(code,n){
-  if(n>0 && !confirm(`이미 배정된 그룹코드입니다 (${n}명).\n이 코드에 추가로 배정하시겠습니까?`)) return;
+  if(n>0 && !confirm(tx('pickConfirm1')+n+tx('pickConfirm2'))) return;
   const cb=_gcPickCb; _gcPickCb=null; const bg=document.getElementById('gc-pick-bg'); if(bg) bg.remove(); if(typeof cb==='function') cb(code);
 }
 function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
@@ -162,22 +288,22 @@ function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'
 
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn('URL·key 필요','err');return;}
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect');btn.textContent='연결 중…';btn.disabled=true;
+  const btn=$('#btn-connect');btn.textContent=tx('connecting');btn.disabled=true;
   try{
     supa=window.supabase.createClient(url,key);
     const {data:sess}=await supa.auth.getSession();
-    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결';btn.disabled=false;
-      $('#content').innerHTML='<div class="panel"><div class="deny">로그인이 필요합니다.<small>상단 [로그인] 후 다시 연결하세요.</small></div></div>'; return; }
+    if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">'+esc(tx('denyLogin'))+'<small>'+esc(tx('denyLoginSub'))+'</small></div></div>'; return; }
     const acc=(window.__so_meAccess)?await __so_meAccess():null;
-    setConn('연결됨','ok'); btn.textContent='✓ 연결됨';btn.disabled=false;
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
     if(!acc || acc.role!=='admin'){
-      $('#content').innerHTML='<div class="panel"><div class="deny">마스터(관리자) 전용입니다.<small>회원 마스터는 개인정보라 마스터만 관리합니다.</small></div></div>';
+      $('#content').innerHTML='<div class="panel"><div class="deny">'+esc(tx('denyAdmin'))+'<small>'+esc(tx('denyAdminSub'))+'</small></div></div>';
       return;
     }
     renderUI();
-  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결·재시도';btn.disabled=false; supa=null; toast('연결 실패: '+e.message,'err'); }
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connRetryBtn');btn.disabled=false; supa=null; toast(tx('connFailToast')+': '+e.message,'err'); }
 }
 
 function renderUI(){
