@@ -2211,7 +2211,10 @@ function placePairs(g,list,primaryPool,fallbackPool,label,pending,holds,occ,floo
 }
 // 미리 구성된 짝 배열을 받아 같은 층 묶기 + 방 배정(부족 시 fallbackPool로 강등).
 //   floorOrder 가 있으면(야마나미 호텔동) 박수 규칙 허용 층만 우선순위대로 사용.
-function placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,occ,floorOrder){
+//   widePool(선택): primaryPool(허용 층 디럭스)도 소진됐을 때, 강등(fallbackPool) 전에
+//     먼저 시도할 '룸레벨 동일·층 규칙 무시' 풀(전층 디럭스). 룸레벨이 층수보다 우선이므로
+//     디럭스가 다른 층에 있으면 층을 옮겨서라도 디럭스를 주고, 전층에도 없을 때만 강등한다.
+function placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,occ,floorOrder,widePool){
   if(!pairs||!pairs.length) return;
   const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq));
   let usePool=primaryPool;
@@ -2221,9 +2224,10 @@ function placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,oc
   }
   for(const pair of pairs){
     let inv=pickRoom(usePool,g.dep,g.arr,2,pending,occ);
-    if(!inv && usePool!==primaryPool) inv=pickRoom(primaryPool,g.dep,g.arr,2,pending,occ); // 같은 층 소진 → 전체 풀
+    if(!inv && usePool!==primaryPool) inv=pickRoom(primaryPool,g.dep,g.arr,2,pending,occ); // 같은 층 소진 → 허용 층 전체
+    if(!inv && widePool && widePool!==primaryPool) inv=pickRoom(widePool,g.dep,g.arr,2,pending,occ); // 허용 층에 디럭스 없음 → 층 이동(전층 디럭스 = 룸레벨 우선)
     if(!inv && fallbackPool && fallbackPool!==primaryPool)
-      inv=pickRoom(fallbackPool,g.dep,g.arr,2,pending,occ);
+      inv=pickRoom(fallbackPool,g.dep,g.arr,2,pending,occ);          // 전층에도 디럭스 없음 → 다음 룸레벨로 강등
     if(!inv){ holds.push(tx('holdNoRoom',gc,pair[0].name_kr||'',pair[1].name_kr||'',label)); continue; }
     pending.push(mkRow(g,pair[0],inv));
     pending.push(mkRow(g,pair[1],inv));
@@ -2288,12 +2292,14 @@ async function autoAssign(){
         // A 규칙: 명단 순서대로 짝(1-2,3-4) → 짝에 회원이 1명이라도 있으면 디럭스, 없으면 예약종류.
         //  · 회원의 디럭스 혜택이 같은 방 룸메(명단 짝)에게 자연히 적용. 회원끼리 강제로 묶지 않음.
         const dlx=flr(roomPool(route,'deluxe')), gp=flr(roomPool(route,'general'));
+        const dlxAny=roomPool(route,'deluxe');   // 층 규칙 무시한 전층 디럭스(고층 우선) — 룸레벨 우선 폴백
         const memberPairs=[], generalPairs=[]; let pi=0;
         for(; pi+1<roster.length; pi+=2){
           const pair=[roster[pi], roster[pi+1]];
           (pair.some(isMember) ? memberPairs : generalPairs).push(pair);
         }
-        placeGivenPairs(g, memberPairs, dlx, gp, tx('deluxe'), pending, holds, occ, floorOrder);  // 부족 시 예약종류로 강등
+        // 회원 짝: 허용 층 디럭스 → (없으면) 전층 디럭스로 층 이동 → (그래도 없으면) 예약종류로 강등
+        placeGivenPairs(g, memberPairs, dlx, gp, tx('deluxe'), pending, holds, occ, floorOrder, dlxAny);
         placeGivenPairs(g, generalPairs, gp, null, tx('byReservation'), pending, holds, occ, floorOrder);
         if(pi<roster.length){ const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq)); holds.push(tx('holdOddLeft',gc,roster[pi].name_kr||'')); }
       }else{
