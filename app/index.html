@@ -1292,11 +1292,11 @@ function renderDeductions(){
 // ── 상품명 파서 ──────────────────────────────────────────────
 function parseProduct(name){
   name = String(name||'');
-  let accom='', roomType='', course='', nights=0, rate=0;
+  let accom='', roomType='', course='';
 
   // 야마나미 계열
   if(name.includes('야마나미') || name.includes('돔하우스') || name.includes('관내별장') || name.includes('소보별장') || name.includes('아소별장')){
-    accom = '야마나미리조트'; rate = 14000;
+    accom = '야마나미리조트';
     if(name.includes('소형트윈')) roomType='호텔 소형트윈';
     else if(name.includes('트윈')) roomType='호텔 트윈';
     else if(name.includes('돔하우스')) roomType='돔하우스';
@@ -1306,17 +1306,18 @@ function parseProduct(name){
   }
   // 쿠주힐즈 계열 (장기숙박형 별장전용 포함)
   else if(name.includes('쿠주힐즈') || name.includes('구주힐즈') || name.includes('久住ヒルズ') || name.includes('장기숙박') || name.includes('별장전용')){
-    accom='쿠주힐즈'; roomType='장기숙박전용'; course='야마나미CC'; rate=14000;
+    accom='쿠주힐즈'; roomType='장기숙박전용'; course='야마나미CC';
   }
   else if(name.includes('간지호텔')){
-    accom='간지호텔'; roomType='호텔'; course='간지호텔'; rate=16000;
+    accom='간지호텔'; roomType='호텔'; course='간지호텔';
   }
   else if(name.includes('시즈노야도')||name.includes('료칸')){
-    accom='시즈노야도 료칸'; roomType='료칸'; course='야마나미CC'; rate=17000; // 本館 기준(別棟 사전희망 +2,000 = 현장 추가요금, 별개)
+    accom='시즈노야도 료칸'; roomType='료칸'; course='야마나미CC'; // 本館 기준(別棟 사전희망 +2,000 = 현장 추가요금, 별개)
   }
 
+  const rate = SZCore.accomRate(accom);   // 단가 테이블 = saizen-core 단일 진실원(/ops/ settle_merit·exec_stats와 동일)
   const m = name.match(/(\d+)박/);
-  nights = m ? parseInt(m[1]) : 0;
+  const nights = m ? parseInt(m[1]) : 0;
 
   return { accom, roomType, course, nights, rate };
 }
@@ -2168,11 +2169,11 @@ function buildSettle(){
   document.getElementById('settle-sub').textContent =
     `[${filterLabel}] 숙박 ¥${stayT.toLocaleString()} + 송영 ¥${transT.toLocaleString()} | ${settl.length}건 ${paxT}명`;
 
-  const types = [
-    {key:'간지호텔',cls:'ganji',rate:16000},
-    {key:'시즈노야도 료칸',cls:'shiz',rate:17000},
-    {key:'쿠주힐즈',cls:'kuzu',rate:14000},
-    {key:'야마나미리조트',cls:'yama',rate:14000}
+  const types = [   // 단가 = saizen-core(SZCore.accomRate) 단일 진실원
+    {key:'간지호텔',cls:'ganji',rate:SZCore.accomRate('간지호텔')},
+    {key:'시즈노야도 료칸',cls:'shiz',rate:SZCore.accomRate('시즈노야도 료칸')},
+    {key:'쿠주힐즈',cls:'kuzu',rate:SZCore.accomRate('쿠주힐즈')},
+    {key:'야마나미리조트',cls:'yama',rate:SZCore.accomRate('야마나미리조트')}
   ];
   document.getElementById('settle-boxes').innerHTML = types.map(t => {
     const rows = settl.filter(r=>r.accom===t.key);
