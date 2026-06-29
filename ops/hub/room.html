@@ -449,7 +449,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-core.js?v=2"></script>
+<script src="../assets/saizen-core.js?v=3"></script>
 <script src="../assets/saizen-ops.js?v=14.87"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
@@ -2092,8 +2092,6 @@ function floorOf(r){ const m=String(r.zone||'').match(/^(\d+)층$/); return m?+m
 //   · 같은 층은 같은 박수(=같은 퇴실일)로 맞춰야 청소를 한 번에 빠르게 끝낼 수 있음.
 //   · 3·4박 → 9·6·3층(무조건) / 7박 → 11·10·7·4층(무조건) / 그 외 박수 → 유동층 12·8·5
 //   · 유동층(12·8·5)은 박수가 정해져 있지 않지만 '층마다 한 가지 박수'로만 채운다(혼합 금지).
-const FLOOR_FIXED = { 3:[9,6,3], 4:[9,6,3], 7:[11,10,7,4] };
-const FLOOR_FLEX  = [12,8,5];
 // 한 층에 지금 들어있는(=DB 점유 occ + 이번 배치 pending) 서로 다른 박수 집합.
 function floorNightSet(f, occ, pending){
   const s=new Set();
@@ -2103,14 +2101,9 @@ function floorNightSet(f, occ, pending){
   (pending||[]).forEach(r=>{ const inv=invById(r.inventory_id); if(inv&&floorOf(inv)===f) add(r); });
   return s;
 }
-// 이 박수 팀이 들어갈 수 있는 층(우선순위 순). 없으면 빈 배열.
-//   · 3·4·7박 = 지정 층만(무조건, 유동층으로 흘리지 않음)
-//   · 그 외 박수 = 유동층(12·8·5) 중 비었거나 같은 박수만 있는 층(청소 동질성 유지)
+// 이 박수 팀이 들어갈 수 있는 층(우선순위 순) — 규칙·상수는 saizen-core(SZCore.allowedFloors) 단일 진실원.
 function nightFloors(nights, occ, pending){
-  const fixed = FLOOR_FIXED[nights];
-  if(fixed) return fixed.slice();
-  return FLOOR_FLEX.filter(f=>{ const set=floorNightSet(f,occ,pending);
-    return set.size===0 || (set.size===1 && set.has(nights)); });
+  return SZCore.allowedFloors(nights, f=>floorNightSet(f,occ,pending));
 }
 // 풀을 허용 층만 남기고 floorOrder 우선순위로 정렬(같은 층 내부 순서는 stable 정렬로 보존).
 function poolByFloorOrder(pool, floorOrder){

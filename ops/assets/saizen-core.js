@@ -95,6 +95,57 @@
     return dep1 < arr2 && dep2 < arr1;
   }
 
+  // 박수 = 도착(arr) − 출발(dep). 음수 방지.
+  function nightsBetween(dep, arr) {
+    var a = parseLocalDate(dep), b = parseLocalDate(arr);
+    if (isNaN(a) || isNaN(b)) return 0;
+    return Math.max(0, Math.round((b - a) / 864e5));
+  }
+
+  // ── B2B(메리트↔사이젠 선계약) 정산 ──────────────────────────────────────
+  //  ⚠ 현장 추가요금(추가라운드·미니바 등)과 별개. settle_merit·exec_stats 가 같은 식.
+  //  숙소별 1인1박 단가. 미등록(빈값·미매칭)=0 → 호출부가 '단가 미등록' 경고/기본값 처리.
+  function accomRate(accom) {
+    var s = String(accom == null ? '' : accom);
+    if (/쿠주|久住|구주|장기숙박|별장전용/.test(s)) return 14000;
+    if (/간지/.test(s)) return 16000;
+    if (/시즈|료칸/.test(s)) return 17000;
+    if (/야마나미|돔하우스|별장|소보|아소/.test(s)) return 14000;
+    return 0;
+  }
+  // 숙박비 = 인원×박수×단가 / 송영비 = 인원×6,000. {rate,lodge,transport,total}.
+  function b2bFees(pax, nights, accom) {
+    var p = Number(pax) || 0, n = Number(nights) || 0, rate = accomRate(accom);
+    var lodge = p * n * rate, transport = p * 6000;
+    return { rate: rate, lodge: lodge, transport: transport, total: lodge + transport };
+  }
+
+  // ── 청소 효율 박수→층 배정 규칙 (야마나미 호텔동, 실제 층 zone 3~12) ─────
+  //  같은 층 = 같은 박수(퇴실일)로 맞춰 청소를 한 번에.
+  //   · 3·4박 → 9·6·3층 / 7박 → 11·10·7·4층 (지정층 고정)
+  //   · 그 외 박수 → 유동층 12·8·5 중 '비었거나 같은 박수만 있는' 층(혼합 금지)
+  var FLOOR_FIXED = { 3: [9, 6, 3], 4: [9, 6, 3], 7: [11, 10, 7, 4] };
+  var FLOOR_FLEX = [12, 8, 5];
+  // nights 팀이 들어갈 수 있는 층(우선순위 순). getNightSet(floor)=그 층의 현재 박수들(Set|배열).
+  function allowedFloors(nights, getNightSet) {
+    if (FLOOR_FIXED[nights]) return FLOOR_FIXED[nights].slice();
+    return FLOOR_FLEX.filter(function (f) {
+      var raw = (getNightSet ? getNightSet(f) : null) || [];
+      var set = (raw instanceof Set) ? raw : new Set(raw);
+      return set.size === 0 || (set.size === 1 && set.has(nights));
+    });
+  }
+
+  // ── 조기 퇴실(개인 actual_dep) 식수 차감 ────────────────────────────────
+  //  그 끼니에 이미 떠난 인원 수. 朝(b)=퇴실일 아침은 포함(actual_dep<date) /
+  //  昼·夕(l·d)=퇴실일 아침에 떠남(actual_dep<=date). 날짜는 'YYYY-MM-DD' 사전식 비교.
+  function mealGoneCount(actualDeps, date, meal) {
+    if (!actualDeps || !actualDeps.length) return 0;
+    return actualDeps.filter(function (ad) {
+      return meal === 'b' ? (ad < date) : (ad <= date);
+    }).length;
+  }
+
   return {
     looksMember: looksMember,
     isMember: isMember,
@@ -102,6 +153,13 @@
     fmtDate: fmtDate,
     parseFlexDate: parseFlexDate,
     parseLocalDate: parseLocalDate,
-    overlaps: overlaps
+    overlaps: overlaps,
+    nightsBetween: nightsBetween,
+    accomRate: accomRate,
+    b2bFees: b2bFees,
+    FLOOR_FIXED: FLOOR_FIXED,
+    FLOOR_FLEX: FLOOR_FLEX,
+    allowedFloors: allowedFloors,
+    mealGoneCount: mealGoneCount
   };
 });
