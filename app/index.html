@@ -6,7 +6,7 @@
 <title>SaiZen Yamanami 운영 통합 시스템</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
-<script src="../ops/assets/saizen-core.js?v=4"></script><!-- 공유 도메인 규칙(식수 등) 단일 진실원 -->
+<script src="../ops/assets/saizen-core.js?v=5"></script><!-- 공유 도메인 규칙(식수 등) 단일 진실원 -->
 
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -1292,30 +1292,22 @@ function renderDeductions(){
 // ── 상품명 파서 ──────────────────────────────────────────────
 function parseProduct(name){
   name = String(name||'');
-  let accom='', roomType='', course='';
-
-  // 야마나미 계열
-  if(name.includes('야마나미') || name.includes('돔하우스') || name.includes('관내별장') || name.includes('소보별장') || name.includes('아소별장')){
-    accom = '야마나미리조트';
+  // 숙박지 판정 = SZCore.accomFromProduct 단일 진실원(쿠주-first: "야마나미CC"는 골프장이라
+  //   장기숙박형 별장전용=쿠주힐즈를 야마나미보다 먼저 판정 — /ops/ settle_merit와 동일).
+  const accom = SZCore.accomFromProduct(name);
+  let roomType='', course='';
+  if(accom==='야마나미리조트'){
     if(name.includes('소형트윈')) roomType='호텔 소형트윈';
     else if(name.includes('트윈')) roomType='호텔 트윈';
     else if(name.includes('돔하우스')) roomType='돔하우스';
     else if(name.includes('별장')) roomType='관내별장';
     else roomType='호텔 트윈';
     course='야마나미CC';
-  }
-  // 쿠주힐즈 계열 (장기숙박형 별장전용 포함)
-  else if(name.includes('쿠주힐즈') || name.includes('구주힐즈') || name.includes('久住ヒルズ') || name.includes('장기숙박') || name.includes('별장전용')){
-    accom='쿠주힐즈'; roomType='장기숙박전용'; course='야마나미CC';
-  }
-  else if(name.includes('간지호텔')){
-    accom='간지호텔'; roomType='호텔'; course='간지호텔';
-  }
-  else if(name.includes('시즈노야도')||name.includes('료칸')){
-    accom='시즈노야도 료칸'; roomType='료칸'; course='야마나미CC'; // 本館 기준(別棟 사전희망 +2,000 = 현장 추가요금, 별개)
-  }
+  } else if(accom==='쿠주힐즈'){ roomType='장기숙박전용'; course='야마나미CC'; }
+  else if(accom==='간지호텔'){ roomType='호텔'; course='간지호텔'; }
+  else if(accom==='시즈노야도 료칸'){ roomType='료칸'; course='야마나미CC'; } // 本館 기준(別棟 사전희망 +2,000 = 현장 추가요금, 별개)
 
-  const rate = SZCore.accomRate(accom);   // 단가 테이블 = saizen-core 단일 진실원(/ops/ settle_merit·exec_stats와 동일)
+  const rate = SZCore.accomRate(accom);   // 단가 = saizen-core 단일 진실원(settle_merit·exec_stats와 동일)
   const m = name.match(/(\d+)박/);
   const nights = m ? parseInt(m[1]) : 0;
 

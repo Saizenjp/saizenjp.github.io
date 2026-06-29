@@ -33,6 +33,25 @@ test('b2bFees: 숙박비 + 송영비', () => {
   assert.equal(SZ.b2bFees(0, 5, '시즈노야도 료칸').total, 0);
 });
 
+test('accomFromProduct: 숙박지 판정(쿠주-first, 실제 상품명)', () => {
+  // 야마나미 계열
+  assert.equal(SZ.accomFromProduct('[7박 8일] 야마나미CC 골프 투어 호텔 소형트윈 숙박'), '야마나미리조트');
+  assert.equal(SZ.accomFromProduct('여행사 [4박 5일] 야마나미CC 골프 투어 돔하우스 숙박'), '야마나미리조트');
+  // ★핵심: "야마나미CC"(골프장)가 들어가도 장기숙박형 별장전용=쿠주힐즈(숙박지)
+  assert.equal(SZ.accomFromProduct('[7박 8일] 야마나미CC 골프 투어 "장기숙박형 별장전용"'), '쿠주힐즈');
+  assert.equal(SZ.accomFromProduct('[7박 8일] 야마나미CC 골프 투어 "장기 숙박형 별장전용"'), '쿠주힐즈');
+  // 간지(구주고원 골프) — "간지호텔 2색 골프 투어"
+  assert.equal(SZ.accomFromProduct('[7박 8일] 간지호텔 2색 골프 투어'), '간지호텔');
+  // 콤보: 간지 + 야마나미CC → 간지가 먼저
+  assert.equal(SZ.accomFromProduct('[14박 15일] 간지호텔 골프 투어+야마나미CC 골프 투어'), '간지호텔');
+  // 시즈
+  assert.equal(SZ.accomFromProduct('[7박 8일] 시즈노야도 료칸 골프 투어'), '시즈노야도 료칸');
+  assert.equal(SZ.accomFromProduct(''), '');
+  // 단가까지 연결 — 쿠주힐즈(장기숙박)는 14000(야마나미와 동일하지만 분류는 쿠주)
+  assert.equal(SZ.accomRate(SZ.accomFromProduct('[7박 8일] 야마나미CC 골프 투어 "장기숙박형 별장전용"')), 14000);
+  assert.equal(SZ.accomRate(SZ.accomFromProduct('[3박 4일] 간지호텔 2색 골프 투어')), 16000);
+});
+
 test('nightsBetween: 박수', () => {
   assert.equal(SZ.nightsBetween('2026-07-05', '2026-07-08'), 3);
   assert.equal(SZ.nightsBetween('2026-07-05', '2026-07-05'), 0);

@@ -119,6 +119,18 @@
     var lodge = p * n * rate, transport = p * 6000;
     return { rate: rate, lodge: lodge, transport: transport, total: lodge + transport };
   }
+  // 상품명 → 숙박지(canonical accom). ⚠ 판정 순서 중요:
+  //  "야마나미CC"는 골프장(코스)이라 거의 모든 상품명에 들어감. 숙박지는 별개이므로
+  //  쿠주힐즈(장기숙박형 별장전용)·간지호텔·시즈를 먼저 보고, 야마나미는 폴백.
+  //  예) "야마나미CC 골프 투어 \"장기숙박형 별장전용\"" → 숙박지=쿠주힐즈(골프만 야마나미CC).
+  function accomFromProduct(name) {
+    var s = String(name == null ? '' : name);
+    if (/쿠주힐즈|구주힐즈|久住|장기\s*숙박|별장전용/.test(s)) return '쿠주힐즈';
+    if (/간지/.test(s)) return '간지호텔';
+    if (/시즈노야도|료칸/.test(s)) return '시즈노야도 료칸';
+    if (/야마나미|돔하우스|관내별장|소보별장|아소별장/.test(s)) return '야마나미리조트';
+    return '';
+  }
 
   // ── 청소 효율 박수→층 배정 규칙 (야마나미 호텔동, 실제 층 zone 3~12) ─────
   //  같은 층 = 같은 박수(퇴실일)로 맞춰 청소를 한 번에.
@@ -187,6 +199,7 @@
     nightsBetween: nightsBetween,
     accomRate: accomRate,
     b2bFees: b2bFees,
+    accomFromProduct: accomFromProduct,
     FLOOR_FIXED: FLOOR_FIXED,
     FLOOR_FLEX: FLOOR_FLEX,
     allowedFloors: allowedFloors,
