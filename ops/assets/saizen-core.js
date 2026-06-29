@@ -146,6 +146,36 @@
     }).length;
   }
 
+  // ── 식수 규칙 (朝/昼/夕, 숙소 그룹별) ───────────────────────────────────────
+  //  /app/ 와 dinner.html 에 중복됐던 핵심 규칙의 단일 진실원.
+  //  OFFSITE(간지·시즈)=요일 규칙 / 그 외(야마나미·쿠주)=체류 규칙.
+  var MEAL_OFFSITE = ['간지호텔', '시즈노야도 료칸'];
+  var MEAL_OFFSITE_SET = new Set(MEAL_OFFSITE);
+  function mealOffsite(accom) { return MEAL_OFFSITE_SET.has(accom); }
+  // team={accom,dep,arr,isPus(귀국 PUS 여부)}, date='YYYY-MM-DD'
+  //  → {breakfast:bool, lunchKind:''|'arr'|'cont', dinner:bool}. (pax·제외·조기퇴실·업그레이드는 호출부)
+  function mealPlan(team, date) {
+    var accom = team.accom, dep = team.dep, arr = team.arr, isPus = !!team.isPus;
+    var wd = parseLocalDate(date).getDay();
+    var isWTS = (wd === 3 || wd === 4 || wd === 0);   // 수·목·일
+    var isSatSun = (wd === 6 || wd === 0);            // 토·일
+    var off = MEAL_OFFSITE_SET.has(accom);
+    var isIn = (dep === date), isOut = (arr === date), isMid = (dep < date && arr > date);
+    var breakfast = off ? (isOut && isWTS) : (dep < date && arr >= date);
+    var lunchKind = '';
+    if (!off) {
+      if (isMid) lunchKind = 'cont';
+      else if (isIn && !isPus) lunchKind = 'arr';
+      else if (isOut && isPus) lunchKind = 'cont';
+    } else {
+      if (isIn && isWTS && !isPus) lunchKind = 'arr';
+      else if (isIn && isSatSun && accom === '간지호텔') lunchKind = 'arr';
+      else if (isOut && isWTS && isPus) lunchKind = 'cont';
+    }
+    var dinner = (dep <= date && arr > date);
+    return { breakfast: breakfast, lunchKind: lunchKind, dinner: dinner };
+  }
+
   return {
     looksMember: looksMember,
     isMember: isMember,
@@ -160,6 +190,9 @@
     FLOOR_FIXED: FLOOR_FIXED,
     FLOOR_FLEX: FLOOR_FLEX,
     allowedFloors: allowedFloors,
-    mealGoneCount: mealGoneCount
+    mealGoneCount: mealGoneCount,
+    MEAL_OFFSITE: MEAL_OFFSITE,
+    mealOffsite: mealOffsite,
+    mealPlan: mealPlan
   };
 });

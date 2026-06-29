@@ -76,3 +76,43 @@ test('mealGoneCount: 朝=퇴실일 아침 포함, 昼·夕=퇴실일부터 제�
   assert.equal(SZ.mealGoneCount(null, '2026-07-06', 'd'), 0);
   assert.equal(SZ.mealGoneCount([], '2026-07-06', 'd'), 0);
 });
+
+// ── 식수 규칙 (mealPlan) ─────────────────────────────────────────────────────
+//  날짜 요일: 07-01 수 / 07-02 목 / 07-04 토 / 07-05 일 / 07-06 월
+test('mealPlan: 야마나미(체류 규칙) — 입국ICN/중간/귀국', () => {
+  const t = { accom: '야마나미리조트', dep: '2026-07-01', arr: '2026-07-04', isPus: false };
+  // 입국일(ICN): 조식X(전날 안 묵음)·중식 arr·석식O
+  assert.deepEqual(SZ.mealPlan(t, '2026-07-01'), { breakfast: false, lunchKind: 'arr', dinner: true });
+  // 중간일: 조식O·중식 cont·석식O
+  assert.deepEqual(SZ.mealPlan(t, '2026-07-02'), { breakfast: true, lunchKind: 'cont', dinner: true });
+  // 귀국일(ICN): 조식O·중식 없음(ICN 귀국은 cont 아님)·석식X
+  assert.deepEqual(SZ.mealPlan(t, '2026-07-04'), { breakfast: true, lunchKind: '', dinner: false });
+});
+
+test('mealPlan: 야마나미 귀국 PUS → 중식 cont', () => {
+  const t = { accom: '야마나미리조트', dep: '2026-07-01', arr: '2026-07-04', isPus: true };
+  assert.equal(SZ.mealPlan(t, '2026-07-04').lunchKind, 'cont');
+  assert.equal(SZ.mealPlan(t, '2026-07-01').lunchKind, ''); // 입국 PUS는 중식 없음
+});
+
+test('mealPlan: OFFSITE 간지(요일 규칙)', () => {
+  const t = { accom: '간지호텔', dep: '2026-07-01', arr: '2026-07-04', isPus: false };
+  // 입국 수요일 ICN → 중식 arr / 조식X(입국일) / 석식O
+  assert.deepEqual(SZ.mealPlan(t, '2026-07-01'), { breakfast: false, lunchKind: 'arr', dinner: true });
+  // 귀국 토요일 → 조식X(수목일 아님)·중식 없음·석식X
+  assert.deepEqual(SZ.mealPlan(t, '2026-07-04'), { breakfast: false, lunchKind: '', dinner: false });
+  // 입국 토요일 간지 → 중식 arr(간지 토일 규칙)
+  const t2 = { accom: '간지호텔', dep: '2026-07-04', arr: '2026-07-07', isPus: false };
+  assert.equal(SZ.mealPlan(t2, '2026-07-04').lunchKind, 'arr');
+});
+
+test('mealPlan: OFFSITE 시즈 귀국 수목일 PUS → 조식O·중식 cont', () => {
+  const t = { accom: '시즈노야도 료칸', dep: '2026-06-29', arr: '2026-07-01', isPus: true }; // 07-01 수(WTS)
+  assert.deepEqual(SZ.mealPlan(t, '2026-07-01'), { breakfast: true, lunchKind: 'cont', dinner: false });
+});
+
+test('mealOffsite', () => {
+  assert.equal(SZ.mealOffsite('간지호텔'), true);
+  assert.equal(SZ.mealOffsite('시즈노야도 료칸'), true);
+  assert.equal(SZ.mealOffsite('야마나미리조트'), false);
+});
