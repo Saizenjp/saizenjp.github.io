@@ -111,6 +111,11 @@ from (
   union all select 39,'39 보안','v_folio_balance security_invoker', case when exists(select 1 from pg_class where relname='v_folio_balance' and reloptions @> array['security_invoker=on']) then '✅ 적용' else '❌ 미적용 (39·뷰RLS우회)' end
   union all select 39,'39 보안','folios 읽기 front 포함',           case when exists(select 1 from pg_policies where tablename='folios' and policyname='folios_sel' and qual like '%front%') then '✅ 적용' else '⚠ 미적용 (39)' end
   union all select 40,'40 정원','trg_rooms_capacity', case when exists(select 1 from pg_trigger where tgname='trg_rooms_capacity' and not tgisinternal) then '✅ 있음' else '❌ 없음 (40·더블부킹차단)' end
+
+  -- ── 50 정산 결제수단 / 51 조기퇴실 / 52 확인필요(후속조치) ──
+  union all select 50,'50 정산','charges.pay_method',      case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='charges' and column_name='pay_method') then '✅ 있음' else '❌ 없음 (50)' end
+  union all select 51,'51 조기퇴실','guest_members.actual_dep', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='guest_members' and column_name='actual_dep') then '✅ 있음' else '❌ 없음 (51)' end
+  union all select 52,'52 후속조치','followups',            case when to_regclass('public.followups') is not null then '✅ 있음' else '❌ 없음 (52)' end
 ) t
 order by ord, 항목;
 

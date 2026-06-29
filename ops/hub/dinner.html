@@ -63,7 +63,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.81">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.82">
 </head>
 <body data-so-area="print">
 <div class="topbar so-bar">
@@ -94,7 +94,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=2"></script>
-<script src="../assets/saizen-ops.js?v=14.81"></script>
+<script src="../assets/saizen-ops.js?v=14.82"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(印刷 산출물·도메인 데이터는 미번역) ──
@@ -189,7 +189,7 @@ const L={
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
-let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set(), OVR={}, ADDONS=[];
+let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set(), OVR={}, ADDONS=[], EARLY={};
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
 const OFFSITE=new Set(['간지호텔','시즈노야도 료칸']);
@@ -558,6 +558,7 @@ async function load(){
     if(!seqs.length){ TEAMS=[]; $('#stat').textContent=tx('statNoData'); DATESEL.clear();ACCOMSEL.clear(); renderDateChips();renderAccomChips();renderPreview(); return; }
     // guests(accom·tag), passengers(rep origin), guest_members(rep tag·name)
     const GMAP={}, REP={}, ORI={};
+    EARLY={};   // event_seq → [조기퇴실 실제일…] (개인별 actual_dep) — 식수 차감용
     for(let i=0;i<seqs.length;i+=200){
       const chunk=seqs.slice(i,i+200);
       const {data:gs}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,pax').in('event_seq',chunk);
@@ -565,12 +566,13 @@ async function load(){
       // 대표 origin/tag/name: guest_members.is_rep → passenger
       let mg=0;
       for(;;){
-        const {data,error}=await supa.from('guest_members').select('event_seq,person_tag,is_rep,seq_in_team,name_kr,name_en,passenger_id').in('event_seq',chunk).order('event_seq').order('seq_in_team').range(mg,mg+999);
+        const {data,error}=await supa.from('guest_members').select('event_seq,person_tag,is_rep,seq_in_team,name_kr,name_en,passenger_id,actual_dep').in('event_seq',chunk).order('event_seq').order('seq_in_team').range(mg,mg+999);
         if(error)throw error;
         (data||[]).forEach(m=>{ const cur=REP[m.event_seq]; const curSeq=cur?(cur._seq==null?99:cur._seq):99;
           if(!cur || (m.is_rep&&curSeq!==0) || (!m.is_rep&&curSeq!==0&&(m.seq_in_team||99)<curSeq)){
             REP[m.event_seq]={tag:m.person_tag||'',_seq:m.is_rep?0:(m.seq_in_team||99),pid:m.passenger_id,name:m.name_kr||'',eng:m.name_en||''};
           }
+          if(m.actual_dep){ (EARLY[m.event_seq]=EARLY[m.event_seq]||[]).push(fmtDate(m.actual_dep)); }
         });
         if(!data||data.length<1000)break; mg+=1000;
       }
@@ -618,6 +620,13 @@ async function load(){
 
 function selectedDates(){ const all=allDates(); return DATESEL.size? all.filter(d=>DATESEL.has(d)) : all; }
 
+// 조기 퇴실(개인 actual_dep) 인원 차감 — 그날 그 끼니에 이미 떠난 사람 수.
+//  · 朝食(b): 전날 밤 묵음 기준 → 퇴실일 '아침'엔 아직 있음 → actual_dep < date 면 떠남.
+//  · 昼/夕食(l/d): 퇴실일 '아침'에 떠남 → actual_dep <= date 면 떠남.
+function goneEarly(seq, date, meal){
+  const arr=EARLY[seq]; if(!arr||!arr.length) return 0;
+  return arr.filter(ad => meal==='b' ? (ad < date) : (ad <= date)).length;
+}
 // 날짜별 식수 집계 (/app/ generateAndPrintDinnerOrder 규칙 동일)
 function mealCounts(date){
   const _accomSet=ACCOMSEL.size?ACCOMSEL:null;
@@ -627,20 +636,23 @@ function mealCounts(date){
   // 夕食除外는 '석식만' 제외 → 朝食·昼食 식수는 그대로 계산(제외 skip 안 함)
   TEAMS.forEach(t=>{
     if(_accomSet && !_accomSet.has(t.accom)) return;
-    const pax=parseInt(t.pax,10)||0; if(!pax) return;
+    const base=parseInt(t.pax,10)||0; if(!base) return;
+    const bPax=Math.max(0, base-goneEarly(t.seq,date,'b'));   // 朝食 실인원
+    const lPax=Math.max(0, base-goneEarly(t.seq,date,'l'));   // 昼食 실인원
     const isPus=t.isPus, isIn=(t.dep===date), isOut=(t.arr===date), isMid=(t.dep<date&&t.arr>date);
     const eatsBreakfast = OFFSITE.has(t.accom) ? (isOut&&isWTS) : (t.dep<date && t.arr>=date);
-    if(eatsBreakfast) breakfastN+=pax;
+    if(eatsBreakfast) breakfastN+=bPax;
     let lunchKind='';
     if(!OFFSITE.has(t.accom)){ if(isMid)lunchKind='cont'; else if(isIn&&!isPus)lunchKind='arr'; else if(isOut&&isPus)lunchKind='cont'; }
     else{ if(isIn&&isWTS&&!isPus)lunchKind='arr'; else if(isIn&&isSatSun&&t.accom==='간지호텔')lunchKind='arr'; else if(isOut&&isWTS&&isPus)lunchKind='cont'; }
-    if(lunchKind){ if(lunchKind==='arr')lunchArrICN+=pax; else lunchContinue+=pax; }
+    if(lunchKind){ if(lunchKind==='arr')lunchArrICN+=lPax; else lunchContinue+=lPax; }
   });
-  // 석식 = 그날 묵는 전원(dep<=date<arr) − 夕食除外 팀 − 업그레이드 인분(기본메뉴 안 나감)
+  // 석식 = 그날 묵는 전원(dep<=date<arr) − 조기퇴실 − 夕食除外 팀 − 업그레이드 인분(기본메뉴 안 나감)
   let dinnerN=0, teamCnt=0, exDinnerN=0, exTeamCnt=0, upN=0;
   TEAMS.forEach(t=>{ if(_accomSet&&!_accomSet.has(t.accom))return; if(!(t.dep<=date&&t.arr>date))return;
-    const pax=parseInt(t.pax,10)||0;
+    const pax=Math.max(0,(parseInt(t.pax,10)||0)-goneEarly(t.seq,date,'d'));   // 夕食 실인원
     if(t.excluded){ exDinnerN+=pax; exTeamCnt++; return; }
+    if(!pax) return;                                          // 전원 조기퇴실 → 표시 안 함
     const up=Math.min(pax, upQtyFor(date,t.seq)); upN+=up;   // 업그레이드 인분만큼 기본 차감
     dinnerN+=Math.max(0,pax-up); teamCnt++; });
   return {breakfastN, lunchN:lunchContinue+lunchArrICN, lunchArrICN, dinnerN, teamCnt, exDinnerN, exTeamCnt, upN};
@@ -669,7 +681,8 @@ function printOrder(){
   const todayStr=today();
   const accIdx=(ac)=>{ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; };
   const pagesHTML=dates.map(date=>{
-    const staying=TEAMS.filter(t=>(!_accomSet||_accomSet.has(t.accom)) && !t.excluded && t.dep<=date && t.arr>date);
+    const staying=TEAMS.filter(t=>(!_accomSet||_accomSet.has(t.accom)) && !t.excluded && t.dep<=date && t.arr>date
+      && (Math.max(0,(parseInt(t.pax,10)||0)-goneEarly(t.seq,date,'d'))>0));   // 전원 조기퇴실 팀은 명단에서 제외
     if(!staying.length) return '';
     const sorted=staying.slice().sort((a,b)=>{ if(a.dep!==b.dep)return a.dep<b.dep?-1:1; const ai=accIdx(a.accom),bi=accIdx(b.accom); if(ai!==bi)return ai-bi; return (a.repName||'').localeCompare(b.repName||''); });
     let no=0;
@@ -679,6 +692,9 @@ function printOrder(){
       if(t.dep){ const days=Math.round((parseLocalDate(date)-parseLocalDate(t.dep))/86400000)+1; const nights=(t.dep&&t.arr)?Math.round((parseLocalDate(t.arr)-parseLocalDate(t.dep))/86400000):0; if(days>=1&&days<=nights+1) stayDay=`${days}日目`; }
       const originCode=t.isPus?'PUS':'ICN';
       const engShow=(t.engName&&t.engName!=='(미등록)')?t.engName:'';
+      const basePax=parseInt(t.pax,10)||0;
+      const ePax=Math.max(0,basePax-goneEarly(t.seq,date,'d'));   // 夕食 실인원(조기퇴실 차감)
+      const ecoNote=(ePax<basePax)?`<span style="color:#b13b2c;font-weight:700">早期退室 −${basePax-ePax}</span>`:'';
       return `<tr>
         <td class="c">${no}</td>
         <td class="c date-c">${depD}</td>
@@ -688,11 +704,11 @@ function printOrder(){
         <td class="eng">${esc(engShow)}</td>
         <td class="c grp">${esc(t.tag||'')}</td>
         <td class="c"></td>
-        <td class="c"><strong>${parseInt(t.pax,10)||0}</strong></td>
+        <td class="c"><strong>${ePax}</strong></td>
         <td class="c">${stayDay}</td>
         <td></td>
         <td></td>
-        <td></td>
+        <td>${ecoNote}</td>
       </tr>`;
     }).join('');
     const mc=mealCounts(date);

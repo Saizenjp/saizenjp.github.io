@@ -51,6 +51,15 @@
 
   /* KPI */
   .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
+  .fu-panel{background:#fff7ed;border:1px solid #f0c98a;border-left:4px solid #d98f2b;border-radius:12px;padding:12px 14px;margin-bottom:16px}
+  .fu-panel .fu-h{font-weight:800;color:#9a5b12;font-size:13.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .fu-panel .fu-h .fu-cnt{background:#d98f2b;color:#fff;border-radius:999px;padding:1px 9px;font-size:12px}
+  .fu-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #f0d9b6;border-radius:9px;padding:8px 11px;margin-bottom:6px}
+  .fu-row:last-child{margin-bottom:0}
+  .fu-row .fu-title{font-weight:700;font-size:13px;color:var(--text)}
+  .fu-row .fu-detail{font-size:11.5px;color:var(--muted)}
+  .fu-row .fu-area{font-size:10.5px;background:#eef2e6;color:#5a6b3e;border-radius:6px;padding:1px 7px;font-weight:700}
+  .fu-row .fu-act{margin-left:auto;display:flex;gap:6px}
   @media(max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}}
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 16px}
   .kpi .l{font-size:11.5px;color:var(--text2);font-weight:700}
@@ -98,7 +107,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.81">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.82">
 </head>
 <body data-so-area="front">
 <div class="topbar so-bar">
@@ -137,6 +146,7 @@
 
 <main>
   <div class="kpis" id="kpis"></div>
+  <div id="followups"></div>
   <div class="stage">
     <div class="col" id="lists"><div class="empty" id="t-empty"></div></div>
     <div class="col"><div class="detail" id="detail"><div class="none" id="t-none"></div></div></div>
@@ -144,7 +154,7 @@
 </main>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=14.81"></script>
+<script src="../assets/saizen-ops.js?v=14.82"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -164,7 +174,9 @@ const L={
     roster:'👥 名簿', roomNo:'🛏 部屋番号', charge:'請求', payment:'支払', balance:'残高',
     cntUnit:'件', memo:'📝 メモ', noMemo:'メモなし',
     linkRoom:'🛏 客室割当', linkRoomT:'その日付の客室割当へ', linkSettle:'💴 精算', linkSettleT:'このチームの精算へ',
-    linkMemo:'📝 メモ', linkMemoT:'メモ編集', loadFail:'読み込み失敗', noMemoTxt:'メモなし' },
+    linkMemo:'📝 メモ', linkMemoT:'メモ編集', loadFail:'読み込み失敗', noMemoTxt:'メモなし',
+    fuH:'確認が必要（後続対応）', fuGo:'対応へ', fuDone:'✓ 完了', fuConfirm:'この確認項目を完了にしますか？', fuDoneToast:'完了にしました', fuFail:'更新失敗',
+    area_settle:'精算', area_room:'客室', area_print:'印刷', area_front:'フロント', area_pos:'POS', area_kitchen:'厨房', area_menu:'メニュー' },
   ko:{ step:'프론트 데스크', connHint:'실시간 도착·출발·재실 + 팀별 방번호·잔액·메모. 읽기 중심.',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패 · 재시도',
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요',
@@ -178,7 +190,9 @@ const L={
     roster:'👥 명단', roomNo:'🛏 방번호', charge:'청구', payment:'결제', balance:'잔액',
     cntUnit:'건', memo:'📝 메모', noMemo:'메모 없음',
     linkRoom:'🛏 방배정', linkRoomT:'그 날짜 방배정으로', linkSettle:'💴 정산', linkSettleT:'이 팀 정산으로',
-    linkMemo:'📝 메모', linkMemoT:'메모 편집', loadFail:'로드 실패', noMemoTxt:'메모 없음' },
+    linkMemo:'📝 메모', linkMemoT:'메모 편집', loadFail:'로드 실패', noMemoTxt:'메모 없음',
+    fuH:'확인 필요(후속 조치)', fuGo:'처리하기', fuDone:'✓ 완료', fuConfirm:'이 확인 항목을 완료 처리할까요?', fuDoneToast:'완료 처리했습니다', fuFail:'갱신 실패',
+    area_settle:'정산', area_room:'객실', area_print:'인쇄', area_front:'프론트', area_pos:'POS', area_kitchen:'주방', area_menu:'메뉴' },
   en:{ step:'Front Desk', connHint:'Real-time arrivals / departures / in-house + room no., balance & memo per team. Read-only.',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required',
@@ -192,7 +206,9 @@ const L={
     roster:'👥 Roster', roomNo:'🛏 Room', charge:'Charges', payment:'Paid', balance:'Balance',
     cntUnit:' items', memo:'📝 Memo', noMemo:'No memo',
     linkRoom:'🛏 Rooms', linkRoomT:'Room assignment for that date', linkSettle:'💴 Settle', linkSettleT:'Settlement for this team',
-    linkMemo:'📝 Memo', linkMemoT:'Edit memo', loadFail:'Load failed', noMemoTxt:'No memo' }
+    linkMemo:'📝 Memo', linkMemoT:'Edit memo', loadFail:'Load failed', noMemoTxt:'No memo',
+    fuH:'Follow-up needed', fuGo:'Handle', fuDone:'✓ Done', fuConfirm:'Mark this follow-up as done?', fuDoneToast:'Marked done', fuFail:'Update failed',
+    area_settle:'Settle', area_room:'Room', area_print:'Print', area_front:'Front', area_pos:'POS', area_kitchen:'Kitchen', area_menu:'Menu' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
@@ -294,12 +310,43 @@ async function load(){
         memo,teamLabel:n.team_label||'',members,search};
     });
     state.byId={}; state.teams.forEach(t=>state.byId[t.seq]=t);
+    // 확인 필요(후속 조치) — 미완료 전체(날짜 무관: 놓치지 않게 항상 노출)
+    try{ const {data:fu}=await supa.from('followups').select('*').eq('status','open').order('created_at',{ascending:false}); state.followups=fu||[]; }
+    catch(_){ state.followups=[]; }
     render();
   }catch(e){toast(tx('loadFail')+': '+e.message,'err');}
+}
+function renderFollowups(){
+  const box=$('#followups'); if(!box) return;
+  const list=state.followups||[];
+  if(!list.length){ box.innerHTML=''; return; }
+  const rows=list.map(f=>{
+    const link=f.link?`<a class="btn sm" href="${esc(f.link)}">${tx('fuGo')}</a>`:'';
+    return `<div class="fu-row">
+      <span class="fu-area">${esc(areaLabel(f.area))}</span>
+      <span class="fu-title">${esc(f.title||'')}</span>
+      ${f.detail?`<span class="fu-detail">${esc(f.detail)}</span>`:''}
+      <span class="fu-act">${link}<button class="btn ghost sm" type="button" data-fu-done="${f.id}">${tx('fuDone')}</button></span>
+    </div>`;
+  }).join('');
+  box.innerHTML=`<div class="fu-panel"><div class="fu-h">🔔 ${tx('fuH')}<span class="fu-cnt">${list.length}</span></div>${rows}</div>`;
+  box.querySelectorAll('[data-fu-done]').forEach(b=>b.addEventListener('click',()=>doneFollowup(b.dataset.fuDone)));
+}
+function areaLabel(a){ return tx('area_'+a)||a; }
+async function doneFollowup(id){
+  if(!confirm(tx('fuConfirm'))) return;
+  try{
+    const u=(window.__so_getUser&&__so_getUser())||null;
+    const {error}=await supa.from('followups').update({status:'done',done_by:u,done_at:new Date().toISOString()}).eq('id',id);
+    if(error)throw error;
+    state.followups=(state.followups||[]).filter(f=>String(f.id)!==String(id));
+    renderFollowups(); toast(tx('fuDoneToast'),'ok');
+  }catch(e){ toast(tx('fuFail')+': '+e.message,'err'); }
 }
 
 function render(){
   renderAccomChips();
+  renderFollowups();
   const day=state.day;
   const tw=tx('teamWord'), nw=tx('nameWord');
   const pool=state.teams.filter(t=>accomPass(t.accom));     // 숙소 필터 적용

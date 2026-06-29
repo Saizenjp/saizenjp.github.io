@@ -150,6 +150,11 @@
   .room .chip .ctag{font-family:var(--mono);font-weight:700;color:var(--accent)}
   .room .chip .cx{margin-left:auto;cursor:pointer;color:var(--err);font-weight:700;padding:0 4px;font-size:13px}
   .room .chip .csplit{margin-left:auto;cursor:pointer;color:var(--accent2);font-weight:700;padding:0 3px;font-size:12px}
+  .room .chip .ceco-btn{cursor:pointer;font-size:11px;padding:0 2px;opacity:.65;filter:grayscale(.4)}
+  .room .chip .ceco-btn:hover{opacity:1;filter:none}
+  .room .chip .ceco-btn.on{opacity:1;filter:none}
+  .room .chip .cmem .ceco{font-size:9.5px;font-weight:700;color:#b13b2c;white-space:nowrap}
+  .room .chip .cmem.eco b{text-decoration:line-through;color:var(--muted)}
   .room .chip .csplit:hover{color:var(--accentDeep)}
   /* 체크인(오늘 입실)=초록 강조 / 연박(체류중)=차분한 블루 / 퇴실(오늘 마지막밤)=골드 */
   .room .chip.chip-in{border-left:4px solid var(--accent);background:#e6f1e3}
@@ -340,7 +345,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.81">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.82">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -445,7 +450,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=2"></script>
-<script src="../assets/saizen-ops.js?v=14.81"></script>
+<script src="../assets/saizen-ops.js?v=14.82"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -578,6 +583,14 @@ const L={
     importResult:(ok,skip,fail)=>`一括割当: 成功 ${ok} · スキップ ${skip} · 失敗 ${fail}`,
     // 칩 액션 타이틀
     chipSplitT:'基準日から別の客室へ分割', chipCancelT:'割当取消', undoBtn:'↩ 元に戻す',
+    chipEcoT:'早期チェックアウト(個人)', ecoMark:d=>'早期退室 '+d,
+    ecoDatePrompt:n=>(n||'お客様')+'様の実際の退室日(YYYY-MM-DD)。この日からベッドを解放します。',
+    ecoReasonPrompt:n=>(n||'お客様')+'様の早期退室の事由(任意)',
+    ecoBadDate:'日付形式が正しくありません(YYYY-MM-DD)', ecoFail:e=>'早期退室の保存に失敗: '+e,
+    ecoDone:(n,d)=>(n||'')+'様を'+d+'で早期退室に設定しました(ベッド解放・食数反映)。精算の確認項目を作成しました。',
+    ecoCancelConfirm:(n,d)=>(n||'')+'様は'+d+'で早期退室に設定されています。解除しますか?(客室は手動で再割当してください)',
+    ecoCanceled:n=>(n||'')+'様の早期退室を解除しました', ecoConfirmFail:'※精算の確認項目の作成に失敗しました(手動でご確認ください)',
+    ecoFollowTitle:(n,d)=>(n||'')+'様 早期退室('+d+') — 精算/返金の確認',
     cancelFail:e=>'キャンセル失敗: '+e, assignCancelled:'割当をキャンセルしました',
     singleChargeFailToast:e=>'料金記録失敗: '+e,
   },
@@ -691,6 +704,14 @@ const L={
     importTagNotFound:tag=>`태그 '${tag}' 명단에 없음`, importRoomNotFound:(tag,rn)=>`${tag}: 호수 '${rn}' 못찾음`,
     importResult:(ok,skip,fail)=>`일괄 배정: 성공 ${ok} · 건너뜀 ${skip} · 실패 ${fail}`,
     chipSplitT:'기준일부터 다른 방으로 분할', chipCancelT:'배정 취소', undoBtn:'↩ 되돌리기',
+    chipEcoT:'조기 퇴실(개인)', ecoMark:d=>'조기퇴실 '+d,
+    ecoDatePrompt:n=>(n||'고객')+'님의 실제 퇴실일(YYYY-MM-DD). 이 날부터 침대를 해제합니다.',
+    ecoReasonPrompt:n=>(n||'고객')+'님 조기 퇴실 사유(선택)',
+    ecoBadDate:'날짜 형식이 올바르지 않습니다(YYYY-MM-DD)', ecoFail:e=>'조기 퇴실 저장 실패: '+e,
+    ecoDone:(n,d)=>(n||'')+'님을 '+d+' 조기 퇴실로 설정했습니다(침대 해제·식수 반영). 정산 확인 항목을 만들었습니다.',
+    ecoCancelConfirm:(n,d)=>(n||'')+'님은 '+d+' 조기 퇴실로 설정되어 있습니다. 해제할까요?(방은 수기로 재배정하세요)',
+    ecoCanceled:n=>(n||'')+'님 조기 퇴실을 해제했습니다', ecoConfirmFail:'※정산 확인 항목 생성에 실패했습니다(수기로 확인해 주세요)',
+    ecoFollowTitle:(n,d)=>(n||'')+'님 조기 퇴실('+d+') — 정산/환불 확인',
     cancelFail:e=>'취소 실패: '+e, assignCancelled:'배정 취소됨',
     singleChargeFailToast:e=>'요금 기록 실패: '+e,
   },
@@ -804,6 +825,14 @@ const L={
     importTagNotFound:tag=>`Tag '${tag}' not in roster`, importRoomNotFound:(tag,rn)=>`${tag}: room '${rn}' not found`,
     importResult:(ok,skip,fail)=>`Bulk assign: success ${ok} · skipped ${skip} · failed ${fail}`,
     chipSplitT:'Split to another room from the focus date', chipCancelT:'Cancel assignment', undoBtn:'↩ Undo',
+    chipEcoT:'Early checkout (individual)', ecoMark:d=>'Early dep '+d,
+    ecoDatePrompt:n=>'Actual departure date for '+(n||'guest')+' (YYYY-MM-DD). Bed is freed from this date.',
+    ecoReasonPrompt:n=>'Reason for early checkout of '+(n||'guest')+' (optional)',
+    ecoBadDate:'Invalid date format (YYYY-MM-DD)', ecoFail:e=>'Failed to save early checkout: '+e,
+    ecoDone:(n,d)=>(n||'')+' set to early checkout on '+d+' (bed freed, meals adjusted). A settlement follow-up was created.',
+    ecoCancelConfirm:(n,d)=>(n||'')+' is set to early checkout on '+d+'. Clear it? (re-assign the room manually)',
+    ecoCanceled:n=>'Cleared early checkout for '+(n||''), ecoConfirmFail:'※Failed to create settlement follow-up (please check manually)',
+    ecoFollowTitle:(n,d)=>(n||'')+' early checkout ('+d+') — settlement/refund check',
     cancelFail:e=>'Cancel failed: '+e, assignCancelled:'Assignment cancelled',
     singleChargeFailToast:e=>'Charge record failed: '+e,
   }
@@ -1073,7 +1102,7 @@ async function loadDay(){
     const rr=await pagedInSeq('rooms','*',seqs);
     if(rr.error){toast(tx('roomLoadFail',rr.error.message),'err');return;}
     state.rooms=rr.data||[];
-    const mm=await pagedInSeq('guest_members','id,event_seq,seq_in_team,name_kr,name_en,is_rep,member_grade,member_class,member_div',seqs);
+    const mm=await pagedInSeq('guest_members','id,event_seq,seq_in_team,name_kr,name_en,is_rep,member_grade,member_class,member_div,actual_dep,actual_dep_reason',seqs);
     if(mm.error){toast(tx('rosterLoadFail',mm.error.message),'warn');}
     else (mm.data||[]).forEach(x=>{(state.members[x.event_seq]=state.members[x.event_seq]||[]).push(x);});
   }
@@ -1652,7 +1681,9 @@ function renderRoom(inv){
       const nameKr=m?(m.name_kr||'-'):gcode;
       const nameEn=m?(m.name_en||''):'';
       const gb=m?`<i class="gbadge${isMember(m)?' mem':''}">${gradeLabel(m)}</i>`:'';
-      return `<div class="cmem"><b>${nameKr}</b><span class="cmen">${nameEn}</span>${gb}<span class="cmem-act"><span class="csplit" data-room-id="${r.id}" title="${tx('chipSplitT')}">✂</span><span class="cx" data-room-id="${r.id}" title="${tx('chipCancelT')}">✕</span></span></div>`;
+      const ecoMk=(m&&m.actual_dep)?`<span class="ceco" title="${tx('ecoMark',m.actual_dep)}">🛫${fmtMD(m.actual_dep)}</span>`:'';
+      const ecoBtn=m?`<span class="ceco-btn${m.actual_dep?' on':''}" data-room-id="${r.id}" title="${tx('chipEcoT')}">🛫</span>`:'';
+      return `<div class="cmem${(m&&m.actual_dep)?' eco':''}"><b>${nameKr}</b><span class="cmen">${nameEn}</span>${gb}${ecoMk}<span class="cmem-act">${ecoBtn}<span class="csplit" data-room-id="${r.id}" title="${tx('chipSplitT')}">✂</span><span class="cx" data-room-id="${r.id}" title="${tx('chipCancelT')}">✕</span></span></div>`;
     }).join('');
     return `<div class="chip${chipCls}">
       <div class="chip-head"><span class="ctag">${gcode}</span>${flag}<span class="cnum">${rows.length}${tx('nameUnit')}</span><span class="cdate">${fmtMD(r0.check_in)}~${fmtMD(r0.check_out)}</span></div>
@@ -1672,6 +1703,8 @@ function renderRoom(inv){
   div.querySelectorAll('.cx').forEach(x=>x.addEventListener('click',ev=>{ev.stopPropagation();unassign(x.dataset.roomId);}));
   // 분할(): 기준일부터 다른 방으로
   div.querySelectorAll('.csplit').forEach(x=>x.addEventListener('click',ev=>{ev.stopPropagation();startSplit(x.dataset.roomId);}));
+  // 조기 퇴실(개인): 그 날부터 침대 해제 + 정산 확인 항목 생성
+  div.querySelectorAll('.ceco-btn').forEach(x=>x.addEventListener('click',ev=>{ev.stopPropagation();earlyCheckout(x.dataset.roomId);}));
   // 활성/비활성 토글
   div.querySelector('.lock').addEventListener('click',ev=>{ev.stopPropagation();toggleActive(inv);});
   // 카드 클릭 → 분할 모드면 이 방으로 뒷부분 이동, 아니면 선택 인원 배정
@@ -1734,6 +1767,60 @@ async function commitSplit(inv){
   toast(tx('splitDone',sp.from,inv.room_no),'ok');
 }
 function cancelSplit(){ if(state.splitPending){ state.splitPending=null; render(); } }
+
+// ── 조기 퇴실(개인 단위) ──
+//   · 팀 전체가 아니라 1~2명만 예정보다 일찍 귀국하는 케이스.
+//   · guest_members.actual_dep 기록 + 그 사람 방을 퇴실일로 단축(이후 방은 해제) → 침대 그날부터 비움.
+//   · 다른 메뉴(정산 환불)에 후속 작업을 남기므로 「확인 필요(followups)」 항목 자동 생성 → 놓치지 않게.
+//   · B2B 정산(settle_merit)은 불변. 환불은 현장 御請求書.
+function settleDeepLink(seq){ const ym=($('#month-pick')&&$('#month-pick').value)||((state.from||'').slice(0,7)); return `settle.html?ym=${encodeURIComponent(ym)}&seq=${encodeURIComponent(seq)}`; }
+// memberById는 사본을 반환하므로 원본 state.members 항목을 직접 갱신해야 재렌더에 반영됨.
+function patchMember(mid, patch){ for(const seq in state.members){ const hit=(state.members[seq]||[]).find(x=>x.id===mid); if(hit){ Object.assign(hit,patch); return; } } }
+async function createFollowup(seq, area, kind, title, detail, link){
+  try{ const {error}=await supa.from('followups').insert({ event_seq:seq, area, kind, title, detail:detail||null, link:link||null, created_by:_curUser()||null }); return !error; }
+  catch(e){ return false; }
+}
+async function earlyCheckout(roomId){
+  const row=state.rooms.find(r=>r.id===roomId);
+  if(!row || row.member_id==null){ toast(tx('splitOnlyMember'),'warn'); return; }
+  const m=memberById(row.member_id);
+  const name=m?(m.name_kr||''):'';
+  const seq=row.event_seq;
+  // 이미 조기퇴실로 설정된 경우 → 해제 제안
+  if(m && m.actual_dep){
+    if(!confirm(tx('ecoCancelConfirm',name,m.actual_dep))) return;
+    const {error}=await supa.from('guest_members').update({actual_dep:null,actual_dep_reason:null}).eq('id',m.id);
+    if(error){ toast(tx('ecoFail',error.message),'err'); return; }
+    patchMember(m.id,{actual_dep:null,actual_dep_reason:null});
+    logAssign('조기퇴실 취소', `${name}(${teamGroupCode(seq)||evNo(seq)||''})`);
+    render(); toast(tx('ecoCanceled',name),'ok'); return;
+  }
+  const def=state.focus||state.from;
+  const d=(prompt(tx('ecoDatePrompt',name), def)||'').trim();
+  if(!d) return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){ toast(tx('ecoBadDate'),'warn'); return; }
+  const reason=(prompt(tx('ecoReasonPrompt',name),'')||'').trim();
+  // 1) actual_dep 기록
+  const {error:e0}=await supa.from('guest_members').update({actual_dep:d,actual_dep_reason:reason||null}).eq('id',row.member_id);
+  if(e0){ toast(tx('ecoFail',e0.message),'err'); return; }
+  patchMember(row.member_id,{actual_dep:d,actual_dep_reason:reason||null});
+  // 2) 그 사람 방 단축/해제 (분할 다건도 모두 반영)
+  for(const rr of memberRooms(row.member_id)){
+    if(rr.check_in>=d){                 // 퇴실일 이후 시작 방 → 불필요, 해제
+      await supa.from('rooms').delete().eq('id',rr.id);
+      state.rooms=state.rooms.filter(x=>x.id!==rr.id);
+    } else if(rr.check_out>d){          // 퇴실일을 가로지름 → 퇴실일로 단축
+      await supa.from('rooms').update({check_out:d,assign_source:'manual'}).eq('id',rr.id);
+      rr.check_out=d; rr.assign_source='manual';
+    }
+  }
+  // 3) 확인 필요(후속조치) 생성 — 정산/환불 확인 딥링크
+  const ok=await createFollowup(seq,'settle','early_checkout', tx('ecoFollowTitle', name||(teamGroupCode(seq)||evNo(seq)||''), d), reason, settleDeepLink(seq));
+  rebuildAssignMap(); render();
+  logAssign('조기퇴실', `${name}(${teamGroupCode(seq)||evNo(seq)||''}) ${d} 퇴실 — 침대 해제${reason?(' / '+reason):''}`);
+  toast(tx('ecoDone',name,d),'ok');
+  if(!ok) toast(tx('ecoConfirmFail'),'warn');
+}
 
 // ── 객실 활성/비활성 토글 (담당자가 현장에서 켜고 끔) ──
 async function toggleActive(inv){
