@@ -252,7 +252,11 @@ const L={
     salesPreviewTitle:'売上要約 プレビュー', noData:'データなし', salesLoadFail:'売上要約読み込み失敗', salesDownloaded:'売上要約をダウンロードしました',
     stOpen:'開設中', stClosed:'締め', stSettled:'決済完了',
     catRound:'ラウンド', catFood:'飲食', catStay:'宿泊', catShop:'ゴルフショップ', catEtc:'その他',
-    mCash:'現金', mCard:'カード' },
+    mCash:'現金', mCard:'カード',
+    thPayMethod:'決済', pmUnset:'未定', pmBulkHint:'各件を現金/カードで選択 →', allCash:'全部現金', allCard:'全部カード',
+    settleAutoBtn:'💰 精算締め(自動決済)', needAllMethod:'未定の請求あり — 全件に現金/カードを指定してください', settledDone:'締めました(精算完了)',
+    settleConfirm:'この内容で締めますか?(現金/カード決済を自動作成)', saveFail:'保存失敗',
+    refundHint:'💡 払戻し/調整は単価にマイナス金額を入力(同じ手段で相殺されます)' },
   ko:{ dayLbl:'날짜', monthAll:'월 전체', monthAllTitle:'이 달 전체 팀 보기', searchPh:'이름·호수·대표자·그룹코드 검색',
     needUrlKey:'URL·key 필요', connecting:'연결 중…', connectedShort:'✓ 연결됨', connOk:'연결됨', connOkToast:'Supabase 연결됨',
     connectedBtn:'✓ 연결됨', connFail:'연결 실패', connFailRetry:'연결 실패 · 재시도', connFailHint:'(09_settlement_core.sql 실행·키 확인)',
@@ -280,7 +284,11 @@ const L={
     salesPreviewTitle:'売上要約 미리보기', noData:'데이터 없음', salesLoadFail:'매출요약 로드 실패', salesDownloaded:'매출요약 다운로드',
     stOpen:'열림', stClosed:'마감', stSettled:'결제완료',
     catRound:'라운딩', catFood:'식음', catStay:'숙박', catShop:'골프샵', catEtc:'기타',
-    mCash:'현금', mCard:'카드' },
+    mCash:'현금', mCard:'카드',
+    thPayMethod:'결제', pmUnset:'미정', pmBulkHint:'각 건을 현금/카드로 선택 →', allCash:'전부 현금', allCard:'전부 카드',
+    settleAutoBtn:'💰 정산 마감(자동결제)', needAllMethod:'미정 청구가 있습니다 — 전 건에 현금/카드를 지정하세요', settledDone:'마감했습니다(결제완료)',
+    settleConfirm:'이대로 마감할까요?(현금/카드 결제 자동 생성)', saveFail:'저장 실패',
+    refundHint:'💡 환불/조정은 단가에 마이너스 금액 입력(같은 수단으로 상계됩니다)' },
   en:{ dayLbl:'Date', monthAll:'Whole month', monthAllTitle:'Show all teams this month', searchPh:'Search name / room / rep / group code',
     needUrlKey:'URL·key required', connecting:'Connecting…', connectedShort:'✓ Connected', connOk:'Connected', connOkToast:'Supabase connected',
     connectedBtn:'✓ Connected', connFail:'Connection failed', connFailRetry:'Failed · retry', connFailHint:'(run 09_settlement_core.sql · check key)',
@@ -308,7 +316,11 @@ const L={
     salesPreviewTitle:'売上要約 preview', noData:'No data', salesLoadFail:'Sales summary load failed', salesDownloaded:'Sales summary downloaded',
     stOpen:'Open', stClosed:'Closed', stSettled:'Settled',
     catRound:'Round', catFood:'F&B', catStay:'Lodging', catShop:'Pro shop', catEtc:'Other',
-    mCash:'Cash', mCard:'Card' }
+    mCash:'Cash', mCard:'Card',
+    thPayMethod:'Pay', pmUnset:'Unset', pmBulkHint:'Tag each charge cash/card →', allCash:'All cash', allCard:'All card',
+    settleAutoBtn:'💰 Settle (auto-pay)', needAllMethod:'Some charges have no method — set cash/card on all', settledDone:'Settled',
+    settleConfirm:'Settle now? (auto-creates cash/card payments)', saveFail:'Save failed',
+    refundHint:'💡 Refund/adjust: enter a negative unit price (offset by the same method)' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
@@ -566,6 +578,7 @@ function renderDetail(){
   const f=curFolio();
   if(!f){ box.innerHTML='<div class="empty-hint">'+t('st_selectFolio')+'</div>'; return; }
   const tag=f.team_tag||(tx('teamPrefix')+evNo(f.event_seq));
+  const editable=f.status==='open';
   const charges=state.charges.filter(c=>!c.voided);
   const subTotal=charges.reduce((s,c)=>s+Number(c.amount||0),0);
   const taxTotal=charges.reduce((s,c)=>s+Number(c.tax||0),0);
@@ -583,8 +596,9 @@ function renderDetail(){
       <td class="num">${yen(c.amount)}</td>
       <td class="num">${yen(c.tax)}</td>
       <td class="num">${yen(Number(c.amount||0)+Number(c.tax||0)+Number(c.service_charge||0))}</td>
+      <td>${c.voided?'':(editable?paySel(c):(c.pay_method?methodLabel(c.pay_method):'<span style="color:var(--muted)">-</span>'))}</td>
       <td>${c.voided?'':'<button class="vbtn" data-void-charge="'+c.id+'">'+tx('voidBtn')+'</button>'}</td>
-    </tr>`).join('') || '<tr><td colspan="8" class="empty-hint">'+tx('noCharges')+'</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="9" class="empty-hint">'+tx('noCharges')+'</td></tr>';
 
   const payRows=state.payments.map(p=>`
     <tr class="${p.voided?'voided':''}">
@@ -597,7 +611,6 @@ function renderDetail(){
 
   const catOpts=CATEGORIES.map(c=>`<option value="${c}">${catLabel(c)}</option>`).join('');
   const methOpts=METHODS.map(m=>`<option value="${m}">${methodLabel(m)}</option>`).join('');
-  const editable=f.status==='open';
 
   box.innerHTML=`
     <div class="det-head">
@@ -616,10 +629,18 @@ function renderDetail(){
     <table class="lines">
       <thead><tr>
         <th>${tx('thCat')}</th><th>${tx('thDesc')}</th><th class="num">${tx('thQty')}</th><th class="num">${tx('thUnit')}</th>
-        <th class="num">${tx('thSub')}</th><th class="num">${tx('thTax')}</th><th class="num">${tx('thTotal')}</th><th></th>
+        <th class="num">${tx('thSub')}</th><th class="num">${tx('thTax')}</th><th class="num">${tx('thTotal')}</th><th>${tx('thPayMethod')}</th><th></th>
       </tr></thead>
       <tbody>${chargeRows}</tbody>
     </table>
+
+    ${editable?`
+    <div class="form-row" style="margin:8px 0;align-items:center">
+      <span class="hint">${tx('pmBulkHint')}</span>
+      <button class="btn ghost sm" id="btn-all-cash" type="button">${tx('allCash')}</button>
+      <button class="btn ghost sm" id="btn-all-card" type="button">${tx('allCard')}</button>
+      <button class="btn sm" id="btn-settle-auto" type="button" style="margin-left:auto">${tx('settleAutoBtn')}</button>
+    </div>`:''}
 
     ${editable?`
     <div class="panel">
@@ -628,10 +649,11 @@ function renderDetail(){
         <select class="inp" id="ch-cat">${catOpts}</select>
         <input class="inp desc" id="ch-desc" type="text" data-i18n-ph="st_phDesc">
         <input class="inp" id="ch-qty" type="number" min="0" step="1" value="1" style="width:72px">
-        <input class="inp" id="ch-unit" type="number" min="0" step="100" value="0" style="width:110px" placeholder="${tx('phUnit')}">
+        <input class="inp" id="ch-unit" type="number" step="100" value="0" style="width:110px" placeholder="${tx('phUnit')}">
         <span class="calc" id="ch-calc"></span>
         <button class="btn sm" id="btn-add-charge" type="button" data-i18n="st_add"></button>
       </div>
+      <div class="hint" style="margin-top:5px">${tx('refundHint')}</div>
     </div>`:''}
 
     <div class="panel">
@@ -676,6 +698,10 @@ function renderDetail(){
     $('#ch-qty').addEventListener('input',recalc); $('#ch-unit').addEventListener('input',recalc); recalc();
     $('#btn-add-charge').addEventListener('click',addCharge);
     $('#btn-add-pay').addEventListener('click',addPayment);
+    box.querySelectorAll('.pm-sel').forEach(s=>s.addEventListener('change',()=>updatePayMethod(s.dataset.pm,s.value)));
+    const ac=$('#btn-all-cash'); if(ac) ac.addEventListener('click',()=>bulkPay('현금'));
+    const ar=$('#btn-all-card'); if(ar) ar.addEventListener('click',()=>bulkPay('카드'));
+    const sa=$('#btn-settle-auto'); if(sa) sa.addEventListener('click',()=>settleClose(f));
   }
 }
 
@@ -686,8 +712,8 @@ async function addCharge(){
   const description=$('#ch-desc').value.trim();
   const qty=Number($('#ch-qty').value||0);
   const unit=Number($('#ch-unit').value||0);
-  const gross=Math.round(qty*unit);   // 단가=税込(최종가)
-  if(gross<=0){toast(tx('needQtyUnit'),'warn');return;}
+  const gross=Math.round(qty*unit);   // 단가=税込(최종가). 음수=환불/조정 라인 허용
+  if(gross===0){toast(tx('needQtyUnit'),'warn');return;}
   const tax=taxOf(gross);             // 内税(포함분)
   const row={ folio_id:f.folio_id, event_seq:f.event_seq, member_id:f.member_id||null,
     category, source:'frontdesk', description, qty, unit_price:unit,
@@ -733,6 +759,52 @@ async function setStatus(id,status){
   if(error){toast(tx('statusChangeFail')+': '+error.message,'err');return;}
   toast(tx('statusTo')+statusLabel(status),'ok');
   await refreshAfterChange(id);
+}
+
+// ── 청구건별 현금/카드 + 마감 자동결제 ──
+function paySel(c){
+  const v=c.pay_method||'';
+  return `<select class="inp pm-sel" data-pm="${c.id}" style="padding:3px 6px;font-size:12px;${v?'':'border-color:var(--warn)'}">
+    <option value=""${v===''?' selected':''}>${tx('pmUnset')}</option>
+    <option value="현금"${v==='현금'?' selected':''}>${tx('mCash')}</option>
+    <option value="카드"${v==='카드'?' selected':''}>${tx('mCard')}</option>
+  </select>`;
+}
+async function updatePayMethod(id,val){
+  const {error}=await supa.from('charges').update({pay_method:val||null}).eq('id',id);
+  if(error){toast(tx('saveFail')+': '+error.message,'err');return;}
+  const c=state.charges.find(x=>String(x.id)===String(id)); if(c) c.pay_method=val||null;
+}
+async function bulkPay(method){
+  const f=curFolio(); if(!f) return;
+  const {error}=await supa.from('charges').update({pay_method:method}).eq('folio_id',f.folio_id).eq('voided',false);
+  if(error){toast(tx('saveFail')+': '+error.message,'err');return;}
+  toast(method==='현금'?tx('allCash'):tx('allCard'),'ok');
+  await refreshAfterChange(f.folio_id);
+}
+async function settleClose(f){
+  const chs=state.charges.filter(c=>!c.voided);
+  if(!chs.length){ toast(tx('noCharges'),'warn'); return; }
+  const unset=chs.filter(c=>!c.pay_method);
+  if(unset.length){ toast(tx('needAllMethod')+` (${unset.length})`,'warn'); return; }
+  const tot=c=>Number(c.amount||0)+Number(c.tax||0)+Number(c.service_charge||0);
+  let cash=0,card=0; chs.forEach(c=>{ if(c.pay_method==='현금')cash+=tot(c); else if(c.pay_method==='카드')card+=tot(c); });
+  const pays=state.payments.filter(p=>!p.voided);
+  const paidCash=pays.filter(p=>p.method==='현금').reduce((s,p)=>s+Number(p.amount||0),0);
+  const paidCard=pays.filter(p=>p.method==='카드').reduce((s,p)=>s+Number(p.amount||0),0);
+  const addCash=Math.round(cash-paidCash), addCard=Math.round(card-paidCard);
+  if(!confirm(`${tx('settleConfirm')}\n${tx('mCash')}: ${yen(addCash)} / ${tx('mCard')}: ${yen(addCard)}`)) return;
+  const u=(window.__so_getUser&&__so_getUser())||null;
+  const rows=[];
+  if(addCash!==0) rows.push({folio_id:f.folio_id, method:'현금', amount:addCash, received_by:u});
+  if(addCard!==0) rows.push({folio_id:f.folio_id, method:'카드', amount:addCard, received_by:u});
+  try{
+    if(rows.length){ const {error}=await supa.from('payments').insert(rows); if(error)throw error; }
+    const {error:e2}=await supa.from('folios').update({status:'settled',closed_at:new Date().toISOString()}).eq('id',f.folio_id);
+    if(e2)throw e2;
+    toast(tx('settledDone'),'ok');
+    await refreshAfterChange(f.folio_id);
+  }catch(e){ toast(tx('statusChangeFail')+': '+e.message,'err'); }
 }
 
 // folio 목록 잔액 갱신 + 현재 상세 재로딩
