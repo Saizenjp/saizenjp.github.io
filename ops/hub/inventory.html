@@ -132,6 +132,7 @@
     <div class="dept-toggle">
       <button id="dept-fnb" type="button">🍽 F&amp;B</button>
       <button id="dept-room" type="button">🛏 客室</button>
+      <button id="dept-golf" type="button">⛳ ゴルフ/カート</button>
     </div>
     <button class="btn ghost sm" id="btn-reload" type="button">↻ 更新</button>
     <span class="inv-sum" id="inv-sum"></span>
@@ -169,7 +170,7 @@ const L={
   ja:{ step:'在庫・内部管理', connHint:'接続情報はこのブラウザにのみ保存されます。',
     connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
     notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', connectedToast:'Supabaseに接続しました',
-    deptRoom:'🛏 客室', reload:'↻ 更新',
+    deptRoom:'🛏 客室', deptGolf:'⛳ ゴルフ/カート', reload:'↻ 更新',
     phName:'品目名 (例: ミネラルウォーター500ml)', phUnit:'単位', phLoc:'保管場所', phPar:'適正在庫', phQty:'現在庫',
     tipPar:'この数量未満で不足アラート', tipQty:'現在の保有数量', btnAdd:'＋ 品目追加', unitDefault:'個',
     emptyConnect:'上部でSupabaseに接続し、部署(F&B / 客室)を選ぶと品目が表示されます。',
@@ -196,7 +197,7 @@ const L={
   ko:{ step:'재고 · 내부 관리', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패 · 재시도',
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', connectedToast:'Supabase 연결됨',
-    deptRoom:'🛏 객실', reload:'↻ 새로고침',
+    deptRoom:'🛏 객실', deptGolf:'⛳ 골프/카트', reload:'↻ 새로고침',
     phName:'품목명 (예: 생수 500ml)', phUnit:'단위', phLoc:'보관 위치', phPar:'적정재고', phQty:'현재고',
     tipPar:'이 수량 미만이면 부족 알림', tipQty:'현재 보유 수량', btnAdd:'＋ 품목 추가', unitDefault:'개',
     emptyConnect:'상단에서 Supabase 연결 후, 부서(F&B / 객실)를 선택하면 품목이 표시됩니다.',
@@ -223,7 +224,7 @@ const L={
   en:{ step:'Inventory · Internal', connHint:'Connection info is stored only in this browser.',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', connectedToast:'Connected to Supabase',
-    deptRoom:'🛏 Rooms', reload:'↻ Reload',
+    deptRoom:'🛏 Rooms', deptGolf:'⛳ Golf/Cart', reload:'↻ Reload',
     phName:'Item name (e.g. Water 500ml)', phUnit:'Unit', phLoc:'Location', phPar:'Par level', phQty:'On hand',
     tipPar:'Alert when below this qty', tipQty:'Current quantity on hand', btnAdd:'＋ Add item', unitDefault:'pcs',
     emptyConnect:'Connect to Supabase above, then pick a department (F&B / Rooms) to see items.',
@@ -264,7 +265,8 @@ function reasonLabel(r){ const m=REASONL[r]; if(!m) return r; const lg=lang(); r
 
 const DEPTS={
   fnb:{ label:'F&B', cats:['식자재','음료','주류','주방소모품','기타'] },
-  room:{ label:'객실', cats:['객실비품','린넨','어메니티','청소용품','미니바','기타'] }
+  room:{ label:'객실', cats:['객실비품','린넨','어메니티','청소용품','미니바','기타'] },
+  golf:{ label:'골프/카트', cats:['ゴルフカート','送迎カート','기타'] }
 };
 const state={ dept:'fnb', catFilter:'__all', items:[], txns:[], conn:'none' };
 
@@ -282,6 +284,7 @@ function applyStatic(){
   $('#t-step').textContent=tx('step');
   $('#t-connhint').textContent=tx('connHint');
   $('#dept-room').textContent=tx('deptRoom');
+  { const g=$('#dept-golf'); if(g) g.textContent=tx('deptGolf'); }
   $('#btn-reload').textContent=tx('reload');
   $('#add-name').placeholder=tx('phName');
   $('#add-unit').placeholder=tx('phUnit');
@@ -336,7 +339,7 @@ async function load(){
 }
 
 /* ── 렌더 ── */
-function setDeptBtns(){ $('#dept-fnb').classList.toggle('on',state.dept==='fnb'); $('#dept-room').classList.toggle('on',state.dept==='room'); }
+function setDeptBtns(){ $('#dept-fnb').classList.toggle('on',state.dept==='fnb'); $('#dept-room').classList.toggle('on',state.dept==='room'); const g=$('#dept-golf'); if(g) g.classList.toggle('on',state.dept==='golf'); }
 function renderAddCats(){ $('#add-cat').innerHTML=DEPTS[state.dept].cats.map(c=>`<option value="${esc(c)}">${esc(catLabel(c))}</option>`).join(''); }
 function renderCatChips(){
   const cats=DEPTS[state.dept].cats.filter(c=>state.items.some(i=>(i.category||'기타')===c));
@@ -470,6 +473,7 @@ $('#btn-add').addEventListener('click',addItem);
 $('#add-name').addEventListener('keypress',e=>{ if(e.key==='Enter') addItem(); });
 $('#dept-fnb').addEventListener('click',()=>{ state.dept='fnb'; state.catFilter='__all'; if(supa)load(); else { setDeptBtns(); renderAddCats(); } });
 $('#dept-room').addEventListener('click',()=>{ state.dept='room'; state.catFilter='__all'; if(supa)load(); else { setDeptBtns(); renderAddCats(); } });
+$('#dept-golf').addEventListener('click',()=>{ state.dept='golf'; state.catFilter='__all'; if(supa)load(); else { setDeptBtns(); renderAddCats(); } });
 (function init(){
   const d=new URLSearchParams(location.search).get('dept'); if(d==='room') state.dept='room';
   applyStatic(); setDeptBtns(); renderAddCats();
