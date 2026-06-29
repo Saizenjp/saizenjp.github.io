@@ -52,6 +52,20 @@ test('accomFromProduct: 숙박지 판정(쿠주-first, 실제 상품명)', () =>
   assert.equal(SZ.accomRate(SZ.accomFromProduct('[3박 4일] 간지호텔 2색 골프 투어')), 16000);
 });
 
+test('originPort: 출발지 PUS/ICN(김해 포함·항공편 우선)', () => {
+  // 출발지 문자열
+  assert.equal(SZ.originPort('부산'), 'PUS');
+  assert.equal(SZ.originPort('김해국제공항'), 'PUS');   // ★nametag/aircover가 빠뜨렸던 김해
+  assert.equal(SZ.originPort('인천'), 'ICN');
+  assert.equal(SZ.originPort('PUS'), 'PUS');
+  assert.equal(SZ.originPort(''), 'ICN');
+  // 항공편 코드 우선(ZE=에어부산→PUS / TW=티웨이→ICN)
+  assert.equal(SZ.originPort('서울', 'ZE123'), 'PUS');
+  assert.equal(SZ.originPort('부산', 'TW100'), 'ICN');   // 항공편이 출발지보다 우선
+  assert.equal(SZ.isPus('김해'), true);
+  assert.equal(SZ.isPus('인천'), false);
+});
+
 test('nightsBetween: 박수', () => {
   assert.equal(SZ.nightsBetween('2026-07-05', '2026-07-08'), 3);
   assert.equal(SZ.nightsBetween('2026-07-05', '2026-07-05'), 0);

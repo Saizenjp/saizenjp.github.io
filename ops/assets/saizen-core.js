@@ -132,6 +132,20 @@
     return '';
   }
 
+  // ── 출발지 공항 판정 (釜山 PUS / 仁川 ICN) ──────────────────────────────────
+  //  여러 페이지가 제각각(김해 누락·항공편 미고려)이던 것을 단일화.
+  //   · 항공편 코드 우선: ZE(에어부산)→PUS / TW(티웨이)→ICN
+  //   · 없으면 출발지 문자열: 부산·김해·PUS·BUS·PNS = PUS, 그 외 ICN
+  function originPort(origin, flight) {
+    var f = String(flight == null ? '' : flight).toUpperCase().replace(/\s/g, '');
+    if (f.indexOf('ZE') === 0) return 'PUS';
+    if (f.indexOf('TW') === 0) return 'ICN';
+    var o = String(origin == null ? '' : origin), u = o.toUpperCase();
+    if (o.indexOf('부산') >= 0 || o.indexOf('김해') >= 0 || u === 'PUS' || u === 'BUS' || u === 'PNS') return 'PUS';
+    return 'ICN';
+  }
+  function isPus(origin, flight) { return originPort(origin, flight) === 'PUS'; }
+
   // ── 청소 효율 박수→층 배정 규칙 (야마나미 호텔동, 실제 층 zone 3~12) ─────
   //  같은 층 = 같은 박수(퇴실일)로 맞춰 청소를 한 번에.
   //   · 3·4박 → 9·6·3층 / 7박 → 11·10·7·4층 (지정층 고정)
@@ -200,6 +214,8 @@
     accomRate: accomRate,
     b2bFees: b2bFees,
     accomFromProduct: accomFromProduct,
+    originPort: originPort,
+    isPus: isPus,
     FLOOR_FIXED: FLOOR_FIXED,
     FLOOR_FLEX: FLOOR_FLEX,
     allowedFloors: allowedFloors,
