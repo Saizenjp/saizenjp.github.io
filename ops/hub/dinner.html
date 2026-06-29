@@ -110,6 +110,7 @@ const L={
     fDate:'日付', fTeam:'チーム', fKind:'種類', kAdd:'追加メニュー', kUp:'アップグレード(基本控除)', kAllergy:'アレルギー/食事制限',
     bAdd:'追加', bUp:'アップグレード', bAllergy:'アレルギー', adForTeam:'宛',
     fItem:'メニュー名', fItemAllergy:'内容', fPrice:'単価¥', fQty:'数量', fUnit:'単位', addBtn:'＋ 登録',
+    fMenu:'メニュー(レストランPOS)', menuNone:'— メニュー未登録(メニュー管理で登録) —', tNoMenu:'メニューを選択してください', unitFixed:'単位は人前固定(POS単価を自動適用)',
     alMeat:'肉×', alFish:'魚×', alPork:'豚肉×',
     selDate:'— 日付 —', selTeam:'— チーム選択 —', noTeamDay:'— その日宿泊チームなし —', noTag:'(タグなし)',
     addonEmpty:'登録された別注・アレルギーはありません。',
@@ -138,6 +139,7 @@ const L={
     fDate:'날짜', fTeam:'팀', fKind:'종류', kAdd:'추가메뉴', kUp:'업그레이드(기본 차감)', kAllergy:'알레르기/식이',
     bAdd:'추가', bUp:'업그레이드', bAllergy:'알레르기', adForTeam:'대상',
     fItem:'메뉴명', fItemAllergy:'내용', fPrice:'단가¥', fQty:'수량', fUnit:'단위', addBtn:'＋ 등록',
+    fMenu:'메뉴(레스토랑 POS)', menuNone:'— 메뉴 미등록(메뉴 관리에서 등록) —', tNoMenu:'메뉴를 선택하세요', unitFixed:'단위는 人前 고정(POS 단가 자동 적용)',
     alMeat:'고기×', alFish:'생선×', alPork:'돼지×',
     selDate:'— 날짜 —', selTeam:'— 팀 선택 —', noTeamDay:'— 그날 묵는 팀 없음 —', noTag:'(태그없음)',
     addonEmpty:'등록된 別注·알레르기가 없습니다.',
@@ -166,6 +168,7 @@ const L={
     fDate:'Date', fTeam:'Team', fKind:'Type', kAdd:'Add menu', kUp:'Upgrade (base deducted)', kAllergy:'Allergy/dietary',
     bAdd:'Add', bUp:'Upgrade', bAllergy:'Allergy', adForTeam:'for',
     fItem:'Menu name', fItemAllergy:'Detail', fPrice:'Price¥', fQty:'Qty', fUnit:'Unit', addBtn:'＋ Add',
+    fMenu:'Menu (Restaurant POS)', menuNone:'— No menu (register in Menu mgmt) —', tNoMenu:'Select a menu', unitFixed:'Unit fixed to 人前 (POS price auto)',
     alMeat:'Meat×', alFish:'Fish×', alPork:'Pork×',
     selDate:'— Date —', selTeam:'— Select team —', noTeamDay:'— No team staying that day —', noTag:'(no tag)',
     addonEmpty:'No 別注·allergy registered.',
@@ -197,6 +200,8 @@ function baseDinnerFor(date){ try{ return BASE_DINNER[parseLocalDate(date).getDa
 const MENU_SUGGEST=['카이세키 요리','스키야키','소고기 샤브샤브','바베큐',
   '도미 스가타츠쿠리(회 모듬)','왕새우(이세에비) 추가','우나기 카바야키(장어구이)','와규 스테이크','말고기 육회',
   '낙지튀김','감자튀김','닭튀김','우엉튀김','타코와사비'];
+// 레스토랑 POS 메뉴(ADD-=추가 / UP-=업그레이드) — loadAddonMenu가 채움
+let MENU_ADDON={add:[],upgrade:[]};
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 // 동그라미 숫자(①~⑳) — 인쇄물 팀 인원 표기(예 ←DJわ④名). 범위 밖은 (n).
@@ -279,12 +284,11 @@ function renderUI(){
           <option value="upgrade">${tx('kUp')}</option>
           <option value="allergy">${tx('kAllergy')}</option>
         </select></label>
-        <label class="adf" style="flex:1;min-width:150px"><span id="ad-item-lb">${tx('fItem')}</span><br><input id="ad-item" list="ad-menu-list" placeholder="例) ステーキ" style="width:100%"></label>
-        <datalist id="ad-menu-list">${MENU_SUGGEST.map(m=>`<option value="${esc(m)}">`).join('')}</datalist>
+        <label class="adf" style="flex:1;min-width:210px" id="ad-menu-wrap"><span>${tx('fMenu')}</span><br><select id="ad-menu" style="width:100%"></select></label>
+        <label class="adf" style="flex:1;min-width:160px;display:none" id="ad-item-wrap"><span id="ad-item-lb">${tx('fItemAllergy')}</span><br><input id="ad-item" placeholder="例) 肉× / 甲殻類アレルギー" style="width:100%"></label>
         <span id="ad-menu-fields" style="display:flex;gap:8px;align-items:flex-end">
-          <label class="adf">${tx('fPrice')}<br><input id="ad-price" type="number" min="0" placeholder="5000" style="width:92px"></label>
-          <label class="adf">${tx('fQty')}<br><input id="ad-qty" type="number" min="1" value="1" style="width:60px"></label>
-          <label class="adf">${tx('fUnit')}<br><input id="ad-unit" value="人前" style="width:70px"></label>
+          <label class="adf">${tx('fQty')}<br><input id="ad-qty" type="number" min="1" value="1" style="width:64px"></label>
+          <label class="adf">${tx('fUnit')}<br><input id="ad-unit" value="人前" readonly title="${tx('unitFixed')}" style="width:64px;background:var(--surface3);color:var(--text2)"></label>
         </span>
         <span id="ad-allergy-quick" style="display:none;gap:5px;align-items:center">
           <button class="btn ghost sm" type="button" data-al="肉×">${tx('alMeat')}</button>
@@ -336,11 +340,32 @@ function renderUI(){
 }
 // ── 別注·알레르기 폼/목록 ──
 function toggleAddonKind(){
-  const k=$('#ad-kind').value;
-  $('#ad-menu-fields').style.display = k==='allergy'?'none':'flex';
-  $('#ad-allergy-quick').style.display = k==='allergy'?'flex':'none';
-  $('#ad-item-lb').textContent = k==='allergy'?tx('fItemAllergy'):tx('fItem');
-  $('#ad-item').placeholder = k==='allergy'?'例) 肉× / 甲殻類アレルギー':'例) ステーキ';
+  const k=$('#ad-kind').value, isAllergy=k==='allergy';
+  const mw=$('#ad-menu-wrap'); if(mw) mw.style.display = isAllergy?'none':'';
+  const iw=$('#ad-item-wrap'); if(iw) iw.style.display = isAllergy?'':'none';
+  $('#ad-menu-fields').style.display = isAllergy?'none':'flex';   // 알레르기는 수량·단위 불요
+  $('#ad-allergy-quick').style.display = isAllergy?'flex':'none';
+  if(!isAllergy) fillAddonMenu(k);
+}
+// 추가/업그레이드 메뉴 드롭다운 채우기 — 레스토랑 POS 메뉴(ADD-/UP-)에서 가격 자동
+function fillAddonMenu(kind){
+  const sel=$('#ad-menu'); if(!sel) return;
+  const list=(kind==='upgrade'?MENU_ADDON.upgrade:MENU_ADDON.add)||[];
+  sel.innerHTML = list.length
+    ? list.map(m=>`<option value="${esc(m.code)}">${esc(m.name_ja)} — ¥${(parseInt(m.unit_price,10)||0).toLocaleString()}</option>`).join('')
+    : `<option value="">${tx('menuNone')}</option>`;
+}
+// 레스토랑 POS 메뉴 로드: ADD-*=추가, UP-*=업그레이드 (안주 SN-*·주류 제외)
+async function loadAddonMenu(){
+  MENU_ADDON={add:[],upgrade:[]};
+  if(!supa) return;
+  try{
+    const {data}=await supa.from('menu_items').select('code,name_ja,unit_price')
+      .eq('venue','restaurant').eq('active',true).order('sort_order').order('code');
+    (data||[]).forEach(m=>{ const c=String(m.code||'');
+      if(/^ADD-/i.test(c)) MENU_ADDON.add.push(m);
+      else if(/^UP-/i.test(c)) MENU_ADDON.upgrade.push(m); });
+  }catch(e){ /* 메뉴 로드 실패는 조용히(빈 목록) */ }
 }
 function fillAddonDates(){
   const sel=$('#ad-date'); if(!sel)return; const prev=sel.value;
@@ -360,14 +385,20 @@ function fillAddonTeams(){
 async function addAddon(){
   if(!supa){toast(tx('tNoConn'),'warn');return;}
   const date=$('#ad-date').value, seq=$('#ad-team').value, kind=$('#ad-kind').value;
-  const item=$('#ad-item').value.trim();
   if(!date||!seq){toast(tx('tNoDateTeam'),'warn');return;}
-  if(!item){toast(tx('tNoItem'),'warn');return;}
-  const row={ order_date:date, event_seq:Number(seq), kind, item, session_ym:YM, created_by:curUser() };
-  if(kind!=='allergy'){
-    row.price=parseInt($('#ad-price').value,10)||null;
-    row.qty=parseInt($('#ad-qty').value,10)||1;
-    row.unit=$('#ad-unit').value.trim()||'人前';
+  const row={ order_date:date, event_seq:Number(seq), kind, session_ym:YM, created_by:curUser() };
+  if(kind==='allergy'){
+    const item=$('#ad-item').value.trim();
+    if(!item){toast(tx('tNoItem'),'warn');return;}
+    row.item=item;
+  } else {
+    // 추가/업그레이드: 메뉴 선택 → 이름·단가는 POS 메뉴에서 자동, 단위 人前 고정
+    const code=$('#ad-menu').value;
+    const list=(kind==='upgrade'?MENU_ADDON.upgrade:MENU_ADDON.add)||[];
+    const m=list.find(x=>String(x.code)===String(code));
+    if(!m){toast(tx('tNoMenu'),'warn');return;}
+    row.item=m.name_ja; row.price=parseInt(m.unit_price,10)||null;
+    row.qty=parseInt($('#ad-qty').value,10)||1; row.unit='人前';
   }
   try{
     const {data,error}=await supa.from('dinner_addons').insert(row).select('id,order_date,event_seq,kind,item,price,qty,unit,note').single();
@@ -580,6 +611,7 @@ async function load(){
     const _ds=allDates(); DATESEL.clear(); if(_ds.length) DATESEL.add(_ds[0]);
     $('#stat').textContent=`${TEAMS.length}${tx('teamUnit')} · ${_ds.length}${tx('day')}`;
     renderDateChips(); renderAccomChips(); renderPreview();
+    await loadAddonMenu();
     fillAddonDates(); toggleAddonKind(); renderAddonList();
   }catch(e){ $('#stat').textContent=tx('statFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
