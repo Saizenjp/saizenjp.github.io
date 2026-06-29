@@ -6,6 +6,8 @@
 <title>SaiZen Yamanami 운영 통합 시스템</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="../ops/assets/saizen-core.js?v=4"></script><!-- 공유 도메인 규칙(식수 등) 단일 진실원 -->
+
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -8235,10 +8237,6 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
     //       - 朝食 = 귀국일 & 수·목·일 (ICN·PUS 모두)
     //       - 昼食 = 입국 ICN 수·목·일 / 입국 간지 토·일 / 귀국 PUS 수·목·일
     //       - 그 외 조합(특이 출·귀국)은 수기 처리(일본고객 식수 패널·인라인)
-    const OFFSITE = new Set(['간지호텔','시즈노야도 료칸']);
-    const _wd = parseLocalDate(date).getDay();          // 0=일 … 3=수,4=목,6=토
-    const isWTS = (_wd===3 || _wd===4 || _wd===0);       // 수·목·일
-    const isSatSun = (_wd===6 || _wd===0);               // 토·일
     // 끼니 제외 토글(화면) 반영: 朝食=전날밤 행(_prevDate) exB / 昼食=귀국이면 전날밤·아니면 당일 행 exL
     const _prevDate = fmtDate(new Date(parseLocalDate(date).getTime() - 86400000));
     const _exFlag = (d, seq, f) => !!(manualData[`dinner_${d}_${seq}`]||{})[f];
@@ -8247,27 +8245,13 @@ function generateAndPrintDinnerOrder(selectedDates, selectedAccoms){
       if(!r.accom || (_accomSet && !_accomSet.has(r.accom))) return;
       const pax = parseInt(r.pax,10)||0; if(!pax) return;
       const seq = String(r.eventSeq||'').trim();
-      const isPus = !!seqIsPus[seq];
-      const isIn  = (r.dep === date);
       const isOut = (r.arr === date);
-      const isMid = (r.dep < date && r.arr > date);
-      // 朝食 — 야마나미·쿠주=전날묵음 / 간지·시즈=귀국&수목일
-      const eatsBreakfast = OFFSITE.has(r.accom) ? (isOut && isWTS) : (r.dep < date && r.arr >= date);
-      if(eatsBreakfast){ if(!_exFlag(_prevDate, seq, 'exB')) breakfastN += pax; else exBN += pax; }
-      // 昼食 — 종류 판정(arr=入国가츠카레 / cont=継続)
-      let lunchKind = '';
-      if(!OFFSITE.has(r.accom)){
-        if(isMid)                lunchKind = 'cont';                // 중간체류
-        else if(isIn  && !isPus) lunchKind = 'arr';                // 입국 ICN
-        else if(isOut && isPus)  lunchKind = 'cont';               // 귀국 PUS
-      } else {
-        if(isIn && isWTS && !isPus)                lunchKind = 'arr';   // 입국 ICN 수목일
-        else if(isIn && isSatSun && r.accom==='간지호텔') lunchKind = 'arr';   // 입국 간지 토일
-        else if(isOut && isWTS && isPus)           lunchKind = 'cont';  // 귀국 PUS 수목일
-      }
-      if(lunchKind){
+      // 끼니 판정(朝/昼 종류) = SZCore.mealPlan 단일 진실원(/ops/ dinner.html과 동일 규칙)
+      const plan = SZCore.mealPlan({accom:r.accom, dep:r.dep, arr:r.arr, isPus:!!seqIsPus[seq]}, date);
+      if(plan.breakfast){ if(!_exFlag(_prevDate, seq, 'exB')) breakfastN += pax; else exBN += pax; }
+      if(plan.lunchKind){
         if(!_exFlag(isOut ? _prevDate : date, seq, 'exL')){
-          if(lunchKind==='arr') lunchArrICN += pax; else lunchContinue += pax;
+          if(plan.lunchKind==='arr') lunchArrICN += pax; else lunchContinue += pax;
         } else exLN += pax;
       }
     });
