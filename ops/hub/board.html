@@ -73,7 +73,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.84">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.85">
 </head>
 <body>
 <div class="topbar so-bar">
@@ -128,7 +128,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=14.84"></script>
+<script src="../assets/saizen-ops.js?v=14.85"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -174,7 +174,9 @@ function applyStatic(){
   const cs=$('#conn-state'); if(cs && !cs.dataset.set) cs.textContent=tx('notConn');
 }
 
-let supa=null, canWrite=false, anns=[], myAcc=null, lastSummary=null;
+let supa=null, canWrite=false, anns=[], myAcc=null, lastSummary=null, myUid=null;
+// 공지 삭제 = 작성자 본인(author_uid) 또는 마스터(admin). 핀·정렬은 admin·manager 그대로.
+function canDelAnn(a){ return (myAcc&&myAcc.role==='admin') || (a&&a.author_uid&&a.author_uid===myUid); }
 // 부서 키 ↔ (이모지, i18n키) — 라벨은 언어 토글 따라 번역
 const DEPT_KEYS=['front','fnb','golf','acct'];
 const DEPT_I18N={front:['','ix_dFront'],fnb:['','ix_dFnb'],golf:['','ix_dGolf'],acct:['','ix_dAcct']};
@@ -196,6 +198,7 @@ async function connect(){
   try{
     supa=window.supabase.createClient(url,key);
     const {data:sess}=await supa.auth.getSession();
+    myUid=(sess&&sess.session&&sess.session.user&&sess.session.user.id)||null;
     if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
       $('#ann-list').innerHTML='<div class="empty">'+esc(tx('needLoginMsg'))+'</div>'; return; }
     const acc=(window.__so_meAccess)?await __so_meAccess():null;
@@ -288,7 +291,7 @@ function renderAnns(){
       ${canWrite?`<div class="actions">
         <button class="btn sm ghost" data-pin="${a.id}">${a.pinned?t('bd_unpin'):t('bd_doPin')}</button>
         ${a.pinned?`<label class="pinperiod">${esc(tx('pinShort'))} <input type="date" data-pinuntil="${a.id}" value="${a.pin_until?String(a.pin_until).slice(0,10):''}"></label>`:''}
-        <button class="btn sm danger" data-del="${a.id}">${t('bd_del')}</button>
+        ${canDelAnn(a)?`<button class="btn sm danger" data-del="${a.id}">${t('bd_del')}</button>`:''}
       </div>`:''}
     </div>`;}).join('');
   if(canWrite){
@@ -334,7 +337,7 @@ async function postAnn(){
   const dept=($('#w-dept')&&$('#w-dept').value)||null;
   const pu=$('#w-pinuntil')&&$('#w-pinuntil').value;
   const pin_until=(pinned&&pu)?new Date(pu+'T23:59:59').toISOString():null;
-  const {error}=await supa.from('announcements').insert({title,body,pinned,author,dept,pin_until,sort_order:0});
+  const {error}=await supa.from('announcements').insert({title,body,pinned,author,author_uid:myUid,dept,pin_until,sort_order:0});
   if(error){ toast(tx('postFail')+': '+error.message,'err'); return; }
   $('#w-title').value=''; $('#w-body').value=''; $('#w-pin').checked=false;
   if($('#w-pinuntil')){ $('#w-pinuntil').value=''; $('#w-pinuntil-wrap').style.display='none'; }

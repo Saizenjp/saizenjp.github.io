@@ -117,6 +117,8 @@ from (
   union all select 51,'51 조기퇴실','guest_members.actual_dep', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='guest_members' and column_name='actual_dep') then '✅ 있음' else '❌ 없음 (51)' end
   union all select 52,'52 후속조치','followups',            case when to_regclass('public.followups') is not null then '✅ 있음' else '❌ 없음 (52)' end
   union all select 53,'53 경영통계','exec_stats() RPC',     case when exists(select 1 from pg_proc where proname='exec_stats') then '✅ 있음' else '❌ 없음 (53)' end
+  union all select 54,'54 공지삭제','announcements.author_uid', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='announcements' and column_name='author_uid') then '✅ 있음' else '❌ 없음 (54)' end
+  union all select 54,'54 공지삭제','ann_delete 정책',       case when exists(select 1 from pg_policies where tablename='announcements' and policyname='ann_delete') then '✅ 있음' else '❌ 없음 (54)' end
 ) t
 order by ord, 항목;
 

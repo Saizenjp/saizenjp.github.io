@@ -85,43 +85,51 @@
   .toast{background:#2b2f27;color:#fff;font-size:13px;font-weight:600;padding:9px 16px;border-radius:9px;box-shadow:0 6px 20px rgba(0,0,0,.2)}
   .toast.ok{background:var(--ok)} .toast.err{background:var(--err)} .toast.warn{background:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.84">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.85">
 </head>
 <body data-so-area="stats">
 <div class="topbar so-bar">
-  <a class="navhome" href="../index.html">← <span data-i18n="navHome">홈</span></a>
-  <span class="step" data-i18n="step">경영 통계</span>
-  <span class="grow"></span>
-  <span class="pill" id="conn-state" data-i18n="connIdle">미연결</span>
+  <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">경영 통계</span>
+  <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
 </div>
 
 <div class="conn">
   <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
   <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
-  <button class="btn sm" id="btn-connect" type="button" data-i18n="connect">연결</button>
-  <span class="hint" id="t-connhint" data-i18n="connHint">대표·부서장용 월/연 통합 통계(입도·매출·가동률·고객구성). 읽기 전용 집계.</span>
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connhint"></span>
 </div>
 
 <div class="ctrlbar">
-  <label data-i18n="period">기간</label>
+  <label id="t-period">기간</label>
   <input class="inp" id="d-from" type="date" style="width:150px">
   <span style="color:var(--muted)">~</span>
   <input class="inp" id="d-to" type="date" style="width:150px">
-  <button class="btn sm" id="btn-run" type="button" data-i18n="run">조회</button>
+  <button class="btn sm" id="btn-run" type="button">조회</button>
   <span style="width:8px"></span>
-  <button class="chip" data-q="thismonth" type="button" data-i18n="qThisMonth">이번 달</button>
-  <button class="chip" data-q="thisyear" type="button" data-i18n="qThisYear">올해</button>
-  <button class="chip" data-q="lastyear" type="button" data-i18n="qLastYear">작년</button>
-  <button class="chip" data-q="last12" type="button" data-i18n="qLast12">최근 12개월</button>
+  <button class="chip" id="t-q1" data-q="thismonth" type="button">이번 달</button>
+  <button class="chip" id="t-q2" data-q="thisyear" type="button">올해</button>
+  <button class="chip" id="t-q3" data-q="lastyear" type="button">작년</button>
+  <button class="chip" id="t-q4" data-q="last12" type="button">최근 12개월</button>
 </div>
 
 <main>
   <div class="rangelbl" id="rangelbl"></div>
-  <div id="content"><div class="deny" data-i18n="emptyHint">기간을 선택하고 「조회」를 누르세요.</div></div>
+  <div id="content"><div class="deny" id="t-empty">기간을 선택하고 「조회」를 누르세요.</div></div>
 </main>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=14.84"></script>
+<script src="../assets/saizen-ops.js?v=14.85"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, DATA=null;
@@ -164,7 +172,18 @@ const L={
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return (d[k]!==undefined?d[k]:(L.ja[k]!==undefined?L.ja[k]:k)); }
-function applyStatic(){ document.querySelectorAll('[data-i18n]').forEach(el=>{ const k=el.getAttribute('data-i18n'); const v=tx(k); if(v!==undefined) el.textContent=v; }); }
+// ⚠ 로컬 전용 키는 data-i18n 금지(saizen-ops 전역 t()가 키 문자열로 덮어씀 — CLAUDE.md §10).
+//   id="t-..." 노드만 로컬 사전으로 채운다. navHome 등 전역 키만 data-i18n 사용.
+function applyStatic(){
+  $('#t-step').textContent=tx('step');
+  $('#t-connhint').textContent=tx('connHint');
+  $('#t-period').textContent=tx('period');
+  $('#btn-run').textContent=tx('run');
+  $('#t-q1').textContent=tx('qThisMonth'); $('#t-q2').textContent=tx('qThisYear');
+  $('#t-q3').textContent=tx('qLastYear'); $('#t-q4').textContent=tx('qLast12');
+  const emp=$('#t-empty'); if(emp) emp.textContent=tx('emptyHint');
+  if(!supa){ setConn(tx('connIdle')); $('#btn-connect').textContent=tx('connect'); }
+}
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
