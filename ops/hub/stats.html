@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Yamanami 운영 관리 · 경영 통계</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
+    --border:#e3e6ea; --border2:#cdd2d8;
+    --text:#1f2937; --text2:#525b66; --muted:#8b919b;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --blue:#2c5078;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none}
+  .navhome:hover{text-decoration:underline}
+  .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .hint{font-size:11px;color:var(--muted)}
+
+  .ctrlbar{padding:11px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+  .ctrlbar label{font-size:12px;color:var(--text2);font-weight:700}
+  .chip{font-size:12px;font-weight:700;padding:6px 13px;border-radius:99px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer}
+  .chip:hover{border-color:var(--accent)}
+  .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  main{padding:16px 20px 80px;max-width:1240px;margin:0 auto}
+  .rangelbl{font-size:12.5px;color:var(--text2);font-weight:700;margin:2px 0 12px}
+  .rangelbl b{color:var(--accent)}
+
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:8px}
+  @media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:620px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 15px}
+  .kpi .l{font-size:11px;color:var(--text2);font-weight:700}
+  .kpi .v{font-size:21px;font-weight:800;color:var(--accent);font-family:var(--mono);margin-top:3px;letter-spacing:-.02em}
+  .kpi .v small{font-size:12px;color:var(--text2);font-weight:700;font-family:inherit}
+  .kpi .sub{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .kpi.rev .v{color:var(--accent2)} .kpi.occ .v{color:var(--blue)}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr}}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:15px 17px}
+  .panel h3{font-size:13.5px;font-weight:800;color:var(--accent);margin-bottom:11px;display:flex;align-items:center;gap:8px}
+  .panel h3 .c{font-size:11px;color:var(--muted);font-weight:700;margin-left:auto}
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th,table.t td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--border)}
+  table.t th:first-child,table.t td:first-child{text-align:left}
+  table.t th{font-size:11px;color:var(--text2);font-weight:700;background:var(--surface2)}
+  table.t td.mono{font-family:var(--mono);font-weight:700}
+  .barrow{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:12px}
+  .barrow .bl{width:62px;flex:none;font-weight:700;color:var(--text2);font-family:var(--mono)}
+  .barrow .bt{flex:1;background:var(--surface3);border-radius:5px;height:20px;position:relative;overflow:hidden}
+  .barrow .bf{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:5px}
+  .barrow .bf.rev{background:var(--accent2)}
+  .barrow .bv{width:140px;flex:none;text-align:right;font-family:var(--mono);font-weight:700;font-size:11.5px}
+  .barrow .bv small{color:var(--muted);font-weight:600}
+  .split{display:flex;height:22px;border-radius:6px;overflow:hidden;border:1px solid var(--border);margin-top:6px}
+  .split .seg{display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:#fff;white-space:nowrap}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--text2);margin-top:8px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:middle}
+  .note{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5}
+  .deny{padding:30px;text-align:center;color:var(--muted)}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:50;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:#2b2f27;color:#fff;font-size:13px;font-weight:600;padding:9px 16px;border-radius:9px;box-shadow:0 6px 20px rgba(0,0,0,.2)}
+  .toast.ok{background:var(--ok)} .toast.err{background:var(--err)} .toast.warn{background:var(--accent2)}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.84">
+</head>
+<body data-so-area="stats">
+<div class="topbar so-bar">
+  <a class="navhome" href="../index.html">← <span data-i18n="navHome">홈</span></a>
+  <span class="step" data-i18n="step">경영 통계</span>
+  <span class="grow"></span>
+  <span class="pill" id="conn-state" data-i18n="connIdle">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button" data-i18n="connect">연결</button>
+  <span class="hint" id="t-connhint" data-i18n="connHint">대표·부서장용 월/연 통합 통계(입도·매출·가동률·고객구성). 읽기 전용 집계.</span>
+</div>
+
+<div class="ctrlbar">
+  <label data-i18n="period">기간</label>
+  <input class="inp" id="d-from" type="date" style="width:150px">
+  <span style="color:var(--muted)">~</span>
+  <input class="inp" id="d-to" type="date" style="width:150px">
+  <button class="btn sm" id="btn-run" type="button" data-i18n="run">조회</button>
+  <span style="width:8px"></span>
+  <button class="chip" data-q="thismonth" type="button" data-i18n="qThisMonth">이번 달</button>
+  <button class="chip" data-q="thisyear" type="button" data-i18n="qThisYear">올해</button>
+  <button class="chip" data-q="lastyear" type="button" data-i18n="qLastYear">작년</button>
+  <button class="chip" data-q="last12" type="button" data-i18n="qLast12">최근 12개월</button>
+</div>
+
+<main>
+  <div class="rangelbl" id="rangelbl"></div>
+  <div id="content"><div class="deny" data-i18n="emptyHint">기간을 선택하고 「조회」를 누르세요.</div></div>
+</main>
+
+<div id="toast"></div>
+<script src="../assets/saizen-ops.js?v=14.84"></script>
+<script>
+const $=s=>document.querySelector(s);
+let supa=null, DATA=null;
+
+// ── i18n (한·일 직원 공용. ja 기본) ──
+const L={
+  ja:{ navHome:'ホーム', step:'経営統計', connIdle:'未接続', connecting:'接続中…', connOk:'接続済', connFail:'接続失敗', connect:'接続', connectedBtn:'✓ 接続済',
+    connHint:'代表・部署長向けの月/年 統合統計(送客・売上・稼働率・顧客構成)。読み取り専用集計。',
+    period:'期間', run:'照会', qThisMonth:'今月', qThisYear:'今年', qLastYear:'昨年', qLast12:'直近12ヶ月',
+    emptyHint:'期間を選んで「照会」を押してください。', loading:'集計中…', loadFail:'集計に失敗', noAuth:'権限がありません(管理者またはstats権限者のみ)。',
+    kInTeam:'送客チーム', kInPax:'送客人数', kB2B:'B2B売上', kOnsite:'現地売上', kOcc:'客室稼働率', kMember:'会員比率',
+    uTeam:'チーム', uPpl:'名', uNight:'泊', perMonth:'月別推移', mPax:'人数', mB2B:'B2B売上', mOnsite:'現地売上',
+    byAccom:'宿泊施設別', thAccom:'施設', thTeam:'チーム', thPax:'人数', thB2B:'B2B売上', byOrigin:'出発地別(ICN/PUS)',
+    custMix:'顧客構成(会員/一般)', member:'会員', nonmember:'一般', byGrade:'等級別', thGrade:'等級', thPersons:'人数',
+    onsiteRev:'現地売上の構成', payMix:'現金 / カード', cash:'現金', card:'カード', unset:'未指定', thCat:'区分', thAmt:'金額',
+    occTitle:'客室稼働率(施設別)', thFac:'施設', thUsed:'使用ベッド泊', thAvail:'可能ベッド泊', thPct:'稼働率', occAll:'全体',
+    noteCalc:'※ 送客=現地チェックイン(dep)基準・人数=予約人数。B2B=人数×泊数×施設単価+人数×¥6,000。現地売上=charges(取消除く・JST)。稼働率=使用ベッド泊÷(稼働客室定員×期間日数)の近似。' },
+  ko:{ navHome:'홈', step:'경영 통계', connIdle:'미연결', connecting:'연결 중…', connOk:'연결됨', connFail:'연결 실패', connect:'연결', connectedBtn:'✓ 연결됨',
+    connHint:'대표·부서장용 월/연 통합 통계(입도·매출·가동률·고객구성). 읽기 전용 집계.',
+    period:'기간', run:'조회', qThisMonth:'이번 달', qThisYear:'올해', qLastYear:'작년', qLast12:'최근 12개월',
+    emptyHint:'기간을 선택하고 「조회」를 누르세요.', loading:'집계 중…', loadFail:'집계 실패', noAuth:'권한이 없습니다(관리자 또는 stats 권한자만).',
+    kInTeam:'입도 팀', kInPax:'입도 인원', kB2B:'B2B 매출', kOnsite:'현장 매출', kOcc:'객실 가동률', kMember:'회원 비율',
+    uTeam:'팀', uPpl:'명', uNight:'박', perMonth:'월별 추이', mPax:'인원', mB2B:'B2B 매출', mOnsite:'현장 매출',
+    byAccom:'숙소별', thAccom:'시설', thTeam:'팀', thPax:'인원', thB2B:'B2B 매출', byOrigin:'출발지별(ICN/PUS)',
+    custMix:'고객 구성(회원/일반)', member:'회원', nonmember:'일반', byGrade:'등급별', thGrade:'등급', thPersons:'인원',
+    onsiteRev:'현장 매출 구성', payMix:'현금 / 카드', cash:'현금', card:'카드', unset:'미지정', thCat:'구분', thAmt:'금액',
+    occTitle:'객실 가동률(시설별)', thFac:'시설', thUsed:'사용 침대-박', thAvail:'가능 침대-박', thPct:'가동률', occAll:'전체',
+    noteCalc:'※ 입도=현지 체크인(dep) 기준·인원=예약 인원. B2B=인원×박수×숙소단가+인원×¥6,000. 현장 매출=charges(취소 제외·JST). 가동률=사용 침대-박÷(가동 객실 정원×기간 일수)의 근사.' },
+  en:{ navHome:'Home', step:'Exec Stats', connIdle:'Not connected', connecting:'Connecting…', connOk:'Connected', connFail:'Connect failed', connect:'Connect', connectedBtn:'✓ Connected',
+    connHint:'Monthly/yearly consolidated stats for execs (arrivals, revenue, occupancy, customer mix). Read-only aggregation.',
+    period:'Period', run:'Run', qThisMonth:'This month', qThisYear:'This year', qLastYear:'Last year', qLast12:'Last 12 months',
+    emptyHint:'Pick a period and press Run.', loading:'Aggregating…', loadFail:'Aggregation failed', noAuth:'No permission (admin or stats holders only).',
+    kInTeam:'Arrival teams', kInPax:'Arrival pax', kB2B:'B2B revenue', kOnsite:'On-site revenue', kOcc:'Room occupancy', kMember:'Member ratio',
+    uTeam:' teams', uPpl:' ppl', uNight:' nt', perMonth:'Monthly trend', mPax:'Pax', mB2B:'B2B revenue', mOnsite:'On-site revenue',
+    byAccom:'By lodging', thAccom:'Facility', thTeam:'Teams', thPax:'Pax', thB2B:'B2B revenue', byOrigin:'By origin (ICN/PUS)',
+    custMix:'Customer mix (member/general)', member:'Member', nonmember:'General', byGrade:'By grade', thGrade:'Grade', thPersons:'People',
+    onsiteRev:'On-site revenue mix', payMix:'Cash / Card', cash:'Cash', card:'Card', unset:'Unset', thCat:'Type', thAmt:'Amount',
+    occTitle:'Room occupancy (by facility)', thFac:'Facility', thUsed:'Used bed-nights', thAvail:'Avail bed-nights', thPct:'Occupancy', occAll:'Overall',
+    noteCalc:'※ Arrivals = on-site check-in (dep); pax = reserved pax. B2B = pax × nights × facility rate + pax × ¥6,000. On-site = charges (excl. voided, JST). Occupancy = used bed-nights ÷ (active room capacity × period days), approximate.' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return (d[k]!==undefined?d[k]:(L.ja[k]!==undefined?L.ja[k]:k)); }
+function applyStatic(){ document.querySelectorAll('[data-i18n]').forEach(el=>{ const k=el.getAttribute('data-i18n'); const v=tx(k); if(v!==undefined) el.textContent=v; }); }
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+function yen(n){return '¥'+Math.round(Number(n||0)).toLocaleString('ja-JP');}
+function num(n){return Number(n||0).toLocaleString('ja-JP');}
+function man(n){ n=Number(n||0); if(Math.abs(n)>=1e8) return (n/1e8).toFixed(2)+'億'; if(Math.abs(n)>=1e4) return Math.round(n/1e4).toLocaleString('ja-JP')+'万'; return num(n); }
+
+// ── 기간 ──
+function pad(n){return String(n).padStart(2,'0');}
+function iso(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function setRange(f,t){ $('#d-from').value=f; $('#d-to').value=t; }
+function quick(q){
+  const now=new Date(), y=now.getFullYear(), m=now.getMonth();
+  if(q==='thismonth'){ setRange(iso(new Date(y,m,1)), iso(new Date(y,m+1,0))); }
+  else if(q==='thisyear'){ setRange(y+'-01-01', y+'-12-31'); }
+  else if(q==='lastyear'){ setRange((y-1)+'-01-01', (y-1)+'-12-31'); }
+  else if(q==='last12'){ setRange(iso(new Date(y,m-11,1)), iso(new Date(y,m+1,0))); }
+  if(supa) run();
+}
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn(tx('connFail'),'err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent=tx('connecting');btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.classList.add('connected');btn.disabled=false;
+    if(!$('#d-from').value){ quick('thismonth'); } else { run(); }
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connect');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
+}
+
+async function run(){
+  if(!supa){ toast(tx('connFail'),'warn'); return; }
+  const f=$('#d-from').value, t=$('#d-to').value;
+  if(!f||!t){ return; }
+  $('#rangelbl').innerHTML=`<b>${esc(f)}</b> ~ <b>${esc(t)}</b>`;
+  $('#content').innerHTML=`<div class="deny">${tx('loading')}</div>`;
+  const {data,error}=await supa.rpc('exec_stats',{p_from:f,p_to:t});
+  if(error){
+    const msg=/권한|permission/i.test(error.message)?tx('noAuth'):(tx('loadFail')+': '+error.message);
+    $('#content').innerHTML=`<div class="deny" style="color:var(--err)">${esc(msg)}</div>`; return;
+  }
+  DATA=data||{}; render();
+}
+
+function render(){
+  const d=DATA||{}, tot=d.totals||{}, occ=d.occupancy||{};
+  const months=d.months||[];
+  const memTot=(d.members&&((d.members.member||0)+(d.members.nonmember||0)))||0;
+  const memPct=memTot?Math.round((d.members.member||0)/memTot*100):0;
+  const occPct=(occ.avail>0)?Math.round((occ.occupied||0)/occ.avail*100):0;
+  // KPI
+  const kpis=`<div class="kpis">
+    <div class="kpi"><div class="l">${tx('kInTeam')}</div><div class="v">${num(tot.teams)}<small>${tx('uTeam')}</small></div></div>
+    <div class="kpi"><div class="l">${tx('kInPax')}</div><div class="v">${num(tot.pax)}<small>${tx('uPpl')}</small></div></div>
+    <div class="kpi rev"><div class="l">${tx('kB2B')}</div><div class="v">${yen(tot.b2b)}</div><div class="sub">${man(tot.b2b)}</div></div>
+    <div class="kpi rev"><div class="l">${tx('kOnsite')}</div><div class="v">${yen(tot.onsite)}</div><div class="sub">${man(tot.onsite)}</div></div>
+    <div class="kpi occ"><div class="l">${tx('kOcc')}</div><div class="v">${occPct}<small>%</small></div><div class="sub">${num(occ.occupied)} / ${num(occ.avail)}</div></div>
+    <div class="kpi"><div class="l">${tx('kMember')}</div><div class="v">${memPct}<small>%</small></div><div class="sub">${tx('member')} ${num(d.members&&d.members.member)} · ${tx('nonmember')} ${num(d.members&&d.members.nonmember)}</div></div>
+  </div>`;
+
+  // 월별 추이 — pax / b2b / onsite 3 metric, bar by 선택. 여기선 pax+매출 동시.
+  const maxPax=Math.max(1,...months.map(m=>m.pax||0));
+  const maxRev=Math.max(1,...months.map(m=>(m.b2b||0)+(m.onsite||0)));
+  const monthBars=months.map(m=>{
+    const pw=Math.round((m.pax||0)/maxPax*100);
+    const rev=(m.b2b||0)+(m.onsite||0); const rw=Math.round(rev/maxRev*100);
+    return `<div style="margin-bottom:11px">
+      <div class="barrow"><span class="bl">${esc(m.ym)}</span><span class="bt"><span class="bf" style="width:${pw}%"></span></span><span class="bv">${num(m.pax)} <small>${tx('uPpl')}</small></span></div>
+      <div class="barrow"><span class="bl"></span><span class="bt"><span class="bf rev" style="width:${rw}%"></span></span><span class="bv">${man(rev)}</span></div>
+    </div>`;
+  }).join('') || `<div class="note">—</div>`;
+  const monthPanel=`<div class="panel"><h3>${tx('perMonth')}<span class="c">${tx('mPax')} · ${tx('mB2B')}+${tx('mOnsite')}</span></h3>${monthBars}
+    <div class="legend"><span><i style="background:var(--accent)"></i>${tx('mPax')}</span><span><i style="background:var(--accent2)"></i>${tx('mB2B')}+${tx('mOnsite')}</span></div></div>`;
+
+  // 숙소별
+  const accom=(d.by_accom||[]);
+  const accomRows=accom.map(a=>`<tr><td>${esc(a.accom)}</td><td>${num(a.teams)}</td><td>${num(a.pax)}</td><td class="mono">${yen(a.b2b)}</td></tr>`).join('');
+  const accomPanel=`<div class="panel"><h3>${tx('byAccom')}</h3><table class="t"><thead><tr><th>${tx('thAccom')}</th><th>${tx('thTeam')}</th><th>${tx('thPax')}</th><th>${tx('thB2B')}</th></tr></thead><tbody>${accomRows||''}</tbody></table></div>`;
+
+  // 출발지
+  const orig=(d.by_origin||[]); const oP=orig.reduce((s,o)=>s+(o.pax||0),0)||1;
+  const oICN=(orig.find(o=>o.origin==='ICN')||{}).pax||0, oPUS=(orig.find(o=>o.origin==='PUS')||{}).pax||0;
+  const origPanel=`<div class="panel"><h3>${tx('byOrigin')}</h3>
+    <div class="split">
+      ${oICN?`<div class="seg" style="width:${Math.round(oICN/oP*100)}%;background:var(--blue)">ICN ${num(oICN)}</div>`:''}
+      ${oPUS?`<div class="seg" style="width:${Math.round(oPUS/oP*100)}%;background:var(--accent2)">PUS ${num(oPUS)}</div>`:''}
+    </div>
+    <div class="legend"><span><i style="background:var(--blue)"></i>ICN ${num(oICN)}${tx('uPpl')} (${Math.round(oICN/oP*100)}%)</span><span><i style="background:var(--accent2)"></i>PUS ${num(oPUS)}${tx('uPpl')} (${Math.round(oPUS/oP*100)}%)</span></div></div>`;
+
+  // 고객 구성
+  const grades=(d.members&&d.members.by_grade)||[];
+  const gradeRows=grades.map(g=>`<tr><td>${esc(g.grade)}</td><td>${num(g.persons)}</td></tr>`).join('');
+  const custPanel=`<div class="panel"><h3>${tx('custMix')}</h3>
+    <div class="split">
+      ${(d.members&&d.members.member)?`<div class="seg" style="width:${memPct}%;background:var(--accent)">${tx('member')} ${num(d.members.member)}</div>`:''}
+      ${(d.members&&d.members.nonmember)?`<div class="seg" style="width:${100-memPct}%;background:var(--muted)">${tx('nonmember')} ${num(d.members.nonmember)}</div>`:''}
+    </div>
+    <div style="font-size:11.5px;color:var(--text2);font-weight:700;margin:12px 0 6px">${tx('byGrade')}</div>
+    <table class="t"><thead><tr><th>${tx('thGrade')}</th><th>${tx('thPersons')}</th></tr></thead><tbody>${gradeRows||''}</tbody></table></div>`;
+
+  // 현장 매출 구성 (카테고리 + 현금/카드)
+  const cats=(d.onsite_by_cat||[]);
+  const catRows=cats.map(c=>`<tr><td>${esc(c.category)}</td><td class="mono">${yen(c.amount)}</td></tr>`).join('');
+  const pcTot=(tot.cash||0)+(tot.card||0)+(tot.unset||0)||1;
+  const payPanel=`<div class="panel"><h3>${tx('onsiteRev')}</h3>
+    <div style="font-size:11.5px;color:var(--text2);font-weight:700;margin-bottom:4px">${tx('payMix')}</div>
+    <div class="split">
+      ${tot.cash?`<div class="seg" style="width:${Math.round(tot.cash/pcTot*100)}%;background:var(--ok)">${tx('cash')} ${man(tot.cash)}</div>`:''}
+      ${tot.card?`<div class="seg" style="width:${Math.round(tot.card/pcTot*100)}%;background:var(--blue)">${tx('card')} ${man(tot.card)}</div>`:''}
+      ${tot.unset?`<div class="seg" style="width:${Math.round(tot.unset/pcTot*100)}%;background:var(--muted)">${tx('unset')} ${man(tot.unset)}</div>`:''}
+    </div>
+    <table class="t" style="margin-top:12px"><thead><tr><th>${tx('thCat')}</th><th>${tx('thAmt')}</th></tr></thead><tbody>${catRows||`<tr><td colspan="2" style="text-align:center;color:var(--muted)">—</td></tr>`}</tbody></table></div>`;
+
+  // 가동률(시설별)
+  const facs=(occ.by_facility||[]);
+  const facRows=facs.map(f=>{ const p=(f.avail>0)?Math.round((f.occupied||0)/f.avail*100):0;
+    return `<tr><td>${esc(f.facility||'-')}</td><td>${num(f.occupied)}</td><td>${num(f.avail)}</td><td class="mono">${p}%</td></tr>`;}).join('');
+  const occPanel=`<div class="panel"><h3>${tx('occTitle')}</h3><table class="t"><thead><tr><th>${tx('thFac')}</th><th>${tx('thUsed')}</th><th>${tx('thAvail')}</th><th>${tx('thPct')}</th></tr></thead>
+    <tbody><tr style="font-weight:800;background:var(--surface2)"><td>${tx('occAll')}</td><td>${num(occ.occupied)}</td><td>${num(occ.avail)}</td><td class="mono">${occPct}%</td></tr>${facRows}</tbody></table></div>`;
+
+  $('#content').innerHTML = kpis
+    + `<div class="grid2">${monthPanel}${accomPanel}</div>`
+    + `<div class="grid2">${origPanel}${custPanel}</div>`
+    + `<div class="grid2">${payPanel}${occPanel}</div>`
+    + `<div class="note">${tx('noteCalc')}</div>`;
+}
+
+// 언어 토글 시 정적 라벨 + 동적 재렌더
+window.onSaizenLangChange=function(){ applyStatic(); if(DATA) render(); };
+
+/* ── 부팅 ── */
+$('#btn-connect').addEventListener('click',connect);
+$('#btn-run').addEventListener('click',run);
+document.querySelectorAll('.chip[data-q]').forEach(b=>b.addEventListener('click',()=>quick(b.dataset.q)));
+applyStatic();
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value) connect();
+</script>
+</body>
+</html>

@@ -116,6 +116,7 @@ from (
   union all select 50,'50 정산','charges.pay_method',      case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='charges' and column_name='pay_method') then '✅ 있음' else '❌ 없음 (50)' end
   union all select 51,'51 조기퇴실','guest_members.actual_dep', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='guest_members' and column_name='actual_dep') then '✅ 있음' else '❌ 없음 (51)' end
   union all select 52,'52 후속조치','followups',            case when to_regclass('public.followups') is not null then '✅ 있음' else '❌ 없음 (52)' end
+  union all select 53,'53 경영통계','exec_stats() RPC',     case when exists(select 1 from pg_proc where proname='exec_stats') then '✅ 있음' else '❌ 없음 (53)' end
 ) t
 order by ord, 항목;
 
