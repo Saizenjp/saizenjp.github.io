@@ -570,7 +570,8 @@ const L={
     closureDesc:'特定の客室を <b>期間指定</b> で閉じます(例: 代表使用中・点検)。閉鎖期間は自動・手動割当が止まり、カードに理由が表示されます。<b>終了日含む</b>。',
     closureNone:'現在読み込んだ期間に閉鎖はありません。',
     closureRoom:'客室', closureFrom:'開始日', closureTo:'終了日', closureReason:'理由',
-    closureReasonPh:'例: 代表使用中 / 使用しない / 点検', closureAdd:'＋ 閉鎖追加', closureListTitle:'読み込んだ期間の閉鎖リスト',
+    closureReasonPh:'例: 代表使用中 / 使用しない / 点検', closureAdd:'＋ 閉鎖追加', closureListTitle:'閉鎖・ロック中の客室',
+    closureLockPerm:'🔒 永久ロック(錠)', closureUnlock:'ロック解除', closurePeriodTag:'期間閉鎖',
     del:'削除', pickRoom:'客室を選択してください', pickRange:'期間を入力してください', toAfterFrom:'終了日は開始日以降にしてください',
     closureAdding:'登録中…', closureAdded:'客室閉鎖を登録', closureAddFail:e=>'登録失敗: '+e,
     closureReleased:'閉鎖解除', closureReleaseFail:e=>'解除失敗: '+e,
@@ -693,7 +694,8 @@ const L={
     closureDesc:'특정 객실을 <b>기간 지정</b>해 닫습니다(예: 대표님 사용 중·점검). 폐쇄 기간엔 자동·수기 배정이 막히고 카드에 사유가 표시됩니다. <b>종료일 포함</b>.',
     closureNone:'현재 불러온 기간에 폐쇄가 없습니다.',
     closureRoom:'객실', closureFrom:'시작일', closureTo:'종료일', closureReason:'사유',
-    closureReasonPh:'예: 대표님 사용 중 / 사용 안 함 / 점검', closureAdd:'＋ 폐쇄 추가', closureListTitle:'불러온 기간 폐쇄 목록',
+    closureReasonPh:'예: 대표님 사용 중 / 사용 안 함 / 점검', closureAdd:'＋ 폐쇄 추가', closureListTitle:'폐쇄·잠금 중인 객실',
+    closureLockPerm:'🔒 영구 잠금(자물쇠)', closureUnlock:'잠금 해제', closurePeriodTag:'기간 폐쇄',
     del:'삭제', pickRoom:'객실을 선택하세요', pickRange:'기간을 입력하세요', toAfterFrom:'종료일은 시작일 이후여야 합니다',
     closureAdding:'등록 중…', closureAdded:'객실 폐쇄 등록', closureAddFail:e=>'등록 실패: '+e,
     closureReleased:'폐쇄 해제', closureReleaseFail:e=>'해제 실패: '+e,
@@ -814,7 +816,8 @@ const L={
     closureDesc:'Close a specific room for a <b>specified period</b> (e.g., chairman in use · inspection). During closure, auto/manual assignment is blocked and the reason shows on the card. <b>End date inclusive</b>.',
     closureNone:'No closures in the currently loaded period.',
     closureRoom:'Room', closureFrom:'Start date', closureTo:'End date', closureReason:'Reason',
-    closureReasonPh:'e.g.: chairman in use / not used / inspection', closureAdd:'＋ Add closure', closureListTitle:'Closures in loaded period',
+    closureReasonPh:'e.g.: chairman in use / not used / inspection', closureAdd:'＋ Add closure', closureListTitle:'Closed · locked rooms',
+    closureLockPerm:'🔒 Permanent lock', closureUnlock:'Unlock', closurePeriodTag:'Period closure',
     del:'Delete', pickRoom:'Please select a room', pickRange:'Please enter a period', toAfterFrom:'End date must be on or after the start date',
     closureAdding:'Registering…', closureAdded:'Room closure registered', closureAddFail:e=>'Registration failed: '+e,
     closureReleased:'Closure released', closureReleaseFail:e=>'Release failed: '+e,
@@ -2693,15 +2696,27 @@ function openClosureModal(){
   const invs=(state.inventory||[]).slice().sort((a,b)=>String(a.facility).localeCompare(String(b.facility))||(a.sort_order||0)-(b.sort_order||0));
   if(!invs.length){toast(tx('closeLoadInv'),'warn');return;}
   const opts=invs.map(r=>`<option value="${r.id}">${_lsEsc(r.facility)} · ${_lsEsc(r.room_no)}${r.zone?(' ('+_lsEsc(r.zone)+')'):''}</option>`).join('');
-  const list=(state.closures||[]).slice().sort((a,b)=>String(a.from_date).localeCompare(String(b.from_date))).map(c=>{
+  // ① 카드 자물쇠로 잠근 영구 잠금 객실(room_inventory.active=false) — 날짜 없음
+  const lockRows=(state.inventory||[]).filter(r=>r.active===false)
+    .slice().sort((a,b)=>String(a.facility).localeCompare(String(b.facility))||(a.sort_order||0)-(b.sort_order||0)).map(r=>{
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border);font-size:12.5px">
+      <b style="font-family:var(--mono)">${_lsEsc(r.facility+' · '+r.room_no)}</b>
+      <span style="color:var(--accent2);font-weight:700">${tx('closureLockPerm')}</span>
+      <button class="btn ghost sm" data-unlock-inv="${r.id}" style="margin-left:auto;color:var(--accent);border-color:#b4cda0">${tx('closureUnlock')}</button>
+    </div>`;
+  }).join('');
+  // ② 기간 폐쇄(room_closures) — 날짜 범위 + 사유
+  const cloRows=(state.closures||[]).slice().sort((a,b)=>String(a.from_date).localeCompare(String(b.from_date))).map(c=>{
     const inv=invs.find(x=>x.id===c.inventory_id);
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border);font-size:12.5px">
       <b style="font-family:var(--mono)">${inv?_lsEsc(inv.facility+' · '+inv.room_no):_lsEsc(c.inventory_id)}</b>
+      <span style="font-size:10.5px;font-weight:700;color:var(--accent2);background:var(--accentSoft);border-radius:5px;padding:1px 6px">${tx('closurePeriodTag')}</span>
       <span style="font-family:var(--mono)">${c.from_date}~${c.to_date}</span>
       <span style="color:var(--text2)">${c.reason?_lsEsc(c.reason):''}</span>
       <button class="btn ghost sm" data-del-clo="${c.id}" style="margin-left:auto;color:var(--err);border-color:#e3bdb4">${tx('del')}</button>
     </div>`;
-  }).join('') || `<div style="color:var(--muted);font-size:12px;padding:8px 0">${tx('closureNone')}</div>`;
+  }).join('');
+  const list=(lockRows+cloRows) || `<div style="color:var(--muted);font-size:12px;padding:8px 0">${tx('closureNone')}</div>`;
   const bg=document.createElement('div'); bg.className='modal-bg';
   bg.innerHTML=`<div class="modal">
     <h2>${tx('closureManageTitle')}</h2>
@@ -2721,6 +2736,16 @@ function openClosureModal(){
   bg.addEventListener('click',e=>{if(e.target===bg)bg.remove();});
   bg.querySelector('#cl-add').addEventListener('click',()=>saveClosure(bg));
   bg.querySelectorAll('[data-del-clo]').forEach(b=>b.addEventListener('click',()=>delClosure(b.dataset.delClo)));
+  bg.querySelectorAll('[data-unlock-inv]').forEach(b=>b.addEventListener('click',()=>unlockInv(b.dataset.unlockInv)));
+}
+// 카드 자물쇠(영구 잠금) 해제 — 모달 목록에서 바로. active=true 로 되돌리고 목록 갱신.
+async function unlockInv(invId){
+  const inv=(state.inventory||[]).find(r=>r.id===invId); if(!inv) return;
+  const {error}=await supa.from('room_inventory').update({active:true}).eq('id',invId);
+  if(error){toast(tx('invActiveToggleFail',error.message),'err');return;}
+  inv.active=true; render();
+  toast(`${inv.room_no} → ${tx('roomNowUsable')}`,'ok');
+  const bg=document.querySelector('.modal-bg'); if(bg)bg.remove(); openClosureModal();
 }
 async function saveClosure(bg){
   const inv=bg.querySelector('#cl-inv').value;
