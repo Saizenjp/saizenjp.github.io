@@ -1053,7 +1053,8 @@
     ['front', '프론트·객실'],
     ['fnb',   '식음'],
     ['golf',  '골프'],
-    ['acct',  '회계']
+    ['acct',  '회계'],
+    ['merit', '메리트투어']
   ];
   var _deptMap = {}; SO_DEPTS.forEach(function (d) { _deptMap[d[0]] = d[1]; });
   function deptLabelOf(k) { return k ? (_deptMap[k] || k) : ''; }
