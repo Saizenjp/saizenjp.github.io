@@ -71,6 +71,10 @@
   .team-search .cnt{font-size:12.5px;color:var(--accent2);font-weight:800;white-space:nowrap}
   .team-btn.active-team{border-left-color:var(--accent2);background:linear-gradient(180deg,#fff 0%,#fbf6ea 100%)}
   .team-btn .tactive{display:inline-block;margin-left:7px;font-size:10px;font-weight:800;color:#fff;background:var(--accent2);border-radius:99px;padding:1px 8px;vertical-align:middle}
+  .team-btn .tmem{display:inline-block;margin-left:6px;font-size:10px;font-weight:800;color:#fff;background:#2f7d4f;border-radius:99px;padding:1px 8px;vertical-align:middle}
+  .team-btn .tac{display:inline-block;font-size:11px;font-weight:800;border-radius:6px;padding:1px 7px}
+  .team-btn .troom{font-family:var(--mono);font-weight:800;font-size:15px;margin-top:6px}
+  .team-btn .tdate{font-size:10.5px;color:var(--muted);font-weight:600}
   /* 날짜 섹션 헤더 + 일행 검색 결과 */
   .tg-head{font-size:12.5px;font-weight:800;color:var(--accent2);margin:14px 0 9px;display:flex;align-items:center;gap:8px}
   .tg-head::after{content:"";flex:1;height:1px;background:var(--border)}
@@ -342,6 +346,9 @@ let state={ date:'', teams:[], menu:[], venue:'__all__', team:null, folioId:null
   outlet:(OUTLETS[_outletParam]?_outletParam:null), teamQ:'', activeSeqs:new Set(), members:[], roomsBySeq:{}, accomSel:null };
 const ACCOM_ALL=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
 const ACCOM_DEFAULT=['야마나미리조트','쿠주힐즈'];   // 기본 = 야마나미쪽(골프텔·호텔·별장·돔하우스)+쿠주힐즈
+// 숙소별 색상(시인성) — 카드 좌측 보더·숙소 칩·방번호·섹션 헤더에 공통 적용
+const ACCOM_COLOR={'야마나미리조트':'#647548','쿠주힐즈':'#2f7d4f','간지호텔':'#2c5078','시즈노야도 료칸':'#9a5b12'};
+function accomColor(a){ return ACCOM_COLOR[a]||'#8b919b'; }
 // 이 매장이 다루는 venue 목록(없으면 전 매장)
 function outletVenues(){ return state.outlet ? OUTLETS[state.outlet].venues : null; }
 // 주문 기록 담당자 = 공유 상단바 담당자(saizen_ops_user). 없으면 폴백.
@@ -523,18 +530,29 @@ function posIsMember(m){ return SZCore.isMember(m); }
 function fmtMD(iso){ if(!iso||iso==='-') return '-'; const p=String(iso).slice(0,10).split('-'); return p.length===3?`${+p[1]}/${+p[2]}`:iso; }
 function teamCardEl(tm){
   const act=state.activeSeqs.has(tm.event_seq);
+  const col=accomColor(tm.accom);
+  const isMem=!!(state._memberSeqs && state._memberSeqs.has(tm.event_seq));
+  const room=roomLabel(tm.event_seq);
   const b=document.createElement('button'); b.type='button'; b.className='team-btn'+(act?' active-team':'');
-  b.innerHTML=`<div class="ttag">${teamTag(tm)}${act?`<span class="tactive">${t('po_active')}</span>`:''}</div>
+  if(!act) b.style.borderLeftColor=col;   // 숙소색 좌측 보더(주문중은 골드 유지)
+  b.innerHTML=`<div class="ttag">${teamTag(tm)}${act?`<span class="tactive">${t('po_active')}</span>`:''}${isMem?`<span class="tmem">${tx('member')}</span>`:''}</div>
     <div class="trep">${escP(tm.rep||'')}</div>
-    <div class="tmeta">${escP(tm.accom||'')} · ${tm.pax}${t('po_cntPpl')} · #${teamNo(tm)}${roomLabel(tm.event_seq)?` · <b style="color:var(--accent2)">${roomLabel(tm.event_seq)}</b>`:''}</div>`;
+    <div class="tmeta"><span class="tac" style="background:${col}1f;color:${col}">${escP(tm.accom||'')}</span> · ${tm.pax}${t('po_cntPpl')} · #${teamNo(tm)}${tm.checkin?` · <span class="tdate">${fmtMD(tm.checkin)} ${t('po_checkin')}</span>`:''}</div>
+    ${room?`<div class="troom" style="color:${col}">${room}</div>`:''}`;
   b.addEventListener('click',()=>selectTeam(tm));
   return b;
 }
 function gridOf(arr){ const g=document.createElement('div'); g.className='team-grid'; arr.forEach(tm=>g.appendChild(teamCardEl(tm))); return g; }
 function headEl(txt){ const h=document.createElement('div'); h.className='tg-head'; h.textContent=txt; return h; }
+// 숙소별 색상 헤더(시인성)
+function accomHeadEl(acc, n){ const col=accomColor(acc); const h=document.createElement('div'); h.className='tg-head';
+  h.style.color=col; h.style.borderLeft='4px solid '+col; h.style.paddingLeft='9px';
+  h.innerHTML=`${escP(acc||'-')} · ${n}${t('po_cntTeam')}`; return h; }
 
 function renderTeams(){
   const box=$('#team-grid'); box.innerHTML='';
+  // 회원 포함 팀 집합(카드 뱃지용) — 3컬럼 OR(saizen-core) 위임
+  state._memberSeqs=new Set(); state.members.forEach(m=>{ if(posIsMember(m)) state._memberSeqs.add(m.event_seq); });
   const q=(state.teamQ||'').trim().toLowerCase();
   const ac=$('#active-cnt');
   const pool=state.teams.filter(tm=>accomPass(tm.accom));   // 숙소 토글 필터
@@ -565,15 +583,18 @@ function renderTeams(){
     return;
   }
 
-  // ── 검색 없음: 체크인 날짜별 섹션(섹션 내 주문중 우선) ──
+  // ── 검색 없음: 숙소별 색상 섹션(섹션 내 = 주문중 우선 → 그룹코드순) ──
+  //   POS 응대는 장소 단위라 숙소로 묶고 색 구분. 정렬은 대표자명이 아닌 그룹코드(직원이 태그로 찾음).
   $('#team-cnt').innerHTML=`${pool.length}${t('po_cntTeam')}`;
   if(ac) ac.innerHTML=state.activeSeqs.size?(''+t('po_active')+' '+state.activeSeqs.size):'';
   if(!pool.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
-  const byDay={};
-  pool.forEach(tm=>{ const k=tm.checkin||'-'; (byDay[k]=byDay[k]||[]).push(tm); });
-  Object.keys(byDay).sort().forEach(day=>{
-    const arr=byDay[day].slice().sort((a,b)=>(state.activeSeqs.has(b.event_seq)?1:0)-(state.activeSeqs.has(a.event_seq)?1:0));
-    box.appendChild(headEl(`${fmtMD(day)} ${t('po_checkin')} · ${arr.length}${t('po_cntTeam')}`));
+  const byAccom={};
+  pool.forEach(tm=>{ const k=tm.accom||'-'; (byAccom[k]=byAccom[k]||[]).push(tm); });
+  const order=ACCOM_ALL.concat(Object.keys(byAccom).filter(k=>ACCOM_ALL.indexOf(k)<0));
+  order.forEach(acc=>{ const arr=byAccom[acc]; if(!arr||!arr.length) return;
+    arr.sort((a,b)=>((state.activeSeqs.has(b.event_seq)?1:0)-(state.activeSeqs.has(a.event_seq)?1:0))
+                    || String(teamTag(a)).localeCompare(String(teamTag(b)),undefined,{numeric:true}));
+    box.appendChild(accomHeadEl(acc, arr.length));
     box.appendChild(gridOf(arr));
   });
 }
