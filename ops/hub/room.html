@@ -347,7 +347,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.92">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.93">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -388,6 +388,7 @@
   <button class="btn ghost sm" id="btn-clear-all" type="button" disabled title="불러온 범위의 모든 배정 해제(수기·자동 전부)" style="color:var(--err);border-color:#e3bdb4">전체 비우기</button>
   <button class="btn ghost sm" id="btn-conflicts" type="button" disabled title="정원 초과(겹침) 방을 스캔 → 초과 auto 배정을 정리(수기·분할은 보호)" style="color:var(--warn);border-color:#e6cf95">⚠ 충돌 점검</button>
   <button class="btn ghost sm" id="btn-closure" type="button" disabled title="특정 객실을 기간 지정해 폐쇄(잠금) — 대표님 사용 중·점검 등. 폐쇄 기간엔 배정 불가" style="color:var(--err);border-color:#e3bdb4">🔒 객실 폐쇄</button>
+  <button class="btn sm" id="btn-undo-bulk" type="button" style="display:none;background:#fff;color:var(--accent2);border-color:var(--accent2);font-weight:800" title="직전 대량 작업(전체 비우기·층 비우기·월별 자동배정) 1회만 되돌립니다"></button>
   <!-- 위 버튼 라벨/타이틀은 applyStaticRoom()이 언어별로 채움(월/오늘/자동배정/전체 비우기/충돌 점검/객실 폐쇄) -->
   <span class="hint" id="session-hint"></span>
   <span id="sel-bar" style="display:none;align-items:center;gap:8px;margin-left:auto">
@@ -451,7 +452,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=7"></script>
-<script src="../assets/saizen-ops.js?v=14.92"></script>
+<script src="../assets/saizen-ops.js?v=14.93"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -565,6 +566,9 @@ const L={
     clearAllNone:'クリアする割当がありません', clearAllScopeAll:'読み込んだ範囲全体',
     clearAllConfirm:(scope,n)=>`${scope}の割当 ${n}件をすべて外しますか?\n(手動・自動割当すべて解除されます)`,
     clearAllFail:e=>'全クリア失敗: '+e, clearedN:n=>`${n}件 割当解除`,
+    undoBulkBtn:l=>`↩ 「${l}」を戻す`, undoBulkNone:'戻せる直前操作がありません',
+    undoBulkDone:l=>`「${l}」を元に戻しました`, undoBulkFail:e=>'戻す失敗: '+e,
+    undoBulkConfirm:l=>`直前の「${l}」を元に戻しますか?`,
     // 폐쇄/이력
     closeFirstConnect:'先に接続してください', closeLoadInv:'客室情報を先に読み込んでください(接続/日付読み込み)',
     closureManageTitle:'🔒 客室閉鎖(ロック) 管理',
@@ -693,6 +697,9 @@ const L={
     clearAllNone:'비울 배정이 없습니다', clearAllScopeAll:'불러온 범위 전체',
     clearAllConfirm:(scope,n)=>`${scope}의 배정 ${n}건을 모두 뺄까요?\n(수기·자동 배정 전부 해제됩니다)`,
     clearAllFail:e=>'전체 비우기 실패: '+e, clearedN:n=>`${n}건 배정 해제`,
+    undoBulkBtn:l=>`↩ ‘${l}’ 되돌리기`, undoBulkNone:'되돌릴 직전 작업이 없습니다',
+    undoBulkDone:l=>`‘${l}’ 작업을 되돌렸습니다`, undoBulkFail:e=>'되돌리기 실패: '+e,
+    undoBulkConfirm:l=>`직전 ‘${l}’ 작업을 되돌릴까요?`,
     closeFirstConnect:'먼저 연결하세요', closeLoadInv:'객실 정보를 먼저 불러오세요(연결/날짜 로드)',
     closureManageTitle:'🔒 객실 폐쇄(잠금) 관리',
     closureDesc:'특정 객실을 <b>기간 지정</b>해 닫습니다(예: 대표님 사용 중·점검). 폐쇄 기간엔 자동·수기 배정이 막히고 카드에 사유가 표시됩니다. <b>종료일 포함</b>.',
@@ -818,6 +825,9 @@ const L={
     clearAllNone:'No assignments to clear', clearAllScopeAll:'whole loaded range',
     clearAllConfirm:(scope,n)=>`Release all ${n} assignments in ${scope}?\n(All manual + auto assignments released)`,
     clearAllFail:e=>'Clear all failed: '+e, clearedN:n=>`Released ${n} assignments`,
+    undoBulkBtn:l=>`↩ Undo ‘${l}’`, undoBulkNone:'No recent bulk action to undo',
+    undoBulkDone:l=>`Undid ‘${l}’`, undoBulkFail:e=>'Undo failed: '+e,
+    undoBulkConfirm:l=>`Undo the last ‘${l}’?`,
     closeFirstConnect:'Connect first', closeLoadInv:'Load room info first (connect / load date)',
     closureManageTitle:'🔒 Room closure (lock) management',
     closureDesc:'Close a specific room for a <b>specified period</b> (e.g., chairman in use · inspection). During closure, auto/manual assignment is blocked and the reason shows on the card. <b>End date inclusive</b>.',
@@ -862,6 +872,7 @@ function applyStaticRoom(){
   set('#btn-clear-all','textContent','btnClearAll'); set('#btn-clear-all','title','btnClearAllT');
   set('#btn-conflicts','textContent','btnConflicts'); set('#btn-conflicts','title','btnConflictsT');
   set('#btn-closure','textContent','btnClosure'); set('#btn-closure','title','btnClosureT');
+  refreshUndoBulkBtn();   // 되돌리기 버튼 라벨도 언어 토글에 맞춰 갱신
   set('#room-search','placeholder','roomSearchPh');
   set('#view-card','textContent','viewCard'); set('#view-timeline','textContent','viewTimeline'); set('#view-timeline','title','viewTimelineT');
   set('#hist-q','placeholder','histQph'); set('#hist-search','textContent','histSearch');
@@ -935,19 +946,53 @@ function toastUndo(msg,onUndo){
   $('#toast').appendChild(t);
   setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},6000);
 }
-// 해제했던 배정(snapshot 배열)을 같은 방·기간으로 다시 삽입
-async function restoreRooms(snaps){
-  if(!supa || !snaps || !snaps.length) return;
+// 스냅샷 행들을 같은 방·기간으로 DB 재삽입(렌더/토스트 없음) — 정원 트리거가 검증.
+async function _reinsertRooms(snaps){
+  if(!supa || !snaps || !snaps.length) return null;
   const rows=snaps.map(s=>({ event_seq:s.event_seq, member_id:s.member_id, inventory_id:s.inventory_id,
     facility:s.facility, room_type:s.room_type, room_no:s.room_no,
     check_in:s.check_in, check_out:s.check_out, assigned_pax:s.assigned_pax, assign_source:s.assign_source }));
   const {data,error}=await supa.from('rooms').insert(rows).select();
-  if(error){ toast(tx('undoFail',error.message),'err'); return; }
+  if(error) return error;
   (data||[]).forEach(r=>state.rooms.push(r));
+  return null;
+}
+// 해제했던 배정(snapshot 배열)을 같은 방·기간으로 다시 삽입(단건 undo 토스트용 — 렌더/토스트 포함)
+async function restoreRooms(snaps){
+  if(!supa || !snaps || !snaps.length) return;
+  const error=await _reinsertRooms(snaps);
+  if(error){ toast(tx('undoFail',error.message),'err'); return; }
   rebuildAssignMap(); render();
   toast(tx('undone'),'ok');
 }
 function _roomSnap(row){ if(!row) return null; const s={...row}; delete s.id; return s; }
+
+// ── 직전 1회 대량작업 되돌리기(전체 비우기·층 비우기·월별 자동배정) ──
+//   동시편집 환경이라 무한 undo는 충돌 위험 → '직전 1회'만. 다음 대량작업/새로고침 시 무효화.
+//   undo는 각 작업이 자기 복원 클로저(undo)를 담아둔다(전체/층=재삽입, 자동=현 auto 삭제 후 옛 auto 재삽입).
+let _lastBulk=null;
+function setLastBulk(label, undoFn){ _lastBulk={label, undo:undoFn}; refreshUndoBulkBtn(); }
+function clearLastBulk(){ _lastBulk=null; refreshUndoBulkBtn(); }
+function refreshUndoBulkBtn(){
+  const b=$('#btn-undo-bulk'); if(!b) return;
+  if(_lastBulk){ b.style.display=''; b.textContent=tx('undoBulkBtn',_lastBulk.label); }
+  else { b.style.display='none'; }
+}
+async function undoLastBulk(){
+  if(!_lastBulk){ toast(tx('undoBulkNone'),'warn'); return; }
+  const lb=_lastBulk;
+  if(!confirm(tx('undoBulkConfirm',lb.label))) return;
+  const b=$('#btn-undo-bulk'); if(b) b.disabled=true;
+  try{
+    await lb.undo();
+    clearLastBulk();
+    rebuildAssignMap(); render();
+    toast(tx('undoBulkDone',lb.label),'ok');
+    logAssign('되돌리기', `직전 ‘${lb.label}’ 작업 되돌림`);
+  }catch(e){ toast(tx('undoBulkFail',e.message||e),'err'); }
+  finally{ if(b) b.disabled=false; }
+}
+
 function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
 
 // ── 날짜/통계 헬퍼 ──
@@ -1118,6 +1163,7 @@ async function loadDay(){
     const rr=await pagedInSeq('rooms','*',seqs);
     if(rr.error){toast(tx('roomLoadFail',rr.error.message),'err');return;}
     state.rooms=rr.data||[];
+    clearLastBulk();   // 새로 불러오면 직전 스냅샷은 무효(다른 상태 기준이라 되돌리기 의미 없음)
     const mm=await pagedInSeq('guest_members','id,event_seq,seq_in_team,name_kr,name_en,is_rep,member_grade,member_class,member_div,actual_dep,actual_dep_reason',seqs);
     if(mm.error){toast(tx('rosterLoadFail',mm.error.message),'warn');}
     else (mm.data||[]).forEach(x=>{(state.members[x.event_seq]=state.members[x.event_seq]||[]).push(x);});
@@ -2251,6 +2297,7 @@ async function autoAssign(){
   try{
     // 0) 이동 추적용 — 재배치 '전' 각 인원의 방을 스냅샷(어디서→어디로 기록)
     const _beforeRoom={}; state.rooms.forEach(r=>{ if(r.member_id!=null && _beforeRoom[r.member_id]==null) _beforeRoom[r.member_id]={f:r.facility,no:r.room_no}; });
+    const _autoBefore=state.rooms.filter(r=>r.assign_source==='auto').map(_roomSnap);  // 되돌리기용(재실행 전 auto 배정)
     // 1) 기존 auto 배정 제거(재실행=재정렬, 수기 배정 보호)
     const autoIds=state.rooms.filter(r=>r.assign_source==='auto').map(r=>r.id);
     if(autoIds.length){
@@ -2345,6 +2392,12 @@ async function autoAssign(){
       _moves.push(`${nm}(${gc}) ${b.f||''} ${b.no} → ${r.facility||''} ${r.room_no}`);
     });
     if(_moves.length) logMoves(_moves);
+    // 직전 1회 되돌리기: 현재 auto 배정을 지우고 재실행 전 auto 배정으로 복원
+    setLastBulk(tx('btnAuto'), async()=>{
+      const curAuto=state.rooms.filter(r=>r.assign_source==='auto').map(r=>r.id);
+      if(curAuto.length){ const e=await deleteRoomsByIds(curAuto); if(e) throw new Error(e.message); state.rooms=state.rooms.filter(r=>r.assign_source!=='auto'); }
+      const e2=await _reinsertRooms(_autoBefore); if(e2) throw new Error(e2.message);
+    });
     toast(tx('autoDone',pending.length,holds.length), holds.length?'warn':'ok');
     if(holds.length) console.warn(tx('autoHoldsLog',holds.length)+holds.join('\n'));
   }finally{ btn.disabled=false; btn.textContent=old; }
@@ -2477,10 +2530,12 @@ async function clearZone(fac,zone){
   const targets=state.rooms.filter(r=>zoneInvIds.has(r.inventory_id));
   if(!targets.length){toast(tx('zoneNoAssign',zone),'warn');return;}
   if(!confirm(tx('zoneClearConfirm',zone,targets.length))) return;
+  const snap=targets.map(_roomSnap);   // 되돌리기용(삭제 전 스냅샷)
   const ids=targets.map(r=>r.id);
   const error=await deleteRoomsByIds(ids);
   if(error){toast(tx('zoneClearFail',error.message),'err');return;}
   state.rooms=state.rooms.filter(r=>!ids.includes(r.id));
+  setLastBulk(`${fac} ${zone}`, async()=>{ const e=await _reinsertRooms(snap); if(e) throw new Error(e.message); });
   rebuildAssignMap(); render();
   toast(tx('zoneCleared',zone,ids.length),'ok');
 }
@@ -2495,10 +2550,12 @@ async function clearAllAssignments(){
   if(!target.length){toast(tx('clearAllNone'),'warn');return;}
   const scope = placeSel.size===0 ? tx('clearAllScopeAll') : [...placeSel].join('·');
   if(!confirm(tx('clearAllConfirm',scope,target.length))) return;
+  const snap=target.map(_roomSnap);   // 되돌리기용(삭제 전 스냅샷)
   const ids=target.map(r=>r.id);
   const error=await deleteRoomsByIds(ids);
   if(error){toast(tx('clearAllFail',error.message),'err');return;}
   state.rooms=state.rooms.filter(r=>!ids.includes(r.id));
+  setLastBulk(tx('btnClearAll'), async()=>{ const e=await _reinsertRooms(snap); if(e) throw new Error(e.message); });   // 직전 1회 되돌리기(재삽입)
   rebuildAssignMap(); render();
   toast(tx('clearedN',ids.length),'ok');
 }
@@ -2923,6 +2980,7 @@ function setView(m){
 $('#view-card').addEventListener('click',()=>setView('card'));
 $('#view-timeline').addEventListener('click',()=>setView('timeline'));
 $('#btn-clear-all').addEventListener('click',clearAllAssignments);
+$('#btn-undo-bulk').addEventListener('click',undoLastBulk);
 $('#btn-conflicts').addEventListener('click',checkConflicts);
 $('#btn-closure').addEventListener('click',openClosureModal);
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') cancelSplit(); });
