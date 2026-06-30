@@ -2062,6 +2062,20 @@ async function assign(seq,inv){
 // ════════════════════════════════════════════════════════════════════════
 const DELUXE_TYPES=['디럭스더블트윈','디럭스트윈']; // 우선순위 순(최상급 먼저)
 
+// 예약 순서(선착) 키 = '예약일'(행사번호 접두 YYMMDD) 기준.
+//  ⚠ 검증결과(2026-06): 예약번호(event_seq·행사번호 접미 순번)는 예약일과 상관 0(corr≈-0.08) → 시간순이 아님.
+//   행사번호 접두 YYMMDD 가 예약일(99.1%가 출발일보다 앞)이라 '예약 빠른 순'은 이 날짜로만 판단 가능.
+//   접미 순번은 동일 예약일 내 안정정렬용 보조키. event_no 없으면 event_seq 로 폴백(결정성 유지).
+function resvRank(eno, fallbackSeq){
+  const m=String(eno||'').match(/^(\d{6})-(\d+)$/);
+  if(!m) return (fallbackSeq||0);
+  return (20000000+parseInt(m[1],10))*1000000 + parseInt(m[2],10);  // 20YYMMDD*1e6 + 접미
+}
+function resvRankBySeq(seq){
+  const g=state.guests.find(x=>x.event_seq===seq);
+  return resvRank(g&&g.event_no, seq);
+}
+
 // 회원 판정·등급 라벨은 공유 모듈(saizen-core.js)이 단일 진실원 — 여기선 위임만.
 //   회원 판정 = 고객등급(T)·회원권구분(V)·회원구분(U) 3컬럼 OR(회원 우선).
 function isMember(m){ return SZCore.isMember(m); }
@@ -2261,7 +2275,7 @@ async function autoAssign(){
 
     const manual=assignedMemberSet();  // 수기로 이미 배정된 사람(보호)
     const pending=[], holds=[];
-    const teams=[...state.guests].sort((a,b)=>a.event_seq-b.event_seq); // 예약순(선착)
+    const teams=[...state.guests].sort((a,b)=>resvRank(a.event_no,a.event_seq)-resvRank(b.event_no,b.event_seq)); // 예약순(선착)=예약일(행사번호 접두) 기준
 
     for(const g of teams){
       const route=autoRoute(g);
@@ -2348,7 +2362,7 @@ function planResolve(rowsIn, cap){
     if(worstD===null) break;                       // 모든 밤 정원 이하
     const cand=rows.filter(r=>!r._dropped && r.assign_source==='auto' && r.check_in<=worstD && worstD<r.check_out);
     if(!cand.length) break;                         // auto 없음 → 수기만 남음(stuck)
-    cand.sort((a,b)=>(b.event_seq||0)-(a.event_seq||0));   // 늦은 예약(낮은 우선순위) 먼저 제거
+    cand.sort((a,b)=>resvRankBySeq(b.event_seq)-resvRankBySeq(a.event_seq));   // 늦은 예약(낮은 우선순위) 먼저 제거 = 예약일 늦은 순
     cand[0]._dropped=true; drop.push(cand[0].id);
   }
   const stuck = nights().some(d=>used(d)>cap);
