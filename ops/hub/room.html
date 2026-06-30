@@ -474,7 +474,7 @@ const L={
     btnClearAll:'全クリア', btnClearAllT:'読み込んだ範囲の全割当を解除(手動・自動すべて)',
     btnConflicts:'⚠ 競合チェック', btnConflictsT:'定員超過(重複)の客室をスキャン → 超過autoを整理(手動・分割は保護)',
     btnClosure:'🔒 客室閉鎖', btnClosureT:'特定の客室を期間指定で閉鎖(ロック) — 代表使用中・点検など。閉鎖期間は割当不可',
-    roomSearchPh:'🔎 割当検索 — タグコード・氏名・英文名・イベント番号',
+    roomSearchPh:'🔎 人員検索 — タグコード・氏名・英文名・イベント番号(配置・未配置)',
     viewCard:'カード', viewTimeline:'タイムライン', viewTimelineT:'客室×日付の占有を一覧',
     histTitle:'🕘 客室割当 変更履歴', histTitleSub:'— 誰が・いつ・どこへ (自動割当=要約1件)',
     histQph:'氏名・部屋番号・グループコード 検索', histSearch:'検索',
@@ -606,7 +606,7 @@ const L={
     btnClearAll:'전체 비우기', btnClearAllT:'불러온 범위의 모든 배정 해제(수기·자동 전부)',
     btnConflicts:'⚠ 충돌 점검', btnConflictsT:'정원 초과(겹침) 방을 스캔 → 초과 auto 배정을 정리(수기·분할은 보호)',
     btnClosure:'🔒 객실 폐쇄', btnClosureT:'특정 객실을 기간 지정해 폐쇄(잠금) — 대표님 사용 중·점검 등. 폐쇄 기간엔 배정 불가',
-    roomSearchPh:'🔎 배정 검색 — 태그코드·한글명·영문명·행사번호',
+    roomSearchPh:'🔎 인원 검색 — 태그코드·한글명·영문명·행사번호 (배정·미배정)',
     viewCard:'카드', viewTimeline:'타임라인', viewTimelineT:'객실×날짜 점유 한눈에',
     histTitle:'🕘 방배정 변경 이력', histTitleSub:'— 누가·언제·어디로 (자동배정=요약 1건)',
     histQph:'이름·방번호·그룹코드 검색', histSearch:'검색',
@@ -731,7 +731,7 @@ const L={
     btnClearAll:'Clear all', btnClearAllT:'Release all assignments in the loaded range (manual + auto)',
     btnConflicts:'⚠ Conflict check', btnConflictsT:'Scan capacity-over (overlapping) rooms → resolve over-capacity auto assignments (manual/split protected)',
     btnClosure:'🔒 Room closure', btnClosureT:'Close (lock) a specific room for a period — in use by chairman / inspection, etc. No assignment during closure',
-    roomSearchPh:'🔎 Search assignment — tag code · Korean name · English name · event no.',
+    roomSearchPh:'🔎 Search people — tag code · Korean name · English name · event no. (assigned & unassigned)',
     viewCard:'Card', viewTimeline:'Timeline', viewTimelineT:'Room × date occupancy at a glance',
     histTitle:'🕘 Room assignment change history', histTitleSub:'— who · when · where (auto-assign = 1 summary)',
     histQph:'Search name · room no. · group code', histSearch:'Search',
@@ -3013,15 +3013,36 @@ try{ applyStaticRoom(); }catch(e){}
     hits.sort((a,b)=>String(a.r.check_in||'').localeCompare(String(b.r.check_in||''))
       || String(a.r.facility||'').localeCompare(String(b.r.facility||''))
       || String(a.r.room_no||'').localeCompare(String(b.r.room_no||'')));
-    const total=hits.length, shown=hits.slice(0,40);
-    cnt.textContent = total ? `${total}건${total>40?' · 40건 표시':''}` : '결과 없음';
-    box.innerHTML = shown.length ? shown.map(h=>{ const r=h.r;
+    // 미배정 인원도 검색 — state.members(전체 명단) 중 방이 없는 사람
+    const assigned=new Set((state.rooms||[]).map(r=>r.member_id));
+    const unhits=[];
+    Object.keys(state.members||{}).forEach(seq=>{
+      const g=(state.guests||[]).find(x=>String(x.event_seq)===String(seq)); const dep=(g&&g.dep)||'';
+      (state.members[seq]||[]).forEach(m=>{
+        if(assigned.has(m.id)) return;
+        const nameKr=m.name_kr||'', nameEn=m.name_en||'';
+        const tag=personTag(Number(seq), m.seq_in_team||1)||'';
+        const gcode=teamGroupCode(Number(seq))||''; const eno=String(evNo(Number(seq))||'');
+        if((nameKr+' '+nameEn+' '+tag+' '+gcode+' '+eno).toLowerCase().indexOf(q)>=0)
+          unhits.push({nameKr,nameEn,tag,gcode,eno,dep,eco:m.actual_dep||''});
+      });
+    });
+    unhits.sort((a,b)=>String(a.dep).localeCompare(String(b.dep))||String(a.nameKr).localeCompare(String(b.nameKr)));
+    const total=hits.length+unhits.length;
+    cnt.textContent = total ? `${total}건${total>40?' · 40건씩 표시':''}` : '결과 없음';
+    const aHtml=hits.slice(0,40).map(h=>{ const r=h.r;
       return `<div class="rs-item" data-inv="${r.inventory_id}" data-date="${r.check_in||''}">
         <b>${_lsEsc(h.nameKr||h.gcode||'-')}</b>${h.nameEn?`<span class="rs-en">${_lsEsc(h.nameEn)}</span>`:''}
         <span class="rs-tag">${_lsEsc(h.tag||h.gcode)}</span>${h.eno?`<span class="rs-eno">#${_lsEsc(h.eno)}</span>`:''}
         <span class="rs-loc">→ ${_lsEsc(r.facility||'')} ${_lsEsc(r.room_no||'')} · ${fmtMD(r.check_in)}~${fmtMD(r.check_out)}</span>
-      </div>`;
-    }).join('') : '<div class="rs-empty">배정된 인원 중 일치하는 사람이 없습니다.</div>';
+      </div>`; }).join('');
+    const uHtml=unhits.slice(0,40).map(h=>
+      `<div class="rs-item" data-date="${h.dep}" data-uns="1">
+        <b>${_lsEsc(h.nameKr||h.gcode||'-')}</b>${h.nameEn?`<span class="rs-en">${_lsEsc(h.nameEn)}</span>`:''}
+        <span class="rs-tag">${_lsEsc(h.tag||h.gcode)}</span>${h.eno?`<span class="rs-eno">#${_lsEsc(h.eno)}</span>`:''}
+        <span class="rs-loc" style="color:#9a6b00">⚠ 미배정${h.eco?` · 🛫${fmtMD(h.eco)}`:''} · ${fmtMD(h.dep)} 도착</span>
+      </div>`).join('');
+    box.innerHTML = (aHtml+uHtml) || '<div class="rs-empty">일치하는 사람이 없습니다.</div>';
     box.classList.add('on');
   }
   inp.addEventListener('input',()=>{ clearTimeout(timer); timer=setTimeout(run,120); });
