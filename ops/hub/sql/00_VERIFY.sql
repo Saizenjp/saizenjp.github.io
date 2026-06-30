@@ -124,6 +124,7 @@ from (
   union all select 57,'57 시즈온천','shizu_onsen',          case when to_regclass('public.shizu_onsen') is not null then '✅ 있음' else '❌ 없음 (57)' end
   union all select 58,'58 별주청구','charges.link_ref',      case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='charges' and column_name='link_ref') then '✅ 있음' else '❌ 없음 (58)' end
   union all select 58,'58 별주청구','dinner_addon 트리거',   case when exists(select 1 from pg_trigger where tgname='trg_dinner_addon_charge') then '✅ 있음' else '❌ 없음 (58)' end
+  union all select 59,'59 싱글청구','single_charge 트리거',  case when exists(select 1 from pg_trigger where tgname='trg_single_charge_charge') then '✅ 있음' else '❌ 없음 (59)' end
 ) t
 order by ord, 항목;
 
