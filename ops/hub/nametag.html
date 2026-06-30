@@ -43,6 +43,15 @@
   .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
   .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
   .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  /* 라벨지 칸 미니 지도(3열×8행 = 24면, 왼→오·위→아래) */
+  .slot-map{display:grid;grid-template-columns:repeat(3,32px);gap:3px}
+  .slot-map .sm-cell{width:32px;height:23px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:var(--mono);border:1px solid var(--border2);border-radius:4px;background:var(--surface);color:var(--text2);cursor:pointer;transition:.1s}
+  .slot-map .sm-cell:hover{border-color:var(--accent)}
+  .slot-map .sm-cell.used{background:var(--surface3);color:var(--muted);text-decoration:line-through}
+  .slot-map .sm-cell.use{background:var(--accentSoft);color:var(--accent);border-color:#b4cda0}
+  .slot-map .sm-cell.start{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .slot-legend{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted);font-weight:600}
+  .slot-legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:middle}
   /* 미리보기(축소) 라벨 그리드 */
   .prev-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-top:8px}
   .prev-cell{border:1px solid var(--border);border-radius:6px;padding:7px 9px;background:var(--surface2);text-align:center}
@@ -99,6 +108,7 @@ const L={
     preConn:'接続すると表示されます。', loginNeedTitle:'ログインが必要です。', loginNeedSub:'中央のログインカードでログインしてから再接続してください。',
     monFilter:'月選択 · フィルター', origin:'出発地', all:'全体', oIcn:'ICN(仁川)', oPus:'PUS(釜山)',
     startSlot:'開始マス', startSlotT:'ラベル用紙の開始位置(1〜24) — 使いかけのラベル用紙の続き印刷',
+    slotMap:'用紙のマス', slotMapHint:'クリックで開始マス指定 ・ 1=左上 → 右 → 下(3列×8行)', slotUsed:'使用済み', slotPrint:'印刷される', slotStart:'開始マス',
     printBtn:'🖨 ラベル印刷', date:'日付', lodging:'宿泊施設',
     deskNote:'選択した月に<b>入国(出発日)</b>するチームの個人名簿。日付・宿泊施設・出発地で絞り込み、<b>日付→ICN/PUS→宿泊施設</b>の順に並べてラベル(1名につき1枚)を出力します。',
     preview:'プレビュー', loading:'読み込み中…', noMonthData:'当月データなし', loadFail:'読み込み失敗',
@@ -112,6 +122,7 @@ const L={
     preConn:'연결 후 표시됩니다.', loginNeedTitle:'로그인이 필요합니다.', loginNeedSub:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
     monFilter:'월 선택 · 필터', origin:'출발지', all:'전체', oIcn:'ICN(인천)', oPus:'PUS(부산)',
     startSlot:'시작칸', startSlotT:'라벨지 시작 위치(1~24) — 쓰던 라벨지 이어쓰기',
+    slotMap:'라벨지 칸', slotMapHint:'클릭=시작칸 지정 ・ 1=좌상단 → 오른쪽 → 아래(3열×8행)', slotUsed:'이미 쓴 칸', slotPrint:'인쇄될 칸', slotStart:'시작칸',
     printBtn:'🖨 라벨 인쇄', date:'날짜', lodging:'숙소',
     deskNote:'선택 월에 <b>입국(출발일)</b>하는 팀의 개인 명단. 날짜·숙소·출발지로 거르고, <b>날짜→ICN/PUS→숙소</b> 순으로 정렬해 라벨(개인 1명당 1장)을 출력합니다.',
     preview:'미리보기', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', loadFail:'로드 실패',
@@ -125,6 +136,7 @@ const L={
     preConn:'Shown after connecting.', loginNeedTitle:'Login required.', loginNeedSub:'Log in via the central login card, then reconnect.',
     monFilter:'Month · Filter', origin:'Origin', all:'All', oIcn:'ICN (Incheon)', oPus:'PUS (Busan)',
     startSlot:'Start cell', startSlotT:'Start position on the label sheet (1–24) — continue on a partly-used sheet',
+    slotMap:'Sheet cells', slotMapHint:'Click to set the start cell ・ 1 = top-left → right → down (3 cols × 8 rows)', slotUsed:'Used', slotPrint:'Will print', slotStart:'Start',
     printBtn:'🖨 Print labels', date:'Date', lodging:'Lodging',
     deskNote:'Personal roster of teams <b>arriving (departure date)</b> in the selected month. Filter by date / lodging / origin, sorted by <b>date → ICN/PUS → lodging</b>, and print one label per person.',
     preview:'Preview', loading:'Loading…', noMonthData:'No data for this month', loadFail:'Load failed',
@@ -188,6 +200,14 @@ function renderUI(){
         <span class="cnt" id="stat"></span>
         <button class="btn" id="btn-print" type="button" disabled>${tx('printBtn')}</button>
       </div>
+      <div class="row" style="margin-top:10px;align-items:flex-start">
+        <span class="cnt" style="min-width:46px">${tx('slotMap')}</span>
+        <div id="slot-map" class="slot-map"></div>
+        <div class="slot-legend">
+          <span>${tx('slotMapHint')}</span>
+          <span><i style="background:var(--accent)"></i>${tx('slotStart')} &nbsp; <i style="background:var(--accentSoft);border:1px solid #b4cda0"></i>${tx('slotPrint')} &nbsp; <i style="background:var(--surface3)"></i>${tx('slotUsed')}</span>
+        </div>
+      </div>
       <div class="row" style="margin-top:10px">
         <span class="cnt" style="min-width:46px">${tx('date')}</span>
         <div id="daychips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
@@ -205,7 +225,8 @@ function renderUI(){
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
   $('#btn-print').addEventListener('click',printLabels);
-  $('#start-slot').addEventListener('input',e=>{ START=Math.max(1,Math.min(24,parseInt(e.target.value,10)||1)); });
+  $('#start-slot').addEventListener('input',e=>{ START=Math.max(1,Math.min(24,parseInt(e.target.value,10)||1)); renderSlotMap(); });
+  renderSlotMap();
   document.querySelectorAll('.chip[data-o]').forEach(c=>c.addEventListener('click',()=>{
     document.querySelectorAll('.chip[data-o]').forEach(x=>x.classList.remove('on'));
     c.classList.add('on'); ORIGIN=c.dataset.o; renderPreview();
@@ -312,6 +333,20 @@ function renderPreview(){
       <div class="prev-io">IN ${c.port} ${esc(c.dep)} / OUT ${c.port} ${esc(c.arr)}</div>
     </div>`).join('')+'</div>'
     +(list.length>120?`<div class="cnt" style="margin-top:8px">${tx('previewCap')(list.length)}</div>`:'');
+}
+
+// 라벨지 칸 미니 지도 — 24면(3열×8행). 클릭=시작칸 지정. 1=좌상단→오른쪽→아래.
+function renderSlotMap(){
+  const box=$('#slot-map'); if(!box) return;
+  let h='';
+  for(let i=1;i<=24;i++){
+    const cls = i<START ? 'used' : (i===START ? 'start' : 'use');
+    h+=`<div class="sm-cell ${cls}" data-slot="${i}" title="${i}">${i}</div>`;
+  }
+  box.innerHTML=h;
+  box.querySelectorAll('[data-slot]').forEach(c=>c.addEventListener('click',()=>{
+    START=parseInt(c.dataset.slot,10)||1; const inp=$('#start-slot'); if(inp) inp.value=START; renderSlotMap();
+  }));
 }
 
 // Askul AR9-0796 70×33.9mm 24면 라벨 인쇄창
