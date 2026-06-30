@@ -3,7 +3,7 @@
 -- ----------------------------------------------------------------------------
 --  목적: 회원/비회원 방문객 수를 일·주·월·연 단위로 집계 + 성별·나이대·개인회원별.
 --    골프장 협회 보고 / 현청(熊本県) 인원 조사 보고용.
---  권한: admin 또는 user_access.areas 에 'stats' 보유자(exec_stats와 동일 영역).
+--  권한: admin 또는 user_access.areas 에 'report' 보유자(경영 통계 'stats'와 분리된 영역).
 --  계산 기준:
 --    · 방문 = passengers 1인 1체류, 현지 체크인(bookings.dep_date)이 기간 내 = 1방문(연인원).
 --    · 회원판정 = member_grade·member_class·member_div 3컬럼 OR(하나라도 회원이면 회원) — 앱과 일치.
@@ -21,8 +21,8 @@ declare
   v_role text; v_areas text[]; v_fmt text; res jsonb;
 begin
   select role, areas into v_role, v_areas from user_access where user_id = auth.uid() and active;
-  if not (coalesce(v_role,'') = 'admin' or 'stats' = any(coalesce(v_areas,'{}'))) then
-    raise exception '권한 없음(방문 통계 — 관리자 또는 stats 권한자 전용)';
+  if not (coalesce(v_role,'') = 'admin' or 'report' = any(coalesce(v_areas,'{}'))) then
+    raise exception '권한 없음(방문 통계 — 관리자 또는 report 권한자 전용)';
   end if;
   if p_from is null or p_to is null or p_to < p_from then
     raise exception '기간이 올바르지 않습니다';

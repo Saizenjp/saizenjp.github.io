@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Yamanami 운영 관리 · 방문 통계</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
+    --border:#e3e6ea; --border2:#cdd2d8;
+    --text:#1f2937; --text2:#525b66; --muted:#8b919b;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --blue:#2c5078;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none}
+  .navhome:hover{text-decoration:underline}
+  .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .hint{font-size:11px;color:var(--muted)}
+  .ctrlbar{padding:11px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+  .ctrlbar label{font-size:12px;color:var(--text2);font-weight:700}
+  .chip{font-size:12px;font-weight:700;padding:6px 13px;border-radius:99px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer}
+  .chip:hover{border-color:var(--accent)}
+  .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  main{padding:16px 20px 80px;max-width:1240px;margin:0 auto}
+  .rangelbl{font-size:12.5px;color:var(--text2);font-weight:700;margin:2px 0 12px}
+  .rangelbl b{color:var(--accent)}
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:8px}
+  @media(max-width:620px){.kpis{grid-template-columns:repeat(1,1fr)}}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 15px}
+  .kpi .l{font-size:11px;color:var(--text2);font-weight:700}
+  .kpi .v{font-size:21px;font-weight:800;color:var(--accent);font-family:var(--mono);margin-top:3px;letter-spacing:-.02em}
+  .kpi .v small{font-size:12px;color:var(--text2);font-weight:700;font-family:inherit}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr}}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:15px 17px}
+  .panel h3{font-size:13.5px;font-weight:800;color:var(--accent);margin-bottom:11px;display:flex;align-items:center;gap:8px}
+  .panel h3 .hint{margin-left:auto}
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th,table.t td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--border)}
+  table.t th:first-child,table.t td:first-child{text-align:left}
+  table.t th{font-size:11px;color:var(--text2);font-weight:700;background:var(--surface2)}
+  table.t td.mono{font-family:var(--mono);font-weight:700}
+  .note{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5}
+  .deny{padding:30px;text-align:center;color:var(--muted)}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:50;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:#2b2f27;color:#fff;font-size:13px;font-weight:600;padding:9px 16px;border-radius:9px;box-shadow:0 6px 20px rgba(0,0,0,.2)}
+  .toast.ok{background:var(--ok)} .toast.err{background:var(--err)} .toast.warn{background:var(--accent2)}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.90">
+</head>
+<body data-so-area="report">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">방문 통계</span>
+  <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connhint"></span>
+</div>
+
+<div class="ctrlbar">
+  <label id="t-period">기간</label>
+  <input class="inp" id="d-from" type="date" style="width:150px">
+  <span style="color:var(--muted)">~</span>
+  <input class="inp" id="d-to" type="date" style="width:150px">
+  <button class="btn sm" id="btn-run" type="button">조회</button>
+  <span style="width:8px"></span>
+  <button class="chip" id="t-q1" data-q="thismonth" type="button">이번 달</button>
+  <button class="chip" id="t-q2" data-q="thisyear" type="button">올해</button>
+  <button class="chip" id="t-q3" data-q="lastyear" type="button">작년</button>
+  <button class="chip" id="t-q4" data-q="last12" type="button">최근 12개월</button>
+  <span style="flex:1"></span>
+  <span class="hint" id="t-vGran"></span>
+  <button class="chip vg" data-g="day" type="button" id="t-vgDay"></button>
+  <button class="chip vg" data-g="week" type="button" id="t-vgWeek"></button>
+  <button class="chip vg on" data-g="month" type="button" id="t-vgMonth"></button>
+  <button class="chip vg" data-g="year" type="button" id="t-vgYear"></button>
+</div>
+
+<main>
+  <div class="rangelbl" id="rangelbl"></div>
+  <div id="vcontent"><div class="deny" id="t-empty">기간을 선택하고 「조회」를 누르세요.</div></div>
+</main>
+
+<div id="toast"></div>
+<script src="../assets/saizen-ops.js?v=14.90"></script>
+<script>
+const $=s=>document.querySelector(s);
+let supa=null, VDATA=null, VGRAN='month';
+
+const L={
+  ja:{ navHome:'ホーム', step:'訪問統計', connIdle:'未接続', connecting:'接続中…', connOk:'接続済', connFail:'接続失敗', connect:'接続', connectedBtn:'✓ 接続済',
+    connHint:'ゴルフ場協会・県の人員調査報告用。会員/非会員の訪問者数を集計。読み取り専用。',
+    period:'期間', run:'照会', qThisMonth:'今月', qThisYear:'今年', qLastYear:'昨年', qLast12:'直近12ヶ月',
+    emptyHint:'期間を選んで「照会」を押してください。', loading:'集計中…', loadFail:'集計に失敗', noAuth:'権限がありません(管理者またはreport権限者のみ)。',
+    uPpl:'名', member:'会員', nonmember:'一般',
+    vGran:'単位', vgDay:'日', vgWeek:'週', vgMonth:'月', vgYear:'年',
+    vTotal:'延べ訪問', vGender:'性別', vMale:'男', vFemale:'女', vUnknown:'不明',
+    vAge:'年代別', v70plus:'70代+', vBandSuffix:'代', vSeries:'期間別 推移', thBucket:'期間',
+    vByMember:'会員別 訪問', thName:'氏名', thBirth:'生年月日', thGrade:'等級', thVisits:'訪問数',
+    vNote:'※ 訪問=同行者1人1滞在(現地チェックインdep基準)=1延べ訪問。会員判定=顧客等級・会員権区分・会員区分の3列OR。年代=満年齢。営業日報の韓国メンバー/韓国ビジター(宿泊)に対応。' },
+  ko:{ navHome:'홈', step:'방문 통계', connIdle:'미연결', connecting:'연결 중…', connOk:'연결됨', connFail:'연결 실패', connect:'연결', connectedBtn:'✓ 연결됨',
+    connHint:'골프장 협회·현청 인원조사 보고용. 회원/비회원 방문객 수 집계. 읽기 전용.',
+    period:'기간', run:'조회', qThisMonth:'이번 달', qThisYear:'올해', qLastYear:'작년', qLast12:'최근 12개월',
+    emptyHint:'기간을 선택하고 「조회」를 누르세요.', loading:'집계 중…', loadFail:'집계 실패', noAuth:'권한이 없습니다(관리자 또는 report 권한자만).',
+    uPpl:'명', member:'회원', nonmember:'일반',
+    vGran:'단위', vgDay:'일', vgWeek:'주', vgMonth:'월', vgYear:'년',
+    vTotal:'연인원(방문)', vGender:'성별', vMale:'남', vFemale:'여', vUnknown:'미상',
+    vAge:'나이대별', v70plus:'70대+', vBandSuffix:'대', vSeries:'기간별 추이', thBucket:'기간',
+    vByMember:'개인 회원별 방문', thName:'이름', thBirth:'생년월일', thGrade:'등급', thVisits:'방문수',
+    vNote:'※ 방문=일행 1인 1체류(현지 체크인 dep 기준)=1연인원. 회원판정=고객등급·회원권구분·회원구분 3컬럼 OR. 나이=만나이. 営業日報의 韓国メンバー/韓国ビジター(宿泊)에 대응.' },
+  en:{ navHome:'Home', step:'Visitor Stats', connIdle:'Not connected', connecting:'Connecting…', connOk:'Connected', connFail:'Connect failed', connect:'Connect', connectedBtn:'✓ Connected',
+    connHint:'For golf association / prefecture headcount reports. Member/non-member visitor counts. Read-only.',
+    period:'Period', run:'Run', qThisMonth:'This month', qThisYear:'This year', qLastYear:'Last year', qLast12:'Last 12 months',
+    emptyHint:'Pick a period and press Run.', loading:'Aggregating…', loadFail:'Aggregation failed', noAuth:'No permission (admin or report holders only).',
+    uPpl:' ppl', member:'Member', nonmember:'General',
+    vGran:'Unit', vgDay:'Day', vgWeek:'Week', vgMonth:'Month', vgYear:'Year',
+    vTotal:'Total visits', vGender:'Gender', vMale:'M', vFemale:'F', vUnknown:'Unknown',
+    vAge:'By age', v70plus:'70s+', vBandSuffix:'s', vSeries:'Trend by period', thBucket:'Period',
+    vByMember:'Visits by member', thName:'Name', thBirth:'Birth', thGrade:'Grade', thVisits:'Visits',
+    vNote:'※ Visit = 1 person-stay (on-site check-in dep) = 1 visit. Member = 3-column OR. Age at visit. Maps to 営業日報 Korean member/visitor (lodging).' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return (d[k]!==undefined?d[k]:(L.ja[k]!==undefined?L.ja[k]:k)); }
+function applyStatic(){
+  $('#t-step').textContent=tx('step');
+  $('#t-connhint').textContent=tx('connHint');
+  $('#t-period').textContent=tx('period');
+  $('#btn-run').textContent=tx('run');
+  $('#t-q1').textContent=tx('qThisMonth'); $('#t-q2').textContent=tx('qThisYear');
+  $('#t-q3').textContent=tx('qLastYear'); $('#t-q4').textContent=tx('qLast12');
+  $('#t-vGran').textContent=tx('vGran');
+  $('#t-vgDay').textContent=tx('vgDay'); $('#t-vgWeek').textContent=tx('vgWeek');
+  $('#t-vgMonth').textContent=tx('vgMonth'); $('#t-vgYear').textContent=tx('vgYear');
+  const emp=$('#t-empty'); if(emp) emp.textContent=tx('emptyHint');
+  if(!supa){ setConn(tx('connIdle')); $('#btn-connect').textContent=tx('connect'); }
+}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function num(n){return Number(n||0).toLocaleString('ja-JP');}
+function pad(n){return String(n).padStart(2,'0');}
+function iso(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function setRange(f,t){ $('#d-from').value=f; $('#d-to').value=t; }
+function quick(q){
+  const now=new Date(), y=now.getFullYear(), m=now.getMonth();
+  if(q==='thismonth'){ setRange(iso(new Date(y,m,1)), iso(new Date(y,m+1,0))); }
+  else if(q==='thisyear'){ setRange(y+'-01-01', y+'-12-31'); }
+  else if(q==='lastyear'){ setRange((y-1)+'-01-01', (y-1)+'-12-31'); }
+  else if(q==='last12'){ setRange(iso(new Date(y,m-11,1)), iso(new Date(y,m+1,0))); }
+  if(supa) run();
+}
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn(tx('connFail'),'err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent=tx('connecting');btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    await supa.auth.getSession();
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.classList.add('connected');btn.disabled=false;
+    if(!$('#d-from').value){ quick('thismonth'); } else { run(); }
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connect');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
+}
+async function run(){
+  if(!supa){ toast(tx('connFail'),'warn'); return; }
+  const f=$('#d-from').value, t=$('#d-to').value; if(!f||!t){ return; }
+  $('#rangelbl').innerHTML=`<b>${esc(f)}</b> ~ <b>${esc(t)}</b>`;
+  $('#vcontent').innerHTML=`<div class="deny">${tx('loading')}</div>`;
+  const {data,error}=await supa.rpc('visitor_stats',{p_from:f,p_to:t,p_gran:VGRAN});
+  if(error){ const msg=/권한|permission/i.test(error.message)?tx('noAuth'):(tx('loadFail')+': '+error.message);
+    $('#vcontent').innerHTML=`<div class="deny" style="color:var(--err)">${esc(msg)}</div>`; return; }
+  VDATA=data||{}; renderVisitor();
+}
+function ageLabel(b){ b=Number(b); if(b<0) return tx('vUnknown'); if(b>=70) return tx('v70plus'); return b+tx('vBandSuffix'); }
+function renderVisitor(){
+  const d=VDATA||{}; const tot=d.total||0, mem=d.member||0, non=d.nonmember||0;
+  const memPct=tot?Math.round(mem/tot*100):0;
+  const kpi=`<div class="kpis">
+    <div class="kpi"><div class="l">${tx('vTotal')}</div><div class="v">${num(tot)}<small>${tx('uPpl')}</small></div></div>
+    <div class="kpi"><div class="l">${tx('member')}</div><div class="v">${num(mem)}<small> ${memPct}%</small></div></div>
+    <div class="kpi"><div class="l">${tx('nonmember')}</div><div class="v">${num(non)}</div></div></div>`;
+  const g=d.gender||{};
+  const genTbl=`<div class="panel"><h3>${tx('vGender')}</h3><table class="t"><thead><tr><th></th><th>${tx('member')}</th><th>${tx('nonmember')}</th></tr></thead><tbody>
+    <tr><td>${tx('vMale')}</td><td class="mono">${num(g.m_mem)}</td><td class="mono">${num(g.m_non)}</td></tr>
+    <tr><td>${tx('vFemale')}</td><td class="mono">${num(g.f_mem)}</td><td class="mono">${num(g.f_non)}</td></tr>
+    ${g.u?`<tr><td>${tx('vUnknown')}</td><td colspan="2" class="mono">${num(g.u)}</td></tr>`:''}</tbody></table></div>`;
+  const ageRows=(d.by_age||[]).map(a=>`<tr><td>${esc(ageLabel(a.band))}</td><td class="mono">${num(a.member)}</td><td class="mono">${num(a.nonmember)}</td></tr>`).join('');
+  const ageTbl=`<div class="panel"><h3>${tx('vAge')}</h3><table class="t"><thead><tr><th></th><th>${tx('member')}</th><th>${tx('nonmember')}</th></tr></thead><tbody>${ageRows||`<tr><td colspan="3" style="text-align:center;color:var(--muted)">—</td></tr>`}</tbody></table></div>`;
+  const serRows=(d.series||[]).map(s=>`<tr><td>${esc(s.bucket)}</td><td class="mono">${num(s.total)}</td><td class="mono">${num(s.member)}</td><td class="mono">${num(s.nonmember)}</td></tr>`).join('');
+  const serTbl=`<div class="panel"><h3>${tx('vSeries')}</h3><table class="t"><thead><tr><th>${tx('thBucket')}</th><th>${tx('vTotal')}</th><th>${tx('member')}</th><th>${tx('nonmember')}</th></tr></thead><tbody>${serRows||`<tr><td colspan="4" style="text-align:center;color:var(--muted)">—</td></tr>`}</tbody></table></div>`;
+  const mm=(d.members||[]);
+  const mmRows=mm.map(m=>`<tr><td>${esc(m.name)}</td><td class="mono">${esc(m.birth||'')}</td><td>${esc(m.grade)}</td><td class="mono">${num(m.visits)}</td></tr>`).join('');
+  const mmTbl=`<div class="panel"><h3>${tx('vByMember')} <span class="hint">(${mm.length})</span></h3><table class="t"><thead><tr><th>${tx('thName')}</th><th>${tx('thBirth')}</th><th>${tx('thGrade')}</th><th>${tx('thVisits')}</th></tr></thead><tbody>${mmRows||`<tr><td colspan="4" style="text-align:center;color:var(--muted)">—</td></tr>`}</tbody></table></div>`;
+  $('#vcontent').innerHTML = kpi + `<div class="grid2">${genTbl}${ageTbl}</div>` + `<div class="grid2">${serTbl}${mmTbl}</div>` + `<div class="note">${tx('vNote')}</div>`;
+}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+
+window.onSaizenLangChange=function(){ applyStatic(); if(VDATA) renderVisitor(); };
+
+$('#btn-connect').addEventListener('click',connect);
+$('#btn-run').addEventListener('click',run);
+document.querySelectorAll('.chip[data-q]').forEach(b=>b.addEventListener('click',()=>quick(b.dataset.q)));
+document.querySelectorAll('.chip.vg').forEach(b=>b.addEventListener('click',()=>{ VGRAN=b.dataset.g; document.querySelectorAll('.chip.vg').forEach(x=>x.classList.toggle('on',x===b)); if(supa) run(); }));
+applyStatic();
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value) connect();
+</script>
+</body>
+</html>
