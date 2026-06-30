@@ -202,6 +202,45 @@
     return { breakfast: breakfast, lunchKind: lunchKind, dinner: dinner };
   }
 
+  // ── 한글 이름 → 가타카나 요미카타(후리가나) ── 표준 한일 음역 규칙(베스트에포트, 약 85~90%).
+  //   초성 자음행 + 중성 모음 합성 + 종성 받침. 비한글 문자는 그대로 통과.
+  var _KANA_ROW = {
+    k:['カ','キ','ク','ケ','コ'], n:['ナ','ニ','ヌ','ネ','ノ'], t:['タ','チ','ツ','テ','ト'],
+    r:['ラ','リ','ル','レ','ロ'], m:['マ','ミ','ム','メ','モ'], p:['パ','ピ','プ','ペ','ポ'],
+    s:['サ','シ','ス','セ','ソ'], '':['ア','イ','ウ','エ','オ'],
+    j:['ジャ','ジ','ジュ','ジェ','ジョ'], ch:['チャ','チ','チュ','チェ','チョ'], h:['ハ','ヒ','フ','ヘ','ホ']
+  };
+  var _CHO_ROW = ['k','k','n','t','t','r','m','p','p','s','s','','j','j','ch','k','t','p','h'];
+  // 중성 21: [타입(0평/1y/2w), 서브] · 평=모음인덱스(0a1i2u3e4o) · y/w=서브문자
+  var _JUNG = [[0,0],[0,3],[1,'a'],[1,'e'],[0,4],[0,3],[1,'o'],[1,'e'],[0,4],[2,'a'],[2,'e'],[2,'e'],[1,'o'],[0,2],[2,'o'],[2,'e'],[2,'i'],[1,'u'],[0,2],[0,1],[0,1]];
+  var _Y = {a:'ャ',u:'ュ',o:'ョ',e:'ェ'}, _YV = {a:'ヤ',u:'ユ',o:'ヨ',e:'イェ'};
+  var _W = {a:'ァ',i:'ィ',u:'ゥ',e:'ェ',o:'ォ'}, _WV = {a:'ワ',i:'ウィ',u:'ウ',e:'ウェ',o:'ウォ'};
+  var _JONG = ['','ク','ク','ク','ン','ン','ン','ッ','ル','ク','ム','ル','ル','ル','ル','ル','ム','プ','プ','ッ','ッ','ン','ッ','ッ','ク','ッ','プ','ッ'];
+  function hangulToKana(str) {
+    if (!str) return '';
+    var out = '';
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i) - 0xAC00;
+      if (c < 0 || c >= 11172) { out += str.charAt(i); continue; }
+      var cho = Math.floor(c / 588), jung = Math.floor((c % 588) / 28), jong = c % 28;
+      var row = _CHO_ROW[cho], base = _KANA_ROW[row], jv = _JUNG[jung], syl;
+      if (jv[0] === 0) syl = base[jv[1]];
+      else if (jv[0] === 1) syl = (row === '') ? _YV[jv[1]] : base[1] + _Y[jv[1]];
+      else syl = (row === '') ? _WV[jv[1]] : base[2] + _W[jv[1]];
+      out += syl + _JONG[jong];
+    }
+    return out;
+  }
+  // 한글 성명을 성/명으로 분리(복성 포함). {sur, given} 의 가타카나 반환.
+  var _COMPOUND_SUR = ['황보','남궁','선우','독고','제갈','사공','서문','동방','어금','망절'];
+  function nameYomi(nameKr) {
+    var s = String(nameKr || '').trim();
+    if (!s) return { sur: '', given: '' };
+    var surLen = 1;
+    for (var i = 0; i < _COMPOUND_SUR.length; i++) { if (s.indexOf(_COMPOUND_SUR[i]) === 0) { surLen = 2; break; } }
+    return { sur: hangulToKana(s.slice(0, surLen)), given: hangulToKana(s.slice(surLen)) };
+  }
+
   return {
     looksMember: looksMember,
     isMember: isMember,
@@ -222,6 +261,8 @@
     mealGoneCount: mealGoneCount,
     MEAL_OFFSITE: MEAL_OFFSITE,
     mealOffsite: mealOffsite,
-    mealPlan: mealPlan
+    mealPlan: mealPlan,
+    hangulToKana: hangulToKana,
+    nameYomi: nameYomi
   };
 });
