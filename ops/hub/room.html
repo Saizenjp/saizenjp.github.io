@@ -347,7 +347,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.91">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.92">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -452,7 +452,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=7"></script>
-<script src="../assets/saizen-ops.js?v=14.91"></script>
+<script src="../assets/saizen-ops.js?v=14.92"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -579,6 +579,7 @@ const L={
     closureReleased:'閉鎖解除', closureReleaseFail:e=>'解除失敗: '+e,
     histConnectFirst:'先に接続してください。', histLoading:'読み込み中…', histNone:'履歴がありません。',
     histTotal:(n,q)=>`計 ${n}件${q?' (検索)':''}`, histQueryFail:e=>'履歴照会失敗: '+e,
+    histUndoBtn:'↩ 戻す', histUndoT:'この解除を元に戻す(同じ部屋・期間へ再配置)', histUndoDone:'再配置で元に戻しました', histUndoConflict:e=>'戻せません(その部屋が他の配置で埋まっています — 手動で再配置): '+e, histUndoExists:'すでに配置されています', histUndoTag:' (元に戻し)',
     actAssign:'割当', actUnassign:'解除', actSplit:'分割', actAuto:'自動割当', actMove:'移動', actResolve:'競合整理',
     // 엑셀
     exportNoData:'先に日付を読み込んでください', exportDone:'様式書き出し完了 — 部屋番号欄を埋めて再アップロードしてください',
@@ -704,6 +705,7 @@ const L={
     closureReleased:'폐쇄 해제', closureReleaseFail:e=>'해제 실패: '+e,
     histConnectFirst:'먼저 연결하세요.', histLoading:'불러오는 중…', histNone:'이력이 없습니다.',
     histTotal:(n,q)=>`총 ${n}건${q?' (검색)':''}`, histQueryFail:e=>'이력 조회 실패: '+e,
+    histUndoBtn:'↩ 되돌리기', histUndoT:'이 해제를 되돌리기(같은 방·기간으로 재배정)', histUndoDone:'되돌려 재배정했습니다', histUndoConflict:e=>'되돌릴 수 없음(그 방이 다른 배정으로 찼습니다 — 수기 재배정): '+e, histUndoExists:'이미 배정돼 있습니다', histUndoTag:' (되돌림)',
     actAssign:'배정', actUnassign:'해제', actSplit:'분할', actAuto:'자동배정', actMove:'이동', actResolve:'충돌정리',
     exportNoData:'먼저 날짜를 불러오세요', exportDone:'양식 내보내기 완료 — 호수 칸을 채워 다시 올리세요',
     importTagNotFound:tag=>`태그 '${tag}' 명단에 없음`, importRoomNotFound:(tag,rn)=>`${tag}: 호수 '${rn}' 못찾음`,
@@ -827,6 +829,7 @@ const L={
     closureReleased:'Closure released', closureReleaseFail:e=>'Release failed: '+e,
     histConnectFirst:'Connect first.', histLoading:'Loading…', histNone:'No history.',
     histTotal:(n,q)=>`Total ${n}${q?' (search)':''}`, histQueryFail:e=>'History query failed: '+e,
+    histUndoBtn:'↩ Undo', histUndoT:'Undo this unassign (re-assign to the same room/period)', histUndoDone:'Restored by re-assigning', histUndoConflict:e=>'Cannot undo (that room is taken by another assignment — reassign manually): '+e, histUndoExists:'Already assigned', histUndoTag:' (undo)',
     actAssign:'Assign', actUnassign:'Unassign', actSplit:'Split', actAuto:'Auto-assign', actMove:'Move', actResolve:'Resolve conflict',
     exportNoData:'Load a date first', exportDone:'Template export done — fill room numbers and re-upload',
     importTagNotFound:tag=>`Tag '${tag}' not in roster`, importRoomNotFound:(tag,rn)=>`${tag}: room '${rn}' not found`,
@@ -2558,7 +2561,7 @@ async function unassign(roomId, opts){
   const snap=_roomSnap(row);
   const {error}=await supa.from('rooms').delete().eq('id',roomId);
   if(error){toast(tx('cancelFail',error.message),'err');return null;}
-  if(row){ const _mm=memberById(row.member_id); logAssign('해제', `${row.facility||''} ${row.room_no} ✕ ${(_mm&&(_mm.name_kr||_mm.name_en))||''}(${teamGroupCode(row.event_seq)||evNo(row.event_seq)||''})`); }
+  if(row){ const _mm=memberById(row.member_id); logAssign('해제', `${row.facility||''} ${row.room_no} ✕ ${(_mm&&(_mm.name_kr||_mm.name_en))||''}(${teamGroupCode(row.event_seq)||evNo(row.event_seq)||''})`, { undo:'reassign', room:{ inventory_id:row.inventory_id, event_seq:row.event_seq, member_id:row.member_id, check_in:row.check_in, check_out:row.check_out, assigned_pax:row.assigned_pax, assign_source:row.assign_source } }); }
   // 연동 추가요금 정리(같은 팀·해당 객실 설명 매칭)
   if(row){
     const inv=invById(row.inventory_id);
@@ -2650,10 +2653,27 @@ async function saveHotelRooms(bg,types,cur){
 // ════════════════════════════════════════════════════════════════════════
 function _curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 // 방배정 변경이력 — change_log(entity='room_assign') 재사용. 자동배정=요약 1건, 수기=개별.
-async function logAssign(action, label){
+async function logAssign(action, label, data){
   if(!supa) return;
-  try{ await supa.from('change_log').insert({ entity:'room_assign', action, label:String(label||'').slice(0,300), changed_by:_curUser() }); }
+  try{ await supa.from('change_log').insert({ entity:'room_assign', action, label:String(label||'').slice(0,300), changes:data||null, changed_by:_curUser() }); }
   catch(e){ /* 이력 실패는 무시 */ }
+}
+// 이력 [↩ 되돌리기] — 해제 항목만(가장 안전: 그 사람을 원래 방·기간으로 재삽입, 정원 트리거가 충돌 검증).
+let _histChanges={};
+async function revertUnassign(id){
+  if(!supa) return;
+  const ch=_histChanges[id]; const rm=ch&&ch.room; if(!rm){ return; }
+  // 가드: 그 사람이 이미 그 기간에 배정돼 있으면 중복 방지
+  if(state.rooms.some(x=>x.member_id===rm.member_id && x.check_in<rm.check_out && x.check_out>rm.check_in)){ toast(tx('histUndoExists'),'warn'); return; }
+  const {data,error}=await supa.from('rooms').insert({
+    inventory_id:rm.inventory_id, event_seq:rm.event_seq, member_id:rm.member_id,
+    check_in:rm.check_in, check_out:rm.check_out, assigned_pax:rm.assigned_pax||1, assign_source:rm.assign_source||'manual'
+  }).select().single();
+  if(error){ toast(tx('histUndoConflict',error.message),'err'); return; }   // 정원 트리거 등 거부 → 안내(잘못된 상태 안 생김)
+  state.rooms.push(data); rebuildAssignMap(); render();
+  const mm=memberById(rm.member_id); const inv=invById(rm.inventory_id);
+  logAssign('배정', `${(inv&&inv.facility)||''} ${(inv&&inv.room_no)||''} ↩ ${(mm&&(mm.name_kr||mm.name_en))||''}${tx('histUndoTag')}`);
+  toast(tx('histUndoDone'),'ok'); loadHist(true);
 }
 // 이동(어디서→어디로) 여러 건을 한 번에 기록 — 자동배정 재배치 추적용(배치 insert 1회).
 async function logMoves(labels){
@@ -2672,9 +2692,9 @@ function histActionLabel(a){ const k=HIST_ACT_KEY[a]; return k?tx(k):(a||''); }
 async function loadHist(reset){
   if(!supa){ $('#hist-list').innerHTML=`<div class="empty-hint" style="padding:14px">${tx('histConnectFirst')}</div>`; return; }
   if(_histLoading) return; _histLoading=true;
-  if(reset){ _histOff=0; $('#hist-list').innerHTML=`<div class="empty-hint" style="padding:14px">${tx('histLoading')}</div>`; }
+  if(reset){ _histOff=0; _histChanges={}; $('#hist-list').innerHTML=`<div class="empty-hint" style="padding:14px">${tx('histLoading')}</div>`; }
   try{
-    let q=supa.from('change_log').select('action,label,changed_by,changed_at',{count:'exact'})
+    let q=supa.from('change_log').select('id,action,label,changed_by,changed_at,changes',{count:'exact'})
       .eq('entity','room_assign').order('changed_at',{ascending:false})
       .range(_histOff,_histOff+HIST_PAGE-1);
     if(_histQ) q=q.ilike('label','%'+_histQ+'%');
@@ -2685,11 +2705,15 @@ async function loadHist(reset){
       const ic=HIST_ICON[r.action]||'•';
       const when=(r.changed_at||'').replace('T',' ').slice(5,16);
       const who=r.changed_by?` · <span style="color:var(--text2)">${_lsEsc(r.changed_by)}</span>`:'';
+      const canUndo = r.action==='해제' && r.changes && r.changes.undo==='reassign';
+      if(canUndo) _histChanges[r.id]=r.changes;
+      const undoBtn = canUndo?`<button class="hist-undo" data-id="${r.id}" title="${tx('histUndoT')}" style="flex:none;font-size:11px;font-weight:700;color:var(--accent);background:none;border:1px solid var(--border2);border-radius:99px;padding:1px 8px;cursor:pointer">${tx('histUndoBtn')}</button>`:'';
       return `<div style="display:flex;gap:8px;align-items:baseline;padding:7px 4px;border-top:1px solid var(--border);font-size:12.5px">
         <span style="flex:0 0 16px;text-align:center">${ic}</span>
         <span style="flex:0 0 86px;font-family:var(--mono);color:var(--muted)">${when}</span>
         <span style="flex:0 0 60px;font-weight:600">${_lsEsc(histActionLabel(r.action))}</span>
         <span style="flex:1;min-width:0">${_lsEsc(r.label)}${who}</span>
+        ${undoBtn}
       </div>`;
     }).join('');
     if(reset) $('#hist-list').innerHTML = html||`<div class="empty-hint" style="padding:14px">${tx('histNone')}</div>`;
@@ -2708,6 +2732,7 @@ function _histSearch(){ _histQ=($('#hist-q').value||'').trim(); loadHist(true); 
   $('#hist-search').addEventListener('click', _histSearch);
   $('#hist-q').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); _histSearch(); } });
   $('#hist-more').addEventListener('click', ()=>loadHist(false));
+  $('#hist-list').addEventListener('click', e=>{ const b=e.target.closest('.hist-undo'); if(b) revertUnassign(b.dataset.id); });
 })();
 function openClosureModal(){
   if(!supa){toast(tx('closeFirstConnect'),'warn');return;}

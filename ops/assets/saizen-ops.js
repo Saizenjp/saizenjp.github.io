@@ -1396,6 +1396,7 @@
     if (document.querySelector('details.so-audit[data-audit-auto]')) return;
     var area = document.body.getAttribute('data-so-area') || '';
     var file = (location.pathname.split('/').pop() || '').toLowerCase();
+    if (file === 'room.html') return;   // room은 전용 '방배정 변경 이력'(change_log) 보유 → 범용 패널 중복 제외
     var tables = SO_AREA_AUDIT[area] || SO_PATH_AUDIT[file];
     if (!tables) return;
     var host = document.querySelector('.wrap') || document.getElementById('content') || document.body;
