@@ -119,6 +119,7 @@ from (
   union all select 53,'53 경영통계','exec_stats() RPC',     case when exists(select 1 from pg_proc where proname='exec_stats') then '✅ 있음' else '❌ 없음 (53)' end
   union all select 54,'54 공지삭제','announcements.author_uid', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='announcements' and column_name='author_uid') then '✅ 있음' else '❌ 없음 (54)' end
   union all select 54,'54 공지삭제','ann_delete 정책',       case when exists(select 1 from pg_policies where tablename='announcements' and policyname='ann_delete') then '✅ 있음' else '❌ 없음 (54)' end
+  union all select 55,'55 방문통계','visitor_stats() RPC',   case when exists(select 1 from pg_proc where proname='visitor_stats') then '✅ 있음' else '❌ 없음 (55)' end
 ) t
 order by ord, 항목;
 

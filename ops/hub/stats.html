@@ -85,7 +85,7 @@
   .toast{background:#2b2f27;color:#fff;font-size:13px;font-weight:600;padding:9px 16px;border-radius:9px;box-shadow:0 6px 20px rgba(0,0,0,.2)}
   .toast.ok{background:var(--ok)} .toast.err{background:var(--err)} .toast.warn{background:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.88">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.89">
 </head>
 <body data-so-area="stats">
 <div class="topbar so-bar">
@@ -126,13 +126,25 @@
 <main>
   <div class="rangelbl" id="rangelbl"></div>
   <div id="content"><div class="deny" id="t-empty">기간을 선택하고 「조회」를 누르세요.</div></div>
+  <div id="vsec" style="display:none;margin-top:8px;border-top:2px solid var(--border);padding-top:14px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <h2 id="t-vTitle" style="font-size:16px;font-weight:800;color:var(--accent2);margin:0"></h2>
+      <span style="flex:1"></span>
+      <span class="hint" id="t-vGran"></span>
+      <button class="chip vg" data-g="day" type="button" id="t-vgDay"></button>
+      <button class="chip vg" data-g="week" type="button" id="t-vgWeek"></button>
+      <button class="chip vg on" data-g="month" type="button" id="t-vgMonth"></button>
+      <button class="chip vg" data-g="year" type="button" id="t-vgYear"></button>
+    </div>
+    <div id="vcontent"></div>
+  </div>
 </main>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=14.88"></script>
+<script src="../assets/saizen-ops.js?v=14.89"></script>
 <script>
 const $=s=>document.querySelector(s);
-let supa=null, DATA=null;
+let supa=null, DATA=null, VDATA=null, VGRAN='month';
 
 // ── i18n (한·일 직원 공용. ja 기본) ──
 const L={
@@ -146,7 +158,12 @@ const L={
     custMix:'顧客構成(会員/一般)', member:'会員', nonmember:'一般', byGrade:'等級別', thGrade:'等級', thPersons:'人数',
     onsiteRev:'現地売上の構成', payMix:'現金 / カード', cash:'現金', card:'カード', unset:'未指定', thCat:'区分', thAmt:'金額',
     occTitle:'客室稼働率(施設別)', thFac:'施設', thUsed:'使用ベッド泊', thAvail:'可能ベッド泊', thPct:'稼働率', occAll:'全体',
-    noteCalc:'※ 送客=現地チェックイン(dep)基準・人数=予約人数。B2B=人数×泊数×施設単価+人数×¥6,000。現地売上=charges(取消除く・JST)。稼働率=使用ベッド泊÷(稼働客室定員×期間日数)の近似。' },
+    noteCalc:'※ 送客=現地チェックイン(dep)基準・人数=予約人数。B2B=人数×泊数×施設単価+人数×¥6,000。現地売上=charges(取消除く・JST)。稼働率=使用ベッド泊÷(稼働客室定員×期間日数)の近似。',
+    vTitle:'訪問統計(協会・県報告)', vGran:'単位', vgDay:'日', vgWeek:'週', vgMonth:'月', vgYear:'年',
+    vTotal:'延べ訪問', vGender:'性別', vMale:'男', vFemale:'女', vUnknown:'不明',
+    vAge:'年代別', v70plus:'70代+', vBandSuffix:'代', vSeries:'期間別 推移', thBucket:'期間',
+    vByMember:'会員別 訪問', thName:'氏名', thBirth:'生年月日', thVisits:'訪問数',
+    vNote:'※ 訪問=同行者1人1滞在(現地チェックインdep基準)=1延べ訪問。会員判定=3列OR。年代=満年齢。' },
   ko:{ navHome:'홈', step:'경영 통계', connIdle:'미연결', connecting:'연결 중…', connOk:'연결됨', connFail:'연결 실패', connect:'연결', connectedBtn:'✓ 연결됨',
     connHint:'대표·부서장용 월/연 통합 통계(입도·매출·가동률·고객구성). 읽기 전용 집계.',
     period:'기간', run:'조회', qThisMonth:'이번 달', qThisYear:'올해', qLastYear:'작년', qLast12:'최근 12개월',
@@ -157,7 +174,12 @@ const L={
     custMix:'고객 구성(회원/일반)', member:'회원', nonmember:'일반', byGrade:'등급별', thGrade:'등급', thPersons:'인원',
     onsiteRev:'현장 매출 구성', payMix:'현금 / 카드', cash:'현금', card:'카드', unset:'미지정', thCat:'구분', thAmt:'금액',
     occTitle:'객실 가동률(시설별)', thFac:'시설', thUsed:'사용 침대-박', thAvail:'가능 침대-박', thPct:'가동률', occAll:'전체',
-    noteCalc:'※ 입도=현지 체크인(dep) 기준·인원=예약 인원. B2B=인원×박수×숙소단가+인원×¥6,000. 현장 매출=charges(취소 제외·JST). 가동률=사용 침대-박÷(가동 객실 정원×기간 일수)의 근사.' },
+    noteCalc:'※ 입도=현지 체크인(dep) 기준·인원=예약 인원. B2B=인원×박수×숙소단가+인원×¥6,000. 현장 매출=charges(취소 제외·JST). 가동률=사용 침대-박÷(가동 객실 정원×기간 일수)의 근사.',
+    vTitle:'방문 통계(협회·현청 보고)', vGran:'단위', vgDay:'일', vgWeek:'주', vgMonth:'월', vgYear:'년',
+    vTotal:'연인원(방문)', vGender:'성별', vMale:'남', vFemale:'여', vUnknown:'미상',
+    vAge:'나이대별', v70plus:'70대+', vBandSuffix:'대', vSeries:'기간별 추이', thBucket:'기간',
+    vByMember:'개인 회원별 방문', thName:'이름', thBirth:'생년월일', thVisits:'방문수',
+    vNote:'※ 방문=일행 1인 1체류(현지 체크인 dep 기준)=1연인원. 회원판정=3컬럼 OR. 나이=만나이 기준.' },
   en:{ navHome:'Home', step:'Exec Stats', connIdle:'Not connected', connecting:'Connecting…', connOk:'Connected', connFail:'Connect failed', connect:'Connect', connectedBtn:'✓ Connected',
     connHint:'Monthly/yearly consolidated stats for execs (arrivals, revenue, occupancy, customer mix). Read-only aggregation.',
     period:'Period', run:'Run', qThisMonth:'This month', qThisYear:'This year', qLastYear:'Last year', qLast12:'Last 12 months',
@@ -168,7 +190,12 @@ const L={
     custMix:'Customer mix (member/general)', member:'Member', nonmember:'General', byGrade:'By grade', thGrade:'Grade', thPersons:'People',
     onsiteRev:'On-site revenue mix', payMix:'Cash / Card', cash:'Cash', card:'Card', unset:'Unset', thCat:'Type', thAmt:'Amount',
     occTitle:'Room occupancy (by facility)', thFac:'Facility', thUsed:'Used bed-nights', thAvail:'Avail bed-nights', thPct:'Occupancy', occAll:'Overall',
-    noteCalc:'※ Arrivals = on-site check-in (dep); pax = reserved pax. B2B = pax × nights × facility rate + pax × ¥6,000. On-site = charges (excl. voided, JST). Occupancy = used bed-nights ÷ (active room capacity × period days), approximate.' }
+    noteCalc:'※ Arrivals = on-site check-in (dep); pax = reserved pax. B2B = pax × nights × facility rate + pax × ¥6,000. On-site = charges (excl. voided, JST). Occupancy = used bed-nights ÷ (active room capacity × period days), approximate.',
+    vTitle:'Visitor stats (assoc./prefecture report)', vGran:'Unit', vgDay:'Day', vgWeek:'Week', vgMonth:'Month', vgYear:'Year',
+    vTotal:'Total visits', vGender:'Gender', vMale:'M', vFemale:'F', vUnknown:'Unknown',
+    vAge:'By age', v70plus:'70s+', vBandSuffix:'s', vSeries:'Trend by period', thBucket:'Period',
+    vByMember:'Visits by member', thName:'Name', thBirth:'Birth', thVisits:'Visits',
+    vNote:'※ Visit = 1 person-stay (on-site check-in dep) = 1 visit. Member = 3-column OR. Age at visit.' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return (d[k]!==undefined?d[k]:(L.ja[k]!==undefined?L.ja[k]:k)); }
@@ -182,6 +209,9 @@ function applyStatic(){
   $('#t-q1').textContent=tx('qThisMonth'); $('#t-q2').textContent=tx('qThisYear');
   $('#t-q3').textContent=tx('qLastYear'); $('#t-q4').textContent=tx('qLast12');
   const emp=$('#t-empty'); if(emp) emp.textContent=tx('emptyHint');
+  $('#t-vTitle').textContent=tx('vTitle'); $('#t-vGran').textContent=tx('vGran');
+  $('#t-vgDay').textContent=tx('vgDay'); $('#t-vgWeek').textContent=tx('vgWeek');
+  $('#t-vgMonth').textContent=tx('vgMonth'); $('#t-vgYear').textContent=tx('vgYear');
   if(!supa){ setConn(tx('connIdle')); $('#btn-connect').textContent=tx('connect'); }
 }
 
@@ -230,7 +260,41 @@ async function run(){
     const msg=/권한|permission/i.test(error.message)?tx('noAuth'):(tx('loadFail')+': '+error.message);
     $('#content').innerHTML=`<div class="deny" style="color:var(--err)">${esc(msg)}</div>`; return;
   }
-  DATA=data||{}; render();
+  DATA=data||{}; render(); runVisitor();
+}
+
+// ── 방문 통계(협회·현청 보고) — visitor_stats RPC ──
+async function runVisitor(){
+  if(!supa) return;
+  const f=$('#d-from').value, t=$('#d-to').value; if(!f||!t) return;
+  $('#vsec').style.display='';
+  $('#vcontent').innerHTML=`<div class="deny">${tx('loading')}</div>`;
+  const {data,error}=await supa.rpc('visitor_stats',{p_from:f,p_to:t,p_gran:VGRAN});
+  if(error){ const msg=/권한|permission/i.test(error.message)?tx('noAuth'):(tx('loadFail')+': '+error.message);
+    $('#vcontent').innerHTML=`<div class="deny" style="color:var(--err)">${esc(msg)}</div>`; return; }
+  VDATA=data||{}; renderVisitor();
+}
+function ageLabel(b){ b=Number(b); if(b<0) return tx('vUnknown'); if(b>=70) return tx('v70plus'); return b+tx('vBandSuffix'); }
+function renderVisitor(){
+  const d=VDATA||{}; const tot=d.total||0, mem=d.member||0, non=d.nonmember||0;
+  const memPct=tot?Math.round(mem/tot*100):0;
+  const kpi=`<div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+    <div class="kpi"><div class="l">${tx('vTotal')}</div><div class="v">${num(tot)}<small>${tx('uPpl')}</small></div></div>
+    <div class="kpi"><div class="l">${tx('member')}</div><div class="v">${num(mem)}<small> ${memPct}%</small></div></div>
+    <div class="kpi"><div class="l">${tx('nonmember')}</div><div class="v">${num(non)}</div></div></div>`;
+  const g=d.gender||{};
+  const genTbl=`<div class="panel"><h3>${tx('vGender')}</h3><table class="t"><thead><tr><th></th><th>${tx('member')}</th><th>${tx('nonmember')}</th></tr></thead><tbody>
+    <tr><td>${tx('vMale')}</td><td class="mono">${num(g.m_mem)}</td><td class="mono">${num(g.m_non)}</td></tr>
+    <tr><td>${tx('vFemale')}</td><td class="mono">${num(g.f_mem)}</td><td class="mono">${num(g.f_non)}</td></tr>
+    ${g.u?`<tr><td>${tx('vUnknown')}</td><td colspan="2" class="mono">${num(g.u)}</td></tr>`:''}</tbody></table></div>`;
+  const ageRows=(d.by_age||[]).map(a=>`<tr><td>${esc(ageLabel(a.band))}</td><td class="mono">${num(a.member)}</td><td class="mono">${num(a.nonmember)}</td></tr>`).join('');
+  const ageTbl=`<div class="panel"><h3>${tx('vAge')}</h3><table class="t"><thead><tr><th></th><th>${tx('member')}</th><th>${tx('nonmember')}</th></tr></thead><tbody>${ageRows||`<tr><td colspan="3" style="text-align:center;color:var(--muted)">—</td></tr>`}</tbody></table></div>`;
+  const serRows=(d.series||[]).map(s=>`<tr><td>${esc(s.bucket)}</td><td class="mono">${num(s.total)}</td><td class="mono">${num(s.member)}</td><td class="mono">${num(s.nonmember)}</td></tr>`).join('');
+  const serTbl=`<div class="panel"><h3>${tx('vSeries')}</h3><table class="t"><thead><tr><th>${tx('thBucket')}</th><th>${tx('vTotal')}</th><th>${tx('member')}</th><th>${tx('nonmember')}</th></tr></thead><tbody>${serRows||`<tr><td colspan="4" style="text-align:center;color:var(--muted)">—</td></tr>`}</tbody></table></div>`;
+  const mm=(d.members||[]);
+  const mmRows=mm.map(m=>`<tr><td>${esc(m.name)}</td><td class="mono">${esc(m.birth||'')}</td><td>${esc(m.grade)}</td><td class="mono">${num(m.visits)}</td></tr>`).join('');
+  const mmTbl=`<div class="panel"><h3>${tx('vByMember')} <span class="hint">(${mm.length})</span></h3><table class="t"><thead><tr><th>${tx('thName')}</th><th>${tx('thBirth')}</th><th>${tx('thGrade')}</th><th>${tx('thVisits')}</th></tr></thead><tbody>${mmRows||`<tr><td colspan="4" style="text-align:center;color:var(--muted)">—</td></tr>`}</tbody></table></div>`;
+  $('#vcontent').innerHTML = kpi + `<div class="grid2">${genTbl}${ageTbl}</div>` + `<div class="grid2">${serTbl}${mmTbl}</div>` + `<div class="note">${tx('vNote')}</div>`;
 }
 
 function render(){
@@ -317,12 +381,13 @@ function render(){
 }
 
 // 언어 토글 시 정적 라벨 + 동적 재렌더
-window.onSaizenLangChange=function(){ applyStatic(); if(DATA) render(); };
+window.onSaizenLangChange=function(){ applyStatic(); if(DATA) render(); if(VDATA) renderVisitor(); };
 
 /* ── 부팅 ── */
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-run').addEventListener('click',run);
 document.querySelectorAll('.chip[data-q]').forEach(b=>b.addEventListener('click',()=>quick(b.dataset.q)));
+document.querySelectorAll('.chip.vg').forEach(b=>b.addEventListener('click',()=>{ VGRAN=b.dataset.g; document.querySelectorAll('.chip.vg').forEach(x=>x.classList.toggle('on',x===b)); runVisitor(); }));
 applyStatic();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value) connect();
