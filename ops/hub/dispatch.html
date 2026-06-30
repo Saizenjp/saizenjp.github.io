@@ -102,6 +102,7 @@ const L={
     panelDesc:'イベント1件 = 表面 現地手配書 + 裏面 現地発生分 記入表(2ページ)。<b>A4縦 · 両面(長辺とじ)</b>で印刷してください。記入表は現場手書き用(<b>メリットツアーB2B ⑤現地精算表とは別管理</b>)。',
     listTitle:'対象イベント', loading:'読み込み中…', noMonthData:'該当月データなし', cntUnit:'件',
     showStat:(v,t)=>`(${v}件 表示 / 全体 ${t}件 · 一括印刷は表示分のみ)`,
+    sumMG:(m,g,t)=>`会員 <b>${m}</b> · 一般 <b>${g}</b> · 計 <b>${t}</b>名`,
     noData:'該当データなし', noFilterResult:'検索·フィルター結果がありません',
     preview:'プレビュー', loadFail:'読み込み失敗',
     memoSaved:'現地メモ 保存', memoSaveFail:'メモ保存失敗: ', connectFirst:'先に接続してください', popupBlocked:'ポップアップブロック — 許可が必要', noTargets:'対象イベントがありません',
@@ -120,6 +121,7 @@ const L={
     panelDesc:'행사 1건 = 앞면 現地手配書 + 뒷면 現地発生分 記入表(2페이지). <b>A4 세로 · 양면(긴 가장자리 제본)</b>으로 인쇄하세요. 記入表는 현장 손기입용(<b>메리트투어 B2B ⑤現地精算表와 별도</b>).',
     listTitle:'대상 행사', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', cntUnit:'件',
     showStat:(v,t)=>`(${v}件 표시 / 전체 ${t}件 · 一括印刷은 표시분만)`,
+    sumMG:(m,g,t)=>`회원 <b>${m}</b> · 일반 <b>${g}</b> · 합계 <b>${t}</b>명`,
     noData:'該当データなし', noFilterResult:'검색·필터 결과가 없습니다',
     preview:'미리보기', loadFail:'로드 실패',
     memoSaved:'現地メモ 저장', memoSaveFail:'메모 저장 실패: ', connectFirst:'먼저 연결하세요', popupBlocked:'팝업 차단 — 허용 필요', noTargets:'대상 행사가 없습니다',
@@ -138,6 +140,7 @@ const L={
     panelDesc:'1 event = front 現地手配書 + back 現地発生分 記入表 (2 pages). Print <b>A4 portrait · double-sided (long-edge binding)</b>. The 記入表 is for on-site handwriting (<b>separate from the Merit B2B ⑤現地精算表</b>).',
     listTitle:'Target events', loading:'Loading…', noMonthData:'No data for this month', cntUnit:' items',
     showStat:(v,t)=>`(${v} shown / ${t} total · Print all = shown only)`,
+    sumMG:(m,g,t)=>`Member <b>${m}</b> · General <b>${g}</b> · Total <b>${t}</b>`,
     noData:'No data', noFilterResult:'No search/filter results',
     preview:'Preview', loadFail:'Load failed',
     memoSaved:'Local memo saved', memoSaveFail:'Memo save failed: ', connectFirst:'Connect first', popupBlocked:'Popup blocked — allow it', noTargets:'No target events',
@@ -380,10 +383,14 @@ function pass(d){
   if(SEARCHQ){ const hay=`${d.rec.repName||''} ${d.rec.eventNo||''} ${d.tagCode||''} ${d.seq}`.toLowerCase(); if(!hay.includes(SEARCHQ)) return false; }
   return true;
 }
+// 선택(날짜·숙소 토글)된 표시분의 회원/일반 인원 합계 — 명단(paxList)의 회원판정 3컬럼 OR 기준.
+function memGenCount(list){ let mem=0,gen=0; list.forEach(d=>(d.paxList||[]).forEach(p=>{ (window.SZCore&&SZCore.isMember(p))?mem++:gen++; })); return {mem,gen,tot:mem+gen}; }
 function renderList(){
   const visible=ROWS.filter(pass);
   $('#btn-print').disabled=!visible.length;
-  $('#list-cnt').textContent=ROWS.length?tx('showStat')(visible.length,ROWS.length):'';
+  const _mg=memGenCount(visible);
+  $('#list-cnt').innerHTML=(ROWS.length?tx('showStat')(visible.length,ROWS.length):'')
+    +(visible.length?` &nbsp;·&nbsp; <span style="color:var(--accent);font-weight:700">${tx('sumMG')(_mg.mem,_mg.gen,_mg.tot)}</span>`:'');
   const thead=$('#list thead'), tbody=$('#list tbody');
   thead.innerHTML=`<tr><th>${esc(tx('thNo'))}</th><th>${esc(tx('thTag'))}</th><th>${esc(tx('thEventNo'))}</th><th>${esc(tx('thRep'))}</th><th>${esc(tx('thEng'))}</th><th>${esc(tx('thDep'))}</th><th>${esc(tx('thArr'))}</th><th>${esc(tx('thNights'))}</th><th>${esc(tx('thPax'))}</th><th>${esc(tx('thFac'))}</th><th>${esc(tx('thMember'))}</th><th>${esc(tx('thMemo'))}</th><th>${esc(tx('thOp'))}</th></tr>`;
   if(!ROWS.length){ tbody.innerHTML=`<tr><td colspan="13" class="c" style="color:var(--muted);padding:24px">${esc(tx('noData'))}</td></tr>`; return; }
