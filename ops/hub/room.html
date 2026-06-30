@@ -594,6 +594,7 @@ const L={
     ecoDone:(n,d)=>(n||'')+'様を'+d+'で早期退室に設定しました(ベッド解放・食数反映)。精算の確認項目を作成しました。',
     ecoCancelConfirm:(n,d)=>(n||'')+'様は'+d+'で早期退室に設定されています。解除しますか?(客室も元の退室日へ自動復元されます)',
     ecoCanceled:n=>(n||'')+'様の早期退室を解除 — 客室も元に戻しました',
+    ecoUndoUnassignedT:'早期退室の表示を解除(未配置)', ecoUnassignedConfirm:(n,d)=>(n||'')+'様の早期退室('+d+')表示を解除しますか?(未配置 — 客室は別途再配置してください)',
     ecoRestoreFail:n=>(n||'')+'様の早期退室は解除しましたが、客室の自動復元に失敗(そのベッドを他の割当が使用 — 手動で再割当)', ecoConfirmFail:'※精算の確認項目の作成に失敗しました(手動でご確認ください)',
     ecoFollowTitle:(n,d)=>(n||'')+'様 早期退室('+d+') — 精算/返金の確認',
     cancelFail:e=>'キャンセル失敗: '+e, assignCancelled:'割当をキャンセルしました',
@@ -718,6 +719,7 @@ const L={
     ecoDone:(n,d)=>(n||'')+'님을 '+d+' 조기 퇴실로 설정했습니다(침대 해제·식수 반영). 정산 확인 항목을 만들었습니다.',
     ecoCancelConfirm:(n,d)=>(n||'')+'님은 '+d+' 조기 퇴실로 설정되어 있습니다. 해제할까요?(방도 원래 퇴실일로 자동 복구됩니다)',
     ecoCanceled:n=>(n||'')+'님 조기 퇴실 해제 — 방도 원래대로 복구했습니다',
+    ecoUndoUnassignedT:'조기퇴실 표시 해제(미배정)', ecoUnassignedConfirm:(n,d)=>(n||'')+'님 조기퇴실('+d+') 표시를 해제할까요?(미배정 상태 — 방은 별도로 재배정하세요)',
     ecoRestoreFail:n=>(n||'')+'님 조기 퇴실은 해제했지만 방 자동복구 실패(그 침대를 다른 배정이 차지 — 수기 재배정 필요)', ecoConfirmFail:'※정산 확인 항목 생성에 실패했습니다(수기로 확인해 주세요)',
     ecoFollowTitle:(n,d)=>(n||'')+'님 조기 퇴실('+d+') — 정산/환불 확인',
     cancelFail:e=>'취소 실패: '+e, assignCancelled:'배정 취소됨',
@@ -842,6 +844,7 @@ const L={
     ecoDone:(n,d)=>(n||'')+' set to early checkout on '+d+' (bed freed, meals adjusted). A settlement follow-up was created.',
     ecoCancelConfirm:(n,d)=>(n||'')+' is set to early checkout on '+d+'. Clear it? (the room is also auto-restored to the original checkout date)',
     ecoCanceled:n=>'Cleared early checkout for '+(n||'')+' — room restored',
+    ecoUndoUnassignedT:'Clear early-checkout flag (unassigned)', ecoUnassignedConfirm:(n,d)=>'Clear early-checkout ('+d+') flag for '+(n||'')+'? (unassigned — reassign the room separately)',
     ecoRestoreFail:n=>'Cleared early checkout for '+(n||'')+', but room auto-restore failed (that bed is taken by another assignment — reassign manually)', ecoConfirmFail:'※Failed to create settlement follow-up (please check manually)',
     ecoFollowTitle:(n,d)=>(n||'')+' early checkout ('+d+') — settlement/refund check',
     cancelFail:e=>'Cancel failed: '+e, assignCancelled:'Assignment cancelled',
@@ -1300,6 +1303,7 @@ function renderUnassigned(){
         <span class="rname">${m.name_kr||'-'}${m.is_rep?`<i class="repbadge">${tx('repBadge')}</i>`:''}<i class="gbadge${isMember(m)?' mem':''}">${gradeLabel(m)}</i></span>
         <span class="ren">${m.name_en||''}</span>
         ${isDone?`<span class="rdone" title="${tx('assignedRoomT')}">${memberRoomLabel(m.id)} <button class="runassign" data-mid="${m.id}" title="${tx('unassignClearT')}">${tx('unassignClear')}</button></span>`:''}
+        ${(!isDone && m.actual_dep)?`<button class="reco-cancel" data-mid="${m.id}" title="${tx('ecoUndoUnassignedT')}" style="margin-left:auto;font-size:10.5px;font-weight:700;color:#9a6b00;background:#fff4d6;border:1px solid #f0d48a;border-radius:99px;padding:1px 7px;cursor:pointer">🛫${fmtMD(m.actual_dep)} ✕</button>`:''}
       </div>`;
     }).join('') : `<div class="rmember dim">${tx('rosterNone')}</div>`;
     const isNonMem=(g.group_code||'').startsWith('F');
@@ -1347,6 +1351,7 @@ function renderUnassigned(){
     });
     // 배정완료 행의 ✕해제 → 그 사람 배정 전부 풀어 명단으로
     card.querySelectorAll('.runassign').forEach(btn=>btn.addEventListener('click',ev=>{ev.stopPropagation();unassignMember(btn.dataset.mid);}));
+    card.querySelectorAll('.reco-cancel').forEach(btn=>btn.addEventListener('click',ev=>{ev.stopPropagation();cancelEcoByMember(btn.dataset.mid);}));
     return card;
   }
   // ── 현지도착일 기준 2그룹: 「오늘 현지도착」 / 「이전 도착·미배정 잔류」 (카드 보기) ──
@@ -2674,6 +2679,18 @@ async function revertUnassign(id){
   const mm=memberById(rm.member_id); const inv=invById(rm.inventory_id);
   logAssign('배정', `${(inv&&inv.facility)||''} ${(inv&&inv.room_no)||''} ↩ ${(mm&&(mm.name_kr||mm.name_en))||''}${tx('histUndoTag')}`);
   toast(tx('histUndoDone'),'ok'); loadHist(true);
+}
+// 미배정 상태에서 조기퇴실 해제 — 칩이 없어 🛫를 못 누르는 갇힌 케이스(조기퇴실+해제 중복) 복구용.
+//  방은 이미 미배정이라 복원 대상 없음(actual_dep만 해제). 방은 사용자가 별도 재배정.
+async function cancelEcoByMember(mid){
+  if(!supa) return;
+  const m=memberById(mid); if(!m||!m.actual_dep){ return; }
+  if(!confirm(tx('ecoUnassignedConfirm', m.name_kr||'', m.actual_dep))) return;
+  const {error}=await supa.from('guest_members').update({actual_dep:null,actual_dep_reason:null}).eq('id',mid);
+  if(error){ toast(tx('ecoFail',error.message),'err'); return; }
+  patchMember(mid,{actual_dep:null,actual_dep_reason:null});
+  logAssign('조기퇴실 취소', `${m.name_kr||''}(${teamGroupCode(m.event_seq)||evNo(m.event_seq)||''}) — 미배정 상태 해제`);
+  render(); toast(tx('ecoCanceled',m.name_kr||''),'ok');
 }
 // 이동(어디서→어디로) 여러 건을 한 번에 기록 — 자동배정 재배치 추적용(배치 insert 1회).
 async function logMoves(labels){
