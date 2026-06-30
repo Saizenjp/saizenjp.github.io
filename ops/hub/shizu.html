@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 志津の宿 予約表</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad; --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#3d5424; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#2c3d19;
+    --purple:#7c4dab; --purple2:#5e3a86; --purpleDim:#f0e8f7;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --mono:'SFMono-Regular',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{max-width:1180px;margin:0 auto;padding:16px 20px 90px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:10px}
+  .panel .desc{font-size:12px;color:var(--text2);margin-bottom:11px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .ymctrl{display:flex;align-items:center;gap:6px}
+  .ymctrl b{font-size:15px;font-family:var(--mono);min-width:78px;text-align:center}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  .stats{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+  .stat{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 13px;min-width:84px;text-align:center}
+  .stat .l{font-size:10.5px;color:var(--muted);font-weight:700}
+  .stat .v{font-size:19px;font-weight:800;color:var(--accent);font-family:var(--mono)}
+  .stat .s{font-size:10px;color:var(--text3,#8a937c)}
+  .stat.ons .v{color:var(--purple2)}
+  /* 온천 사전신청 패널 */
+  .ons-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px}
+  .ons-item{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;background:var(--surface2);font-size:12.5px}
+  .ons-item.on{background:var(--purpleDim);border-color:var(--purple)}
+  .ons-item input{width:16px;height:16px;accent-color:var(--purple)}
+  .ons-item .rm{font-family:var(--mono);font-size:11px;color:var(--purple2);font-weight:700}
+  .ons-item .dt{font-size:10.5px;color:var(--muted)}
+  /* 予約表 미리보기(앱 서식 이식) */
+  .pv-title{font-size:16px;font-weight:700;text-align:center;margin:6px 0 12px;letter-spacing:.05em}
+  .shz-pv{border-collapse:collapse;margin-bottom:14px;width:100%;min-width:900px;font-size:11px}
+  .shz-pv th,.shz-pv td{border:1px solid var(--border2);padding:3px 6px;text-align:center;vertical-align:middle}
+  .shz-pv-hd th{background:var(--accentSoft);font-weight:700;color:var(--accent)}
+  .shz-pv-zone th{background:var(--surface3);font-weight:800;color:var(--accent);font-size:11px;letter-spacing:.04em}
+  .shz-pv-zone th small{font-weight:600;color:var(--muted)}
+  .shz-pv-zone th.bz,.shz-pv-hd th.bz{color:var(--purple2)}
+  .shz-pv-zone th.bz{background:var(--purpleDim)}
+  .shz-pv-dt{background:var(--surface3)!important;font-size:13px;font-weight:700}
+  .shz-pv-dt span{font-size:10px;color:var(--muted)}
+  .shz-pv-lb{background:var(--surface3);font-weight:700;color:var(--text2);width:78px}
+  .shz-pv-nm{text-align:right;background:#eaf2fb}
+  .shz-pv td:not(.shz-pv-lb):not(.shz-pv-k):not(.shz-pv-note):not(.shz-pv-nm){background:#f2f8fe}
+  .shz-pv-k{background:var(--surface3);font-weight:700}
+  .shz-pv-note{text-align:left;background:var(--surface);outline:none;min-height:22px;font-weight:600}
+  .shz-pv-note:focus{background:var(--accentSoft)}
+  .shz-pv-onsen{color:var(--purple2);font-weight:700}
+  .pv-wrap{overflow-x:auto}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.94">
+</head>
+<body data-so-area="print">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">志津の宿 予約表</span>
+  <a class="navhome" href="../index.html">← 홈</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connhint">방배정(room) 결과를 읽어 志津の宿 予約表를 출력. 別棟 온천 사전신청만 여기서 입력.</span>
+</div>
+
+<div class="wrap" id="content">
+  <div class="panel"><div class="deny" id="t-wait" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-core.js?v=7"></script>
+<script src="../assets/saizen-ops.js?v=14.94"></script>
+<script>
+const $=s=>document.querySelector(s);
+// ── i18n: 화면 chrome 전용(予約表 산출물·도메인 데이터는 일본어 유지) ──
+const L={
+  ja:{ step:'志津の宿 予約表', connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', loginNeed:'ログイン必要',
+    connHint:'部屋割り(room)の結果を読み込み志津の宿 予約表を出力。別棟の温泉事前申請のみここで入力。',
+    waitConn:'接続後に表示されます。', loginCard:'ログインが必要です。', loginCardSub:'中央のログインカードでログイン後、再接続してください。',
+    monthSel:'月選択', btnPrint:'🖨 予約表 印刷', btnXlsx:'⬇ 予約表 xlsx',
+    statLoading:'読込中…', stayN:'宿泊者', assignedN:'配置済', unassignedN:'未配置', onsenN:'温泉事前申請',
+    nameUnit:'名', preNight:'人泊', noData:'表示する志津の宿の予約がありません(部屋割りで割当してください)。',
+    onsenH:'♨ 別棟 温泉 事前申請', onsenHint:'— 別棟(吉祥·瑞雲·馬酔木)に配置された方のみ。申請した人泊 × ¥2,000(客室料¥17,000は本館·別棟同一)。申請時のみ現地で温泉のお湯を準備。',
+    onsenEmpty:'別棟に配置された宿泊者がいません。', pvH:'プレビュー — 予約表',
+    pvHint:'— 部屋割り(room)で行った割当を読み込んで生成。到着/メモ欄は印刷前にこの画面で直接入力できます(保存はされません)。',
+    mainLbl:'本館', annexLbl:'別棟', onsenPre:'温泉 事前申請制', popupBlock:'ポップアップがブロックされました。', noOut:'出力する予約がありません。' },
+  ko:{ step:'志津の宿 예약표', connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결·재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', loginNeed:'로그인 필요',
+    connHint:'방배정(room) 결과를 읽어 志津の宿 予約表를 출력. 別棟 온천 사전신청만 여기서 입력.',
+    waitConn:'연결 후 표시됩니다.', loginCard:'로그인이 필요합니다.', loginCardSub:'중앙 로그인 카드에서 로그인 후 다시 연결해 주세요.',
+    monthSel:'월 선택', btnPrint:'🖨 예약표 인쇄', btnXlsx:'⬇ 예약표 xlsx',
+    statLoading:'불러오는 중…', stayN:'숙박객', assignedN:'배정됨', unassignedN:'미배정', onsenN:'온천 사전신청',
+    nameUnit:'명', preNight:'인·박', noData:'표시할 시즈노야도 예약이 없습니다(방배정에서 배정하세요).',
+    onsenH:'♨ 別棟 온천 사전신청', onsenHint:'— 別棟(吉祥·瑞雲·馬酔木) 배정 인원만. 사전신청한 인·박 × ¥2,000(객실료 ¥17,000은 本館·別棟 동일). 신청 시에만 현지에서 온천물 준비.',
+    onsenEmpty:'別棟에 배정된 숙박객이 없습니다.', pvH:'미리보기 — 予約表',
+    pvHint:'— 방배정(room) 결과를 읽어 생성. 到着/메모란은 인쇄 전 이 화면에서 직접 입력할 수 있습니다(저장은 안 됨).',
+    mainLbl:'本館', annexLbl:'別棟', onsenPre:'온천 사전신청제', popupBlock:'팝업이 차단되었습니다.', noOut:'출력할 예약이 없습니다.' },
+  en:{ step:'Shizu-no-Yado Chart', connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Connect / retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connect failed', needUrlKey:'URL & key required', loginNeed:'Login required',
+    connHint:'Reads room-assignment results to output the Shizu-no-Yado chart. Only annex onsen pre-application is entered here.',
+    waitConn:'Shown after connecting.', loginCard:'Login required.', loginCardSub:'Log in via the central card, then reconnect.',
+    monthSel:'Month', btnPrint:'🖨 Print chart', btnXlsx:'⬇ Chart xlsx',
+    statLoading:'Loading…', stayN:'Guests', assignedN:'Assigned', unassignedN:'Unassigned', onsenN:'Onsen pre-app.',
+    nameUnit:'', preNight:'p-nights', noData:'No Shizu-no-Yado reservations to show (assign on the room screen).',
+    onsenH:'♨ Annex onsen pre-application', onsenHint:'— Only guests assigned to the annex (Kissho/Zuiun/Ashibi). Applied person-nights × ¥2,000 (room rate ¥17,000 same for main & annex). Water prepared on-site only when pre-applied.',
+    onsenEmpty:'No guests assigned to the annex.', pvH:'Preview — chart',
+    pvHint:'— Generated from room-assignment results. The arrival/memo field can be typed here before printing (not saved).',
+    mainLbl:'Main', annexLbl:'Annex', onsenPre:'onsen pre-application', popupBlock:'Pop-up was blocked.', noOut:'No reservations to output.' },
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+
+// ── 도메인 상수(앱 shizu 이식) ──
+const SHZ_ROOMS=['志津','合歓','北條','山法師','吉祥','瑞雲','馬酔木'];   // 本館 4 + 別棟 3
+const SHZ_BYEOLCHE=['吉祥','瑞雲','馬酔木'];
+const SHZ_ZONE=r=>SHZ_BYEOLCHE.includes(r)?'別棟':'本館';
+const SHZ_BASE=17000, SHZ_ONSEN=2000;
+const SHZ_DOW=['日','月','火','水','木','金','土'];
+
+let supa=null, YM=null, FACILITY='시즈노야도 료칸';
+let GUESTS=[];                 // {member_id,event_seq,room_no,ci,co,nameKr,nameEn,gender,onsen}
+let NOTES={};                  // date → 수기 메모(세션 한정)
+
+function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function zen(v){ return String(v).replace(/[0-9]/g,d=>'０１２３４５６７８９'[+d]); }
+function titleCase(s){ return String(s||'').toLowerCase().replace(/\b[a-z]/g,c=>c.toUpperCase()); }
+function normGender(g){ g=String(g||'').trim(); if(/여|女/.test(g)||/^f/i.test(g))return '女'; if(/남|男/.test(g)||/^m/i.test(g))return '男'; return ''; }
+function parseISO(s){ const m=String(s||'').match(/(\d{4})-(\d{2})-(\d{2})/); return m?new Date(+m[1],+m[2]-1,+m[3]):null; }
+function isoOf(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function thisYM(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function shiftYM(ym,delta){const [y,m]=ym.split('-').map(Number);const d=new Date(y,m-1+delta,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function monthBounds(ym){ const [y,m]=ym.split('-').map(Number); const start=`${y}-${String(m).padStart(2,'0')}-01`; const endD=new Date(y,m,0).getDate(); const end=`${y}-${String(m).padStart(2,'0')}-${String(endD).padStart(2,'0')}`; return {start,end}; }
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+
+// ── 한 stay(배정 1행)의 점유 밤 = [ci, co) ──
+function nightsOf(g){ const a=parseISO(g.ci), b=parseISO(g.co); if(!a)return []; if(!b||b<=a)return [isoOf(a)]; const out=[]; const d=new Date(a); while(d<b){ out.push(isoOf(d)); d.setDate(d.getDate()+1); } return out; }
+function nameOf(g){ return titleCase(g.nameEn)||g.nameKr||''; }
+function genderOf(g){ return g.gender||''; }
+// 선택 월의 점유 밤(빈 날 테이블 방지)
+function axis(){ const set=new Set(); GUESTS.forEach(g=>nightsOf(g).forEach(d=>{ if(d.slice(0,7)===YM) set.add(d); })); return [...set].sort(); }
+function cellOcc(room,date){ return GUESTS.filter(g=>g.room_no===room && nightsOf(g).includes(date)).sort((a,b)=>(a.ci||'').localeCompare(b.ci||'')); }
+function mf(occ){ let m=0,f=0,u=0; occ.forEach(g=>{const x=genderOf(g); if(x==='男')m++; else if(x==='女')f++; else u++;}); const p=[]; if(m)p.push('男　'+zen(m)); if(f)p.push('女　'+zen(f)); if(u)p.push('（未）'+zen(u)); return p.join('　　'); }
+function onsenSummary(){ let persons=0, fee=0; GUESTS.forEach(g=>{ if(g.onsen && SHZ_BYEOLCHE.includes(g.room_no)){ const n=nightsOf(g).filter(d=>d.slice(0,7)===YM).length; if(n>0){ persons++; fee+=SHZ_ONSEN*n; } } }); return {persons,fee}; }
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent=tx('connecting');btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn(tx('loginNeed'),'err'); btn.textContent=tx('connect');btn.disabled=false;
+      $('#content').innerHTML=`<div class="panel"><div class="deny">${tx('loginCard')}<small>${tx('loginCardSub')}</small></div></div>`; return; }
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
+    YM=YM||thisYM();
+    renderUI(); load();
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
+}
+
+function renderUI(){
+  $('#content').innerHTML=`
+    <div class="panel">
+      <h3>${tx('monthSel')}</h3>
+      <div class="row">
+        <div class="ymctrl">
+          <button class="btn sm ghost" id="ym-prev" type="button">◀</button>
+          <b id="ym-label"></b>
+          <button class="btn sm ghost" id="ym-next" type="button">▶</button>
+        </div>
+        <span style="flex:1"></span>
+        <span class="cnt" id="stat"></span>
+        <button class="btn ghost" id="btn-xlsx" type="button" disabled>${tx('btnXlsx')}</button>
+        <button class="btn" id="btn-print" type="button" disabled>${tx('btnPrint')}</button>
+      </div>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="panel">
+      <h3>${tx('onsenH')} <span class="cnt">${tx('onsenHint')}</span></h3>
+      <div id="onsen-panel"></div>
+    </div>
+    <div class="panel">
+      <h3>${tx('pvH')} <span class="cnt">${tx('pvHint')}</span></h3>
+      <div class="pv-wrap" id="preview"></div>
+    </div>`;
+  $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
+  $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
+  $('#btn-print').addEventListener('click',printChart);
+  $('#btn-xlsx').addEventListener('click',downloadXlsx);
+}
+
+async function pagedIn(table, cols, key, vals){
+  const out=[]; const uniq=[...new Set(vals)];
+  for(let i=0;i<uniq.length;i+=80){
+    const chunk=uniq.slice(i,i+80);
+    let from=0;
+    for(;;){ const {data,error}=await supa.from(table).select(cols).in(key,chunk).range(from,from+999); if(error)throw error; out.push(...(data||[])); if(!data||data.length<1000)break; from+=1000; }
+  }
+  return out;
+}
+
+async function load(){
+  if(!supa)return;
+  $('#ym-label').textContent=YM; $('#stat').textContent=tx('statLoading'); $('#btn-print').disabled=true; $('#btn-xlsx').disabled=true;
+  NOTES={};
+  try{
+    const {start,end}=monthBounds(YM);
+    // 시즈노야도 배정(월 겹침): check_in <= 월말 AND check_out > 월초
+    const {data:rms,error}=await supa.from('rooms').select('member_id,event_seq,room_no,check_in,check_out,assigned_pax')
+      .eq('facility',FACILITY).lte('check_in',end).gt('check_out',start).not('member_id','is',null);
+    if(error)throw error;
+    const rows=(rms||[]).filter(r=>r.member_id && SHZ_ROOMS.includes(r.room_no));
+    const mids=rows.map(r=>r.member_id), seqs=rows.map(r=>r.event_seq).filter(Boolean);
+    // guest_members(영문/한글명)
+    const gms = mids.length? await pagedIn('guest_members','id,event_seq,name_kr,name_en','id',mids) : [];
+    const gmMap={}; gms.forEach(g=>gmMap[g.id]=g);
+    // passengers(성별) — seq_in_team 불일치 → event_seq+이름으로 매칭
+    const pxs = seqs.length? await pagedIn('passengers','event_seq,name_kr,gender','event_seq',seqs) : [];
+    const genMap={}; pxs.forEach(p=>{ const k=p.event_seq+'|'+String(p.name_kr||'').trim(); if(!genMap[k]) genMap[k]=normGender(p.gender); });
+    // 온천 사전신청
+    const ons = mids.length? await pagedIn('shizu_onsen','member_id,applied','member_id',mids) : [];
+    const onSet=new Set(ons.filter(o=>o.applied).map(o=>o.member_id));
+    GUESTS = rows.map(r=>{
+      const gm=gmMap[r.member_id]||{};
+      const nameKr=String(gm.name_kr||'').trim();
+      return { member_id:r.member_id, event_seq:r.event_seq, room_no:r.room_no,
+        ci:String(r.check_in).slice(0,10), co:String(r.check_out).slice(0,10),
+        nameKr, nameEn:gm.name_en||'', gender:genMap[r.event_seq+'|'+nameKr]||'', onsen:onSet.has(r.member_id) };
+    });
+    renderStats(); renderOnsenPanel(); renderPreview();
+    const ax=axis();
+    $('#stat').textContent=`${ax.length}${lang()==='ja'?'日':lang()==='en'?'d':'일'}`;
+    $('#btn-print').disabled=!ax.length; $('#btn-xlsx').disabled=!ax.length;
+  }catch(e){ toast(tx('connFail')+': '+e.message,'err'); $('#stat').textContent=''; }
+}
+
+function renderStats(){
+  const ax=axis(); const inMonth=GUESTS.filter(g=>nightsOf(g).some(d=>d.slice(0,7)===YM));
+  const ons=onsenSummary();
+  // '宿泊者'=월내 배정 인원(중복 stay는 member_id 기준 distinct)
+  const uniq=new Set(inMonth.map(g=>g.member_id)).size;
+  $('#stats').innerHTML=`
+    <div class="stat"><div class="l">${tx('stayN')}</div><div class="v">${uniq}</div><div class="s">${tx('nameUnit')}</div></div>
+    <div class="stat ons"><div class="l">${tx('onsenN')}</div><div class="v">${ons.persons}</div><div class="s">¥${ons.fee.toLocaleString()}</div></div>`;
+}
+
+function renderOnsenPanel(){
+  const el=$('#onsen-panel'); if(!el)return;
+  // 별棟 배정 인원(월내) — member_id 중복 제거
+  const seen=new Set(); const list=[];
+  GUESTS.filter(g=>SHZ_BYEOLCHE.includes(g.room_no) && nightsOf(g).some(d=>d.slice(0,7)===YM))
+    .forEach(g=>{ if(seen.has(g.member_id))return; seen.add(g.member_id); list.push(g); });
+  if(!list.length){ el.innerHTML=`<div class="cnt" style="color:var(--muted)">${tx('onsenEmpty')}</div>`; return; }
+  list.sort((a,b)=>(a.room_no.localeCompare(b.room_no))||(a.ci||'').localeCompare(b.ci||''));
+  el.innerHTML=`<div class="ons-grid">${list.map(g=>{
+    const nm=nameOf(g)||g.nameKr||g.member_id.slice(0,6);
+    return `<label class="ons-item${g.onsen?' on':''}">
+      <input type="checkbox" ${g.onsen?'checked':''} onchange="toggleOnsen('${g.member_id}',this.checked)">
+      <span class="rm">${esc(g.room_no)}</span>
+      <span style="flex:1">${esc(nm)}様</span>
+      <span class="dt">${esc(g.ci.slice(5))}~${esc(g.co.slice(5))}</span>
+    </label>`;
+  }).join('')}</div>`;
+}
+
+async function toggleOnsen(mid, on){
+  if(!supa)return;
+  try{
+    if(on){ const {error}=await supa.from('shizu_onsen').upsert({member_id:mid,applied:true,session_ym:YM,updated_by:curUser(),updated_at:new Date().toISOString()},{onConflict:'member_id'}); if(error)throw error; }
+    else { const {error}=await supa.from('shizu_onsen').delete().eq('member_id',mid); if(error)throw error; }
+    GUESTS.forEach(g=>{ if(g.member_id===mid) g.onsen=on; });
+    renderStats(); renderOnsenPanel(); renderPreview();
+  }catch(e){ toast(tx('connFail')+': '+e.message,'err'); renderOnsenPanel(); }
+}
+
+// ── 予約表 미리보기(앱 shzRenderPreview 이식) ──
+function buildNoteAuto(date){
+  const notes={};
+  SHZ_ROOMS.forEach(room=>{ const occ=cellOcc(room,date); if(!occ.length)return; const rep=occ[0];
+    const sq={}; occ.forEach(g=>sq[g.event_seq]=(sq[g.event_seq]||0)+1);
+    Object.keys(sq).forEach(k=>{ notes[k]={nm:nameOf(rep),c:(notes[k]?notes[k].c:0)+sq[k]}; }); });
+  return Object.values(notes).filter(x=>x.c>0).map(x=>`${x.nm}様${zen(x.c)}名`).join('　');
+}
+function renderPreview(){
+  const wrap=$('#preview'); if(!wrap)return;
+  const ax=axis();
+  if(!ax.length){ wrap.innerHTML=`<div class="cnt" style="color:var(--muted);padding:20px;text-align:center">${tx('noData')}</div>`; return; }
+  let html=`<div class="pv-title">ー志津の宿　${(parseISO(ax[0])||new Date()).getFullYear()}年　予約表ー</div>`;
+  ax.forEach(date=>{
+    const d=parseISO(date); let tot=0,tm=0,tf=0;
+    const cells=SHZ_ROOMS.map(room=>{
+      const occ=cellOcc(room,date); if(!occ.length)return {name:'',mf:'',stay:'',cnt:''};
+      const rep=occ[0]; const rn=nightsOf(rep); tot+=occ.length;
+      occ.forEach(g=>{const x=genderOf(g); if(x==='男')tm++; else if(x==='女')tf++;});
+      const onsenHere=SHZ_BYEOLCHE.includes(room)&&occ.some(g=>g.onsen);
+      return { name:esc(nameOf(rep))+'様'+(onsenHere?' <span class="shz-pv-onsen">♨</span>':''),
+        mf:mf(occ), stay:`${zen(rn.length)}連泊 ${zen(rn.indexOf(date)+1)}`, cnt:zen(occ.length) };
+    });
+    const note = NOTES[date]!=null? NOTES[date] : buildNoteAuto(date);
+    html+=`<table class="shz-pv">
+      <tr class="shz-pv-zone"><th></th><th colspan="4">本館 <small>¥17,000</small></th><th colspan="3" class="bz">別棟 <small>¥17,000 온천 사전신청제</small></th><th></th></tr>
+      <tr class="shz-pv-hd"><th class="shz-pv-dt">${zen(d.getMonth()+1)}／${zen(d.getDate())}<br><span>${SHZ_DOW[d.getDay()]}</span></th>${SHZ_ROOMS.map(r=>`<th${SHZ_BYEOLCHE.includes(r)?' class="bz"':''}>${r}</th>`).join('')}<th class="shz-pv-k">合計</th></tr>
+      <tr><td class="shz-pv-lb">お名前</td>${cells.map(c=>`<td class="shz-pv-nm">${c.name}</td>`).join('')}<td></td></tr>
+      <tr><td class="shz-pv-lb">大人</td>${cells.map(c=>`<td>${c.mf}</td>`).join('')}<td class="shz-pv-k">大 ${zen(tot)} 名</td></tr>
+      <tr><td class="shz-pv-lb">合計人数</td>${cells.map(c=>`<td>${c.cnt}</td>`).join('')}<td class="shz-pv-k">計 ${zen(tot)} 名</td></tr>
+      <tr><td class="shz-pv-lb">連泊</td>${cells.map(c=>`<td>${c.stay}</td>`).join('')}<td class="shz-pv-k">男${zen(tm)} 女${zen(tf)}</td></tr>
+      <tr><td class="shz-pv-lb">到着/メモ</td><td colspan="8" class="shz-pv-note" contenteditable="true" spellcheck="false" data-date="${date}" onblur="NOTES['${date}']=this.textContent">${esc(note)}</td></tr>
+    </table>`;
+  });
+  wrap.innerHTML=html;
+}
+
+// ── 印刷(별창 A4 세로) ──
+function printChart(){
+  const ax=axis(); if(!ax.length){ toast(tx('noOut'),'err'); return; }
+  const inner=$('#preview').innerHTML;
+  const css=`<style>
+    @page{size:A4 portrait;margin:10mm}
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{font-family:'Yu Gothic','游ゴシック','Noto Sans JP',sans-serif;color:#1a1a1a}
+    .pv-title{font-size:20px;font-weight:700;text-align:center;margin:4px 0 14px;letter-spacing:.05em}
+    .shz-pv{border-collapse:collapse;margin:0 auto 10px;width:100%;font-size:11px;page-break-inside:avoid}
+    .shz-pv th,.shz-pv td{border:1px solid #555;padding:3px 6px;text-align:center;vertical-align:middle}
+    .shz-pv-zone th{background:#eef2e6;font-weight:800;font-size:11px}
+    .shz-pv-zone th.bz{background:#f0e8f7;color:#5e3a86}
+    .shz-pv-hd th{background:#e4ecd9;font-weight:700}
+    .shz-pv-hd th.bz{color:#5e3a86}
+    .shz-pv-dt{background:#e9ede1!important;font-size:13px;font-weight:700}
+    .shz-pv-dt span{font-size:10px;color:#666}
+    .shz-pv-lb{background:#e9ede1;font-weight:700;width:78px;text-align:center}
+    .shz-pv-nm{text-align:right}
+    .shz-pv-k{background:#e9ede1;font-weight:700}
+    .shz-pv-note{text-align:left;font-weight:600}
+    .shz-pv-onsen{color:#5e3a86;font-weight:700}
+    .noprint{text-align:center;margin:10px 0}
+    @media print{.noprint{display:none}}
+  </style>`;
+  const w=window.open('','_blank'); if(!w){ toast(tx('popupBlock'),'err'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>志津の宿 予約表</title>${css}</head><body>${inner}<div class="noprint"><button onclick="window.print()">인쇄</button></div></body></html>`);
+  w.document.close(); setTimeout(()=>{try{w.focus();w.print();}catch(e){}},300);
+}
+
+// ── 予約表 xlsx(앱 shzDownload 이식) ──
+async function downloadXlsx(){
+  const ax=axis(); if(!ax.length){ toast(tx('noOut'),'err'); return; }
+  const wb=new ExcelJS.Workbook();
+  const ws=wb.addWorksheet('予約表',{views:[{showGridLines:false}]});
+  ws.pageSetup={ paperSize:9, orientation:'portrait', fitToPage:true, fitToWidth:1, fitToHeight:0, horizontalCentered:true,
+    margins:{left:0.39,right:0.39,top:0.55,bottom:0.55,header:0.31,footer:0.31} };
+  const FONT='游ゴシック', thin={style:'thin'}, med={style:'medium'};
+  const W={A:9,B:6,C:10,D:21.9,E:21,F:22.2,G:21.1,H:19.4,I:21.2,J:18.6,K:10.2};
+  Object.entries(W).forEach(([c,w])=>{ ws.getColumn(c).width=w; });
+  const yr=(parseISO(ax[0])||new Date()).getFullYear();
+  ws.mergeCells('A1:K1');
+  const t=ws.getCell('A1'); t.value=`ー志津の宿　　${yr}年　　予約表ー`; t.font={name:FONT,size:26,bold:true}; t.alignment={horizontal:'center',vertical:'middle'}; t.border={bottom:thin};
+  ws.getRow(1).height=41.4;
+  let row=2;
+  ax.forEach(date=>{
+    const d=parseISO(date), r0=row;
+    ws.getRow(r0).height=29.4; for(let k=1;k<=5;k++) ws.getRow(r0+k).height=18; ws.getRow(r0+6).height=20.4;
+    const hd=ws.getCell(r0,1); hd.value='日付'; hd.font={name:FONT,size:11}; hd.alignment={horizontal:'center',vertical:'middle'};
+    const hw=ws.getCell(r0,2); hw.value='曜日'; hw.font={name:FONT,size:11}; hw.alignment={horizontal:'center',vertical:'middle'};
+    SHZ_ROOMS.forEach((nm,i)=>{ const c=ws.getCell(r0,4+i); c.value=nm; c.font={name:FONT,size:18,bold:true}; c.alignment={horizontal:'center',vertical:'middle'}; });
+    ws.mergeCells(r0+1,1,r0+5,1); ws.mergeCells(r0+1,2,r0+5,2);
+    const dc=ws.getCell(r0+1,1); dc.value=`${zen(d.getMonth()+1)}／${zen(d.getDate())}`; dc.font={name:FONT,size:14,bold:true}; dc.alignment={horizontal:'center',vertical:'middle'};
+    const wc=ws.getCell(r0+1,2); wc.value=SHZ_DOW[d.getDay()]; wc.font={name:FONT,size:12,bold:true}; wc.alignment={horizontal:'center',vertical:'middle'};
+    ['お名前','大人','子供','合計人数','電話番号'].forEach((lb,i)=>{ const c=ws.getCell(r0+1+i,3); c.value=lb; c.font={name:FONT,size:11,bold:true}; c.alignment={vertical:'middle'}; });
+    let tot=0,tm=0,tf=0;
+    SHZ_ROOMS.forEach((room,ri)=>{
+      const col=4+ri; const occ=cellOcc(room,date);
+      const kc=ws.getCell(r0+3,col); kc.value='　　　　　　才'; kc.font={name:FONT,size:11};
+      if(!occ.length)return;
+      const rep=occ[0]; const onsenHere=SHZ_BYEOLCHE.includes(room)&&occ.some(g=>g.onsen);
+      const nc=ws.getCell(r0+1,col); nc.value=nameOf(rep)+'様'+(onsenHere?' ♨':''); nc.font={name:FONT,size:11}; nc.alignment={horizontal:'right',vertical:'middle'};
+      const ac=ws.getCell(r0+2,col); ac.value=mf(occ); ac.font={name:FONT,size:11}; ac.alignment={vertical:'middle'};
+      const sc=ws.getCell(r0+4,col); sc.value=zen(occ.length); sc.font={name:FONT,size:11}; sc.alignment={horizontal:'center',vertical:'middle'};
+      const rn=nightsOf(rep); const pc=ws.getCell(r0+5,col); pc.value=`${zen(rn.length)}連泊　${zen(rn.indexOf(date)+1)}`; pc.font={name:FONT,size:11}; pc.alignment={horizontal:'center',vertical:'middle'};
+      tot+=occ.length; occ.forEach(g=>{const x=genderOf(g); if(x==='男')tm++; else if(x==='女')tf++;});
+    });
+    const kN=ws.getCell(r0+1,11); kN.value='合計'; kN.font={name:FONT,size:11,bold:true}; kN.alignment={horizontal:'center',vertical:'middle'};
+    const kA=ws.getCell(r0+2,11); kA.value=`大　${zen(tot)}　名`; kA.font={name:FONT,size:11}; kA.alignment={horizontal:'right',vertical:'middle'};
+    const kC=ws.getCell(r0+3,11); kC.value='子　　　名'; kC.font={name:FONT,size:11};
+    const kS=ws.getCell(r0+4,11); kS.value=`計　${zen(tot)}　名`; kS.font={name:FONT,size:11,bold:true}; kS.alignment={horizontal:'center',vertical:'middle'};
+    const kM=ws.getCell(r0+5,11); kM.value=`男${zen(tm)}　女${zen(tf)}`; kM.font={name:FONT,size:11}; kM.alignment={horizontal:'center',vertical:'middle'};
+    ws.mergeCells(r0+6,1,r0+6,2);
+    const ar=ws.getCell(r0+6,1); ar.value='到着予定時刻'; ar.font={name:FONT,size:12}; ar.alignment={horizontal:'center',vertical:'middle'};
+    ws.mergeCells(r0+6,3,r0+6,11);
+    const note=NOTES[date]!=null?NOTES[date]:buildNoteAuto(date);
+    const nt=ws.getCell(r0+6,3); nt.value=note; nt.font={name:FONT,size:11,bold:true}; nt.alignment={horizontal:'left',vertical:'middle',indent:1};
+    for(let rr=r0; rr<=r0+6; rr++){ for(let cc=1; cc<=11; cc++){ const c=ws.getCell(rr,cc); const b={top:thin,bottom:thin,left:thin,right:thin};
+      if(rr===r0)b.top=med; if(rr===r0+6)b.bottom=med; if(cc===1)b.left=med; if(cc===11)b.right=med; c.border=b; } }
+    row+=7;
+  });
+  const buf=await wb.xlsx.writeBuffer();
+  const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`Shizu_chart_${YM}.xlsx`; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+}
+
+function applyStatic(){
+  const st=$('#t-step'); if(st) st.textContent=tx('step');
+  const ch=$('#t-connhint'); if(ch) ch.textContent=tx('connHint');
+  const wt=$('#t-wait'); if(wt) wt.textContent=tx('waitConn');
+  const cs=$('#conn-state'); const btn=$('#btn-connect');
+  if(cs&&btn){ if(!supa){ cs.textContent=tx('notConn'); cs.className='pill'; btn.textContent=tx('connect'); } }
+}
+window.onSaizenLangChange=function(){
+  applyStatic();
+  if(supa && $('#ym-label')){ renderUI(); $('#ym-label').textContent=YM; renderStats(); renderOnsenPanel(); renderPreview();
+    const ax=axis(); $('#stat').textContent=`${ax.length}${lang()==='ja'?'日':lang()==='en'?'d':'일'}`;
+    $('#btn-print').disabled=!ax.length; $('#btn-xlsx').disabled=!ax.length; }
+};
+
+$('#btn-connect').addEventListener('click',connect);
+loadCreds();
+applyStatic();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
