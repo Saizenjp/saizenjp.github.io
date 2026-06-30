@@ -109,7 +109,7 @@ const L={
     pvTitle:'現地手配書 プレビュー', pvMaskOn:'マスキング ON (生年月日まで)', pvMaskOff:'マスキング OFF (全体表記)',
     pvMeta:(n,m,t)=>`A4縦 · ${n}イベント × 両面2ページ = 計 ${n*2}ページ · ${m} · ${t}<br>※ 印刷設定で <b>両面印刷 (長辺とじ)</b> を選択してください — 表面 手配書 / 裏面 記入表が自動で揃います。`,
     pvPrint:'印刷', pvClose:'✕ 閉じる',
-    thNo:'No', thTag:'タグコード', thEventNo:'イベント番号', thRep:'代表者', thEng:'英文名', thDep:'出発日', thArr:'到着日', thNights:'泊', thPax:'人数', thFac:'施設', thMember:'会員権', thMemo:'現地メモ', thOp:'操作', memoPh:'現地メモ' },
+    thNo:'No', thTag:'タグコード', thEventNo:'イベント番号', thRep:'代表者', thEng:'英文名', thDep:'出発日', thArr:'到着日', thNights:'泊', thPax:'人数', thFac:'施設', thTeam:'チーム', teamHint:'運営チーム(同名=同チーム)。手配書チーム欄に表示・夕食合席とは別。', teamSaved:'チーム保存', teamSaveFail:'チーム保存失敗: ', thMember:'会員権', thMemo:'現地メモ', thOp:'操作', memoPh:'現地メモ' },
   ko:{ step:'現地手配書 인쇄', navHome:'← 홈',
     connHint:'행사별 現地手配書(앞면) + 現地発生分 記入表(뒷면) A4 양면 인쇄. step1 데이터 기준.',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결·재시도',
@@ -128,7 +128,7 @@ const L={
     pvTitle:'現地手配書 미리보기', pvMaskOn:'마스킹 ON (생년월일까지)', pvMaskOff:'마스킹 OFF (전체 표기)',
     pvMeta:(n,m,t)=>`A4 세로 · ${n}행사 × 양면 2페이지 = 총 ${n*2}페이지 · ${m} · ${t}<br>※ 인쇄 설정에서 <b>양면 인쇄 (긴 가장자리 제본)</b>을 선택하세요 — 앞면 手配書 / 뒷면 記入表가 자동으로 맞춰집니다.`,
     pvPrint:'인쇄', pvClose:'✕ 닫기',
-    thNo:'No', thTag:'タグコード', thEventNo:'イベント番号', thRep:'代表者', thEng:'英文名', thDep:'出発日', thArr:'到着日', thNights:'泊', thPax:'人数', thFac:'施設', thMember:'会員権', thMemo:'現地メモ', thOp:'조작', memoPh:'現地メモ' },
+    thNo:'No', thTag:'タグコード', thEventNo:'イベント番号', thRep:'代表者', thEng:'英文名', thDep:'出発日', thArr:'到着日', thNights:'泊', thPax:'人数', thFac:'施設', thTeam:'팀', teamHint:'운영 팀(같은 이름=같은 팀). 手配書 チーム 칸 표시·석식 합석과 별개.', teamSaved:'팀 저장', teamSaveFail:'팀 저장 실패: ', thMember:'会員権', thMemo:'現地メモ', thOp:'조작', memoPh:'現地メモ' },
   en:{ step:'Dispatch sheet · Print', navHome:'← Home',
     connHint:'Per-event 現地手配書 (front) + 現地発生分 記入表 (back), A4 double-sided. Based on step1 data.',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
@@ -147,7 +147,7 @@ const L={
     pvTitle:'現地手配書 Preview', pvMaskOn:'Masking ON (down to birth date)', pvMaskOff:'Masking OFF (full info)',
     pvMeta:(n,m,t)=>`A4 portrait · ${n} events × 2 pages = ${n*2} pages total · ${m} · ${t}<br>※ Choose <b>double-sided (long-edge binding)</b> in print settings — front 手配書 / back 記入表 align automatically.`,
     pvPrint:'Print', pvClose:'✕ Close',
-    thNo:'No', thTag:'Tag', thEventNo:'Event no.', thRep:'Rep', thEng:'Eng name', thDep:'Departure', thArr:'Arrival', thNights:'Nts', thPax:'Pax', thFac:'Facility', thMember:'Member', thMemo:'Local memo', thOp:'Action', memoPh:'Local memo' }
+    thNo:'No', thTag:'Tag', thEventNo:'Event no.', thRep:'Rep', thEng:'Eng name', thDep:'Departure', thArr:'Arrival', thNights:'Nts', thPax:'Pax', thFac:'Facility', thTeam:'Team', teamHint:'Operational team (same name = same team). Shown in 手配書 team column; separate from dinner seating.', teamSaved:'Team saved', teamSaveFail:'Team save failed: ', thMember:'Member', thMemo:'Local memo', thOp:'Action', memoPh:'Local memo' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
@@ -316,6 +316,9 @@ async function load(){
     const GMAP={}; (gs||[]).forEach(g=>{GMAP[g.event_seq]=g;});
     const {data:ns}=await supa.from('event_notes').select('event_seq,remarks,memo').eq('session_ym',YM);
     const NMAP={}; (ns||[]).forEach(n=>{NMAP[n.event_seq]=n;});
+    // 운영 팀 라벨(print_overrides.team_group) — 手配書 チーム 칸에서 정의·표시
+    const {data:os}=await supa.from('print_overrides').select('event_seq,team_group').eq('session_ym',YM);
+    const OMAP={}; (os||[]).forEach(o=>{OMAP[o.event_seq]=o;});
     // 개인 명단(passengers) + 대표/태그(guest_members)
     const PAX={}, REP={};
     for(let i=0;i<seqs.length;i+=200){
@@ -356,8 +359,9 @@ async function load(){
       const origin=repPax.origin||b.origin||'';
       const depFlight=repPax.dep_flight||b.airline||'';
       const isPUS=SZCore.isPus(origin, depFlight);  // 출발지 PUS/ICN = saizen-core 단일 진실원(ZE/TW·부산/김해)
+      const _tlabel=b.team_label||note.team_label||'', _tg=(OMAP[seq]&&OMAP[seq].team_group)||'';
       const rec={ eventSeq:seq, eventNo:b.event_no||'', repName:b.rep_name||'', memberType:b.member_type||'', dep, arr, nights, pax:b.pax||g.pax||0,
-        accom:g.accom||'', roomType:'', teamName:b.team_label||note.team_label||'', remark:b.remark||'', noteRemarks:note.remarks||'', noteMemo:note.memo||'',
+        accom:g.accom||'', roomType:'', teamName:_tg||_tlabel, teamGroup:_tg, _teamLabelBase:_tlabel, remark:b.remark||'', noteRemarks:note.remarks||'', noteMemo:note.memo||'',
         prodName:b.product_name||'' };
       const golf=dispatchGolfRows(rec,isPUS).map(x=>({...x,tee:''}));
       const autoRoom=rec.pax>0?(Math.ceil(rec.pax/2)+'室 (2人1室)'):'-';
@@ -392,9 +396,9 @@ function renderList(){
   $('#list-cnt').innerHTML=(ROWS.length?tx('showStat')(visible.length,ROWS.length):'')
     +(visible.length?` &nbsp;·&nbsp; <span style="color:var(--accent);font-weight:700">${tx('sumMG')(_mg.mem,_mg.gen,_mg.tot)}</span>`:'');
   const thead=$('#list thead'), tbody=$('#list tbody');
-  thead.innerHTML=`<tr><th>${esc(tx('thNo'))}</th><th>${esc(tx('thTag'))}</th><th>${esc(tx('thEventNo'))}</th><th>${esc(tx('thRep'))}</th><th>${esc(tx('thEng'))}</th><th>${esc(tx('thDep'))}</th><th>${esc(tx('thArr'))}</th><th>${esc(tx('thNights'))}</th><th>${esc(tx('thPax'))}</th><th>${esc(tx('thFac'))}</th><th>${esc(tx('thMember'))}</th><th>${esc(tx('thMemo'))}</th><th>${esc(tx('thOp'))}</th></tr>`;
-  if(!ROWS.length){ tbody.innerHTML=`<tr><td colspan="13" class="c" style="color:var(--muted);padding:24px">${esc(tx('noData'))}</td></tr>`; return; }
-  if(!visible.length){ tbody.innerHTML=`<tr><td colspan="13" class="c" style="color:var(--muted);padding:24px">${esc(tx('noFilterResult'))}</td></tr>`; return; }
+  thead.innerHTML=`<tr><th>${esc(tx('thNo'))}</th><th>${esc(tx('thTag'))}</th><th>${esc(tx('thEventNo'))}</th><th>${esc(tx('thRep'))}</th><th>${esc(tx('thEng'))}</th><th>${esc(tx('thDep'))}</th><th>${esc(tx('thArr'))}</th><th>${esc(tx('thNights'))}</th><th>${esc(tx('thPax'))}</th><th>${esc(tx('thFac'))}</th><th>${esc(tx('thTeam'))}</th><th>${esc(tx('thMember'))}</th><th>${esc(tx('thMemo'))}</th><th>${esc(tx('thOp'))}</th></tr>`;
+  if(!ROWS.length){ tbody.innerHTML=`<tr><td colspan="14" class="c" style="color:var(--muted);padding:24px">${esc(tx('noData'))}</td></tr>`; return; }
+  if(!visible.length){ tbody.innerHTML=`<tr><td colspan="14" class="c" style="color:var(--muted);padding:24px">${esc(tx('noFilterResult'))}</td></tr>`; return; }
   tbody.innerHTML=visible.map(d=>`<tr>
     <td class="c">${d.no}</td>
     <td class="c mono" style="font-weight:700">${esc(d.tagCode)}</td>
@@ -406,11 +410,25 @@ function renderList(){
     <td class="c">${d.rec.nights}泊</td>
     <td class="c">${d.rec.pax}名</td>
     <td class="c">${esc(d.accom||'')}</td>
+    <td><input class="tg-inp" data-seq="${d.seq}" value="${esc(d.rec.teamGroup||'')}" placeholder="${esc(tx('thTeam'))}" title="${esc(tx('teamHint'))}" style="width:90px;font-size:12px;padding:4px 6px;border:1px solid var(--border2);border-radius:5px"></td>
     <td class="c">${esc(d.rec.memberType||'-')}</td>
     <td><input class="dm-inp" data-seq="${d.seq}" value="${esc(d.rec.noteMemo||'')}" placeholder="${esc(tx('memoPh'))}" style="width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border2);border-radius:5px"></td>
     <td class="c"><button class="btn sm" onclick="printDispatch('${d.seq}')">${esc(tx('preview'))}</button></td>
   </tr>`).join('');
   tbody.querySelectorAll('.dm-inp').forEach(inp=>inp.addEventListener('change',()=>saveDispatchMemo(inp.dataset.seq,inp.value)));
+  tbody.querySelectorAll('.tg-inp').forEach(inp=>inp.addEventListener('change',()=>saveTeamGroup(inp.dataset.seq,inp.value)));
+}
+// 운영 팀 라벨 저장(print_overrides.team_group) — 같은 라벨=같은 팀. 夕食 합석(dining_group)은 보존.
+async function saveTeamGroup(seq,val){
+  if(!supa){toast(tx('connectFirst'),'warn');return;}
+  val=String(val||'').trim()||null;
+  const {data:cur}=await supa.from('print_overrides').select('dining_group,excluded,exclude_reason').eq('event_seq',seq).maybeSingle();
+  const row={event_seq:Number(seq),session_ym:YM,team_group:val,
+    dining_group:(cur&&cur.dining_group)||null,excluded:!!(cur&&cur.excluded),exclude_reason:(cur&&cur.exclude_reason)||null};
+  const {error}=await supa.from('print_overrides').upsert(row,{onConflict:'event_seq'});
+  if(error){ toast(tx('teamSaveFail')+error.message,'err'); return; }
+  const r=ROWS.find(x=>String(x.seq)===String(seq)); if(r){ r.rec.teamGroup=val||''; r.rec.teamName=val||r.rec._teamLabelBase||''; }
+  toast(tx('teamSaved'),'ok');
 }
 // 現地メモ(event_notes.memo) 편집 — print 영역도 가능한 RPC 경유(memo만 갱신 + 변경이력 기록)
 async function saveDispatchMemo(seq,val){
