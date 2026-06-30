@@ -122,6 +122,8 @@ from (
   union all select 55,'55 방문통계','visitor_stats() RPC',   case when exists(select 1 from pg_proc where proname='visitor_stats') then '✅ 있음' else '❌ 없음 (55)' end
   union all select 56,'56 운영팀','print_overrides.team_group', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='print_overrides' and column_name='team_group') then '✅ 있음' else '❌ 없음 (56)' end
   union all select 57,'57 시즈온천','shizu_onsen',          case when to_regclass('public.shizu_onsen') is not null then '✅ 있음' else '❌ 없음 (57)' end
+  union all select 58,'58 별주청구','charges.link_ref',      case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='charges' and column_name='link_ref') then '✅ 있음' else '❌ 없음 (58)' end
+  union all select 58,'58 별주청구','dinner_addon 트리거',   case when exists(select 1 from pg_trigger where tgname='trg_dinner_addon_charge') then '✅ 있음' else '❌ 없음 (58)' end
 ) t
 order by ord, 항목;
 
