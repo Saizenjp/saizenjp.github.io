@@ -119,7 +119,7 @@
 <script src="../assets/saizen-ops.js?v=14.90"></script>
 <script>
 const $=s=>document.querySelector(s);
-let supa=null, VDATA=null, VGRAN='month';
+let supa=null, VDATA=null, VGRAN='month', VMPAGE=0;
 
 const L={
   ja:{ navHome:'ホーム', step:'訪問統計', connIdle:'未接続', connecting:'接続中…', connOk:'接続済', connFail:'接続失敗', connect:'接続', connectedBtn:'✓ 接続済',
@@ -203,8 +203,9 @@ async function run(){
   const {data,error}=await supa.rpc('visitor_stats',{p_from:f,p_to:t,p_gran:VGRAN});
   if(error){ const msg=/권한|permission/i.test(error.message)?tx('noAuth'):(tx('loadFail')+': '+error.message);
     $('#vcontent').innerHTML=`<div class="deny" style="color:var(--err)">${esc(msg)}</div>`; return; }
-  VDATA=data||{}; renderVisitor();
+  VDATA=data||{}; VMPAGE=0; renderVisitor();
 }
+function vmPage(d){ VMPAGE+=d; renderVisitor(); }
 function ageLabel(b){ b=Number(b); if(b<0) return tx('vUnknown'); if(b>=70) return tx('v70plus'); return b+tx('vBandSuffix'); }
 function renderVisitor(){
   const d=VDATA||{}; const tot=d.total||0, mem=d.member||0, non=d.nonmember||0;
@@ -223,8 +224,15 @@ function renderVisitor(){
   const serRows=(d.series||[]).map(s=>`<tr><td>${esc(s.bucket)}</td><td class="mono">${num(s.total)}</td><td class="mono">${num(s.member)}</td><td class="mono">${num(s.nonmember)}</td></tr>`).join('');
   const serTbl=`<div class="panel"><h3>${tx('vSeries')}</h3><table class="t"><thead><tr><th>${tx('thBucket')}</th><th>${tx('vTotal')}</th><th>${tx('member')}</th><th>${tx('nonmember')}</th></tr></thead><tbody>${serRows||`<tr><td colspan="4" style="text-align:center;color:var(--muted)">—</td></tr>`}</tbody></table></div>`;
   const mm=(d.members||[]);
-  const mmRows=mm.map(m=>`<tr><td>${esc(m.name)}</td><td class="mono">${esc(m.birth||'')}</td><td>${esc(m.grade)}</td><td class="mono">${num(m.visits)}</td></tr>`).join('');
-  const mmTbl=`<div class="panel"><h3>${tx('vByMember')} <span class="hint">(${mm.length})</span></h3><table class="t"><thead><tr><th>${tx('thName')}</th><th>${tx('thBirth')}</th><th>${tx('thGrade')}</th><th>${tx('thVisits')}</th></tr></thead><tbody>${mmRows||`<tr><td colspan="4" style="text-align:center;color:var(--muted)">—</td></tr>`}</tbody></table></div>`;
+  const PS=30, pages=Math.max(1,Math.ceil(mm.length/PS));
+  if(VMPAGE>=pages) VMPAGE=pages-1; if(VMPAGE<0) VMPAGE=0;
+  const pg=mm.slice(VMPAGE*PS,VMPAGE*PS+PS);
+  const mmRows=pg.map((m,i)=>`<tr><td class="mono" style="color:var(--muted)">${VMPAGE*PS+i+1}</td><td>${esc(m.name)}</td><td class="mono">${esc(m.birth||'')}</td><td>${esc(m.grade)}</td><td class="mono">${num(m.visits)}</td></tr>`).join('');
+  const pager=mm.length>PS?`<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:9px">
+    <button class="chip" onclick="vmPage(-1)" ${VMPAGE<=0?'disabled style="opacity:.4"':''}>‹</button>
+    <span class="hint">${VMPAGE*PS+1}–${Math.min(mm.length,(VMPAGE+1)*PS)} / ${mm.length}</span>
+    <button class="chip" onclick="vmPage(1)" ${VMPAGE>=pages-1?'disabled style="opacity:.4"':''}>›</button></div>`:'';
+  const mmTbl=`<div class="panel"><h3>${tx('vByMember')} <span class="hint">(${mm.length})</span></h3><table class="t"><thead><tr><th>#</th><th>${tx('thName')}</th><th>${tx('thBirth')}</th><th>${tx('thGrade')}</th><th>${tx('thVisits')}</th></tr></thead><tbody>${mmRows||`<tr><td colspan="5" style="text-align:center;color:var(--muted)">—</td></tr>`}</tbody></table>${pager}</div>`;
   $('#vcontent').innerHTML = kpi + `<div class="grid2">${genTbl}${ageTbl}</div>` + `<div class="grid2">${serTbl}${mmTbl}</div>` + `<div class="note">${tx('vNote')}</div>`;
 }
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
