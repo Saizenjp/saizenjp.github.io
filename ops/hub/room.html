@@ -510,6 +510,7 @@ const L={
     flagIn:'チェックイン', flagCont:'連泊', over:'超過',
     lockOnT:'使用可 — クリックでロック(無効化)', lockOffT:'ロック(無効化) — クリックで使用可',
     closedNote:(from,to,reason)=>`🔒 閉鎖 ${from}~${to}${reason?' · '+reason:''}`,
+    deepNoRoom:'そのチームの割当部屋がこの日付にありません(未割当かも)',
     used:'使用', roomsUnit:'室', under:n=>`⚠定員未満 ${n}室`, floorplan:'平面図', floorplanT:'断面図(円形配置)を見る',
     clearZone:'クリア', clearZoneT:z=>`${z} 割当を全解除`, zoneLabel:z=>'— '+z,
     facUtil:(used,cap)=>`${used}/${cap}名`,
@@ -644,6 +645,7 @@ const L={
     flagIn:'체크인', flagCont:'연박', over:'초과',
     lockOnT:'사용 가능 — 클릭하면 잠금(비활성)', lockOffT:'잠금(비활성) — 클릭하면 사용 가능',
     closedNote:(from,to,reason)=>`🔒 폐쇄 ${from}~${to}${reason?' · '+reason:''}`,
+    deepNoRoom:'그 팀의 배정된 방이 이 날짜에 없습니다(미배정일 수 있어요)',
     used:'사용', roomsUnit:'실', under:n=>`⚠정원미만 ${n}실`, floorplan:'평면도', floorplanT:'단면도(원형 배치) 보기',
     clearZone:'비우기', clearZoneT:z=>`${z} 배정 전체 해제`, zoneLabel:z=>'— '+z,
     facUtil:(used,cap)=>`${used}/${cap}명`,
@@ -772,6 +774,7 @@ const L={
     flagIn:'Check-in', flagCont:'Staying', over:'Over',
     lockOnT:'Usable — click to lock (disable)', lockOffT:'Locked (disabled) — click to enable',
     closedNote:(from,to,reason)=>`🔒 Closed ${from}~${to}${reason?' · '+reason:''}`,
+    deepNoRoom:'No assigned room for this team on this date (may be unassigned)',
     used:'Used', roomsUnit:' rooms', under:n=>`⚠ under capacity ${n} rooms`, floorplan:'Floor plan', floorplanT:'View floor plan (circular layout)',
     clearZone:'Clear', clearZoneT:z=>`Release all assignments on ${z}`, zoneLabel:z=>'— '+z,
     facUtil:(used,cap)=>`${used}/${cap} ppl`,
@@ -1082,7 +1085,11 @@ async function connect(){
     $('#btn-load').disabled=false; $('#btn-auto').disabled=false; $('#btn-clear-all').disabled=false; $('#btn-conflicts').disabled=false; $('#btn-closure').disabled=false;
     await loadInventory();
     if($('#month-pick').value){ await loadDay(); }   // 연결 후 이번 달 자동 로드
-    if(window._deepDate){ state.focus=window._deepDate; window._deepDate=null; render(); }   // 프론트 데스크 딥링크: 그 날짜로
+    if(window._deepDate||window._deepSeq){                                                   // 프론트 데스크 딥링크: 그 날짜 + 그 팀 방으로
+      if(window._deepDate){ state.focus=window._deepDate; window._deepDate=null; }
+      render();
+      if(window._deepSeq){ const s=window._deepSeq; window._deepSeq=null; focusTeamDeep(s); }
+    }
   }catch(e){
     setConn(tx('connFail'),'err');
     toast(tx('connFailToast',e.message),'err');
@@ -1732,7 +1739,7 @@ function renderRoom(inv){
       const ecoBtn=m?`<span class="ceco-btn${m.actual_dep?' on':''}" data-room-id="${r.id}" title="${tx('chipEcoT')}">🛫</span>`:'';
       return `<div class="cmem${(m&&m.actual_dep)?' eco':''}"><b>${nameKr}</b><span class="cmen">${nameEn}</span>${gb}${ecoMk}<span class="cmem-act">${ecoBtn}<span class="csplit" data-room-id="${r.id}" title="${tx('chipSplitT')}">✂</span><span class="cx" data-room-id="${r.id}" title="${tx('chipCancelT')}">✕</span></span></div>`;
     }).join('');
-    return `<div class="chip${chipCls}">
+    return `<div class="chip${chipCls}" data-seq="${seq}">
       <div class="chip-head"><span class="ctag">${gcode}</span>${flag}<span class="cnum">${rows.length}${tx('nameUnit')}</span><span class="cdate">${fmtMD(r0.check_in)}~${fmtMD(r0.check_out)}</span></div>
       <div class="cmems">${mems}</div>
     </div>`;
@@ -1821,6 +1828,19 @@ function cancelSplit(){ if(state.splitPending){ state.splitPending=null; render(
 //   · 다른 메뉴(정산 환불)에 후속 작업을 남기므로 「확인 필요(followups)」 항목 자동 생성 → 놓치지 않게.
 //   · B2B 정산(settle_merit)은 불변. 환불은 현장 御請求書.
 function settleDeepLink(seq){ const ym=($('#month-pick')&&$('#month-pick').value)||((state.from||'').slice(0,7)); return `settle.html?ym=${encodeURIComponent(ym)}&seq=${encodeURIComponent(seq)}`; }
+// 프론트 데스크 딥링크(?seq): 그 팀이 배정된 방 카드로 스크롤 + 강조(rs-flash). 카드 뷰로 전환.
+function focusTeamDeep(seq){
+  if(typeof viewMode!=='undefined' && viewMode!=='card'){ setView('card'); }
+  setTimeout(()=>{
+    const chips=[...document.querySelectorAll('.chip[data-seq="'+seq+'"]')];
+    if(!chips.length){ toast(tx('deepNoRoom'),'warn'); return; }
+    const rooms=[...new Set(chips.map(c=>c.closest('.room')).filter(Boolean))];
+    if(!rooms.length) return;
+    rooms.forEach(el=>el.classList.add('rs-flash'));
+    rooms[0].scrollIntoView({behavior:'smooth',block:'center'});
+    setTimeout(()=>rooms.forEach(el=>el.classList.remove('rs-flash')),2200);
+  },140);
+}
 // memberById는 사본을 반환하므로 원본 state.members 항목을 직접 갱신해야 재렌더에 반영됨.
 function patchMember(mid, patch){ for(const seq in state.members){ const hit=(state.members[seq]||[]).find(x=>x.id===mid); if(hit){ Object.assign(hit,patch); return; } } }
 async function createFollowup(seq, area, kind, title, detail, link){
@@ -3026,7 +3046,7 @@ $('#unassigned').addEventListener('drop',e=>{ e.preventDefault(); });
 // 월 기본값(이번 달) + 저장된 연결정보로 자동 연결·자동 로드
 loadCreds();
 // 프론트 데스크 등에서 ?ym=&date= 딥링크 → 그 달 로드 후 그 날짜로 포커스
-(function(){ const q=new URLSearchParams(location.search); const m=q.get('ym')||isoToday().slice(0,7); $('#month-pick').value=m; $('#date-pick').value=m+'-01'; $('#date-to').value=lastDayOfMonth(m); window._deepDate=q.get('date')||null; })();
+(function(){ const q=new URLSearchParams(location.search); const m=q.get('ym')||isoToday().slice(0,7); $('#month-pick').value=m; $('#date-pick').value=m+'-01'; $('#date-to').value=lastDayOfMonth(m); window._deepDate=q.get('date')||null; window._deepSeq=q.get('seq')?Number(q.get('seq')):null; })();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
 // 언어 전환 시 정적 chrome + 현재 화면 다시 그리기(로드된 데이터가 있으면)
