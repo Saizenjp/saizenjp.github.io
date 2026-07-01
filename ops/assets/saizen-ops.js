@@ -1077,6 +1077,7 @@
   // 토글 버튼 핸들러 전역 노출(헤더 인라인 onclick용)
   global.__so_setLang = setLang;
   global.__so_toggleFuri = toggleFuri;
+  global.__so_plain = stripRuby;   // 후리가나(ruby) HTML → 평문. <option>·textContent·esc 컨텍스트용(루비 누출 방지)
 
   // ── 담당자(식별 라벨) — 모든 ops 페이지 상단바에 주입. 수정이력 기록용.
   //    로그인 세션이 있으면 그 이름(가입 시 입력)을 우선 사용 → 로그인=담당자 통합.

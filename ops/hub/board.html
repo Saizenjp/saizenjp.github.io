@@ -73,7 +73,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=14.99">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.0">
 </head>
 <body data-so-area="board">
 <div class="topbar so-bar">
@@ -128,7 +128,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=14.99"></script>
+<script src="../assets/saizen-ops.js?v=15.0"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -168,7 +168,7 @@ const L={
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
 function applyStatic(){
-  const ds=$('#sm-date'); if(ds && !lastSummary) ds.textContent=(window.t?t('bd_today'):tx('todaySummary'));
+  const ds=$('#sm-date'); if(ds && !lastSummary) ds.innerHTML=(window.t?t('bd_today'):esc(tx('todaySummary')));
   const pl=$('#t-pinuntil-lbl'); if(pl) pl.textContent=tx('pinUntilLbl');
   // 연결 상태 pill(아직 연결 안 됐을 때만 기본 라벨)
   const cs=$('#conn-state'); if(cs && !cs.dataset.set) cs.textContent=tx('notConn');
@@ -181,6 +181,8 @@ function canDelAnn(a){ return (myAcc&&myAcc.role==='admin') || (a&&a.author_uid&
 const DEPT_KEYS=['front','fnb','golf','acct'];
 const DEPT_I18N={front:['','ix_dFront'],fnb:['','ix_dFnb'],golf:['','ix_dGolf'],acct:['','ix_dAcct']};
 function deptLabel(k){ if(!k) return t('bd_allDept'); const d=DEPT_I18N[k]; return d?(d[0]+' '+t(d[1])):k; }
+// 후리가나(ruby)는 <option>·textContent에선 렌더 안 돼 태그가 노출됨 → 그 컨텍스트는 평문으로.
+function plain(s){ s=String(s==null?'':s); return window.__so_plain?window.__so_plain(s):s; }
 // 진입 시 ?dept= 로 들어오면 그 부서로 필터(부서 카드에서 분산 진입)
 let curDept=new URLSearchParams(location.search).get('dept')||'';
 if(curDept && DEPT_KEYS.indexOf(curDept)<0) curDept='';
@@ -219,7 +221,7 @@ async function loadSummary(){
 }
 function renderSummary(){
   const s=lastSummary; if(!s) return;
-  $('#sm-date').textContent=t('bd_today')+' · '+(s.date||'');
+  $('#sm-date').innerHTML=t('bd_today')+' · '+esc(String(s.date||''));   // bd_today=후리가나 → innerHTML로 렌더
   $('#summary').innerHTML=`
     <div class="sm-card"><div class="lab">${t('bd_ciTeam')}</div><div class="val">${s.checkin_teams||0}</div><div class="sub">${s.checkin_pax||0}${t('bd_uPpl')}</div></div>
     <div class="sm-card"><div class="lab">${t('bd_coTeam')}</div><div class="val">${s.checkout_teams||0}</div><div class="sub">${t('bd_uTeam')}</div></div>
@@ -237,11 +239,11 @@ function fmtTs(ts){ const d=new Date(ts); return isNaN(d)?'':`${d.getFullYear()}
 function fillWriteDept(){
   const sel=$('#w-dept'); if(!sel) return;
   const cur=sel.value||(myAcc&&myAcc.dept)||curDept||'';
-  sel.innerHTML=`<option value="">${t('bd_allDept')}</option>`+DEPT_KEYS.map(k=>`<option value="${k}">${deptLabel(k)}</option>`).join('');
+  sel.innerHTML=`<option value="">${plain(t('bd_allDept'))}</option>`+DEPT_KEYS.map(k=>`<option value="${k}">${plain(deptLabel(k))}</option>`).join('');
   sel.value=cur;
   // 작성자(이름·직급) 자동 표시
   const who=$('#w-who');
-  if(who){ const nm=authorName(); who.innerHTML = nm ? (t('bd_writer')+': '+esc(nm)+(myAcc&&myAcc.dept?(' · '+esc(deptLabel(myAcc.dept))):'')) : ''; }
+  if(who){ const nm=authorName(); who.innerHTML = nm ? (t('bd_writer')+': '+esc(nm)+(myAcc&&myAcc.dept?(' · '+deptLabel(myAcc.dept)):'')) : ''; }   // deptLabel=정적 라벨(후리가나 렌더)
 }
 // 작성자 = 마스터 지정 이름(+직급) 우선
 function authorName(){
@@ -271,7 +273,7 @@ function markBoardSeen(){
 function renderAnns(){
   renderChips();
   markBoardSeen();
-  $('#ann-scope').innerHTML = '· '+(curDept ? esc(deptLabel(curDept)) : t('bd_chipAll'));
+  $('#ann-scope').innerHTML = '· '+(curDept ? deptLabel(curDept) : t('bd_chipAll'));
   const box=$('#ann-list');
   const list = curDept ? anns.filter(a=>(a.dept||'')===curDept) : anns;
   if(!list.length){ box.innerHTML='<div class="empty">'+(curDept?deptLabel(curDept)+' ':'')+t('bd_empty')+'</div>'; return; }
@@ -284,7 +286,7 @@ function renderAnns(){
         ${canDrag?'<span class="draghandle" title="'+esc(tx('dragReorder'))+'">≡</span>':''}
         <span class="at">${esc(a.title)}</span>
         ${act&&a.pin_until?`<span class="pinuntil-meta">📌 ~${fmtTs(a.pin_until).slice(0,10)}</span>`:''}
-        <span class="dbadge${a.dept?'':' all'}">${esc(deptLabel(a.dept))}</span>
+        <span class="dbadge${a.dept?'':' all'}">${deptLabel(a.dept)}</span>
         <span class="ameta">${esc(a.author||'')} · ${fmtTs(a.created_at)}</span>
       </div>
       ${a.body?`<div class="abody">${esc(a.body)}</div>`:''}
