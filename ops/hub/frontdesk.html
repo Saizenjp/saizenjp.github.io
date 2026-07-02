@@ -129,7 +129,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.4">
 </head>
 <body data-so-area="front">
 <div class="topbar so-bar">
@@ -177,7 +177,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=7"></script>
-<script src="../assets/saizen-ops.js?v=15.3"></script>
+<script src="../assets/saizen-ops.js?v=15.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -301,8 +301,20 @@ async function connect(){
     const {error}=await supa.from('bookings').select('event_seq',{count:'exact',head:true});
     if(error)throw error;
     state.conn='ok';refreshConn();btn.disabled=false;
-    $('#btn-reload').disabled=false; await load();
+    $('#btn-reload').disabled=false; await load(); startAutoRefresh();
   }catch(e){state.conn='fail';refreshConn();toast(tx('connFail')+': '+e.message,'err');btn.disabled=false;supa=null;}
+}
+// POS 주문·결제가 프론트에 바로 뜨도록 주기적 자동 갱신(모니터링 화면이라 안전).
+//  단 메모 입력 중(.ntf 포커스)·탭 비활성일 땐 건너뛰어 방해/헛수고 방지.
+let _autoTimer=null;
+function startAutoRefresh(){
+  if(_autoTimer) clearInterval(_autoTimer);
+  _autoTimer=setInterval(()=>{
+    if(!supa||state.conn!=='ok'||document.hidden) return;
+    const ae=document.activeElement;
+    if(ae&&ae.classList&&ae.classList.contains('ntf')) return;   // 비고/메모 타이핑 중이면 스킵
+    load();
+  }, 25000);
 }
 async function pagedQuery(buildFn){let out=[],pg=0;while(true){const {data,error}=await buildFn().range(pg,pg+999);if(error)return{error};out=out.concat(data||[]);if(!data||data.length<1000)break;pg+=1000;}return{data:out};}
 

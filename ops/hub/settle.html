@@ -146,7 +146,7 @@
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
   @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.4">
 </head>
 <body data-so-area="settle">
 <div class="topbar so-bar">
@@ -207,7 +207,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=15.3"></script>
+<script src="../assets/saizen-ops.js?v=15.4"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -372,7 +372,7 @@ async function connect(){
     setConn(tx('connOk'),'ok'); toast(tx('connOkToast'),'ok');
     btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
     $('#btn-load').disabled=false; $('#btn-sales').disabled=false;
-    loadSession();
+    loadSession(); startSettleAuto();
   }catch(e){
     setConn(tx('connFail'),'err');
     toast(tx('connFail')+': '+e.message+' '+tx('connFailHint'),'err');
@@ -571,6 +571,30 @@ async function selectFolio(id){
   renderFolioList(); renderDetail();
 }
 
+// POS 주문·결제가 정산 화면에 바로 반영되도록 가벼운 자동 갱신(선택·날짜필터 보존).
+//  loadSession()은 선택을 초기화하므로 쓰지 않고 잔액뷰만 다시 읽어 목록·열린 folio를 새로고침.
+//  모달 열림/입력 포커스/탭 비활성일 땐 스킵(편집 방해 방지).
+let _settleTimer=null;
+function startSettleAuto(){
+  if(_settleTimer) clearInterval(_settleTimer);
+  _settleTimer=setInterval(autoRefreshSettle, 20000);
+}
+async function autoRefreshSettle(){
+  if(!supa||!state.ym||document.hidden) return;
+  if(document.querySelector('.modal-bg')) return;                 // 모달 열림 → 스킵
+  const ae=document.activeElement, tag=ae&&ae.tagName;
+  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;      // 입력 중 → 스킵
+  try{
+    const fres=await pagedQuery(()=>supa.from('v_folio_balance').select('*').eq('session_ym',state.ym).order('opened_at').order('folio_id'));
+    if(fres.error) return;
+    state.folios=fres.data||[];
+    renderFolioList();
+    if(state.selId){
+      if(state.folios.some(f=>f.folio_id===state.selId)) await selectFolio(state.selId);   // 열린 계산서에 새 POS 청구 즉시 반영
+      else { state.selId=null; state.charges=[]; state.payments=[]; renderDetail(); }
+    }
+  }catch(_){}
+}
 function curFolio(){ return state.folios.find(f=>f.folio_id===state.selId)||null; }
 
 function renderDetail(){
