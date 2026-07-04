@@ -241,6 +241,83 @@
     return { sur: hangulToKana(s.slice(0, surLen)), given: hangulToKana(s.slice(surLen)) };
   }
 
+  // ── 영문 로마자 → 가타카나 요미카타 ── 한글 발음이 아니라 **여권 영문 철자대로** 후리가나를 단다.
+  //   (예: 강병욱 KANG BYONG UK → カン・ビョン・ウク. 한글기반 ピョン(칸푱)이 아니라 영문 유성음 b→ビョン)
+  //   유성 자음행(g/b/d/j) 사용이 핵심. 음절경계는 토큰(공백) 단위로 보존해 변환.
+  var _EN_ROW = {
+    k:['カ','キ','ク','ケ','コ'], g:['ガ','ギ','グ','ゲ','ゴ'],
+    n:['ナ','ニ','ヌ','ネ','ノ'], d:['ダ','ディ','ドゥ','デ','ド'], t:['タ','ティ','トゥ','テ','ト'],
+    r:['ラ','リ','ル','レ','ロ'], l:['ラ','リ','ル','レ','ロ'], m:['マ','ミ','ム','メ','モ'],
+    b:['バ','ビ','ブ','ベ','ボ'], p:['パ','ピ','プ','ペ','ポ'], s:['サ','シ','ス','セ','ソ'],
+    h:['ハ','ヒ','フ','ヘ','ホ'], j:['ジャ','ジ','ジュ','ジェ','ジョ'],
+    ch:['チャ','チ','チュ','チェ','チョ'], sh:['シャ','シ','シュ','シェ','ショ'],
+    f:['ファ','フィ','フ','フェ','フォ'], z:['ザ','ジ','ズ','ゼ','ゾ'],
+    '':['ア','イ','ウ','エ','オ']
+  };
+  var _EN_CODA = { ng:'ン', n:'ン', m:'ム', k:'ク', g:'グ', l:'ル', r:'ル', p:'プ', b:'ブ', t:'ト', s:'ス', ch:'チ', h:'' };
+  // 모음/이중모음 (긴 것부터). [철자, 활음(''/y/w), 핵모음idx(0a·1i·2u·3e·4o)]
+  var _VOW = [
+    ['yeo','y',4],['yae','y',3],['weo','w',4],['wae','w',3],['you','y',4],['yoo','y',2],
+    ['eo','',4],['eu','',2],['ae','',3],['oe','w',3],['ui','w',1],['oo','',2],['ou','',4],['ee','',1],['uu','',2],
+    ['ya','y',0],['yu','y',2],['ye','y',3],['yo','y',4],['yi','y',1],
+    ['wa','w',0],['wo','w',4],['wi','w',1],['we','w',3],
+    ['a','',0],['e','',3],['i','',1],['o','',4],['u','',2],
+    ['y','y',1],['w','w',2]
+  ];
+  // 흔한 성씨의 관용 표기(영문 철자대로면 어색해지는 것만 소수 보정)
+  var _SUR_EN = { park:'パク', lee:'イ', rhee:'イ', yi:'イ', oh:'オ', woo:'ウ', ahn:'アン',
+                  noh:'ノ', roh:'ノ', choi:'チェ', suh:'ソ', yoo:'ユ' };
+  function _romajiTok(tok) {
+    var s = String(tok || '').toLowerCase().replace(/[^a-z]/g, '');
+    if (!s) return '';
+    var DBL = { kk:'k', gg:'g', tt:'t', dd:'d', pp:'p', bb:'b', ss:'s', jj:'j', ll:'l' };
+    function isNuc(c) { return !!c && 'aeiouyw'.indexOf(c) >= 0; }
+    function matchVowel(p) {
+      for (var k = 0; k < _VOW.length; k++) { var v = _VOW[k]; if (s.substr(p, v[0].length) === v[0]) return { glide:v[1], idx:v[2], next:p + v[0].length }; }
+      return null;
+    }
+    function compose(onset, glide, idx) {
+      var base = _EN_ROW[onset] || _EN_ROW[''];
+      if (glide === 'y') { var yc = ({0:'a',1:'i',2:'u',3:'e',4:'o'})[idx]; return onset === '' ? (_YV[yc] || base[idx]) : (base[1] + (_Y[yc] || '')); }
+      if (glide === 'w') { var wc = ({0:'a',1:'i',2:'u',3:'e',4:'o'})[idx]; return onset === '' ? (_WV[wc] || base[idx]) : (base[2] + (_W[wc] || '')); }
+      return base[idx];
+    }
+    var i = 0, out = '', N = s.length;
+    while (i < N) {
+      var c = s.charAt(i), two = s.substr(i, 2);
+      var isCons = (_EN_ROW[two] && two !== '') || DBL[two] || ('kgndtrlmbpshjfczv'.indexOf(c) >= 0);
+      if (isCons) {
+        var onsetKey, adv;
+        if (_EN_ROW[two] && two !== '') { onsetKey = two; adv = 2; }
+        else if (DBL[two]) { onsetKey = DBL[two]; adv = 2; }
+        else { onsetKey = (c === 'c' ? 'k' : c === 'v' ? 'b' : c); adv = 1; }
+        var after = i + adv;
+        if (after < N && isNuc(s.charAt(after))) {
+          var v = matchVowel(after);
+          if (v) { var ok = (_EN_ROW[onsetKey] !== undefined) ? onsetKey : ''; out += compose(ok, v.glide, v.idx); i = v.next; continue; }
+        }
+        if (c === 'n' && s.charAt(i + 1) === 'g' && !isNuc(s.charAt(i + 2))) { out += 'ン'; i += 2; continue; }   // 종성 ng
+        out += (_EN_CODA[onsetKey] !== undefined ? _EN_CODA[onsetKey] : (_EN_CODA[c] || '')); i += adv; continue;
+      }
+      if (isNuc(c)) { var v2 = matchVowel(i); if (v2) { out += compose('', v2.glide, v2.idx); i = v2.next; continue; } }
+      i++;
+    }
+    return out;
+  }
+  function romajiToKana(str) {
+    return String(str || '').trim().split(/\s+/).map(_romajiTok).join('');
+  }
+  // 영문 성명 → {sur, given} 가타카나(성=첫 토큰·관용보정, 명=나머지 토큰 각각 변환 후 결합)
+  function nameYomiEn(nameEn) {
+    var s = String(nameEn || '').trim();
+    if (!s) return { sur: '', given: '' };
+    var parts = s.split(/\s+/);
+    var surTok = parts[0].toLowerCase().replace(/[^a-z]/g, '');
+    var sur = _SUR_EN[surTok] || _romajiTok(parts[0]);
+    var given = parts.slice(1).map(_romajiTok).join('');
+    return { sur: sur, given: given };
+  }
+
   return {
     looksMember: looksMember,
     isMember: isMember,
@@ -263,6 +340,8 @@
     mealOffsite: mealOffsite,
     mealPlan: mealPlan,
     hangulToKana: hangulToKana,
-    nameYomi: nameYomi
+    nameYomi: nameYomi,
+    romajiToKana: romajiToKana,
+    nameYomiEn: nameYomiEn
   };
 });

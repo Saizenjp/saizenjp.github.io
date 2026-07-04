@@ -149,3 +149,21 @@ test('mealOffsite', () => {
   assert.equal(SZ.mealOffsite('시즈노야도 료칸'), true);
   assert.equal(SZ.mealOffsite('야마나미리조트'), false);
 });
+
+// ── 영문 로마자 → 가타카나 후리가나(여권 철자대로, 유성음) ───────────────────
+test('nameYomiEn: 영문 철자대로 후리가나(강병욱 KANG BYONG UK → カン/ビョンウク)', () => {
+  assert.deepEqual(SZ.nameYomiEn('KANG BYONG UK'), { sur: 'カン', given: 'ビョンウク' });
+  // 유성 자음: BONG→ボン·JAE→ジェ·DONG→ドン·GYU→ギュ (한글기반 무성음 아님)
+  assert.equal(SZ.nameYomiEn('JEONG SANG DONG').given, 'サンドン');
+  assert.equal(SZ.nameYomiEn('BAE JUN GYU').given, 'ジュンギュ');
+  // 종성 ng→ン, k→ク, m→ム
+  assert.equal(SZ.romajiToKana('KANG'), 'カン');
+  assert.equal(SZ.romajiToKana('KIM'), 'キム');
+  assert.equal(SZ.romajiToKana('UK'), 'ウク');
+  // 흔한 성씨 관용 보정
+  assert.equal(SZ.nameYomiEn('LEE JAE BONG').sur, 'イ');
+  assert.equal(SZ.nameYomiEn('PARK MOO SIL').sur, 'パク');
+  assert.equal(SZ.nameYomiEn('CHOI YEONG').sur, 'チェ');
+  // 빈 입력
+  assert.deepEqual(SZ.nameYomiEn(''), { sur: '', given: '' });
+});
