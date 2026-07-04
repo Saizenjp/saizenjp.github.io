@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 주문 QR카드</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+<style>
+  /* ── 공통 chrome (전 ops 페이지 공유 정본) ── */
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
+    --border:#e3e6ea; --border2:#cdd2d8;
+    --text:#1f2937; --text2:#525b66; --muted:#8b919b;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none}
+  .navhome:hover{text-decoration:underline}
+  .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .hint{font-size:11px;color:var(--muted)}
+  #toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);min-width:200px;text-align:center}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+
+  /* ── 페이지 전용 ── */
+  main{padding:16px 20px 70px;max-width:1180px;margin:0 auto}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:6px}
+  .panel .desc{font-size:12px;color:var(--text2);margin-bottom:11px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .ymctrl{display:flex;align-items:center;gap:6px}
+  .ymctrl b{font-size:15px;font-family:var(--mono);min-width:78px;text-align:center}
+  .chip{font-size:12px;font-weight:700;padding:5px 12px;border-radius:99px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer}
+  .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  .lbl{font-size:12px;color:var(--text2);font-weight:700;min-width:44px}
+  .deny{padding:40px 20px;text-align:center;color:var(--muted);font-size:14px}
+  /* 화면 미리보기 카드 */
+  .pv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+  .pv-card{border:1px solid var(--border);border-left:3px solid var(--accent2);border-radius:10px;padding:11px 13px;background:var(--surface)}
+  .pv-tag{font-family:var(--mono);font-weight:800;color:var(--accent);font-size:13px}
+  .pv-rep{font-weight:700;font-size:15px;margin-top:2px}
+  .pv-sub{font-size:11.5px;color:var(--text2);margin-top:3px}
+  .pv-no{font-size:10.5px;color:#b45; font-weight:700}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.7">
+</head>
+<body data-so-area="print">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step">注文QRカード / 주문 QR카드</span>
+  <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint">손님이 주문 때 제시할 팀별 QR 카드를 인쇄합니다. 체크인 때 손님이 폰으로 찍어 보관 → 주문 시 POS 스캔.</span>
+</div>
+
+<main id="content">
+  <div class="panel"><div class="deny" id="t-wait">연결 후 표시됩니다.</div></div>
+</main>
+
+<div id="toast"></div>
+
+<script src="../assets/saizen-core.js?v=8"></script>
+<script src="../assets/saizen-ops.js?v=15.7"></script>
+<script>
+const $=s=>document.querySelector(s);
+let supa=null, YM=null, ROWS=[], TOKMAP={}, DATESEL=new Set(), ACCOMSEL=new Set();
+const ACCOM_ORDER=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸','시즈노야도','소보별장','아소별장','돔하우스'];
+
+function setConn(t,c){ const e=$('#conn-state'); if(e){ e.textContent=t; e.className='pill'+(c?' '+c:''); } }
+function toast(msg,cls){ const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.textContent=msg;
+  $('#toast').appendChild(t); setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); },2600); }
+function loadCreds(){ $('#sb-url').value=localStorage.getItem('saizen_sb_url')||''; $('#sb-key').value=localStorage.getItem('saizen_sb_key')||''; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function thisYM(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function shiftYM(ym,n){ let [y,m]=ym.split('-').map(Number); m+=n; while(m<1){m+=12;y--;} while(m>12){m-=12;y++;} return y+'-'+String(m).padStart(2,'0'); }
+function fmtMD(iso){ if(!iso) return ''; const p=String(iso).slice(0,10).split('-'); return p.length===3?`${+p[1]}/${+p[2]}`:iso; }
+function accomOrd(a){ const i=ACCOM_ORDER.indexOf(a); return i<0?99:i; }
+
+async function connect(){
+  const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
+  if(!url||!key){ setConn('URL·key 필요','err'); return; }
+  localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.disabled=true; btn.textContent='연결 중…';
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결'; btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">로그인이 필요합니다. 홈에서 로그인 후 다시 연결하세요.</div></div>'; return; }
+    setConn('연결됨','ok'); btn.textContent='✓ 연결됨'; btn.disabled=false;
+    YM=YM||thisYM(); renderUI(); load();
+  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결 실패 · 재시도'; btn.disabled=false; supa=null; toast('연결 실패: '+e.message,'err'); }
+}
+
+function renderUI(){
+  $('#content').innerHTML=`
+    <div class="panel">
+      <h3>주문 QR카드 인쇄</h3>
+      <div class="desc">체크인 팀을 골라 <b>팀별 미니 QR 카드</b>를 인쇄합니다(A4에 여러 장). 손님이 폰으로 찍어 보관 → 주문 때 POS에서 스캔하면 그 팀이 자동 선택됩니다. 카드엔 이름·QR·안내문만 담깁니다.</div>
+      <div class="row">
+        <div class="ymctrl">
+          <button class="btn sm ghost" id="ym-prev" type="button">◀</button>
+          <b id="ym-label"></b>
+          <button class="btn sm ghost" id="ym-next" type="button">▶</button>
+        </div>
+        <span style="flex:1"></span>
+        <span class="cnt" id="stat"></span>
+        <button class="btn" id="btn-print" type="button" disabled>🔳 QR카드 인쇄</button>
+      </div>
+      <div class="row" style="margin-top:10px"><span class="lbl">入国日</span><div id="datechips" class="row"></div></div>
+      <div class="row" style="margin-top:8px"><span class="lbl">숙소</span><div id="accomchips" class="row"></div></div>
+    </div>
+    <div class="panel"><div id="preview"></div></div>`;
+  $('#ym-prev').addEventListener('click',()=>{ YM=shiftYM(YM,-1); load(); });
+  $('#ym-next').addEventListener('click',()=>{ YM=shiftYM(YM,1); load(); });
+  $('#btn-print').addEventListener('click',printCards);
+}
+
+// 토큰 확보 — 없으면 즉시 발급(팀 고유 랜덤). 권한(print/room) 없으면 조용히 스킵.
+async function ensureTokens(seqs){
+  TOKMAP={};
+  for(let i=0;i<seqs.length;i+=300){
+    const chunk=seqs.slice(i,i+300);
+    const {data}=await supa.from('order_tokens').select('event_seq,token').in('event_seq',chunk);
+    (data||[]).forEach(t=>{ TOKMAP[t.event_seq]=t.token; });
+  }
+  const by=(window.__so_getUser&&__so_getUser())||null;
+  const rnd=()=>(window.crypto&&crypto.randomUUID)?crypto.randomUUID().replace(/-/g,'').slice(0,16):(Date.now().toString(36)+Math.random().toString(36).slice(2,10));
+  const miss=seqs.filter(s=>!TOKMAP[s]).map(s=>({event_seq:s, token:rnd(), created_by:by}));
+  if(miss.length){
+    const {error}=await supa.from('order_tokens').insert(miss);
+    if(!error) miss.forEach(m=>{ TOKMAP[m.event_seq]=m.token; });
+  }
+}
+
+async function load(){
+  if(!supa) return;
+  $('#stat').textContent='로딩…'; $('#btn-print').disabled=true; $('#ym-label').textContent=YM;
+  try{
+    const {data:bs,error:e1}=await supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date').eq('session_ym',YM);
+    if(e1) throw e1;
+    const seqs=(bs||[]).map(b=>b.event_seq);
+    if(!seqs.length){ ROWS=[]; DATESEL.clear(); ACCOMSEL.clear(); $('#stat').textContent='이 달 데이터 없음'; renderChips(); renderPreview(); return; }
+    const GMAP={};
+    for(let i=0;i<seqs.length;i+=300){
+      const chunk=seqs.slice(i,i+300);
+      const {data:gs}=await supa.from('guests').select('event_seq,team_tag,group_code,accom,pax').in('event_seq',chunk);
+      (gs||[]).forEach(g=>{ GMAP[g.event_seq]=g; });
+    }
+    await ensureTokens(seqs);
+    ROWS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{};
+      return { seq:b.event_seq, eventNo:b.event_no||'', rep:b.rep_name||'', dep:(b.dep_date||'').slice(0,10), arr:(b.arr_date||'').slice(0,10),
+        tag:g.team_tag||g.group_code||('#'+(b.event_no||b.event_seq)), accom:g.accom||'', pax:g.pax||0, token:TOKMAP[b.event_seq]||'' };
+    }).sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||accomOrd(a.accom)-accomOrd(b.accom)||(a.rep||'').localeCompare(b.rep||''));
+    DATESEL.clear(); ACCOMSEL.clear();
+    renderChips(); renderPreview();
+  }catch(e){ $('#stat').textContent='로드 실패'; toast('로드 실패: '+e.message,'err'); }
+}
+
+function renderChips(){
+  const dates=[...new Set(ROWS.map(r=>r.dep).filter(Boolean))].sort();
+  const accoms=[...new Set(ROWS.map(r=>r.accom).filter(Boolean))].sort((a,b)=>accomOrd(a)-accomOrd(b));
+  $('#datechips').innerHTML = `<button type="button" class="chip${DATESEL.size?'':' on'}" data-date="__all">전체</button>`
+    + dates.map(d=>`<button type="button" class="chip${DATESEL.has(d)?' on':''}" data-date="${esc(d)}">${esc(fmtMD(d))}</button>`).join('');
+  $('#accomchips').innerHTML = `<button type="button" class="chip${ACCOMSEL.size?'':' on'}" data-accom="__all">전체</button>`
+    + accoms.map(a=>`<button type="button" class="chip${ACCOMSEL.has(a)?' on':''}" data-accom="${esc(a)}">${esc(a)}</button>`).join('');
+  $('#datechips').querySelectorAll('[data-date]').forEach(b=>b.addEventListener('click',()=>{
+    const v=b.dataset.date; if(v==='__all') DATESEL.clear(); else { DATESEL.has(v)?DATESEL.delete(v):DATESEL.add(v); } renderChips(); renderPreview();
+  }));
+  $('#accomchips').querySelectorAll('[data-accom]').forEach(b=>b.addEventListener('click',()=>{
+    const v=b.dataset.accom; if(v==='__all') ACCOMSEL.clear(); else { ACCOMSEL.has(v)?ACCOMSEL.delete(v):ACCOMSEL.add(v); } renderChips(); renderPreview();
+  }));
+}
+
+function pass(r){
+  if(DATESEL.size && !DATESEL.has(r.dep)) return false;
+  if(ACCOMSEL.size && !ACCOMSEL.has(r.accom)) return false;
+  return true;
+}
+function visibleRows(){ return ROWS.filter(pass); }
+
+function renderPreview(){
+  const vis=visibleRows();
+  const noTok=vis.filter(r=>!r.token).length;
+  $('#stat').textContent = ROWS.length?`${vis.length} / ${ROWS.length}팀${noTok?` · ⚠ 토큰없음 ${noTok}`:''}`:'';
+  $('#btn-print').disabled = !vis.some(r=>r.token);
+  if(!ROWS.length){ $('#preview').innerHTML='<div class="deny">이 달 데이터가 없습니다.</div>'; return; }
+  if(!vis.length){ $('#preview').innerHTML='<div class="deny">선택 조건에 맞는 팀이 없습니다.</div>'; return; }
+  const g=document.createElement('div'); g.className='pv-grid';
+  g.innerHTML=vis.map(r=>`<div class="pv-card">
+    <div class="pv-tag">${esc(r.tag)}</div>
+    <div class="pv-rep">${esc(r.rep||'-')} 様</div>
+    <div class="pv-sub">${esc(r.accom||'')} · ${r.pax}名 · ${fmtMD(r.dep)}~${fmtMD(r.arr)}</div>
+    ${r.token?'':'<div class="pv-no">⚠ QR 토큰 없음(발급 권한 필요)</div>'}
+  </div>`).join('');
+  $('#preview').innerHTML=''; $('#preview').appendChild(g);
+}
+
+// 카드 그리드 인쇄(새 창) — QR은 이 창(QRCode 로드됨)에서 dataURL 생성 후 img 삽입
+async function printCards(){
+  const cards=visibleRows().filter(r=>r.token);
+  if(!cards.length){ toast('인쇄할 카드가 없습니다(토큰 없음).','err'); return; }
+  const w=window.open('','_blank','width=920,height=950'); if(!w){ toast('팝업이 차단되었습니다.','err'); return; }
+  try{ w.document.write('<!doctype html><meta charset="utf-8"><body style="font:14px sans-serif;padding:40px;color:#1e3a5f">QRコード生成中… / QR 생성 중…</body>'); }catch(_){}
+  const qmap={};
+  await Promise.all(cards.map(async r=>{
+    try{ if(window.QRCode) qmap[r.seq]=await QRCode.toDataURL(r.token,{width:320,margin:0,color:{dark:'#111111',light:'#ffffff'}}); }catch(_){}
+  }));
+  const cardHTML=cards.filter(r=>qmap[r.seq]).map(r=>`<div class="qc">
+      <div class="qc-h">
+        <div class="qc-name">${esc(r.rep||'-')} <span>様</span></div>
+        <div class="qc-sub">${esc(r.tag||'')} ・ ${esc(r.accom||'')}</div>
+      </div>
+      <img class="qc-qr" src="${qmap[r.seq]}" alt="QR">
+      <div class="qc-inst">注文時にこのQRをご提示ください<br><span>주문 시 이 QR을 보여주세요</span></div>
+      <div class="qc-brand">SaiZen ・ Aso Yamanami</div>
+    </div>`).join('');
+  const today=new Date().toISOString().slice(0,10);
+  const fullHTML=`<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>注文QRカード_${today}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#e8eaf0;font-family:'Yu Gothic','Meiryo','Malgun Gothic',sans-serif;color:#1a2030;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .bar{position:sticky;top:0;display:flex;gap:14px;align-items:center;background:#1e3a5f;color:#fff;padding:10px 16px;z-index:10}
+  .bar h1{font-size:14px;font-weight:700}.bar .meta{font-size:11px;opacity:.85}
+  .bar button{background:#fff;color:#1e3a5f;border:none;border-radius:5px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer}
+  .bar .x{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4)}
+  .grid{padding:8mm;display:flex;flex-wrap:wrap;gap:6mm;align-content:flex-start;justify-content:center}
+  .qc{width:88mm;height:56mm;background:#fff;border:0.4mm solid #1e3a5f;border-radius:3mm;padding:4mm 5mm;display:flex;flex-direction:column;align-items:center;position:relative}
+  .qc-h{width:100%;text-align:center}
+  .qc-name{font-size:14pt;font-weight:800;color:#1e3a5f;line-height:1.15}
+  .qc-name span{font-size:10pt;font-weight:600}
+  .qc-sub{font-size:8.5pt;color:#555;font-family:Consolas,Menlo,monospace;margin-top:0.6mm}
+  .qc-qr{width:26mm;height:26mm;margin:1.6mm 0}
+  .qc-inst{font-size:8.5pt;font-weight:800;color:#111;text-align:center;line-height:1.3}
+  .qc-inst span{font-weight:700;color:#1e3a5f}
+  .qc-brand{position:absolute;bottom:2.2mm;font-size:6.5pt;color:#9aa;letter-spacing:.5px}
+  @media print{ @page{size:A4 portrait;margin:0} body{background:#fff} .bar{display:none} .grid{padding:8mm;gap:5mm} .qc{page-break-inside:avoid} }
+</style></head><body>
+  <div class="bar"><h1>注文QRカード / 주문 QR카드</h1><div class="meta">${today} ・ ${cards.length}팀</div>
+    <div style="flex:1"></div>
+    <button onclick="window.print()">印刷 / 인쇄</button>
+    <button class="x" onclick="window.close()">閉じる / 닫기</button>
+  </div>
+  <div class="grid">${cardHTML}</div>
+</body></html>`;
+  try{ w.document.open(); w.document.write(fullHTML); w.document.close(); }catch(_){}
+}
+
+$('#btn-connect').addEventListener('click',connect);
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value) connect();
+</script>
+</body>
+</html>

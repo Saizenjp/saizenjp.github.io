@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 現地手配書 인쇄</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
 <style>
   :root{
     --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
@@ -55,7 +54,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.7">
 </head>
 <body data-so-area="print">
 <div class="topbar so-bar">
@@ -86,7 +85,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=8"></script>
-<script src="../assets/saizen-ops.js?v=15.6"></script>
+<script src="../assets/saizen-ops.js?v=15.7"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -254,7 +253,6 @@ function renderUI(){
         <label class="lbl-check"><input type="checkbox" id="mask-cb"> <span id="u-masklbl"></span></label>
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
-        <button class="btn ghost" id="btn-qrcards" type="button" disabled></button>
         <button class="btn" id="btn-print" type="button" disabled></button>
       </div>
       <div class="row" style="margin-top:10px">
@@ -279,7 +277,6 @@ function renderUI(){
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
   $('#btn-print').addEventListener('click',()=>printDispatch(null));
-  $('#btn-qrcards').addEventListener('click',()=>printQrCards());
   $('#btn-group').addEventListener('click',groupSelected);
   $('#btn-ungroup').addEventListener('click',ungroupSelected);
   $('#search').addEventListener('input',e=>{SEARCHQ=String(e.target.value||'').trim().toLowerCase();renderList();});
@@ -292,7 +289,6 @@ function applyUIStatic(){
   const s=$('#search'); if(s) s.placeholder=tx('searchPh');
   set('#u-masklbl',tx('maskLbl'));
   set('#btn-print',tx('printAll'));
-  set('#btn-qrcards',tx('qrCards'));
   set('#u-deplbl',tx('depDate')); set('#u-accomlbl',tx('accom'));
   const pd=$('#u-paneldesc'); if(pd) pd.innerHTML=tx('panelDesc');
   set('#u-listtitle',tx('listTitle'));
@@ -336,7 +332,7 @@ async function ensureOrderTokens(seqs){
 }
 async function load(){
   if(!supa)return;
-  $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true; $('#btn-qrcards').disabled=true;
+  $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true;
   try{
     const {data:bs,error:e1}=await supa.from('bookings')
       .select('event_seq,event_no,rep_name,member_type,dep_date,arr_date,nights_label,origin,airline,product_name,pax,remark,team_label')
@@ -427,7 +423,7 @@ function pass(d){
 function memGenCount(list){ let mem=0,gen=0; list.forEach(d=>(d.paxList||[]).forEach(p=>{ (window.SZCore&&SZCore.isMember(p))?mem++:gen++; })); return {mem,gen,tot:mem+gen}; }
 function renderList(){
   const visible=ROWS.filter(pass);
-  $('#btn-print').disabled=!visible.length; $('#btn-qrcards').disabled=!visible.length;
+  $('#btn-print').disabled=!visible.length;
   const _mg=memGenCount(visible);
   $('#list-cnt').innerHTML=(ROWS.length?tx('showStat')(visible.length,ROWS.length):'')
     +(visible.length?` &nbsp;·&nbsp; <span style="color:var(--accent);font-weight:700">${tx('sumMG')(_mg.mem,_mg.gen,_mg.tot)}</span>`:'');
@@ -656,63 +652,6 @@ async function printDispatch(seq){
 </body></html>`;
   const w=window.open('','_blank','width=920,height=950'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
   w.document.write(fullHTML); w.document.close();
-}
-
-// ── 손님용 미니 주문 QR 카드(手配書와 별도) ──
-//   손님이 체크인 때 폰으로 찍어 보관 → 주문 때 제시. 카드엔 이름·QR·안내문만(다른 정보 없음).
-async function printQrCards(){
-  let data=ROWS.filter(pass);
-  if(!data.length){ toast(tx('noTargets'),'err'); return; }
-  const w=window.open('','_blank','width=920,height=950'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
-  try{ w.document.write('<!doctype html><meta charset="utf-8"><body style="font:14px sans-serif;padding:40px;color:#1e3a5f">QRコード生成中… / QR 생성 중…</body>'); }catch(_){}
-  // 토큰 있는 팀만 카드 생성(발급은 手配書 load 시 확보됨)
-  const cards=data.filter(d=>d.orderToken);
-  if(!cards.length){ try{ w.close(); }catch(_){}; toast(tx('qrNoToken'),'err'); return; }
-  const qmap={};
-  await Promise.all(cards.map(async d=>{
-    try{ if(window.QRCode) qmap[d.seq]=await QRCode.toDataURL(d.orderToken,{width:320,margin:0,color:{dark:'#111111',light:'#ffffff'}}); }catch(_){}
-  }));
-  const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const cardHTML=cards.filter(d=>qmap[d.seq]).map(d=>{
-    const r=d.rec;
-    return `<div class="qc">
-      <div class="qc-h">
-        <div class="qc-name">${esc(r.repName||'-')} <span>様</span></div>
-        <div class="qc-sub">${esc(d.tagCode||'')} ・ ${esc(d.accomJp||d.accom||'')}</div>
-      </div>
-      <img class="qc-qr" src="${qmap[d.seq]}" alt="QR">
-      <div class="qc-inst">注文時にこのQRをご提示ください<br><span>주문 시 이 QR을 보여주세요</span></div>
-      <div class="qc-brand">SaiZen ・ Aso Yamanami</div>
-    </div>`;
-  }).join('');
-  const fullHTML=`<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>注文QRカード_${today()}</title>
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{background:#e8eaf0;font-family:'Yu Gothic','Meiryo','Malgun Gothic',sans-serif;color:#1a2030;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .bar{position:sticky;top:0;display:flex;gap:14px;align-items:center;background:#1e3a5f;color:#fff;padding:10px 16px;z-index:10}
-  .bar h1{font-size:14px;font-weight:700}.bar .meta{font-size:11px;opacity:.85}
-  .bar button{background:#fff;color:#1e3a5f;border:none;border-radius:5px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer}
-  .bar .x{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4)}
-  .grid{padding:8mm;display:flex;flex-wrap:wrap;gap:6mm;align-content:flex-start;justify-content:center}
-  .qc{width:88mm;height:56mm;background:#fff;border:0.4mm solid #1e3a5f;border-radius:3mm;padding:4mm 5mm;display:flex;flex-direction:column;align-items:center;position:relative}
-  .qc-h{width:100%;text-align:center}
-  .qc-name{font-size:14pt;font-weight:800;color:#1e3a5f;line-height:1.15}
-  .qc-name span{font-size:10pt;font-weight:600}
-  .qc-sub{font-size:8.5pt;color:#555;font-family:Consolas,Menlo,monospace;margin-top:0.6mm}
-  .qc-qr{width:26mm;height:26mm;margin:1.6mm 0}
-  .qc-inst{font-size:8.5pt;font-weight:800;color:#111;text-align:center;line-height:1.3}
-  .qc-inst span{font-weight:700;color:#1e3a5f}
-  .qc-brand{position:absolute;bottom:2.2mm;font-size:6.5pt;color:#9aa;letter-spacing:.5px}
-  @media print{ @page{size:A4 portrait;margin:0} body{background:#fff} .bar{display:none} .grid{padding:8mm;gap:5mm} .qc{page-break-inside:avoid} }
-</style></head><body>
-  <div class="bar"><h1>${esc(tx('qrCards'))}</h1><div class="meta">${today()} ・ ${cards.length}${tx('cntUnit')}</div>
-    <div style="flex:1"></div>
-    <button onclick="window.print()">${esc(tx('pvPrint'))}</button>
-    <button class="x" onclick="window.close()">${esc(tx('pvClose'))}</button>
-  </div>
-  <div class="grid">${cardHTML}</div>
-</body></html>`;
-  try{ w.document.open(); w.document.write(fullHTML); w.document.close(); }catch(_){}
 }
 
 // 언어 토글 시 화면 chrome만 재적용(인쇄 산출물은 일본어 유지)
