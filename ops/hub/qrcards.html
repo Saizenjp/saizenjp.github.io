@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 주문 QR카드</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="../assets/qrcode-generator.js?v=1"></script>
 <style>
   /* ── 공통 chrome (전 ops 페이지 공유 정본) ── */
   :root{
@@ -234,42 +234,21 @@ function renderPreview(){
   $('#preview').innerHTML=''; $('#preview').appendChild(g);
 }
 
-// QR 라이브러리 확보 — 없으면 대체 CDN에서 순차 재시도(jsdelivr 실패 대비 unpkg).
-let _qrLibP=null;
-function ensureQrLib(){
-  if(window.QRCode) return Promise.resolve(true);
-  if(_qrLibP) return _qrLibP;
-  const urls=['https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js','https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js'];
-  _qrLibP=new Promise(resolve=>{
-    let i=0;
-    const tryNext=()=>{ if(window.QRCode) return resolve(true); if(i>=urls.length) return resolve(false);
-      const s=document.createElement('script'); s.src=urls[i++]; s.onload=()=>resolve(!!window.QRCode); s.onerror=tryNext; document.head.appendChild(s); };
-    tryNext();
-  });
-  return _qrLibP;
-}
-// 검증된 keytag 방식과 동일 — toCanvas(콜백)로 그린 뒤 canvas.toDataURL(). (toDataURL 직접 호출보다 브라우저 빌드 호환성 높음)
+// QR 데이터URL 생성 — 자체 호스팅 qrcode-generator(동기, 전역 window.qrcode). CDN 의존 없음.
 function qrDataURL(text){
-  return new Promise(resolve=>{
-    try{
-      const cv=document.createElement('canvas');
-      QRCode.toCanvas(cv, String(text), {width:320,margin:0,color:{dark:'#111111',light:'#ffffff'}}, err=>{
-        if(err){ resolve(''); return; }
-        try{ resolve(cv.toDataURL('image/png')); }catch(_){ resolve(''); }
-      });
-    }catch(_){ resolve(''); }
-  });
+  try{
+    const qr=qrcode(0,'M'); qr.addData(String(text)); qr.make();
+    return qr.createDataURL(8, 0);   // cellSize 8px, margin 0 (카드 CSS가 26mm로 스케일)
+  }catch(_){ return ''; }
 }
-// 카드 그리드 인쇄(새 창) — QR은 이 창(QRCode 로드됨)에서 dataURL 생성 후 img 삽입
+// 카드 그리드 인쇄(새 창) — QR dataURL을 img로 삽입
 async function printCards(){
   const cards=visibleRows().filter(r=>r.token);
   if(!cards.length){ toast('인쇄할 카드가 없습니다(토큰 없음).','err'); return; }
-  const ok=await ensureQrLib();
-  if(!ok){ toast('QR 라이브러리 로드 실패 — 네트워크 확인 후 새로고침하세요.','err'); return; }
+  if(typeof qrcode!=='function'){ toast('QR 라이브러리 로드 실패 — 새로고침 후 다시 시도하세요.','err'); return; }
   const w=window.open('','_blank','width=920,height=950'); if(!w){ toast('팝업이 차단되었습니다.','err'); return; }
-  try{ w.document.write('<!doctype html><meta charset="utf-8"><body style="font:14px sans-serif;padding:40px;color:#1e3a5f">QRコード生成中… / QR 생성 중…</body>'); }catch(_){}
   const qmap={};
-  await Promise.all(cards.map(async r=>{ qmap[r.seq]=await qrDataURL(r.token); }));
+  cards.forEach(r=>{ qmap[r.seq]=qrDataURL(r.token); });
   const cardHTML=cards.filter(r=>qmap[r.seq]).map(r=>`<div class="qc">
       <div class="qc-h">
         <div class="qc-name">${esc(r.rep||'-')} <span>様</span></div>
