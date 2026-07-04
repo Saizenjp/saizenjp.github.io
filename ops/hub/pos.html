@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 주문 입력(간이 POS)</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
   :root{
     --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
@@ -160,7 +161,7 @@
   @keyframes popUp{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.5">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -206,6 +207,7 @@
     <div class="sec-title"><span data-i18n="po_pickTeam"></span> <span class="cnt" id="team-cnt"></span></div>
     <div class="team-search">
       <input class="inp" id="team-q" type="search" data-i18n-ph="po_teamSearch" autocomplete="off">
+      <button class="btn" id="btn-qr-scan" type="button" data-i18n="po_qrScan"></button>
       <span class="cnt" id="active-cnt"></span>
     </div>
     <div id="pos-accom" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
@@ -253,8 +255,26 @@
 
 <div id="toast"></div>
 
+<!-- 손님 주문 QR 스캔 모달 -->
+<div id="qr-modal" style="display:none;position:fixed;inset:0;z-index:60;background:rgba(20,24,18,.55);align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:16px;max-width:420px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden">
+    <div style="display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border)">
+      <b style="font-size:15px;flex:1" data-i18n="po_qrTitle"></b>
+      <button class="btn ghost sm" id="qr-close" type="button">✕</button>
+    </div>
+    <div style="padding:16px 18px">
+      <div id="qr-reader" style="width:100%;border-radius:10px;overflow:hidden"></div>
+      <div id="qr-status" style="font-size:12.5px;color:var(--text2);margin-top:8px;min-height:18px"></div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <input class="inp" id="qr-manual-in" style="flex:1" data-i18n-ph="po_qrManualPh" autocomplete="off">
+        <button class="btn sm" id="qr-manual-go" type="button" data-i18n="po_qrManualGo"></button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="../assets/saizen-core.js?v=8"></script>
-<script src="../assets/saizen-ops.js?v=15.4"></script>
+<script src="../assets/saizen-ops.js?v=15.5"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -272,6 +292,7 @@ const L={
     connFail:'接続失敗', connFailBtn:'接続失敗・再試行', connFailToast:e=>'接続失敗: '+e+' (精算SQL 09・11・12 実行・key確認)',
     menuLoadFail:e=>'メニュー読み込み失敗: '+e, needConn:'先に接続してください', teamLoadFail:e=>'チーム読み込み失敗: '+e,
     stayToast:(d,n)=>`${d} · 滞在 ${n}チーム`,
+    qrOpenFail:'カメラを起動できません — 手入力コードで検索してください', qrScanning:'QRをかざしてください…', qrNoMatch:'該当チームなし(無効なQR)', qrTeamGone:'そのチームが見つかりません', qrMatched:t=>`${t} を選択しました`, qrEmpty:'コードを入力してください',
     custOnTitle:'このチームの請求を客先確認画面に表示/解除', custShow:'🖥 お客様画面表示', custHide:'🖥 表示を消す',
     custShown:'お客様画面に表示しました', custCleared:'お客様画面を消しました', custFail:e=>'お客様画面表示失敗: '+e,
     teamFallback:s=>'チーム'+s, member:'会', unassigned:'未配室',
@@ -292,6 +313,7 @@ const L={
     connFail:'연결 실패', connFailBtn:'연결 실패 · 재시도', connFailToast:e=>'연결 실패: '+e+' (정산 SQL 09·11·12 실행·키 확인)',
     menuLoadFail:e=>'메뉴 로드 실패: '+e, needConn:'먼저 연결하세요', teamLoadFail:e=>'팀 로드 실패: '+e,
     stayToast:(d,n)=>`${d} · 체류 ${n}팀`,
+    qrOpenFail:'카메라를 열 수 없습니다 — 코드 수기입력으로 검색하세요', qrScanning:'QR을 비춰주세요…', qrNoMatch:'해당 팀 없음(무효 QR)', qrTeamGone:'그 팀을 찾을 수 없습니다', qrMatched:t=>`${t} 선택됨`, qrEmpty:'코드를 입력하세요',
     custOnTitle:'이 팀 계산서를 손님 확인 화면에 표시/해제', custShow:'🖥 손님 화면 표시', custHide:'🖥 표시 끄기',
     custShown:'손님 화면에 표시했습니다', custCleared:'손님 화면을 비웠습니다', custFail:e=>'손님 화면 표시 실패: '+e,
     teamFallback:s=>'팀'+s, member:'회', unassigned:'미배정',
@@ -312,6 +334,7 @@ const L={
     connFail:'Connection failed', connFailBtn:'Failed · retry', connFailToast:e=>'Connection failed: '+e+' (run settlement SQL 09·11·12 / check key)',
     menuLoadFail:e=>'Menu load failed: '+e, needConn:'Connect first', teamLoadFail:e=>'Team load failed: '+e,
     stayToast:(d,n)=>`${d} · ${n} teams in-house`,
+    qrOpenFail:'Cannot open camera — search by manual code', qrScanning:'Hold the QR to the camera…', qrNoMatch:'No matching team (invalid QR)', qrTeamGone:'That team was not found', qrMatched:t=>`${t} selected`, qrEmpty:'Enter a code',
     custOnTitle:'Show/clear this team’s bill on the customer display', custShow:'🖥 Show customer display', custHide:'🖥 Turn off',
     custShown:'Shown on customer display', custCleared:'Customer display cleared', custFail:e=>'Customer display failed: '+e,
     teamFallback:s=>'Team'+s, member:'M', unassigned:'No room',
@@ -910,9 +933,56 @@ function applyOutlet(){
   else tag.style.display='none';
 }
 
+// ── 손님 주문 QR 스캔 → 그 팀 자동 선택 ──
+let _qr=null;
+function qrStatus(msg){ const el=$('#qr-status'); if(el) el.textContent=msg||''; }
+async function openScan(){
+  if(!supa){ toast(tx('needConn'),'warn'); return; }
+  $('#qr-modal').style.display='flex';
+  $('#qr-manual-in').value=''; qrStatus(tx('qrScanning'));
+  try{
+    if(!window.Html5Qrcode) throw new Error('lib');
+    _qr=new Html5Qrcode('qr-reader');
+    await _qr.start({facingMode:'environment'}, {fps:10, qrbox:{width:220,height:220}},
+      (decoded)=>{ scanResolve(decoded); },  // 성공 콜백
+      ()=>{});                               // 프레임 실패는 무시
+  }catch(e){ _qr=null; qrStatus(tx('qrOpenFail')); }   // 카메라 불가 → 수기입력 안내
+}
+async function stopScan(){
+  if(_qr){ try{ await _qr.stop(); }catch(_){} try{ _qr.clear(); }catch(_){} _qr=null; }
+}
+async function closeScan(){ await stopScan(); $('#qr-modal').style.display='none'; }
+async function scanResolve(raw){
+  const token=String(raw||'').trim(); if(!token){ qrStatus(tx('qrEmpty')); return; }
+  await stopScan();   // 한 번 인식하면 카메라 정지(중복 방지)
+  try{
+    const {data,error}=await supa.from('order_tokens').select('event_seq').eq('token',token).limit(1);
+    if(error) throw error;
+    if(!data||!data.length){ qrStatus(tx('qrNoMatch')); return; }
+    const seq=data[0].event_seq;
+    let tm=state.teams.find(t=>t.event_seq===seq);
+    if(!tm){   // 그날 목록에 없으면(다른 날짜 보기 등) 그 팀 직접 조회
+      const {data:g}=await supa.from('guests')
+        .select('event_seq,team_tag,group_code,accom,pax,session_ym,bookings!inner(event_no,rep_name,dep_date,arr_date)')
+        .eq('event_seq',seq).limit(1);
+      if(g&&g.length){ const x=g[0]; tm={event_seq:x.event_seq,team_tag:x.team_tag,group_code:x.group_code,accom:x.accom,pax:x.pax,
+        session_ym:x.session_ym||ymOf(state.date||isoToday()),rep:x.bookings?.rep_name||'',event_no:x.bookings?.event_no||'',checkin:x.bookings?.dep_date||''}; }
+    }
+    if(!tm){ qrStatus(tx('qrTeamGone')); return; }
+    $('#qr-modal').style.display='none';
+    toast(tx('qrMatched')(tm.team_tag||tm.group_code||('#'+tm.event_no)),'ok');
+    selectTeam(tm);
+  }catch(e){ qrStatus(tx('qrNoMatch')); }
+}
+
 // ── 부팅 ──
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-load').addEventListener('click',loadTeams);
+$('#btn-qr-scan').addEventListener('click',openScan);
+$('#qr-close').addEventListener('click',closeScan);
+$('#qr-modal').addEventListener('click',e=>{ if(e.target.id==='qr-modal') closeScan(); });
+$('#qr-manual-go').addEventListener('click',()=>scanResolve($('#qr-manual-in').value));
+$('#qr-manual-in').addEventListener('keydown',e=>{ if(e.key==='Enter') scanResolve($('#qr-manual-in').value); });
 // 날짜 이동(◀▶·오늘) — 기본은 오늘, 백데이트/사전 조회용
 function shiftPosDay(delta){
   const cur=$('#date-pick').value||isoToday();

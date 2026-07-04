@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 現地手配書 인쇄</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
 <style>
   :root{
     --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
@@ -54,7 +55,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.5">
 </head>
 <body data-so-area="print">
 <div class="topbar so-bar">
@@ -85,7 +86,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=8"></script>
-<script src="../assets/saizen-ops.js?v=15.4"></script>
+<script src="../assets/saizen-ops.js?v=15.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -169,6 +170,7 @@ function refreshConn(){
 const state={ conn:'none' };
 
 let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DATESEL=new Set(), SEARCHQ='';
+let TOKMAP={};   // event_seq → 주문 QR 토큰(order_tokens)
 let MASK=(function(){ try{ return localStorage.getItem('saizen_dispatch_mask')!=='0'; }catch(e){ return true; } })();
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
 
@@ -309,6 +311,26 @@ function renderAccomChips(){
   box.querySelectorAll('.chip[data-a]').forEach(c=>c.addEventListener('click',()=>{ const a=c.dataset.a; if(a==='__all'){ACCOMSEL.clear();}else{ACCOMSEL.has(a)?ACCOMSEL.delete(a):ACCOMSEL.add(a);} renderAccomChips(); renderList(); }));
 }
 
+// 주문 QR 토큰 확보 — 기존 로드 후 없는 팀만 랜덤 발급(crypto.randomUUID). 권한 없으면 조용히 스킵.
+async function ensureOrderTokens(seqs){
+  TOKMAP={};
+  try{
+    for(let i=0;i<seqs.length;i+=300){
+      const chunk=seqs.slice(i,i+300);
+      const {data}=await supa.from('order_tokens').select('event_seq,token').in('event_seq',chunk);
+      (data||[]).forEach(t=>{ TOKMAP[t.event_seq]=t.token; });
+    }
+    const by=(window.__so_getUser&&__so_getUser())||null;
+    const rnd=()=>(window.crypto&&crypto.randomUUID)?crypto.randomUUID().replace(/-/g,'').slice(0,16)
+                 :(Date.now().toString(36)+Math.random().toString(36).slice(2,10));   // 폴백(구브라우저)
+    const miss=seqs.filter(s=>!TOKMAP[s]).map(s=>({event_seq:s, token:rnd(), created_by:by}));
+    if(miss.length){
+      const {error}=await supa.from('order_tokens').insert(miss);
+      if(!error) miss.forEach(m=>{ TOKMAP[m.event_seq]=m.token; });
+      // error(권한 없음 등)면 발급된 팀만 QR 표시, 나머지는 빈칸으로 graceful
+    }
+  }catch(_){ /* 토큰 없이도 手配書는 출력 */ }
+}
 async function load(){
   if(!supa)return;
   $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true;
@@ -327,6 +349,8 @@ async function load(){
     // 운영 팀 라벨(print_overrides.team_group) — 手配書 チーム 칸에서 정의·표시
     const {data:os}=await supa.from('print_overrides').select('event_seq,team_group').eq('session_ym',YM);
     const OMAP={}; (os||[]).forEach(o=>{OMAP[o.event_seq]=o;});
+    // 주문 QR 토큰: 기존 로드 + 없는 팀은 즉시 발급(팀 고유 랜덤). 발급 권한(print/room) 없으면 조용히 건너뜀.
+    await ensureOrderTokens(seqs);
     // 개인 명단(passengers) + 대표/태그(guest_members)
     const PAX={}, REP={};
     for(let i=0;i<seqs.length;i+=200){
@@ -379,7 +403,8 @@ async function load(){
         engName:repPax.name_en||'',
         depFlight, retFlight:repPax.ret_flight||'', depTime:repPax.dep_time||'', locArrTime:repPax.loc_arr_time||'', retTime:repPax.ret_dep_time||'', korArrTime:repPax.kor_arr_time||'', airline:repPax.airline||b.airline||'',
         port:isPUS?'PUS':'ICN', portName:isPUS?'釜山(金海)':'ソウル(仁川)',
-        roomCnt:autoRoom, golf, paxList, prodName:rec.prodName, accomJp:dispatchAccomJp(rec.accom)
+        roomCnt:autoRoom, golf, paxList, prodName:rec.prodName, accomJp:dispatchAccomJp(rec.accom),
+        orderToken:TOKMAP[seq]||''
       };
     }).sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||(a.rec.repName||'').localeCompare(b.rec.repName||''))
       .map((d,i)=>{ d.no=i+1; return d; });
@@ -498,9 +523,12 @@ function dispatchFrontHTML(d,masked){
         <div class="hp-title">現地手配書</div>
         <div class="hp-sub mono">イベント番号 ${esc(r.eventNo||'-')} ・ ${esc(d.prodName)}</div>
       </div>
-      <div style="text-align:right">
-        <div class="hp-tag">${esc(d.tagCode)}</div>
-        <div class="hp-sub" style="margin-top:1.5mm">発行日 ${today()} ・ SaiZen運営システム</div>
+      <div style="text-align:right;display:flex;align-items:flex-start;gap:4mm">
+        <div>
+          <div class="hp-tag">${esc(d.tagCode)}</div>
+          <div class="hp-sub" style="margin-top:1.5mm">発行日 ${today()} ・ SaiZen運営システム</div>
+        </div>
+        ${d.orderQrUrl?`<div class="hp-qr-box"><img class="hp-qr" src="${d.orderQrUrl}" alt="order QR"><div class="hp-qr-cap">注文用QR<br><span>주문 시 제시</span></div></div>`:''}
       </div>
     </div>
     <table class="hp-t">
@@ -563,7 +591,7 @@ function dispatchBackHTML(d){
   </div>`;
 }
 
-function printDispatch(seq){
+async function printDispatch(seq){
   let data=ROWS.slice();
   if(seq) data=data.filter(d=>String(d.seq)===String(seq).trim());
   else data=data.filter(pass);
@@ -571,6 +599,15 @@ function printDispatch(seq){
   // 대표 표시(_isRep): 대표 passenger id 와 일치하는 행에 플래그
   data.forEach(d=>{ d.paxList.forEach(p=>{ p._isRep=(d.repPid!=null && p.id===d.repPid); }); if(!d.paxList.some(p=>p._isRep)&&d.paxList[0]) d.paxList[0]._isRep=true; });
   const masked=MASK;
+  // 팝업차단 회피: 클릭 제스처 중 창을 먼저 연 뒤 QR 생성(비동기) → 완성본으로 교체
+  const w=window.open('','_blank','width=920,height=950'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
+  try{ w.document.write('<!doctype html><meta charset="utf-8"><body style="font:14px sans-serif;padding:40px;color:#1e3a5f">QRコード生成中… / QR 생성 중…</body>'); }catch(_){}
+  // 주문 QR = 부모 창(QRCode 로드됨)에서 data URL 생성 후 img로 삽입(인쇄창엔 라이브러리 불필요)
+  const qmap={};
+  await Promise.all(data.filter(d=>d.orderToken).map(async d=>{
+    try{ if(window.QRCode) qmap[d.seq]=await QRCode.toDataURL(d.orderToken,{width:200,margin:0,color:{dark:'#1A2540',light:'#ffffff'}}); }catch(_){}
+  }));
+  data.forEach(d=>{ d.orderQrUrl=qmap[d.seq]||''; });
   const pages=data.map(d=>dispatchFrontHTML(d,masked)+dispatchBackHTML(d)).join('');
   const fullHTML=`<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>現地手配書_${today()}</title>
 <style>
@@ -583,6 +620,10 @@ function printDispatch(seq){
   .hp-toolbar .hp-close{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4)}
   .hp-container{padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px}
   .hp-page{width:210mm;min-height:296mm;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.18);padding:9mm 11mm;position:relative}
+  .hp-qr-box{text-align:center;flex:none}
+  .hp-qr-box img{width:22mm;height:22mm;display:block;border:0.4mm solid #1A2540;border-radius:1mm;background:#fff}
+  .hp-qr-cap{font-size:7pt;font-weight:800;color:#1A2540;margin-top:0.6mm;line-height:1.25}
+  .hp-qr-cap span{font-weight:600;color:#5d6650}
   .hp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:6mm;border-bottom:2.5px solid #1e3a5f;padding-bottom:2.5mm;margin-bottom:4mm}
   .hp-title{font-size:17pt;font-weight:800;letter-spacing:3px;color:#1e3a5f}
   .hp-sub{font-size:8.5pt;color:#555;margin-top:1mm}
@@ -622,8 +663,7 @@ function printDispatch(seq){
   <div class="hp-container">${pages}</div>
   <script>(function(){function fit(){document.querySelectorAll('.hp-page').forEach(function(pg){if(pg.querySelector('.hp-inner'))return;var cs=getComputedStyle(pg);var padT=parseFloat(cs.paddingTop)||0,padB=parseFloat(cs.paddingBottom)||0;var pxmm=pg.offsetWidth/210;var avail=296*pxmm-padT-padB;var inner=document.createElement('div');inner.className='hp-inner';while(pg.firstChild)inner.appendChild(pg.firstChild);pg.appendChild(inner);var h=inner.offsetHeight;if(h>avail+2){var s=avail/h;inner.style.transformOrigin='top left';inner.style.transform='scale('+s+')';inner.style.width=(100/s)+'%';}});}if(document.readyState==='complete')fit();else window.addEventListener('load',fit);})();<\/script>
 </body></html>`;
-  const w=window.open('','_blank','width=920,height=950'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
-  w.document.write(fullHTML); w.document.close();
+  try{ w.document.open(); w.document.write(fullHTML); w.document.close(); }catch(_){}
 }
 
 // 언어 토글 시 화면 chrome만 재적용(인쇄 산출물은 일본어 유지)
