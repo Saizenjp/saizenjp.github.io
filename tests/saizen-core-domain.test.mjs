@@ -17,7 +17,7 @@ test('accomRate: 숙소별 단가', () => {
   assert.equal(SZ.accomRate('쿠주힐즈'), 14000);
   assert.equal(SZ.accomRate('久住ヒルズ'), 14000);
   assert.equal(SZ.accomRate('간지호텔'), 16000);
-  assert.equal(SZ.accomRate('시즈노야도 료칸'), 17000);
+  assert.equal(SZ.accomRate('시즈노야도 료칸'), 16000);
   assert.equal(SZ.accomRate('돔하우스'), 14000);
   assert.equal(SZ.accomRate(''), 0);        // 미등록 → 0(경고 트리거)
   assert.equal(SZ.accomRate('무슨호텔'), 0);

@@ -7,7 +7,7 @@
 --  계산 기준(앱과 일치):
 --    · 입도(送客) = bookings.dep_date(현지 체크인)가 기간 내. pax=예약 인원.
 --    · B2B 매출 = pax×박수×숙소단가 + pax×¥6,000 (settle_merit 공식).
---        단가: 야마나미·쿠주 14,000 / 간지 16,000 / 시즈 17,000.
+--        단가: 야마나미·쿠주 14,000 / 간지 16,000 / 시즈 16,000.
 --    · 현장 매출 = charges(voided 제외, charged_at JST 기준). pay_method=현금/카드/미정.
 --    · 회원판정 = member_grade·member_class·member_div 3컬럼 OR(하나라도 회원이면 회원).
 --    · 가동률 = 침대-박 점유(assigned_pax×박수) / (가동 객실 정원합×기간일수). 근사(체크인 월 귀속).
@@ -35,7 +35,7 @@ begin
       to_char(b.dep_date,'YYYY-MM') as ym,
       case when g.accom ilike '%쿠주%' or g.accom ilike '%久住%' or g.accom ilike '%구주%' then 14000
            when g.accom ilike '%간지%' then 16000
-           when g.accom ilike '%시즈%' or g.accom ilike '%료칸%' then 17000
+           when g.accom ilike '%시즈%' or g.accom ilike '%료칸%' then 16000
            when g.accom is null or g.accom = '' then 0
            else 14000 end as rate,
       case when b.origin ilike '%PUS%' or b.origin ilike '%부산%' or b.origin ilike '%김해%' then 'PUS' else 'ICN' end as orig

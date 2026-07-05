@@ -109,7 +109,7 @@
     var s = String(accom == null ? '' : accom);
     if (/쿠주|久住|구주|장기숙박|별장전용/.test(s)) return 14000;
     if (/간지/.test(s)) return 16000;
-    if (/시즈|료칸/.test(s)) return 17000;
+    if (/시즈|료칸/.test(s)) return 16000;
     if (/야마나미|돔하우스|별장|소보|아소/.test(s)) return 14000;
     return 0;
   }
