@@ -256,6 +256,7 @@ const L = {
     omTitle:months=>`${months} 登録 — 同期`,
     omBody:(months,count)=>`今回のファイルに<b>ない</b> ${months} チームがDBに<b style="color:var(--err)">${count}個</b>残っています。<br>どう処理しますか? <span style="color:var(--muted)">(他の月は影響なし)</span>`,
     omKeep:'データ累積', omKeepSub:'そのまま · 何も消さない(安全)',
+    prTitle:'キャンセル同行者の整理', prTitleBig:'⚠ 大量キャンセル — ファイル確認', prBody:n=>`同行者リストから外れた(キャンセルされた)${n}名を削除します。`, prLarge:'⚠ 人数が多いです — 誤った/一部のみのファイルではありませんか?', prRisky:n=>`⚠ 部屋割り済みが${n}名含まれます — 部屋も一緒に空になります。`, prKeepBtn:'そのまま残す', prOk:'削除(キャンセル反映)', prDone:(np,ng)=>`✓ キャンセル同行者 ${np}名を削除(部屋${ng})`, prKept:n=>`キャンセル同行者 ${n}名は残しました(削除せず)`, prFail:'キャンセル同行者の整理に失敗: ',
     omSync:'ないチーム整理', omSyncSub:count=>`ファイルから抜けた${count}個削除(cascade)`,
     monthListFail:'· 月リスト読み込み失敗: ',
     delMonthConfirm:ym=>`${ym} データを全て削除しますか?\n\n· その月のチーム・名簿・客室割当・現地記録すべて削除(cascade)\n· 他の月は影響なし\n\n元に戻せません。`,
@@ -292,6 +293,7 @@ const L = {
     omTitle:months=>`${months} 등록 — 동기화`,
     omBody:(months,count)=>`이번 파일에 <b>없는</b> ${months} 팀이 DB에 <b style="color:var(--err)">${count}개</b> 남아 있습니다.<br>어떻게 처리할까요? <span style="color:var(--muted)">(다른 달은 영향 없음)</span>`,
     omKeep:'데이터 누적', omKeepSub:'그대로 둠 · 아무것도 안 지움(안전)',
+    prTitle:'취소 일행 정리', prTitleBig:'⚠ 대량 취소 — 파일 확인', prBody:n=>`일행리스트에서 빠진(취소된) ${n}명을 삭제합니다.`, prLarge:'⚠ 인원이 많습니다 — 혹시 잘못된/부분 파일인가요?', prRisky:n=>`⚠ 방배정이 있던 ${n}명 포함 — 방도 함께 비워집니다.`, prKeepBtn:'그대로 두기', prOk:'삭제(취소 반영)', prDone:(np,ng)=>`✓ 취소 일행 ${np}명 삭제(방 ${ng})`, prKept:n=>`취소 일행 ${n}명 유지(삭제 안 함)`, prFail:'취소 일행 정리 실패: ',
     omSync:'없는 팀 정리', omSyncSub:count=>`파일에 빠진 ${count}개 삭제(cascade)`,
     monthListFail:'· 월 목록 로드 실패: ',
     delMonthConfirm:ym=>`${ym} 데이터 전체를 삭제할까요?\n\n· 그 달 팀·명단·방배정·현장기록 모두 삭제(cascade)\n· 다른 달은 영향 없음\n\n되돌릴 수 없습니다.`,
@@ -328,6 +330,7 @@ const L = {
     omTitle:months=>`${months} registration — sync`,
     omBody:(months,count)=>`<b style="color:var(--err)">${count}</b> ${months} team(s) <b>not</b> in this file remain in the DB.<br>How should they be handled? <span style="color:var(--muted)">(other months unaffected)</span>`,
     omKeep:'Accumulate', omKeepSub:'Leave as is · delete nothing (safe)',
+    prTitle:'Remove cancelled members', prTitleBig:'⚠ Bulk removal — check the file', prBody:n=>`Delete ${n} member(s) removed (cancelled) from the companion list.`, prLarge:'⚠ That is a lot of people — is this a wrong/partial file?', prRisky:n=>`⚠ Includes ${n} with a room assignment — their rooms will be freed too.`, prKeepBtn:'Keep as is', prOk:'Delete (apply cancel)', prDone:(np,ng)=>`✓ Deleted ${np} cancelled member(s) (rooms ${ng})`, prKept:n=>`Kept ${n} cancelled member(s) (not deleted)`, prFail:'Failed to remove cancelled members: ',
     omSync:'Clean missing teams', omSyncSub:count=>`Delete ${count} missing from the file (cascade)`,
     monthListFail:'· Month list load failed: ',
     delMonthConfirm:ym=>`Delete all ${ym} data?\n\n· All teams, rosters, room assignments and field records for that month (cascade)\n· Other months unaffected\n\nThis cannot be undone.`,
@@ -612,7 +615,7 @@ async function run(){
         if(error||!data||!data.length) break; data.forEach(b=>{_oldBk[b.event_seq]=b.rep_name||''; _oldNo[b.event_seq]=b.event_no||'';}); if(data.length<1000) break; pg+=1000; }
       pg=0;
       while(true){ const {data,error}=await supa.from('passengers').select('event_seq,name_kr,birth_yymmdd,member_grade,bookings!inner(session_ym)').in('bookings.session_ym',fileMonths).range(pg,pg+999);
-        if(error||!data||!data.length) break; data.forEach(p=>{const k=(p.name_kr||'')+(p.birth_yymmdd||''); (_oldPx[p.event_seq]=_oldPx[p.event_seq]||{})[k]={name:p.name_kr,grade:p.member_grade};}); if(data.length<1000) break; pg+=1000; }
+        if(error||!data||!data.length) break; data.forEach(p=>{const k=(p.name_kr||'')+(p.birth_yymmdd||''); (_oldPx[p.event_seq]=_oldPx[p.event_seq]||{})[k]={name:p.name_kr,grade:p.member_grade,birth:p.birth_yymmdd||''};}); if(data.length<1000) break; pg+=1000; }
     } catch(e){ log(tx('snapFail')+e.message,'dim'); }
 
     stat['bookings'] = await upsertChunked('bookings', bookingRows, 'event_seq');
@@ -826,9 +829,56 @@ async function run(){
         const o=_oldPx[s]||{}, n=newPx[s]||{};
         Object.keys(n).forEach(k=>{ if(!(k in o)) changes.persons_added.push({seq:s,no:noOf(s),name:n[k].name});
           else if((o[k].grade||'')!==(n[k].grade||'')) changes.grade_changed.push({seq:s,no:noOf(s),name:n[k].name,from:o[k].grade||'-',to:n[k].grade||'-'}); });
-        Object.keys(o).forEach(k=>{ if(!(k in n)) changes.persons_removed.push({seq:s,no:noOf(s),name:o[k].name}); });
+        Object.keys(o).forEach(k=>{ if(!(k in n)) changes.persons_removed.push({seq:s,no:noOf(s),name:o[k].name,birth:o[k].birth||''}); });
       });
     } catch(e){}
+    // ── 개인 취소 반영: 팀은 남았는데 일행리스트에서 빠진 사람 삭제(확인창) ──
+    //   평소엔 가볍게(명단만) · 위험할 때만 강하게(방배정 있음/대량=잘못된 파일 의심).
+    try {
+      const removed = changes.persons_removed || [];
+      if (removed.length) {
+        // 새 파일 명단 이름집합(팀별) — 동명이인 오삭제 방지용(이름이 새 파일에도 있으면 gm 삭제 스킵)
+        const newNames = {};
+        paxRows.forEach(p=>{ (newNames[p.event_seq]=newNames[p.event_seq]||new Set()).add(p.name_kr||''); });
+        const seqs = [...new Set(removed.map(r=>r.seq))];
+        // 위험도: 방배정 있는 취소자 파악(event_seq+name → guest_members.id → rooms)
+        const gmByKey = {};   // (seq|name) -> {id,hasRoom}
+        for (let i=0;i<seqs.length;i+=200){
+          const chunk = seqs.slice(i,i+200);
+          const { data: gms } = await supa.from('guest_members').select('id,event_seq,name_kr').in('event_seq',chunk);
+          const gmIds = (gms||[]).map(g=>g.id);
+          const roomSet = new Set();
+          for (let j=0;j<gmIds.length;j+=150){ const gc=gmIds.slice(j,j+150);
+            const { data: rms } = await supa.from('rooms').select('member_id').in('member_id',gc);
+            (rms||[]).forEach(r=>roomSet.add(r.member_id)); }
+          (gms||[]).forEach(g=>{ gmByKey[g.event_seq+'|'+(g.name_kr||'')]={id:g.id,hasRoom:roomSet.has(g.id)}; });
+        }
+        removed.forEach(r=>{ const gk=gmByKey[r.seq+'|'+r.name]; r._hasRoom=!!(gk&&gk.hasRoom); r._gmId=(gk?gk.id:null); });
+        const riskyList = removed.filter(r=>r._hasRoom);
+        const isLarge = removed.length >= 8;
+        const go = await confirmPersonRemoval(removed, riskyList, isLarge);
+        if (go) {
+          let delPax=0, delGm=0;
+          for (const s of seqs){
+            const rem = removed.filter(r=>r.seq===s);
+            const remKeys = new Set(rem.map(r=>(r.name||'')+(r.birth||'')));
+            // passengers: (name+생년) 정밀 매칭 삭제
+            const { data: px } = await supa.from('passengers').select('id,name_kr,birth_yymmdd').eq('event_seq',s);
+            const paxIds = (px||[]).filter(p=>remKeys.has((p.name_kr||'')+(p.birth_yymmdd||''))).map(p=>p.id);
+            // guest_members: 이름 기준(단, 그 이름이 새 파일에 남아있으면 오타수정으로 보고 스킵)
+            const nn = newNames[s] || new Set();
+            const gmIds = rem.filter(r=>r._gmId && !nn.has(r.name)).map(r=>r._gmId);
+            // rooms.member_id → guest_members 는 ON DELETE CASCADE → gm 삭제 시 방배정 자동 정리(rooms 권한 불요)
+            if (gmIds.length){ const {error:ge}=await supa.from('guest_members').delete().in('id',gmIds); if(!ge) delGm+=gmIds.length; }
+            if (paxIds.length){ const {error:pe}=await supa.from('passengers').delete().in('id',paxIds); if(!pe) delPax+=paxIds.length; }
+          }
+          changes._persons_deleted = delPax;
+          log(tx('prDone')(delPax, delGm), 'ok');
+        } else {
+          log(tx('prKept')(removed.length), 'dim');
+        }
+      }
+    } catch(e){ log(tx('prFail')+e.message,'warn'); }
     // ── 변경이력 기록 (누가·언제·무슨 파일·건수 + diff) ──
     try {
       const by = ((window.__so_getUser && __so_getUser()) || '').trim();   // 로그인 담당자 이름
@@ -949,6 +999,35 @@ function confirmOrphan(months, count){
     bg.querySelector('#om-keep').addEventListener('click', ()=>done('keep'));
     bg.querySelector('#om-sync').addEventListener('click', ()=>done('sync'));
     bg.addEventListener('click', e=>{ if(e.target===bg) done('keep'); });   // 바깥 클릭 = 누적(안전)
+  });
+}
+
+// 개인 취소(일행리스트에서 빠진 사람) 삭제 확인 — 평소 가볍게 / 위험(방배정·대량)할 땐 강하게.
+function confirmPersonRemoval(removed, riskyList, isLarge){
+  return new Promise(resolve=>{
+    const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    const danger = isLarge || riskyList.length>0;
+    const listHTML = removed.slice(0,20).map(r=>
+      `<div style="font-size:12.5px;padding:2px 0;color:${r._hasRoom?'var(--err)':'var(--text2)'}">${r._hasRoom?'⚠ ':'· '}${esc(r.name||'-')} <span style="color:var(--muted)">(#${esc(String(r.no))})</span>${r._hasRoom?' — 방배정 있음':''}</div>`
+    ).join('') + (removed.length>20?`<div style="font-size:11.5px;color:var(--muted)">… 외 ${removed.length-20}명</div>`:'');
+    const bg=document.createElement('div');
+    bg.style.cssText='position:fixed;inset:0;z-index:300;background:rgba(31,42,24,.5);display:flex;align-items:center;justify-content:center;padding:20px';
+    bg.innerHTML=`<div style="background:var(--surface);border:1px solid ${danger?'var(--err)':'var(--border)'};border-radius:16px;max-width:480px;width:100%;padding:24px;box-shadow:0 16px 48px rgba(15,23,42,.24)">
+      <h3 style="font-size:16px;font-weight:800;margin:0 0 6px;color:${danger?'var(--err)':'var(--text)'}">${danger?tx('prTitleBig'):tx('prTitle')}</h3>
+      <p style="font-size:13px;color:var(--text2);line-height:1.6;margin:0 0 10px">${tx('prBody')(removed.length)}</p>
+      ${isLarge?`<p style="font-size:12.5px;color:var(--err);font-weight:700;background:#fbeeeb;border:1px solid #e3bdb4;border-radius:8px;padding:8px 11px;margin:0 0 10px">${tx('prLarge')}</p>`:''}
+      ${riskyList.length?`<p style="font-size:12.5px;color:var(--err);font-weight:700;margin:0 0 8px">${tx('prRisky')(riskyList.length)}</p>`:''}
+      <div style="max-height:180px;overflow:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 11px;margin:0 0 16px">${listHTML}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button id="pr-keep" class="btn ghost" type="button" style="flex:1;min-width:140px">${tx('prKeepBtn')}</button>
+        <button id="pr-del" class="btn" type="button" style="flex:1;min-width:140px;${danger?'background:var(--err);border-color:var(--err)':''}">${tx('prOk')}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(bg);
+    const done=v=>{ bg.remove(); resolve(v); };
+    bg.querySelector('#pr-keep').addEventListener('click',()=>done(false));
+    bg.querySelector('#pr-del').addEventListener('click',()=>done(true));
+    bg.addEventListener('click',e=>{ if(e.target===bg) done(false); });   // 바깥 클릭 = 유지(안전)
   });
 }
 
