@@ -307,6 +307,13 @@
   function romajiToKana(str) {
     return String(str || '').trim().split(/\s+/).map(_romajiTok).join('');
   }
+  // 팀 대표 태그 표시용 — 개인 순번 숫자만 제거하고 숙소 분류 문자(Y/K/G/S 등)는 유지.
+  //   "DAあ-1Y" → "DAあ-Y" · "GFな-12K" → "GFな-K" · 접미 없는 코드(FAあ)는 그대로.
+  //   ※레스토랑 명표·항공커버처럼 대표만 나오는 출력에서 "-1" 이 무의미해 숫자만 뺀다.
+  function tagStripSeq(tag) {
+    return String(tag == null ? '' : tag).replace(/-(\d+)([A-Za-z]*)$/, function (m, n, s) { return s ? '-' + s : ''; });
+  }
+
   // 영문 성명 → {sur, given} 가타카나(성=첫 토큰·관용보정, 명=나머지 토큰 각각 변환 후 결합)
   function nameYomiEn(nameEn) {
     var s = String(nameEn || '').trim();
@@ -342,6 +349,7 @@
     hangulToKana: hangulToKana,
     nameYomi: nameYomi,
     romajiToKana: romajiToKana,
-    nameYomiEn: nameYomiEn
+    nameYomiEn: nameYomiEn,
+    tagStripSeq: tagStripSeq
   };
 });

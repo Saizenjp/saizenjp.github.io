@@ -94,7 +94,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=8"></script>
+<script src="../assets/saizen-core.js?v=9"></script>
 <script src="../assets/saizen-ops.js?v=15.9"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -836,18 +836,20 @@ function printNameplates(){
     //   · 같은 운영팀이면 명패 1장으로 합석(現地手配書와 동일 묶음). '석식 분리' 켠 팀만 빼서 자기 명패로.
     const byG=new Map(), gOrder=[];
     teams.forEach(t=>{ const key=(!t.dinnerSplit && t.tgroup)?('tg:'+t.tgroup):('_solo:'+t.seq); if(!byG.has(key)){ byG.set(key,[]); gOrder.push(key); } byG.get(key).push(t); });
+    // 명패는 대표만 나오니 개인순번 숫자 제거·숙소 문자만 유지("DAあ-1Y"→"DAあ-Y").
+    const stripTag=t=>(window.SZCore&&SZCore.tagStripSeq)?SZCore.tagStripSeq(t):String(t||'');
     gOrder.forEach(key=>{
       const grp=byG.get(key);
       const names=grp.map(t=>(t.repName||'').trim()).filter(Boolean);
       const engs=grp.map(t=>(t.engName&&t.engName!=='(미등록)')?t.engName.trim():'').filter(Boolean);
-      const tags=grp.map(t=>(t.tag||'').trim()).filter(Boolean);
+      const tags=grp.map(t=>stripTag((t.tag||'').trim())).filter(Boolean);
       const pax=grp.reduce((s,t)=>s+(parseInt(t.pax,10)||0),0);
       const f=grp[0];
       cards.push({ repName:names.join(' · '), engName:engs.join(' · '), pax,
         period:`${fmtJP(f.dep)} 〜 ${fmtJP(f.arr)}`, tagCode:tags.join('  '), nTeams:grp.length,
         members: grp.map(t=>({ name:(t.repName||'').trim(),
           eng:(t.engName&&t.engName!=='(미등록)')?t.engName.trim():'',
-          tag:(t.tag||'').trim(), pax:parseInt(t.pax,10)||0 })) });
+          tag:stripTag((t.tag||'').trim()), pax:parseInt(t.pax,10)||0 })) });
     });
   });
   if(!cards.length){ toast(tx('noOutData'),'err'); return; }

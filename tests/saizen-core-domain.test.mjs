@@ -167,3 +167,12 @@ test('nameYomiEn: 영문 철자대로 후리가나(강병욱 KANG BYONG UK → �
   // 빈 입력
   assert.deepEqual(SZ.nameYomiEn(''), { sur: '', given: '' });
 });
+
+// ── 팀 대표 태그 표시(개인순번 숫자 제거·숙소 문자 유지) ───────────────────
+test('tagStripSeq: -1Y → -Y (숫자만 제거)', () => {
+  assert.equal(SZ.tagStripSeq('DAあ-1Y'), 'DAあ-Y');
+  assert.equal(SZ.tagStripSeq('GFな-12K'), 'GFな-K');
+  assert.equal(SZ.tagStripSeq('EWた-3S'), 'EWた-S');
+  assert.equal(SZ.tagStripSeq('FAあ'), 'FAあ');   // 접미 없으면 그대로
+  assert.equal(SZ.tagStripSeq(''), '');
+});
