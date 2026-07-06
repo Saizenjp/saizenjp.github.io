@@ -43,6 +43,9 @@
   .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
   .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
   .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  .daychip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border);cursor:pointer;font-family:inherit}
+  .daychip:hover{border-color:var(--accent)}
+  .daychip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   .stats{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
   .stat{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 13px;min-width:84px;text-align:center}
   .stat .l{font-size:10.5px;color:var(--muted);font-weight:700}
@@ -121,6 +124,7 @@ const L={
     connHint:'部屋割り(room)の結果を読み込み志津の宿 予約表を出力。別棟の温泉事前申請のみここで入力。',
     waitConn:'接続後に表示されます。', loginCard:'ログインが必要です。', loginCardSub:'中央のログインカードでログイン後、再接続してください。',
     monthSel:'月選択', btnPrint:'🖨 予約表 印刷', btnXlsx:'⬇ 予約表 xlsx',
+    daySel:'日付', allDays:'全日', dayNote:'日付を選ぶとその日だけ表示・印刷・xlsxに。', dayPrint:'🖨 この日を印刷',
     statLoading:'読込中…', stayN:'宿泊者', assignedN:'配置済', unassignedN:'未配置', onsenN:'温泉事前申請',
     nameUnit:'名', preNight:'人泊', noData:'表示する志津の宿の予約がありません(部屋割りで割当してください)。',
     onsenH:'♨ 別棟 温泉 事前申請', onsenHint:'— 別棟(吉祥·瑞雲·馬酔木)に配置された方のみ。申請した人泊 × ¥2,000(客室料¥17,000は本館·別棟同一)。申請時のみ現地で温泉のお湯を準備。<b>料金はメリットB2B精算で受領</b>(御請求書には課金しません · 集計/準備用)。',
@@ -132,6 +136,7 @@ const L={
     connHint:'방배정(room) 결과를 읽어 志津の宿 予約表를 출력. 別棟 온천 사전신청만 여기서 입력.',
     waitConn:'연결 후 표시됩니다.', loginCard:'로그인이 필요합니다.', loginCardSub:'중앙 로그인 카드에서 로그인 후 다시 연결해 주세요.',
     monthSel:'월 선택', btnPrint:'🖨 예약표 인쇄', btnXlsx:'⬇ 예약표 xlsx',
+    daySel:'날짜', allDays:'전체', dayNote:'날짜를 고르면 그 날짜만 보기·인쇄·xlsx.', dayPrint:'🖨 이 날짜 인쇄',
     statLoading:'불러오는 중…', stayN:'숙박객', assignedN:'배정됨', unassignedN:'미배정', onsenN:'온천 사전신청',
     nameUnit:'명', preNight:'인·박', noData:'표시할 시즈노야도 예약이 없습니다(방배정에서 배정하세요).',
     onsenH:'♨ 別棟 온천 사전신청', onsenHint:'— 別棟(吉祥·瑞雲·馬酔木) 배정 인원만. 사전신청한 인·박 × ¥2,000(객실료 ¥17,000은 本館·別棟 동일). 신청 시에만 현지에서 온천물 준비. <b>요금은 메리트 B2B 정산으로 수령</b>(御請求書 청구 아님 · 집계/준비용).',
@@ -143,6 +148,7 @@ const L={
     connHint:'Reads room-assignment results to output the Shizu-no-Yado chart. Only annex onsen pre-application is entered here.',
     waitConn:'Shown after connecting.', loginCard:'Login required.', loginCardSub:'Log in via the central card, then reconnect.',
     monthSel:'Month', btnPrint:'🖨 Print chart', btnXlsx:'⬇ Chart xlsx',
+    daySel:'Date', allDays:'All', dayNote:'Pick a date to view/print/xlsx just that day.', dayPrint:'🖨 Print this day',
     statLoading:'Loading…', stayN:'Guests', assignedN:'Assigned', unassignedN:'Unassigned', onsenN:'Onsen pre-app.',
     nameUnit:'', preNight:'p-nights', noData:'No Shizu-no-Yado reservations to show (assign on the room screen).',
     onsenH:'♨ Annex onsen pre-application', onsenHint:'— Only guests assigned to the annex (Kissho/Zuiun/Ashibi). Applied person-nights × ¥2,000 (room rate ¥17,000 same for main & annex). Water prepared on-site only when pre-applied. <b>The fee is collected via the Merit B2B settlement</b> (not billed on the guest invoice · for tally/prep).',
@@ -163,6 +169,7 @@ const SHZ_DOW=['日','月','火','水','木','金','土'];
 let supa=null, YM=null, FACILITY='시즈노야도 료칸';
 let GUESTS=[];                 // {member_id,event_seq,room_no,ci,co,nameKr,nameEn,gender,onsen}
 let NOTES={};                  // date → 수기 메모(세션 한정)
+let DATESEL=null;              // 선택 날짜(ISO). null=그 달 전체
 
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -184,6 +191,8 @@ function nameOf(g){ return titleCase(g.nameEn)||g.nameKr||''; }
 function genderOf(g){ return g.gender||''; }
 // 선택 월의 점유 밤(빈 날 테이블 방지)
 function axis(){ const set=new Set(); GUESTS.forEach(g=>nightsOf(g).forEach(d=>{ if(d.slice(0,7)===YM) set.add(d); })); return [...set].sort(); }
+// 화면·인쇄·xlsx 공통 대상 날짜: 특정일 선택 시 그날만, 아니면 그 달 전체
+function activeDates(){ const ax=axis(); return (DATESEL && ax.includes(DATESEL)) ? [DATESEL] : ax; }
 function cellOcc(room,date){ return GUESTS.filter(g=>g.room_no===room && nightsOf(g).includes(date)).sort((a,b)=>(a.ci||'').localeCompare(b.ci||'')); }
 function mf(occ){ let m=0,f=0,u=0; occ.forEach(g=>{const x=genderOf(g); if(x==='男')m++; else if(x==='女')f++; else u++;}); const p=[]; if(m)p.push('男　'+zen(m)); if(f)p.push('女　'+zen(f)); if(u)p.push('（未）'+zen(u)); return p.join('　　'); }
 function onsenSummary(){ let persons=0, fee=0; GUESTS.forEach(g=>{ if(g.onsen && SHZ_BYEOLCHE.includes(g.room_no)){ const n=nightsOf(g).filter(d=>d.slice(0,7)===YM).length; if(n>0){ persons++; fee+=SHZ_ONSEN*n; } } }); return {persons,fee}; }
@@ -219,6 +228,11 @@ function renderUI(){
         <button class="btn ghost" id="btn-xlsx" type="button" disabled>${tx('btnXlsx')}</button>
         <button class="btn" id="btn-print" type="button" disabled>${tx('btnPrint')}</button>
       </div>
+      <div class="row" id="dayrow" style="margin-top:9px;gap:6px">
+        <span class="cnt">${tx('daySel')}</span>
+        <span id="daychips" style="display:flex;flex-wrap:wrap;gap:5px"></span>
+        <span class="cnt" style="color:var(--muted);font-weight:500">${tx('dayNote')}</span>
+      </div>
       <div class="stats" id="stats"></div>
     </div>
     <div class="panel">
@@ -229,8 +243,8 @@ function renderUI(){
       <h3>${tx('pvH')} <span class="cnt">${tx('pvHint')}</span></h3>
       <div class="pv-wrap" id="preview"></div>
     </div>`;
-  $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
-  $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
+  $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);DATESEL=null;load();});
+  $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);DATESEL=null;load();});
   $('#btn-print').addEventListener('click',printChart);
   $('#btn-xlsx').addEventListener('click',downloadXlsx);
 }
@@ -273,11 +287,25 @@ async function load(){
         ci:String(r.check_in).slice(0,10), co:String(r.check_out).slice(0,10),
         nameKr, nameEn:gm.name_en||'', gender:genMap[r.event_seq+'|'+nameKr]||'', onsen:onSet.has(r.member_id) };
     });
-    renderStats(); renderOnsenPanel(); renderPreview();
     const ax=axis();
+    if(DATESEL && !ax.includes(DATESEL)) DATESEL=null;   // 다른 달로 넘어가면 선택 해제
+    renderDateChips(); renderStats(); renderOnsenPanel(); renderPreview();
     $('#stat').textContent=`${ax.length}${lang()==='ja'?'日':lang()==='en'?'d':'일'}`;
     $('#btn-print').disabled=!ax.length; $('#btn-xlsx').disabled=!ax.length;
   }catch(e){ toast(tx('connFail')+': '+e.message,'err'); $('#stat').textContent=''; }
+}
+
+function renderDateChips(){
+  const box=$('#daychips'); if(!box)return;
+  const ax=axis();
+  const chip=(val,label,on)=>`<button type="button" class="daychip${on?' on':''}" data-d="${val}">${label}</button>`;
+  let html=chip('',tx('allDays'),!DATESEL);
+  ax.forEach(d=>{ const dt=parseISO(d); const lb=`${dt.getMonth()+1}/${dt.getDate()}<small style="opacity:.7">(${SHZ_DOW[dt.getDay()]})</small>`; html+=chip(d,lb,DATESEL===d); });
+  box.innerHTML=html;
+  box.querySelectorAll('.daychip').forEach(b=>b.addEventListener('click',()=>{
+    DATESEL=b.getAttribute('data-d')||null;
+    renderDateChips(); renderPreview();
+  }));
 }
 
 function renderStats(){
@@ -332,7 +360,7 @@ function renderPreview(){
   const ax=axis();
   if(!ax.length){ wrap.innerHTML=`<div class="cnt" style="color:var(--muted);padding:20px;text-align:center">${tx('noData')}</div>`; return; }
   let html=`<div class="pv-title">ー志津の宿　${(parseISO(ax[0])||new Date()).getFullYear()}年　予約表ー</div>`;
-  ax.forEach(date=>{
+  activeDates().forEach(date=>{
     const d=parseISO(date); let tot=0,tm=0,tf=0;
     const cells=SHZ_ROOMS.map(room=>{
       const occ=cellOcc(room,date); if(!occ.length)return {name:'',mf:'',stay:'',cnt:''};
@@ -401,7 +429,7 @@ async function downloadXlsx(){
   const t=ws.getCell('A1'); t.value=`ー志津の宿　　${yr}年　　予約表ー`; t.font={name:FONT,size:26,bold:true}; t.alignment={horizontal:'center',vertical:'middle'}; t.border={bottom:thin};
   ws.getRow(1).height=41.4;
   let row=2;
-  ax.forEach(date=>{
+  activeDates().forEach(date=>{
     const d=parseISO(date), r0=row;
     ws.getRow(r0).height=29.4; for(let k=1;k<=5;k++) ws.getRow(r0+k).height=18; ws.getRow(r0+6).height=20.4;
     const hd=ws.getCell(r0,1); hd.value='日付'; hd.font={name:FONT,size:11}; hd.alignment={horizontal:'center',vertical:'middle'};
@@ -439,7 +467,7 @@ async function downloadXlsx(){
   });
   const buf=await wb.xlsx.writeBuffer();
   const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`Shizu_chart_${YM}.xlsx`; a.click();
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`Shizu_chart_${DATESEL||YM}.xlsx`; a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1500);
 }
 
@@ -452,7 +480,7 @@ function applyStatic(){
 }
 window.onSaizenLangChange=function(){
   applyStatic();
-  if(supa && $('#ym-label')){ renderUI(); $('#ym-label').textContent=YM; renderStats(); renderOnsenPanel(); renderPreview();
+  if(supa && $('#ym-label')){ renderUI(); $('#ym-label').textContent=YM; renderDateChips(); renderStats(); renderOnsenPanel(); renderPreview();
     const ax=axis(); $('#stat').textContent=`${ax.length}${lang()==='ja'?'日':lang()==='en'?'d':'일'}`;
     $('#btn-print').disabled=!ax.length; $('#btn-xlsx').disabled=!ax.length; }
 };
