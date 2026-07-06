@@ -123,6 +123,7 @@ from (
   union all select 56,'56 운영팀','print_overrides.team_group', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='print_overrides' and column_name='team_group') then '✅ 있음' else '❌ 없음 (56)' end
   union all select 57,'57 시즈온천','shizu_onsen',          case when to_regclass('public.shizu_onsen') is not null then '✅ 있음' else '❌ 없음 (57)' end
   union all select 63,'63 시즈영역분리','shizu_onsen ins=room/shizu', case when exists(select 1 from pg_policies where schemaname='public' and tablename='shizu_onsen' and policyname='shizu_onsen_ins' and coalesce(with_check,'') like '%shizu%') then '✅ 적용' else '❌ 미적용 (63)' end
+  union all select 64,'64 비고일본어','bookings.remark_ja', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='bookings' and column_name='remark_local_ja') then '✅ 있음' else '❌ 없음 (64)' end
   union all select 58,'58 별주청구','charges.link_ref',      case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='charges' and column_name='link_ref') then '✅ 있음' else '❌ 없음 (58)' end
   union all select 58,'58 별주청구','dinner_addon 트리거',   case when exists(select 1 from pg_trigger where tgname='trg_dinner_addon_charge') then '✅ 있음' else '❌ 없음 (58)' end
   union all select 59,'59 싱글청구','single_charge 트리거',  case when exists(select 1 from pg_trigger where tgname='trg_single_charge_charge') then '✅ 있음' else '❌ 없음 (59)' end
