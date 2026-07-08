@@ -314,6 +314,34 @@
     return String(tag == null ? '' : tag).replace(/-(\d+)([A-Za-z]*)$/, function (m, n, s) { return s ? '-' + s : ''; });
   }
 
+  // ── 운영팀 묶음 태그(대표코드 기준) ──────────────────────────────────
+  //  base = 대표팀 tagStripSeq (예 "DRな-Y"). 묶은 팀은 대표코드를 공유하고 번호만 다르게.
+  //   · 팀단위(手配書·夕食·航空カバー): 시설문자 '뒤' 번호  base+"1" → "DRな-Y1"
+  //   · 개인(네임택): 시설문자 '앞' 번호(기존 개인태그 형식)  "DRな-Y" → "DRな-2Y"
+  //  n=0/undefined 이면 번호 없이 base 그대로(묶이지 않은 단독 팀).
+  function teamTagN(base, n) {
+    base = String(base == null ? '' : base);
+    return n ? base + String(n) : base;
+  }
+  function personTagN(base, n) {
+    base = String(base == null ? '' : base);
+    if (!n) return base;
+    var m = base.match(/^(.*-)([A-Za-z])$/);   // ...-Y → 시설문자 앞에 번호 삽입
+    return m ? m[1] + n + m[2] : base + '-' + n;
+  }
+  // 그룹 내 팀 정렬: 대표 먼저, 그다음 (출발일 dep, event_seq) 오름차순. 팀번호=인덱스+1.
+  //   teams=[{event_seq, dep}], repSeq=대표 event_seq. 원본 불변(새 배열 반환).
+  function orderGroup(teams, repSeq) {
+    var rs = String(repSeq == null ? '' : repSeq);
+    return teams.slice().sort(function (a, b) {
+      var ar = (String(a.event_seq) === rs) ? 0 : 1, br = (String(b.event_seq) === rs) ? 0 : 1;
+      if (ar !== br) return ar - br;
+      var ad = String(a.dep || ''), bd = String(b.dep || '');
+      if (ad !== bd) return ad < bd ? -1 : 1;
+      return String(a.event_seq) < String(b.event_seq) ? -1 : 1;
+    });
+  }
+
   // 영문 성명 → {sur, given} 가타카나(성=첫 토큰·관용보정, 명=나머지 토큰 각각 변환 후 결합)
   function nameYomiEn(nameEn) {
     var s = String(nameEn || '').trim();
@@ -350,6 +378,9 @@
     nameYomi: nameYomi,
     romajiToKana: romajiToKana,
     nameYomiEn: nameYomiEn,
-    tagStripSeq: tagStripSeq
+    tagStripSeq: tagStripSeq,
+    teamTagN: teamTagN,
+    personTagN: personTagN,
+    orderGroup: orderGroup
   };
 });
