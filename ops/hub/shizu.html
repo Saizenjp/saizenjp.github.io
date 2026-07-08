@@ -64,6 +64,7 @@
   .shz-pv{border-collapse:collapse;margin-bottom:14px;width:100%;min-width:900px;font-size:11px}
   .shz-pv th,.shz-pv td{border:1px solid var(--border2);padding:3px 6px;text-align:center;vertical-align:middle}
   .shz-pv-hd th{background:var(--accentSoft);font-weight:700;color:var(--accent)}
+  .shz-rno{display:block;font-size:9px;color:var(--muted);font-weight:600;letter-spacing:.5px}
   .shz-pv-zone th{background:var(--surface3);font-weight:800;color:var(--accent);font-size:11px;letter-spacing:.04em}
   .shz-pv-zone th small{font-weight:600;color:var(--muted)}
   .shz-pv-zone th.bz,.shz-pv-hd th.bz{color:var(--purple2)}
@@ -80,6 +81,7 @@
   .shz-pv-bigo{text-align:left;background:#fffdf5;font-size:11px;line-height:1.55;font-weight:600;color:#3a3320}
   .shz-bigo-nm{color:var(--accent);font-weight:800;margin-right:2px}
   .shz-bigo-o{color:#9a8f78;font-weight:400;font-size:10px}
+  .shz-annex{display:inline-block;background:var(--purpleDim);color:var(--purple2);border:1px solid var(--purple);border-radius:5px;padding:0 6px;font-size:10.5px;font-weight:800;margin-right:3px}
   .pv-wrap{overflow-x:auto}
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
   .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
@@ -168,6 +170,10 @@ function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||
 // ── 도메인 상수(앱 shizu 이식) ──
 const SHZ_ROOMS=['志津','合歓','北條','山法師','吉祥','瑞雲','馬酔木'];   // 本館 4 + 別棟 3
 const SHZ_BYEOLCHE=['吉祥','瑞雲','馬酔木'];
+// 호수: 本館 201~204 · 別館 301~303 (순차)
+const SHZ_ROOMNO={'志津':'201','合歓':'202','北條':'203','山法師':'204','吉祥':'301','瑞雲':'302','馬酔木':'303'};
+// 현지비고에 이 단어가 있으면 別棟 사전신청(개인욕탕 물 준비 필요)로 표시
+const SHZ_ANNEX_RE=/별채|별관|別棟|別館/;
 const SHZ_ZONE=r=>SHZ_BYEOLCHE.includes(r)?'別棟':'本館';
 const SHZ_BASE=17000, SHZ_ONSEN=2000;
 const SHZ_DOW=['日','月','火','水','木','金','土'];
@@ -233,7 +239,6 @@ function renderUI(){
         </div>
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
-        <button class="btn ghost" id="btn-xlsx" type="button" disabled>${tx('btnXlsx')}</button>
         <button class="btn" id="btn-print" type="button" disabled>${tx('btnPrint')}</button>
       </div>
       <div class="row" id="dayrow" style="margin-top:9px;gap:6px">
@@ -254,7 +259,6 @@ function renderUI(){
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);DATESEL=null;load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);DATESEL=null;load();});
   $('#btn-print').addEventListener('click',printChart);
-  $('#btn-xlsx').addEventListener('click',downloadXlsx);
 }
 
 async function pagedIn(table, cols, key, vals){
@@ -269,7 +273,7 @@ async function pagedIn(table, cols, key, vals){
 
 async function load(){
   if(!supa)return;
-  $('#ym-label').textContent=YM; $('#stat').textContent=tx('statLoading'); $('#btn-print').disabled=true; $('#btn-xlsx').disabled=true;
+  $('#ym-label').textContent=YM; $('#stat').textContent=tx('statLoading'); $('#btn-print').disabled=true;
   NOTES={};
   try{
     const {start,end}=monthBounds(YM);
@@ -302,7 +306,7 @@ async function load(){
     if(DATESEL && !ax.includes(DATESEL)) DATESEL=null;   // 다른 달로 넘어가면 선택 해제
     renderDateChips(); renderStats(); renderOnsenPanel(); renderPreview();
     $('#stat').textContent=`${ax.length}${lang()==='ja'?'日':lang()==='en'?'d':'일'}`;
-    $('#btn-print').disabled=!ax.length; $('#btn-xlsx').disabled=!ax.length;
+    $('#btn-print').disabled=!ax.length;
     translateRemarks();   // 미번역 비고 → DeepL(엣지) 번역 후 재렌더(비차단)
   }catch(e){ toast(tx('connFail')+': '+e.message,'err'); $('#stat').textContent=''; }
 }
@@ -397,6 +401,8 @@ function bigoFor(date){
   seqs.forEach(seq=>{
     const b=BOOK[seq]; if(!b)return;
     const rep=String(b.rep_name||'').trim();
+    // 현지비고에 '별채/별관/別棟/別館' 포함 = 別棟 사전신청 → 객실 개인욕탕 물 채우기 필요
+    const annex=SHZ_ANNEX_RE.test(String(b.remark_local||'')+' '+String(b.remark||''));
     const segs=[];
     const add=(orig,ja)=>{ orig=String(orig||'').replace(/\s*[\r\n]+\s*/g,' ').trim(); if(!orig)return;
       const jaT=String(ja||'').replace(/\s*[\r\n]+\s*/g,' ').trim();
@@ -404,7 +410,8 @@ function bigoFor(date){
       else segs.push(esc(orig)); };
     add(b.remark_local, b.remark_local_ja);   // 현지비고(현장 전달) 우선
     add(b.remark, b.remark_ja);
-    if(segs.length) parts.push(`<span class="shz-bigo-t"><b class="shz-bigo-nm">${esc(rep)}様</b> ${segs.join('　/　')}</span>`);
+    const head=annex?`<span class="shz-annex">♨ 別棟 浴槽準備</span> `:'';
+    if(segs.length||annex) parts.push(`<span class="shz-bigo-t">${head}<b class="shz-bigo-nm">${esc(rep)}様</b> ${segs.join('　/　')}</span>`);
   });
   return parts.join('<br>');
 }
@@ -427,7 +434,7 @@ function renderPreview(){
     const note = NOTES[date]!=null? NOTES[date] : buildNoteAuto(date);
     html+=`<table class="shz-pv">
       <tr class="shz-pv-zone"><th></th><th colspan="4">本館 <small>¥17,000</small></th><th colspan="3" class="bz">別棟 <small>¥17,000 온천 사전신청제</small></th><th></th></tr>
-      <tr class="shz-pv-hd"><th class="shz-pv-dt">${zen(d.getMonth()+1)}／${zen(d.getDate())}<br><span>${SHZ_DOW[d.getDay()]}</span></th>${SHZ_ROOMS.map(r=>`<th${SHZ_BYEOLCHE.includes(r)?' class="bz"':''}>${r}</th>`).join('')}<th class="shz-pv-k">合計</th></tr>
+      <tr class="shz-pv-hd"><th class="shz-pv-dt">${zen(d.getMonth()+1)}／${zen(d.getDate())}<br><span>${SHZ_DOW[d.getDay()]}</span></th>${SHZ_ROOMS.map(r=>`<th${SHZ_BYEOLCHE.includes(r)?' class="bz"':''}><span class="shz-rno">${SHZ_ROOMNO[r]||''}</span>${r}</th>`).join('')}<th class="shz-pv-k">合計</th></tr>
       <tr><td class="shz-pv-lb">お名前</td>${cells.map(c=>`<td class="shz-pv-nm">${c.name}</td>`).join('')}<td></td></tr>
       <tr><td class="shz-pv-lb">大人</td>${cells.map(c=>`<td>${c.mf}</td>`).join('')}<td class="shz-pv-k">大 ${zen(tot)} 名</td></tr>
       <tr><td class="shz-pv-lb">合計人数</td>${cells.map(c=>`<td>${c.cnt}</td>`).join('')}<td class="shz-pv-k">計 ${zen(tot)} 名</td></tr>
@@ -454,6 +461,8 @@ function printChart(){
     .shz-pv-zone th.bz{background:#f0e8f7;color:#5e3a86}
     .shz-pv-hd th{background:#e4ecd9;font-weight:700}
     .shz-pv-hd th.bz{color:#5e3a86}
+    .shz-rno{display:block;font-size:8.5px;color:#888;font-weight:600}
+    .shz-annex{display:inline-block;background:#f0e8f7;color:#5e3a86;border:1px solid #7c4dab;border-radius:4px;padding:0 5px;font-size:10px;font-weight:800;margin-right:3px}
     .shz-pv-dt{background:#e9ede1!important;font-size:13px;font-weight:700}
     .shz-pv-dt span{font-size:10px;color:#666}
     .shz-pv-lb{background:#e9ede1;font-weight:700;width:78px;text-align:center}
@@ -469,7 +478,7 @@ function printChart(){
   </style>`;
   const w=window.open('','_blank'); if(!w){ toast(tx('popupBlock'),'err'); return; }
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>志津の宿 予約表</title>${css}</head><body>${inner}<div class="noprint"><button onclick="window.print()">인쇄</button></div></body></html>`);
-  w.document.close(); setTimeout(()=>{try{w.focus();w.print();}catch(e){}},300);
+  w.document.close(); try{w.focus();}catch(e){}   // 미리보기만 — [인쇄] 버튼으로 사용자가 직접 인쇄
 }
 
 // ── 予約表 xlsx(앱 shzDownload 이식) ──
@@ -540,7 +549,7 @@ window.onSaizenLangChange=function(){
   applyStatic();
   if(supa && $('#ym-label')){ renderUI(); $('#ym-label').textContent=YM; renderDateChips(); renderStats(); renderOnsenPanel(); renderPreview();
     const ax=axis(); $('#stat').textContent=`${ax.length}${lang()==='ja'?'日':lang()==='en'?'d':'일'}`;
-    $('#btn-print').disabled=!ax.length; $('#btn-xlsx').disabled=!ax.length; }
+    $('#btn-print').disabled=!ax.length; }
 };
 
 $('#btn-connect').addEventListener('click',connect);
