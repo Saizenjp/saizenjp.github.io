@@ -2192,6 +2192,10 @@ function poolByFloorOrder(pool, floorOrder){
   return pool.filter(inv=>rank.has(floorOf(inv)))
              .sort((a,b)=>rank.get(floorOf(a))-rank.get(floorOf(b)));
 }
+// 자동배정에서 '가장 마지막에' 채우는 방(현장 요청). 시즈노야도 北條 = 청소·동선상 최후 사용.
+//   같은 풀 안에서 다른 방을 먼저 소진한 뒤에야 배정되도록 정렬 후순위로 민다(수기 배정엔 영향 없음).
+const AUTO_LAST_ROOMS={'시즈노야도 료칸':['北條']};
+function autoLastRank(r){ const l=AUTO_LAST_ROOMS[r.facility]; return (l&&l.indexOf(r.room_no)>=0)?1:0; }
 function roomPool(route, kind){
   let rooms=state.inventory.filter(r=>r.facility===route.fac && r.active);
   if(route.floorOnly)      rooms=rooms.filter(r=>/^\d+층$/.test(r.zone||''));
@@ -2211,7 +2215,7 @@ function roomPool(route, kind){
                         || (a.sort_order||0)-(b.sort_order||0));
     }else{
       rooms=rooms.filter(r=>(r.max_capacity||r.capacity)>=2); // 비호텔: 2인 이상 방
-      rooms.sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+      rooms.sort((a,b)=>autoLastRank(a)-autoLastRank(b) || (a.sort_order||0)-(b.sort_order||0)); // 北條 등 '최후 배정' 방은 뒤로
     }
   }
   return rooms;
