@@ -89,7 +89,7 @@
   .course-kuju{border-left:4px solid #5e3a86}
   .deny{padding:34px;text-align:center;color:var(--muted)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.16">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.17">
 </head>
 <body data-so-area="golf">
 <div class="topbar so-bar">
@@ -117,7 +117,7 @@
 <main id="content"></main>
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=15.16"></script>
+<script src="../assets/saizen-ops.js?v=15.17"></script>
 <script>
 const $=s=>document.querySelector(s);
 const COURSES=[ {code:'aso',ko:'아소',ja:'阿蘇',pop:1}, {code:'sobo',ko:'소보',ja:'祖母',pop:2}, {code:'kuju',ko:'쿠주',ja:'久住',pop:3} ];
@@ -128,7 +128,7 @@ const L={
   ja:{ step:'ゴルフ組編成', connHint:'接続情報はこのブラウザにのみ保存されます。', monthSel:'月選択',
     daySel:'ラウンド日', dayNote:'※ 商品名からラウンド日を自動抽出(入国ICN・滞在中・帰国PUS)。',
     poolH:'未編成', groupsH:'組', addGrp:'＋ 新しい組', autoTeam:'🪄 4名以下 自動', clearAll:'🧹 全消去', autoManualHint:n=>`${n}チームは5名以上 — 手動で組編成してください`,
-    selToGrp:'選択を組へ', male:'男', female:'女', course:'コース', tee:'ティ',
+    selToGrp:'選択を組へ', male:'男', female:'女', course:'コース', tee:'ティ', cart:'カート',
     save:'💾 保存', print:'🖨 組編成表 印刷', noDay:'ラウンド日を選択してください。', noData:'この日にラウンドはありません。',
     savedN:n=>`${n}組を保存しました`, saveFail:'保存失敗: ', loadFail:'読み込み失敗', capFull:'この組は満員です(最大4名)',
     selNone:'先に人を選んでください', person:'名', teamUnit:'チーム', connOk:'接続済', notConn:'未接続', connBtn:'接続',
@@ -137,7 +137,7 @@ const L={
   ko:{ step:'골프 조편성', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', monthSel:'월 선택',
     daySel:'라운딩 날짜', dayNote:'※ 상품명으로 라운딩 날짜 자동 추출(입국ICN·체류중·귀국PUS).',
     poolH:'미편성', groupsH:'조', addGrp:'＋ 새 조', autoTeam:'🪄 4명 이하 자동', clearAll:'🧹 전체 비우기', autoManualHint:n=>`${n}팀은 5명 이상 — 수기로 조편성 하세요`,
-    selToGrp:'선택 → 조에 추가', male:'남', female:'여', course:'코스', tee:'티오프',
+    selToGrp:'선택 → 조에 추가', male:'남', female:'여', course:'코스', tee:'티오프', cart:'카트',
     save:'💾 저장', print:'🖨 조편성표 인쇄', noDay:'라운딩 날짜를 선택하세요.', noData:'이 날 라운딩이 없습니다.',
     savedN:n=>`${n}개 조 저장했습니다`, saveFail:'저장 실패: ', loadFail:'불러오기 실패', capFull:'이 조는 만원입니다(최대 4명)',
     selNone:'먼저 인원을 선택하세요', person:'명', teamUnit:'팀', connOk:'연결됨', notConn:'미연결', connBtn:'연결',
@@ -146,7 +146,7 @@ const L={
   en:{ step:'Golf grouping', connHint:'Connection info is stored only in this browser.', monthSel:'Month',
     daySel:'Round date', dayNote:'※ Round days auto-derived from product (arrival ICN · during stay · departure PUS).',
     poolH:'Unassigned', groupsH:'Groups', addGrp:'＋ New group', autoTeam:'🪄 Auto (≤4)', clearAll:'🧹 Clear all', autoManualHint:n=>`${n} team(s) have 5+ — group manually`,
-    selToGrp:'Selected → group', male:'M', female:'F', course:'Course', tee:'Tee',
+    selToGrp:'Selected → group', male:'M', female:'F', course:'Course', tee:'Tee', cart:'Cart',
     save:'💾 Save', print:'🖨 Print sheet', noDay:'Select a round date.', noData:'No rounds on this day.',
     savedN:n=>`Saved ${n} groups`, saveFail:'Save failed: ', loadFail:'Load failed', capFull:'This group is full (max 4)',
     selNone:'Select people first', person:'', teamUnit:'teams', connOk:'Connected', notConn:'Not connected', connBtn:'Connect',
@@ -285,7 +285,7 @@ async function loadBoard(date){
   ROSTER=[]; teams.forEach(t=>t.members.forEach(m=>ROSTER.push({...m, tag:t.tag})));
   GROUPS=[];
   try{
-    const {data:grps}=await supa.from('golf_groups').select('id,course_code,tee_time,slot_no,note').eq('play_date',date).order('slot_no',{nullsFirst:false});
+    const {data:grps}=await supa.from('golf_groups').select('id,course_code,tee_time,cart_no,slot_no,note').eq('play_date',date).order('slot_no',{nullsFirst:false});
     const gids=(grps||[]).map(g=>g.id);
     const gmembers = gids.length? await pagedIn('golf_group_members','id,group_id,member_id,event_seq,seq','group_id',gids):[];
     const byG={}; gmembers.forEach(m=>{ (byG[m.group_id]=byG[m.group_id]||[]).push(m); });
@@ -293,7 +293,7 @@ async function loadBoard(date){
       const mems=(byG[g.id]||[]).sort((a,b)=>(a.seq||0)-(b.seq||0)).map(gm=>{
         const r=ROSTER.find(x=>x.id===gm.member_id); return r|| {id:gm.member_id,name:'?',eng:'',gender:'',seq:gm.event_seq,tag:''};
       });
-      GROUPS.push({ id:g.id, course:g.course_code||'', tee:g.tee_time||'', slot:g.slot_no||null, note:g.note||'', members:mems });
+      GROUPS.push({ id:g.id, course:g.course_code||'', tee:g.tee_time||'', cart:g.cart_no||'', slot:g.slot_no||null, note:g.note||'', members:mems });
     });
   }catch(e){ /* 없으면 빈 편성 */ }
   renderBoard();
@@ -348,6 +348,7 @@ function grpCard(g,i){
     <div class="grp-ctl">
       <select class="cs" data-i="${i}"><option value="">${tx('course')}</option>${opts}</select>
       <input class="tt" data-i="${i}" placeholder="${tx('tee')}" value="${esc(g.tee||'')}">
+      <input class="ct" data-i="${i}" placeholder="${tx('cart')}" value="${esc(g.cart||'')}" style="width:56px">
     </div>
     <div class="grp-m">${g.members.map((m,mi)=>{ const gg=m.gender==='男'?'<span class="g m">♂</span>':m.gender==='女'?'<span class="g f">♀</span>':'';
       return `<div class="gm">${gg}${esc(m.name)} <span class="tag">${esc(m.tag||'')}</span><span class="x" data-i="${i}" data-mi="${mi}">✕</span></div>`; }).join('')}</div>
@@ -359,10 +360,11 @@ function bindBoard(){
   document.querySelectorAll('#grpgrid .x').forEach(el=>el.addEventListener('click',ev=>{ ev.stopPropagation(); removeMember(+el.dataset.i,+el.dataset.mi); }));
   document.querySelectorAll('#grpgrid .cs').forEach(el=>el.addEventListener('change',()=>{ GROUPS[+el.dataset.i].course=el.value; renderBoard(); }));
   document.querySelectorAll('#grpgrid .tt').forEach(el=>el.addEventListener('change',()=>{ GROUPS[+el.dataset.i].tee=el.value.trim(); }));
-  $('#b-add').addEventListener('click',()=>{ GROUPS.push({course:autoCourse(),tee:'',slot:GROUPS.length+1,note:'',members:[]}); renderBoard(); });
+  document.querySelectorAll('#grpgrid .ct').forEach(el=>el.addEventListener('change',()=>{ GROUPS[+el.dataset.i].cart=el.value.trim(); }));
+  $('#b-add').addEventListener('click',()=>{ GROUPS.push({course:autoCourse(),tee:'',cart:'',slot:GROUPS.length+1,note:'',members:[]}); renderBoard(); });
   $('#b-clear').addEventListener('click',()=>{ GROUPS=[]; SEL.clear(); renderBoard(); });
   $('#b-auto').addEventListener('click',autoAssign);
-  $('#b-tognew').addEventListener('click',()=>{ if(!SEL.size){ toast(tx('selNone'),'warn'); return; } GROUPS.push({course:autoCourse(),tee:'',slot:GROUPS.length+1,note:'',members:[]}); assignSelTo(GROUPS.length-1); });
+  $('#b-tognew').addEventListener('click',()=>{ if(!SEL.size){ toast(tx('selNone'),'warn'); return; } GROUPS.push({course:autoCourse(),tee:'',cart:'',slot:GROUPS.length+1,note:'',members:[]}); assignSelTo(GROUPS.length-1); });
   $('#b-selm').addEventListener('click',()=>selByGender('男'));
   $('#b-self').addEventListener('click',()=>selByGender('女'));
 }
@@ -384,7 +386,7 @@ function autoAssign(){
   teamsOnDate(DATESEL).forEach(t=>{
     if(t.members.length>4){ manualN++; return; }        // 4명 초과 = 수기(자동 제외)
     const ms=t.members.filter(m=>!a.has(m.id)); if(!ms.length)return;
-    GROUPS.push({course:autoCourse(),tee:'',slot:GROUPS.length+1,note:'',members:ms.map(m=>({...m,tag:t.tag}))});
+    GROUPS.push({course:autoCourse(),tee:'',cart:'',slot:GROUPS.length+1,note:'',members:ms.map(m=>({...m,tag:t.tag}))});
   });
   renderBoard();
   if(manualN) toast(tx('autoManualHint')(manualN),'warn');
@@ -398,7 +400,7 @@ async function saveBoard(){
     await supa.from('golf_groups').delete().eq('play_date',DATESEL);
     let n=0;
     for(let i=0;i<GROUPS.length;i++){ const g=GROUPS[i]; if(!g.members.length && !g.course && !g.tee) continue;
-      const {data:ins,error}=await supa.from('golf_groups').insert({ play_date:DATESEL, course_code:g.course||null, tee_time:g.tee||null, slot_no:i+1, assign_source:'manual', capacity:4, note:g.note||null, created_by:by }).select('id').single();
+      const {data:ins,error}=await supa.from('golf_groups').insert({ play_date:DATESEL, course_code:g.course||null, tee_time:g.tee||null, cart_no:g.cart||null, slot_no:i+1, assign_source:'manual', capacity:4, note:g.note||null, created_by:by }).select('id').single();
       if(error)throw error;
       const rows=g.members.map((m,mi)=>({ group_id:ins.id, member_id:m.id, event_seq:m.seq, seq:mi+1 }));
       if(rows.length){ const {error:e2}=await supa.from('golf_group_members').insert(rows); if(e2)throw e2; }
@@ -418,7 +420,7 @@ function printSheet(){
     return (a.slot||a._i)-(b.slot||b._i);
   });
   const rows=ordered.map((g,i)=>`<tr>
-    <td class="c">${i+1}</td><td class="c">${esc(cName(g.course))}</td><td class="c">${esc(g.tee||'')}</td>
+    <td class="c">${i+1}</td><td class="c">${esc(cName(g.course))}</td><td class="c">${esc(g.tee||'')}</td><td class="c">${esc(g.cart||'')}</td>
     <td>${g.members.map(m=>`${esc(m.name)}${m.gender==='男'?'<span class="mm">♂</span>':m.gender==='女'?'<span class="ff">♀</span>':''} <span class="tg">${esc(m.tag||'')}</span>`).join(' ／ ')}</td>
     <td class="c">${g.members.length}</td></tr>`).join('');
   const css=`<style>@page{size:A4 portrait;margin:12mm}*{box-sizing:border-box}body{font-family:'Yu Gothic','Malgun Gothic',sans-serif;color:#1a2540}
@@ -434,7 +436,7 @@ function printSheet(){
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>ゴルフ組編成 ${DATESEL}</title>${css}</head><body>
     <div class="bar"><b style="flex:1">ゴルフ組編成 · ${DATESEL} ${dow(DATESEL)}</b><button class="p" onclick="window.print()">🖨</button><button class="c" onclick="window.close()">✕</button></div>
     <div style="padding:6mm 8mm"><h1>ゴルフ組編成表</h1><div class="sub">${dt.getFullYear()}年 ${dt.getMonth()+1}月 ${dt.getDate()}日 ${dow(DATESEL)} · ${GROUPS.length}${tx('grp')}</div>
-    <table><thead><tr><th>${tx('grp')}</th><th>${tx('course')}</th><th>${tx('tee')}</th><th>${lang()==='ja'?'メンバー':lang()==='en'?'Members':'조원'}</th><th>${tx('person')||'名'}</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <table><thead><tr><th>${tx('grp')}</th><th>${tx('course')}</th><th>${tx('tee')}</th><th>${tx('cart')}</th><th>${lang()==='ja'?'メンバー':lang()==='en'?'Members':'조원'}</th><th>${tx('person')||'名'}</th></tr></thead><tbody>${rows}</tbody></table></div>
   </body></html>`);
   w.document.close();
 }
