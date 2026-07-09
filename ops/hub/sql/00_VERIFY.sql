@@ -128,6 +128,8 @@ from (
   union all select 66,'66 대표팀','print_overrides.team_group_rep', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='print_overrides' and column_name='team_group_rep') then '✅ 있음' else '❌ 없음 (66)' end
   union all select 67,'67 시즈맞바꿈','shizu_swap_rooms()', case when exists(select 1 from pg_proc where proname='shizu_swap_rooms') then '✅ 있음' else '❌ 없음 (67)' end
   union all select 68,'68 시즈메모','shizu_memo', case when to_regclass('public.shizu_memo') is not null then '✅ 있음' else '❌ 없음 (68)' end
+  union all select 69,'69 시즈자동배정','shizu_assign_rooms()', case when exists(select 1 from pg_proc where proname='shizu_assign_rooms') then '✅ 있음' else '❌ 없음 (69)' end
+  union all select 70,'70 시즈폐쇄권한','room_closures ins=shizu', case when exists(select 1 from pg_policies where schemaname='public' and tablename='room_closures' and policyname='room_closures_ins' and coalesce(with_check,'') like '%shizu%') then '✅ 적용' else '❌ 미적용 (70)' end
   union all select 58,'58 별주청구','charges.link_ref',      case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='charges' and column_name='link_ref') then '✅ 있음' else '❌ 없음 (58)' end
   union all select 58,'58 별주청구','dinner_addon 트리거',   case when exists(select 1 from pg_trigger where tgname='trg_dinner_addon_charge') then '✅ 있음' else '❌ 없음 (58)' end
   union all select 59,'59 싱글청구','single_charge 트리거',  case when exists(select 1 from pg_trigger where tgname='trg_single_charge_charge') then '✅ 있음' else '❌ 없음 (59)' end
