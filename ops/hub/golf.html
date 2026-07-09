@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · ゴルフ組編成 / 골프 조편성</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../assets/saizen-core.js?v=6"></script>
+<style>
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
+    --border:#e3e6ea; --border2:#cdd2d8;
+    --text:#1f2937; --text2:#525b66; --muted:#8b919b;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --male:#1A4D8F; --female:#b23b6e;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none}
+  .navhome:hover{text-decoration:underline}
+  .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .btn.xs{font-size:11.5px;padding:3px 9px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .hint{font-size:11px;color:var(--muted)}
+  #toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);min-width:200px;text-align:center}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+
+  main{padding:16px 20px 60px;max-width:1320px;margin:0 auto}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;color:var(--accent);margin-bottom:9px}
+  .row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+  .ymctrl{display:flex;align-items:center;gap:6px}
+  .ymctrl b{font-size:15px;min-width:74px;text-align:center}
+  .cnt{font-size:12px;color:var(--text2)}
+  .daychip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border);cursor:pointer}
+  .daychip:hover{border-color:var(--accent)}
+  .daychip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .daychip .un{margin-left:5px;background:#fde8e8;color:#c0392b;border-radius:99px;padding:0 5px;font-size:10px}
+
+  .board{display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:start}
+  @media(max-width:900px){ .board{grid-template-columns:1fr} }
+  .pool h3,.groups h3{display:flex;align-items:center;gap:8px}
+  .pool-team{margin-bottom:9px}
+  .pool-team .pt-h{font-size:11.5px;font-weight:800;color:var(--accent2);font-family:var(--mono);margin-bottom:3px}
+  .mem{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;padding:4px 9px;margin:2px 3px 2px 0;border-radius:99px;border:1px solid var(--border2);background:var(--surface);cursor:pointer;user-select:none}
+  .mem.sel{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .mem .g{font-size:10px;font-weight:800}
+  .mem .g.m{color:var(--male)} .mem .g.f{color:var(--female)}
+  .mem.sel .g{color:#fff}
+  .grp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+  .grp{border:1px solid var(--border2);border-radius:10px;background:var(--surface2);padding:9px 10px}
+  .grp.full{border-color:#b4cda0}
+  .grp-h{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+  .grp-h .no{font-weight:800;font-size:13px;color:var(--accent)}
+  .grp-h .cap{font-size:11px;color:var(--muted);margin-left:auto}
+  .grp-ctl{display:flex;gap:5px;margin-bottom:7px}
+  .grp-ctl select,.grp-ctl input{font-size:11.5px;padding:3px 6px;border:1px solid var(--border2);border-radius:5px}
+  .grp-ctl .cs{flex:1}
+  .grp-ctl .tt{width:66px}
+  .grp-m{display:flex;flex-direction:column;gap:3px;min-height:24px}
+  .gm{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:2px 4px;border-radius:5px}
+  .gm:hover{background:var(--surface3)}
+  .gm .x{margin-left:auto;color:var(--err);cursor:pointer;font-weight:800;font-size:12px}
+  .gm .tag{font-family:var(--mono);font-size:10.5px;color:var(--accent2)}
+  .gm .g.m{color:var(--male);font-weight:800} .gm .g.f{color:var(--female);font-weight:800}
+  .course-aso{border-left:4px solid #b5862f}
+  .course-sobo{border-left:4px solid #5b8ad4}
+  .course-kuju{border-left:4px solid #5e3a86}
+  .deny{padding:34px;text-align:center;color:var(--muted)}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.15">
+</head>
+<body data-so-area="golf">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">ゴルフ組編成</span>
+  <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connhint">연결 정보는 이 브라우저에만 저장됩니다.</span>
+</div>
+
+<main id="content"></main>
+<div id="toast"></div>
+
+<script src="../assets/saizen-ops.js?v=15.15"></script>
+<script>
+const $=s=>document.querySelector(s);
+const COURSES=[ {code:'aso',ko:'아소',ja:'阿蘇',pop:1}, {code:'sobo',ko:'소보',ja:'祖母',pop:2}, {code:'kuju',ko:'쿠주',ja:'久住',pop:3} ];
+const CMAP={}; COURSES.forEach(c=>CMAP[c.code]=c);
+const JP_HOLIDAYS=new Set(['2025-01-01','2025-01-13','2025-02-11','2025-02-23','2025-02-24','2025-03-20','2025-04-29','2025-05-03','2025-05-04','2025-05-05','2025-05-06','2025-07-21','2025-08-11','2025-09-15','2025-09-22','2025-09-23','2025-10-13','2025-11-03','2025-11-23','2025-11-24','2026-01-01','2026-01-12','2026-02-11','2026-02-23','2026-03-20','2026-04-29','2026-05-03','2026-05-04','2026-05-05','2026-05-06','2026-07-20','2026-08-11','2026-09-21','2026-09-22','2026-09-23','2026-10-12','2026-11-03','2026-11-23','2027-01-01','2027-01-11','2027-02-11','2027-02-23','2027-03-22','2027-04-29','2027-05-03','2027-05-04','2027-05-05','2027-07-19','2027-08-11','2027-09-20','2027-09-23','2027-10-11','2027-11-03','2027-11-23']);
+
+const L={
+  ja:{ step:'ゴルフ組編成', connHint:'接続情報はこのブラウザにのみ保存されます。', monthSel:'月選択',
+    daySel:'ラウンド日', dayNote:'※ 商品名からラウンド日を自動抽出(入国ICN・滞在中・帰国PUS)。',
+    poolH:'未編成', groupsH:'組', addGrp:'＋ 新しい組', autoTeam:'🪄 チーム優先 自動', clearAll:'🧹 全消去',
+    selToGrp:'選択を組へ', male:'男', female:'女', course:'コース', tee:'ティ',
+    save:'💾 保存', print:'🖨 組編成表 印刷', noDay:'ラウンド日を選択してください。', noData:'この日にラウンドはありません。',
+    savedN:n=>`${n}組を保存しました`, saveFail:'保存失敗: ', loadFail:'読み込み失敗', capFull:'この組は満員です(最大4名)',
+    selNone:'先に人を選んでください', person:'名', teamUnit:'チーム', connOk:'接続済', notConn:'未接続', connBtn:'接続',
+    connecting:'接続中…', connFail:'接続失敗', needUrlKey:'URL·keyが必要', loginNeed:'先にログインしてください',
+    grp:'組', unassigned:n=>`未編成 ${n}名` },
+  ko:{ step:'골프 조편성', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', monthSel:'월 선택',
+    daySel:'라운딩 날짜', dayNote:'※ 상품명으로 라운딩 날짜 자동 추출(입국ICN·체류중·귀국PUS).',
+    poolH:'미편성', groupsH:'조', addGrp:'＋ 새 조', autoTeam:'🪄 팀 우선 자동', clearAll:'🧹 전체 비우기',
+    selToGrp:'선택 → 조에 추가', male:'남', female:'여', course:'코스', tee:'티오프',
+    save:'💾 저장', print:'🖨 조편성표 인쇄', noDay:'라운딩 날짜를 선택하세요.', noData:'이 날 라운딩이 없습니다.',
+    savedN:n=>`${n}개 조 저장했습니다`, saveFail:'저장 실패: ', loadFail:'불러오기 실패', capFull:'이 조는 만원입니다(최대 4명)',
+    selNone:'먼저 인원을 선택하세요', person:'명', teamUnit:'팀', connOk:'연결됨', notConn:'미연결', connBtn:'연결',
+    connecting:'연결 중…', connFail:'연결 실패', needUrlKey:'URL·key 필요', loginNeed:'먼저 로그인하세요',
+    grp:'조', unassigned:n=>`미편성 ${n}명` },
+  en:{ step:'Golf grouping', connHint:'Connection info is stored only in this browser.', monthSel:'Month',
+    daySel:'Round date', dayNote:'※ Round days auto-derived from product (arrival ICN · during stay · departure PUS).',
+    poolH:'Unassigned', groupsH:'Groups', addGrp:'＋ New group', autoTeam:'🪄 Auto (team-first)', clearAll:'🧹 Clear all',
+    selToGrp:'Selected → group', male:'M', female:'F', course:'Course', tee:'Tee',
+    save:'💾 Save', print:'🖨 Print sheet', noDay:'Select a round date.', noData:'No rounds on this day.',
+    savedN:n=>`Saved ${n} groups`, saveFail:'Save failed: ', loadFail:'Load failed', capFull:'This group is full (max 4)',
+    selNone:'Select people first', person:'', teamUnit:'teams', connOk:'Connected', notConn:'Not connected', connBtn:'Connect',
+    connecting:'Connecting…', connFail:'Connection failed', needUrlKey:'URL·key required', loginNeed:'Please log in first',
+    grp:'G', unassigned:n=>`${n} unassigned` }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; const v=d[k]; return v!=null?v:(L.ja[k]!=null?L.ja[k]:k); }
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2500);}
+function setConn(t,c){const e=$('#conn-state');if(e){e.textContent=t;e.className='pill'+(c?' '+c:'');}}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+
+let supa=null, YM=null, DATESEL=null;
+let TEAMS=[];      // {seq, dep, arr, accom, tag, isPus, members:[{id,name,eng,gender}], golfDays:[date]}
+let ROSTER=[];     // 그날 라운딩 인원 [{id,name,eng,gender,seq,tag}]
+let GROUPS=[];     // 화면 조 [{id?,course,tee,slot,note, members:[member]}]
+let SEL=new Set(); // 선택된 member id (풀에서)
+
+function thisYM(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function shiftYM(ym,delta){const [y,m]=ym.split('-').map(Number);const d=new Date(y,m-1+delta,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function monthBounds(ym){const [y,m]=ym.split('-').map(Number);const start=`${y}-${String(m).padStart(2,'0')}-01`;const endD=new Date(y,m,0).getDate();const end=`${y}-${String(m).padStart(2,'0')}-${String(endD).padStart(2,'0')}`;return {start,end};}
+function fmtDate(d){ if(!d)return''; if(d instanceof Date){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;} return String(d).slice(0,10); }
+function parseLocalDate(s){ return SZCore.parseLocalDate(s); }
+function isWeekend(date){ const d=new Date(date).getDay(); return d===0||d===6; }
+function isNonWorkday(date){ return isWeekend(date)||JP_HOLIDAYS.has(String(date).slice(0,10)); }
+function dow(d){ const w=['日','月','火','水','木','金','土']; try{ return '('+w[new Date(d).getDay()]+')'; }catch(e){ return ''; } }
+function normGender(g){ g=String(g||'').trim(); if(/여|女/.test(g)||/^f/i.test(g))return '女'; if(/남|男/.test(g)||/^m/i.test(g))return '男'; return ''; }
+function titleCase(s){ return String(s||'').toLowerCase().replace(/\b[a-z]/g,c=>c.toUpperCase()); }
+
+// 팀의 라운딩 날짜 = 상품명 기반(dispatchGolfRows 동일 규칙): 입국ICN·중간일·귀국PUS
+function golfDaysFor(t){
+  const out=[]; if(!t.dep||!t.arr) return out;
+  const cur=parseLocalDate(t.dep), end=parseLocalDate(t.arr); if(isNaN(cur)||isNaN(end)) return out;
+  for(; cur<=end; cur.setDate(cur.getDate()+1)){
+    const ds=fmtDate(cur);
+    if(ds===t.dep){ if(t.isPus) continue; out.push(ds); }       // 입국일=ICN만
+    else if(ds===t.arr){ if(!t.isPus) continue; out.push(ds); } // 귀국일=PUS만
+    else out.push(ds);                                          // 중간일=전원
+  }
+  return out;
+}
+
+async function connect(){
+  const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
+  if(!url||!key){ setConn(tx('needUrlKey'),'err'); return; }
+  localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.disabled=true; btn.textContent=tx('connecting');
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn(tx('loginNeed'),'err'); btn.textContent=tx('connBtn'); btn.disabled=false; return; }
+    setConn(tx('connOk'),'ok'); btn.textContent='✓'; btn.classList.add('connected'); btn.disabled=false;
+    YM=YM||thisYM(); renderUI(); load();
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFail'); btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
+}
+
+function renderUI(){
+  $('#content').innerHTML=`
+    <div class="panel">
+      <div class="row">
+        <div class="ymctrl"><button class="btn sm ghost" id="ym-prev" type="button">◀</button><b id="ym-label"></b><button class="btn sm ghost" id="ym-next" type="button">▶</button></div>
+        <span style="flex:1"></span>
+        <span class="cnt" id="stat"></span>
+        <button class="btn sm" id="btn-save" type="button" disabled>${tx('save')}</button>
+        <button class="btn sm ghost" id="btn-print" type="button" disabled>${tx('print')}</button>
+      </div>
+      <div class="row" style="margin-top:9px">
+        <span class="cnt">${tx('daySel')}</span>
+        <span id="daychips" style="display:flex;flex-wrap:wrap;gap:5px"></span>
+      </div>
+      <div class="cnt" style="color:var(--muted);margin-top:5px">${tx('dayNote')}</div>
+    </div>
+    <div id="board"></div>`;
+  $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);DATESEL=null;load();});
+  $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);DATESEL=null;load();});
+  $('#btn-save').addEventListener('click',saveBoard);
+  $('#btn-print').addEventListener('click',printSheet);
+}
+
+async function pagedIn(table, cols, key, vals){
+  const out=[]; const uniq=[...new Set(vals)];
+  for(let i=0;i<uniq.length;i+=80){ const chunk=uniq.slice(i,i+80); let from=0;
+    for(;;){ const {data,error}=await supa.from(table).select(cols).in(key,chunk).range(from,from+999); if(error)throw error; out.push(...(data||[])); if(!data||data.length<1000)break; from+=1000; } }
+  return out;
+}
+
+async function load(){
+  if(!supa)return;
+  $('#ym-label').textContent=YM; $('#stat').textContent='…';
+  try{
+    const {start,end}=monthBounds(YM);
+    // 그 달에 겹치는 팀
+    const {data:bs,error}=await supa.from('bookings').select('event_seq,dep_date,arr_date,rep_name,origin').lte('dep_date',end).gt('arr_date',start);
+    if(error)throw error;
+    const seqs=(bs||[]).map(b=>b.event_seq);
+    const gs = seqs.length? await pagedIn('guests','event_seq,accom,group_code,team_tag','event_seq',seqs):[];
+    const gmap={}; gs.forEach(g=>gmap[g.event_seq]=g);
+    const gms = seqs.length? await pagedIn('guest_members','id,event_seq,name_kr,name_en','event_seq',seqs):[];
+    const pxs = seqs.length? await pagedIn('passengers','event_seq,name_kr,gender,origin,dep_flight','event_seq',seqs):[];
+    // 성별 매칭(event_seq+이름)
+    const genMap={}; pxs.forEach(p=>{ const k=p.event_seq+'|'+String(p.name_kr||'').trim(); if(!genMap[k]) genMap[k]=normGender(p.gender); });
+    // 대표 출발지(팀 isPus)
+    const oriMap={}; pxs.forEach(p=>{ if(oriMap[p.event_seq]==null){ oriMap[p.event_seq]=SZCore.isPus(p.origin,p.dep_flight); } });
+    const memByTeam={}; gms.forEach(m=>{ const nm=String(m.name_kr||'').trim();
+      (memByTeam[m.event_seq]=memByTeam[m.event_seq]||[]).push({ id:m.id, name:nm, eng:titleCase(m.name_en), gender:genMap[m.event_seq+'|'+nm]||'', seq:m.event_seq }); });
+    TEAMS=(bs||[]).map(b=>{ const g=gmap[b.event_seq]||{};
+      const t={ seq:b.event_seq, dep:fmtDate(b.dep_date), arr:fmtDate(b.arr_date), accom:g.accom||'',
+        tag:(window.SZCore&&SZCore.tagStripSeq)?SZCore.tagStripSeq(g.team_tag||g.group_code||''):(g.team_tag||g.group_code||''),
+        isPus: oriMap[b.event_seq]!=null?oriMap[b.event_seq]:SZCore.isPus(b.origin,''), rep:b.rep_name||'',
+        members: memByTeam[b.event_seq]||[] };
+      t.golfDays=golfDaysFor(t); return t;
+    }).filter(t=>t.members.length);
+    renderDateChips();
+    const ax=golfDates();
+    if(DATESEL && !ax.includes(DATESEL)) DATESEL=null;
+    $('#stat').textContent=`${TEAMS.length}${tx('teamUnit')}`;
+    if(DATESEL) await loadBoard(DATESEL); else renderBoard();
+  }catch(e){ toast(tx('loadFail')+': '+e.message,'err'); $('#stat').textContent=''; }
+}
+
+function golfDates(){ const s=new Set(); TEAMS.forEach(t=>t.golfDays.forEach(d=>{ if(d.slice(0,7)===YM) s.add(d); })); return [...s].sort(); }
+function teamsOnDate(date){ return TEAMS.filter(t=>t.golfDays.includes(date)); }
+
+function renderDateChips(){
+  const box=$('#daychips'); if(!box)return;
+  const ax=golfDates();
+  box.innerHTML=ax.map(d=>{ const dt=parseLocalDate(d); return `<button type="button" class="daychip${DATESEL===d?' on':''}" data-d="${d}">${dt.getMonth()+1}/${dt.getDate()}<small style="opacity:.7">${dow(d)}</small></button>`; }).join('')
+    || `<span class="cnt" style="color:var(--muted)">${tx('noData')}</span>`;
+  box.querySelectorAll('.daychip').forEach(b=>b.addEventListener('click',async()=>{ DATESEL=b.getAttribute('data-d'); SEL.clear(); renderDateChips(); await loadBoard(DATESEL); }));
+}
+
+// 저장된 조 로드 → 화면 GROUPS 구성
+async function loadBoard(date){
+  const teams=teamsOnDate(date);
+  ROSTER=[]; teams.forEach(t=>t.members.forEach(m=>ROSTER.push({...m, tag:t.tag})));
+  GROUPS=[];
+  try{
+    const {data:grps}=await supa.from('golf_groups').select('id,course_code,tee_time,slot_no,note').eq('play_date',date).order('slot_no',{nullsFirst:false});
+    const gids=(grps||[]).map(g=>g.id);
+    const gmembers = gids.length? await pagedIn('golf_group_members','id,group_id,member_id,event_seq,seq','group_id',gids):[];
+    const byG={}; gmembers.forEach(m=>{ (byG[m.group_id]=byG[m.group_id]||[]).push(m); });
+    (grps||[]).forEach(g=>{
+      const mems=(byG[g.id]||[]).sort((a,b)=>(a.seq||0)-(b.seq||0)).map(gm=>{
+        const r=ROSTER.find(x=>x.id===gm.member_id); return r|| {id:gm.member_id,name:'?',eng:'',gender:'',seq:gm.event_seq,tag:''};
+      });
+      GROUPS.push({ id:g.id, course:g.course_code||'', tee:g.tee_time||'', slot:g.slot_no||null, note:g.note||'', members:mems });
+    });
+  }catch(e){ /* 없으면 빈 편성 */ }
+  renderBoard();
+}
+
+function assignedIds(){ const s=new Set(); GROUPS.forEach(g=>g.members.forEach(m=>s.add(m.id))); return s; }
+function poolMembers(){ const a=assignedIds(); return ROSTER.filter(m=>!a.has(m.id)); }
+
+function renderBoard(){
+  const box=$('#board'); if(!box)return;
+  $('#btn-save').disabled=!DATESEL; $('#btn-print').disabled=!(DATESEL&&GROUPS.length);
+  if(!DATESEL){ box.innerHTML=`<div class="panel"><div class="deny">${tx('noDay')}</div></div>`; return; }
+  const teams=teamsOnDate(DATESEL);
+  if(!teams.length){ box.innerHTML=`<div class="panel"><div class="deny">${tx('noData')}</div></div>`; return; }
+  const pool=poolMembers();
+  // 풀(팀별)
+  const byTeam={}; pool.forEach(m=>{ (byTeam[m.tag||m.seq]=byTeam[m.tag||m.seq]||[]).push(m); });
+  const poolHTML=Object.keys(byTeam).length? Object.keys(byTeam).map(k=>{
+    const ms=byTeam[k];
+    return `<div class="pool-team"><div class="pt-h">${esc(ms[0].tag||('#'+ms[0].seq))}</div>${ms.map(memChip).join('')}</div>`;
+  }).join('') : `<div class="cnt" style="color:var(--muted);padding:8px">${lang()==='ja'?'全員編成済':lang()==='en'?'All assigned':'전원 편성됨'}</div>`;
+
+  box.innerHTML=`<div class="board">
+    <div class="panel pool">
+      <h3>${tx('poolH')} <span class="cnt">${tx('unassigned')(pool.length)}</span></h3>
+      <div class="row" style="margin-bottom:8px">
+        <button class="btn xs ghost" id="b-selm" type="button">${tx('male')}</button>
+        <button class="btn xs ghost" id="b-self" type="button">${tx('female')}</button>
+        <button class="btn xs" id="b-tognew" type="button">${tx('selToGrp')}</button>
+      </div>
+      <div id="poolbox">${poolHTML}</div>
+    </div>
+    <div class="panel groups">
+      <h3>${tx('groupsH')} <span class="cnt">${GROUPS.length}${tx('grp')}</span>
+        <span style="flex:1"></span>
+        <button class="btn xs ghost" id="b-auto" type="button">${tx('autoTeam')}</button>
+        <button class="btn xs ghost" id="b-add" type="button">${tx('addGrp')}</button>
+        <button class="btn xs ghost" id="b-clear" type="button" style="color:var(--err)">${tx('clearAll')}</button>
+      </h3>
+      <div class="grp-grid" id="grpgrid">${GROUPS.map(grpCard).join('')||`<div class="cnt" style="color:var(--muted)">${tx('addGrp')} →</div>`}</div>
+    </div>
+  </div>`;
+  bindBoard();
+}
+function memChip(m){ const g=m.gender==='男'?'<span class="g m">♂</span>':m.gender==='女'?'<span class="g f">♀</span>':'';
+  return `<span class="mem${SEL.has(m.id)?' sel':''}" data-id="${m.id}">${g}${esc(m.name)}</span>`; }
+function grpCard(g,i){
+  const full=g.members.length>=4;
+  const opts=COURSES.map(c=>`<option value="${c.code}"${g.course===c.code?' selected':''}>${lang()==='ja'?c.ja:c.ko}</option>`).join('');
+  return `<div class="grp ${g.course?('course-'+g.course):''}${full?' full':''}" data-i="${i}">
+    <div class="grp-h"><span class="no">${i+1}${tx('grp')}</span><span class="cap">${g.members.length}/4</span></div>
+    <div class="grp-ctl">
+      <select class="cs" data-i="${i}"><option value="">${tx('course')}</option>${opts}</select>
+      <input class="tt" data-i="${i}" placeholder="${tx('tee')}" value="${esc(g.tee||'')}">
+    </div>
+    <div class="grp-m">${g.members.map((m,mi)=>{ const gg=m.gender==='男'?'<span class="g m">♂</span>':m.gender==='女'?'<span class="g f">♀</span>':'';
+      return `<div class="gm">${gg}${esc(m.name)} <span class="tag">${esc(m.tag||'')}</span><span class="x" data-i="${i}" data-mi="${mi}">✕</span></div>`; }).join('')}</div>
+  </div>`;
+}
+function bindBoard(){
+  document.querySelectorAll('#poolbox .mem').forEach(el=>el.addEventListener('click',()=>{ const id=el.dataset.id; if(SEL.has(id))SEL.delete(id); else SEL.add(id); el.classList.toggle('sel'); }));
+  document.querySelectorAll('#grpgrid .grp').forEach(el=>el.addEventListener('click',ev=>{ if(ev.target.closest('.x')||ev.target.closest('select')||ev.target.closest('input'))return; assignSelTo(+el.dataset.i); }));
+  document.querySelectorAll('#grpgrid .x').forEach(el=>el.addEventListener('click',ev=>{ ev.stopPropagation(); removeMember(+el.dataset.i,+el.dataset.mi); }));
+  document.querySelectorAll('#grpgrid .cs').forEach(el=>el.addEventListener('change',()=>{ GROUPS[+el.dataset.i].course=el.value; renderBoard(); }));
+  document.querySelectorAll('#grpgrid .tt').forEach(el=>el.addEventListener('change',()=>{ GROUPS[+el.dataset.i].tee=el.value.trim(); }));
+  $('#b-add').addEventListener('click',()=>{ GROUPS.push({course:autoCourse(),tee:'',slot:GROUPS.length+1,note:'',members:[]}); renderBoard(); });
+  $('#b-clear').addEventListener('click',()=>{ GROUPS=[]; SEL.clear(); renderBoard(); });
+  $('#b-auto').addEventListener('click',autoAssign);
+  $('#b-tognew').addEventListener('click',()=>{ if(!SEL.size){ toast(tx('selNone'),'warn'); return; } GROUPS.push({course:autoCourse(),tee:'',slot:GROUPS.length+1,note:'',members:[]}); assignSelTo(GROUPS.length-1); });
+  $('#b-selm').addEventListener('click',()=>selByGender('男'));
+  $('#b-self').addEventListener('click',()=>selByGender('女'));
+}
+function selByGender(g){ SEL.clear(); poolMembers().forEach(m=>{ if(m.gender===g) SEL.add(m.id); }); renderBoard(); }
+function autoCourse(){ // 인기순(아소>소보>쿠주) 균형 — 코스별 조 수 최소인 곳
+  const cnt={aso:0,sobo:0,kuju:0}; GROUPS.forEach(g=>{ if(cnt[g.course]!=null)cnt[g.course]++; });
+  return COURSES.slice().sort((a,b)=>(cnt[a.code]-cnt[b.code])||(a.pop-b.pop))[0].code;
+}
+function assignSelTo(gi){
+  const g=GROUPS[gi]; if(!g)return; if(!SEL.size){ toast(tx('selNone'),'warn'); return; }
+  const pool=poolMembers();
+  for(const m of pool){ if(!SEL.has(m.id))continue; if(g.members.length>=4){ toast(tx('capFull'),'warn'); break; } g.members.push(m); }
+  SEL.clear(); renderBoard();
+}
+function removeMember(gi,mi){ const g=GROUPS[gi]; if(!g)return; g.members.splice(mi,1); renderBoard(); }
+function autoAssign(){
+  // 팀 우선: 각 팀 인원 4명씩 조 생성 + 코스 인기순 배분. 기존 편성 위에 미편성 인원만 추가.
+  const a=assignedIds();
+  teamsOnDate(DATESEL).forEach(t=>{
+    const ms=t.members.filter(m=>!a.has(m.id)); if(!ms.length)return;
+    for(let i=0;i<ms.length;i+=4){ const chunk=ms.slice(i,i+4); GROUPS.push({course:autoCourse(),tee:'',slot:GROUPS.length+1,note:'',members:chunk.map(m=>({...m,tag:t.tag}))}); }
+  });
+  renderBoard();
+}
+
+async function saveBoard(){
+  if(!supa||!DATESEL)return;
+  const by=(window.__so_getUser&&__so_getUser())||'';
+  try{
+    // 그날 기존 조 전부 교체(멤버는 cascade)
+    await supa.from('golf_groups').delete().eq('play_date',DATESEL);
+    let n=0;
+    for(let i=0;i<GROUPS.length;i++){ const g=GROUPS[i]; if(!g.members.length && !g.course && !g.tee) continue;
+      const {data:ins,error}=await supa.from('golf_groups').insert({ play_date:DATESEL, course_code:g.course||null, tee_time:g.tee||null, slot_no:i+1, assign_source:'manual', capacity:4, note:g.note||null, created_by:by }).select('id').single();
+      if(error)throw error;
+      const rows=g.members.map((m,mi)=>({ group_id:ins.id, member_id:m.id, event_seq:m.seq, seq:mi+1 }));
+      if(rows.length){ const {error:e2}=await supa.from('golf_group_members').insert(rows); if(e2)throw e2; }
+      n++;
+    }
+    toast(tx('savedN')(n),'ok'); await loadBoard(DATESEL);
+  }catch(e){ toast(tx('saveFail')+(e.message||e),'err'); }
+}
+
+function printSheet(){
+  if(!DATESEL||!GROUPS.length){ toast(tx('noData'),'err'); return; }
+  const dt=parseLocalDate(DATESEL);
+  const cName=c=>c?(lang()==='ja'?CMAP[c].ja:CMAP[c].ko):'-';
+  // 코스 인기순 → slot 순 정렬
+  const ordered=GROUPS.slice().map((g,i)=>({...g,_i:i})).sort((a,b)=>{
+    const pa=a.course?CMAP[a.course].pop:9, pb=b.course?CMAP[b.course].pop:9; if(pa!==pb)return pa-pb;
+    return (a.slot||a._i)-(b.slot||b._i);
+  });
+  const rows=ordered.map((g,i)=>`<tr>
+    <td class="c">${i+1}</td><td class="c">${esc(cName(g.course))}</td><td class="c">${esc(g.tee||'')}</td>
+    <td>${g.members.map(m=>`${esc(m.name)}${m.gender==='男'?'<span class="mm">♂</span>':m.gender==='女'?'<span class="ff">♀</span>':''} <span class="tg">${esc(m.tag||'')}</span>`).join(' ／ ')}</td>
+    <td class="c">${g.members.length}</td></tr>`).join('');
+  const css=`<style>@page{size:A4 portrait;margin:12mm}*{box-sizing:border-box}body{font-family:'Yu Gothic','Malgun Gothic',sans-serif;color:#1a2540}
+    h1{font-size:20px;margin-bottom:3mm}.sub{color:#666;font-size:12px;margin-bottom:5mm}
+    table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #888;padding:5px 7px}
+    th{background:#eef2e6}td.c{text-align:center}.tg{font-family:monospace;color:#9a7322;font-size:11px}
+    .mm{color:#1A4D8F;font-weight:800}.ff{color:#b23b6e;font-weight:800}
+    .bar{position:sticky;top:0;background:#fff;border-bottom:2px solid #647548;padding:9px 14px;display:flex;gap:10px}
+    .bar button{padding:8px 18px;border:none;border-radius:6px;font-weight:800;cursor:pointer}
+    .bar .p{background:#15803D;color:#fff}.bar .c{background:#e5e7e0}
+    @media print{.bar{display:none}}</style>`;
+  const w=window.open('','_blank'); if(!w){ toast('popup',' err'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>ゴルフ組編成 ${DATESEL}</title>${css}</head><body>
+    <div class="bar"><b style="flex:1">ゴルフ組編成 · ${DATESEL} ${dow(DATESEL)}</b><button class="p" onclick="window.print()">🖨</button><button class="c" onclick="window.close()">✕</button></div>
+    <div style="padding:6mm 8mm"><h1>ゴルフ組編成表</h1><div class="sub">${dt.getFullYear()}年 ${dt.getMonth()+1}月 ${dt.getDate()}日 ${dow(DATESEL)} · ${GROUPS.length}${tx('grp')}</div>
+    <table><thead><tr><th>${tx('grp')}</th><th>${tx('course')}</th><th>${tx('tee')}</th><th>${lang()==='ja'?'メンバー':lang()==='en'?'Members':'조원'}</th><th>${tx('person')||'名'}</th></tr></thead><tbody>${rows}</tbody></table></div>
+  </body></html>`);
+  w.document.close();
+}
+
+function applyStatic(){
+  const st=$('#t-step'); if(st) st.textContent=tx('step');
+  const ch=$('#t-connhint'); if(ch) ch.textContent=tx('connHint');
+  if(!supa){ setConn(tx('notConn')); }
+}
+window.onSaizenLangChange=function(){ applyStatic(); if(supa&&$('#ym-label')){ renderUI(); $('#ym-label').textContent=YM; renderDateChips(); renderBoard(); } };
+
+$('#btn-connect').addEventListener('click',connect);
+loadCreds(); applyStatic();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
