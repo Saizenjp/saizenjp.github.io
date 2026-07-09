@@ -272,14 +272,19 @@ async function load(){
       // /app/ 동일: 태그코드 마지막 글자(Y/K/G/S)로 시설 판정, 없으면 accom_prefix 폴백
       const last=tag.slice(-1); const pfx=ACCOM_COLOR[last]?last:accomPfx(g);
       const inF=r.dep_flight||''; const outF=r.ret_flight||'';
+      const pax=g.pax||0;
       return {
         seq:String(seq), tag:tag, accom:g.accom||'', accomColor:ACCOM_COLOR[pfx]||'#1A2540', accomLabel:ACCOM_LABEL[pfx]||(g.accom||''),
-        from:portOf(inF,outF,g.origin), pax:g.pax||0,
+        from:portOf(inF,outF,g.origin), pax:pax,
         inFlight:inF||'-', inTime:FLIGHT_TIMES[inF]||'', inDate:mmdd(g.dep),
         outFlight:outF||'-', outTime:FLIGHT_TIMES[outF]||'', outDate:mmdd(g.arr),
-        depRaw:g.dep||''
+        depRaw:g.dep||'',
+        numStart:1, numEnd:pax,                 // 番호 범위(단독=1〜pax, 묶음=연속 오프셋)
+        grpBase:tag, grpNo:0,                    // 정렬용: 그룹 기준코드·팀번호
+        sortDep:g.dep||'', sortFrom:'', sortAccom:g.accom||''   // 정렬 앵커(묶음은 대표 기준으로 대체)
       };
     }).filter(c=>c.tag);
+    CARDS.forEach(c=>{ c.sortFrom=c.from; });   // 기본 앵커 = 자기 값
     // 대표 지정 묶음: 표시 태그를 대표 기준코드+팀번호(DRな-Y1/Y2)로 통일 + 묶은 팀은 대표 시설색·라벨로 통일.
     //   (한 팀이 2개 예약으로 나뉜 걸 하나로 합친 것이므로 대표 기준으로 표기)
     if(window.SZCore&&SZCore.orderGroup&&SZCore.teamTagN){
@@ -288,10 +293,15 @@ async function load(){
       Object.keys(groups).forEach(k=>{ const list=groups[k]; if(list.length<2)return;
         const rep=list.find(c=>{ const ov=OVR[c.seq]; return ov&&ov.team_group_rep; }); if(!rep)return;
         const base=rep.tag, repColor=rep.accomColor, repLabel=rep.accomLabel;   // 대표 기준 고정(루프 중 rep.tag 오염 방지)
+        let off=0;   // 番호 연속 오프셋(네임택 개인번호와 동일: Y1=1〜4 · Y2=5〜8)
         SZCore.orderGroup(list.map(c=>({event_seq:c.seq,dep:c.depRaw})),rep.seq).forEach((o,i)=>{
           const card=CARDS.find(c=>c.seq===String(o.event_seq)); if(!card)return;
           card.tag=SZCore.teamTagN(base,i+1);          // DRな-Y1 · DRな-Y2 …
           card.accomColor=repColor; card.accomLabel=repLabel;   // 대표 시설색·라벨로 통일(야마나미면 전부 야마나미)
+          card.numStart=off+1; off+=(card.pax||0); card.numEnd=off;   // 연속 番호(Y2=5〜8番)
+          // 정렬 앵커=대표 기준 → 출국지(ICN/PUS)가 달라도 같은 그룹 카드가 인접 배치
+          card.grpBase=base; card.grpNo=i+1;
+          card.sortDep=rep.depRaw; card.sortFrom=rep.from; card.sortAccom=rep.accom;
         });
       });
     }
@@ -301,12 +311,15 @@ async function load(){
   }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
 
+// 앵커(날짜→ICN/PUS→숙소→그룹코드) 기준 정렬 → 묶은 팀은 대표 앵커 공유로 인접, 그 안은 팀번호(Y1,Y2)순.
 function sortCards(a,b){
-  if(a.depRaw!==b.depRaw) return (a.depRaw||'').localeCompare(b.depRaw||'');
-  if(a.from!==b.from) return a.from==='ICN'?-1:1;
-  const ai=ACCOM_ORDER.indexOf(a.accom), bi=ACCOM_ORDER.indexOf(b.accom);
+  if(a.sortDep!==b.sortDep) return (a.sortDep||'').localeCompare(b.sortDep||'');
+  if(a.sortFrom!==b.sortFrom) return a.sortFrom==='ICN'?-1:1;
+  const ai=ACCOM_ORDER.indexOf(a.sortAccom), bi=ACCOM_ORDER.indexOf(b.sortAccom);
   if(ai!==bi) return (ai<0?9:ai)-(bi<0?9:bi);
-  return String(a.tag).localeCompare(String(b.tag));
+  const cc=String(a.grpBase).localeCompare(String(b.grpBase));
+  if(cc!==0) return cc;
+  return (a.grpNo||0)-(b.grpNo||0);   // 같은 그룹: Y1 → Y2
 }
 function filtered(){
   return CARDS.filter(c=>{
@@ -325,7 +338,7 @@ function renderPreview(){
   box.innerHTML='<div class="prev-grid">'+list.slice(0,90).map(c=>`
     <div class="prev-card" style="border-color:${c.accomColor}">
       <div class="prev-tag" style="color:${c.accomColor}">${esc(c.tag)}</div>
-      <div class="prev-hero" style="color:${c.accomColor}">${c.from} · 1〜${c.pax}番 · ${c.pax}名</div>
+      <div class="prev-hero" style="color:${c.accomColor}">${c.from} · ${c.numStart}〜${c.numEnd}番 · ${c.pax}名</div>
       <div class="prev-line">入 ${esc(c.inFlight)} ${esc(c.inTime)} (${esc(c.inDate)})</div>
       <div class="prev-line">帰 ${esc(c.outFlight)} ${esc(c.outTime)} (${esc(c.outDate)})</div>
       <div class="prev-line">施設 ${esc(c.accomLabel)}</div>
@@ -347,7 +360,7 @@ function printCards(){
     <div class="ac-hero" style="border-color:${c.accomColor}">
       <div class="ac-hero-origin" style="color:${c.accomColor}">${esc(c.from)}</div>
       <div class="ac-hero-sep"></div>
-      <div class="ac-hero-no">1<span class="ac-han">番</span>〜${c.pax}<span class="ac-han">番</span></div>
+      <div class="ac-hero-no">${c.numStart}<span class="ac-han">番</span>〜${c.numEnd}<span class="ac-han">番</span></div>
       <div class="ac-hero-pax"><span class="ac-pax-num">${c.pax}</span><span class="ac-han">名</span></div>
     </div>
     <div class="ac-info">
