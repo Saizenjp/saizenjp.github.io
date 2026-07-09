@@ -110,7 +110,7 @@ const L={
     startSlot:'開始マス', startSlotT:'ラベル用紙の開始位置(1〜24) — 使いかけのラベル用紙の続き印刷',
     slotMap:'用紙のマス', slotMapHint:'クリックで開始マス指定 ・ 1=左上 → 右 → 下(3列×8行)', slotUsed:'使用済み', slotPrint:'印刷される', slotStart:'開始マス',
     printBtn:'🖨 ラベル印刷', date:'日付', lodging:'宿泊施設',
-    deskNote:'選択した月に<b>入国(出発日)</b>するチームの個人名簿。日付・宿泊施設・出発地で絞り込み、<b>日付→ICN/PUS→宿泊施設</b>の順に並べてラベル(1名につき1枚)を出力します。',
+    deskNote:'選択した月に<b>入国(出発日)</b>するチームの個人名簿。日付・宿泊施設・出発地で絞り込み、<b>日付→ICN/PUS→宿泊施設→チーム(コード)</b>の順に並べてラベル(1名につき1枚)を出力します。',
     preview:'プレビュー', loading:'読み込み中…', noMonthData:'当月データなし', loadFail:'読み込み失敗',
     cntPeopleTeams:(n,t)=>`${n}名 · ${t}チーム`, sheets:n=>`(${n}枚)`, noList:'表示する名簿がありません。',
     previewCap:n=>`※ プレビューは120枚まで · 印刷は全体 ${n}枚`,
@@ -124,7 +124,7 @@ const L={
     startSlot:'시작칸', startSlotT:'라벨지 시작 위치(1~24) — 쓰던 라벨지 이어쓰기',
     slotMap:'라벨지 칸', slotMapHint:'클릭=시작칸 지정 ・ 1=좌상단 → 오른쪽 → 아래(3열×8행)', slotUsed:'이미 쓴 칸', slotPrint:'인쇄될 칸', slotStart:'시작칸',
     printBtn:'🖨 라벨 인쇄', date:'날짜', lodging:'숙소',
-    deskNote:'선택 월에 <b>입국(출발일)</b>하는 팀의 개인 명단. 날짜·숙소·출발지로 거르고, <b>날짜→ICN/PUS→숙소</b> 순으로 정렬해 라벨(개인 1명당 1장)을 출력합니다.',
+    deskNote:'선택 월에 <b>입국(출발일)</b>하는 팀의 개인 명단. 날짜·숙소·출발지로 거르고, <b>날짜→ICN/PUS→숙소→팀(코드)</b> 순으로 정렬해(같은 코드 팀끼리 묶임) 라벨(개인 1명당 1장)을 출력합니다.',
     preview:'미리보기', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', loadFail:'로드 실패',
     cntPeopleTeams:(n,t)=>`${n}명 · ${t}팀`, sheets:n=>`(${n}장)`, noList:'표시할 명단이 없습니다.',
     previewCap:n=>`※ 미리보기는 120장까지 · 인쇄는 전체 ${n}장`,
@@ -138,7 +138,7 @@ const L={
     startSlot:'Start cell', startSlotT:'Start position on the label sheet (1–24) — continue on a partly-used sheet',
     slotMap:'Sheet cells', slotMapHint:'Click to set the start cell ・ 1 = top-left → right → down (3 cols × 8 rows)', slotUsed:'Used', slotPrint:'Will print', slotStart:'Start',
     printBtn:'🖨 Print labels', date:'Date', lodging:'Lodging',
-    deskNote:'Personal roster of teams <b>arriving (departure date)</b> in the selected month. Filter by date / lodging / origin, sorted by <b>date → ICN/PUS → lodging</b>, and print one label per person.',
+    deskNote:'Personal roster of teams <b>arriving (departure date)</b> in the selected month. Filter by date / lodging / origin, sorted by <b>date → ICN/PUS → lodging → team (code)</b> so each team stays together, and print one label per person.',
     preview:'Preview', loading:'Loading…', noMonthData:'No data for this month', loadFail:'Load failed',
     cntPeopleTeams:(n,t)=>`${n} ppl · ${t} teams`, sheets:n=>`(${n})`, noList:'No roster to show.',
     previewCap:n=>`※ Preview up to 120 · printing all ${n}`,
@@ -326,12 +326,19 @@ async function load(){
   }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
 
-// 정렬: 날짜 → ICN/PUS → 숙소순 → 팀내순번
+// 태그코드(그룹코드)·개인번호 파싱 — "DRな-1Y" → 코드 "DRな" / 번호 1
+function tagCode(t){ return String(t||'').replace(/-\d+[A-Za-z]*$/,''); }
+function tagNum(t){ const m=String(t||'').match(/-(\d+)[A-Za-z]*$/); return m?+m[1]:9999; }
+// 정렬: 날짜 → ICN/PUS → 숙소순 → 같은 코드 팀끼리 묶어(코드순) → 팀 내 개인번호(→팀내순번)
 function sortCells(a,b){
   if(a.depRaw!==b.depRaw) return (a.depRaw||'').localeCompare(b.depRaw||'');
   if(a.port!==b.port) return a.port==='ICN'?-1:1;
   const ai=ACCOM_ORDER.indexOf(a.accom), bi=ACCOM_ORDER.indexOf(b.accom);
   if(ai!==bi) return (ai<0?9:ai)-(bi<0?9:bi);
+  const ac=tagCode(a.tag), bc=tagCode(b.tag);
+  if(ac!==bc) return ac.localeCompare(bc);      // 같은 코드 팀 목록끼리 묶기
+  const an=tagNum(a.tag), bn=tagNum(b.tag);
+  if(an!==bn) return an-bn;                       // 팀 내 개인번호 순
   return (a.seq||0)-(b.seq||0);
 }
 function filtered(){
