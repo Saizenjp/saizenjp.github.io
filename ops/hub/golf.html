@@ -127,7 +127,7 @@ const JP_HOLIDAYS=new Set(['2025-01-01','2025-01-13','2025-02-11','2025-02-23','
 const L={
   ja:{ step:'ゴルフ組編成', connHint:'接続情報はこのブラウザにのみ保存されます。', monthSel:'月選択',
     daySel:'ラウンド日', dayNote:'※ 商品名からラウンド日を自動抽出(入国ICN・滞在中・帰国PUS)。',
-    poolH:'未編成', groupsH:'組', addGrp:'＋ 新しい組', autoTeam:'🪄 チーム優先 自動', clearAll:'🧹 全消去',
+    poolH:'未編成', groupsH:'組', addGrp:'＋ 新しい組', autoTeam:'🪄 4名以下 自動', clearAll:'🧹 全消去', autoManualHint:n=>`${n}チームは5名以上 — 手動で組編成してください`,
     selToGrp:'選択を組へ', male:'男', female:'女', course:'コース', tee:'ティ',
     save:'💾 保存', print:'🖨 組編成表 印刷', noDay:'ラウンド日を選択してください。', noData:'この日にラウンドはありません。',
     savedN:n=>`${n}組を保存しました`, saveFail:'保存失敗: ', loadFail:'読み込み失敗', capFull:'この組は満員です(最大4名)',
@@ -136,7 +136,7 @@ const L={
     grp:'組', unassigned:n=>`未編成 ${n}名` },
   ko:{ step:'골프 조편성', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', monthSel:'월 선택',
     daySel:'라운딩 날짜', dayNote:'※ 상품명으로 라운딩 날짜 자동 추출(입국ICN·체류중·귀국PUS).',
-    poolH:'미편성', groupsH:'조', addGrp:'＋ 새 조', autoTeam:'🪄 팀 우선 자동', clearAll:'🧹 전체 비우기',
+    poolH:'미편성', groupsH:'조', addGrp:'＋ 새 조', autoTeam:'🪄 4명 이하 자동', clearAll:'🧹 전체 비우기', autoManualHint:n=>`${n}팀은 5명 이상 — 수기로 조편성 하세요`,
     selToGrp:'선택 → 조에 추가', male:'남', female:'여', course:'코스', tee:'티오프',
     save:'💾 저장', print:'🖨 조편성표 인쇄', noDay:'라운딩 날짜를 선택하세요.', noData:'이 날 라운딩이 없습니다.',
     savedN:n=>`${n}개 조 저장했습니다`, saveFail:'저장 실패: ', loadFail:'불러오기 실패', capFull:'이 조는 만원입니다(최대 4명)',
@@ -145,7 +145,7 @@ const L={
     grp:'조', unassigned:n=>`미편성 ${n}명` },
   en:{ step:'Golf grouping', connHint:'Connection info is stored only in this browser.', monthSel:'Month',
     daySel:'Round date', dayNote:'※ Round days auto-derived from product (arrival ICN · during stay · departure PUS).',
-    poolH:'Unassigned', groupsH:'Groups', addGrp:'＋ New group', autoTeam:'🪄 Auto (team-first)', clearAll:'🧹 Clear all',
+    poolH:'Unassigned', groupsH:'Groups', addGrp:'＋ New group', autoTeam:'🪄 Auto (≤4)', clearAll:'🧹 Clear all', autoManualHint:n=>`${n} team(s) have 5+ — group manually`,
     selToGrp:'Selected → group', male:'M', female:'F', course:'Course', tee:'Tee',
     save:'💾 Save', print:'🖨 Print sheet', noDay:'Select a round date.', noData:'No rounds on this day.',
     savedN:n=>`Saved ${n} groups`, saveFail:'Save failed: ', loadFail:'Load failed', capFull:'This group is full (max 4)',
@@ -379,13 +379,15 @@ function assignSelTo(gi){
 }
 function removeMember(gi,mi){ const g=GROUPS[gi]; if(!g)return; g.members.splice(mi,1); renderBoard(); }
 function autoAssign(){
-  // 팀 우선: 각 팀 인원 4명씩 조 생성 + 코스 인기순 배분. 기존 편성 위에 미편성 인원만 추가.
-  const a=assignedIds();
+  // 규칙(Min): 4명 이하 팀 = 그대로 한 조 자동. 4명 초과(5·6·8…) 팀 = 수기 조편성 필요 → 풀에 남김.
+  const a=assignedIds(); let manualN=0;
   teamsOnDate(DATESEL).forEach(t=>{
+    if(t.members.length>4){ manualN++; return; }        // 4명 초과 = 수기(자동 제외)
     const ms=t.members.filter(m=>!a.has(m.id)); if(!ms.length)return;
-    for(let i=0;i<ms.length;i+=4){ const chunk=ms.slice(i,i+4); GROUPS.push({course:autoCourse(),tee:'',slot:GROUPS.length+1,note:'',members:chunk.map(m=>({...m,tag:t.tag}))}); }
+    GROUPS.push({course:autoCourse(),tee:'',slot:GROUPS.length+1,note:'',members:ms.map(m=>({...m,tag:t.tag}))});
   });
   renderBoard();
+  if(manualN) toast(tx('autoManualHint')(manualN),'warn');
 }
 
 async function saveBoard(){
