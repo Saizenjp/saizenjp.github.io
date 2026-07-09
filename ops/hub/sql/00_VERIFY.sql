@@ -134,6 +134,7 @@ from (
   union all select 73,'73 손님청구RPC','guest_bill()', case when exists(select 1 from pg_proc where proname='guest_bill') then '✅ 있음' else '❌ 없음 (73)' end
   union all select 26,'26 골프조편성','golf_groups', case when to_regclass('public.golf_groups') is not null then '✅ 있음' else '❌ 없음 (26)' end
   union all select 74,'74 골프권한','golf_groups ins=golf', case when exists(select 1 from pg_policies where schemaname='public' and tablename='golf_groups' and policyname='golf_groups_ins' and coalesce(with_check,'') like '%golf%') then '✅ 적용' else '❌ 미적용 (74)' end
+  union all select 76,'76 시즈물채우기','shizu_water_fill', case when to_regclass('public.shizu_water_fill') is not null then '✅ 있음' else '❌ 없음 (76)' end
   union all select 58,'58 별주청구','charges.link_ref',      case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='charges' and column_name='link_ref') then '✅ 있음' else '❌ 없음 (58)' end
   union all select 58,'58 별주청구','dinner_addon 트리거',   case when exists(select 1 from pg_trigger where tgname='trg_dinner_addon_charge') then '✅ 있음' else '❌ 없음 (58)' end
   union all select 59,'59 싱글청구','single_charge 트리거',  case when exists(select 1 from pg_trigger where tgname='trg_single_charge_charge') then '✅ 있음' else '❌ 없음 (59)' end
