@@ -53,7 +53,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.13">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.14">
 </head>
 <body data-so-area="print">
 <div class="topbar so-bar">
@@ -84,7 +84,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=11"></script><!-- 공유 도메인 규칙(출발지 PUS/ICN 등) -->
-<script src="../assets/saizen-ops.js?v=15.13"></script>
+<script src="../assets/saizen-ops.js?v=15.14"></script>
 <script>
 const $=s=>document.querySelector(s);
 const L={
@@ -258,6 +258,12 @@ async function load(){
         if(!data||data.length<1000) break; pg+=1000;
       }
     }
+    // 묶음(대표 지정) 통일 태그용 print_overrides
+    const OVR={};
+    for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
+      const {data:ov}=await supa.from('print_overrides').select('event_seq,team_group,team_group_rep').in('event_seq',chunk);
+      (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
+    }
     CARDS=seqs.map(seq=>{
       const g=gmap[seq]||{}; const r=reps[seq]||{};
       // 태그코드는 step1 데이터(person_tag/group_code) 기준 — 수정 불가.
@@ -274,6 +280,17 @@ async function load(){
         depRaw:g.dep||''
       };
     }).filter(c=>c.tag);
+    // 대표 지정 묶음: 표시 태그를 대표 기준코드+팀번호(DRな-Y1/Y2)로 통일. 시설색·라벨은 이미 확정(불변).
+    if(window.SZCore&&SZCore.orderGroup&&SZCore.teamTagN){
+      const groups={};
+      CARDS.forEach(c=>{ const ov=OVR[c.seq]; if(ov&&ov.team_group){ (groups[ov.team_group]=groups[ov.team_group]||[]).push(c); } });
+      Object.keys(groups).forEach(k=>{ const list=groups[k]; if(list.length<2)return;
+        const rep=list.find(c=>{ const ov=OVR[c.seq]; return ov&&ov.team_group_rep; }); if(!rep)return;
+        SZCore.orderGroup(list.map(c=>({event_seq:c.seq,dep:c.depRaw})),rep.seq).forEach((o,i)=>{
+          const card=CARDS.find(c=>c.seq===String(o.event_seq)); if(card) card.tag=SZCore.teamTagN(rep.tag,i+1);
+        });
+      });
+    }
     SELDATES.clear(); SELACCOMS.clear();
     $('#stat').textContent=`${CARDS.length}${tx('teamUnit')}`;
     renderDayChips(); renderAccomChips(); renderPreview();

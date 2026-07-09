@@ -64,7 +64,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.13">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.14">
 </head>
 <body data-so-area="print">
 <div class="topbar so-bar">
@@ -95,7 +95,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=11"></script><!-- 공유 도메인 규칙(출발지 PUS/ICN 등) -->
-<script src="../assets/saizen-ops.js?v=15.13"></script>
+<script src="../assets/saizen-ops.js?v=15.14"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -285,17 +285,40 @@ async function load(){
         if(!data||data.length<1000) break; pg+=1000;
       }
     }
+    // 2.5) 묶음(대표 지정) — 연속 개인번호용 print_overrides
+    const OVR={};
+    for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
+      const {data:ov}=await supa.from('print_overrides').select('event_seq,team_group,team_group_rep').in('event_seq',chunk);
+      (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
+    }
     // 3) 셀 구성
     CELLS=members.map(m=>{
       const g=gmap[m.event_seq]||{}; const b=g.b||{};
       const pfx=accomPfx(g);
       return {
-        tag:m.person_tag||'', kor:m.name_kr||'', eng:m.name_en||'',
+        eventSeq:m.event_seq, tag:m.person_tag||'', kor:m.name_kr||'', eng:m.name_en||'',
         seq:m.seq_in_team||0,
         port:portOf(b.origin), dep:mmdd(b.dep_date), arr:mmdd(b.arr_date), depRaw:b.dep_date||'',
         accom:g.accom||'', origin:b.origin||'', accomColor:ACCOM_COLOR[pfx]||'#111'
       };
     }).filter(c=>c.tag||c.kor);
+    // 대표 지정 묶음: 개인 태그를 대표 기준코드 기반 '연속 개인번호'로(DRな-1Y…DRな-8Y, 대표팀부터).
+    if(window.SZCore&&SZCore.orderGroup&&SZCore.personTagN&&SZCore.tagStripSeq){
+      const groups={}, repFlag={};
+      Object.keys(OVR).forEach(s=>{ const o=OVR[s]; if(o.team_group){ repFlag[s]=!!o.team_group_rep; (groups[o.team_group]=groups[o.team_group]||new Set()).add(String(s)); } });
+      Object.keys(groups).forEach(k=>{
+        const teamSeqs=[...groups[k]]; if(teamSeqs.length<2)return;
+        const repSeq=teamSeqs.find(s=>repFlag[s]); if(!repSeq)return;
+        const repCell=CELLS.find(c=>String(c.eventSeq)===String(repSeq)&&c.tag); if(!repCell)return;
+        const base=SZCore.tagStripSeq(repCell.tag);
+        const meta=teamSeqs.map(s=>{ const c=CELLS.find(x=>String(x.eventSeq)===String(s)); return {event_seq:s,dep:c?c.depRaw:''}; });
+        let n=0;
+        SZCore.orderGroup(meta,repSeq).forEach(tm=>{
+          CELLS.filter(c=>String(c.eventSeq)===String(tm.event_seq)).sort((a,b)=>(a.seq||0)-(b.seq||0))
+            .forEach(c=>{ n++; c.tag=SZCore.personTagN(base,n); });
+        });
+      });
+    }
     // 월이 바뀌면 선택 초기화
     SELDATES.clear(); SELACCOMS.clear();
     $('#stat').textContent=tx('cntPeopleTeams')(CELLS.length,seqs.length);

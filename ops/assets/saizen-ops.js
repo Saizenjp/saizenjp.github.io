@@ -465,7 +465,7 @@
       ix_cDispatchCd: '행사별 수배서＋현지 발생분 기입표(A4 양면) — step1 데이터 기준',
       ix_cDinnerH: '석식 오더',
       ix_cDinnerCd: '날짜별 석식 오더(A3 가로)＋조/중/석 식수 자동집계 — step1 데이터 기준',
-      ix_cShizuH: '志津の宿 예약표',
+      ix_cShizuH: '시즈노야도 예약표',
       ix_cShizuCd: '시즈노야도 객실 예약표(別棟 온천 사전신청)— 방배정(room) 결과 연동 출력',
       ix_cQrCardsH: '주문 QR카드', ix_cQrCardsCd: '손님에게 주는 팀별 주문 QR카드 인쇄(手配書와 별도 · 주문 때 POS 스캔). 체크인 때 손님이 폰으로 촬영해 보관',
       ix_cSettleMeritH: '현지 정산표 (메리트 B2B)',

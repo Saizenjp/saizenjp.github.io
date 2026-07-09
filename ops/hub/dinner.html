@@ -64,7 +64,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.13">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.14">
 </head>
 <body data-so-area="print">
 <div class="topbar so-bar">
@@ -95,7 +95,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=11"></script>
-<script src="../assets/saizen-ops.js?v=15.13"></script>
+<script src="../assets/saizen-ops.js?v=15.14"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(印刷 산출물·도메인 데이터는 미번역) ──
@@ -193,7 +193,7 @@ const L={
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
-let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set(), OVR={}, ADDONS=[], EARLY={};
+let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set(), OVR={}, ADDONS=[], EARLY={}, _TGT=null;
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
 // 食事 OFFSITE(간지·시즈) 규칙은 SZCore.mealPlan/mealOffsite 단일 진실원으로 이관
@@ -459,7 +459,7 @@ function renderTeamEdit(){
       <td class="c mono">${esc((t.dep||'').slice(5))}</td>
       <td class="c">${esc(t.accom)}</td>
       <td>${ex?`<span style="text-decoration:line-through">${esc(t.repName||'')}</span>${t.excludeReason?`<br><span class="exr" title="${tx('exReasonTitle')}">夕食除外: ${esc(t.excludeReason)}</span>`:''}`:esc(t.repName||'')}</td>
-      <td class="c mono">${esc(t.tag)}</td>
+      <td class="c mono">${esc(teamGroupTag(t)||t.tag)}</td>
       <td class="c">${tgroupBadge(t.tgroup)}</td>
       <td class="c mono">${parseInt(t.pax,10)||0}</td>
       <td class="c">${plateCell(t)}</td>
@@ -482,6 +482,19 @@ function plateCell(t){
 //   라벨(team_group)은 묶음 중 한 팀의 태그라 그것만 보이면 헷갈림 → 같은 team_group 공유 팀 태그 전부 표시.
 function tgPfx(t){ return String(t||'').split('-')[0]; }   // 태그 접두(그룹코드)만 — '-1Y' 개인번호 제거
 function tgroupTags(label){ if(!label) return ''; const tags=TEAMS.filter(t=>t.tgroup===label).map(t=>tgPfx(t.tag)).filter(Boolean); return [...new Set(tags)].join('·'); }
+// 묶은 팀(대표 지정 시)의 통일 표시태그 = 대표 기준코드 + 팀번호(DRな-Y1/Y2). 대표 미지정이면 null(원래 태그 유지).
+function buildTeamGroupTags(){
+  _TGT={};
+  if(!(window.SZCore&&SZCore.teamTagN&&SZCore.orderGroup&&SZCore.tagStripSeq)) return;
+  const groups={};
+  TEAMS.forEach(t=>{ if(t.tgroup){ (groups[t.tgroup]=groups[t.tgroup]||[]).push(t); } });
+  Object.keys(groups).forEach(k=>{ const list=groups[k]; if(list.length<2)return;
+    const rep=list.find(t=>t.tgroupRep); if(!rep)return;
+    const base=SZCore.tagStripSeq(rep.tag);
+    SZCore.orderGroup(list.map(t=>({event_seq:t.seq,dep:t.dep})),rep.seq).forEach((o,i)=>{ _TGT[o.event_seq]=SZCore.teamTagN(base,i+1); });
+  });
+}
+function teamGroupTag(t){ return (_TGT&&_TGT[t.seq])||null; }   // 묶음 통일태그 or null
 function tgroupBadge(label){ if(!label) return '<span style="color:var(--muted)">-</span>'; const tags=tgroupTags(label); const n=TEAMS.filter(t=>t.tgroup===label).length; return `<span class="tgbadge" title="${tx('thTeam')}: ${esc(label)}">${esc(tags)} <b>(${n})</b></span>`; }
 function accomIdx(ac){ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; }
 // 夕食 오버라이드: 제외(excluded·사유) + 석식 분리(dinner_split). 기존 필드(team_group 등)는 보존(spread).
@@ -580,7 +593,7 @@ async function load(){
     // 제외·묶기(print_overrides) — 태그·인원 수정은 폐지(step1 데이터 기준). 묶기는 航空カバー 영향 없음. event_seq 기준(월경계 포함)
     OVR={};
     for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
-      const {data:ov}=await supa.from('print_overrides').select('event_seq,excluded,exclude_reason,dining_group,team_group,dinner_split').in('event_seq',chunk);
+      const {data:ov}=await supa.from('print_overrides').select('event_seq,excluded,exclude_reason,dining_group,team_group,team_group_rep,dinner_split').in('event_seq',chunk);
       (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
     }
     // 別注(추가/업그레이드 메뉴) + 알레르기 — event_seq 기준(월경계 포함)
@@ -593,10 +606,11 @@ async function load(){
       const origin=(o.byRep?o.origin:'')||o.origin||b.origin||'';
       const basePax=b.pax||g.pax||0;
       return { seq:String(b.event_seq), accom:g.accom||'', dep:fmtDate(b.dep_date), arr:fmtDate(b.arr_date),
-        pax:basePax, basePax, excluded:!!ov.excluded, excludeReason:ov.exclude_reason||'', dgroup:ov.dining_group||null, tgroup:ov.team_group||'', dinnerSplit:!!ov.dinner_split,
+        pax:basePax, basePax, excluded:!!ov.excluded, excludeReason:ov.exclude_reason||'', dgroup:ov.dining_group||null, tgroup:ov.team_group||'', tgroupRep:!!ov.team_group_rep, dinnerSplit:!!ov.dinner_split,
         repName:b.rep_name||r.name||'', engName:r.eng||o.eng||'',
         tag:r.tag||g.team_tag||g.group_code||'', isPus:isPusOf(origin) };
     }).filter(t=>t.accom);
+    buildTeamGroupTags();   // 대표 지정 묶음의 통일 태그(DRな-Y1/Y2) 계산
     // 숙소 기본 선택 = 야마나미리조트·쿠주힐즈(데이터에 있는 것만). 「전체」 토글로 전체.
     ACCOMSEL.clear();
     { const _ac=new Set(TEAMS.map(t=>t.accom));
@@ -685,7 +699,7 @@ function printOrder(){
         <td class="c orig ${t.isPus?'pus':'icn'}">${originCode}</td>
         <td class="kor">${esc(t.repName||'')}</td>
         <td class="eng">${esc(engShow)}</td>
-        <td class="c grp">${esc(t.tag||'')}</td>
+        <td class="c grp">${esc(teamGroupTag(t)||t.tag||'')}</td>
         <td class="c"></td>
         <td class="c"><strong>${ePax}</strong></td>
         <td class="c">${stayDay}</td>
@@ -842,14 +856,14 @@ function printNameplates(){
       const grp=byG.get(key);
       const names=grp.map(t=>(t.repName||'').trim()).filter(Boolean);
       const engs=grp.map(t=>(t.engName&&t.engName!=='(미등록)')?t.engName.trim():'').filter(Boolean);
-      const tags=grp.map(t=>stripTag((t.tag||'').trim())).filter(Boolean);
+      const tags=grp.map(t=>teamGroupTag(t)||stripTag((t.tag||'').trim())).filter(Boolean);
       const pax=grp.reduce((s,t)=>s+(parseInt(t.pax,10)||0),0);
       const f=grp[0];
       cards.push({ repName:names.join(' · '), engName:engs.join(' · '), pax,
         period:`${fmtJP(f.dep)} 〜 ${fmtJP(f.arr)}`, tagCode:tags.join('  '), nTeams:grp.length,
         members: grp.map(t=>({ name:(t.repName||'').trim(),
           eng:(t.engName&&t.engName!=='(미등록)')?t.engName.trim():'',
-          tag:stripTag((t.tag||'').trim()), pax:parseInt(t.pax,10)||0 })) });
+          tag:teamGroupTag(t)||stripTag((t.tag||'').trim()), pax:parseInt(t.pax,10)||0 })) });
     });
   });
   if(!cards.length){ toast(tx('noOutData'),'err'); return; }
