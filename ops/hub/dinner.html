@@ -456,7 +456,7 @@ function renderTeamEdit(){
       <td class="c mono">${esc((t.dep||'').slice(5))}</td>
       <td class="c">${esc(t.accom)}</td>
       <td>${ex?`<span style="text-decoration:line-through">${esc(t.repName||'')}</span>${t.excludeReason?`<br><span class="exr" title="${tx('exReasonTitle')}">夕食除外: ${esc(t.excludeReason)}</span>`:''}`:esc(t.repName||'')}</td>
-      <td class="c mono">${esc(teamGroupTag(t)||t.tag)}</td>
+      <td class="c mono">${esc(teamDisplayTag(t))}</td>
       <td class="c">${tgroupBadge(t.tgroup)}</td>
       <td class="c mono">${parseInt(t.pax,10)||0}</td>
       <td class="c"><button type="button" class="te-ex" data-seq="${t.seq}" data-ex="${ex?1:0}" style="font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:6px;cursor:pointer;border:1px solid ${ex?'var(--accent)':'var(--border2)'};background:${ex?'var(--accent)':'var(--surface)'};color:${ex?'#fff':'var(--err)'}">${ex?tx('exReleaseBtn'):tx('exBtn')}</button></td>
@@ -493,6 +493,22 @@ function teamSortByCode(a,b){
   if(ca.code!==cb.code) return ca.code.localeCompare(cb.code);   // 코드순(ㄱㄴㄷ 대신)
   if(ca.no!==cb.no) return ca.no-cb.no;                          // 묶음 Y1→Y2 인접
   return (a.repName||'').localeCompare(b.repName||'');
+}
+// ── 팀 묶음(team_group) = 식사 1단위로 병합: 대표 1명·대표코드(DRな-Y)·인원 합산 ──
+//   묶으면 같은 테이블 → 명패·오더 1개(Y1/Y2로 쪼개지 않음). 테이블을 나눠야 하면 별도 기능.
+//   teams: 이미 정렬된 배열. 같은 tgroup은 한 unit, 단독은 그대로.
+function dinnerUnits(teams){
+  const byG=new Map(), order=[];
+  teams.forEach(t=>{ const key=t.tgroup?('tg:'+t.tgroup):('solo:'+t.seq); if(!byG.has(key)){ byG.set(key,[]); order.push(key); } byG.get(key).push(t); });
+  return order.map(key=>{
+    const grp=byG.get(key);
+    const rep=(grp.length>1?grp.find(t=>t.tgroupRep):null)||grp[0];   // 대표=現地手配書 지정
+    return { rep, teams:grp, seqs:grp.map(t=>t.seq),
+      tag:stripSeqTag((rep.tag||'').trim()),                          // 대표 코드 스트립(DRな-Y)
+      repName:rep.repName||'', engName:rep.engName||'',
+      dep:rep.dep, arr:rep.arr, accom:rep.accom, isPus:rep.isPus,
+      pax:grp.reduce((s,t)=>s+(parseInt(t.pax,10)||0),0) };            // 인원 합산(8名)
+  });
 }
 // 夕食 오버라이드: 제외(excluded·사유)만. 팀 묶음은 現地手配書(team_group) 단일 소스. 기존 필드는 보존(spread).
 async function saveDinnerOverride(seq,field,val){
@@ -673,25 +689,26 @@ function printOrder(){
     const staying=TEAMS.filter(t=>(!_accomSet||_accomSet.has(t.accom)) && !t.excluded && t.dep<=date && t.arr>date
       && (Math.max(0,(parseInt(t.pax,10)||0)-goneEarly(t.seq,date,'d'))>0));   // 전원 조기퇴실 팀은 명단에서 제외
     if(!staying.length) return '';
-    const sorted=staying.slice().sort(teamSortByCode);   // 팀별 규칙: 入国→숙소→코드→묶음번호(Y1,Y2 인접)
+    const sorted=staying.slice().sort(teamSortByCode);   // 팀별 규칙: 入国→숙소→코드
+    const units=dinnerUnits(sorted);                     // 묶음 = 대표 1행(DRな-Y·인원 합산)
     let no=0;
-    const trHTML=sorted.map(t=>{ no++;
-      const depD=fmtMD(t.dep), arrD=fmtMD(t.arr);
+    const trHTML=units.map(u=>{ no++;
+      const depD=fmtMD(u.dep), arrD=fmtMD(u.arr);
       let stayDay='';
-      if(t.dep){ const days=Math.round((parseLocalDate(date)-parseLocalDate(t.dep))/86400000)+1; const nights=(t.dep&&t.arr)?Math.round((parseLocalDate(t.arr)-parseLocalDate(t.dep))/86400000):0; if(days>=1&&days<=nights+1) stayDay=`${days}日目`; }
-      const originCode=t.isPus?'PUS':'ICN';
-      const engShow=(t.engName&&t.engName!=='(미등록)')?t.engName:'';
-      const basePax=parseInt(t.pax,10)||0;
-      const ePax=Math.max(0,basePax-goneEarly(t.seq,date,'d'));   // 夕食 실인원(조기퇴실 차감)
+      if(u.dep){ const days=Math.round((parseLocalDate(date)-parseLocalDate(u.dep))/86400000)+1; const nights=(u.dep&&u.arr)?Math.round((parseLocalDate(u.arr)-parseLocalDate(u.dep))/86400000):0; if(days>=1&&days<=nights+1) stayDay=`${days}日目`; }
+      const originCode=u.isPus?'PUS':'ICN';
+      const engShow=(u.engName&&u.engName!=='(미등록)')?u.engName:'';
+      const basePax=u.pax;
+      const ePax=u.teams.reduce((s,x)=>s+Math.max(0,(parseInt(x.pax,10)||0)-goneEarly(x.seq,date,'d')),0);   // 夕食 실인원(조기퇴실 차감·합산)
       const ecoNote=(ePax<basePax)?`<span style="color:#b13b2c;font-weight:700">早期退室 −${basePax-ePax}</span>`:'';
       return `<tr>
         <td class="c">${no}</td>
         <td class="c date-c">${depD}</td>
         <td class="c date-c">${arrD}</td>
-        <td class="c orig ${t.isPus?'pus':'icn'}">${originCode}</td>
-        <td class="kor">${esc(t.repName||'')}</td>
+        <td class="c orig ${u.isPus?'pus':'icn'}">${originCode}</td>
+        <td class="kor">${esc(u.repName||'')}</td>
         <td class="eng">${esc(engShow)}</td>
-        <td class="c grp">${esc(teamGroupTag(t)||t.tag||'')}</td>
+        <td class="c grp">${esc(u.tag)}</td>
         <td class="c"></td>
         <td class="c"><strong>${ePax}</strong></td>
         <td class="c">${stayDay}</td>
@@ -704,7 +721,7 @@ function printOrder(){
     // 夕食除外 팀 흔적 — 석식에서만 빠짐(朝·昼食은 유지) "무엇을 왜 뺐는지" 인쇄물에 남김
     const excl=TEAMS.filter(t=>(!_accomSet||_accomSet.has(t.accom)) && t.excluded && t.dep<=date && t.arr>date)
       .sort((a,b)=>(accIdx(a.accom)-accIdx(b.accom))||(a.repName||'').localeCompare(b.repName||''));
-    const exclHTML=excl.length?`<div class="do-excl"><b>夕食除外 ${excl.length}チーム:</b> ${excl.map(t=>`${esc(t.tag||'')} ${esc(t.repName||'')}様${t.excludeReason?`（${esc(t.excludeReason)}）`:''}`).join(' ／ ')}</div>`:'';
+    const exclHTML=excl.length?`<div class="do-excl"><b>夕食除外 ${excl.length}チーム:</b> ${excl.map(t=>`${esc(teamDisplayTag(t))} ${esc(t.repName||'')}様${t.excludeReason?`（${esc(t.excludeReason)}）`:''}`).join(' ／ ')}</div>`:'';
     // 別注(추가/업그레이드) + 알레르기 — 빨강 굵게(캡처 양식): 別注）刺身盛¥7,500×1台 ←DJわ④名
     const addons=addonsForDate(date);
     const addonHTML = addons.length ? `<div class="do-addons">${addons.map(a=>{
@@ -836,25 +853,13 @@ function printNameplates(){
   const cards=[];
   dates.forEach(date=>{
     const teams=TEAMS.filter(t=> t.accom && !t.excluded && t.dep===date && (!_accomSet||_accomSet.has(t.accom)))
-      .sort(teamSortByCode);   // 팀별 규칙(코드순·묶음 인접) — 합석 병합 전 정렬
-    // 운영팀(team_group) 단위로 합쳐 1장: 인원 합산 + 대표자·태그 모두 표기. 단독팀은 자기 명패.
-    //   · 같은 운영팀이면 명패 1장으로 합석(現地手配書와 동일 묶음 — 단일 소스).
-    const byG=new Map(), gOrder=[];
-    teams.forEach(t=>{ const key=t.tgroup?('tg:'+t.tgroup):('_solo:'+t.seq); if(!byG.has(key)){ byG.set(key,[]); gOrder.push(key); } byG.get(key).push(t); });
-    // 명패는 대표만 나오니 개인순번 숫자 제거·숙소 문자만 유지("DAあ-1Y"→"DAあ-Y").
-    const stripTag=t=>(window.SZCore&&SZCore.tagStripSeq)?SZCore.tagStripSeq(t):String(t||'');
-    gOrder.forEach(key=>{
-      const grp=byG.get(key);
-      const names=grp.map(t=>(t.repName||'').trim()).filter(Boolean);
-      const engs=grp.map(t=>(t.engName&&t.engName!=='(미등록)')?t.engName.trim():'').filter(Boolean);
-      const tags=grp.map(t=>teamGroupTag(t)||stripTag((t.tag||'').trim())).filter(Boolean);
-      const pax=grp.reduce((s,t)=>s+(parseInt(t.pax,10)||0),0);
-      const f=grp[0];
-      cards.push({ repName:names.join(' · '), engName:engs.join(' · '), pax,
-        period:`${fmtJP(f.dep)} 〜 ${fmtJP(f.arr)}`, tagCode:tags.join('  '), nTeams:grp.length,
-        members: grp.map(t=>({ name:(t.repName||'').trim(),
-          eng:(t.engName&&t.engName!=='(미등록)')?t.engName.trim():'',
-          tag:teamGroupTag(t)||stripTag((t.tag||'').trim()), pax:parseInt(t.pax,10)||0 })) });
+      .sort(teamSortByCode);   // 팀별 규칙(코드순·묶음 인접)
+    // 운영팀(team_group)이면 대표 1명·대표코드(DRな-Y)·인원 합산으로 명패 1장. 단독은 그대로.
+    dinnerUnits(teams).forEach(u=>{
+      const eng=(u.engName&&u.engName!=='(미등록)')?u.engName.trim():'';
+      cards.push({ repName:u.repName, engName:eng, pax:u.pax,
+        period:`${fmtJP(u.dep)} 〜 ${fmtJP(u.arr)}`, tagCode:u.tag, nTeams:1,
+        members:[{ name:u.repName, eng, tag:u.tag, pax:u.pax }] });
     });
   });
   if(!cards.length){ toast(tx('noOutData'),'err'); return; }
