@@ -1974,10 +1974,14 @@ function renderFloorRing(zoneRooms){
 }
 
 function renderSummary(){
-  // 기준일(그날 밤) 기준: 그날 묵는 인원 vs 그날 방 배정된 인원 (한 달 누적이 아니라 하룻밤)
+  // 기준일(그날 밤) 기준: 그날 묵는 인원 vs 그날 방 배정된 인원 (한 달 누적이 아니라 하룻밤).
+  //   숙소 필터(fac-filter)가 켜져 있으면 그 숙소만 집계 → 단일 숙소 선택 시 그 숙소 미배정만 보임.
   const d=state.focus||state.from;
-  let stay=0; state.guests.forEach(g=>{ if(g.dep<=d && d<g.arr) stay+=(g.pax||0); });
-  let asg=0;  state.rooms.forEach(r=>{ if(r.check_in<=d && d<r.check_out) asg+=(r.assigned_pax||0); });
+  const facOn=placeSel.size>0;
+  let stay=0; state.guests.forEach(g=>{ if(g.dep<=d && d<g.arr && (!facOn||teamPlaceKeys(g).some(k=>placeSel.has(k)))) stay+=(g.pax||0); });
+  let asg=0;  state.rooms.forEach(r=>{ if(!(r.check_in<=d && d<r.check_out)) return;
+    if(facOn){ const inv=invById(r.inventory_id); if(!inv||!roomPlaceKeys(inv).some(k=>placeSel.has(k))) return; }
+    asg+=(r.assigned_pax||0); });
   const left=stay-asg, el=$('#assign-summary');
   el.innerHTML = `${fmtMD(d)} <b style="color:${(left<=0&&stay>0)?'var(--ok)':'inherit'}">${asg}/${stay}${tx('nameUnit')}</b>`
     + (left>0 ? ` <span style="color:var(--err);font-weight:700">${tx('summaryUnassigned',left)}</span>`
