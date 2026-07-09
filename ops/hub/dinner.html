@@ -448,7 +448,7 @@ function renderTeamEdit(){
   // 선택한 날짜(들)에 묵는 팀만 — 날짜 토글 선택 시 그날 목록만 노출(전체 선택=전월)
   const _dsel=selectedDates();
   const rows=TEAMS.filter(t=>(ACCOMSEL.size===0||ACCOMSEL.has(t.accom)) && _dsel.some(d=>t.dep<=d&&t.arr>d)).slice()
-    .sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||accomIdx(a.accom)-accomIdx(b.accom)||(a.repName||'').localeCompare(b.repName||''));
+    .sort(teamSortByCode);   // 팀별 규칙(코드순·묶음 인접)
   thead.innerHTML=`<tr><th>${tx('thIn')}</th><th>${tx('thFac')}</th><th>${tx('thRep')}</th><th>${tx('thTag')}</th><th title="${tx('thTeamTitle')}">${tx('thTeam')}</th><th>${tx('thPax')}</th><th title="${tx('thExTitle')}">${tx('thEx')}</th></tr>`;
   if(!rows.length){ tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:18px">${tx('noTeam')}</td></tr>`; return; }
   tbody.innerHTML=rows.map(t=>{ const ex=!!t.excluded;
@@ -482,6 +482,18 @@ function buildTeamGroupTags(){
 function teamGroupTag(t){ return (_TGT&&_TGT[t.seq])||null; }   // 묶음 통일태그 or null
 function tgroupBadge(label){ if(!label) return '<span style="color:var(--muted)">-</span>'; const tags=tgroupTags(label); const n=TEAMS.filter(t=>t.tgroup===label).length; return `<span class="tgbadge" title="${tx('thTeam')}: ${esc(label)}">${esc(tags)} <b>(${n})</b></span>`; }
 function accomIdx(ac){ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; }
+// ── 팀별 규칙 정렬(手配書·航空カバー와 동일): 入国 → 숙소 → 코드 → 묶음번호(Y1,Y2 인접) → 대표자 ──
+function stripSeqTag(t){ return (window.SZCore&&SZCore.tagStripSeq)?SZCore.tagStripSeq(t):String(t||''); }
+function teamDisplayTag(t){ return teamGroupTag(t)||stripSeqTag((t.tag||'').trim()); }   // DRな-Y1 or 단독코드
+function teamCodeNo(t){ const s=String(teamDisplayTag(t)); const m=s.match(/(\d+)$/); return {code:s.replace(/\d+$/,''), no:m?+m[1]:0}; }
+function teamSortByCode(a,b){
+  if((a.dep||'')!==(b.dep||'')) return (a.dep||'')<(b.dep||'')?-1:1;
+  const ai=accomIdx(a.accom), bi=accomIdx(b.accom); if(ai!==bi) return ai-bi;
+  const ca=teamCodeNo(a), cb=teamCodeNo(b);
+  if(ca.code!==cb.code) return ca.code.localeCompare(cb.code);   // 코드순(ㄱㄴㄷ 대신)
+  if(ca.no!==cb.no) return ca.no-cb.no;                          // 묶음 Y1→Y2 인접
+  return (a.repName||'').localeCompare(b.repName||'');
+}
 // 夕食 오버라이드: 제외(excluded·사유)만. 팀 묶음은 現地手配書(team_group) 단일 소스. 기존 필드는 보존(spread).
 async function saveDinnerOverride(seq,field,val){
   if(field!=='excluded') return;
@@ -661,7 +673,7 @@ function printOrder(){
     const staying=TEAMS.filter(t=>(!_accomSet||_accomSet.has(t.accom)) && !t.excluded && t.dep<=date && t.arr>date
       && (Math.max(0,(parseInt(t.pax,10)||0)-goneEarly(t.seq,date,'d'))>0));   // 전원 조기퇴실 팀은 명단에서 제외
     if(!staying.length) return '';
-    const sorted=staying.slice().sort((a,b)=>{ if(a.dep!==b.dep)return a.dep<b.dep?-1:1; const ai=accIdx(a.accom),bi=accIdx(b.accom); if(ai!==bi)return ai-bi; return (a.repName||'').localeCompare(b.repName||''); });
+    const sorted=staying.slice().sort(teamSortByCode);   // 팀별 규칙: 入国→숙소→코드→묶음번호(Y1,Y2 인접)
     let no=0;
     const trHTML=sorted.map(t=>{ no++;
       const depD=fmtMD(t.dep), arrD=fmtMD(t.arr);
@@ -820,12 +832,11 @@ function printNameplates(){
   if(!dates.length){ toast(tx('noOutDate'),'err'); return; }
   const _accomSet=ACCOMSEL.size?ACCOMSEL:null;
   const todayStr=today();
-  const accomOrder=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
   const fmtJP=(s)=>{ if(!s) return ''; return `${parseInt(s.slice(5,7),10)}月${parseInt(s.slice(8,10),10)}日`; };
   const cards=[];
   dates.forEach(date=>{
     const teams=TEAMS.filter(t=> t.accom && !t.excluded && t.dep===date && (!_accomSet||_accomSet.has(t.accom)))
-      .sort((a,b)=>{ const ai=accomOrder.indexOf(a.accom),bi=accomOrder.indexOf(b.accom); if(ai!==bi) return (ai===-1?99:ai)-(bi===-1?99:bi); return (a.repName||'').localeCompare(b.repName||''); });
+      .sort(teamSortByCode);   // 팀별 규칙(코드순·묶음 인접) — 합석 병합 전 정렬
     // 운영팀(team_group) 단위로 합쳐 1장: 인원 합산 + 대표자·태그 모두 표기. 단독팀은 자기 명패.
     //   · 같은 운영팀이면 명패 1장으로 합석(現地手配書와 동일 묶음 — 단일 소스).
     const byG=new Map(), gOrder=[];
