@@ -317,7 +317,9 @@
   .day-chip.active .dcnt{color:#fff}
 
   /* 숙소별 필터 */
-  .fac-filter{display:flex;gap:6px;flex-wrap:wrap;padding:10px 13px 2px}
+  .fac-filter{display:flex;gap:6px;flex-wrap:wrap;padding:10px 13px 2px;align-items:center}
+  .fac-filter .ffsep{width:1px;height:20px;background:var(--border2);margin:0 4px}
+  .fac-filter .ffbtn.offsite{border-style:dashed}
   .ffbtn{font-family:inherit;font-size:12px;font-weight:700;padding:5px 12px;border:1px solid var(--border2);border-radius:99px;background:var(--surface);color:var(--text2);cursor:pointer;transition:.12s;display:inline-flex;align-items:center;gap:5px}
   .ffbtn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
   .ffbtn:not(.active):hover{background:var(--accentSoft)}
@@ -1507,6 +1509,9 @@ function openAssignPicker(inv){
 // ── 숙소(장소) 다중 필터 — 야마나미를 골프텔/돔하우스/소보별장/아소별장으로 분리 ──
 const PLACE_ITEMS=['골프텔','관내별장','소보별장','아소별장','돔하우스','쿠주힐즈','간지호텔','시즈노야도'];
 const PLACE_COLOR={골프텔:'y',관내별장:'y',소보별장:'y',아소별장:'y',돔하우스:'y',쿠주힐즈:'k',간지호텔:'g',시즈노야도:'s'};
+// 외부 호텔(오프사이트) — 「전체」에는 포함 안 함(칩을 직접 눌러야 표시). 야마나미 리조트 복합만 전체.
+const OFFSITE_PLACES=new Set(['간지호텔','시즈노야도']);
+function _placeInScope(keys, sel){ return sel.size===0 ? keys.some(k=>!OFFSITE_PLACES.has(k)) : keys.some(k=>sel.has(k)); }
 let placeSel=new Set();   // 객실 배정 필터(비면 전체)
 let teamSel=new Set();    // 미배정 팀 필터(비면 전체)
 function roomPlaceKeys(r){
@@ -1523,7 +1528,7 @@ function roomPlaceKeys(r){
   if(r.facility==='시즈노야도 료칸') return ['시즈노야도'];
   return [];
 }
-function roomMatch(r){ return placeSel.size===0 || roomPlaceKeys(r).some(k=>placeSel.has(k)); }
+function roomMatch(r){ return _placeInScope(roomPlaceKeys(r), placeSel); }   // 전체=오프사이트 제외
 function teamPlaceKeys(g){
   const st=g.sale_type, ac=g.accom;
   if(ac==='야마나미리조트'){
@@ -1536,7 +1541,7 @@ function teamPlaceKeys(g){
   if(ac==='시즈노야도 료칸') return ['시즈노야도'];
   return [];
 }
-function teamMatch(g){ return teamSel.size===0 || teamPlaceKeys(g).some(k=>teamSel.has(k)); }
+function teamMatch(g){ return _placeInScope(teamPlaceKeys(g), teamSel); }   // 전체=오프사이트 제외
 
 function renderFacilities(){
   const box=$('#facilities'); box.innerHTML='';
@@ -1977,10 +1982,10 @@ function renderSummary(){
   // 기준일(그날 밤) 기준: 그날 묵는 인원 vs 그날 방 배정된 인원 (한 달 누적이 아니라 하룻밤).
   //   숙소 필터(fac-filter)가 켜져 있으면 그 숙소만 집계 → 단일 숙소 선택 시 그 숙소 미배정만 보임.
   const d=state.focus||state.from;
-  const facOn=placeSel.size>0;
-  let stay=0; state.guests.forEach(g=>{ if(g.dep<=d && d<g.arr && (!facOn||teamPlaceKeys(g).some(k=>placeSel.has(k)))) stay+=(g.pax||0); });
+  // 숙소 필터 반영 + 「전체」(빈 필터)는 오프사이트(간지·시즈) 제외 = 야마나미 복합만.
+  let stay=0; state.guests.forEach(g=>{ if(g.dep<=d && d<g.arr && _placeInScope(teamPlaceKeys(g),placeSel)) stay+=(g.pax||0); });
   let asg=0;  state.rooms.forEach(r=>{ if(!(r.check_in<=d && d<r.check_out)) return;
-    if(facOn){ const inv=invById(r.inventory_id); if(!inv||!roomPlaceKeys(inv).some(k=>placeSel.has(k))) return; }
+    const inv=invById(r.inventory_id); if(!_placeInScope(inv?roomPlaceKeys(inv):[],placeSel)) return;
     asg+=(r.assigned_pax||0); });
   const left=stay-asg, el=$('#assign-summary');
   el.innerHTML = `${fmtMD(d)} <b style="color:${(left<=0&&stay>0)?'var(--ok)':'inherit'}">${asg}/${stay}${tx('nameUnit')}</b>`
@@ -3032,8 +3037,12 @@ function placeItemsFor(sel){ return sel==='#fac-filter' ? PLACE_ITEMS.filter(k=>
 function buildFilterBar(sel,set){
   const box=$(sel); if(!box) return;
   // data-k="전체" 및 data-k="${k}" 는 클릭 비교·필터 키 — 절대 번역 금지(표시 라벨만 번역)
+  const items=placeItemsFor(sel);
   box.innerHTML=`<button class="ffbtn${set.size===0?' active':''}" data-k="전체" type="button">${tx('dcAll')}</button>`
-    + placeItemsFor(sel).map(k=>`<button class="ffbtn${set.has(k)?' active':''}" data-k="${k}" type="button"><span class="fdot" style="background:var(--${PLACE_COLOR[k]})"></span>${k}</button>`).join('');
+    + items.map((k,i)=>{
+        const sep=(OFFSITE_PLACES.has(k) && (i===0||!OFFSITE_PLACES.has(items[i-1]))) ? '<span class="ffsep" title="外部ホテル · 「全体」除外"></span>' : '';
+        return sep+`<button class="ffbtn${set.has(k)?' active':''}${OFFSITE_PLACES.has(k)?' offsite':''}" data-k="${k}" type="button"><span class="fdot" style="background:var(--${PLACE_COLOR[k]})"></span>${k}</button>`;
+      }).join('');
 }
 function onFilterClick(e,set,sel){
   const b=e.target.closest('.ffbtn'); if(!b) return;
