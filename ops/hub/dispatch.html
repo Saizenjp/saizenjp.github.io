@@ -180,7 +180,7 @@ function refreshConn(){
 }
 const state={ conn:'none' };
 
-let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DATESEL=new Set(), SEARCHQ='', GTAG={};
+let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DATESEL=new Set(), SEARCHQ='', GTAG={}, GREP={};
 let TOKMAP={};   // event_seq → 주문 QR 토큰(order_tokens)
 let MASK=(function(){ try{ return localStorage.getItem('saizen_dispatch_mask')!=='0'; }catch(e){ return true; } })();
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
@@ -418,8 +418,10 @@ async function load(){
         roomCnt:autoRoom, golf, paxList, prodName:rec.prodName, accomJp:dispatchAccomJp(rec.accom),
         orderToken:TOKMAP[seq]||''
       };
-    }).sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||(a.rec.repName||'').localeCompare(b.rec.repName||''))
-      .map((d,i)=>{ d.no=i+1; return d; });
+    });
+    computeGroupTags();              // GTAG·GREP(대표) 먼저 → 팀별 규칙 정렬에 사용
+    ROWS.sort(dispatchOrder);        // 入国→ICN/PUS→숙소→코드→묶음번호(Y1,Y2 인접)→대표자
+    ROWS.forEach((d,i)=>{ d.no=i+1; });
     DATESEL.clear(); ACCOMSEL.clear();
     $('#stat').textContent=`${ROWS.length}${tx('cntUnit')}`;
     renderDateChips(); renderAccomChips(); renderList();
@@ -437,7 +439,7 @@ function memGenCount(list){ let mem=0,gen=0; list.forEach(d=>(d.paxList||[]).for
 // 묶은 팀의 표시 태그 = 대표 기준코드 + 팀번호(DRな-Y1/Y2). 단독은 원래 태그.
 //   대표=team_group_rep, 없으면 최소 seq. 팀번호=SZCore.orderGroup(대표먼저·dep·seq).
 function computeGroupTags(){
-  GTAG={};
+  GTAG={}; GREP={};
   if(!(window.SZCore&&SZCore.teamTagN&&SZCore.orderGroup)) return;
   const groups={};
   ROWS.forEach(r=>{ const g=r.rec.teamGroup; if(g){ (groups[g]=groups[g]||[]).push(r); } });
@@ -445,12 +447,30 @@ function computeGroupTags(){
     const list=groups[k]; if(list.length<2) return;   // 단독은 번호 없음
     const rep=list.find(r=>r.rec.teamGroupRep);
     if(!rep) return;   // 대표 미지정(구 묶음) → 원래 태그 유지. 대표 선택 시에만 통일코드 부여.
+    GREP[k]=rep;       // 그룹 대표(정렬 앵커용)
     const base=rep.tagCode||'';
     const ordered=SZCore.orderGroup(list.map(r=>({event_seq:r.seq,dep:r.dep})), rep.seq);
     ordered.forEach((o,i)=>{ GTAG[o.event_seq]=SZCore.teamTagN(base,i+1); });
   });
 }
 function dTag(d){ return GTAG[d.seq]||d.tagCode; }   // 묶음이면 Y1/Y2, 아니면 원래
+// ── 팀별 규칙 정렬: 入国 → ICN/PUS → 숙소 → 코드 → 묶음번호(Y1,Y2 인접) → 대표자 ──
+//   묶음은 대표(GREP) 앵커 공유 → 출국지 달라도 같은 그룹이 붙어서 출력.
+function dispKey(d){
+  const g=d.rec.teamGroup, gt=GTAG[d.seq], rep=g&&GREP[g];
+  if(g&&gt&&rep){ const m=String(gt).match(/(\d+)$/); return {dep:rep.dep,port:rep.port,accom:rep.accom,code:rep.tagCode||'',no:m?+m[1]:0,name:d.rec.repName||''}; }
+  return {dep:d.dep,port:d.port,accom:d.accom,code:d.tagCode||'',no:0,name:d.rec.repName||''};
+}
+function dispatchOrder(a,b){
+  const ka=dispKey(a), kb=dispKey(b);
+  if((ka.dep||'')!==(kb.dep||'')) return (ka.dep||'')<(kb.dep||'')?-1:1;
+  if(ka.port!==kb.port) return ka.port==='ICN'?-1:1;
+  const ai=ACCOM_ORDER.indexOf(ka.accom), bi=ACCOM_ORDER.indexOf(kb.accom); const da=ai<0?99:ai, db=bi<0?99:bi;
+  if(da!==db) return da-db;
+  if(ka.code!==kb.code) return String(ka.code).localeCompare(String(kb.code));
+  if(ka.no!==kb.no) return ka.no-kb.no;
+  return String(ka.name).localeCompare(String(kb.name));
+}
 
 function renderList(){
   computeGroupTags();
