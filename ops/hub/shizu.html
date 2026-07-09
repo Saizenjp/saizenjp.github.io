@@ -580,9 +580,12 @@ async function autoAssignShizu(){
     sorted.filter(t=>!annexPref[t.seq]).forEach(placeTeam);  // 그다음 일반팀
     if(!rows.length){ toast(tx('autoNone'),'warn'); return; }
     if(!confirm(tx('autoConfirm')(rows.length))) return;
-    const {error}=await supa.rpc('shizu_assign_rooms',{p_rows:rows,p_clear_from:start,p_clear_to:end});
+    const {data:placedN,error}=await supa.rpc('shizu_assign_rooms',{p_rows:rows,p_clear_from:start,p_clear_to:end});
     if(error)throw error;
-    toast(tx('autoDone')(rows.length)+(holds?` · ${tx('autoHold')(holds)}`:''),'ok'); load();
+    // RPC는 정원초과 행을 건너뛰고 '되는 데까지' 배정 → 실제 배정 수·미배정 수 반영
+    const placed=(typeof placedN==='number')?placedN:rows.length;
+    const unplaced=holds + Math.max(0, rows.length-placed);
+    toast(tx('autoDone')(placed)+(unplaced?` · ${tx('autoHold')(unplaced)}`:''),'ok'); load();
   }catch(e){ toast(tx('autoFail')+(e.message||e),'err'); }
 }
 
