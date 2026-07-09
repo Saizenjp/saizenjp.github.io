@@ -686,11 +686,13 @@ function printOrder(){
   const todayStr=today();
   const accIdx=(ac)=>{ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; };
   const pagesHTML=dates.map(date=>{
-    const staying=TEAMS.filter(t=>(!_accomSet||_accomSet.has(t.accom)) && !t.excluded && t.dep<=date && t.arr>date
+    // 병합 먼저: 숙소 필터를 서브팀에 걸면 다른 숙소 묶음팀이 떨어져 인원 합산이 깨짐 → 대표 unit 기준으로 필터
+    const staying=TEAMS.filter(t=> !t.excluded && t.dep<=date && t.arr>date
       && (Math.max(0,(parseInt(t.pax,10)||0)-goneEarly(t.seq,date,'d'))>0));   // 전원 조기퇴실 팀은 명단에서 제외
     if(!staying.length) return '';
     const sorted=staying.slice().sort(teamSortByCode);   // 팀별 규칙: 入国→숙소→코드
-    const units=dinnerUnits(sorted);                     // 묶음 = 대표 1행(DRな-Y·인원 합산)
+    const units=dinnerUnits(sorted).filter(u=>!_accomSet||_accomSet.has(u.accom));   // 묶음=대표 1행(合算)·대표 숙소 기준 필터
+    if(!units.length) return '';
     let no=0;
     const trHTML=units.map(u=>{ no++;
       const depD=fmtMD(u.dep), arrD=fmtMD(u.arr);
@@ -851,11 +853,12 @@ function printNameplates(){
   const todayStr=today();
   const fmtJP=(s)=>{ if(!s) return ''; return `${parseInt(s.slice(5,7),10)}月${parseInt(s.slice(8,10),10)}日`; };
   const cards=[];
+  // ⚠ 병합을 먼저: 묶음 팀이 서로 다른 숙소/입국일에 걸쳐 있어도 대표 기준 1단위(8名)로.
+  //   숙소·날짜 필터는 '대표(unit)' 기준으로 병합 후 적용(필터가 서브팀을 먼저 떨궈 4名 되던 버그 수정).
+  const _pool=TEAMS.filter(t=> t.accom && !t.excluded).sort(teamSortByCode);
+  const _units=dinnerUnits(_pool).sort(teamSortByCode);
   dates.forEach(date=>{
-    const teams=TEAMS.filter(t=> t.accom && !t.excluded && t.dep===date && (!_accomSet||_accomSet.has(t.accom)))
-      .sort(teamSortByCode);   // 팀별 규칙(코드순·묶음 인접)
-    // 운영팀(team_group)이면 대표 1명·대표코드(DRな-Y)·인원 합산으로 명패 1장. 단독은 그대로.
-    dinnerUnits(teams).forEach(u=>{
+    _units.filter(u=> u.dep===date && (!_accomSet||_accomSet.has(u.accom))).forEach(u=>{
       const eng=(u.engName&&u.engName!=='(미등록)')?u.engName.trim():'';
       cards.push({ repName:u.repName, engName:eng, pax:u.pax,
         period:`${fmtJP(u.dep)} 〜 ${fmtJP(u.arr)}`, tagCode:u.tag, nTeams:1,
