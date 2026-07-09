@@ -280,14 +280,18 @@ async function load(){
         depRaw:g.dep||''
       };
     }).filter(c=>c.tag);
-    // 대표 지정 묶음: 표시 태그를 대표 기준코드+팀번호(DRな-Y1/Y2)로 통일. 시설색·라벨은 이미 확정(불변).
+    // 대표 지정 묶음: 표시 태그를 대표 기준코드+팀번호(DRな-Y1/Y2)로 통일 + 묶은 팀은 대표 시설색·라벨로 통일.
+    //   (한 팀이 2개 예약으로 나뉜 걸 하나로 합친 것이므로 대표 기준으로 표기)
     if(window.SZCore&&SZCore.orderGroup&&SZCore.teamTagN){
       const groups={};
       CARDS.forEach(c=>{ const ov=OVR[c.seq]; if(ov&&ov.team_group){ (groups[ov.team_group]=groups[ov.team_group]||[]).push(c); } });
       Object.keys(groups).forEach(k=>{ const list=groups[k]; if(list.length<2)return;
         const rep=list.find(c=>{ const ov=OVR[c.seq]; return ov&&ov.team_group_rep; }); if(!rep)return;
+        const base=rep.tag, repColor=rep.accomColor, repLabel=rep.accomLabel;   // 대표 기준 고정(루프 중 rep.tag 오염 방지)
         SZCore.orderGroup(list.map(c=>({event_seq:c.seq,dep:c.depRaw})),rep.seq).forEach((o,i)=>{
-          const card=CARDS.find(c=>c.seq===String(o.event_seq)); if(card) card.tag=SZCore.teamTagN(rep.tag,i+1);
+          const card=CARDS.find(c=>c.seq===String(o.event_seq)); if(!card)return;
+          card.tag=SZCore.teamTagN(base,i+1);          // DRな-Y1 · DRな-Y2 …
+          card.accomColor=repColor; card.accomLabel=repLabel;   // 대표 시설색·라벨로 통일(야마나미면 전부 야마나미)
         });
       });
     }
