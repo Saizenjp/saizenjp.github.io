@@ -73,6 +73,9 @@
   .shz-pv-dt span{font-size:10px;color:var(--muted)}
   .shz-pv-lb{background:var(--surface3);font-weight:700;color:var(--text2);width:78px}
   .shz-pv-nm{text-align:right;background:#eaf2fb}
+  .shz-swap{cursor:pointer}
+  .shz-swap:hover{outline:2px dashed var(--accent);outline-offset:-2px}
+  .shz-sel{outline:2px solid var(--accent)!important;outline-offset:-2px;background:var(--accentSoft)!important}
   .shz-pv td:not(.shz-pv-lb):not(.shz-pv-k):not(.shz-pv-note):not(.shz-pv-nm){background:#f2f8fe}
   .shz-pv-k{background:var(--surface3);font-weight:700}
   .shz-pv-note{text-align:left;background:var(--surface);outline:none;min-height:22px;font-weight:600}
@@ -88,7 +91,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.12">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.13">
 </head>
 <body data-so-area="shizu">
 <div class="topbar so-bar">
@@ -119,7 +122,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=11"></script>
-<script src="../assets/saizen-ops.js?v=15.12"></script>
+<script src="../assets/saizen-ops.js?v=15.13"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(予約表 산출물·도메인 데이터는 일본어 유지) ──
@@ -131,6 +134,7 @@ const L={
     monthSel:'月選択', btnPrint:'🖨 予約表 印刷', btnXlsx:'⬇ 予約表 xlsx',
     daySel:'日付', allDays:'全日', dayNote:'日付を選ぶとその日だけ表示・印刷・xlsxに。', dayPrint:'🖨 この日を印刷',
     trFail:'備考の自動翻訳に失敗(原文を表示)。DeepLキー未設定の可能性。',
+    swapPickFirst:'先に移動する部屋(名前)をクリック', swapNoInv:'客室情報が見つかりません', swapConflict:'その期間、相手の部屋が別チームで埋まっています', swapAsk:'この2部屋を入れ替えますか？', swapMoveAsk:'空室へ移動しますか？', swapDone:'変更しました', swapFail:'変更失敗: ', swapHint:'💡 名前をクリック→別の部屋をクリックで入替/空室へ移動',
     statLoading:'読込中…', stayN:'宿泊者', assignedN:'配置済', unassignedN:'未配置', onsenN:'温泉事前申請',
     nameUnit:'名', preNight:'人泊', noData:'表示する志津の宿の予約がありません(部屋割りで割当してください)。',
     onsenH:'♨ 別棟 温泉 事前申請', onsenHint:'— 別棟(吉祥·瑞雲·馬酔木)に配置された方のみ。申請した人泊 × ¥2,000(客室料¥17,000は本館·別棟同一)。申請時のみ現地で温泉のお湯を準備。<b>料金はメリットB2B精算で受領</b>(御請求書には課金しません · 集計/準備用)。',
@@ -144,6 +148,7 @@ const L={
     monthSel:'월 선택', btnPrint:'🖨 예약표 인쇄', btnXlsx:'⬇ 예약표 xlsx',
     daySel:'날짜', allDays:'전체', dayNote:'날짜를 고르면 그 날짜만 보기·인쇄·xlsx.', dayPrint:'🖨 이 날짜 인쇄',
     trFail:'비고 자동번역 실패(원문 표시). DeepL 키 미설정일 수 있습니다.',
+    swapPickFirst:'먼저 옮길 방(이름)을 클릭', swapNoInv:'객실 정보를 찾을 수 없습니다', swapConflict:'그 기간 상대 방이 다른 팀으로 차 있습니다', swapAsk:'두 방을 맞바꿀까요?', swapMoveAsk:'빈 객실로 이동할까요?', swapDone:'변경했습니다', swapFail:'변경 실패: ', swapHint:'💡 이름 클릭 → 다른 방 클릭으로 맞바꾸기/빈방 이동',
     statLoading:'불러오는 중…', stayN:'숙박객', assignedN:'배정됨', unassignedN:'미배정', onsenN:'온천 사전신청',
     nameUnit:'명', preNight:'인·박', noData:'표시할 시즈노야도 예약이 없습니다(방배정에서 배정하세요).',
     onsenH:'♨ 別棟 온천 사전신청', onsenHint:'— 別棟(吉祥·瑞雲·馬酔木) 배정 인원만. 사전신청한 인·박 × ¥2,000(객실료 ¥17,000은 本館·別棟 동일). 신청 시에만 현지에서 온천물 준비. <b>요금은 메리트 B2B 정산으로 수령</b>(御請求書 청구 아님 · 집계/준비용).',
@@ -157,6 +162,7 @@ const L={
     monthSel:'Month', btnPrint:'🖨 Print chart', btnXlsx:'⬇ Chart xlsx',
     daySel:'Date', allDays:'All', dayNote:'Pick a date to view/print/xlsx just that day.', dayPrint:'🖨 Print this day',
     trFail:'Remark auto-translation failed (showing original). DeepL key may be unset.',
+    swapPickFirst:'Click a room (name) to move first', swapNoInv:'Room info not found', swapConflict:'The other room is occupied by another team in that period', swapAsk:'Swap these two rooms?', swapMoveAsk:'Move to the empty room?', swapDone:'Updated', swapFail:'Update failed: ', swapHint:'💡 Click a name → click another room to swap / move to empty',
     statLoading:'Loading…', stayN:'Guests', assignedN:'Assigned', unassignedN:'Unassigned', onsenN:'Onsen pre-app.',
     nameUnit:'', preNight:'p-nights', noData:'No Shizu-no-Yado reservations to show (assign on the room screen).',
     onsenH:'♨ Annex onsen pre-application', onsenHint:'— Only guests assigned to the annex (Kissho/Zuiun/Ashibi). Applied person-nights × ¥2,000 (room rate ¥17,000 same for main & annex). Water prepared on-site only when pre-applied. <b>The fee is collected via the Merit B2B settlement</b> (not billed on the guest invoice · for tally/prep).',
@@ -179,7 +185,9 @@ const SHZ_BASE=17000, SHZ_ONSEN=2000;
 const SHZ_DOW=['日','月','火','水','木','金','土'];
 
 let supa=null, YM=null, FACILITY='시즈노야도 료칸';
-let GUESTS=[];                 // {member_id,event_seq,room_no,ci,co,nameKr,nameEn,gender,onsen}
+let SHZ_INV=null;              // room_no → inventory_id (시즈노야도 객실)
+let SEL=null;                  // 맞바꾸기/이동 선택: {room,date}
+let GUESTS=[];                 // {id,invId,member_id,event_seq,room_no,ci,co,nameKr,nameEn,gender,onsen}
 let NOTES={};                  // date → 수기 메모(세션 한정)
 let DATESEL=null;              // 선택 날짜(ISO). null=그 달 전체
 let BOOK={};                   // event_seq → {rep_name, remark, remark_local, remark_ja, remark_local_ja}
@@ -254,6 +262,7 @@ function renderUI(){
     </div>
     <div class="panel">
       <h3>${tx('pvH')} <span class="cnt">${tx('pvHint')}</span></h3>
+      <div class="cnt" style="color:var(--accent);font-weight:700;margin:-4px 0 8px">${tx('swapHint')}</div>
       <div class="pv-wrap" id="preview"></div>
     </div>`;
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);DATESEL=null;load();});
@@ -278,8 +287,9 @@ async function load(){
   try{
     const {start,end}=monthBounds(YM);
     // 시즈노야도 배정(월 겹침): check_in <= 월말 AND check_out > 월초
-    const {data:rms,error}=await supa.from('rooms').select('member_id,event_seq,room_no,check_in,check_out,assigned_pax')
+    const {data:rms,error}=await supa.from('rooms').select('id,inventory_id,member_id,event_seq,room_no,check_in,check_out,assigned_pax')
       .eq('facility',FACILITY).lte('check_in',end).gt('check_out',start).not('member_id','is',null);
+    if(!SHZ_INV){ try{ const {data:inv}=await supa.from('room_inventory').select('id,room_no').eq('facility',FACILITY); SHZ_INV={}; (inv||[]).forEach(x=>{SHZ_INV[x.room_no]=x.id;}); }catch(e){ SHZ_INV={}; } }
     if(error)throw error;
     const rows=(rms||[]).filter(r=>r.member_id && SHZ_ROOMS.includes(r.room_no));
     const mids=rows.map(r=>r.member_id), seqs=rows.map(r=>r.event_seq).filter(Boolean);
@@ -298,7 +308,7 @@ async function load(){
     GUESTS = rows.map(r=>{
       const gm=gmMap[r.member_id]||{};
       const nameKr=String(gm.name_kr||'').trim();
-      return { member_id:r.member_id, event_seq:r.event_seq, room_no:r.room_no,
+      return { id:r.id, invId:r.inventory_id, member_id:r.member_id, event_seq:r.event_seq, room_no:r.room_no,
         ci:String(r.check_in).slice(0,10), co:String(r.check_out).slice(0,10),
         nameKr, nameEn:gm.name_en||'', gender:genMap[r.event_seq+'|'+nameKr]||'', onsen:onSet.has(r.member_id) };
     });
@@ -416,6 +426,39 @@ function bigoFor(date){
   return parts.join('<br>');
 }
 
+// ── 예약표에서 방 맞바꾸기 / 빈 객실 이동 (rooms 직접 수정 · RPC 경유) ──
+//   방 이름 클릭 → 선택(하이라이트) → 다른 방 클릭 = 그 방 팀과 맞바꾸기(빈 방이면 이동).
+//   대상은 그 날짜에 겹치는 팀의 '체류 전체'(각 멤버 배정행). 같은 날짜 안에서만.
+function shzCellClick(room,date){
+  if(!SEL){ if(!cellOcc(room,date).length){ toast(tx('swapPickFirst'),'warn'); return; } SEL={room,date}; renderPreview(); return; }
+  if(SEL.date!==date){ SEL=cellOcc(room,date).length?{room,date}:null; renderPreview(); return; }  // 다른 날짜=새 선택
+  if(SEL.room===room){ SEL=null; renderPreview(); return; }   // 같은 칸=취소
+  swapOrMove(SEL.room, room, date);
+}
+async function swapOrMove(srcRoom,tgtRoom,date){
+  if(!supa || !SHZ_INV){ toast(tx('connFail'),'err'); return; }
+  const srcOcc=cellOcc(srcRoom,date), tgtOcc=cellOcc(tgtRoom,date);
+  if(!srcOcc.length){ SEL=null; renderPreview(); return; }
+  const srcInv=SHZ_INV[srcRoom], tgtInv=SHZ_INV[tgtRoom];
+  if(!srcInv||!tgtInv){ toast(tx('swapNoInv'),'err'); return; }
+  const move = tgtOcc.length===0;
+  const srcIds=srcOcc.map(g=>g.id), tgtIds=tgtOcc.map(g=>g.id);
+  const exAll=new Set(srcIds.concat(tgtIds));
+  // 충돌: 대상 방이 옮겨갈 팀 체류기간에 (서로 외) 다른 팀으로 차 있으면 불가
+  const conflict=(roomNo,rows)=> GUESTS.some(g=> g.room_no===roomNo && !exAll.has(g.id) && rows.some(r=> g.ci<r.co && r.ci<g.co));
+  if(conflict(tgtRoom,srcOcc) || (!move && conflict(srcRoom,tgtOcc))){ toast(tx('swapConflict'),'err'); return; }
+  const repNm=(nameOf(srcOcc[0])||srcOcc[0].nameKr||'');
+  const msg = move ? `${repNm}様 · ${srcRoom} → ${tgtRoom}\n${tx('swapMoveAsk')}` : `${srcRoom} ↔ ${tgtRoom}\n${tx('swapAsk')}`;
+  if(!confirm(msg)) return;
+  try{
+    const {error}=await supa.rpc('shizu_swap_rooms',{
+      p_src_ids:srcIds, p_src_room:srcRoom, p_src_inv:srcInv,
+      p_tgt_ids:(move?[]:tgtIds), p_tgt_room:tgtRoom, p_tgt_inv:tgtInv });
+    if(error)throw error;
+    SEL=null; toast(tx('swapDone'),'ok'); load();
+  }catch(e){ toast(tx('swapFail')+(e.message||e),'err'); }
+}
+
 function renderPreview(){
   const wrap=$('#preview'); if(!wrap)return;
   const ax=axis();
@@ -435,7 +478,7 @@ function renderPreview(){
     html+=`<table class="shz-pv">
       <tr class="shz-pv-zone"><th></th><th colspan="4">本館 <small>¥17,000</small></th><th colspan="3" class="bz">別棟 <small>¥17,000 온천 사전신청제</small></th><th></th></tr>
       <tr class="shz-pv-hd"><th class="shz-pv-dt">${zen(d.getMonth()+1)}／${zen(d.getDate())}<br><span>${SHZ_DOW[d.getDay()]}</span></th>${SHZ_ROOMS.map(r=>`<th${SHZ_BYEOLCHE.includes(r)?' class="bz"':''}><span class="shz-rno">${SHZ_ROOMNO[r]||''}</span>${r}</th>`).join('')}<th class="shz-pv-k">合計</th></tr>
-      <tr><td class="shz-pv-lb">お名前</td>${cells.map(c=>`<td class="shz-pv-nm">${c.name}</td>`).join('')}<td></td></tr>
+      <tr><td class="shz-pv-lb">お名前</td>${SHZ_ROOMS.map((room,ri)=>{const c=cells[ri]; const sel=(SEL&&SEL.room===room&&SEL.date===date); return `<td class="shz-pv-nm shz-swap${sel?' shz-sel':''}" onclick="shzCellClick('${room}','${date}')" title="${cellOcc(room,date).length?'맞바꾸기/이동':'빈 객실로 이동'}">${c.name}</td>`;}).join('')}<td></td></tr>
       <tr><td class="shz-pv-lb">大人</td>${cells.map(c=>`<td>${c.mf}</td>`).join('')}<td class="shz-pv-k">大 ${zen(tot)} 名</td></tr>
       <tr><td class="shz-pv-lb">合計人数</td>${cells.map(c=>`<td>${c.cnt}</td>`).join('')}<td class="shz-pv-k">計 ${zen(tot)} 名</td></tr>
       <tr><td class="shz-pv-lb">連泊</td>${cells.map(c=>`<td>${c.stay}</td>`).join('')}<td class="shz-pv-k">男${zen(tm)} 女${zen(tf)}</td></tr>

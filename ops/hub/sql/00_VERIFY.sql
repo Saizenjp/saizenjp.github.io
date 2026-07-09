@@ -126,6 +126,7 @@ from (
   union all select 64,'64 비고일본어','bookings.remark_ja', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='bookings' and column_name='remark_local_ja') then '✅ 있음' else '❌ 없음 (64)' end
   union all select 65,'65 그룹코드영역','member_codes sel=groupcodes', case when exists(select 1 from pg_policies where schemaname='public' and tablename='member_codes' and policyname='member_codes_sel' and coalesce(qual,'') like '%groupcodes%') then '✅ 적용' else '❌ 미적용 (65)' end
   union all select 66,'66 대표팀','print_overrides.team_group_rep', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='print_overrides' and column_name='team_group_rep') then '✅ 있음' else '❌ 없음 (66)' end
+  union all select 67,'67 시즈맞바꿈','shizu_swap_rooms()', case when exists(select 1 from pg_proc where proname='shizu_swap_rooms') then '✅ 있음' else '❌ 없음 (67)' end
   union all select 58,'58 별주청구','charges.link_ref',      case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='charges' and column_name='link_ref') then '✅ 있음' else '❌ 없음 (58)' end
   union all select 58,'58 별주청구','dinner_addon 트리거',   case when exists(select 1 from pg_trigger where tgname='trg_dinner_addon_charge') then '✅ 있음' else '❌ 없음 (58)' end
   union all select 59,'59 싱글청구','single_charge 트리거',  case when exists(select 1 from pg_trigger where tgname='trg_single_charge_charge') then '✅ 있음' else '❌ 없음 (59)' end
