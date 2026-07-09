@@ -397,29 +397,42 @@ function renderStats(){
 
 function renderOnsenPanel(){
   const el=$('#onsen-panel'); if(!el)return;
-  // 별棟 배정 인원(월내) — member_id 중복 제거
-  const seen=new Set(); const list=[];
+  // 別棟 배정 인원을 팀(event_seq)별로 묶어 '팀 단위' 체크(개인 나열 폐지 — 헷갈림 방지)
+  const byTeam={};
   GUESTS.filter(g=>SHZ_BYEOLCHE.includes(g.room_no) && nightsOf(g).some(d=>d.slice(0,7)===YM))
-    .forEach(g=>{ if(seen.has(g.member_id))return; seen.add(g.member_id); list.push(g); });
-  if(!list.length){ el.innerHTML=`<div class="cnt" style="color:var(--muted)">${tx('onsenEmpty')}</div>`; return; }
-  list.sort((a,b)=>(a.room_no.localeCompare(b.room_no))||(a.ci||'').localeCompare(b.ci||''));
-  el.innerHTML=`<div class="ons-grid">${list.map(g=>{
-    const nm=nameOf(g)||g.nameKr||g.member_id.slice(0,6);
-    return `<label class="ons-item${g.onsen?' on':''}">
-      <input type="checkbox" ${g.onsen?'checked':''} onchange="toggleOnsen('${g.member_id}',this.checked)">
-      <span class="rm">${esc(g.room_no)}</span>
-      <span style="flex:1">${esc(nm)}様</span>
-      <span class="dt">${esc(g.ci.slice(5))}~${esc(g.co.slice(5))}</span>
-    </label>`;
-  }).join('')}</div>`;
+    .forEach(g=>{ (byTeam[g.event_seq]=byTeam[g.event_seq]||[]).push(g); });
+  const teams=Object.keys(byTeam);
+  if(!teams.length){ el.innerHTML=`<div class="cnt" style="color:var(--muted)">${tx('onsenEmpty')}</div>`; return; }
+  const rows=teams.map(seq=>{
+    const ms=byTeam[seq].filter((g,i,a)=>a.findIndex(x=>x.member_id===g.member_id)===i);   // member 중복 제거
+    ms.sort((a,b)=>(a.room_no||'').localeCompare(b.room_no||'')||(a.ci||'').localeCompare(b.ci||''));
+    const rep=ms[0];
+    const nm=(BOOK[seq]&&BOOK[seq].rep_name)||nameOf(rep)||rep.nameKr||String(seq);
+    const rooms=[...new Set(ms.map(m=>m.room_no))].join('·');
+    return { seq, ms, allOn:ms.every(m=>m.onsen), nm, rooms, n:ms.length, ci:rep.ci, co:rep.co };
+  }).sort((a,b)=>(a.rooms||'').localeCompare(b.rooms||'')||(a.ci||'').localeCompare(b.ci||''));
+  el.innerHTML=`<div class="ons-grid">${rows.map(t=>`
+    <label class="ons-item${t.allOn?' on':''}">
+      <input type="checkbox" ${t.allOn?'checked':''} onchange="toggleOnsenTeam('${t.seq}',this.checked)">
+      <span class="rm">${esc(t.rooms)}</span>
+      <span style="flex:1">${esc(t.nm)}様 <small style="color:var(--muted)">${t.n}名</small></span>
+      <span class="dt">${esc((t.ci||'').slice(5))}~${esc((t.co||'').slice(5))}</span>
+    </label>`).join('')}</div>`;
 }
 
-async function toggleOnsen(mid, on){
+// 팀 단위 온천 사전신청 토글 — 그 팀의 別棟 배정 인원 전원에 일괄 적용(개인 shizu_onsen에 기록)
+async function toggleOnsenTeam(seq, on){
   if(!supa)return;
+  const ms=GUESTS.filter(g=>String(g.event_seq)===String(seq) && SHZ_BYEOLCHE.includes(g.room_no) && nightsOf(g).some(d=>d.slice(0,7)===YM));
+  const ids=[...new Set(ms.map(g=>g.member_id))];
   try{
-    if(on){ const {error}=await supa.from('shizu_onsen').upsert({member_id:mid,applied:true,session_ym:YM,updated_by:curUser(),updated_at:new Date().toISOString()},{onConflict:'member_id'}); if(error)throw error; }
-    else { const {error}=await supa.from('shizu_onsen').delete().eq('member_id',mid); if(error)throw error; }
-    GUESTS.forEach(g=>{ if(g.member_id===mid) g.onsen=on; });
+    if(on){
+      const rows=ids.map(id=>({member_id:id,applied:true,session_ym:YM,updated_by:curUser(),updated_at:new Date().toISOString()}));
+      const {error}=await supa.from('shizu_onsen').upsert(rows,{onConflict:'member_id'}); if(error)throw error;
+    }else{
+      const {error}=await supa.from('shizu_onsen').delete().in('member_id',ids); if(error)throw error;
+    }
+    GUESTS.forEach(g=>{ if(ids.includes(g.member_id)) g.onsen=on; });
     renderStats(); renderOnsenPanel(); renderPreview();
   }catch(e){ toast(tx('connFail')+': '+e.message,'err'); renderOnsenPanel(); }
 }
@@ -560,6 +573,7 @@ async function autoAssignShizu(){
     const chunkTeam=(n)=>{ const out=[]; while(n>=2){ out.push(2); n-=2; } if(n===1) out.push(1); return out; };
     const placeTeam=(t)=>{
       const mem=byTeam[t.seq]; if(!mem||!mem.length) return;
+      if(mem.length===3){ holds+=3; return; }   // 3명팀은 2+1 분리배정하지 않고 통째로 미배정(현장 수기)
       const pool=annexPref[t.seq]?POOL_ANNEX:POOL_MAIN;
       const sizes=chunkTeam(mem.length); let idx=0;
       for(const sz of sizes){
