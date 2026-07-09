@@ -87,7 +87,7 @@
 - **`/app/` 탭** (`id="nav-*"` / `id="sec-*"`, ①~⑥ 활성 · ⑦~⑨ 준비중):
   - 입력: `upload` — ファイルアップロード
   - ① `nametag` ネームタグ · ② `aircover` 航空カバー置き場 · ③ `dispatch` 現地手配書 · ④ `dinner` 夕食名前版 · ⑤ `settle` 現地精算表 · ⑥ `shizu` 志津の宿 予約表
-  - ⑦ `transfer` 送迎配車表 · ⑧ `accom` 宿泊配置表 · ⑨ `golf` ゴルフ組合せ表 — **준비중**(`wip` / `wip-badge`)
+  - ~~⑦ `transfer` 送迎配車表 · ⑧ `accom` 宿泊配置表 · ⑨ `golf` ゴルフ組合せ表~~ — **준비중 탭 전면 제거(Min 결정 2026-07)**: 골프 조편성·카트 배정·송영 배차는 **ops로 일원화**(골프=`ops/hub/golf.html` Phase 1 라이브 / 카트=골프 Phase 2 / 송영 배차=ops 백로그). `/app/`엔 orphan JS(`buildTransfer`/`renderGolf` 등)만 잔존하나 내비 미노출. (⑧⑨ 탭은 이전에 이미 제거됨.)
 - **`/ops/` Hub 카드**: 데이터등록(`step1`) · 방배정(`room`) · 인쇄 시스템 링크(`/app/`). *(네임택·항공커버 `nametag.html` 카드는 문서상 예정 — 현재 저장소 미반영.)*
 - 각 표 구조의 정답은 `HDRS.*` 헤더 배열. ⑤ 정산의 **區分 목록(① ラウンド追加 … ⑥)** 은 탭 번호와 무관하니 혼동 금지.
 
