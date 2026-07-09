@@ -241,6 +241,8 @@ function qrDataURL(text){
     return qr.createDataURL(8, 0);   // cellSize 8px, margin 0 (카드 CSS가 26mm로 스케일)
   }catch(_){ return ''; }
 }
+// 손님 폰 카메라로 찍으면 결제내역(bill.html) 이 열리는 URL. 직원 POS 스캔도 ?t= 를 파싱해 호환.
+function billUrl(token){ return new URL('bill.html?t='+encodeURIComponent(token), location.href).href; }
 // 카드 그리드 인쇄(새 창) — QR dataURL을 img로 삽입
 async function printCards(){
   const cards=visibleRows().filter(r=>r.token);
@@ -248,7 +250,7 @@ async function printCards(){
   if(typeof qrcode!=='function'){ toast('QR 라이브러리 로드 실패 — 새로고침 후 다시 시도하세요.','err'); return; }
   const w=window.open('','_blank','width=920,height=950'); if(!w){ toast('팝업이 차단되었습니다.','err'); return; }
   const qmap={};
-  cards.forEach(r=>{ qmap[r.seq]=qrDataURL(r.token); });
+  cards.forEach(r=>{ qmap[r.seq]=qrDataURL(billUrl(r.token)); });   // QR=bill URL(손님 폰=결제내역, POS=?t= 파싱)
   const cardHTML=cards.filter(r=>qmap[r.seq]).map(r=>`<div class="qc">
       <div class="qc-h">
         <div class="qc-name">${esc(r.rep||'-')} <span>様</span></div>
