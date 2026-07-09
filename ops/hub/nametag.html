@@ -302,6 +302,8 @@ async function load(){
         accom:g.accom||'', origin:b.origin||'', accomColor:ACCOM_COLOR[pfx]||'#111'
       };
     }).filter(c=>c.tag||c.kor);
+    // 정렬 앵커 기본값(단독팀=자기 값). 묶음이면 아래에서 대표 기준으로 덮어써 한 블록으로 인접.
+    CELLS.forEach(c=>{ c.sortDep=c.depRaw; c.sortPort=c.port; c.sortAccom=c.accom; c.grpCode=tagCode(c.tag); c.grpNum=tagNum(c.tag); });
     // 대표 지정 묶음: 개인 태그를 대표 기준코드 기반 '연속 개인번호'로(DRな-1Y…DRな-8Y, 대표팀부터).
     if(window.SZCore&&SZCore.orderGroup&&SZCore.personTagN&&SZCore.tagStripSeq){
       const groups={}, repFlag={};
@@ -311,11 +313,14 @@ async function load(){
         const repSeq=teamSeqs.find(s=>repFlag[s]); if(!repSeq)return;
         const repCell=CELLS.find(c=>String(c.eventSeq)===String(repSeq)&&c.tag); if(!repCell)return;
         const base=SZCore.tagStripSeq(repCell.tag);
+        const gcode=tagCode(base);   // 그룹 공통코드(정렬 클러스터 키)
         const meta=teamSeqs.map(s=>{ const c=CELLS.find(x=>String(x.eventSeq)===String(s)); return {event_seq:s,dep:c?c.depRaw:''}; });
         let n=0;
         SZCore.orderGroup(meta,repSeq).forEach(tm=>{
           CELLS.filter(c=>String(c.eventSeq)===String(tm.event_seq)).sort((a,b)=>(a.seq||0)-(b.seq||0))
-            .forEach(c=>{ n++; c.tag=SZCore.personTagN(base,n); });
+            .forEach(c=>{ n++; c.tag=SZCore.personTagN(base,n);
+              // 대표 앵커로 묶음을 한 블록으로 인접(출국지·숙소 갈려도 함께) + 연속 개인번호로 정렬
+              c.grpCode=gcode; c.grpNum=n; c.sortDep=repCell.depRaw; c.sortPort=repCell.port; c.sortAccom=repCell.accom; });
         });
       });
     }
@@ -329,16 +334,14 @@ async function load(){
 // 태그코드(그룹코드)·개인번호 파싱 — "DRな-1Y" → 코드 "DRな" / 번호 1
 function tagCode(t){ return String(t||'').replace(/-\d+[A-Za-z]*$/,''); }
 function tagNum(t){ const m=String(t||'').match(/-(\d+)[A-Za-z]*$/); return m?+m[1]:9999; }
-// 정렬: 날짜 → ICN/PUS → 숙소순 → 같은 코드 팀끼리 묶어(코드순) → 팀 내 개인번호(→팀내순번)
+// 정렬: 앵커(날짜 → ICN/PUS → 숙소 → 코드) → 개인번호. 묶음은 대표 앵커 공유로 한 블록 인접(1Y…8Y).
 function sortCells(a,b){
-  if(a.depRaw!==b.depRaw) return (a.depRaw||'').localeCompare(b.depRaw||'');
-  if(a.port!==b.port) return a.port==='ICN'?-1:1;
-  const ai=ACCOM_ORDER.indexOf(a.accom), bi=ACCOM_ORDER.indexOf(b.accom);
+  if(a.sortDep!==b.sortDep) return (a.sortDep||'').localeCompare(b.sortDep||'');
+  if(a.sortPort!==b.sortPort) return a.sortPort==='ICN'?-1:1;
+  const ai=ACCOM_ORDER.indexOf(a.sortAccom), bi=ACCOM_ORDER.indexOf(b.sortAccom);
   if(ai!==bi) return (ai<0?9:ai)-(bi<0?9:bi);
-  const ac=tagCode(a.tag), bc=tagCode(b.tag);
-  if(ac!==bc) return ac.localeCompare(bc);      // 같은 코드 팀 목록끼리 묶기
-  const an=tagNum(a.tag), bn=tagNum(b.tag);
-  if(an!==bn) return an-bn;                       // 팀 내 개인번호 순
+  if(a.grpCode!==b.grpCode) return String(a.grpCode).localeCompare(String(b.grpCode));   // 같은 코드끼리 묶기
+  if(a.grpNum!==b.grpNum) return a.grpNum-b.grpNum;                                        // 개인번호 순
   return (a.seq||0)-(b.seq||0);
 }
 function filtered(){
