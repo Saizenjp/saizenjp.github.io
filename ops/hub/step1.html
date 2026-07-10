@@ -596,7 +596,7 @@ async function run(){
       });
       ymBySeq[seq]=rowYm;
       if(pax>0 && accom){
-        procMap[seq] = {accom, accomPfx:accomPrefix(accom), pax, repName:String(r['대표고객']||'').trim()};
+        procMap[seq] = {accom, accomPfx:accomPrefix(accom), pax, repName:String(r['대표고객']||'').trim(), dep:birthISO(r['출발일자']), arr:birthISO(r['도착일자'])};
       }
     });
 
@@ -679,27 +679,34 @@ async function run(){
     const NM_PREFIX = ['FA','FB','FF','FG','FH','FJ','FK','FL','FM','FO','FP','FR','FS','FT','FW','FX','FY','FZ'];
     const NM_KANA   = ['あ','ウ','カ','キ','コ','サ','す','セ','た','ち','テ','と','な','ニ','ネ','の','は','ヒ','ふ','ホ','マ','み','ム','め','モ','ヤ','ヨ','ラ','リ','ル','れ','ロ','わ'];
     const NM_POOL   = NM_PREFIX.length * NM_KANA.length;  // 594
-    const nmYear    = String(ym||'').slice(0,4) || String(new Date().getFullYear());
-    const nmAssigned = {};  // event_seq → code (그 해 기존 배정 — 영속)
-    const nmUsed = new Set();
+    // ── F풀 재활용(Phase 2): 코드 예약을 '겹치는 팀'끼리로 한정 → 이미 다녀간(안 겹치는)
+    //   팀의 F코드는 자동 재사용. 594개는 '동시 체류' 기준이라 사실상 소진되지 않음(수동 리셋 불요).
+    const nmAssigned = {};        // event_seq → code (영속: 같은 행사는 같은 코드 유지)
+    const fRanges = {};           // code → [{dep,arr}] (그 코드를 쓰는 팀들의 체류구간)
+    const impYears = [...new Set([...(fileMonths||[]), ym].filter(Boolean).map(m=>String(m).slice(0,4)))];
     try {
-      const { data: ex } = await supa.from('guests')
-        .select('event_seq, group_code')
-        .like('session_ym', nmYear+'-%')
-        .like('group_code', 'F%');
-      (ex||[]).forEach(g=>{ if(g.group_code){ nmAssigned[g.event_seq]=g.group_code; nmUsed.add(g.group_code); } });
-    } catch(e){}
-    function assignNonMemberCode(seq){
-      if(nmAssigned[seq]) return nmAssigned[seq];               // 영속: 같은 행사는 같은 코드 유지
-      const nextIdx = Object.keys(nmAssigned).length;
-      for(let off=0; off<NM_POOL; off++){
-        const idx  = nextIdx + off;
-        // kana 는 18개(prefix 수)마다 1칸 진행해야 594개 전부 생성됨
-        //   (idx%33 으로 하면 gcd(18,33)=3 때문에 198개만 생성되는 버그)
-        const code = NM_PREFIX[idx % NM_PREFIX.length] + NM_KANA[Math.floor(idx / NM_PREFIX.length) % NM_KANA.length];
-        if(!nmUsed.has(code)){ nmAssigned[seq]=code; nmUsed.add(code); return code; }
+      for(const yr of (impYears.length?impYears:[String(ym||'').slice(0,4)])){
+        const { data: ex } = await supa.from('guests')
+          .select('event_seq, group_code, bookings!inner(dep_date,arr_date)')
+          .like('session_ym', yr+'-%')
+          .like('group_code', 'F%');
+        (ex||[]).forEach(g=>{ const c=g.group_code; if(!c) return; const b=g.bookings||{};
+          nmAssigned[g.event_seq]=c;
+          (fRanges[c]=fRanges[c]||[]).push({dep:String(b.dep_date||'').slice(0,10), arr:String(b.arr_date||'').slice(0,10)}); });
       }
-      return null;  // 풀 소진 (594개)
+    } catch(e){}
+    // 두 체류구간 겹침(반개구간 [dep,arr)). 날짜 없으면 안전하게 '겹침'으로 간주(전역 유니크 배정).
+    const _fOv=(d1,a1,d2,a2)=>{ if(!d1||!a1||!d2||!a2) return true; return d1<a2 && d2<a1; };
+    function assignNonMemberCode(seq, dep, arr){
+      if(nmAssigned[seq]) return nmAssigned[seq];               // 영속
+      const reserved = new Set();                                // 이 팀과 겹치는 팀이 쓰는 코드만 예약
+      Object.keys(fRanges).forEach(code=>{ if(fRanges[code].some(r=>_fOv(dep,arr,r.dep,r.arr))) reserved.add(code); });
+      for(let idx=0; idx<NM_POOL; idx++){
+        // kana 는 18개(prefix 수)마다 1칸 진행해야 594개 전부 생성됨(gcd(18,33)=3 버그 회피)
+        const code = NM_PREFIX[idx % NM_PREFIX.length] + NM_KANA[Math.floor(idx / NM_PREFIX.length) % NM_KANA.length];
+        if(!reserved.has(code)){ nmAssigned[seq]=code; (fRanges[code]=fRanges[code]||[]).push({dep,arr}); return code; }
+      }
+      return null;  // 594팀 동시 체류(사실상 불가) = 소진
     }
 
     // ── 그룹코드 xlsx 미업로드 시: member_codes(Supabase)에서 매칭(RPC) — xlsx 없이도 동작 ──
@@ -726,7 +733,7 @@ async function run(){
       const memberCode = (b && codeMap[mkey]) ? codeMap[mkey] : null;  // 회원 매칭
       let gcode = memberCode;
       if(memberCode){ memCnt++; }
-      else { gcode = assignNonMemberCode(seq); if(gcode) nmCnt++; else nmFull++; }
+      else { gcode = assignNonMemberCode(seq, info.dep, info.arr); if(gcode) nmCnt++; else nmFull++; }
       guestRows.push({
         event_seq:seq,
         team_tag: gcode ? `${gcode}-${info.accomPfx}` : null,
