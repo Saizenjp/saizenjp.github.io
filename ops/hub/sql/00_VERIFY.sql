@@ -143,6 +143,8 @@ from (
   union all select 60,'60 석식분리','print_overrides.dinner_split', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='print_overrides' and column_name='dinner_split') then '✅ 있음' else '❌ 없음 (60)' end
   union all select 61,'61 메모RPC','event_note_set()',        case when exists(select 1 from pg_proc where proname='event_note_set') then '✅ 있음' else '❌ 없음 (61)' end
   union all select 62,'62 주문토큰','order_tokens',           case when to_regclass('public.order_tokens') is not null then '✅ 있음' else '❌ 없음 (62)' end
+  union all select 79,'79 회원마스터','member_codes.mem_no',   case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='member_codes' and column_name='mem_no') then '✅ 있음' else '❌ 없음 (79)' end
+  union all select 79,'79 회원마스터','member_key uidx',       case when exists(select 1 from pg_indexes where schemaname='public' and indexname='member_codes_member_key_uidx') then '✅ 있음' else '❌ 없음 (79)' end
 ) t
 order by ord, 항목;
 
