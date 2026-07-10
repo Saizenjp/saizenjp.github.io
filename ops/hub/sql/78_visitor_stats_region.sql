@@ -8,6 +8,8 @@
 --    ② by_accom   = 숙소별 방문(야마나미·쿠주힐즈·간지호텔·시즈노야도 등) × 회원/일반.
 --       숙소 = guests.accom(event_seq 매칭, 팀 숙소). 미지정은 '(미지정)'.
 --    ③ avg_nights = 방문 1건당 평균 체류일(arr_date - dep_date, 인원 가중).
+--    ④ by_grade  = 회원 등급별 분포(회원권구분·고객등급 = grade_raw). 회원만.
+--    ⑤ by_nights = 연박(체류일)별 분포 × 회원/일반. 청소·층 배정 계획 참고.
 --  나머지(total·member·gender·by_age·series·members)·권한(report)·기준 불변.
 --  멱등(create or replace). ⚠ Supabase SQL Editor 수동 실행(또는 MCP).
 -- ============================================================================
@@ -82,6 +84,18 @@ begin
             'nonmember', count(*) filter (where not is_mem),
             'total',     count(*)) as x
         from vis group by coalesce(nullif(accom,''),'(미지정)')) q),'[]'::jsonb),
+    'by_grade', coalesce((select jsonb_agg(x order by (x->>'total')::int desc) from (
+        select jsonb_build_object(
+            'grade', coalesce(grade_raw,'(등급미상)'),
+            'total', count(*)) as x
+        from vis where is_mem group by coalesce(grade_raw,'(등급미상)')) q),'[]'::jsonb),
+    'by_nights', coalesce((select jsonb_agg(x order by (x->>'nights')::int) from (
+        select jsonb_build_object(
+            'nights', nights,
+            'member',    count(*) filter (where is_mem),
+            'nonmember', count(*) filter (where not is_mem),
+            'total',     count(*)) as x
+        from vis where nights > 0 group by nights) q),'[]'::jsonb),
     'by_age', coalesce((select jsonb_agg(x order by x->>'band') from (
         select jsonb_build_object(
             'band', age_band,
