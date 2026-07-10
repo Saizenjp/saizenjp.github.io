@@ -10,6 +10,10 @@
 --    ③ avg_nights = 방문 1건당 평균 체류일(arr_date - dep_date, 인원 가중).
 --    ④ by_grade  = 회원 등급별 분포(회원권구분·고객등급 = grade_raw). 회원만.
 --    ⑤ by_nights = 연박(체류일)별 분포 × 회원/일반. 청소·층 배정 계획 참고.
+--    ⑥ retention = 재방문/신규·기존(리텐션). 사람키=이름+생년(member_key 개념).
+--         distinct=실인원(중복제거) · repeat=기간 내 2회+ 방문 인원(재방문율=repeat/distinct).
+--         신규/기존 = 조회기간 '이전 전체 기록'에 같은 사람(이름+생년)이 있으면 기존, 없으면 신규.
+--         회원/일반 각각(회원신호 하나라도 있으면 회원). ※생년 없는 사람은 이름만으로 근사.
 --  나머지(total·member·gender·by_age·series·members)·권한(report)·기준 불변.
 --  멱등(create or replace). ⚠ Supabase SQL Editor 수동 실행(또는 MCP).
 -- ============================================================================
@@ -63,6 +67,29 @@ begin
     'member',    (select count(*) filter (where is_mem) from vis),
     'nonmember', (select count(*) filter (where not is_mem) from vis),
     'avg_nights', (select round(avg(nights)::numeric, 1) from vis where nights > 0),
+    'retention', (
+      with persons as (
+        select coalesce(name_kr,'') nm, birth, bool_or(is_mem) is_mem, count(*) visits
+        from vis where coalesce(name_kr,'') <> '' group by coalesce(name_kr,''), birth
+      ),
+      prior as (
+        select distinct coalesce(pa.name_kr,'') nm, pa.birth
+        from passengers pa join bookings b on b.event_seq = pa.event_seq
+        where b.dep_date < p_from and coalesce(pa.name_kr,'') <> ''
+      ),
+      pn as (
+        select pe.is_mem, pe.visits, (p.nm is not null) as ret
+        from persons pe left join prior p on p.nm = pe.nm and p.birth is not distinct from pe.birth
+      )
+      select jsonb_build_object(
+        'distinct', (select count(*) from pn),
+        'repeat',   (select count(*) filter (where visits >= 2) from pn),
+        'new_mem',  (select count(*) filter (where is_mem and not ret) from pn),
+        'ret_mem',  (select count(*) filter (where is_mem and ret) from pn),
+        'new_non',  (select count(*) filter (where not is_mem and not ret) from pn),
+        'ret_non',  (select count(*) filter (where not is_mem and ret) from pn)
+      )
+    ),
     'gender', (select jsonb_build_object(
         'm_mem', count(*) filter (where gd = 'M' and is_mem),
         'f_mem', count(*) filter (where gd = 'F' and is_mem),
