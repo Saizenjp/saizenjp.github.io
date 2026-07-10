@@ -70,7 +70,7 @@
 <body data-so-area="print">
 <div class="topbar so-bar">
   <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
-  <span class="step">注文QRカード / 주문 QR카드</span>
+  <span class="step" id="page-step">注文QRカード</span>
   <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
   <div class="grow so-spacer"></div>
   <div class="so-controls">
@@ -113,26 +113,77 @@ function shiftYM(ym,n){ let [y,m]=ym.split('-').map(Number); m+=n; while(m<1){m+
 function fmtMD(iso){ if(!iso) return ''; const p=String(iso).slice(0,10).split('-'); return p.length===3?`${+p[1]}/${+p[2]}`:iso; }
 function accomOrd(a){ const i=ACCOM_ORDER.indexOf(a); return i<0?99:i; }
 
+// ── i18n (일본어 기본 + 한국어 + 영어) ──
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+const L={
+  ja:{ pageStep:'注文QRカード', connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connRetry:'接続失敗 · 再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL·key 必要', needLogin:'ログイン必要', connFailToast:msg=>`接続失敗: ${msg}`,
+    connHint:'お客様が注文時に提示するチーム別QRカードを印刷します。チェックイン時にお客様がスマホで撮影して保管 → 注文時にPOSでスキャン。',
+    waitConn:'接続後に表示されます。', loginNeeded:'ログインが必要です。ホームでログイン後、再度接続してください。',
+    panelH:'注文QRカード印刷',
+    panelDesc:'チェックインチームを選び <b>チーム別ミニQRカード</b> を印刷します(A4に複数枚)。お客様がスマホで撮影して保管 → 注文時にPOSでスキャンすると、そのチームが自動選択されます。カードには名前・QR・案内文のみ入ります。',
+    printBtn:'🖨 QRカード プレビュー', arrLbl:'入国日', accomLbl:'宿泊', allChip:'全体',
+    loading:'読込中…', noMonth:'今月のデータなし', loadFail:'読込失敗', loadFailToast:msg=>`読込失敗: ${msg}`,
+    statCount:(v,t,nt)=>`${v} / ${t}チーム${nt?` · ⚠ トークンなし ${nt}`:''}`,
+    noData:'今月のデータがありません。', noMatch:'選択条件に合うチームがありません。',
+    pvNoTok:'⚠ QRトークンなし(発行権限が必要)', paxUnit:'名',
+    noCards:'印刷するカードがありません(トークンなし)。', qrLibFail:'QRライブラリ読込失敗 — 再読み込み後に再度お試しください。', popupBlocked:'ポップアップがブロックされました。',
+    teamUnit:'チーム' },
+  ko:{ pageStep:'주문 QR카드', connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connRetry:'연결 실패 · 재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요', connFailToast:msg=>`연결 실패: ${msg}`,
+    connHint:'손님이 주문 때 제시할 팀별 QR 카드를 인쇄합니다. 체크인 때 손님이 폰으로 찍어 보관 → 주문 시 POS 스캔.',
+    waitConn:'연결 후 표시됩니다.', loginNeeded:'로그인이 필요합니다. 홈에서 로그인 후 다시 연결하세요.',
+    panelH:'주문 QR카드 인쇄',
+    panelDesc:'체크인 팀을 골라 <b>팀별 미니 QR 카드</b>를 인쇄합니다(A4에 여러 장). 손님이 폰으로 찍어 보관 → 주문 때 POS에서 스캔하면 그 팀이 자동 선택됩니다. 카드엔 이름·QR·안내문만 담깁니다.',
+    printBtn:'🖨 QR카드 미리보기', arrLbl:'입국일', accomLbl:'숙소', allChip:'전체',
+    loading:'로딩…', noMonth:'이 달 데이터 없음', loadFail:'로드 실패', loadFailToast:msg=>`로드 실패: ${msg}`,
+    statCount:(v,t,nt)=>`${v} / ${t}팀${nt?` · ⚠ 토큰없음 ${nt}`:''}`,
+    noData:'이 달 데이터가 없습니다.', noMatch:'선택 조건에 맞는 팀이 없습니다.',
+    pvNoTok:'⚠ QR 토큰 없음(발급 권한 필요)', paxUnit:'名',
+    noCards:'인쇄할 카드가 없습니다(토큰 없음).', qrLibFail:'QR 라이브러리 로드 실패 — 새로고침 후 다시 시도하세요.', popupBlocked:'팝업이 차단되었습니다.',
+    teamUnit:'팀' },
+  en:{ pageStep:'Order QR cards', connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connRetry:'Failed · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required', connFailToast:msg=>`Connection failed: ${msg}`,
+    connHint:'Print per-team QR cards that guests present when ordering. Guests scan with their phone at check-in to keep it → POS scans it when ordering.',
+    waitConn:'Shown after connecting.', loginNeeded:'Login required. Log in from Home, then connect again.',
+    panelH:'Print order QR cards',
+    panelDesc:'Pick check-in teams and print <b>per-team mini QR cards</b> (several per A4). Guests photograph and keep it → scanning it at the POS auto-selects that team when ordering. Cards contain only name, QR and instructions.',
+    printBtn:'🖨 QR card preview', arrLbl:'Arrival', accomLbl:'Stay', allChip:'All',
+    loading:'Loading…', noMonth:'No data this month', loadFail:'Load failed', loadFailToast:msg=>`Load failed: ${msg}`,
+    statCount:(v,t,nt)=>`${v} / ${t} teams${nt?` · ⚠ no token ${nt}`:''}`,
+    noData:'No data this month.', noMatch:'No teams match the selection.',
+    pvNoTok:'⚠ No QR token (issue permission required)', paxUnit:'',
+    noCards:'No cards to print (no token).', qrLibFail:'QR library failed to load — refresh and try again.', popupBlocked:'Pop-up was blocked.',
+    teamUnit:' teams' }
+};
+function tx(k,...a){ const d=L[lang()]||L.ja; let v=d[k]; if(v===undefined) v=L.ja[k]; if(v===undefined) return k; return (typeof v==='function')?v(...a):v; }
+function applyStatic(){
+  const st=$('#page-step'); if(st) st.textContent=tx('pageStep');
+  const hint=document.querySelector('.conn .hint'); if(hint) hint.textContent=tx('connHint');
+  const tw=$('#t-wait'); if(tw) tw.textContent=tx('waitConn');
+  if(!supa){ const cb=$('#btn-connect'); if(cb) cb.textContent=tx('connect'); const cs=$('#conn-state'); if(cs) cs.textContent=tx('notConn'); }
+}
+
 async function connect(){
   const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
-  if(!url||!key){ setConn('URL·key 필요','err'); return; }
+  if(!url||!key){ setConn(tx('needUrlKey'),'err'); return; }
   localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
-  const btn=$('#btn-connect'); btn.disabled=true; btn.textContent='연결 중…';
+  const btn=$('#btn-connect'); btn.disabled=true; btn.textContent=tx('connecting');
   try{
     supa=window.supabase.createClient(url,key);
     const {data:sess}=await supa.auth.getSession();
-    if(!sess||!sess.session){ setConn('로그인 필요','err'); btn.textContent='연결'; btn.disabled=false;
-      $('#content').innerHTML='<div class="panel"><div class="deny">로그인이 필요합니다. 홈에서 로그인 후 다시 연결하세요.</div></div>'; return; }
-    setConn('연결됨','ok'); btn.textContent='✓ 연결됨'; btn.disabled=false;
+    if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect'); btn.disabled=false;
+      $('#content').innerHTML=`<div class="panel"><div class="deny">${tx('loginNeeded')}</div></div>`; return; }
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn'); btn.disabled=false;
     YM=YM||thisYM(); renderUI(); load();
-  }catch(e){ setConn('연결 실패','err'); btn.textContent='연결 실패 · 재시도'; btn.disabled=false; supa=null; toast('연결 실패: '+e.message,'err'); }
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connRetry'); btn.disabled=false; supa=null; toast(tx('connFailToast',e.message),'err'); }
 }
 
 function renderUI(){
   $('#content').innerHTML=`
     <div class="panel">
-      <h3>주문 QR카드 인쇄</h3>
-      <div class="desc">체크인 팀을 골라 <b>팀별 미니 QR 카드</b>를 인쇄합니다(A4에 여러 장). 손님이 폰으로 찍어 보관 → 주문 때 POS에서 스캔하면 그 팀이 자동 선택됩니다. 카드엔 이름·QR·안내문만 담깁니다.</div>
+      <h3>${tx('panelH')}</h3>
+      <div class="desc">${tx('panelDesc')}</div>
       <div class="row">
         <div class="ymctrl">
           <button class="btn sm ghost" id="ym-prev" type="button">◀</button>
@@ -141,10 +192,10 @@ function renderUI(){
         </div>
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
-        <button class="btn" id="btn-print" type="button" disabled>🖨 QR카드 미리보기</button>
+        <button class="btn" id="btn-print" type="button" disabled>${tx('printBtn')}</button>
       </div>
-      <div class="row" style="margin-top:10px"><span class="lbl">入国日</span><div id="datechips" class="row"></div></div>
-      <div class="row" style="margin-top:8px"><span class="lbl">숙소</span><div id="accomchips" class="row"></div></div>
+      <div class="row" style="margin-top:10px"><span class="lbl">${tx('arrLbl')}</span><div id="datechips" class="row"></div></div>
+      <div class="row" style="margin-top:8px"><span class="lbl">${tx('accomLbl')}</span><div id="accomchips" class="row"></div></div>
     </div>
     <div class="panel"><div id="preview"></div></div>`;
   $('#ym-prev').addEventListener('click',()=>{ YM=shiftYM(YM,-1); load(); });
@@ -171,12 +222,12 @@ async function ensureTokens(seqs){
 
 async function load(){
   if(!supa) return;
-  $('#stat').textContent='로딩…'; $('#btn-print').disabled=true; $('#ym-label').textContent=YM;
+  $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true; $('#ym-label').textContent=YM;
   try{
     const {data:bs,error:e1}=await supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date').eq('session_ym',YM);
     if(e1) throw e1;
     const seqs=(bs||[]).map(b=>b.event_seq);
-    if(!seqs.length){ ROWS=[]; DATESEL.clear(); ACCOMSEL.clear(); $('#stat').textContent='이 달 데이터 없음'; renderChips(); renderPreview(); return; }
+    if(!seqs.length){ ROWS=[]; DATESEL.clear(); ACCOMSEL.clear(); $('#stat').textContent=tx('noMonth'); renderChips(); renderPreview(); return; }
     const GMAP={};
     for(let i=0;i<seqs.length;i+=300){
       const chunk=seqs.slice(i,i+300);
@@ -192,13 +243,13 @@ async function load(){
     // 숙소 기본선택 = 야마나미·쿠주힐즈(그 달에 있는 것만). 다른 페이지와 동일.
     ACCOMSEL=new Set(['야마나미리조트','쿠주힐즈'].filter(a=>ROWS.some(r=>r.accom===a)));
     renderChips(); renderPreview();
-  }catch(e){ $('#stat').textContent='로드 실패'; toast('로드 실패: '+e.message,'err'); }
+  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFailToast',e.message),'err'); }
 }
 
 function renderChips(){
   const dates=[...new Set(ROWS.map(r=>r.dep).filter(Boolean))].sort();
   const accoms=[...new Set(ROWS.map(r=>r.accom).filter(Boolean))].sort((a,b)=>accomOrd(a)-accomOrd(b));
-  const allLbl=lang()==='ja'?'全体':lang()==='en'?'All':'전체';
+  const allLbl=tx('allChip');
   $('#datechips').innerHTML = `<button type="button" class="chip${DATESEL.size?'':' on'}" data-date="__all">${allLbl}</button>`
     + dates.map(d=>`<button type="button" class="chip${DATESEL.has(d)?' on':''}" data-date="${esc(d)}">${esc(fmtMD(d))}</button>`).join('');
   $('#accomchips').innerHTML = `<button type="button" class="chip${ACCOMSEL.size?'':' on'}" data-accom="__all">${allLbl}</button>`
@@ -221,16 +272,16 @@ function visibleRows(){ return ROWS.filter(pass); }
 function renderPreview(){
   const vis=visibleRows();
   const noTok=vis.filter(r=>!r.token).length;
-  $('#stat').textContent = ROWS.length?`${vis.length} / ${ROWS.length}팀${noTok?` · ⚠ 토큰없음 ${noTok}`:''}`:'';
+  $('#stat').textContent = ROWS.length?tx('statCount',vis.length,ROWS.length,noTok):'';
   $('#btn-print').disabled = !vis.some(r=>r.token);
-  if(!ROWS.length){ $('#preview').innerHTML='<div class="deny">이 달 데이터가 없습니다.</div>'; return; }
-  if(!vis.length){ $('#preview').innerHTML='<div class="deny">선택 조건에 맞는 팀이 없습니다.</div>'; return; }
+  if(!ROWS.length){ $('#preview').innerHTML=`<div class="deny">${tx('noData')}</div>`; return; }
+  if(!vis.length){ $('#preview').innerHTML=`<div class="deny">${tx('noMatch')}</div>`; return; }
   const g=document.createElement('div'); g.className='pv-grid';
   g.innerHTML=vis.map(r=>`<div class="pv-card">
     <div class="pv-tag">${esc(r.tag)}</div>
     <div class="pv-rep">${esc(r.rep||'-')} 様</div>
-    <div class="pv-sub">${esc(r.accom||'')} · ${r.pax}名 · ${fmtMD(r.dep)}~${fmtMD(r.arr)}</div>
-    ${r.token?'':'<div class="pv-no">⚠ QR 토큰 없음(발급 권한 필요)</div>'}
+    <div class="pv-sub">${esc(r.accom||'')} · ${r.pax}${tx('paxUnit')} · ${fmtMD(r.dep)}~${fmtMD(r.arr)}</div>
+    ${r.token?'':`<div class="pv-no">${tx('pvNoTok')}</div>`}
   </div>`).join('');
   $('#preview').innerHTML=''; $('#preview').appendChild(g);
 }
@@ -247,9 +298,9 @@ function billUrl(token){ return new URL('bill.html?t='+encodeURIComponent(token)
 // 카드 그리드 인쇄(새 창) — QR dataURL을 img로 삽입
 async function printCards(){
   const cards=visibleRows().filter(r=>r.token);
-  if(!cards.length){ toast('인쇄할 카드가 없습니다(토큰 없음).','err'); return; }
-  if(typeof qrcode!=='function'){ toast('QR 라이브러리 로드 실패 — 새로고침 후 다시 시도하세요.','err'); return; }
-  const w=window.open('','_blank','width=920,height=950'); if(!w){ toast('팝업이 차단되었습니다.','err'); return; }
+  if(!cards.length){ toast(tx('noCards'),'err'); return; }
+  if(typeof qrcode!=='function'){ toast(tx('qrLibFail'),'err'); return; }
+  const w=window.open('','_blank','width=920,height=950'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
   const qmap={};
   cards.forEach(r=>{ qmap[r.seq]=qrDataURL(billUrl(r.token)); });   // QR=bill URL(손님 폰=결제내역, POS=?t= 파싱)
   const cardHTML=cards.filter(r=>qmap[r.seq]).map(r=>`<div class="qc">
@@ -282,7 +333,7 @@ async function printCards(){
   .qc-brand{position:absolute;bottom:2.2mm;font-size:6.5pt;color:#9aa;letter-spacing:.5px}
   @media print{ @page{size:A4 portrait;margin:0} body{background:#fff} .bar{display:none} .grid{padding:8mm;gap:5mm} .qc{page-break-inside:avoid} }
 </style></head><body>
-  <div class="bar"><h1>注文QRカード / 주문 QR카드</h1><div class="meta">${today} ・ ${cards.length}팀</div>
+  <div class="bar"><h1>注文QRカード / 주문 QR카드</h1><div class="meta">${today} ・ ${cards.length}${tx('teamUnit')}</div>
     <div style="flex:1"></div>
     <button onclick="window.print()">🖨 ${lang()==='ja'?'印刷':lang()==='en'?'Print':'인쇄'}</button>
     <button class="x" onclick="window.close()">✕ ${lang()==='ja'?'閉じる':lang()==='en'?'Close':'닫기'}</button>
@@ -293,8 +344,9 @@ async function printCards(){
 }
 
 $('#btn-connect').addEventListener('click',connect);
-// 언어 토글 시 토글칩(전체)·미리보기를 언어별로 다시 그림
-window.onSaizenLangChange=function(){ try{ if(ROWS.length){ renderChips(); renderPreview(); } }catch(e){} };
+// 언어 토글 시 정적 chrome + 패널·칩·미리보기를 언어별로 다시 그림
+window.onSaizenLangChange=function(){ try{ applyStatic(); }catch(e){} try{ if(supa){ renderUI(); $('#ym-label').textContent=YM||''; renderChips(); renderPreview(); } }catch(e){} };
+applyStatic();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value) connect();
 </script>
