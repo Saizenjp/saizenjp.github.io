@@ -147,7 +147,7 @@ const L={
     fobPh:'キーホルダー番号(例 K001)', bindBtn:'紐付け(バインド)', p2hint:'キーホルダーに印刷された番号を入力(またはスキャナで読取)',
     p3h:'③ 現在の紐付け', bindAfter:'紐付け後に表示されます。', noActive:'有効な紐付けはありません。',
     p4h:'④ キーホルダー QRラベル出力 (初回のみ)', p4desc:'物理キーホルダーに貼るQRラベルを作成します。接頭 + 開始番号 + 個数で生成 → 印刷。',
-    startPh:'開始', countPh:'個数', gen:'生成', print:'印刷',
+    startPh:'開始', countPh:'個数', gen:'生成', print:'🖨 QRラベル プレビュー',
     teamWord:'チーム', teamPrefix:'チーム',
     thFob:'キーホルダー', thTeam:'チーム', thTime:'紐付け時刻', cntUnit:'件',
     unbindBtn:'解除',
@@ -166,7 +166,7 @@ const L={
     fobPh:'키홀더 번호(예 K001)', bindBtn:'연결(바인딩)', p2hint:'키홀더에 인쇄된 번호를 입력(또는 스캐너로 찍기)',
     p3h:'③ 현재 바인딩', bindAfter:'연결 후 표시됩니다.', noActive:'활성 바인딩이 없습니다.',
     p4h:'④ 키홀더 QR 라벨 출력 (최초 1회)', p4desc:'물리 키홀더에 붙일 QR 라벨을 만듭니다. 접두 + 시작번호 + 개수로 생성 → 인쇄.',
-    startPh:'시작', countPh:'개수', gen:'생성', print:'인쇄',
+    startPh:'시작', countPh:'개수', gen:'생성', print:'🖨 QR 라벨 미리보기',
     teamWord:'팀', teamPrefix:'팀',
     thFob:'키홀더', thTeam:'팀', thTime:'연결시각', cntUnit:'건',
     unbindBtn:'해제',
@@ -185,7 +185,7 @@ const L={
     fobPh:'Key holder no. (e.g. K001)', bindBtn:'Bind', p2hint:'Enter the number printed on the key holder (or scan it)',
     p3h:'③ Current bindings', bindAfter:'Shown after binding.', noActive:'No active bindings.',
     p4h:'④ Print key holder QR labels (one-time)', p4desc:'Create QR labels for physical key holders. Generate by prefix + start no. + count → print.',
-    startPh:'Start', countPh:'Count', gen:'Generate', print:'Print',
+    startPh:'Start', countPh:'Count', gen:'Generate', print:'🖨 QR label preview',
     teamWord:' teams', teamPrefix:'Team ',
     thFob:'Key holder', thTeam:'Team', thTime:'Bound at', cntUnit:' items',
     unbindBtn:'Unbind',
@@ -321,6 +321,30 @@ async function unbind(id){
 }
 
 // ── QR 라벨 출력 ──
+function printLabels(){
+  const inner=$('#labels').innerHTML;
+  if(!inner.trim()){ toast(lang()==='ja'?'先に生成してください':lang()==='en'?'Generate first':'먼저 생성하세요','warn'); return; }
+  const PL=lang()==='ja'?'印刷':lang()==='en'?'Print':'인쇄', CL=lang()==='ja'?'閉じる':lang()==='en'?'Close':'닫기';
+  const title=lang()==='ja'?'QRラベル':lang()==='en'?'QR labels':'QR 라벨';
+  const css=`<style>
+    @page{size:A4 portrait;margin:8mm}
+    *{box-sizing:border-box}
+    body{font-family:'Pretendard','Malgun Gothic',system-ui,sans-serif;margin:0}
+    .lp-bar{position:sticky;top:0;background:#fff;border-bottom:2px solid #647548;box-shadow:0 2px 8px rgba(0,0,0,.12);padding:10px 16px;display:flex;gap:10px;align-items:center}
+    .lp-bar b{flex:1;font-size:14px;color:#1a2540}
+    .lp-bar button{padding:8px 18px;border:none;border-radius:7px;font-size:14px;font-weight:800;cursor:pointer}
+    .lp-print{background:#15803D;color:#fff}.lp-close{background:#e5e7e0;color:#444}
+    .labels{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:12px}
+    .label{border:1px dashed #999;border-radius:8px;padding:10px;text-align:center;background:#fff;break-inside:avoid}
+    .label img{width:120px;height:120px}
+    .label .lc{font-family:'SFMono-Regular',Consolas,monospace;font-weight:800;font-size:14px;margin-top:5px}
+    @media print{.lp-bar{display:none}}
+  </style>`;
+  const w=window.open('','_blank'); if(!w){ toast(lang()==='ja'?'ポップアップがブロックされました':lang()==='en'?'Pop-up blocked':'팝업이 차단되었습니다','err'); return; }
+  const bar=`<div class="lp-bar"><b>${title}</b><button class="lp-print" onclick="window.print()">🖨 ${PL}</button><button class="lp-close" onclick="window.close()">✕ ${CL}</button></div>`;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title>${css}</head><body>${bar}<div class="labels">${inner}</div></body></html>`);
+  w.document.close(); try{w.focus();}catch(e){}
+}
 function genLabels(){
   const pfx=$('#lp-prefix').value.trim(); const start=parseInt($('#lp-start').value,10)||1; const cnt=Math.min(200,parseInt($('#lp-count').value,10)||1);
   const box=$('#labels'); box.innerHTML='';
@@ -343,7 +367,7 @@ $('#btn-bind').addEventListener('click',doBind);
 $('#fob').addEventListener('keydown',e=>{if(e.key==='Enter')doBind();});
 $('#btn-refresh').addEventListener('click',loadBindings);
 $('#btn-gen').addEventListener('click',genLabels);
-$('#btn-print').addEventListener('click',()=>window.print());
+$('#btn-print').addEventListener('click',printLabels);
 
 // 언어 토글 시 정적 라벨 + 동적 목록 재렌더
 window.onSaizenLangChange=function(){ applyStatic(); if(teams.length) renderTeams(); if(supa) loadBindings(); };
