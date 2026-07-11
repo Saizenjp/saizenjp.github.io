@@ -707,25 +707,26 @@ async function autoAssignShizu(){
     // 점유 = 수기 배정(manual) + 이번 배치(pending)  (auto 기존분은 정리되므로 제외)
     const occ=(room,ci,co)=>{ let n=0; manual.forEach(g=>{ if(g.room_no===room && g.ci<co && ci<g.co) n++; }); pending.forEach(p=>{ if(p.room===room && p.ci<co && ci<p.co) n+=p.cnt; }); return n; };
     const rows=[]; let holds=0;
-    // 무조건 2인 1실: 2명씩 묶고, 남는 1명은 1인 1실.  예 2→[2] · 3→[2,1] · 4→[2,2] · 5→[2,2,1]
-    const chunkTeam=(n)=>{ const out=[]; while(n>=2){ out.push(2); n-=2; } if(n===1) out.push(1); return out; };
+    // 자동배정 = 2인 1실 페어만. 홀수로 남는 1명은 방에 억지로 안 넣고 미배정(현장에서 3인방으로 수기 추가).
+    //   예 2→[2] · 3→[2]+1미배정 · 4→[2,2] · 5→[2,2]+1미배정  (한 방에 3명 몰지 않음 — Min 결정)
+    const chunkTeam=(n)=>{ const pairs=[]; while(n>=2){ pairs.push(2); n-=2; } return {pairs, leftover:n}; };  // leftover = 0 또는 1
     const placeTeam=(t)=>{
       const mem=byTeam[t.seq]; if(!mem||!mem.length) return;
-      if(mem.length===3){ holds+=3; return; }   // 3명팀은 2+1 분리배정하지 않고 통째로 미배정(현장 수기)
       const pool=annexPref[t.seq]?POOL_ANNEX:POOL_MAIN;
-      const sizes=chunkTeam(mem.length); let idx=0;
-      for(const sz of sizes){
+      const {pairs,leftover}=chunkTeam(mem.length); let idx=0;
+      for(const sz of pairs){
         const chunk=mem.slice(idx,idx+sz); idx+=sz; let placed=false;
         for(const room of pool){
           const inv=SHZ_INV[room]; if(!inv) continue;
           if(roomClosed(room,t.dep,t.arr)) continue;         // 폐쇄 제외
-          if(occ(room,t.dep,t.arr)===0){                     // 빈 방만(팀 혼합 방지)
+          if(occ(room,t.dep,t.arr)===0){                     // 빈 방만(팀 혼합 방지·남의 방 3번째 안 끼움)
             chunk.forEach(mid=>rows.push({member_id:mid,inventory_id:inv,room_no:room,check_in:t.dep,check_out:t.arr}));
             pending.push({room,ci:t.dep,co:t.arr,cnt:chunk.length}); placed=true; break;
           }
         }
         if(!placed) holds+=chunk.length;   // 방 부족 = 미배정(未N)
       }
+      holds += leftover;   // 홀수로 남는 1명 = 미배정(자동으론 3인방 안 만듦, 현장 수기)
     };
     const sorted=teams.slice().sort((a,b)=>a.seq-b.seq);
     sorted.filter(t=>annexPref[t.seq]).forEach(placeTeam);   // 별채 선호팀 먼저(별채 확보)
