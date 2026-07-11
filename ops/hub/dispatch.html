@@ -209,9 +209,11 @@ function dispatchRoomTypeJp(rt){ const m={'호텔 트윈':'ホテルツイン','
 function dispatchCourseSummary(d){ const courses=[...new Set((d.golf||[]).map(g=>g.course).filter(Boolean))]; return courses.length?courses.join(' ・ '):'ラウンドなし'; }
 const DISPATCH_BOLD_KW=['체크인','체크아웃','얼리','레이트','알러지','알레르기','채식','비건','휠체어','거동','픽업','송영','차량','룸업','업그레이드','생일','기념일','캐디','카트','vip','귀빈','추가','별도','요청'];
 function bigoSegments(text,alwaysBold){ if(!text)return []; return String(text).split(/(\n|\/)/).map(seg=>{ if(seg==='\n'||seg==='/')return {t:seg,b:false}; if(alwaysBold)return {t:seg,b:seg.trim()!==''}; const low=seg.toLowerCase(); const hit=DISPATCH_BOLD_KW.some(kw=>low.includes(kw)); return {t:seg,b:hit&&seg.trim()!==''}; }); }
-// ops 비고: bookings.remark + event_notes(remarks/memo). 현지 중요(remarks) 굵게 → 비고(remark) 키워드 굵게 → 【現地メモ】(memo)
+// ops 비고: 엠클릭 현지비고(remark_local) + event_notes(remarks) + bookings.remark. 현지 중요(현지비고·remarks) 굵게 → 비고(remark) 키워드 굵게 → 【現地メモ】(memo)
+//   ⚠ remark_local = 엠클릭 '현지 비고'(특식·온천·별관 등 현장 필수) — step1이 저장하나 이전엔 수배서에 미표시 → 여기 포함(굵게).
 function dispatchNoteSegments(rec){ const segs=[]; const nl=()=>{ if(segs.length)segs.push({t:'\n',b:false}); };
-  const remarks=String(rec.noteRemarks||'').trim(); const bigo=String(rec.remark||'').trim(); const memo=String(rec.noteMemo||'').trim();
+  const localBigo=String(rec.remarkLocal||'').trim(); const remarks=String(rec.noteRemarks||'').trim(); const bigo=String(rec.remark||'').trim(); const memo=String(rec.noteMemo||'').trim();
+  if(localBigo){ nl(); segs.push(...bigoSegments(localBigo,true)); }
   if(remarks){ nl(); segs.push(...bigoSegments(remarks,true)); }
   if(bigo){ nl(); segs.push(...bigoSegments(bigo,false)); }
   // ※現地メモ(memo)는 参考事項에서 분리 → 아래 별도 '現地メモ' 박스로 출력
@@ -347,7 +349,7 @@ async function load(){
   $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true;
   try{
     const {data:bs,error:e1}=await supa.from('bookings')
-      .select('event_seq,event_no,rep_name,member_type,dep_date,arr_date,nights_label,origin,airline,product_name,pax,remark,team_label')
+      .select('event_seq,event_no,rep_name,member_type,dep_date,arr_date,nights_label,origin,airline,product_name,pax,remark,remark_local,team_label')
       .eq('session_ym',YM);
     if(e1)throw e1;
     const BMAP={}; (bs||[]).forEach(b=>{BMAP[b.event_seq]=b;});
@@ -404,7 +406,7 @@ async function load(){
       const isPUS=SZCore.isPus(origin, depFlight);  // 출발지 PUS/ICN = saizen-core 단일 진실원(ZE/TW·부산/김해)
       const _tlabel=b.team_label||note.team_label||'', _tg=(OMAP[seq]&&OMAP[seq].team_group)||'', _tgRep=!!(OMAP[seq]&&OMAP[seq].team_group_rep);
       const rec={ eventSeq:seq, eventNo:b.event_no||'', repName:b.rep_name||'', memberType:b.member_type||'', dep, arr, nights, pax:b.pax||g.pax||0,
-        accom:g.accom||'', roomType:'', teamName:_tg||_tlabel, teamGroup:_tg, teamGroupRep:_tgRep, _teamLabelBase:_tlabel, remark:b.remark||'', noteRemarks:note.remarks||'', noteMemo:note.memo||'',
+        accom:g.accom||'', roomType:'', teamName:_tg||_tlabel, teamGroup:_tg, teamGroupRep:_tgRep, _teamLabelBase:_tlabel, remark:b.remark||'', remarkLocal:b.remark_local||'', noteRemarks:note.remarks||'', noteMemo:note.memo||'',
         prodName:b.product_name||'' };
       const golf=dispatchGolfRows(rec,isPUS).map(x=>({...x,tee:''}));
       const autoRoom=rec.pax>0?(Math.ceil(rec.pax/2)+'室 (2人1室)'):'-';
