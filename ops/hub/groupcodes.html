@@ -105,8 +105,8 @@ const L={
     // 회원 추가/수정
     addTitle:'会員追加 / 修正',
     addDesc:'キー = <b>氏名 + 生年6桁</b>(例: 황보관현590611)。同じキーなら上書き(修正)します。',
-    phName:'氏名', phBirth:'生年6(590611)', clsNone:'(等級なし)', phCode:'← 空きコード選択',
-    pickBtn:'🔍 空きコード選択', save:'保存', clear:'クリア',
+    phName:'氏名', phBirth:'生年6(590611)', clsNone:'(等級なし)', phCode:'(グループコード)',
+    pickBtn:'🔍 空きコード選択', save:'保存', clear:'クリア', recode:'コード変更', recodeDone:(nm,c)=>`${nm} → ${c} 変更`,
     addHint:'グループコードは <b>[🔍 空きコード選択]</b> で等級別の空き/使用済コード表から選びます(直接入力ではなく)。',
     // 일괄 등록
     impTitle:'一括登録 (xlsx) — 初回1回',
@@ -151,8 +151,8 @@ const L={
     masterRows:'행', masterMaster:'마스터', masterLearned:'학습', masterFirst:'최초 등록', masterLast:'최근 갱신',
     addTitle:'회원 추가 / 수정',
     addDesc:'키 = <b>성명 + 생년6자리</b>(예: 황보관현590611). 같은 키면 덮어씁니다(수정).',
-    phName:'성명', phBirth:'생년6(590611)', clsNone:'(등급 없음)', phCode:'← 빈코드 선택',
-    pickBtn:'🔍 빈코드 선택', save:'저장', clear:'비우기',
+    phName:'성명', phBirth:'생년6(590611)', clsNone:'(등급 없음)', phCode:'(그룹코드)',
+    pickBtn:'🔍 빈코드 선택', save:'저장', clear:'비우기', recode:'코드 변경', recodeDone:(nm,c)=>`${nm} → ${c} 변경`,
     addHint:'그룹코드는 <b>[🔍 빈코드 선택]</b>으로 등급별 빈/채워진 코드 표에서 고릅니다(직접 타이핑 대신).',
     impTitle:'일괄 등록 (xlsx) — 최초 1회',
     impDesc:'회원그룹코드 / <b>회원_배정_현황</b> 엑셀을 올리면 <b>코드·그룹 내 배정된 아이디·고객 구분·성명</b> 컬럼을 읽어 한 번에 등록(같은 키 덮어쓰기)합니다. 이후에는 위에서 직접 관리하세요.',
@@ -193,8 +193,8 @@ const L={
     masterRows:'rows', masterMaster:'master', masterLearned:'learned', masterFirst:'First registered', masterLast:'Last updated',
     addTitle:'Add / edit member',
     addDesc:'Key = <b>name + birth (6 digits)</b> (e.g. 황보관현590611). Same key overwrites (edit).',
-    phName:'Name', phBirth:'Birth 6 (590611)', clsNone:'(no grade)', phCode:'← Pick empty code',
-    pickBtn:'🔍 Pick empty code', save:'Save', clear:'Clear',
+    phName:'Name', phBirth:'Birth 6 (590611)', clsNone:'(no grade)', phCode:'(group code)',
+    pickBtn:'🔍 Pick empty code', save:'Save', clear:'Clear', recode:'Change code', recodeDone:(nm,c)=>`${nm} → ${c}`,
     addHint:'Pick the group code via <b>[🔍 Pick empty code]</b> from the per-grade empty/used table (instead of typing).',
     impTitle:'Bulk register (xlsx) — first time',
     impDesc:'Upload the 회원그룹코드 / <b>회원_배정_현황</b> Excel to read the <b>code · assigned ID · customer type · name</b> columns and register at once (same key overwrites). Afterward manage directly above.',
@@ -624,10 +624,21 @@ function renderList(rows){
         <td class="mono" style="font-size:11px;color:var(--muted)">${esc(r.member_key)}</td>
         <td>${esc(gradeLabel(r.member_class||''))}</td>
         <td style="text-align:right;white-space:nowrap">
+          <button class="btn sm" data-recode style="background:var(--accent2);border-color:var(--accent2)">${esc(tx('recode'))}</button>
           <button class="btn sm ghost" data-edit>${esc(tx('edit'))}</button>
           <button class="btn sm danger" data-del>${esc(tx('del'))}</button>
         </td></tr>`).join('')
     + '</tbody></table>';
+  // 검색 결과에서 바로 그룹코드 변경 — 빈코드 피커 → 즉시 저장(폼 왕복 없음)
+  box.querySelectorAll('[data-recode]').forEach(b=>b.addEventListener('click',e=>{
+    const tr=e.target.closest('tr'); const r=rows.find(x=>x.code===tr.dataset.code&&x.member_key===tr.dataset.key);
+    if(!r) return;
+    gcOpenPicker(r.member_class||'', async code=>{
+      const {error}=await supa.from('member_codes').update({code}).eq('member_key',r.member_key);
+      if(error){ toast(tx('saveFail')+error.message,'err'); return; }
+      toast(tx('recodeDone')(r.name_kr||r.member_key,code),'ok'); _gcUsed=null; search(); loadMasterStatus();
+    });
+  }));
   box.querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click',e=>{
     const tr=e.target.closest('tr'); const r=rows.find(x=>x.code===tr.dataset.code&&x.member_key===tr.dataset.key);
     if(!r) return;
