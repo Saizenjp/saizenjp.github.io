@@ -126,7 +126,7 @@ const L={
     loading:'読込中…', noMonth:'今月のデータなし', loadFail:'読込失敗', loadFailToast:msg=>`読込失敗: ${msg}`,
     statCount:(v,t,nt)=>`${v} / ${t}チーム${nt?` · ⚠ トークンなし ${nt}`:''}`,
     noData:'今月のデータがありません。', noMatch:'選択条件に合うチームがありません。',
-    pvNoTok:'⚠ QRトークンなし(発行権限が必要)', paxUnit:'名',
+    pvNoTok:'⚠ QRトークンなし(発行権限が必要)', paxUnit:'名', roomLbl:'部屋', roomEach:' ※部屋ごとに1枚',
     noCards:'印刷するカードがありません(トークンなし)。', qrLibFail:'QRライブラリ読込失敗 — 再読み込み後に再度お試しください。', popupBlocked:'ポップアップがブロックされました。',
     teamUnit:'チーム' },
   ko:{ pageStep:'주문 QR카드', connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connRetry:'연결 실패 · 재시도',
@@ -139,7 +139,7 @@ const L={
     loading:'로딩…', noMonth:'이 달 데이터 없음', loadFail:'로드 실패', loadFailToast:msg=>`로드 실패: ${msg}`,
     statCount:(v,t,nt)=>`${v} / ${t}팀${nt?` · ⚠ 토큰없음 ${nt}`:''}`,
     noData:'이 달 데이터가 없습니다.', noMatch:'선택 조건에 맞는 팀이 없습니다.',
-    pvNoTok:'⚠ QR 토큰 없음(발급 권한 필요)', paxUnit:'名',
+    pvNoTok:'⚠ QR 토큰 없음(발급 권한 필요)', paxUnit:'名', roomLbl:'방', roomEach:' ※방마다 1장',
     noCards:'인쇄할 카드가 없습니다(토큰 없음).', qrLibFail:'QR 라이브러리 로드 실패 — 새로고침 후 다시 시도하세요.', popupBlocked:'팝업이 차단되었습니다.',
     teamUnit:'팀' },
   en:{ pageStep:'Order QR cards', connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connRetry:'Failed · retry',
@@ -152,7 +152,7 @@ const L={
     loading:'Loading…', noMonth:'No data this month', loadFail:'Load failed', loadFailToast:msg=>`Load failed: ${msg}`,
     statCount:(v,t,nt)=>`${v} / ${t} teams${nt?` · ⚠ no token ${nt}`:''}`,
     noData:'No data this month.', noMatch:'No teams match the selection.',
-    pvNoTok:'⚠ No QR token (issue permission required)', paxUnit:'',
+    pvNoTok:'⚠ No QR token (issue permission required)', paxUnit:'', roomLbl:'Room', roomEach:' ※1 card per room',
     noCards:'No cards to print (no token).', qrLibFail:'QR library failed to load — refresh and try again.', popupBlocked:'Pop-up was blocked.',
     teamUnit:' teams' }
 };
@@ -235,9 +235,17 @@ async function load(){
       (gs||[]).forEach(g=>{ GMAP[g.event_seq]=g; });
     }
     await ensureTokens(seqs);
+    // 방배정 로드 — event_seq → 배정된 방호수 목록(중복 제거·정렬). room_inventory로 호수 해석.
+    const INVN={}; { const {data:inv}=await supa.from('room_inventory').select('id,room_no'); (inv||[]).forEach(r=>INVN[r.id]=r.room_no); }
+    const RM={};
+    for(let i=0;i<seqs.length;i+=300){ const chunk=seqs.slice(i,i+300);
+      const {data:rr}=await supa.from('rooms').select('event_seq,inventory_id').in('event_seq',chunk);
+      (rr||[]).forEach(r=>{ const rn=INVN[r.inventory_id]; if(rn){ (RM[r.event_seq]=RM[r.event_seq]||new Set()).add(rn); } });
+    }
     ROWS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{};
       return { seq:b.event_seq, eventNo:b.event_no||'', rep:b.rep_name||'', dep:(b.dep_date||'').slice(0,10), arr:(b.arr_date||'').slice(0,10),
-        tag:g.team_tag||g.group_code||('#'+(b.event_no||b.event_seq)), accom:g.accom||'', pax:g.pax||0, token:TOKMAP[b.event_seq]||'' };
+        tag:g.team_tag||g.group_code||('#'+(b.event_no||b.event_seq)), accom:g.accom||'', pax:g.pax||0, token:TOKMAP[b.event_seq]||'',
+        rooms:[...(RM[b.event_seq]||[])].sort() };
     }).sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||accomOrd(a.accom)-accomOrd(b.accom)||(a.rep||'').localeCompare(b.rep||''));
     DATESEL.clear();
     // 숙소 기본선택 = 야마나미·쿠주힐즈(그 달에 있는 것만). 다른 페이지와 동일.
@@ -281,6 +289,7 @@ function renderPreview(){
     <div class="pv-tag">${esc(r.tag)}</div>
     <div class="pv-rep">${esc(r.rep||'-')} 様</div>
     <div class="pv-sub">${esc(r.accom||'')} · ${r.pax}${tx('paxUnit')} · ${fmtMD(r.dep)}~${fmtMD(r.arr)}</div>
+    ${r.rooms&&r.rooms.length?`<div class="pv-room" style="font-weight:800;color:var(--accent);font-size:12.5px;margin-top:3px">${tx('roomLbl')} ${r.rooms.map(esc).join(' · ')}${r.rooms.length>1?tx('roomEach'):''}</div>`:''}
     ${r.token?'':`<div class="pv-no">${tx('pvNoTok')}</div>`}
   </div>`).join('');
   $('#preview').innerHTML=''; $('#preview').appendChild(g);
@@ -303,7 +312,11 @@ async function printCards(){
   const w=window.open('','_blank','width=920,height=950'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
   const qmap={};
   cards.forEach(r=>{ qmap[r.seq]=qrDataURL(billUrl(r.token)); });   // QR=bill URL(손님 폰=결제내역, POS=?t= 파싱)
-  const cardHTML=cards.filter(r=>qmap[r.seq]).map(r=>`<div class="qc">
+  // 방배정된 팀 = 배정 방마다 카드 1장(같은 QR토큰·방호수만 다름). 미배정 팀 = 카드 1장.
+  const units=[];
+  cards.filter(r=>qmap[r.seq]).forEach(r=>{ const rooms=(r.rooms&&r.rooms.length)?r.rooms:[null]; rooms.forEach(rm=>units.push({r,rm})); });
+  const cardHTML=units.map(({r,rm})=>`<div class="qc">
+      ${rm?`<div class="qc-room">${esc(rm)}</div>`:''}
       <div class="qc-h">
         <div class="qc-name">${esc(r.rep||'-')} <span>様</span></div>
         <div class="qc-sub">${esc(r.tag||'')} ・ ${esc(r.accom||'')}</div>
@@ -331,9 +344,10 @@ async function printCards(){
   .qc-inst{font-size:8.5pt;font-weight:800;color:#111;text-align:center;line-height:1.3}
   .qc-inst span{font-weight:700;color:#1e3a5f}
   .qc-brand{position:absolute;bottom:2.2mm;font-size:6.5pt;color:#9aa;letter-spacing:.5px}
+  .qc-room{position:absolute;top:3mm;right:3.5mm;font-size:12pt;font-weight:800;color:#1e3a5f;background:#eaf0f8;border:0.35mm solid #1e3a5f;border-radius:2mm;padding:0.6mm 2.4mm;line-height:1.1}
   @media print{ @page{size:A4 portrait;margin:0} body{background:#fff} .bar{display:none} .grid{padding:8mm;gap:5mm} .qc{page-break-inside:avoid} }
 </style></head><body>
-  <div class="bar"><h1>注文QRカード / 주문 QR카드</h1><div class="meta">${today} ・ ${cards.length}${tx('teamUnit')}</div>
+  <div class="bar"><h1>注文QRカード / 주문 QR카드</h1><div class="meta">${today} ・ ${units.length}${tx('teamUnit')}</div>
     <div style="flex:1"></div>
     <button onclick="window.print()">🖨 ${lang()==='ja'?'印刷':lang()==='en'?'Print':'인쇄'}</button>
     <button class="x" onclick="window.close()">✕ ${lang()==='ja'?'閉じる':lang()==='en'?'Close':'닫기'}</button>
