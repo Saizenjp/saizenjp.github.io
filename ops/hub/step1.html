@@ -242,6 +242,7 @@ const L = {
     codeMatched:n=>`· グループコードxlsxなしでmember_codesから${n}件マッチ`,
     codeMatchFail:'· member_codesマッチ失敗(SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ 会員 ${mem}チーム · 非会員Fプール ${nm}チーム${full?` · プール枯渇 ${full}チーム`:''}`,
+    ghostCleaned:(n)=>`減員による残存 ${n}件を整理`,
     syncCleaned:(months,del)=>`✓ ${months} 残存チーム ${del}個整理 — ファイル基準で最新化`,
     syncKept:n=>`· 残存チーム ${n}個 — データ累積(削除しない)`,
     syncDelFail:'· 残存整理失敗: ',
@@ -279,6 +280,7 @@ const L = {
     codeMatched:n=>`· 그룹코드 xlsx 없이 member_codes에서 ${n}건 매칭`,
     codeMatchFail:'· member_codes 매칭 실패(22번 SQL?): ',
     guestsSummary:(mem,nm,full)=>`  └ 회원 ${mem}팀 · 비회원 F풀 ${nm}팀${full?` · 풀소진 ${full}팀`:''}`,
+    ghostCleaned:(n)=>`인원 감소로 남은 자리 ${n}건 정리`,
     syncCleaned:(months,del)=>`✓ ${months} 잔존 팀 ${del}개 정리 — 파일 기준 최신화`,
     syncKept:n=>`· 잔존 팀 ${n}개 — 데이터 누적(삭제 안 함)`,
     syncDelFail:'· 잔존 정리 실패: ',
@@ -316,6 +318,7 @@ const L = {
     codeMatched:n=>`· Matched ${n} from member_codes without a group-code xlsx`,
     codeMatchFail:'· member_codes match failed (SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ Members ${mem} teams · Non-member F-pool ${nm} teams${full?` · Pool exhausted ${full} teams`:''}`,
+    ghostCleaned:(n)=>`Cleaned ${n} stale rows from reduced teams`,
     syncCleaned:(months,del)=>`✓ ${months} cleaned ${del} leftover team(s) — synced to the file`,
     syncKept:n=>`· ${n} leftover team(s) — data accumulated (not deleted)`,
     syncDelFail:'· Leftover cleanup failed: ',
@@ -781,6 +784,24 @@ async function run(){
     });
     stat['guest_members'] = await upsertChunked('guest_members', gmRows, 'event_seq,seq_in_team');
     log(`✓ ${t('s1_dyn_log_members')} ${stat['guest_members']}${t('s1_dyn_cntPpl')}`,'ok');
+
+    // ── 유령행 청소: 팀 인원이 줄어든 재임포트에서 초과 자리(seq_in_team)만 삭제 ──
+    //   충돌키가 위치(event_seq,seq_in_team)라 upsert는 새 명단 1..N 자리만 덮어씀.
+    //   이전 임포트에서 더 컸던 팀의 N+1.. 자리 행이 남아 중복처럼 보임 → 그 초과분만 정리.
+    //   방배정(rooms.member_id) 보존: 남는 1..N 자리 id는 그대로 유지되고, 초과 자리행은
+    //   애초에 이번 명단에 없는 사람이라 삭제 대상이 맞음(rooms FK는 SET NULL).
+    try {
+      const maxNumBySeq = {};
+      gmRows.forEach(g=>{ const s=g.event_seq; if(!maxNumBySeq[s]||g.seq_in_team>maxNumBySeq[s]) maxNumBySeq[s]=g.seq_in_team; });
+      const teamSeqs = Object.keys(maxNumBySeq).map(Number);
+      let ghost = 0;
+      for(const s of teamSeqs){
+        const { data, error } = await supa.from('guest_members')
+          .delete().eq('event_seq',s).gt('seq_in_team',maxNumBySeq[s]).select('id');
+        if(!error && data) ghost += data.length;
+      }
+      if(ghost) log(`✓ ${t('s1_dyn_log_members')} ${tx('ghostCleaned')(ghost)}`,'dim');
+    } catch(_){ /* 청소 실패는 임포트 자체를 막지 않음 */ }
 
     // ── 월 단위 동기화: 이번 파일에 없는 그 달 팀 정리(잔존 데이터 제거) ──
     //   · 파일(예약리스트)에 있는 event_seq 기준. 다른 달(session_ym)은 안 건드림.
