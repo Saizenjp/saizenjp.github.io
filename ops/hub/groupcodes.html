@@ -117,10 +117,11 @@ const L={
     searchTitle:'検索', searchPh:'氏名・グループコード・キーで検索', search:'検索', searchMax:'※ 最大200件表示',
     cntUnit:'件', searchFail:'検索失敗: ',
     listEmpty:'結果なし (検索語を入力してください)',
-    thCode:'グループコード', thName:'氏名', thKey:'キー(member_key)', thGrade:'等級', edit:'修正', del:'削除',
+    thCode:'グループコード', thName:'氏名', thKey:'キー(member_key)', thGrade:'等級', delCode:'コード削除', delMember:'会員削除',
     // 저장/삭제 메시지
     needNameBirth:'氏名・生年6桁は必須', needBirth6:'生年は6桁の数字(590611)', needCode:'グループコードを入力してください',
-    saveFail:'保存失敗: ', saved:'保存しました: ', delConfirm:'削除しますか?\n', delFail:'削除失敗: ', deleted:'削除しました',
+    saveFail:'保存失敗: ', saved:'保存しました: ', delFail:'削除失敗: ', deleted:'削除しました',
+    delCodeConfirm:'このコードを削除(空に)しますか?会員はレジストリに残ります。\n', delMemberConfirm:'この会員をレジストリから完全に削除しますか?\n', codeDeleted:'コードを削除しました',
     pickNeedGrade:'事前割当等級(ダイヤ・ゴールド・特別・EWRC…)を先に選択してください',
     // 빈코드 피커
     pickCalc:'空きコード計算中…', loadFail:'読み込み失敗: ', kanaCol:'\\かな',
@@ -161,9 +162,10 @@ const L={
     searchTitle:'검색', searchPh:'성명·그룹코드·키로 검색', search:'검색', searchMax:'※ 최대 200건 표시',
     cntUnit:'건', searchFail:'검색 실패: ',
     listEmpty:'결과 없음 (검색어를 입력해 보세요)',
-    thCode:'그룹코드', thName:'성명', thKey:'키(member_key)', thGrade:'등급', edit:'수정', del:'삭제',
+    thCode:'그룹코드', thName:'성명', thKey:'키(member_key)', thGrade:'등급', delCode:'코드 삭제', delMember:'회원 삭제',
     needNameBirth:'성명·생년6자리는 필수', needBirth6:'생년은 6자리 숫자(590611)', needCode:'그룹코드를 입력하세요',
-    saveFail:'저장 실패: ', saved:'저장됨: ', delConfirm:'삭제할까요?\n', delFail:'삭제 실패: ', deleted:'삭제됨',
+    saveFail:'저장 실패: ', saved:'저장됨: ', delFail:'삭제 실패: ', deleted:'회원 삭제됨',
+    delCodeConfirm:'이 회원의 코드를 삭제(비움)할까요? 사람은 레지스트리에 그대로 남습니다.\n', delMemberConfirm:'이 회원을 레지스트리에서 완전히 삭제할까요?\n', codeDeleted:'코드 삭제됨',
     pickNeedGrade:'사전배정 등급(다이아·골드·특별·EWRC…)을 먼저 선택하세요',
     pickCalc:'빈 코드 계산 중…', loadFail:'로드 실패: ', kanaCol:'\\가나',
     pickTitle:'그룹코드 선택', pickClose:'닫기 ✕',
@@ -203,9 +205,10 @@ const L={
     searchTitle:'Search', searchPh:'Search by name · group code · key', search:'Search', searchMax:'※ Up to 200 shown',
     cntUnit:'', searchFail:'Search failed: ',
     listEmpty:'No results (try entering a search term)',
-    thCode:'Group code', thName:'Name', thKey:'Key (member_key)', thGrade:'Grade', edit:'Edit', del:'Delete',
+    thCode:'Group code', thName:'Name', thKey:'Key (member_key)', thGrade:'Grade', delCode:'Delete code', delMember:'Delete member',
     needNameBirth:'Name · birth (6 digits) required', needBirth6:'Birth must be 6 digits (590611)', needCode:'Enter a group code',
-    saveFail:'Save failed: ', saved:'Saved: ', delConfirm:'Delete?\n', delFail:'Delete failed: ', deleted:'Deleted',
+    saveFail:'Save failed: ', saved:'Saved: ', delFail:'Delete failed: ', deleted:'Member deleted',
+    delCodeConfirm:'Delete (clear) this code? The member stays in the registry.\n', delMemberConfirm:'Delete this member from the registry entirely?\n', codeDeleted:'Code deleted',
     pickNeedGrade:'Select a pre-assigned grade (Diamond · Gold · Special · EWRC…) first',
     pickCalc:'Calculating empty codes…', loadFail:'Load failed: ', kanaCol:'\\kana',
     pickTitle:'Pick group code', pickClose:'Close ✕',
@@ -625,8 +628,8 @@ function renderList(rows){
         <td>${esc(gradeLabel(r.member_class||''))}</td>
         <td style="text-align:right;white-space:nowrap">
           <button class="btn sm" data-recode style="background:var(--accent2);border-color:var(--accent2)">${esc(tx('recode'))}</button>
-          <button class="btn sm ghost" data-edit>${esc(tx('edit'))}</button>
-          <button class="btn sm danger" data-del>${esc(tx('del'))}</button>
+          ${r.code?`<button class="btn sm ghost" data-delcode>${esc(tx('delCode'))}</button>`:''}
+          <button class="btn sm danger" data-del>${esc(tx('delMember'))}</button>
         </td></tr>`).join('')
     + '</tbody></table>';
   // 검색 결과에서 바로 그룹코드 변경 — 빈코드 피커 → 즉시 저장(폼 왕복 없음)
@@ -639,20 +642,23 @@ function renderList(rows){
       toast(tx('recodeDone')(r.name_kr||r.member_key,code),'ok'); _gcUsed=null; search(); loadMasterStatus();
     });
   }));
-  box.querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click',e=>{
-    const tr=e.target.closest('tr'); const r=rows.find(x=>x.code===tr.dataset.code&&x.member_key===tr.dataset.key);
-    if(!r) return;
-    $('#f-name').value=r.name_kr||''; $('#f-birth').value=(r.member_key||'').slice(-6);
-    $('#f-code').value=r.code; $('#f-class').value=CLASSES.includes(r.member_class)?r.member_class:'';
-    window.scrollTo({top:0,behavior:'smooth'});
+  box.querySelectorAll('[data-delcode]').forEach(b=>b.addEventListener('click',e=>{
+    const tr=e.target.closest('tr'); delCode(tr.dataset.code,tr.dataset.key);
   }));
   box.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',e=>{
     const tr=e.target.closest('tr'); delMember(tr.dataset.code,tr.dataset.key);
   }));
 }
+// 코드만 삭제(code=null) — 회원은 레지스트리에 유지
+async function delCode(code,key){
+  if(!confirm(tx('delCodeConfirm')+`${code} · ${key}`)) return;
+  const {error}=await supa.from('member_codes').update({code:null}).eq('member_key',key);
+  if(error){ toast(tx('delFail')+error.message,'err'); return; }
+  toast(tx('codeDeleted'),'ok'); _gcUsed=null; search(); loadMasterStatus();
+}
 async function delMember(code,key){
-  if(!confirm(tx('delConfirm')+`${code} · ${key}`)) return;
-  const {error}=await supa.from('member_codes').delete().eq('member_key',key);   // member_key = PK(유일)
+  if(!confirm(tx('delMemberConfirm')+`${code} · ${key}`)) return;
+  const {error}=await supa.from('member_codes').delete().eq('member_key',key);   // member_key = PK(유일) — 회원 행 전체 삭제
   if(error){ toast(tx('delFail')+error.message,'err'); return; }
   toast(tx('deleted'),'ok'); _gcUsed=null; search(); loadMasterStatus();
 }
