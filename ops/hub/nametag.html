@@ -111,7 +111,7 @@ const L={
     slotMap:'用紙のマス', slotMapHint:'クリックで開始マス指定 ・ 1=左上 → 右 → 下(3列×8行)', slotUsed:'使用済み', slotPrint:'印刷される', slotStart:'開始マス',
     printBtn:'🖨 ネームタグ プレビュー', date:'日付', lodging:'宿泊施設',
     deskNote:'選択した月に<b>入国(出発日)</b>するチームの個人名簿。日付・宿泊施設・出発地で絞り込み、<b>日付→ICN/PUS→宿泊施設→チーム(コード)</b>の順に並べてラベル(1名につき1枚)を出力します。',
-    preview:'プレビュー', loading:'読み込み中…', noMonthData:'当月データなし', loadFail:'読み込み失敗',
+    preview:'プレビュー', printTarget:'出力対象', prevUseBtn:'実際のサイズは上の「ネームタグ プレビュー」ボタンで確認してください。', loading:'読み込み中…', noMonthData:'当月データなし', loadFail:'読み込み失敗',
     cntPeopleTeams:(n,t)=>`${n}名 · ${t}チーム`, sheets:n=>`(${n}枚)`, noList:'表示する名簿がありません。',
     previewCap:n=>`※ プレビューは120枚まで · 印刷は全体 ${n}枚`,
     noPrintList:'印刷する名簿がありません', popupBlocked:'ポップアップブロック — 許可が必要' },
@@ -125,7 +125,7 @@ const L={
     slotMap:'라벨지 칸', slotMapHint:'클릭=시작칸 지정 ・ 1=좌상단 → 오른쪽 → 아래(3열×8행)', slotUsed:'이미 쓴 칸', slotPrint:'인쇄될 칸', slotStart:'시작칸',
     printBtn:'🖨 네임택 미리보기', date:'날짜', lodging:'숙소',
     deskNote:'선택 월에 <b>입국(출발일)</b>하는 팀의 개인 명단. 날짜·숙소·출발지로 거르고, <b>날짜→ICN/PUS→숙소→팀(코드)</b> 순으로 정렬해(같은 코드 팀끼리 묶임) 라벨(개인 1명당 1장)을 출력합니다.',
-    preview:'미리보기', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', loadFail:'로드 실패',
+    preview:'미리보기', printTarget:'출력 대상', prevUseBtn:'실제 크기는 위 「네임택 미리보기」 버튼으로 확인하세요.', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', loadFail:'로드 실패',
     cntPeopleTeams:(n,t)=>`${n}명 · ${t}팀`, sheets:n=>`(${n}장)`, noList:'표시할 명단이 없습니다.',
     previewCap:n=>`※ 미리보기는 120장까지 · 인쇄는 전체 ${n}장`,
     noPrintList:'인쇄할 명단이 없음', popupBlocked:'팝업 차단 — 허용 필요' },
@@ -139,7 +139,7 @@ const L={
     slotMap:'Sheet cells', slotMapHint:'Click to set the start cell ・ 1 = top-left → right → down (3 cols × 8 rows)', slotUsed:'Used', slotPrint:'Will print', slotStart:'Start',
     printBtn:'🖨 Nametag preview', date:'Date', lodging:'Lodging',
     deskNote:'Personal roster of teams <b>arriving (departure date)</b> in the selected month. Filter by date / lodging / origin, sorted by <b>date → ICN/PUS → lodging → team (code)</b> so each team stays together, and print one label per person.',
-    preview:'Preview', loading:'Loading…', noMonthData:'No data for this month', loadFail:'Load failed',
+    preview:'Preview', printTarget:'Print list', prevUseBtn:'Check actual size with the “Nametag preview” button above.', loading:'Loading…', noMonthData:'No data for this month', loadFail:'Load failed',
     cntPeopleTeams:(n,t)=>`${n} ppl · ${t} teams`, sheets:n=>`(${n})`, noList:'No roster to show.',
     previewCap:n=>`※ Preview up to 120 · printing all ${n}`,
     noPrintList:'No roster to print', popupBlocked:'Popup blocked — allow it' }
@@ -219,7 +219,7 @@ function renderUI(){
       <div class="desc" style="margin-top:10px">${tx('deskNote')}</div>
     </div>
     <div class="panel">
-      <h3>${tx('preview')} <span class="cnt" id="prev-cnt"></span></h3>
+      <h3>${tx('printTarget')} <span class="cnt" id="prev-cnt"></span></h3>
       <div id="prev"></div>
     </div>`;
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
@@ -358,14 +358,9 @@ function renderPreview(){
   $('#btn-print').disabled=!list.length;
   $('#prev-cnt').textContent=list.length?tx('sheets')(list.length):'';
   const box=$('#prev');
-  if(!list.length){ box.innerHTML='<div class="deny" style="color:var(--muted);padding:24px">'+tx('noList')+'</div>'; return; }
-  box.innerHTML='<div class="prev-grid">'+list.slice(0,120).map(c=>`
-    <div class="prev-cell">
-      <div class="prev-tag" style="color:${c.accomColor}">${esc(c.tag)}</div>
-      <div class="prev-name">${esc(c.kor)} <span class="prev-eng">${c.eng?'('+esc(c.eng)+')':''}</span></div>
-      <div class="prev-io">IN ${c.port} ${esc(c.dep)} / OUT ${c.port} ${esc(c.arr)}</div>
-    </div>`).join('')+'</div>'
-    +(list.length>120?`<div class="cnt" style="margin-top:8px">${tx('previewCap')(list.length)}</div>`:'');
+  if(!list.length){ box.innerHTML='<div class="cnt" style="color:var(--muted);padding:10px 0">'+tx('noList')+'</div>'; return; }
+  // 축소 미리보기(실제 인쇄와 크기 다름)는 제거 — 실제 크기는 「미리보기」 버튼으로. 장수만 표기.
+  box.innerHTML='<div class="cnt" style="color:var(--text2);padding:6px 0">'+esc(tx('prevUseBtn'))+'</div>';
 }
 
 // 라벨지 칸 미니 지도 — 24면(3열×8행). 클릭=시작칸 지정. 1=좌상단→오른쪽→아래.

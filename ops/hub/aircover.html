@@ -97,7 +97,7 @@ const L={
     monthFilter:'月選択 · フィルター', origin:'出発地', all:'全体', dateLbl:'日付', accomLbl:'宿泊施設',
     print:'🖨 航空カバー プレビュー',
     cardDesc:'チーム別1枚(タグコード・出発地・番号・人数・入国/帰国便・施設)。<b>A5横、倍率100%</b>で印刷してください。',
-    preview:'プレビュー', loading:'読み込み中…', noMonthData:'当月データなし', loadFail:'読み込み失敗',
+    preview:'プレビュー', printTarget:'出力対象', prevUseBtn:'実際のサイズは上の「航空カバー プレビュー」ボタンで確認してください。', loading:'読み込み中…', noMonthData:'当月データなし', loadFail:'読み込み失敗',
     teamUnit:'チーム', noTeams:'表示するチームがありません。',
     previewNote:(n)=>`※ プレビューは90チームまで · 印刷は全${n}チーム`,
     noTeamsPrint:'印刷するチームがありません', popupBlocked:'ポップアップブロック — 許可が必要です' },
@@ -110,7 +110,7 @@ const L={
     monthFilter:'월 선택 · 필터', origin:'출발지', all:'전체', dateLbl:'날짜', accomLbl:'숙소',
     print:'🖨 航空カバー 미리보기',
     cardDesc:'팀별 1장(태그코드·出発地·番号·人数·入国/帰国 항공편·施設). <b>A5 가로, 배율 100%</b>로 인쇄하세요.',
-    preview:'미리보기', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', loadFail:'로드 실패',
+    preview:'미리보기', printTarget:'출력 대상', prevUseBtn:'실제 크기는 위 「航空カバー 미리보기」 버튼으로 확인하세요.', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', loadFail:'로드 실패',
     teamUnit:'팀', noTeams:'표시할 팀이 없습니다.',
     previewNote:(n)=>`※ 미리보기 90팀까지 · 인쇄는 전체 ${n}팀`,
     noTeamsPrint:'인쇄할 팀이 없음', popupBlocked:'팝업 차단 — 허용 필요' },
@@ -123,7 +123,7 @@ const L={
     monthFilter:'Month · Filter', origin:'Origin', all:'All', dateLbl:'Date', accomLbl:'Lodging',
     print:'🖨 Air-cover preview',
     cardDesc:'One sheet per team (tag code·出発地·番号·人数·入国/帰国 flights·施設). Print at <b>A5 landscape, 100% scale</b>.',
-    preview:'Preview', loading:'Loading…', noMonthData:'No data for this month', loadFail:'Load failed',
+    preview:'Preview', printTarget:'Print list', prevUseBtn:'Check actual size with the “Air-cover preview” button above.', loading:'Loading…', noMonthData:'No data for this month', loadFail:'Load failed',
     teamUnit:' teams', noTeams:'No teams to display.',
     previewNote:(n)=>`※ Preview up to 90 teams · Print covers all ${n} teams`,
     noTeamsPrint:'No teams to print', popupBlocked:'Popup blocked — please allow' }
@@ -195,7 +195,7 @@ function renderUI(){
       <div class="desc" id="t-carddesc" style="margin-top:10px">${tx('cardDesc')}</div>
     </div>
     <div class="panel">
-      <h3><span id="t-preview">${tx('preview')}</span> <span class="cnt" id="prev-cnt"></span></h3>
+      <h3><span id="t-preview">${tx('printTarget')}</span> <span class="cnt" id="prev-cnt"></span></h3>
       <div id="prev"></div>
     </div>`;
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
@@ -336,16 +336,9 @@ function renderPreview(){
   const list=filtered(); $('#btn-print').disabled=!list.length;
   $('#prev-cnt').textContent=list.length?`(${list.length}${tx('teamUnit')})`:'';
   const box=$('#prev');
-  if(!list.length){ box.innerHTML=`<div class="deny" style="color:var(--muted);padding:24px">${tx('noTeams')}</div>`; return; }
-  box.innerHTML='<div class="prev-grid">'+list.slice(0,90).map(c=>`
-    <div class="prev-card">
-      <div class="prev-tag" style="color:${c.accomColor}">${esc(c.tag)}</div>
-      <div class="prev-hero"><span style="color:${portColor(c.from)}">${c.from}</span> · ${c.numStart}〜${c.numEnd}番 · ${c.pax}名</div>
-      <div class="prev-line">入 ${esc(c.inFlight)} ${esc(c.inTime)} (${esc(c.inDate)})</div>
-      <div class="prev-line">帰 ${esc(c.outFlight)} ${esc(c.outTime)} (${esc(c.outDate)})</div>
-      <div class="prev-line">施設 ${esc(c.accomLabel)}</div>
-    </div>`).join('')+'</div>'
-    +(list.length>90?`<div class="cnt" style="margin-top:8px">${tx('previewNote')(list.length)}</div>`:'');
+  if(!list.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:10px 0">${tx('noTeams')}</div>`; return; }
+  // 축소 미리보기(실제 인쇄와 크기 다름) 제거 — 실제 크기는 「미리보기」 버튼으로. 팀 수만 표기.
+  box.innerHTML=`<div class="cnt" style="color:var(--text2);padding:6px 0">${esc(tx('prevUseBtn'))}</div>`;
 }
 
 // 施設 라벨 길이에 따라 폰트 자동 축소 — 긴 이름(SHIZUNOYADO·KUJU HILLS·한글 폴백) 넘침 방지.
@@ -426,7 +419,7 @@ function applyStatic(){
   const dl=$('#t-datelbl'); if(dl) dl.textContent=tx('dateLbl');
   const al=$('#t-accomlbl'); if(al) al.textContent=tx('accomLbl');
   const cd=$('#t-carddesc'); if(cd) cd.innerHTML=tx('cardDesc');
-  const pv=$('#t-preview'); if(pv) pv.textContent=tx('preview');
+  const pv=$('#t-preview'); if(pv) pv.textContent=tx('printTarget');
   const bp=$('#btn-print'); if(bp) bp.textContent=tx('print');
   const bc=$('#btn-connect'); if(bc && !bc.disabled){
     if(supa) bc.textContent=tx('connectedBtn'); else bc.textContent=tx('connect');
