@@ -1735,13 +1735,23 @@
     if (document.getElementById('so-totop')) return;   // 페이지 자체 버튼이 있으면 중복 방지
     var b = document.createElement('button');
     b.id = 'so-totop'; b.type = 'button'; b.title = '맨 위로'; b.setAttribute('aria-label', '맨 위로');
-    b.textContent = '↑';
-    b.style.cssText = 'display:none;position:fixed;right:20px;bottom:24px;z-index:60;width:44px;height:44px;'
-      + 'border-radius:50%;border:1px solid var(--accent,#647548);background:var(--surface,#fff);'
-      + 'color:var(--accent,#647548);font-size:19px;font-weight:800;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.16)';
+    b.innerHTML = '<span style="font-size:22px;line-height:1">↑</span><span style="font-size:9px;font-weight:800;letter-spacing:.5px;margin-top:-3px">TOP</span>';
+    var base = '0 6px 20px rgba(20,40,15,.34)';
+    b.style.cssText = 'display:none;position:fixed;right:22px;bottom:26px;z-index:60;width:52px;height:52px;'
+      + 'flex-direction:column;align-items:center;justify-content:center;'
+      + 'border-radius:50%;border:2px solid rgba(255,255,255,.85);background:var(--accent,#647548);'
+      + 'color:#fff;cursor:pointer;box-shadow:' + base + ';transition:transform .15s ease, box-shadow .15s ease';
     document.body.appendChild(b);
-    var onScroll = function () { b.style.display = (window.scrollY > 320) ? 'block' : 'none'; };
+    // 스크롤 내려가면 노출(부드러운 페이드)
+    var onScroll = function () {
+      var show = window.scrollY > 300;
+      if (show) { b.style.display = 'flex'; requestAnimationFrame(function () { b.style.opacity = '1'; }); }
+      else { b.style.opacity = '0'; b.style.display = 'none'; }
+    };
+    b.style.opacity = '0'; b.style.transition += ', opacity .2s ease';
     window.addEventListener('scroll', onScroll, { passive: true });
+    b.addEventListener('mouseenter', function () { b.style.transform = 'translateY(-3px) scale(1.07)'; b.style.boxShadow = '0 12px 28px rgba(20,40,15,.44)'; });
+    b.addEventListener('mouseleave', function () { b.style.transform = ''; b.style.boxShadow = base; });
     b.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
     onScroll();
   }
