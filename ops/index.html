@@ -427,6 +427,7 @@
       loadRegStrip();    // 등록된 데이터 현황(월·등록자·시각)
       loadFollowupStrip(); // 확인 필요(후속 조치) 미완료 N건
       markNewBadges();   // 부서 공지 새 글 N 표시
+      if(acc.role==='admin') markMissingCodes();   // 그룹코드 카드에 코드 미보유 회원 수 배지(admin 전용)
       var all=(acc.role==='admin');   // 마스터만 전체. 매니저도 지정 영역만 노출(역할=구분, 노출=지정영역).
       var wr=acc.areas||[], rd=acc.read_areas||[];   // 쓰기 영역 ∪ 보기 영역 = 카드 노출(페이지 가드가 보기=읽기전용 처리)
       document.querySelectorAll('.card[data-area]').forEach(function(card){
@@ -516,6 +517,19 @@
     if(!el) return; var b=el.querySelector(':scope > .nbadge');
     if(on){ if(!b){ b=document.createElement('span'); b.className='nbadge'; b.textContent='N'; el.appendChild(b); } b.style.display=''; }
     else if(b){ b.style.display='none'; }
+  }
+  // ── 그룹코드 카드에 '코드 미보유 회원' 수 배지(admin 전용 RPC) ──
+  function markMissingCodes(){
+    if(!window.__so_authClient) return; var c=__so_authClient(); if(!c) return;
+    c.rpc('gc_missing_codes').then(function(r){
+      if(r.error||!r.data) return;   // 비admin은 에러 → 배지 없음
+      var n=r.data.length;
+      var card=document.querySelector('a.card[href="hub/groupcodes.html"]');
+      var h=card&&card.querySelector('h4'); if(!h) return;
+      var b=h.querySelector(':scope > .nbadge.miss');
+      if(n>0){ if(!b){ b=document.createElement('span'); b.className='nbadge miss'; h.appendChild(b); } b.textContent=n; b.title='코드 미보유 회원 '+n+'명 / コード未保有 '+n+'名'; b.style.display=''; }
+      else if(b){ b.style.display='none'; }
+    }).catch(function(){});
   }
   function markNewBadges(){
     if(!window.__so_authClient) return; var c=__so_authClient(); if(!c) return;
