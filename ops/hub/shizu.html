@@ -547,14 +547,21 @@ async function bUnassignIds(ids){
 }
 // ── 되돌리기(해제 직후) ──
 let _shzUndo=null;
-function shzToastUndo(msg){
+function shzToastUndo(msg, undoFn){
   const box=$('#toast'); if(!box){ toast(msg,'ok'); return; }
   const t=document.createElement('div'); t.className='toast ok';
   const s=document.createElement('span'); s.textContent=msg; t.appendChild(s);
   const b=document.createElement('button'); b.className='btn sm'; b.textContent='↩ '+tx('undo');
-  b.onclick=()=>{ t.remove(); shzRestore(); }; t.appendChild(b);
+  b.onclick=()=>{ t.remove(); (undoFn||shzRestore)(); }; t.appendChild(b);
   box.appendChild(t);
   setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); }, 6000);
+}
+// 자동배정 되돌리기: 배정 직전 auto 스냅샷을 같은 RPC로 재적용(auto만 정리·manual 보존)
+async function shzRestoreAuto(snap,start,end){
+  if(!supa) return;
+  try{ const {error}=await supa.rpc('shizu_assign_rooms',{p_rows:snap||[],p_clear_from:start,p_clear_to:end}); if(error)throw error;
+    toast(tx('restored'),'ok'); load(); }
+  catch(e){ toast(tx('autoFail')+(e.message||e),'err'); }
 }
 async function shzRestore(){
   if(!supa||!_shzUndo||!_shzUndo.length) return;
@@ -734,12 +741,15 @@ async function autoAssignShizu(){
     sorted.filter(t=>!annexPref[t.seq]).forEach(placeTeam);  // 그다음 일반팀
     if(!rows.length){ toast(tx('autoNone'),'warn'); return; }
     if(!confirm(tx('autoConfirm')(rows.length))) return;
+    // 되돌리기용: 배정 직전 auto 방 스냅샷(manual 제외 — RPC가 manual은 안 건드림)
+    const autoSnap=GUESTS.filter(g=>g.src!=='manual').map(g=>({member_id:g.member_id,inventory_id:g.invId,room_no:g.room_no,check_in:g.ci,check_out:g.co}));
     const {data:placedN,error}=await supa.rpc('shizu_assign_rooms',{p_rows:rows,p_clear_from:start,p_clear_to:end});
     if(error)throw error;
     // RPC는 정원초과 행을 건너뛰고 '되는 데까지' 배정 → 실제 배정 수·미배정 수 반영
     const placed=(typeof placedN==='number')?placedN:rows.length;
     const unplaced=holds + Math.max(0, rows.length-placed);
-    toast(tx('autoDone')(placed)+(unplaced?` · ${tx('autoHold')(unplaced)}`:''),'ok'); load();
+    const msg=tx('autoDone')(placed)+(unplaced?` · ${tx('autoHold')(unplaced)}`:'');
+    shzToastUndo(msg, ()=>shzRestoreAuto(autoSnap,start,end)); load();   // ↩ 되돌리기 제공
   }catch(e){ toast(tx('autoFail')+(e.message||e),'err'); }
 }
 
