@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 그룹코드 관리(마스터)</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
@@ -134,7 +133,7 @@ const L={
     mmDesc:'エムクリック <b>会員管理</b> エクセル(氏名・生年月日・会員権区分・会員区分・会員番号・正会員名・職位)をアップロード → 会員番号で正会員·指定会員を紐づけ、<b>職位=タグコード</b>を一生保存。以降エムクリックの職位入力は不要。',
     mmGo:'マスター登録', mmRecog:n=>`${n}件 認識`, mmProg:'登録…', mmDone:n=>`${n}件 登録完了`, mmNoRows:'有効な行がありません(会員管理形式を確認)', mmReadFail:'読み込み失敗: ',
     unTitle:'⚠ コード未保有の会員 — 空きコード割当',
-    unDesc:'会員なのにタグコードが空欄の人。会員権(会員番号)ごとに空きコードを割り当てると、同じ会員権の指定会員にも同じコードが自動付与されます。',
+    unDesc:'登録データ(会員権区分)では会員なのにタグコードが無い人。エムクリックに職位(コード)を入れずここで空きコードを割り当てます。名簿(会員権区分)から自動検出 — その人だけ割り当てればOK。',
     unRefresh:'再読込', unNone:'コード未保有の会員はいません。', unLoading:'読込中…',
     unInherit:c=>`同一コード ${c} 付与`, unPick:'空きコード割当',
     unAssignDone:(nm,c,n)=>`${nm} → ${c} 付与${n>0?` (指定会員${n}名にも同一付与)`:''}`,
@@ -177,7 +176,7 @@ const L={
     mmDesc:'엠클릭 <b>회원관리</b> 엑셀(성명·생년월일·회원권구분·회원구분·회원번호·정회원명·직위)을 올리면 → 회원번호로 정회원·지정회원을 묶고 <b>직위=태그코드</b>를 평생 저장합니다. 이후 엠클릭 직위 입력 불필요.',
     mmGo:'마스터 등록', mmRecog:n=>`${n}건 인식`, mmProg:'등록…', mmDone:n=>`${n}건 등록 완료`, mmNoRows:'유효한 행이 없습니다(회원관리 형식 확인)', mmReadFail:'읽기 실패: ',
     unTitle:'⚠ 코드 미보유 회원 — 빈코드 배정',
-    unDesc:'회원인데 태그코드가 비어있는 사람. 회원권(회원번호)별로 빈코드를 배정하면 같은 회원권의 지정회원에게도 동일 코드가 자동 부여됩니다.',
+    unDesc:'등록 데이터(회원권구분)상 회원인데 태그코드가 없는 사람. 엠클릭에 직위(코드)를 안 넣고 여기서 빈코드를 배정합니다. 명단(회원권구분)에서 자동 검출 — 그 사람만 배정하면 됩니다.',
     unRefresh:'새로고침', unNone:'코드 미보유 회원이 없습니다.', unLoading:'불러오는 중…',
     unInherit:c=>`동일코드 ${c} 부여`, unPick:'빈코드 배정',
     unAssignDone:(nm,c,n)=>`${nm} → ${c} 부여${n>0?` (지정회원 ${n}명에게도 동일 부여)`:''}`,
@@ -220,7 +219,7 @@ const L={
     mmDesc:'Upload the M-click <b>회원관리</b> Excel (name·birth·grade·member type·membership no·rep name·position) → links named/designated by membership no and stores <b>position=tag code</b> for life. No more M-click position entry.',
     mmGo:'Register master', mmRecog:n=>`${n} rows`, mmProg:'registering…', mmDone:n=>`${n} registered`, mmNoRows:'No valid rows (check 회원관리 format)', mmReadFail:'Read failed: ',
     unTitle:'⚠ Members without a code — assign empty code',
-    unDesc:'Members whose tag code is empty. Assigning an empty code per membership auto-assigns the same code to designated members of that membership.',
+    unDesc:'People who are members (by 회원권구분 in the imported data) but have no tag code. Assign an empty code here — no need to enter a position code in M-click. Auto-detected from the roster; just assign that person.',
     unRefresh:'Reload', unNone:'No members without a code.', unLoading:'Loading…',
     unInherit:c=>`Give same code ${c}`, unPick:'Assign empty code',
     unAssignDone:(nm,c,n)=>`${nm} → ${c}${n>0?` (also to ${n} designated)`:''}`,
@@ -352,15 +351,6 @@ function renderUI(){
       <div id="un-list"><div class="cnt" style="color:var(--muted)">${esc(tx('unLoading'))}</div></div>
     </div>
     <div class="panel">
-      <h3>${esc(tx('mmTitle'))}</h3>
-      <div class="desc">${tx('mmDesc')}</div>
-      <div class="form-row">
-        <input class="inp" id="mm-file" type="file" accept=".xlsx,.xls">
-        <button class="btn" id="mm-go" type="button" disabled>${esc(tx('mmGo'))}</button>
-        <span class="cnt" id="mm-stat"></span>
-      </div>
-    </div>
-    <div class="panel">
       <h3>${esc(tx('searchTitle'))} <span class="cnt" id="gc-cnt"></span></h3>
       <div class="form-row" style="margin-bottom:8px">
         <input class="inp" id="q" placeholder="${esc(tx('searchPh'))}" style="width:260px">
@@ -370,7 +360,6 @@ function renderUI(){
       <div id="gc-list"></div>
     </div>`;
   $('#btn-search').addEventListener('click',search);
-  wireMmImport();
   $('#un-refresh').addEventListener('click',loadUnassigned);
   loadUnassigned();
   $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
@@ -396,127 +385,41 @@ async function loadMasterStatus(){
   }catch(e){ /* 권한·네트워크 오류 시 조용히 숨김 */ }
 }
 
-// ── 회원 마스터(회원관리 xlsx) 등록: 회원번호로 정/지정 묶고 직위=코드 평생 저장 ──
-function birth6(v){
-  if(v==null) return '';
-  if(typeof v==='number' && window.XLSX && XLSX.SSF){       // 엑셀 날짜 시리얼
-    const dt=XLSX.SSF.parse_date_code(v);
-    if(dt&&dt.y) return String(dt.y).slice(-2)+String(dt.m).padStart(2,'0')+String(dt.d).padStart(2,'0');
-  }
-  const d=String(v).replace(/\D/g,'');
-  if(d.length>=8) return d.slice(2,8);   // YYYYMMDD → YYMMDD
-  if(d.length===6) return d;
-  return '';
-}
-let mmRows=[];
-function wireMmImport(){
-  const f=$('#mm-file'); if(!f) return;
-  f.addEventListener('change',e=>{
-    const file=e.target.files[0]; if(!file){ mmRows=[]; $('#mm-go').disabled=true; $('#mm-stat').textContent=''; return; }
-    const rd=new FileReader();
-    rd.onload=ev=>{
-      try{
-        const wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
-        const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
-        mmRows=rows.map(r=>{
-          const name=String(r['고객명']||'').trim(); const b=birth6(r['생년월일']);
-          if(!name||!b) return null;
-          return {
-            member_key:name+b, name_kr:name,
-            member_class:String(r['회원권구분']||'').trim()||null,
-            code:String(r['직위']||'').trim()||null,
-            mem_no:String(r['회원번호']||'').trim()||null,
-            mem_type:String(r['회원구분']||'').trim()||null,
-            rep_name:String(r['정회원명']||'').trim()||null,
-            is_learned:false
-          };
-        }).filter(Boolean);
-        $('#mm-stat').textContent=tx('mmRecog')(mmRows.length.toLocaleString());
-        $('#mm-go').disabled=!mmRows.length;
-      }catch(err){ mmRows=[]; $('#mm-go').disabled=true; $('#mm-stat').textContent=tx('mmReadFail')+err.message; }
-    };
-    rd.readAsArrayBuffer(file);
-  });
-  $('#mm-go').addEventListener('click',mmImportGo);
-}
-async function mmImportGo(){
-  if(!mmRows.length||!supa){ if(!mmRows.length) toast(tx('mmNoRows'),'warn'); return; }
-  $('#mm-go').disabled=true;
-  // ⚠ 직위(코드) 빈 행은 code 필드를 아예 빼고 upsert → 기존 코드(평생값)를 null로 덮어쓰지 않음.
-  //   (엠클릭이 직위를 비워 내보내도 야마나미의 기존 코드 보존.) code 있는 행만 코드 갱신.
-  const withCode=mmRows.filter(r=>r.code);
-  const noCode=mmRows.filter(r=>!r.code).map(r=>{ const o={...r}; delete o.code; return o; });
-  const CH=400; let done=0; const total=mmRows.length;
-  try{
-    for(const grp of [withCode,noCode]){
-      for(let i=0;i<grp.length;i+=CH){
-        const chunk=grp.slice(i,i+CH);
-        const {error}=await supa.from('member_codes').upsert(chunk,{onConflict:'member_key'});
-        if(error) throw error;
-        done+=chunk.length; $('#mm-stat').textContent=`${done.toLocaleString()}/${total.toLocaleString()}${tx('impProg')}`;
-      }
-    }
-    $('#mm-stat').textContent=tx('mmDone')(done.toLocaleString());
-    toast(tx('mmDone')(done.toLocaleString()),'ok');
-    $('#mm-file').value=''; mmRows=[]; _gcUsed=null; loadUnassigned(); loadMasterStatus();
-  }catch(e){ toast(tx('mmReadFail')+e.message,'err'); $('#mm-go').disabled=false; }
-}
-
-// ── 코드 미보유 회원(회원번호 있음·코드 null) → 회원권 단위 빈코드 배정 ──
+// ── 코드 미보유 회원: 임포트된 명단(회원권구분)에서 태그코드 없는 회원 → 개인별 빈코드 배정 ──
+//   회원마스터 xlsx 업로드 폐지 → step1로 들어온 passengers(회원신호)를 서버 RPC(gc_missing_codes)로 검출.
 async function loadUnassigned(){
   const box=$('#un-list'), cnt=$('#un-cnt'); if(!box||!supa) return;
   box.innerHTML=`<div class="cnt" style="color:var(--muted)">${esc(tx('unLoading'))}</div>`;
   try{
-    const {data:noc,error}=await supa.from('member_codes')
-      .select('member_key,name_kr,member_class,mem_no,mem_type,rep_name')
-      .is('code',null).not('mem_no','is',null).limit(1000);
+    const {data,error}=await supa.rpc('gc_missing_codes');
     if(error) throw error;
-    const list=noc||[];
-    if(!list.length){ if(cnt)cnt.textContent=''; box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:8px 0">${esc(tx('unNone'))}</div>`; return; }
-    // 이 회원권들의 기존 코드(있으면 상속) 조회
-    const memNos=[...new Set(list.map(r=>r.mem_no))];
-    const existCode={};
-    for(let i=0;i<memNos.length;i+=100){
-      const chunk=memNos.slice(i,i+100);
-      const {data:cd}=await supa.from('member_codes').select('mem_no,code').in('mem_no',chunk).not('code','is',null);
-      (cd||[]).forEach(r=>{ if(r.code && !existCode[r.mem_no]) existCode[r.mem_no]=r.code; });
-    }
-    // 회원번호별 그룹
-    const byNo={}; list.forEach(r=>{ (byNo[r.mem_no]=byNo[r.mem_no]||[]).push(r); });
-    const groups=Object.entries(byNo).sort((a,b)=>(a[1][0].rep_name||'').localeCompare(b[1][0].rep_name||''));
-    if(cnt) cnt.textContent=`(${list.length}${tx('cntUnit')} · ${groups.length})`;
+    const list=data||[];
+    if(cnt) cnt.textContent=list.length?`(${list.length}${tx('cntUnit')})`:'';
+    if(!list.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:8px 0">${esc(tx('unNone'))}</div>`; return; }
     box.innerHTML='<table class="gc"><thead><tr>'
-      +`<th>${esc(tx('repMember'))}</th><th>${esc(tx('thGrade'))}</th><th>${esc(tx('thMembers'))}</th><th></th></tr></thead><tbody>`
-      +groups.map(([mno,rs])=>{
-        const rep=rs.find(r=>r.mem_type==='정회원')||rs[0];
-        const grade=rep.member_class||'';
-        const mem=rs.map(r=>`${esc(r.name_kr)}<span style="color:var(--muted);font-size:11px">(${esc(r.mem_type===('지정회원')?tx('desigMember'):tx('repMember'))})</span>`).join(', ');
-        const has=existCode[mno];
-        const btn=has
-          ? `<button class="btn sm" data-inherit="${esc(mno)}" data-code="${esc(has)}">${esc(tx('unInherit')(has))}</button>`
-          : `<button class="btn sm" data-pick="${esc(mno)}" data-grade="${esc(grade)}">${esc(tx('unPick'))}</button>`;
-        return `<tr><td><b>${esc(rep.rep_name||rep.name_kr||'')}</b></td><td>${esc(gradeLabel(grade))}</td><td style="font-size:12px">${mem}</td><td style="text-align:right;white-space:nowrap">${btn}</td></tr>`;
-      }).join('')
+      +`<th>${esc(tx('thName'))}</th><th>${esc(tx('thGrade'))}</th><th>${esc(tx('thKey'))}</th><th></th></tr></thead><tbody>`
+      +list.map(r=>`<tr data-key="${esc(r.member_key)}" data-grade="${esc(r.mem_class||'')}" data-name="${esc(r.name_kr||'')}">
+          <td><b>${esc(r.name_kr||'')}</b></td>
+          <td>${esc(gradeLabel(r.grade||''))}</td>
+          <td class="mono" style="font-size:11px;color:var(--muted)">${esc(r.member_key)}</td>
+          <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-assign>${esc(tx('unPick'))}</button></td>
+        </tr>`).join('')
       +'</tbody></table>';
-    box.querySelectorAll('[data-inherit]').forEach(b=>b.addEventListener('click',()=>applyMembershipCode(b.dataset.inherit,b.dataset.code)));
-    box.querySelectorAll('[data-pick]').forEach(b=>b.addEventListener('click',()=>{
-      const grade=b.dataset.grade;
-      if(!gcNormGrade(grade)){ toast(tx('pickNeedGrade'),'err'); return; }
-      gcOpenPicker(grade, code=>applyMembershipCode(b.dataset.pick, code));
+    box.querySelectorAll('[data-assign]').forEach(b=>b.addEventListener('click',e=>{
+      const tr=e.target.closest('tr');
+      gcOpenPicker(tr.dataset.grade||'', code=>assignMissingCode(tr.dataset.key, tr.dataset.name, tr.dataset.grade||null, code));
     }));
   }catch(e){ box.innerHTML=`<div class="cnt" style="color:var(--err)">${esc(tx('loadFail'))+(e.message||e)}</div>`; }
 }
-// 회원권(회원번호)의 코드 미보유 전원에게 code 부여(지정회원 자동 동일코드)
-async function applyMembershipCode(memNo, code){
-  if(!supa||!memNo||!code) return;
+// 개인 회원에게 태그코드 부여(upsert) — member_key = 이름+생년6. 지정회원 상속은 폐지(엠클릭 회원번호 미수집).
+async function assignMissingCode(memberKey, name, grade, code){
+  if(!supa||!memberKey||!code) return;
   try{
-    const {data:before}=await supa.from('member_codes').select('member_key,name_kr,mem_type').eq('mem_no',memNo).is('code',null);
-    const {error}=await supa.from('member_codes').update({code,is_learned:false,updated_at:new Date().toISOString()}).eq('mem_no',memNo).is('code',null);
+    const {error}=await supa.from('member_codes').upsert(
+      {member_key:memberKey, name_kr:name||null, member_class:grade||null, code, is_learned:false, updated_at:new Date().toISOString()},
+      {onConflict:'member_key'});
     if(error) throw error;
-    const rows=before||[];
-    const rep=rows.find(r=>r.mem_type==='정회원')||rows[0]||{};
-    const desigN=rows.filter(r=>r.mem_type==='지정회원').length;
-    toast(tx('unAssignDone')(rep.name_kr||'', code, desigN),'ok');
+    toast(tx('recodeDone')(name||memberKey, code),'ok');
     _gcUsed=null; loadUnassigned(); loadMasterStatus();
   }catch(e){ toast(tx('saveFail')+(e.message||e),'err'); }
 }
