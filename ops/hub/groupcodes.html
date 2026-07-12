@@ -361,15 +361,6 @@ function renderUI(){
       </div>
     </div>
     <div class="panel">
-      <h3>${esc(tx('impTitle'))}</h3>
-      <div class="desc">${tx('impDesc')}</div>
-      <div class="form-row">
-        <input class="inp" id="imp-file" type="file" accept=".xlsx,.xls">
-        <button class="btn" id="imp-go" type="button" disabled>${esc(tx('impGo'))}</button>
-        <span class="cnt" id="imp-stat"></span>
-      </div>
-    </div>
-    <div class="panel">
       <h3>${esc(tx('searchTitle'))} <span class="cnt" id="gc-cnt"></span></h3>
       <div class="form-row" style="margin-bottom:8px">
         <input class="inp" id="q" placeholder="${esc(tx('searchPh'))}" style="width:260px">
@@ -383,7 +374,6 @@ function renderUI(){
   $('#un-refresh').addEventListener('click',loadUnassigned);
   loadUnassigned();
   $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
-  wireImport();
   loadMasterStatus();
 }
 
@@ -404,50 +394,6 @@ async function loadMasterStatus(){
       + ` · ${esc(tx('masterLast'))} <b>${fmt(last&&last[0]&&last[0].updated_at)}</b>`;
     bar.style.display='flex';
   }catch(e){ /* 권한·네트워크 오류 시 조용히 숨김 */ }
-}
-
-// ── 일괄 등록(xlsx): 회원_배정_현황 → member_codes upsert ──
-let impRows=[];
-function wireImport(){
-  const f=$('#imp-file'); if(!f) return;
-  f.addEventListener('change',e=>{
-    const file=e.target.files[0]; if(!file){ impRows=[]; $('#imp-go').disabled=true; $('#imp-stat').textContent=''; return; }
-    const rd=new FileReader();
-    rd.onload=ev=>{
-      try{
-        const wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
-        const sh=wb.SheetNames.includes('회원_배정_현황')?'회원_배정_현황':wb.SheetNames[0];
-        const rows=XLSX.utils.sheet_to_json(wb.Sheets[sh],{defval:''});
-        impRows=rows.map(r=>({
-          code:String(r['코드']||'').trim(),
-          member_key:String(r['그룹 내 배정된 아이디']||'').trim(),
-          member_class:String(r['고객 구분']||'').trim()||null,
-          name_kr:String(r['성명']||'').trim()||null,
-          is_learned:false
-        })).filter(x=>x.code&&x.member_key);
-        $('#imp-stat').textContent=`${impRows.length.toLocaleString()}${tx('impRecog')}${sh}${tx('impSheetEnd')}`;
-        $('#imp-go').disabled=!impRows.length;
-      }catch(err){ impRows=[]; $('#imp-go').disabled=true; $('#imp-stat').textContent=tx('impReadFail')+err.message; toast(tx('impReadFail')+err.message,'err'); }
-    };
-    rd.readAsArrayBuffer(file);
-  });
-  $('#imp-go').addEventListener('click',importGo);
-}
-async function importGo(){
-  if(!impRows.length||!supa) return;
-  $('#imp-go').disabled=true;
-  const CH=500; let done=0;
-  try{
-    for(let i=0;i<impRows.length;i+=CH){
-      const chunk=impRows.slice(i,i+CH);
-      const {error}=await supa.from('member_codes').upsert(chunk,{onConflict:'member_key'});
-      if(error) throw error;
-      done+=chunk.length; $('#imp-stat').textContent=`${done.toLocaleString()}/${impRows.length.toLocaleString()}${tx('impProg')}`;
-    }
-    $('#imp-stat').textContent=`${done.toLocaleString()}${tx('impDone')}`;
-    toast(`${done.toLocaleString()}${tx('impDone')}`,'ok');
-    $('#imp-file').value=''; impRows=[]; _gcUsed=null; search(); loadMasterStatus();
-  }catch(e){ toast(tx('impFail')+e.message,'err'); $('#imp-go').disabled=false; }
 }
 
 // ── 회원 마스터(회원관리 xlsx) 등록: 회원번호로 정/지정 묶고 직위=코드 평생 저장 ──
