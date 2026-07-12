@@ -341,7 +341,6 @@ async function connect(){
 }
 
 function renderUI(){
-  const clsOpts=CLASSES.map(c=>`<option value="${esc(c)}">${esc(c?gradeLabel(c):tx('clsNone'))}</option>`).join('');
   $('#content').innerHTML=`
     <div id="gc-regbar" style="display:none;align-items:center;flex-wrap:wrap;gap:8px 14px;background:#e3f8ec;border:1px solid #1fb257;border-left:4px solid #1fb257;border-radius:10px;padding:10px 16px;margin-bottom:14px;color:var(--text)">
       <span style="font-weight:800;color:#127a3b;white-space:nowrap">${esc(tx('masterTitle'))}</span>
@@ -362,20 +361,6 @@ function renderUI(){
       </div>
     </div>
     <div class="panel">
-      <h3>${esc(tx('addTitle'))}</h3>
-      <div class="desc">${tx('addDesc')}</div>
-      <div class="form-row">
-        <input class="inp" id="f-name" placeholder="${esc(tx('phName'))}" style="width:120px">
-        <input class="inp" id="f-birth" placeholder="${esc(tx('phBirth'))}" maxlength="6" style="width:110px">
-        <select class="inp" id="f-class" style="width:140px">${clsOpts}</select>
-        <input class="inp" id="f-code" placeholder="${esc(tx('phCode'))}" style="width:120px;font-family:var(--mono);font-weight:700;color:var(--accent2)" readonly>
-        <button class="btn sm" id="f-pick" type="button">${esc(tx('pickBtn'))}</button>
-        <button class="btn" id="f-save" type="button">${esc(tx('save'))}</button>
-        <button class="btn ghost sm" id="f-clear" type="button">${esc(tx('clear'))}</button>
-      </div>
-      <div class="desc" style="margin:8px 0 0">${tx('addHint')}</div>
-    </div>
-    <div class="panel">
       <h3>${esc(tx('impTitle'))}</h3>
       <div class="desc">${tx('impDesc')}</div>
       <div class="form-row">
@@ -393,13 +378,6 @@ function renderUI(){
       </div>
       <div id="gc-list"></div>
     </div>`;
-  $('#f-save').addEventListener('click',saveMember);
-  $('#f-pick').addEventListener('click',()=>{
-    const cls=$('#f-class').value;
-    if(!gcNormGrade(cls)){ toast(tx('pickNeedGrade'),'err'); return; }
-    gcOpenPicker(cls, c=>{ $('#f-code').value=c; });
-  });
-  $('#f-clear').addEventListener('click',()=>{['f-name','f-birth','f-code'].forEach(id=>$('#'+id).value='');$('#f-class').value='';});
   $('#btn-search').addEventListener('click',search);
   wireMmImport();
   $('#un-refresh').addEventListener('click',loadUnassigned);
@@ -595,17 +573,6 @@ async function applyMembershipCode(memNo, code){
     toast(tx('unAssignDone')(rep.name_kr||'', code, desigN),'ok');
     _gcUsed=null; loadUnassigned(); loadMasterStatus();
   }catch(e){ toast(tx('saveFail')+(e.message||e),'err'); }
-}
-
-async function saveMember(){
-  const name=$('#f-name').value.trim(), birth=$('#f-birth').value.trim(), code=$('#f-code').value.trim(), cls=$('#f-class').value;
-  if(!name||!birth){ toast(tx('needNameBirth'),'err'); return; }
-  if(!/^\d{6}$/.test(birth)){ toast(tx('needBirth6'),'err'); return; }
-  if(!code){ toast(tx('needCode'),'err'); return; }
-  const member_key=name+birth;
-  const {error}=await supa.from('member_codes').upsert({code,member_key,name_kr:name,member_class:cls||null,is_learned:false},{onConflict:'member_key'});
-  if(error){ toast(tx('saveFail')+error.message,'err'); return; }
-  toast(tx('saved')+member_key,'ok'); _gcUsed=null; search(); loadMasterStatus();
 }
 
 async function search(){
