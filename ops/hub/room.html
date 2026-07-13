@@ -301,6 +301,8 @@
   .day-chip .dcnt{display:block;font-size:9px;font-weight:700;color:var(--accent2)}
   .day-chip .dun{display:block;font-size:9px;font-weight:800;color:#fff;background:var(--err);border-radius:5px;padding:0 4px;margin-top:1px}
   .day-chip.active .dun{background:#fff;color:var(--err)}
+  .day-chip .dun.ok{background:var(--ok,#2f7d4f)}
+  .day-chip.active .dun.ok{background:#fff;color:var(--ok,#2f7d4f)}
   /* 미배정 목록 섹션 헤더(도착/잔류) */
   .ua-sec{font-size:11px;font-weight:800;color:var(--text2);background:var(--surface3);border-radius:7px;padding:5px 9px;margin:6px 0 6px;letter-spacing:.01em}
   .ua-sec b{color:var(--accent2);font-weight:800}
@@ -501,7 +503,7 @@ const L={
     noArrUnassigned:'この日の現地到着で未割当なし ✓',
     carrySec:(n,p)=>`⏳ 以前到着・未割当 <b>${n}チーム · ${p}名</b> — 上の日付チップの <b style="color:var(--err)">未N</b> からその日へ移動して処理してください`,
     dcChipT:(d,cin,un)=>`${d} · チェックイン ${cin}チーム · 未割当到着 ${un}チーム`,
-    unShort:'未', dcAll:'全体', tlDays:'タイムライン日付', tlMulti:'複数選択', dateOne:'日付', dayOne:'1日ずつ',
+    unShort:'未', dcDone:'到着あり · 全員配置済', dcAll:'全体', tlDays:'タイムライン日付', tlMulti:'複数選択', dateOne:'日付', dayOne:'1日ずつ',
     tlAllDates:'すべての日付', tlLoadDate:'日付を読み込んでください',
     tlLegDlx:'デラックス', tlLegTwin:'スタンダードツイン', tlLegCmp:'コンパクト', tlLegEtc:'その他施設',
     tlHover:'バーにカーソル → チーム・人数・期間', tlRoom:'客室',
@@ -662,7 +664,7 @@ const L={
     noArrUnassigned:'이 날 현지도착 미배정 없음 ✓',
     carrySec:(n,p)=>`⏳ 이전 도착·미배정 <b>${n}팀 · ${p}명</b> — 위 날짜 칩의 <b style="color:var(--err)">미N</b> 에서 그 날로 가 처리하세요`,
     dcChipT:(d,cin,un)=>`${d} · 체크인 ${cin}팀 · 미배정 도착 ${un}팀`,
-    unShort:'미', dcAll:'전체', tlDays:'타임라인 일자', tlMulti:'복수 선택', dateOne:'날짜', dayOne:'하루씩',
+    unShort:'미', dcDone:'도착 있음 · 전원 배정 완료', dcAll:'전체', tlDays:'타임라인 일자', tlMulti:'복수 선택', dateOne:'날짜', dayOne:'하루씩',
     tlAllDates:'전체', tlLoadDate:'날짜를 불러오세요',
     tlLegDlx:'디럭스', tlLegTwin:'스탠다드 트윈', tlLegCmp:'컴팩트', tlLegEtc:'기타시설',
     tlHover:'막대에 커서 → 팀·인원·기간', tlRoom:'객실',
@@ -817,7 +819,7 @@ const L={
     noArrUnassigned:'No unassigned arrivals this day ✓',
     carrySec:(n,p)=>`⏳ Earlier arrivals · unassigned <b>${n} teams · ${p} ppl</b> — go to that day via the <b style="color:var(--err)">unN</b> on the date chips above`,
     dcChipT:(d,cin,un)=>`${d} · check-in ${cin} teams · unassigned arrivals ${un} teams`,
-    unShort:'un', dcAll:'All', tlDays:'Timeline dates', tlMulti:'Multi-select', dateOne:'Date', dayOne:'One day',
+    unShort:'un', dcDone:'Arrivals · all assigned', dcAll:'All', tlDays:'Timeline dates', tlMulti:'Multi-select', dateOne:'Date', dayOne:'One day',
     tlAllDates:'All', tlLoadDate:'Please load dates',
     tlLegDlx:'Deluxe', tlLegTwin:'Standard Twin', tlLegCmp:'Compact', tlLegEtc:'Other facilities',
     tlHover:'Hover a bar → team · ppl · period', tlRoom:'Rooms',
@@ -1315,7 +1317,9 @@ function renderDayStrip(){
   const unByDate={}; state.guests.forEach(g=>{ if(g.dep && unassignedMembers(g.event_seq).length>0) unByDate[g.dep]=(unByDate[g.dep]||0)+1; });
   const chip=(d,active)=>{
     const wd=WD[new Date(d+'T00:00:00').getDay()]; const we=(wd==='토'||wd==='일'); const cin=inByDate[d]||0; const un=unByDate[d]||0;
-    return `<button class="day-chip${active?' active':''}${we?' we':''}" data-d="${d}" title="${tx('dcChipT',d,cin,un)}">${fmtMD(d)}<small>${wd}</small>${cin?`<span class="dcnt">+${cin}</span>`:''}${un?`<span class="dun">${tx('unShort')}${un}</span>`:''}</button>`;
+    // 도착이 있는 날 미배정 남으면 「미N」(빨강), 전원 배정 완료면 ✓(초록) — 시즈 예약표와 동일 양식
+    const stat = un ? `<span class="dun">${tx('unShort')}${un}</span>` : (cin ? `<span class="dun ok" title="${tx('dcDone')}">✓</span>` : '');
+    return `<button class="day-chip${active?' active':''}${we?' we':''}" data-d="${d}" title="${tx('dcChipT',d,cin,un)}">${fmtMD(d)}<small>${wd}</small>${cin?`<span class="dcnt">+${cin}</span>`:''}${stat}</button>`;
   };
   if(viewMode==='timeline'){
     const all=state.days.size===0;
