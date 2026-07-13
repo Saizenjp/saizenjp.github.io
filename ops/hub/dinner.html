@@ -832,7 +832,7 @@ function printOrder(){
   .do-toolbar button { padding: 8px 20px; background: #15803D; color: #fff; border: none; border-radius: 5px; font-size: 13px; font-weight: 600; cursor: pointer; }
   .do-toolbar .do-close { background: #999; }
   .do-container { padding: 20px; }
-  .do-page { width: 281mm; min-height: 403mm; margin: 0 auto 20px; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.08); page-break-after: always; padding: 4mm; display: flex; flex-direction: column; }
+  .do-page { --fs: 1; width: 281mm; min-height: 403mm; margin: 0 auto 20px; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.08); page-break-after: always; padding: 4mm; display: flex; flex-direction: column; }
   .do-page:last-child { page-break-after: auto; }
   /* 로스터 표가 남는 세로 공간을 채워 A3 한 장을 꽉 채움(빈 공간 제거).
      roster=flex column + table=flex:1 → 행이 늘어나 세로를 채움(팀 적어도 빈칸 없음) */
@@ -844,18 +844,19 @@ function printOrder(){
   .do-base { font-size: 12pt; font-weight: 700; text-align: center; color: #1A4D8F; margin-top: 1.5mm; }
   .do-meta { font-size: 11pt; text-align: right; color: #555; line-height: 1.4; }
   .do-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  .do-table th { background: #fff; color: #1A2540; font-size: 14pt; font-weight: 800; padding: 3mm 1mm; text-align: center; border: 0.5pt solid #1A2540; border-bottom: 1.5pt solid #1A2540; letter-spacing: 1pt; }
-  .do-table td { font-size: 16pt; padding: 2.2mm 2mm; border: 0.5pt solid #b8c0d0; color: #1a2540; line-height: 1.2; vertical-align: middle; white-space: nowrap; }
+  /* 팀이 많으면 --fs(글자배율)가 JS로 줄어 A3 한 장에 맞춤(fitOnePage) — 적으면 1(크게) */
+  .do-table th { background: #fff; color: #1A2540; font-size: calc(14pt*var(--fs,1)); font-weight: 800; padding: calc(3mm*var(--fs,1)) 1mm; text-align: center; border: 0.5pt solid #1A2540; border-bottom: 1.5pt solid #1A2540; letter-spacing: 1pt; }
+  .do-table td { font-size: calc(16pt*var(--fs,1)); padding: calc(2.2mm*var(--fs,1)) 2mm; border: 0.5pt solid #b8c0d0; color: #1a2540; line-height: 1.2; vertical-align: middle; white-space: nowrap; }
   /* 좁은 칸(名前·日次·Group 등)이 2줄로 접혀 행이 커지는 걸 방지 — 英文名·参考事項만 줄바꿈 허용 */
   .do-table td.eng, .do-table td:last-child { white-space: normal; }
   .do-table td.c { text-align: center; }
-  .do-table td.kor { font-weight: 700; font-size: 17pt; }
-  .do-table td.eng { font-size: 13pt; color: #333; }
-  .do-table td.date-c { font-size: 13pt; color: #1A4D8F; font-weight: 600; font-family: 'Consolas', monospace; }
-  .do-table td.orig { font-family: 'Consolas', monospace; font-size: 14pt; font-weight: 800; letter-spacing: 0.5pt; }
+  .do-table td.kor { font-weight: 700; font-size: calc(17pt*var(--fs,1)); }
+  .do-table td.eng { font-size: calc(13pt*var(--fs,1)); color: #333; }
+  .do-table td.date-c { font-size: calc(13pt*var(--fs,1)); color: #1A4D8F; font-weight: 600; font-family: 'Consolas', monospace; }
+  .do-table td.orig { font-family: 'Consolas', monospace; font-size: calc(14pt*var(--fs,1)); font-weight: 800; letter-spacing: 0.5pt; }
   .do-table td.orig.icn { color: #1A4D8F; }
   .do-table td.orig.pus { color: #B45309; }
-  .do-table td.grp { font-family: 'Consolas', monospace; font-size: 14pt; font-weight: 700; }
+  .do-table td.grp { font-family: 'Consolas', monospace; font-size: calc(14pt*var(--fs,1)); font-weight: 700; }
   /* 잉크 절감: 줄무늬 배경 제거(테두리로 구분) */
   .do-mealsum { margin-top: 5mm; border-collapse: collapse; width: 100%; }
   .do-mealsum th, .do-mealsum td { border: 1.5pt solid #1A2540; padding: 2.5mm 4mm; text-align: center; }
@@ -890,6 +891,30 @@ function printOrder(){
     <button class="do-close" onclick="window.close()">✕ ${lang()==='ja'?'閉じる':lang()==='en'?'Close':'닫기'}</button>
   </div>
   <div class="do-container">${pagesHTML}</div>
+  <script>
+  (function(){
+    // 팀이 많은 날은 로스터 글자배율(--fs)을 줄여 A3 한 장에 맞춤(최대 ~70팀).
+    // 적은 날은 축소 안 함(=1, 크게) + flex 채움으로 세로 꽉. 극단적으로 많으면 바닥배율에서 자연 다페이지.
+    var MAXH = 403 * 96 / 25.4;   // A3 세로 인쇄영역 높이(px)
+    function fit(){
+      var pages = document.querySelectorAll('.do-page');
+      for(var i=0;i<pages.length;i++){
+        var p = pages[i];
+        p.style.setProperty('--fs','1');
+        if(p.scrollHeight <= MAXH + 1) continue;         // 이미 한 장 → 크게 유지
+        var lo = 0.2, hi = 1;
+        for(var k=0;k<16;k++){
+          var mid = (lo+hi)/2;
+          p.style.setProperty('--fs', mid);
+          if(p.scrollHeight <= MAXH) lo = mid; else hi = mid;   // 맞으면 더 크게 시도
+        }
+        p.style.setProperty('--fs', lo);
+      }
+    }
+    window.addEventListener('load', fit);
+    window.addEventListener('beforeprint', fit);
+  })();
+  <\/script>
 </body></html>`;
   const w=window.open('','_blank'); if(!w){ toast(tx('popupBlock'),'err'); return; }
   w.document.write(fullHTML); w.document.close();
