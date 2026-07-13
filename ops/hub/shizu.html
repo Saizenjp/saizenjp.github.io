@@ -85,6 +85,7 @@
   .shz-bigo-o{color:#777;font-weight:400;font-size:10px}
   .shz-annex{display:inline-block;background:#fff;color:#1a1a1a;border:1px solid #555;border-radius:5px;padding:0 6px;font-size:10.5px;font-weight:800;margin-right:3px}
   .un-badge{display:inline-block;margin-left:5px;background:var(--redDim,#fde8e8);color:var(--red,#c0392b);border:1px solid var(--red,#c0392b);border-radius:99px;padding:0 6px;font-size:10px;font-weight:800;vertical-align:middle}
+  .un-badge.ok{background:var(--accentSoft,#eef3e6);color:var(--ok,#2f7d4f);border-color:#b4cda0}
   .shz-pv-unrow .shz-pv-lb{color:var(--red,#c0392b)}
   .shz-pv-un{text-align:left!important;background:#fdecea;color:var(--red,#c0392b);font-weight:800;cursor:pointer}
   .shz-pv-un:hover{background:#fbdedb}
@@ -429,9 +430,17 @@ async function load(){
 function renderDateChips(){
   const box=$('#daychips'); if(!box)return;
   const ax=axis();
+  // 체크인/체크아웃(입·퇴실)이 있는 날짜 = 미배정 0이라도 「未0」(초록)로 확인 표시(Min 요청)
+  const turn=new Set();
+  ROSTER.forEach(r=>{ if(r.dep) turn.add(r.dep); if(r.arr) turn.add(r.arr); });
+  GUESTS.forEach(g=>{ if(g.ci) turn.add(g.ci); if(g.co) turn.add(g.co); });
   const chip=(val,label,on)=>`<button type="button" class="daychip${on?' on':''}" data-d="${val}">${label}</button>`;
   let html=chip('',tx('allDays'),!DATESEL);
-  ax.forEach(d=>{ const dt=parseISO(d); const un=UNBYDATE[d]||0; const lb=`${dt.getMonth()+1}/${dt.getDate()}<small style="opacity:.7">(${SHZ_DOW[dt.getDay()]})</small>${un?`<span class="un-badge">未${un}</span>`:''}`; html+=chip(d,lb,DATESEL===d); });
+  ax.forEach(d=>{ const dt=parseISO(d); const un=UNBYDATE[d]||0;
+    const badge = un ? `<span class="un-badge">未${un}</span>`
+                     : (turn.has(d) ? `<span class="un-badge ok">未0</span>` : '');
+    const lb=`${dt.getMonth()+1}/${dt.getDate()}<small style="opacity:.7">(${SHZ_DOW[dt.getDay()]})</small>${badge}`;
+    html+=chip(d,lb,DATESEL===d); });
   box.innerHTML=html;
   box.querySelectorAll('.daychip').forEach(b=>b.addEventListener('click',()=>{
     DATESEL=b.getAttribute('data-d')||null;
