@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 運営管理 · データ検収(マスター)</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad;
+    --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh;}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06);}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .topbar .grow{flex:1}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 15px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{padding:16px 20px 90px;max-width:1000px;margin:0 auto}
+  .bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .bar h2{font-size:16px;font-weight:800;color:var(--accent)}
+  .bar .meta{font-size:12px;color:var(--muted);font-weight:600}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+  .allok{padding:34px 20px;text-align:center;color:var(--ok);font-size:17px;font-weight:800;background:var(--accentSoft);border:1px solid #b4cda0;border-radius:12px}
+  .card{background:var(--surface);border:1px solid var(--border);border-left-width:5px;border-radius:11px;padding:13px 16px;margin-bottom:13px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .card.ok{border-left-color:var(--ok)}
+  .card.warn{border-left-color:var(--warn)}
+  .card.err{border-left-color:var(--err)}
+  .card .hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .card .nm{font-size:14.5px;font-weight:800;color:var(--text)}
+  .cnt{font-size:12px;font-weight:800;border-radius:99px;padding:2px 11px;white-space:nowrap}
+  .cnt.zero{background:var(--accentSoft);color:var(--ok);border:1px solid #b4cda0}
+  .cnt.hit{background:#f7e6e2;color:var(--err);border:1px solid #e3bdb4}
+  .cnt.hitw{background:#fbf3e2;color:#7a5a16;border:1px solid #e6d3a8}
+  .card .ds{font-size:12.5px;color:var(--text2);margin-top:7px;line-height:1.55}
+  .card .fx{font-size:12px;color:var(--accent2);font-weight:700;margin-top:5px}
+  .samps{margin-top:10px;border-top:1px dashed var(--border2);padding-top:9px;display:flex;flex-direction:column;gap:4px}
+  .samp{font-size:12px;font-family:var(--mono);color:var(--text2);display:flex;gap:9px}
+  .samp .es{font-weight:800;color:var(--accent);min-width:74px}
+  .more{font-size:11.5px;color:var(--muted);font-weight:600;margin-top:4px}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.20">
+</head>
+<body data-so-area="admin">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム">
+    <img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen">
+  </a>
+  <span class="step" id="t-step">データ検収 · マスター</span>
+  <a class="navhome" href="../index.html" style="margin-left:14px" id="t-home">← ホーム</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">未接続</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key (sb_publishable_…)" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">接続</button>
+  <span class="hint" id="t-connhint">ログイン後、マスター(admin)のみ利用できます。</span>
+</div>
+
+<div class="wrap">
+  <div class="bar">
+    <h2 id="t-title">データ検収</h2>
+    <button class="btn" id="btn-run" type="button" disabled>再検収</button>
+    <span class="meta" id="run-meta"></span>
+  </div>
+  <div id="result"><div class="deny" id="t-empty" style="color:var(--muted)">接続後、[再検収]で実行します。</div></div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-ops.js?v=15.20"></script>
+<script>
+// ════════════════════════════════════════════════════════════════════════
+//  SaiZen Hub — 데이터 검수(마스터 전용). 82_data_audit.sql 의 data_audit() RPC 호출.
+//    정합성 이상징후(개인번호 결번·명단 불일치·태그중복·고아·정원초과)를 한 번에 스캔.
+// ════════════════════════════════════════════════════════════════════════
+const $=s=>document.querySelector(s);
+let supa=null, myRole=null, RESULT=null;
+
+// 체크 메타(순서·심각도는 RPC가 주지만, 라벨/설명/조치는 화면 i18n)
+const CHECKS=['seq_gap','count_mismatch','dup_tag','orphan_room','room_over'];
+
+const L={
+  ja:{
+    step:'データ検収 · マスター', home:'← ホーム', title:'データ検収',
+    connHint:'ログイン後、マスター(admin)のみ利用できます。',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続 · 再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL·key必要', needLogin:'ログイン必要',
+    needConnLogin:'ログインが必要です。', needConnLoginSub:'マスターアカウントでログイン後、再接続してください。',
+    adminOnly:'マスター(管理者)専用ページです。', currentRole:'現在の役割: ', noAccess:' · アクセス権限がありません。',
+    emptyHint:'接続後、[再検収]で実行します。',
+    runBtn:'再検収', running:'検収中…', ranAt:d=>`最終検収 ${d}`,
+    allClear:'✓ 異常なし — すべての検収項目をパスしました', issuesN:n=>`要確認 ${n}件`,
+    okNone:'異常なし ✓', teamsUnit:'チーム', rowsUnit:'件', moreN:n=>`… ほか ${n}件（上位20件表示）`,
+    connFailHint:' (82_data_audit.sql 実行・ログイン確認)',
+    // 체크별 이름/설명/조치
+    n_seq_gap:'個人番号 欠番', d_seq_gap:'ネームタグの個人番号(person_tag)がチーム内 1..N の連番になっていない(1,3,5,7…)。過去バージョンimportの残り。',
+    f_seq_gap:'対処: ネームタグ印刷は読込時に自動採番で正常出力。該当月を再importすればDBも1,2,3,4に是正。',
+    n_count_mismatch:'名簿数 不一致', d_count_mismatch:'guest_members(タグ名簿)の人数と passengers(元名簿)の人数が一致しない。部分importや旧残り行の可能性。',
+    f_count_mismatch:'対処: 該当チームを再import(step1)。過剰残り行は再importで自動整理。',
+    n_dup_tag:'チーム内タグ重複', d_dup_tag:'同一チーム内で person_tag(個人タグ)が重複。ネームタグ2枚が同番号になる。',
+    f_dup_tag:'対処: 該当チームを再import。ネームタグ側は自動採番で表示は是正済。',
+    n_orphan_room:'孤児 客室割当', d_orphan_room:'rooms.member_id が guest_members に存在しない(FK切れ)。名簿削除後に割当が残った状態。',
+    f_orphan_room:'対処: 該当 rooms 行を再割当または削除。通常FKで発生しない(0が正常)。',
+    n_room_over:'客室 定員超過', d_room_over:'同一客室・重なる宿泊日で割当人数の合計が定員を超過(ダブルブッキング)。',
+    f_room_over:'対処: 方배정(room.html)で該当客室を確認し再配置。定員ガードで新規は発生しない(0が正常)。'
+  },
+  ko:{
+    step:'데이터 검수 · 마스터', home:'← 홈', title:'데이터 검수',
+    connHint:'로그인 후, 마스터(admin)만 이용할 수 있습니다.',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 · 재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
+    needConnLogin:'로그인이 필요합니다.', needConnLoginSub:'마스터 계정으로 로그인 후 다시 연결하세요.',
+    adminOnly:'마스터(관리자) 전용 페이지입니다.', currentRole:'현재 역할: ', noAccess:' · 접근 권한이 없습니다.',
+    emptyHint:'연결 후 [재검수]로 실행합니다.',
+    runBtn:'재검수', running:'검수 중…', ranAt:d=>`최종 검수 ${d}`,
+    allClear:'✓ 이상 없음 — 모든 검수 항목을 통과했습니다', issuesN:n=>`확인 필요 ${n}건`,
+    okNone:'이상 없음 ✓', teamsUnit:'팀', rowsUnit:'건', moreN:n=>`… 외 ${n}건 (상위 20건 표시)`,
+    connFailHint:' (82_data_audit.sql 실행·로그인 확인)',
+    n_seq_gap:'개인번호 결번', d_seq_gap:'네임택 개인번호(person_tag)가 팀 내 1..N 연속이 아님(1,3,5,7…). 과거 버전 임포트의 잔재.',
+    f_seq_gap:'조치: 네임택 인쇄는 읽을 때 자동 재부여로 정상 출력. 해당 월을 재임포트하면 DB도 1,2,3,4로 교정.',
+    n_count_mismatch:'명단 수 불일치', d_count_mismatch:'guest_members(태그 명단) 인원과 passengers(원본 명단) 인원이 다름. 부분 임포트/구 잔여행 가능성.',
+    f_count_mismatch:'조치: 해당 팀 재임포트(step1). 초과 잔여행은 재임포트 시 자동 정리.',
+    n_dup_tag:'팀 내 태그 중복', d_dup_tag:'같은 팀에서 person_tag(개인 태그)가 겹침. 네임택 2장이 같은 번호가 됨.',
+    f_dup_tag:'조치: 해당 팀 재임포트. 네임택은 자동 재부여로 표시는 이미 정상.',
+    n_orphan_room:'고아 방배정', d_orphan_room:'rooms.member_id가 guest_members에 없음(FK 끊김). 명단 삭제 후 배정이 남은 상태.',
+    f_orphan_room:'조치: 해당 rooms 행 재배정 또는 삭제. 보통 FK로 발생 안 함(0이 정상).',
+    n_room_over:'방 정원 초과', d_room_over:'같은 객실·겹치는 숙박일에 배정 인원 합이 정원 초과(더블부킹).',
+    f_room_over:'조치: 방배정(room.html)에서 해당 객실 확인·재배치. 정원 가드로 신규는 발생 안 함(0이 정상).'
+  },
+  en:{
+    step:'Data Audit · Master', home:'← Home', title:'Data Audit',
+    connHint:'After login, master (admin) only.',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Connect · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
+    needConnLogin:'Login required.', needConnLoginSub:'Log in with a master account, then reconnect.',
+    adminOnly:'Master (admin) only page.', currentRole:'Current role: ', noAccess:' · No access.',
+    emptyHint:'After connecting, run with [Re-audit].',
+    runBtn:'Re-audit', running:'Auditing…', ranAt:d=>`Last audit ${d}`,
+    allClear:'✓ All clear — every audit check passed', issuesN:n=>`${n} to review`,
+    okNone:'Clear ✓', teamsUnit:'teams', rowsUnit:'rows', moreN:n=>`… +${n} more (top 20 shown)`,
+    connFailHint:' (run 82_data_audit.sql · check login)',
+    n_seq_gap:'Person-number gaps', d_seq_gap:'Nametag person numbers (person_tag) are not a 1..N run within a team (1,3,5,7…). Leftover from an older import.',
+    f_seq_gap:'Fix: Nametag print auto-renumbers on read (already correct). Re-importing the month also fixes the DB.',
+    n_count_mismatch:'Roster count mismatch', d_count_mismatch:'guest_members count ≠ passengers count for a team. Possible partial import or stale rows.',
+    f_count_mismatch:'Fix: Re-import the team (step1). Excess stale rows are cleaned on re-import.',
+    n_dup_tag:'Duplicate tag in team', d_dup_tag:'A person_tag repeats within one team; two nametags would share a number.',
+    f_dup_tag:'Fix: Re-import the team. Nametag display is already corrected by auto-renumber.',
+    n_orphan_room:'Orphan room assignment', d_orphan_room:'rooms.member_id has no guest_members row (broken FK). Assignment left after roster deletion.',
+    f_orphan_room:'Fix: Reassign or delete the rooms row. Normally prevented by FK (0 is normal).',
+    n_room_over:'Room over capacity', d_room_over:'Assigned pax on overlapping nights for one room exceeds capacity (double-booking).',
+    f_room_over:'Fix: Check the room in room.html and reassign. Capacity guard prevents new ones (0 is normal).'
+  }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; const v=(k in d)?d[k]:(L.ja[k]); return v==null?k:v; }
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(msg,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.textContent=msg;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,cls){const e=$('#conn-state');e.textContent=t;e.className='pill'+(cls?' '+cls:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+
+// 정적 텍스트(로컬 전용 키 → id="t-", data-i18n 사용 안 함) 채우기
+function applyStatic(){
+  $('#t-step').textContent=tx('step');
+  $('#t-home').textContent=tx('home');
+  $('#t-title').textContent=tx('title');
+  $('#t-connhint').textContent=tx('connHint');
+  const em=$('#t-empty'); if(em) em.textContent=tx('emptyHint');
+  $('#btn-run').textContent=tx('runBtn');
+  const bc=$('#btn-connect'); if(bc && !supa) bc.textContent=tx('connect');
+}
+window.onSaizenLangChange=function(){ applyStatic(); if(RESULT) render(); };
+
+async function connect(){
+  const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
+  if(!url||!key){ setConn(tx('needUrlKey'),'err'); return; }
+  localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.textContent=tx('connecting'); btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect'); btn.disabled=false;
+      $('#result').innerHTML='<div class="deny">'+esc(tx('needConnLogin'))+'<small>'+esc(tx('needConnLoginSub'))+'</small></div>'; return; }
+    const {data:acc,error}=await supa.rpc('me_access');
+    if(error) throw error;
+    myRole=(acc&&acc[0]&&acc[0].role)||'staff';
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
+    if(myRole!=='admin'){
+      $('#btn-run').disabled=true;
+      $('#result').innerHTML='<div class="deny">'+esc(tx('adminOnly'))+'<small>'+esc(tx('currentRole'))+esc(myRole)+esc(tx('noAccess'))+'</small></div>';
+      return;
+    }
+    $('#btn-run').disabled=false;
+    await runAudit();
+  }catch(e){
+    setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn'); btn.disabled=false; supa=null;
+    toast(tx('connFail')+': '+e.message+tx('connFailHint'),'err');
+  }
+}
+
+async function runAudit(){
+  if(!supa) return;
+  const btn=$('#btn-run'); btn.disabled=true; btn.textContent=tx('running');
+  try{
+    const {data,error}=await supa.rpc('data_audit');
+    if(error) throw error;
+    RESULT=Array.isArray(data)?data:[];
+    const now=new Date();
+    const stamp=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    $('#run-meta').textContent=tx('ranAt')(stamp);
+    render();
+  }catch(e){ toast(tx('connFail')+': '+e.message,'err'); }
+  finally{ btn.disabled=(myRole!=='admin'); btn.textContent=tx('runBtn'); }
+}
+
+function render(){
+  if(!RESULT){ return; }
+  const box=$('#result');
+  // RPC가 준 순서를 우선, 없으면 CHECKS 순
+  const byKey={}; RESULT.forEach(r=>byKey[r.key]=r);
+  const order=RESULT.map(r=>r.key);
+  CHECKS.forEach(k=>{ if(!order.includes(k)) order.push(k); });
+  const total=RESULT.reduce((s,r)=>s+(+r.count||0),0);
+  let head;
+  if(total===0){ head=`<div class="allok">${esc(tx('allClear'))}</div>`; }
+  else{ head=`<div class="bar" style="margin-bottom:12px"><span class="pill err">${esc(tx('issuesN')(total))}</span></div>`; }
+  const cards=order.map(k=>{
+    const r=byKey[k]; if(!r) return '';
+    const n=+r.count||0;
+    const sev=r.sev||'warn';
+    const cls=n===0?'ok':(sev==='error'?'err':'warn');
+    const cntCls=n===0?'zero':(sev==='error'?'hit':'hitw');
+    const cntTxt=n===0?tx('okNone'):`${n} ${sev==='error'?tx('rowsUnit'):tx('teamsUnit')}`;
+    let samps='';
+    if(n>0 && Array.isArray(r.samples) && r.samples.length){
+      const rows=r.samples.map(s=>`<div class="samp"><span class="es">#${esc(s.event_seq)}</span><span>${esc(s.detail||'')}</span></div>`).join('');
+      const more=(n>r.samples.length)?`<div class="more">${esc(tx('moreN')(n-r.samples.length))}</div>`:'';
+      samps=`<div class="samps">${rows}${more}</div>`;
+    }
+    const body=n>0?`<div class="ds">${tx('d_'+k)}</div><div class="fx">${tx('f_'+k)}</div>${samps}`:'';
+    return `<div class="card ${cls}">
+      <div class="hd"><span class="nm">${esc(tx('n_'+k))}</span><span class="cnt ${cntCls}">${esc(cntTxt)}</span></div>
+      ${body}
+    </div>`;
+  }).join('');
+  box.innerHTML=head+cards;
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  applyStatic(); loadCreds();
+  $('#btn-connect').addEventListener('click',connect);
+  $('#btn-run').addEventListener('click',runAudit);
+  // 접속정보 내장 자동연결(saizen-ops가 채워둠) — 값 있으면 자동 접속
+  if(($('#sb-url').value||'').trim() && ($('#sb-key').value||'').trim()){ connect(); }
+});
+</script>
+</body>
+</html>

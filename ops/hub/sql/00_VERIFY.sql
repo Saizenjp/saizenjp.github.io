@@ -146,6 +146,7 @@ from (
   union all select 79,'79 회원마스터','member_codes.mem_no',   case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='member_codes' and column_name='mem_no') then '✅ 있음' else '❌ 없음 (79)' end
   union all select 79,'79 회원마스터','PK=member_key',         case when exists(select 1 from pg_constraint where conrelid='public.member_codes'::regclass and contype='p' and array_length(conkey,1)=1) then '✅ 적용' else '❌ 미적용 (79)' end
   union all select 79,'79 회원마스터','code nullable',          case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='member_codes' and column_name='code' and is_nullable='YES') then '✅ 적용' else '❌ 미적용 (79)' end
+  union all select 82,'82 데이터검수','data_audit()',           case when exists(select 1 from pg_proc where proname='data_audit') then '✅ 있음' else '❌ 없음 (82)' end
 ) t
 order by ord, 항목;
 
