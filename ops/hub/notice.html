@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Yamanami 운영 관리 · 안내문 제작기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;500;600&family=Noto+Serif+JP:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+  :root{
+    /* 산출물(용지) 토큰 — 변경 금지 */
+    --ink:#111111; --line:#111111; --muted:#6b6b6b; --paper:#ffffff;
+    /* 편집 UI 토큰(화면 전용) */
+    --ui-bg:#f3f4f2; --ui-surface:#ffffff; --ui-border:#d9ddd4; --ui-border2:#c3c9ba;
+    --ui-text:#242a22; --ui-text2:#5c6356; --ui-muted:#8b917f;
+    --ui-accent:#647548; --ui-accentDeep:#4F5E38; --ui-soft:#e6ecdd;
+    --ui-sans:'Pretendard','Apple SD Gothic Neo',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:var(--ui-sans);background:var(--ui-bg);color:var(--ui-text);-webkit-font-smoothing:antialiased}
+
+  /* ── 앱 레이아웃 ── */
+  .app{display:flex;flex-direction:column;height:100vh}
+  .toolbar{flex:none;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    background:var(--ui-surface);border-bottom:1px solid var(--ui-border);
+    box-shadow:0 1px 3px rgba(0,0,0,.05);padding:11px 20px}
+  .toolbar .home{font-size:13px;font-weight:700;color:var(--ui-accent);text-decoration:none;white-space:nowrap}
+  .toolbar .home:hover{color:var(--ui-accentDeep)}
+  .toolbar .brand{font-weight:800;font-size:15px;letter-spacing:-.01em;color:var(--ui-accentDeep)}
+  .toolbar .brand small{display:block;font-size:10.5px;font-weight:600;color:var(--ui-muted);letter-spacing:.04em}
+  .toolbar .spacer{flex:1}
+  .seg-toggle{display:inline-flex;border:1px solid var(--ui-border2);border-radius:9px;overflow:hidden;background:var(--ui-surface)}
+  .seg-toggle button{border:0;background:transparent;font-family:inherit;font-size:13px;font-weight:700;
+    color:var(--ui-text2);padding:7px 15px;cursor:pointer}
+  .seg-toggle button.on{background:var(--ui-accent);color:#fff}
+  .btn{font-family:inherit;font-size:13.5px;font-weight:700;border-radius:9px;padding:9px 18px;border:1px solid var(--ui-accent);
+    background:var(--ui-accent);color:#fff;cursor:pointer;transition:background .15s}
+  .btn:hover{background:var(--ui-accentDeep)}
+  .print-hint{font-size:11.5px;color:var(--ui-muted);font-weight:600;max-width:230px;line-height:1.35}
+  .print-hint b{color:var(--ui-accent2,#9a7322)}
+
+  .body{flex:1;display:flex;min-height:0}
+  .editor{flex:0 0 40%;max-width:520px;overflow-y:auto;padding:20px 22px 40px;border-right:1px solid var(--ui-border)}
+  .preview{flex:1;min-width:0;background:#e9e9e9;overflow:auto}
+  .stage{min-height:100%;display:flex;align-items:flex-start;justify-content:center;padding:26px}
+
+  /* ── 편집 패널 ── */
+  .grp{margin-bottom:20px}
+  .grp > .gl{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ui-muted);margin:0 0 9px}
+  .presets{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .preset{text-align:left;border:1px solid var(--ui-border2);background:var(--ui-surface);border-radius:10px;
+    padding:10px 12px;cursor:pointer;font-family:inherit;transition:.12s}
+  .preset:hover{border-color:var(--ui-accent);background:var(--ui-soft)}
+  .preset .pn{font-size:13px;font-weight:800;color:var(--ui-text)}
+  .preset .pd{font-size:11px;color:var(--ui-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .field{margin-bottom:13px}
+  .field label{display:block;font-size:12px;font-weight:700;color:var(--ui-text2);margin-bottom:5px}
+  .field label .hint{font-weight:500;color:var(--ui-muted);font-size:11px}
+  .field input, .field textarea{width:100%;font-family:inherit;font-size:14px;color:var(--ui-text);
+    border:1px solid var(--ui-border2);border-radius:8px;padding:9px 11px;background:var(--ui-surface);resize:vertical}
+  .field textarea{min-height:96px;line-height:1.7}
+  .field input:focus, .field textarea:focus{outline:none;border-color:var(--ui-accent);box-shadow:0 0 0 3px var(--ui-soft)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+  :focus-visible{outline:2px solid var(--ui-accent);outline-offset:2px}
+
+  /* ── 용지(산출물) — §4 토큰 정확 재현 ── */
+  .page-wrap{flex:none}
+  .page{background:var(--paper);box-shadow:0 6px 30px rgba(0,0,0,.18);
+    display:flex;align-items:center;justify-content:center;transform-origin:top left;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .page.a4{width:210mm;height:297mm;padding:22mm}
+  .page.b5{width:176mm;height:250mm;padding:15mm}
+  .frame{width:100%;height:100%;border:1px solid var(--line);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+  .page.a4 .frame{padding:24mm 18mm}
+  .page.b5 .frame{padding:18mm 14mm}
+
+  .kicker{font-family:'Pretendard',sans-serif;color:var(--muted);font-weight:500;margin-bottom:1.5mm}
+  .page.a4 .kicker{font-size:13pt;letter-spacing:.42em;text-indent:.42em}
+  .page.b5 .kicker{font-size:11pt;letter-spacing:.40em;text-indent:.40em}
+  .kicker-jp{font-family:'Noto Serif JP',serif;color:var(--muted);font-weight:400}
+  .page.a4 .kicker-jp{font-size:11.5pt;letter-spacing:.30em;text-indent:.30em}
+  .page.b5 .kicker-jp{font-size:10pt;letter-spacing:.28em;text-indent:.28em}
+
+  .rule-top{height:1px;background:var(--line);flex:none}
+  .page.a4 .rule-top{width:34mm;margin:12mm 0}
+  .page.b5 .rule-top{width:30mm;margin:9mm 0}
+
+  .ko{font-family:'Noto Serif KR',serif;color:var(--ink);font-weight:400;letter-spacing:-.01em}
+  .ko strong{font-weight:600}
+  .page.a4 .ko{font-size:27pt;line-height:1.85}
+  .page.b5 .ko{font-size:21pt;line-height:1.85}
+
+  .divider{display:flex;align-items:center;justify-content:center;flex:none}
+  .page.a4 .divider{width:60mm;margin:14mm 0;gap:6mm}
+  .page.b5 .divider{width:52mm;margin:11mm 0;gap:5mm}
+  .divider .seg{flex:1;height:1px;background:var(--line);opacity:.55}
+  .divider .dot{width:5px;height:5px;border:1px solid var(--line);transform:rotate(45deg);flex:none}
+
+  .jp{font-family:'Noto Serif JP',serif;color:#222;font-weight:300;letter-spacing:.01em}
+  .page.a4 .jp{font-size:16pt;line-height:2.0}
+  .page.b5 .jp{font-size:13pt;line-height:2.0}
+
+  .foot{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:1.5mm}
+  .page.a4 .foot{padding-top:16mm}
+  .page.b5 .foot{padding-top:12mm}
+  .foot-logo{display:flex;justify-content:center;margin-bottom:2.5mm}
+  .foot-logo img{display:block;height:auto}
+  .page.a4 .foot-logo img{width:48mm}
+  .page.b5 .foot-logo img{width:41mm}
+  .foot-resort{font-family:'Noto Serif JP',serif;color:#333;letter-spacing:.14em;text-indent:.14em}
+  .page.a4 .foot-resort{font-size:11.5pt}
+  .page.b5 .foot-resort{font-size:11pt}
+  .foot-co{font-family:'Pretendard',sans-serif;color:#6b6b6b;letter-spacing:.20em;text-indent:.20em}
+  .page.a4 .foot-co{font-size:10pt}
+  .page.b5 .foot-co{font-size:9pt}
+
+  /* ── 반응형 ── */
+  @media (max-width:768px){
+    .app{height:auto}
+    .body{flex-direction:column}
+    .editor{flex:none;max-width:none;width:100%;border-right:0;border-bottom:1px solid var(--ui-border)}
+    .preview{min-height:70vh}
+    .print-hint{display:none}
+  }
+
+  /* ── 인쇄: 용지(.page)만 실제 크기로 ── */
+  @media print{
+    html,body{height:auto;background:#fff}
+    .toolbar,.editor,.print-hint{display:none!important}
+    .app,.body{display:block;height:auto}
+    .preview{display:block;overflow:visible;background:#fff}
+    .stage{display:block;padding:0;min-height:0;overflow:visible}
+    .page-wrap{width:auto!important;height:auto!important}
+    .page{transform:none!important;box-shadow:none;margin:0}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="toolbar">
+    <a class="home" href="../index.html" title="홈 / ホーム">← 홈</a>
+    <div class="brand">안내문 제작기<small>야마나미 리조트 · 현장 안내문</small></div>
+    <div class="spacer"></div>
+    <div class="seg-toggle" id="paper-toggle" role="group" aria-label="용지 크기">
+      <button type="button" data-paper="a4">A4</button>
+      <button type="button" data-paper="b5">B5</button>
+    </div>
+    <div class="print-hint">인쇄 대화상자에서 <b>용지=선택 크기</b>, <b>여백=없음</b>으로 설정하세요.</div>
+    <button class="btn" id="btn-print" type="button">🖨 인쇄 / PDF 저장</button>
+  </header>
+
+  <div class="body">
+    <!-- 편집 패널 -->
+    <section class="editor">
+      <div class="grp">
+        <p class="gl">프리셋</p>
+        <div class="presets" id="presets"></div>
+      </div>
+
+      <div class="grp">
+        <p class="gl">상단 라벨</p>
+        <div class="row2">
+          <div class="field">
+            <label for="f-labelKo">한국어</label>
+            <input id="f-labelKo" type="text" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="f-labelJp">일본어</label>
+            <input id="f-labelJp" type="text" autocomplete="off">
+          </div>
+        </div>
+      </div>
+
+      <div class="grp">
+        <p class="gl">본문</p>
+        <div class="field">
+          <label for="f-ko">한국어 본문 <span class="hint">— 줄바꿈 유지 · <code>**강조**</code> 굵게</span></label>
+          <textarea id="f-ko"></textarea>
+        </div>
+        <div class="field">
+          <label for="f-jp">일본어 본문 <span class="hint">— 줄바꿈 유지</span></label>
+          <textarea id="f-jp"></textarea>
+        </div>
+      </div>
+
+      <div class="grp">
+        <p class="gl">하단 서명 <span class="hint" style="font-weight:500;text-transform:none;letter-spacing:0">— 비우면 해당 줄 숨김</span></p>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--ui-text2);margin:0 0 13px;cursor:pointer"><input type="checkbox" id="f-logo" checked style="width:16px;height:16px;accent-color:var(--ui-accent)"> 하단 SaiZen 로고 표시</label>
+        <div class="field">
+          <label for="f-resort">리조트명</label>
+          <input id="f-resort" type="text" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="f-co">회사명</label>
+          <input id="f-co" type="text" autocomplete="off">
+        </div>
+      </div>
+    </section>
+
+    <!-- 미리보기 -->
+    <section class="preview">
+      <div class="stage" id="stage">
+        <div class="page-wrap" id="page-wrap">
+          <div class="page b5" id="page">
+            <div class="frame">
+              <div class="kicker" id="pv-kicker"></div>
+              <div class="kicker-jp" id="pv-kickerJp"></div>
+              <div class="rule-top"></div>
+              <div class="ko" id="pv-ko"></div>
+              <div class="divider"><span class="seg"></span><span class="dot"></span><span class="seg"></span></div>
+              <div class="jp" id="pv-jp"></div>
+              <div class="foot">
+                <div class="foot-logo" id="pv-logo"><img alt="SaiZen" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzODMuNTkiIGhlaWdodD0iMTM3LjkzIiB2aWV3Qm94PSIwIDAgMzgzLjU5IDEzNy45MyI+PGcgaWQ9IuugiOydtOyWtF8yIiBkYXRhLW5hbWU9IuugiOydtOyWtCAyIj48ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIj48cGF0aCBkPSJNMTA2LDk4LjZjMS42NSw0LjgsNi45NCw5LjcsMTUuMjksOS43czE0LjExLTQuODEsMTQuMTEtMTRjMC01LjA4LTEuODgtOC41Ny01LjQxLTEyLjA1LTQuODItNC43MS0xMy40LTEwLTE4LjU4LTE1LTQuNy00LjQzLTcuMjktOS4yMy03LjI5LTE1LDAtMTAuMzYsOC41OC0xOC4wOCwyMy0xOC4wOCw4Ljk0LDAsMTIuOTQsMi45MiwxNy42NCw4LjE5bC0zLjY0LDIuMjZjLTMuMTgtNC03LjE4LTcuMDYtMTMuNDEtNy4wNi03LjUzLDAtMTIuOTQsNC40Mi0xMi45NCwxMi44MSwwLDQuNTIsMS41Myw4LjEsNS43NiwxMS42OCwzLjQxLDIuODIsMTQuMjQsMTAuNjQsMTgsMTMuODQsNC45NCw0LjQzLDguODIsMTAuNTUsOC44MiwxNywwLDEwLjU1LTEwLjcsMTguODQtMjUuODgsMTguODQtMTEsMC0xNi43LTQuMzMtMTkuODctMTAuOTNaIiBmaWxsPSIjNDQ0NDQ2Ii8+PHBhdGggZD0iTTE5MCwxMTAuMThhOS41MSw5LjUxLDAsMCwxLTIuNTktNS43NGMtMi4zNSwzLjc2LTYuMjMsNy4yNS0xNi4zNCw3LjI1LTEzLjY1LDAtMTkuMDYtNi41OS0xOS4wNi0xNSwwLTEwLjY0LDguNDctMTUsMTguODItMTguMjcsMTEuMTgtMy41OCwxMi41OS00LDE2LjctN3YtN2MwLTcuNTQtMy40MS0xMS44Ny0xMy0xMS44Ny02LjM1LDAtOS44OCwxLjg4LTEzLjg4LDUuOTNsLTMuNzYtMS41YzQuOTQtNS4yOCwxMi40Ni04LDIyLjExLTgsMTQuODIsMCwyMC44MSw2LjUsMjAuODEsMTR2MzkuMzhjMCwzLjI5LjgzLDUuNjUsMi45NSw3LjcyWm0tMi40Ny0zNS42Yy0zLjQxLDIuMTYtNi40NywzLjM5LTE0LjM1LDYuNC02LjM1LDIuMzYtOC45Myw2LjUtOC45MywxMy44NSwwLDguMSwzLjE3LDEzLjk0LDEwLjIzLDEzLjk0LDYuNDcsMCwxMS4xNy01LjE4LDEzLTExWiIgZmlsbD0iIzQ0NDQ0NiIvPjxwYXRoIGQ9Ik0yMTQuNCw0Ni43MmE2LDYsMCwwLDAsNS44OS01LjkzQTUuNzMsNS43MywwLDAsMCwyMTQuNCwzNWE1Ljk0LDUuOTQsMCwwLDAtNiw1LjgzQTYuMDksNi4wOSwwLDAsMCwyMTQuNCw0Ni43MloiIGZpbGw9IiM2NDc1NDgiLz48cG9seWdvbiBwb2ludHM9IjIwOC4yNCAxMTAuMTggMjIwLjQ3IDExMC4xOCAyMjAuNDcgNDkuOCAyMDguMjQgNTIuODIgMjA4LjI0IDExMC4xOCIgZmlsbD0iIzQ0NDQ0NiIvPjxwYXRoIGQ9Ik0zNzEuMzYsMTEwLjE4di00NGMwLTcuNjMtNC43LTEyLjM0LTExLjQxLTEyLjM0LTYuNDcsMC0xMC4yMyw0LjQzLTEyLDEwLjkzdjQ1LjRIMzM1LjcyVjUyLjgybDEyLjI0LTN2OC41N2MxLjc2LTMuNDgsNi4xMS05LjMyLDE2LjgxLTkuMzIsMTEuNDEsMCwxOC44Miw2LjU5LDE4LjgyLDE1LjczdjQ1LjRaIiBmaWxsPSIjNDQ0NDQ2Ii8+PHBhdGggZD0iTTEwOS4yMywxMzcuNzVsLS45My0zaC0zLjU4bC0xLDNIMTAyLjVsMy4zMy05LjgzaDEuNDFsMy4zMiw5LjgzWm0tMy43My01LjUtLjQ3LDEuNWgzbC0uNDctMS41Yy0uMTgtLjU1LS4zNS0xLjEtLjUxLTEuNjRzLS4zMi0xLjEtLjQ4LTEuNjdoLS4wNmMtLjE1LjU3LS4zLDEuMTItLjQ2LDEuNjdTMTA1LjY4LDEzMS43LDEwNS41LDEzMi4yNVoiIGZpbGw9IiM2NDc1NDgiLz48cGF0aCBkPSJNMTE0LjY5LDEzNy45M2E0LjU2LDQuNTYsMCwwLDEtMS45Mi0uNCw0Ljg1LDQuODUsMCwwLDEtMS41My0xLjA1bC43NS0uODdhNC4yMiw0LjIyLDAsMCwwLDEuMjMuODksMy41MiwzLjUyLDAsMCwwLDEuNDguMzQsMi4yOSwyLjI5LDAsMCwwLDEuNTEtLjQ1LDEuNDIsMS40MiwwLDAsMCwuNTQtMS4xNiwxLjIzLDEuMjMsMCwwLDAtLjQ2LTEuMDgsNi4yNSw2LjI1LDAsMCwwLTEuMTctLjY2bC0xLjQxLS42MWE0LjU2LDQuNTYsMCwwLDEtMS4zNS0uODcsMi4xMiwyLjEyLDAsMCwxLS42NC0xLjY2LDIuMzUsMi4zNSwwLDAsMSwuODctMS44NywzLjM2LDMuMzYsMCwwLDEsMi4yMi0uNzQsMy44NiwzLjg2LDAsMCwxLDEuNjIuMzQsMy45MiwzLjkyLDAsMCwxLDEuMjguODdsLS42Ny44MWEzLjM1LDMuMzUsMCwwLDAtMS0uNjgsMi44OCwyLjg4LDAsMCwwLTEuMjMtLjI1LDIuMSwyLjEsMCwwLDAtMS4zMy4zOSwxLjI0LDEuMjQsMCwwLDAtLjUsMS4wNSwxLjE3LDEuMTcsMCwwLDAsLjUyLDEsNi41NSw2LjU1LDAsMCwwLDEuMTEuNTlsMS4zOS41OWE0LjY1LDQuNjUsMCwwLDEsMS40NCwxLDIuMjQsMi4yNCwwLDAsMSwuNTksMS42NywyLjU5LDIuNTksMCwwLDEtLjg5LDJBMy40OSwzLjQ5LDAsMCwxLDExNC42OSwxMzcuOTNaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTEyMy41OSwxMzcuOTNhMy43NywzLjc3LDAsMCwxLTMtMS4zOSw1LjYxLDUuNjEsMCwwLDEtMS4xNy0zLjc1LDUuNDUsNS40NSwwLDAsMSwxLjE3LTMuNyw0LjA4LDQuMDgsMCwwLDEsNi4wNiwwLDUuNDEsNS40MSwwLDAsMSwxLjE4LDMuNyw1LjU2LDUuNTYsMCwwLDEtMS4xOCwzLjc1QTMuNzcsMy43NywwLDAsMSwxMjMuNTksMTM3LjkzWm0wLTEuMDlhMi40NywyLjQ3LDAsMCwwLDIuMTEtMS4xMSw0LjksNC45LDAsMCwwLC44LTIuOTQsNC43Miw0LjcyLDAsMCwwLS44LTIuODksMi42MiwyLjYyLDAsMCwwLTQuMjIsMCw0LjcyLDQuNzIsMCwwLDAtLjgsMi44OSw0LjksNC45LDAsMCwwLC44LDIuOTRBMi40NiwyLjQ2LDAsMCwwLDEyMy41OSwxMzYuODRaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTEzNC41LDEzNy43NXYtMy44MWwtMi45NS02aDEuMzNsMS4yOCwyLjc3Yy4xNS4zNi4zMS43Mi40NywxLjA3bC40NywxLjA3aC4wNmwuNTEtMS4wN2MuMTctLjM1LjMzLS43MS40OC0xLjA3bDEuMjYtMi43N2gxLjNsLTMsNnYzLjgxWiIgZmlsbD0iIzY0NzU0OCIvPjxwYXRoIGQ9Ik0xNDUuMjYsMTM3Ljc1bC0uOTMtM2gtMy41OGwtLjk0LDNoLTEuMjhsMy4zMy05LjgzaDEuNDFsMy4zMyw5LjgzWm0tMy43My01LjUtLjQ3LDEuNWgzbC0uNDctMS41Yy0uMTgtLjU1LS4zNS0xLjEtLjUxLTEuNjRzLS4zMi0xLjEtLjQ4LTEuNjdoLS4wNmMtLjE1LjU3LS4zLDEuMTItLjQ2LDEuNjdTMTQxLjcxLDEzMS43LDE0MS41MywxMzIuMjVaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTE0OCwxMzcuNzV2LTkuODNoMS41bDEuODksNS4yNGMuMTIuMzQuMjMuNjkuMzUsMXMuMjMuNjkuMzUsMWguMDZjLjEyLS4zNC4yMy0uNjguMzQtMXMuMjItLjY5LjM0LTFsMS44NS01LjI0aDEuNTJ2OS44M0gxNTV2LTUuNDFjMC0uNDMsMC0uOTEuMDYtMS40NXMuMDctMSwuMS0xLjQ2aC0uMDZsLS43OCwyLjI0LTEuODUsNS4wOWgtLjgzbC0xLjg2LTUuMDktLjc4LTIuMjRIMTQ5YzAsLjQzLjA3LjkyLjEsMS40NnMuMDUsMSwuMDUsMS40NXY1LjQxWiIgZmlsbD0iIzY0NzU0OCIvPjxwYXRoIGQ9Ik0xNjQuMzEsMTM3Ljc1bC0uOTMtM0gxNTkuOGwtLjk0LDNoLTEuMjhsMy4zMy05LjgzaDEuNDFsMy4zMyw5LjgzWm0tMy43My01LjUtLjQ2LDEuNWgyLjk1bC0uNDctMS41Yy0uMTgtLjU1LS4zNS0xLjEtLjUxLTEuNjRzLS4zMi0xLjEtLjQ4LTEuNjdoLS4wNmMtLjE1LjU3LS4zLDEuMTItLjQ2LDEuNjdTMTYwLjc2LDEzMS43LDE2MC41OCwxMzIuMjVaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTE2NywxMzcuNzV2LTkuODNoMS4yOWwzLjU1LDYuMTcsMS4wNywySDE3M2MwLS41LS4wNy0xLS4xLTEuNTVzMC0xLjA2LDAtMS41OHYtNS4wOEgxNzR2OS44M2gtMS4yOWwtMy41Ny02LjE5LTEuMDYtMmgtLjA2YzAsLjUuMDgsMSwuMTEsMS41MnMuMDUsMSwuMDUsMS41NXY1LjE0WiIgZmlsbD0iIzY0NzU0OCIvPjxwYXRoIGQ9Ik0xODIuMTYsMTM3Ljc1bC0uOTMtM2gtMy41OGwtLjk0LDNoLTEuMjhsMy4zMy05LjgzaDEuNDFsMy4zMyw5LjgzWm0tMy43My01LjUtLjQ2LDEuNWgyLjk1bC0uNDctMS41Yy0uMTgtLjU1LS4zNS0xLjEtLjUxLTEuNjRzLS4zMi0xLjEtLjQ3LTEuNjdoLS4wNmMtLjE1LjU3LS4zMSwxLjEyLS40NywxLjY3UzE3OC42MSwxMzEuNywxNzguNDMsMTMyLjI1WiIgZmlsbD0iIzY0NzU0OCIvPjxwYXRoIGQ9Ik0xODQuODksMTM3Ljc1di05LjgzaDEuNWwxLjg5LDUuMjRjLjEyLjM0LjI0LjY5LjM1LDFzLjIzLjY5LjM1LDFIMTg5Yy4xMi0uMzQuMjQtLjY4LjM0LTFzLjIyLS42OS4zNC0xbDEuODYtNS4yNGgxLjUxdjkuODNoLTEuMTd2LTUuNDFjMC0uNDMsMC0uOTEuMDYtMS40NXMuMDgtMSwuMTEtMS40NkgxOTJsLS43OCwyLjI0LTEuODYsNS4wOWgtLjgzbC0xLjg2LTUuMDktLjc3LTIuMjRoLS4wNmMwLC40My4wNi45Mi4wOSwxLjQ2cy4wNiwxLC4wNiwxLjQ1djUuNDFaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTE5NS43OSwxMzcuNzV2LTkuODNIMTk3djkuODNaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTIwNCwxMzcuNzVoLTEuMjR2LTkuODNoMy4wN2E0LjUzLDQuNTMsMCwwLDEsMi40OC42MSwyLjM2LDIuMzYsMCwwLDEsMSwyLjE1LDIuNywyLjcsMCwwLDEtLjYxLDEuODQsMy4wNywzLjA3LDAsMCwxLTEuNjEuOTRsMi41LDQuMjloLTEuNDFsLTIuMzctNC4xNUgyMDRabTAtNS4xN2gxLjY1YzEuNTksMCwyLjM4LS42MywyLjM4LTEuOWExLjQ5LDEuNDksMCwwLDAtLjYxLTEuMzYsMy4yMiwzLjIyLDAsMCwwLTEuNzctLjRIMjA0WiIgZmlsbD0iIzY0NzU0OCIvPjxwYXRoIGQ9Ik0yMTEuMjYsMTM3Ljc1di05LjgzaDUuNjZ2MUgyMTIuNXYzLjA4aDMuNzN2MS4wN0gyMTIuNXYzLjU3aDQuNTd2MS4wNloiIGZpbGw9IiM2NDc1NDgiLz48cGF0aCBkPSJNMjIxLjg4LDEzNy45M2E0LjU2LDQuNTYsMCwwLDEtMS45Mi0uNCw0Ljg1LDQuODUsMCwwLDEtMS41My0xLjA1bC43NS0uODdhNC4yNiw0LjI2LDAsMCwwLDEuMjQuODksMy40OCwzLjQ4LDAsMCwwLDEuNDguMzQsMi4yOSwyLjI5LDAsMCwwLDEuNTEtLjQ1LDEuNDIsMS40MiwwLDAsMCwuNTQtMS4xNiwxLjIzLDEuMjMsMCwwLDAtLjQ2LTEuMDgsNi4yNSw2LjI1LDAsMCwwLTEuMTctLjY2bC0xLjQxLS42MWE0LjU2LDQuNTYsMCwwLDEtMS4zNS0uODcsMi4xMiwyLjEyLDAsMCwxLS42NS0xLjY2LDIuMzYsMi4zNiwwLDAsMSwuODgtMS44NywzLjMzLDMuMzMsMCwwLDEsMi4yMS0uNzQsMy45LDMuOSwwLDAsMSwxLjYzLjM0LDQsNCwwLDAsMSwxLjI4Ljg3bC0uNjcuODFhMy40OCwzLjQ4LDAsMCwwLTEtLjY4LDIuOTIsMi45MiwwLDAsMC0xLjI0LS4yNSwyLjA3LDIuMDcsMCwwLDAtMS4zMi4zOSwxLjI1LDEuMjUsMCwwLDAtLjUxLDEuMDUsMS4xNywxLjE3LDAsMCwwLC41MywxLDYuNTUsNi41NSwwLDAsMCwxLjExLjU5bDEuMzkuNTlhNC42NSw0LjY1LDAsMCwxLDEuNDQsMSwyLjIzLDIuMjMsMCwwLDEsLjU4LDEuNjcsMi41NSwyLjU1LDAsMCwxLS44OSwyQTMuNDYsMy40NiwwLDAsMSwyMjEuODgsMTM3LjkzWiIgZmlsbD0iIzY0NzU0OCIvPjxwYXRoIGQ9Ik0yMzAuNzksMTM3LjkzYTMuNzcsMy43NywwLDAsMS0zLTEuMzksNS42MSw1LjYxLDAsMCwxLTEuMTctMy43NSw1LjQ1LDUuNDUsMCwwLDEsMS4xNy0zLjcsNC4wOCw0LjA4LDAsMCwxLDYuMDYsMCw1LjQ2LDUuNDYsMCwwLDEsMS4xOCwzLjcsNS42Miw1LjYyLDAsMCwxLTEuMTgsMy43NUEzLjc4LDMuNzgsMCwwLDEsMjMwLjc5LDEzNy45M1ptMC0xLjA5YTIuNDgsMi40OCwwLDAsMCwyLjExLTEuMTEsNC45LDQuOSwwLDAsMCwuNzktMi45NCw0LjcyLDQuNzIsMCwwLDAtLjc5LTIuODksMi42MywyLjYzLDAsMCwwLTQuMjMsMCw0LjcyLDQuNzIsMCwwLDAtLjc5LDIuODksNC45LDQuOSwwLDAsMCwuNzksMi45NEEyLjQ5LDIuNDksMCwwLDAsMjMwLjc5LDEzNi44NFoiIGZpbGw9IiM2NDc1NDgiLz48cGF0aCBkPSJNMjM4LjM1LDEzNy43NWgtMS4yNHYtOS44M2gzLjA3YTQuNTMsNC41MywwLDAsMSwyLjQ4LjYxLDIuMzQsMi4zNCwwLDAsMSwxLDIuMTUsMi42NSwyLjY1LDAsMCwxLS42MSwxLjg0LDMuMDcsMy4wNywwLDAsMS0xLjYxLjk0bDIuNTEsNC4yOWgtMS40MWwtMi4zNy00LjE1aC0xLjc5Wm0wLTUuMTdIMjQwYzEuNTksMCwyLjM5LS42MywyLjM5LTEuOWExLjQ5LDEuNDksMCwwLDAtLjYyLTEuMzYsMy4yMiwzLjIyLDAsMCwwLTEuNzctLjRoLTEuNjVaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTI0Ny40NywxMzcuNzVWMTI5aC0zdi0xaDcuMTl2MWgtM3Y4Ljc4WiIgZmlsbD0iIzY0NzU0OCIvPjxwYXRoIGQ9Ik0yNTYuNDYsMTM3Ljc1di05LjgzaDEuMjVWMTMyaDQuNTd2LTQuMTJoMS4yNnY5LjgzaC0xLjI2di00LjYzaC00LjU3djQuNjNaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTI2OS44NiwxMzcuOTNhMy43NywzLjc3LDAsMCwxLTMtMS4zOSw1LjYxLDUuNjEsMCwwLDEtMS4xNy0zLjc1LDUuNDUsNS40NSwwLDAsMSwxLjE3LTMuNyw0LjA5LDQuMDksMCwwLDEsNi4wNywwLDUuNDUsNS40NSwwLDAsMSwxLjE3LDMuNyw1LjYxLDUuNjEsMCwwLDEtMS4xNywzLjc1QTMuOCwzLjgsMCwwLDEsMjY5Ljg2LDEzNy45M1ptMC0xLjA5YTIuNDcsMi40NywwLDAsMCwyLjExLTEuMTEsNC45LDQuOSwwLDAsMCwuOC0yLjk0LDQuNzIsNC43MiwwLDAsMC0uOC0yLjg5LDIuNjIsMi42MiwwLDAsMC00LjIyLDAsNC43Miw0LjcyLDAsMCwwLS44LDIuODksNC45LDQuOSwwLDAsMCwuOCwyLjk0QTIuNDcsMi40NywwLDAsMCwyNjkuODYsMTM2Ljg0WiIgZmlsbD0iIzY0NzU0OCIvPjxwYXRoIGQ9Ik0yNzcuODYsMTM3Ljc1VjEyOWgtM3YtMWg3LjE5djFoLTN2OC43OFoiIGZpbGw9IiM2NDc1NDgiLz48cGF0aCBkPSJNMjgzLjg2LDEzNy43NXYtOS44M2g1LjY3djFIMjg1LjF2My4wOGgzLjc0djEuMDdIMjg1LjF2My41N2g0LjU4djEuMDZaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTI5MS43NiwxMzcuNzV2LTkuODNIMjkzdjguNzdoNC4zdjEuMDZaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTMwOS4yNSwxMzcuOTNhNyw3LDAsMCwxLTEuMDktLjQzLDguMSw4LjEsMCwwLDEtMS4xNy0uNjksNC4zOCw0LjM4LDAsMCwxLTEuMjYuODEsMy44NCwzLjg0LDAsMCwxLTEuNTguMzEsMywzLDAsMCwxLTIuMTYtLjc2LDIuNTQsMi41NCwwLDAsMS0uODMtMiwyLjM1LDIuMzUsMCwwLDEsLjU5LTEuNjUsNy42LDcuNiwwLDAsMSwxLjM0LTEuMTgsNi43NCw2Ljc0LDAsMCwxLS40Ny0xLjE4LDMuODMsMy44MywwLDAsMS0uMTctMS4xMywyLjMzLDIuMzMsMCwwLDEsLjYzLTEuNjUsMi4xMSwyLjExLDAsMCwxLDEuNjQtLjY3LDEuODgsMS44OCwwLDAsMSwxLjQzLjU0LDIsMiwwLDAsMSwuNTEsMS40MSwyLjE2LDIuMTYsMCwwLDEtLjcsMS42MywxMi42MiwxMi42MiwwLDAsMS0xLjUyLDEuMjcsMTEuNTQsMTEuNTQsMCwwLDAsMS4xMywxLjQ3LDE0LjksMTQuOSwwLDAsMCwxLjM2LDEuMjksOC4zNSw4LjM1LDAsMCwwLDEuMzgtMi45MWgxLjE1YTEyLjY3LDEyLjY3LDAsMCwxLS43MSwxLjg3LDkuNTQsOS41NCwwLDAsMS0xLDEuNjYsNi41NCw2LjU0LDAsMCwwLDEuODQuOTRabS01LTFhMi4yNSwyLjI1LDAsMCwwLDEtLjIyLDMuNTksMy41OSwwLDAsMCwuOS0uNTcsMTUsMTUsMCwwLDEtMS4zOC0xLjM4LDEzLjE2LDEzLjE2LDAsMCwxLTEuMi0xLjU1LDUuNDMsNS40MywwLDAsMC0uODYuODcsMS43NywxLjc3LDAsMCwwLC4yLDIuMzZBMiwyLDAsMCwwLDMwNC4yOSwxMzYuOTRabS0uNzgtNi44OWEzLjkzLDMuOTMsMCwwLDAsLjQ2LDEuNzIsOC4zNiw4LjM2LDAsMCwwLDEuMTgtLjkzLDEuNSwxLjUsMCwwLDAsLjUtMS4xNCwxLjMyLDEuMzIsMCwwLDAtLjIxLS43NS44MS44MSwwLDAsMC0uNzItLjMzLDEuMDgsMS4wOCwwLDAsMC0uODguNDFBMS42LDEuNiwwLDAsMCwzMDMuNTEsMTMwLjA1WiIgZmlsbD0iIzY0NzU0OCIvPjxwYXRoIGQ9Ik0zMTgsMTM3LjkzYTQuMTQsNC4xNCwwLDAsMS0zLjE5LTEuMzUsNS4zMiw1LjMyLDAsMCwxLTEuMjQtMy43NSw1LjI2LDUuMjYsMCwwLDEsMS4yNy0zLjczLDQuMjQsNC4yNCwwLDAsMSwzLjI0LTEuMzYsMy41NCwzLjU0LDAsMCwxLDEuNzEuMzgsNC40Nyw0LjQ3LDAsMCwxLDEuMTIuODNsLS42OS44MWEzLjY1LDMuNjUsMCwwLDAtLjg4LS42NSwyLjU0LDIuNTQsMCwwLDAtMS4yMy0uMjgsMi45MywyLjkzLDAsMCwwLTIuMzcsMS4wNyw0LjQ0LDQuNDQsMCwwLDAtLjg4LDIuOSw0LjcsNC43LDAsMCwwLC44NCwyLjk1LDIuOTEsMi45MSwwLDAsMCwyLjQyLDEuMDksMi41MSwyLjUxLDAsMCwwLDEuNzctLjU5di0yLjU2aC0yLjA4di0xaDMuMjJ2NC4xNGEzLjc3LDMuNzcsMCwwLDEtMS4yNi44MkE0LjY5LDQuNjksMCwwLDEsMzE4LDEzNy45M1oiIGZpbGw9IiM2NDc1NDgiLz48cGF0aCBkPSJNMzI3LDEzNy45M2EzLjc3LDMuNzcsMCwwLDEtMy0xLjM5LDUuNjEsNS42MSwwLDAsMS0xLjE3LTMuNzUsNS40NSw1LjQ1LDAsMCwxLDEuMTctMy43LDQuMDksNC4wOSwwLDAsMSw2LjA3LDAsNS40NSw1LjQ1LDAsMCwxLDEuMTcsMy43LDUuNjEsNS42MSwwLDAsMS0xLjE3LDMuNzVBMy44LDMuOCwwLDAsMSwzMjcsMTM3LjkzWm0wLTEuMDlhMi40NywyLjQ3LDAsMCwwLDIuMTEtMS4xMSw0LjksNC45LDAsMCwwLC44LTIuOTQsNC43Miw0LjcyLDAsMCwwLS44LTIuODksMi42MiwyLjYyLDAsMCwwLTQuMjIsMCw0LjcyLDQuNzIsMCwwLDAtLjgsMi44OSw0LjksNC45LDAsMCwwLC44LDIuOTRBMi40NywyLjQ3LDAsMCwwLDMyNywxMzYuODRaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTMzMy4zNywxMzcuNzV2LTkuODNoMS4yNHY4Ljc3aDQuM3YxLjA2WiIgZmlsbD0iIzY0NzU0OCIvPjxwYXRoIGQ9Ik0zNDAuNjUsMTM3Ljc1di05LjgzaDUuNjd2MWgtNC40M3YzLjMyaDMuNzV2MS4wNWgtMy43NXY0LjQxWiIgZmlsbD0iIzY0NzU0OCIvPjxwYXRoIGQ9Ik0zNTQuNzcsMTM3LjkzYTQsNCwwLDAsMS0zLjA3LTEuMzUsNS40MSw1LjQxLDAsMCwxLTEuMjItMy43NSw1LjM0LDUuMzQsMCwwLDEsMS4yNS0zLjczLDQsNCwwLDAsMSwzLjExLTEuMzYsMy4yOCwzLjI4LDAsMCwxLDEuNTkuMzcsNC4wNSw0LjA1LDAsMCwxLDEuMTEuODRsLS42Ny44MWEzLjIxLDMuMjEsMCwwLDAtLjg5LS42NywyLjQsMi40LDAsMCwwLTEuMTItLjI2LDIuNzIsMi43MiwwLDAsMC0yLjI0LDEuMDcsNC41NSw0LjU1LDAsMCwwLS44NSwyLjksNC43Niw0Ljc2LDAsMCwwLC44MywyLjk1LDIuNjUsMi42NSwwLDAsMCwyLjIxLDEuMDksMi42MSwyLjYxLDAsMCwwLDEuMjYtLjMsMy41LDMuNSwwLDAsMCwxLS44MWwuNjkuNzhhNC4zNyw0LjM3LDAsMCwxLTEuMzIsMS4wNUEzLjY2LDMuNjYsMCwwLDEsMzU0Ljc3LDEzNy45M1oiIGZpbGw9IiM2NDc1NDgiLz48cGF0aCBkPSJNMzU5LjYxLDEzNy43NXYtOS44M2gxLjI1djguNzdoNC4zdjEuMDZaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTM3MCwxMzcuOTNhMy41MywzLjUzLDAsMCwxLTIuNTItLjk0LDQuMzQsNC4zNCwwLDAsMS0xLTMuM3YtNS43N2gxLjI0djUuOGEzLjQ5LDMuNDksMCwwLDAsLjY2LDIuNDUsMi4yMiwyLjIyLDAsMCwwLDEuNjMuNjcsMi4yOCwyLjI4LDAsMCwwLDEuNjUtLjY3LDMuNDMsMy40MywwLDAsMCwuNjgtMi40NXYtNS44aDEuMnY1Ljc3YTQuMzgsNC4zOCwwLDAsMS0xLDMuM0EzLjUzLDMuNTMsMCwwLDEsMzcwLDEzNy45M1oiIGZpbGw9IiM2NDc1NDgiLz48cGF0aCBkPSJNMzc2LjEzLDEzNy43NXYtOS44M2gyLjkyYTQuNzcsNC43NywwLDAsMSwyLjQ0LjU1LDIsMiwwLDAsMSwuOTMsMS44NSwyLjM5LDIuMzksMCwwLDEtLjM3LDEuMzIsMS45MiwxLjkyLDAsMCwxLTEuMDcuODJ2LjA2YTIuNiwyLjYsMCwwLDEsMS40NS43NSwyLjE4LDIuMTgsMCwwLDEsLjU2LDEuNiwyLjQ0LDIuNDQsMCwwLDEtMSwyLjE3LDQuNyw0LjcsMCwwLDEtMi42OS43MVptMS4yNC01LjY1aDEuNDZhMywzLDAsMCwwLDEuODEtLjQzLDEuNDMsMS40MywwLDAsMCwuNTUtMS4xOSwxLjMsMS4zLDAsMCwwLS41OC0xLjIxLDMuMzEsMy4zMSwwLDAsMC0xLjcyLS4zNmgtMS41MlptMCw0LjY2aDEuNzFhMy41OCwzLjU4LDAsMCwwLDItLjQ3LDEuNjMsMS42MywwLDAsMCwuNy0xLjQ2LDEuNDYsMS40NiwwLDAsMC0uNjktMS4zNCwzLjc5LDMuNzksMCwwLDAtMi0uNDNoLTEuNzFaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTMyMi40NCwxMDEuMDVjLTQuNzEsNi4xMi0xMCwxMC42NC0yMC4xMSwxMC42NEMyODQuOCwxMTEuNjksMjc1LDk4LjMxLDI3NSw4MS44M2MwLTE5LjIyLDEzLjE3LTMyLjc4LDMwLjIzLTMyLjc4LDE2LjIzLDAsMjMuODcsMTIuNTMsMjMuODcsMjcuNDFIMjg4LjQ1YTM3Ljc2LDM3Ljc2LDAsMCwwLS4xMiw0LjE0YzAsMTMuMjksNS43NiwyNy44OSwxOC4xMSwyNy44OSw0Ljk0LDAsOC43MS0yLjQ1LDEzLjE3LTguMzlabS0zLjE4LTI4LjI2YzAtOS0zLjg4LTIwLjU0LTE0LjctMjAuNTQtOS44OCwwLTEzLjg4LDkuOC0xNS41MywyMC41NFoiIGZpbGw9IiM0NDQ0NDYiLz48cGF0aCBkPSJNMjY2LjM4LDExMC41NmMtMTUuMjEsMy0yNC43Miw0LjY2LTMwLDQuNjYtMy43LDAtNS40LS44My01LjQtMi42OXMxLjktNS4xNyw1LTkuNjJjMi42MS0zLjczLDMuOTEtNS40OCwxNi0yMC43OUMyODIuMjksNDQsMjkwLDMzLjUxLDI5NS40LDIzLjM3YzIuOS01LjQ4LDQuMy0xMC4xMyw0LjMtMTMuNzUsMC02LjMxLTQuMy05LjYyLTEyLTkuNjItNy45LDAtMTkuNDgsMi4zNi0zMy41OSw5LjQ5LTExLjg1LDYtMjcuNiwxNy44NS0zMS43LDIyLjRsNS43NSwzYzguMTQtOC40NCwzNi4wNi0yNiw1Mi4zNC0yOC44QTU4Ljk0LDU4Ljk0LDAsMCwxLDI4OS4wOSw1YzMuODEsMCw1LjgxLDEuMTQsNS44MSwzLjkzLDAsNS45LTkuMzEsMTktMjguOTIsNDMuNTUtMjUuMzIsMzEuNDQtMzMuOTMsNDMtMzcuNzMsNTFhMjAuNjIsMjAuNjIsMCwwLDAtMi41LDguOWMwLDQuMTQsMi4zLDYuNzIsNi45LDcuNDVhMTUuNTIsMTUuNTIsMCwwLDAsMi4zLjFjNC43MSwwLDEzLjMxLTEuMzUsMjkuNDMtNC43NnExMy43OC0yLjg2LDIzLjA3LTQuMTlhMjQuMjgsMjQuMjgsMCwwLDEtNC42Mi0zLjZDMjc5LjcxLDEwNy44OCwyNzIuNTQsMTA5LjI3LDI2Ni4zOCwxMTAuNTZaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTY2LjgxLDk0LjgzYTQuNTQsNC41NCwwLDAsMSwxLjUuMjYsNC4yOSw0LjI5LDAsMCwwLTMuNTQtMS43NEE0LjQyLDQuNDIsMCwwLDAsNjAuMyw5Ny43YTQuNSw0LjUsMCwwLDAsMyw0LjE0LDQuMzQsNC4zNCwwLDAsMS0xLTIuNjZBNC40Miw0LjQyLDAsMCwxLDY2LjgxLDk0LjgzWiIgZmlsbD0iIzY0NzU0OCIvPjxwYXRoIGQ9Ik03MS4yNCw4Mi45MWE0Ljc0LDQuNzQsMCwwLDEsMS43NS4zMyw0LjMsNC4zLDAsMCwwLTMuNzktMi4xMSw0LjQyLDQuNDIsMCwwLDAtNC40Nyw0LjM1LDQuNTQsNC41NCwwLDAsMCwyLjcyLDQsNC4zMSw0LjMxLDAsMCwxLS42OC0yLjI3QTQuNDMsNC40MywwLDAsMSw3MS4yNCw4Mi45MVoiIGZpbGw9IiM2NDc1NDgiLz48cGF0aCBkPSJNNTMuNjUsODguOTNhNC40Myw0LjQzLDAsMCwxLDQuNDctNC4zNSw0LjU2LDQuNTYsMCwwLDEsLjc2LjA3LDQuMzYsNC4zNiwwLDAsMC0zLTEuMTIsNC40Myw0LjQzLDAsMCwwLTQuNDYsNC4zNSw0LjUzLDQuNTMsMCwwLDAsMy44LDQuMzVBNC4zOCw0LjM4LDAsMCwxLDUzLjY1LDg4LjkzWiIgZmlsbD0iIzY0NzU0OCIvPjxwYXRoIGQ9Ik03Ny43NCw0OC43MkE0NC4xMiw0NC4xMiwwLDAsMCw1MC4xNSwzNXY3LjgyaC4wOUEzNi41NCwzNi41NCwwLDAsMSw3Ny4zNyw5Ni42MmwtLjA3LjEzYTIxLjM2LDIxLjM2LDAsMCwxLTIuNTMsMy45MmwwLC4wN2EzNi42OCwzNi42OCwwLDAsMS0xMi42NywxMC43NGwtLjk1LjQ4djguNTFsMi40NS0xLjA5QTQ0LjMyLDQ0LjMyLDAsMCwwLDc3Ljc0LDQ4LjcyWiIgZmlsbD0iIzQ0NDQ0NiIvPjxwYXRoIGQ9Ik0xMiwxMDkuMjRhNDQuMSw0NC4xLDAsMCwwLDE0LjYyLDEwLjMyTDI5LDEyMC42MnYtOC40OWwtMS0uNDhBMzYuODMsMzYuODMsMCwwLDEsNy43Nyw3OSwzNi40NiwzNi40NiwwLDAsMSwzOS41Miw0Mi43OFYzNUE0NC41OCw0NC41OCwwLDAsMCwwLDc5LDQ0LjEyLDQ0LjEyLDAsMCwwLDEyLDEwOS4yNFoiIGZpbGw9IiM0NDQ0NDYiLz48cGF0aCBkPSJNNDUuMzcsMTE3LjMzYy0yLjc2LjExLTExLjY4LTEuNTItMTQuMzMtMi41MXYyYTMuNDYsMy40NiwwLDAsMCwyLjYsMy4zNWguMDZhMTAuODIsMTAuODIsMCwwLDEsNy42Myw3LjA3bDAsLjA4czEuODMsMy45LDEuNTIsMTAuNTJoNC42M0M0Ny4yLDEzMS4yMSw0OSwxMjcuMzEsNDksMTI3LjMxYy4wNi0uMTguMTItLjM2LjE5LS41NEExMC44MSwxMC44MSwwLDAsMSw1Ni41OCwxMjBsLjIzLS4wNmEzLjQ3LDMuNDcsMCwwLDAsMi41NS0zLjM0di0yQzU3LjE5LDExNS44Myw1Mi4xMSwxMTcuMyw0NS4zNywxMTcuMzNaIiBmaWxsPSIjNjQ3NTQ4Ii8+PHBhdGggZD0iTTI5LjI1LDEwOC40OEEzMy4zLDMzLjMsMCwxLDEsNzguNSw3OS4yNEg3Ny4zOGEzMi4xOCwzMi4xOCwwLDEsMC00Ny41OSwyOC4yNVoiIGZpbGw9IiM2NDc1NDgiLz48L2c+PC9nPjwvc3ZnPg=="></div>
+                <div class="foot-resort" id="pv-resort"></div>
+                <div class="foot-co" id="pv-co"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<style id="page-size">@page{size:B5 portrait;margin:0}</style>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+
+/* ── 프리셋 (일본어 문구는 검증본 — 임의 변경 금지) ── */
+const PRESETS = [
+  { id:"table", name:"테이블 / 자리 정리", labelKo:"이용 안내", labelJp:"ご案内",
+    ko:"사용하신 후에는\n다음 이용하시는 분을 위해\n자리를 **간단히 정리**해 주시면\n감사하겠습니다.",
+    jp:"ご利用後は、次にご利用の方のために\nテーブルを簡単にお片付けいただけますと\n幸いです。" },
+  { id:"cart", name:"카트 이용 안내", labelKo:"이용 안내", labelJp:"ご案内",
+    ko:"카트는 안전을 위해\n지정된 장소에 주차해 주시고\n**저속으로 운행**해 주시기\n바랍니다.",
+    jp:"カートは安全のため\n所定の場所に駐車いただき\n低速での走行にご協力\nお願いいたします。" },
+  { id:"quiet", name:"정숙 / 매너", labelKo:"매너 안내", labelJp:"お願い",
+    ko:"다른 이용객을 위해\n**조용한 이용**에\n협조해 주시면\n감사하겠습니다.",
+    jp:"他のお客様のために\nお静かにご利用いただけますと\n幸いです。" },
+  { id:"recycle", name:"분리수거 / 쓰레기", labelKo:"분리수거 안내", labelJp:"ご案内",
+    ko:"쓰레기는 종류별로\n**분리수거**에\n협조해 주시기\n바랍니다.",
+    jp:"ゴミは種類ごとに\n分別へのご協力を\nお願いいたします。" }
+];
+
+const DEFAULT_RESORT = "阿蘇やまなみリゾート";
+const DEFAULT_CO = "株式会社SaiZen";
+const LS_KEY = "notice_builder_v1";
+
+const els = {
+  labelKo:$("#f-labelKo"), labelJp:$("#f-labelJp"), ko:$("#f-ko"), jp:$("#f-jp"),
+  resort:$("#f-resort"), co:$("#f-co"),
+  pvK:$("#pv-kicker"), pvKJ:$("#pv-kickerJp"), pvKo:$("#pv-ko"), pvJp:$("#pv-jp"),
+  pvR:$("#pv-resort"), pvCo:$("#pv-co"),
+  page:$("#page"), wrap:$("#page-wrap"), stage:$("#stage"), pageSize:$("#page-size"),
+  logoWrap:$("#pv-logo"), logoChk:$("#f-logo")
+};
+let paper = "b5";
+
+/* ── **강조** 파서 (XSS 안전: escape → strong → br) ── */
+function esc(t){ return String(t==null?"":t).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function fmt(t, bold){
+  let s = esc(t);
+  if(bold) s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  return s.replace(/\n/g, '<br>');
+}
+
+function render(){
+  els.logoWrap.style.display = els.logoChk.checked ? "" : "none";
+  els.pvK.textContent  = els.labelKo.value;
+  els.pvKJ.textContent = els.labelJp.value;
+  els.pvKo.innerHTML   = fmt(els.ko.value, true);
+  els.pvJp.innerHTML   = fmt(els.jp.value, false);
+  const r = els.resort.value.trim(), c = els.co.value.trim();
+  els.pvR.textContent = r; els.pvR.style.display = r ? "" : "none";
+  els.pvCo.textContent = c; els.pvCo.style.display = c ? "" : "none";
+}
+
+function applyPaper(p){
+  paper = p;
+  els.page.classList.remove("a4","b5");
+  els.page.classList.add(p);
+  els.pageSize.textContent = "@page{size:" + p.toUpperCase() + " portrait;margin:0}";
+  document.querySelectorAll("#paper-toggle button").forEach(b =>
+    b.classList.toggle("on", b.dataset.paper === p));
+  fit();
+}
+
+/* 미리보기를 스테이지에 맞춰 축소(픽셀 동일, 확대는 안 함) */
+function fit(){
+  els.page.style.transform = "none";
+  const pw = els.page.offsetWidth, ph = els.page.offsetHeight;
+  if(!pw || !ph) return;
+  const availW = els.stage.clientWidth  - 52;   // padding 26*2
+  const availH = els.stage.clientHeight - 52;
+  const s = Math.min(1, availW / pw, availH / ph);
+  els.page.style.transform = "scale(" + s + ")";
+  els.wrap.style.width  = (pw * s) + "px";
+  els.wrap.style.height = (ph * s) + "px";
+}
+
+function loadPreset(p){
+  els.labelKo.value = p.labelKo; els.labelJp.value = p.labelJp;
+  els.ko.value = p.ko; els.jp.value = p.jp;
+  els.resort.value = els.resort.value || DEFAULT_RESORT;
+  els.co.value = els.co.value || DEFAULT_CO;
+  render(); save();
+}
+
+function save(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify({
+    paper, labelKo:els.labelKo.value, labelJp:els.labelJp.value,
+    ko:els.ko.value, jp:els.jp.value, resort:els.resort.value, co:els.co.value, logo:els.logoChk.checked
+  })); }catch(e){}
+}
+function restore(){
+  let d = null;
+  try{ d = JSON.parse(localStorage.getItem(LS_KEY) || "null"); }catch(e){}
+  if(!d){ // 최초 = 첫 프리셋 + 기본 서명
+    els.resort.value = DEFAULT_RESORT; els.co.value = DEFAULT_CO;
+    loadPreset(PRESETS[0]); applyPaper("b5"); return;
+  }
+  els.labelKo.value = d.labelKo || ""; els.labelJp.value = d.labelJp || "";
+  els.ko.value = d.ko || ""; els.jp.value = d.jp || "";
+  els.resort.value = d.resort != null ? d.resort : DEFAULT_RESORT;
+  els.co.value = d.co != null ? d.co : DEFAULT_CO;
+  els.logoChk.checked = d.logo !== false;
+  render(); applyPaper(d.paper === "a4" ? "a4" : "b5");
+}
+
+/* ── 프리셋 버튼 ── */
+const pbox = $("#presets");
+PRESETS.forEach(p => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "preset";
+  b.innerHTML = '<div class="pn"></div><div class="pd"></div>';
+  b.querySelector(".pn").textContent = p.name;
+  b.querySelector(".pd").textContent = p.ko.replace(/\*\*/g,"").replace(/\n/g," ");
+  b.addEventListener("click", () => loadPreset(p));
+  pbox.appendChild(b);
+});
+
+/* ── 이벤트 ── */
+["labelKo","labelJp","ko","jp","resort","co"].forEach(k =>
+  els[k].addEventListener("input", () => { render(); save(); }));
+els.logoChk.addEventListener("change", () => { render(); save(); });
+document.querySelectorAll("#paper-toggle button").forEach(b =>
+  b.addEventListener("click", () => { applyPaper(b.dataset.paper); save(); }));
+$("#btn-print").addEventListener("click", () => window.print());
+
+if(window.ResizeObserver) new ResizeObserver(fit).observe(els.stage);
+window.addEventListener("resize", fit);
+window.addEventListener("beforeprint", () => els.page.style.transform = "none");
+window.addEventListener("afterprint", fit);
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+
+restore();
+setTimeout(fit, 60);
+</script>
+</body>
+</html>
