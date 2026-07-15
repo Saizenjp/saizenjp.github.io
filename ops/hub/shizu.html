@@ -430,15 +430,15 @@ async function load(){
 function renderDateChips(){
   const box=$('#daychips'); if(!box)return;
   const ax=axis();
-  // 체크인/체크아웃(입·퇴실)이 있는 날짜 = 미배정 0이라도 「未0」(초록)로 확인 표시(Min 요청)
-  const turn=new Set();
-  ROSTER.forEach(r=>{ if(r.dep) turn.add(r.dep); if(r.arr) turn.add(r.arr); });
-  GUESTS.forEach(g=>{ if(g.ci) turn.add(g.ci); if(g.co) turn.add(g.co); });
+  // 그 밤 재실 인원(배정+미배정)이 있는 날짜 = 확인 대상. 전원 배정되면 ✓, 미배정 남으면 未N, 아무도 안 묵는 날만 빈칸(Min 요청).
+  const stayN={};
+  GUESTS.forEach(g=>nightsOf(g).forEach(d=>{ stayN[d]=(stayN[d]||0)+1; }));
   const chip=(val,label,on)=>`<button type="button" class="daychip${on?' on':''}" data-d="${val}">${label}</button>`;
   let html=chip('',tx('allDays'),!DATESEL);
   ax.forEach(d=>{ const dt=parseISO(d); const un=UNBYDATE[d]||0;
+    const occ=(stayN[d]||0)+un;   // 그 밤 총 재실(배정+미배정)
     const badge = un ? `<span class="un-badge">未${un}</span>`
-                     : (turn.has(d) ? `<span class="un-badge ok" title="入・退室あり · 全員配置済">✓</span>` : '');
+                     : (occ ? `<span class="un-badge ok" title="全員配置済">✓</span>` : '');
     const lb=`${dt.getMonth()+1}/${dt.getDate()}<small style="opacity:.7">(${SHZ_DOW[dt.getDay()]})</small>${badge}`;
     html+=chip(d,lb,DATESEL===d); });
   box.innerHTML=html;
