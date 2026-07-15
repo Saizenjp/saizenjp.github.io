@@ -57,6 +57,9 @@
   /* 드롭 그리드 */
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px}
   @media(max-width:680px){.grid{grid-template-columns:1fr}.conn .row{grid-template-columns:1fr}.conn .hint,.conn .conn-bar{grid-column:1}}
+  /* 등록중 버튼: 깜빡이며 진행 중임을 명확히 */
+  #btn-run.running{opacity:1!important;cursor:progress;animation:regpulse 1s ease-in-out infinite}
+  @keyframes regpulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.22)}}
   /* 등록 상태 감도색: 미등록=쨍한 레드 / 등록=쨍한 그린(app 업로드와 동일 계열) */
   .drop{
     background:#fdf1f0;border:1.5px dashed #e98b82;border-radius:12px;
@@ -230,7 +233,7 @@ const L = {
     mdH:'月データ削除', mdHsub:'アップロードと無関係に特定の月を全体整理',
     mdLbl:'削除する月', mdDelBtn:'🗑 この月のデータ削除', mdRefreshTitle:'月リスト更新',
     mdNote:'選択した月のチーム・名簿・客室割当・現地記録をすべて削除(cascade)します。他の月には影響しません。元に戻せません。',
-    mdNoMonths:'(登録された月なし)',
+    mdNoMonths:'(登録された月なし)', btnRunning:'⏳ データ登録中…',
     delHead:'⚠ 元のExcelファイルの削除必須',
     delBody:'登録が完了し、データはサーバーに安全に保存されました。お客様の個人情報が含まれる<b>予約リスト・同行者別予約のExcelファイル</b>を、このPC(ダウンロードフォルダ・デスクトップ等)から<b>直ちに削除</b>してください。',
     clearFileTitle:'このファイルを初期化',
@@ -268,7 +271,7 @@ const L = {
     mdH:'월 데이터 삭제', mdHsub:'업로드와 무관하게 특정 월 전체 정리',
     mdLbl:'삭제할 월', mdDelBtn:'🗑 이 달 데이터 삭제', mdRefreshTitle:'월 목록 새로고침',
     mdNote:'선택한 월의 팀·명단·방배정·현장기록을 모두 삭제(cascade)합니다. 다른 달은 영향 없습니다. 되돌릴 수 없습니다.',
-    mdNoMonths:'(등록된 월 없음)',
+    mdNoMonths:'(등록된 월 없음)', btnRunning:'⏳ 데이터 등록중…',
     delHead:'⚠ 원본 엑셀 파일 삭제 필수',
     delBody:'등록이 완료되어 데이터는 서버에 안전히 저장되었습니다. 고객 개인정보가 담긴 <b>예약리스트·일행별예약 엑셀 파일</b>을 이 PC(다운로드 폴더·바탕화면 등)에서 <b>즉시 삭제</b>해 주세요.',
     clearFileTitle:'이 파일 초기화',
@@ -306,7 +309,7 @@ const L = {
     mdH:'Delete month data', mdHsub:'Clean an entire month regardless of uploads',
     mdLbl:'Month to delete', mdDelBtn:'🗑 Delete this month', mdRefreshTitle:'Refresh month list',
     mdNote:'Deletes all teams, rosters, room assignments and field records for the selected month (cascade). Other months are unaffected. This cannot be undone.',
-    mdNoMonths:'(no registered months)',
+    mdNoMonths:'(no registered months)', btnRunning:'⏳ Registering…',
     delHead:'⚠ You must delete the original Excel files',
     delBody:'Registration is complete and the data is safely stored on the server. Please <b>delete immediately</b> the <b>reservation-list and per-companion Excel files</b> containing customer personal data from this PC (Downloads folder, Desktop, etc.).',
     clearFileTitle:'Reset this file',
@@ -524,7 +527,9 @@ function setConn(txt, cls){
 function refreshRunBtn(){
   const res = SLOTS.find(s=>s.id==='res').data;
   const ilh = SLOTS.find(s=>s.id==='ilhaeng').data;
-  $('#btn-run').disabled = !(supa && res && ilh);
+  const b=$('#btn-run');
+  b.disabled = !(supa && res && ilh);
+  if(!window._running){ b.classList.remove('running'); b.textContent = t('s1_btnRun'); }   // 등록중이 아닐 때만 기본 라벨 복원
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -544,7 +549,9 @@ async function upsertChunked(table, rows, conflict){
 }
 
 async function run(){
-  $('#btn-run').disabled = true;
+  window._running = true;
+  const _rb=$('#btn-run');
+  _rb.disabled = true; _rb.classList.add('running'); _rb.textContent = tx('btnRunning');   // 등록중… 중간 표시
   clearLog();
   const ym = window._sessionYM || null;
   const res = SLOTS.find(s=>s.id==='res').data;
@@ -926,7 +933,8 @@ async function run(){
   }catch(err){
     log(`✗ ${t('s1_dyn_error')}: ${err.message}`,'err');
   }finally{
-    refreshRunBtn();
+    window._running = false;
+    refreshRunBtn();   // 기본 라벨 복원(+등록 가능 여부 재판정)
   }
 }
 
