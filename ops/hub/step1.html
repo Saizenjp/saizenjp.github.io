@@ -803,20 +803,38 @@ async function run(){
 
     // ── 유령행 청소: 팀 인원이 줄어든 재임포트에서 초과 자리(seq_in_team)만 삭제 ──
     //   충돌키가 위치(event_seq,seq_in_team)라 upsert는 새 명단 1..N 자리만 덮어씀.
-    //   이전 임포트에서 더 컸던 팀의 N+1.. 자리 행이 남아 중복처럼 보임 → 그 초과분만 정리.
-    //   방배정(rooms.member_id) 보존: 남는 1..N 자리 id는 그대로 유지되고, 초과 자리행은
-    //   애초에 이번 명단에 없는 사람이라 삭제 대상이 맞음(rooms FK는 SET NULL).
+    //   이전 임포트/수기(File1)로 만든 행의 seq_in_team이 1..N과 어긋나면 재임포트가
+    //   새 자리(1..N)를 삽입하고 옛 행(높은 seq)은 여기서 삭제됨.
+    //   ⚠ rooms.member_id FK는 CASCADE(SET NULL 아님) → 옛 행을 그냥 지우면 그 방배정도
+    //   같이 삭제됨(2번째 멤버 방 소실 버그). 그래서 삭제 전, 방 있는 옛 행의 방을
+    //   같은 사람(passenger_id·이름)의 새 자리로 이전(re-link)해 방배정을 보존한다.
     try {
       const maxNumBySeq = {};
       gmRows.forEach(g=>{ const s=g.event_seq; if(!maxNumBySeq[s]||g.seq_in_team>maxNumBySeq[s]) maxNumBySeq[s]=g.seq_in_team; });
       const teamSeqs = Object.keys(maxNumBySeq).map(Number);
-      let ghost = 0;
+      let ghost = 0, relinked = 0;
       for(const s of teamSeqs){
+        // 삭제 대상(초과 자리) — 방 이전을 위해 passenger_id·이름 함께 조회
+        const { data: over } = await supa.from('guest_members')
+          .select('id,passenger_id,name_kr').eq('event_seq',s).gt('seq_in_team',maxNumBySeq[s]);
+        if(over && over.length){
+          // 생존 자리(1..N) — 같은 사람 매칭용
+          const { data: keep } = await supa.from('guest_members')
+            .select('id,passenger_id,name_kr').eq('event_seq',s).lte('seq_in_team',maxNumBySeq[s]);
+          const byPid={}, byName={};
+          (keep||[]).forEach(k=>{ if(k.passenger_id!=null) byPid[k.passenger_id]=k.id; if(k.name_kr) byName[k.name_kr]=k.id; });
+          for(const o of over){
+            const newId = (o.passenger_id!=null && byPid[o.passenger_id]) || (o.name_kr && byName[o.name_kr]);
+            if(newId && newId!==o.id){
+              try{ const { data:mv } = await supa.from('rooms').update({member_id:newId}).eq('member_id',o.id).select('id'); if(mv) relinked+=mv.length; }catch(_){}
+            }
+          }
+        }
         const { data, error } = await supa.from('guest_members')
           .delete().eq('event_seq',s).gt('seq_in_team',maxNumBySeq[s]).select('id');
         if(!error && data) ghost += data.length;
       }
-      if(ghost) log(`✓ ${t('s1_dyn_log_members')} ${tx('ghostCleaned')(ghost)}`,'dim');
+      if(ghost) log(`✓ ${t('s1_dyn_log_members')} ${tx('ghostCleaned')(ghost)}${relinked?` (방 ${relinked}건 보존)`:''}`,'dim');
     } catch(_){ /* 청소 실패는 임포트 자체를 막지 않음 */ }
 
     // ── 월 단위 동기화: 이번 파일에 없는 그 달 팀 정리(잔존 데이터 제거) ──
