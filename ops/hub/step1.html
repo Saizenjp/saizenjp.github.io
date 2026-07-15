@@ -854,9 +854,28 @@ async function run(){
         }
         const orphans = exB.map(r=>r.event_seq).filter(s=>!fileSeqs.has(s));
         if(orphans.length){
-          // [데이터 누적] = 그대로 둠 / [없는 팀 정리] = 삭제 (취소=누적 혼동 제거)
-          const choice = await confirmOrphan(fileMonths, orphans.length);
-          if(choice==='sync'){
+          // 자동 취소 반영(확인창 없음): 파일에 없는 팀 = 취소 → 자동 삭제.
+          // ⚠ 의심스럽게 많으면(부분/잘못된 파일 가능성) 그때만 확인창.
+          const suspicious = orphans.length > 40 || (exB.length>0 && orphans.length/exB.length > 0.30);
+          let go = true;
+          if(suspicious){ go = (await confirmOrphan(fileMonths, orphans.length))==='sync'; }
+          if(go){
+            // 취소 이력 기록용 정보 캡처(삭제 전) — 팀·일정·대표·방배정 멤버(영문명)
+            const info=[]; const roomByTeam={};
+            try{
+              for(let i=0;i<orphans.length;i+=200){ const chunk=orphans.slice(i,i+200);
+                const { data } = await supa.from('bookings').select('event_seq,event_no,rep_name,arr_date,dep_date,pax').in('event_seq',chunk);
+                (data||[]).forEach(b=>info.push(b));
+                const { data: gms } = await supa.from('guest_members').select('id,event_seq,name_kr,name_en').in('event_seq',chunk);
+                const gmMap={}; (gms||[]).forEach(g=>gmMap[g.id]=g); const gmIds=(gms||[]).map(g=>g.id);
+                for(let j=0;j<gmIds.length;j+=150){ const gc=gmIds.slice(j,j+150);
+                  const { data: rms } = await supa.from('rooms').select('member_id,inventory_id').in('member_id',gc);
+                  const invIds=[...new Set((rms||[]).map(r=>r.inventory_id).filter(Boolean))]; let invMap={};
+                  if(invIds.length){ const {data:invs}=await supa.from('room_inventory').select('id,room_no,facility').in('id',invIds); (invs||[]).forEach(v=>invMap[v.id]=v); }
+                  (rms||[]).forEach(r=>{ const g=gmMap[r.member_id]||{}; const v=invMap[r.inventory_id]||{}; (roomByTeam[g.event_seq]=roomByTeam[g.event_seq]||[]).push({name:g.name_kr||'',eng:g.name_en||'',room:v.room_no||'',facility:v.facility||''}); });
+                }
+              }
+            }catch(_){}
             let del=0;
             for(let i=0;i<orphans.length;i+=50){
               const chunk=orphans.slice(i,i+50);
@@ -864,6 +883,16 @@ async function run(){
               if(error){ log(tx('syncDelFail')+error.message,'warn'); break; }
               del += chunk.length;
             }
+            // 취소 이력(cancel_log) 기록 → room/shizu 취소 이력 패널
+            try{
+              const by = ((window.__so_getUser && __so_getUser()) || '').trim();
+              const logs = info.map(b=>{ const rms=roomByTeam[b.event_seq]||[];
+                return { entity:'cancel_log', action:'팀취소',
+                  label:`취소(팀) — ${b.rep_name||''} · #${b.event_no||b.event_seq} · ${(b.dep_date||'').slice(5)}~${(b.arr_date||'').slice(5)} · ${b.pax||0}명${rms.length?(' · 방배정 '+rms.length+'명 해제'):''}`.slice(0,300),
+                  changes:{ kind:'team', no:(b.event_no||String(b.event_seq)), dep:b.dep_date||null, arr:b.arr_date||null, rep:b.rep_name||'', pax:b.pax||0, rooms:rms }, changed_by:by||null };
+              });
+              for(let i=0;i<logs.length;i+=200){ await supa.from('change_log').insert(logs.slice(i,i+200)); }
+            }catch(_){}
             log(tx('syncCleaned')(fileMonths.join('·'),del),'ok');
           } else {
             log(tx('syncKept')(orphans.length),'dim');
