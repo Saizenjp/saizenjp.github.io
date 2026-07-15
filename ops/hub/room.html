@@ -453,6 +453,15 @@
   </div>
 </details>
 
+<!-- 🚫 취소 이력 — step1 자동 취소(팀/개인)를 cancel_log로 기록 → 열람(행사번호·일정·팀·영문명) -->
+<details id="cxbox" style="margin:0 20px 30px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+  <summary id="cx-title" style="cursor:pointer;padding:12px 16px;font-weight:800;font-size:14px;color:var(--red,#c0392b);list-style:none">🚫 취소 이력 <span style="font-weight:600;color:var(--muted);font-size:12px">— 팀·개인 취소 (행사번호·일정·팀·영문명)</span></summary>
+  <div style="padding:0 16px 16px">
+    <div id="cx-list"><div class="empty-hint" style="padding:14px">펼치면 최근 취소 내역이 표시됩니다.</div></div>
+    <div style="text-align:center;margin-top:10px"><button class="btn ghost sm" id="cx-more" type="button" style="display:none">더 보기 (다음 40건)</button></div>
+  </div>
+</details>
+
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=11"></script>
@@ -2919,6 +2928,51 @@ function _histSearch(){ _histQ=($('#hist-q').value||'').trim(); loadHist(true); 
   $('#hist-q').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); _histSearch(); } });
   $('#hist-more').addEventListener('click', ()=>loadHist(false));
   $('#hist-list').addEventListener('click', e=>{ const b=e.target.closest('.hist-undo'); if(b) revertUnassign(b.dataset.id); });
+})();
+// ── 🚫 취소 이력(cancel_log) — step1이 자동 취소한 팀/개인. 행사번호·일정·팀·영문명·방해제 ──
+const CX_PAGE=40; let _cxOff=0, _cxLoading=false;
+function _cxT(ko,ja,en){ const l=lang(); return l==='ja'?ja:l==='en'?en:ko; }
+async function loadCancelHist(reset){
+  if(!supa){ $('#cx-list').innerHTML=`<div class="empty-hint" style="padding:14px">${_cxT('먼저 연결하세요.','先に接続してください。','Connect first.')}</div>`; return; }
+  if(_cxLoading) return; _cxLoading=true;
+  if(reset){ _cxOff=0; $('#cx-list').innerHTML=`<div class="empty-hint" style="padding:14px">…</div>`; }
+  try{
+    const {data,error,count}=await supa.from('change_log').select('label,changes,changed_by,changed_at',{count:'exact'})
+      .eq('entity','cancel_log').order('changed_at',{ascending:false}).range(_cxOff,_cxOff+CX_PAGE-1);
+    if(error) throw error;
+    const rows=data||[];
+    const html=rows.map(r=>{
+      const c=r.changes||{}; const when=(r.changed_at||'').replace('T',' ').slice(5,16);
+      const team=c.kind==='team'; const ic=team?'🏷':'👤';
+      const sched=`${(c.dep||'').slice(5)}~${(c.arr||'').slice(5)}`;
+      const who=r.changed_by?` · ${_lsEsc(r.changed_by)}`:'';
+      let main;
+      if(team){
+        const rms=(c.rooms||[]).map(m=>`${_lsEsc(m.name||'')}${m.eng?(' '+_lsEsc(m.eng)):''}(${_lsEsc(m.facility||'')} ${_lsEsc(m.room||'')})`).join(', ');
+        main=`<b>${_lsEsc(c.rep||'')}</b> · ${c.pax||0}${_cxT('명','名','')}${rms?` · <span style="color:var(--red,#c0392b)">${_cxT('방 해제','部屋解除','room freed')}: ${rms}</span>`:''}`;
+      } else {
+        const rm=c.room?` · <span style="color:var(--red,#c0392b)">${_lsEsc(c.facility||'')} ${_lsEsc(c.room||'')} ${_cxT('방 해제','部屋解除','room freed')}</span>`:'';
+        main=`${_lsEsc(c.rep||'')}${c.rep?_cxT('팀 ','チーム ',' team '):''}<b>${_lsEsc(c.name||'')}</b>${c.eng?(' '+_lsEsc(c.eng)):''}${rm}`;
+      }
+      return `<div style="display:flex;gap:8px;align-items:baseline;padding:7px 4px;border-top:1px solid var(--border);font-size:12.5px">
+        <span style="flex:0 0 16px;text-align:center">${ic}</span>
+        <span style="flex:0 0 78px;font-family:var(--mono);color:var(--muted)">${when}</span>
+        <span style="flex:0 0 92px;font-family:var(--mono);color:var(--text2)">#${_lsEsc(c.no||'')}</span>
+        <span style="flex:0 0 84px;font-family:var(--mono);color:var(--muted)">${sched}</span>
+        <span style="flex:1;min-width:0">${main}${who}</span>
+      </div>`;
+    }).join('');
+    if(reset) $('#cx-list').innerHTML=html||`<div class="empty-hint" style="padding:14px">${_cxT('취소 내역이 없습니다.','キャンセル履歴はありません。','No cancellations.')}</div>`;
+    else $('#cx-list').insertAdjacentHTML('beforeend',html);
+    _cxOff+=rows.length;
+    $('#cx-more').style.display=(count!=null && _cxOff<count)?'':'none';
+  }catch(e){ $('#cx-list').innerHTML=`<div class="empty-hint" style="padding:14px">${_lsEsc(e.message||e)}</div>`; }
+  finally{ _cxLoading=false; }
+}
+(function bindCx(){ const box=$('#cxbox'); if(!box) return;
+  const ttl=$('#cx-title'); if(ttl) ttl.innerHTML=`🚫 ${_cxT('취소 이력','キャンセル履歴','Cancellations')} <span style="font-weight:600;color:var(--muted);font-size:12px">— ${_cxT('팀·개인 취소 (행사번호·일정·팀·영문명)','チーム·個人キャンセル (行事番号·日程·チーム·英文名)','team/person (event no · dates · team · eng name)')}</span>`;
+  box.addEventListener('toggle',()=>{ if(box.open && !_cxOff) loadCancelHist(true); });
+  const mb=$('#cx-more'); if(mb) mb.addEventListener('click',()=>loadCancelHist(false));
 })();
 function openClosureModal(){
   if(!supa){toast(tx('closeFirstConnect'),'warn');return;}
