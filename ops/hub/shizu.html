@@ -912,51 +912,68 @@ function renderPreview(){
   wrap.innerHTML=html;
 }
 
-// ── 印刷(별창 A4 세로) ──
+// ── 印刷(별창 A4 가로 · 4일/페이지 · 큰 글씨/진하게 — 담당자 가독성 우선, Min 2026-07) ──
+//   4일씩 페이지 묶음(.shz-pg). 만실+메모 많은 밀집일은 --fs 이분탐색으로만 살짝 축소, 평소엔 큰 글씨 그대로.
 function printChart(){
   const ax=axis(); if(!ax.length){ toast(tx('noOut'),'err'); return; }
   const inner=$('#preview').innerHTML;
   const css=`<style>
-    @page{size:A4 portrait;margin:10mm}
+    @page{size:A4 landscape;margin:7mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    body{font-family:'Yu Gothic','游ゴシック','Noto Sans JP',sans-serif;color:#1a1a1a}
-    .pv-title{font-size:20px;font-weight:700;text-align:center;margin:4px 0 14px;letter-spacing:.05em}
-    .shz-pv{border-collapse:collapse;margin:0 auto 10px;width:100%;font-size:11px;page-break-inside:avoid}
-    .shz-pv th,.shz-pv td{border:1px solid #555;padding:3px 6px;text-align:center;vertical-align:middle}
-    .shz-pv-zone th{background:#f0f0f0;font-weight:800;font-size:11px;color:#1a1a1a}
-    .shz-pv-zone th small{font-weight:600;color:#666}
-    .shz-pv-zone th.bz{background:#e2e2e2}
-    .shz-pv-hd th{background:#f0f0f0;font-weight:700;color:#1a1a1a}
-    .shz-pv-hd th.bz{background:#e6e6e6}
-    .shz-rno{display:block;font-size:8.5px;color:#666;font-weight:600}
-    .shz-annex{display:inline-block;background:#fff;color:#1a1a1a;border:1px solid #555;border-radius:4px;padding:0 5px;font-size:10px;font-weight:800;margin-right:3px}
-    .shz-pv-dt{background:#ececec!important;font-size:13px;font-weight:700}
-    .shz-pv-dt span{font-size:10px;color:#666}
-    .shz-pv-io{font-size:10px;color:#333;letter-spacing:-.02em}
-    .shz-pv-lb{background:#ececec;font-weight:700;width:78px;text-align:center}
-    .shz-pv-nm{text-align:right}
-    .shz-onsen-chk{display:inline-block;margin-right:3px;color:#217a3c;font-weight:900;font-size:10px;background:#e3f2e4;border:1px solid #9ccaa2;border-radius:3px;padding:0 2px;vertical-align:middle}
-    .shz-pv-k{background:#ececec;font-weight:700}
-    .shz-pv-note{text-align:left;font-weight:600}
-    .shz-pv-onsen{color:#1a1a1a;font-weight:700}
-    .shz-pv-bigo{text-align:left;background:#fff;font-weight:600;font-size:10.5px;line-height:1.5}
-    .shz-bigo-nm{color:#1a1a1a;font-weight:800}
-    .shz-bigo-o{color:#777;font-weight:400;font-size:9.5px}
+    body{font-family:'Yu Gothic','游ゴシック','Noto Sans JP',sans-serif;color:#000}
+    .pv-title{font-size:calc(18px*var(--fs,1));font-weight:800;text-align:center;margin:2px 0 6px;letter-spacing:.05em}
+    .shz-pg{page-break-after:always}
+    .shz-pg:last-child{page-break-after:auto}
+    .shz-pv{border-collapse:collapse;margin:0 auto 5px;width:100%;page-break-inside:avoid}
+    .shz-pv th,.shz-pv td{border:1.2px solid #333;padding:calc(1.4px*var(--fs,1)) 6px;text-align:center;vertical-align:middle;font-weight:700;line-height:1.1}
+    .shz-pv-zone th{background:#e8e8e8;font-weight:800;font-size:calc(12px*var(--fs,1));color:#000}
+    .shz-pv-zone th small{font-weight:700;color:#555}
+    .shz-pv-zone th.bz{background:#d8d8d8}
+    .shz-pv-hd th{background:#ececec;font-weight:800;font-size:calc(14px*var(--fs,1));color:#000}
+    .shz-pv-hd th.bz{background:#e0e0e0}
+    .shz-rno{display:block;font-size:calc(9px*var(--fs,1));color:#555;font-weight:700}
+    .shz-annex{display:inline-block;background:#fff;color:#000;border:1px solid #333;border-radius:4px;padding:0 5px;font-size:calc(11px*var(--fs,1));font-weight:800;margin-right:3px}
+    .shz-pv-dt{background:#e0e0e0!important;font-size:calc(15px*var(--fs,1));font-weight:800}
+    .shz-pv-dt span{font-size:calc(11px*var(--fs,1));color:#555}
+    .shz-pv-io{font-size:calc(11.5px*var(--fs,1));color:#222;letter-spacing:-.02em}
+    .shz-pv-lb{background:#e6e6e6;font-weight:800;width:72px;text-align:center;font-size:calc(12px*var(--fs,1))}
+    .shz-pv-nm{text-align:right;font-weight:800;font-size:calc(16px*var(--fs,1))}
+    .shz-onsen-chk{display:inline-block;margin-right:2px;color:#166a2e;font-weight:900;font-size:calc(12px*var(--fs,1));background:#d8efdc;border:1px solid #7bb98a;border-radius:3px;padding:0 2px;vertical-align:middle}
+    .shz-pv-k{background:#e6e6e6;font-weight:800;font-size:calc(13px*var(--fs,1))}
+    .shz-pv-note{text-align:left;font-weight:700;font-size:calc(12px*var(--fs,1))}
+    .shz-pv-onsen{color:#000;font-weight:700}
+    .shz-pv-bigo{text-align:left;background:#fff;font-weight:700;font-size:calc(12px*var(--fs,1));line-height:1.25}
+    .shz-bigo-nm{color:#000;font-weight:800}
+    .shz-bigo-o{color:#666;font-weight:500;font-size:calc(10.5px*var(--fs,1))}
     .pv-bar{position:sticky;top:0;z-index:100;background:#fff;border-bottom:2px solid #647548;box-shadow:0 2px 8px rgba(0,0,0,.12);padding:10px 18px;display:flex;align-items:center;gap:12px}
     .pv-bar b{font-size:14px;color:#1a2540;margin-right:auto}
     .pv-bar button{padding:9px 22px;border:none;border-radius:7px;font-size:14px;font-weight:800;cursor:pointer}
     .pv-bar .pv-print{background:#15803D;color:#fff}
     .pv-bar .pv-close{background:#e5e7e0;color:#444}
-    .pv-body{padding:14px 12px}
+    .pv-body{padding:12px 10px}
     .shz-pv-unrow{display:none}
     @media print{.pv-bar{display:none}.pv-body{padding:0}}
   </style>`;
+  // 4일씩 페이지 묶음 + 밀집일 자동 축소
+  const fitScript=`<script>(function(){
+    var body=document.querySelector('.pv-body'); if(!body)return;
+    var title=body.querySelector('.pv-title');
+    var tabs=[].slice.call(body.querySelectorAll('.shz-pv'));
+    var pages=[];
+    for(var i=0;i<tabs.length;i+=4){var pg=document.createElement('div');pg.className='shz-pg';for(var j=i;j<i+4&&j<tabs.length;j++)pg.appendChild(tabs[j]);body.appendChild(pg);pages.push(pg);}
+    var PH=Math.round((210-14)*3.7795);
+    pages.forEach(function(pg,idx){
+      var avail=PH-(idx===0&&title?title.offsetHeight+8:0);
+      pg.style.setProperty('--fs',1);
+      if(pg.scrollHeight>avail){var lo=0.4,hi=1;for(var k=0;k<14;k++){var m=(lo+hi)/2;pg.style.setProperty('--fs',m);if(pg.scrollHeight<=avail)lo=m;else hi=m;}pg.style.setProperty('--fs',lo);}
+    });
+  })();<\/script>`;
   const w=window.open('','_blank'); if(!w){ toast(tx('popupBlock'),'err'); return; }
   const barHtml=`<div class="pv-bar"><b>志津の宿 予約表 · ${lang()==='ja'?'印刷プレビュー':lang()==='en'?'Print preview':'인쇄 미리보기'}</b>`
     +`<button class="pv-print" onclick="window.print()">🖨 ${lang()==='ja'?'印刷':lang()==='en'?'Print':'인쇄'}</button>`
     +`<button class="pv-close" onclick="window.close()">✕ ${lang()==='ja'?'閉じる':lang()==='en'?'Close':'닫기'}</button></div>`;
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>志津の宿 予約表</title>${css}</head><body>${barHtml}<div class="pv-body">${inner}</div></body></html>`);
-  w.document.close(); try{w.focus();}catch(e){}   // 미리보기 + 상단 고정 [인쇄하기] 버튼
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>志津の宿 予約表</title>${css}</head><body>${barHtml}<div class="pv-body">${inner}</div>${fitScript}</body></html>`);
+  w.document.close(); try{w.focus();}catch(e){}   // 미리보기 + 상단 고정 [인쇄하기] 버튼 + 4일묶음 자동맞춤
 }
 
 // ── 予約表 xlsx(앱 shzDownload 이식) ──
