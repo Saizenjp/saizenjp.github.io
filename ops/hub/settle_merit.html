@@ -67,6 +67,10 @@
   .ded-grid{display:grid;grid-template-columns:150px 130px 1fr 170px 34px;gap:6px;align-items:center;margin-bottom:6px}
   .ded-grid .hd{font-size:10px;color:var(--muted)}
   .ded-grid input,.ded-grid select{border:1px solid var(--border2);border-radius:5px;padding:5px 7px;font-size:12px}
+  .ex-grid{display:grid;grid-template-columns:180px 130px 104px 110px 1fr 34px;gap:6px;align-items:center;margin-bottom:6px}
+  .ex-grid .hd{font-size:10px;color:var(--muted)}
+  .ex-grid input,.ex-grid select{border:1px solid var(--border2);border-radius:5px;padding:5px 7px;font-size:12px}
+  .ex-pick:hover{background:var(--accentSoft)}
   .ded-x{background:#f7e6e2;border:1px solid #e3bdb4;color:var(--err);border-radius:5px;cursor:pointer;font-size:12px;padding:4px 8px}
   /* 인쇄 — 화면 chrome·컨트롤 숨기고 정산표(요약·차감·명세)만 깔끔히 */
   .print-only{display:none}
@@ -120,13 +124,15 @@
 <script src="../assets/saizen-ops.js?v=15.22"></script>
 <script>
 const $=s=>document.querySelector(s);
-let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DEDS=[];
+let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DEDS=[], EXTRAS={}, EXLIST=[];
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
 const ACCOM_RATE={'야마나미리조트':14000,'쿠주힐즈':14000,'간지호텔':16000,'시즈노야도 료칸':16000};
 const TRANSPORT_PER=6000;
 const DED_TYPES=['보증금 예약 쿠폰','장기숙박 쿠폰','야마나미 이용권','포인트','싱글차지 선납','기타 선납'];
+// 팀별 가산/차감(기타) 유형 — 저장은 한국어, 표시만 번역
+const EXTRA_TYPES=['별채 사전신청비','싱글차지','룸업그레이드','추가라운드','기타'];
 // HDRS_SETTLE: 표시 헤더는 언어별로 (xlsx 출력용 일본어 헤더는 HDRS_SETTLE_XLSX로 고정)
-const HDRS_SETTLE_XLSX=['No','イベント番号','区分','会員権区分','代表者名','英文名','出発日','到着日','泊数','人数','施設','部屋タイプ','料金(¥/人/泊)','宿泊費(¥)','送迎費(¥)','合計(¥)','備考'];
+const HDRS_SETTLE_XLSX=['No','イベント番号','区分','会員権区分','代表者名','英文名','出発日','到着日','泊数','人数','施設','部屋タイプ','料金(¥/人/泊)','宿泊費(¥)','送迎費(¥)','その他(¥)','合計(¥)','備考'];
 
 // ── i18n (한·일 직원 공용. ja 기본) ──
 const L={
@@ -154,7 +160,8 @@ const L={
     paxWarnV:(l,b)=>'名簿 '+l+'/予約 '+b, paxWarnTitle:'名簿人数と予約人数が異なります — 大きい値で請求',
     rateWarn:'単価未登録',
     // 区分(status)·会員権区分(memberType) 표시
-    hdrs:['No','イベント番号','区分','会員権区分','代表者名','英文名','出発日','到着日','泊数','人数','施設','部屋タイプ','料金(¥/人/泊)','宿泊費(¥)','送迎費(¥)','合計(¥)','備考'] },
+    hdrs:['No','イベント番号','区分','会員権区分','代表者名','英文名','出発日','到着日','泊数','人数','施設','部屋タイプ','料金(¥/人/泊)','宿泊費(¥)','送迎費(¥)','その他(¥)','合計(¥)','備考'],
+    panelExtra:'加算/控除(その他)', extraHint:'— 別棟事前申請費・シングルチャージ等をチーム単位で。合計に反映', extraSearchPh:'イベント番号・代表者で検索', extraAddBtn:'＋ チームに追加', extraEmpty:'項目なし。上で検索してチームを選び追加。', exColTeam:'チーム', exColType:'種別', exColSign:'加算/控除', exColAmt:'金額(¥)', exColNote:'内容', signAdd:'加算(+)', signSub:'控除(−)', extraTotal:'その他合計', pickTeam:'チーム選択', noMatch:'一致なし' },
   ko:{ step:'現地精算表 (Merit B2B)', navHome:'← 홈',
     connect:'연결', connecting:'연결 중…', connected:'✓ 연결됨', connRetry:'연결·재시도',
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요',
@@ -178,7 +185,8 @@ const L={
     xlsxNoData:'데이터 없음', xlsxFail:'ExcelJS 로드 실패', xlsxDone:'xlsx 다운로드',
     paxWarnV:(l,b)=>'명단 '+l+'/예약 '+b, paxWarnTitle:'명단 인원과 예약 인원이 다릅니다 — 큰 값으로 청구',
     rateWarn:'단가 미등록',
-    hdrs:['No','이벤트번호','구분','회원권구분','대표자명','영문명','출발일','도착일','박수','인원','시설','객실타입','단가(¥/인/박)','숙박비(¥)','송영비(¥)','합계(¥)','비고'] },
+    hdrs:['No','이벤트번호','구분','회원권구분','대표자명','영문명','출발일','도착일','박수','인원','시설','객실타입','단가(¥/인/박)','숙박비(¥)','송영비(¥)','기타(¥)','합계(¥)','비고'],
+    panelExtra:'가산/차감 (기타)', extraHint:'— 별채 사전신청비·싱글차지 등을 팀 단위로. 합계에 반영', extraSearchPh:'행사번호·대표고객 검색', extraAddBtn:'＋ 팀에 추가', extraEmpty:'항목이 없습니다. 위에서 검색해 팀을 고르고 추가하세요.', exColTeam:'팀', exColType:'유형', exColSign:'가산/차감', exColAmt:'금액(¥)', exColNote:'내용', signAdd:'가산(+)', signSub:'차감(−)', extraTotal:'기타 합계', pickTeam:'팀 선택', noMatch:'검색 결과 없음' },
   en:{ step:'B2B Settlement (Merit)', navHome:'← Home',
     connect:'Connect', connecting:'Connecting…', connected:'✓ Connected', connRetry:'Failed · retry',
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required',
@@ -202,7 +210,8 @@ const L={
     xlsxNoData:'No data', xlsxFail:'ExcelJS load failed', xlsxDone:'xlsx downloaded',
     paxWarnV:(l,b)=>'roster '+l+'/booked '+b, paxWarnTitle:'Roster pax differs from booked pax — billed at the larger value',
     rateWarn:'Unit price not set',
-    hdrs:['No','Event No.','Status','Membership','Rep name','Eng name','Departure','Arrival','Nights','Pax','Facility','Room type','Rate(¥/pax/nt)','Lodging(¥)','Transfer(¥)','Total(¥)','Remarks'] }
+    hdrs:['No','Event No.','Status','Membership','Rep name','Eng name','Departure','Arrival','Nights','Pax','Facility','Room type','Rate(¥/pax/nt)','Lodging(¥)','Transfer(¥)','Etc.(¥)','Total(¥)','Remarks'],
+    panelExtra:'Add / deduct (Etc.)', extraHint:'— annex-request fee, single charge, etc., per team. Reflected in total', extraSearchPh:'Search by event no. / rep name', extraAddBtn:'＋ Add to team', extraEmpty:'No items. Search above to pick a team and add.', exColTeam:'Team', exColType:'Type', exColSign:'Add/Deduct', exColAmt:'Amount(¥)', exColNote:'Note', signAdd:'Add(+)', signSub:'Deduct(−)', extraTotal:'Etc. total', pickTeam:'Pick team', noMatch:'No match' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
@@ -313,6 +322,14 @@ function renderUI(){
       <div class="row" style="margin-top:8px"><button class="btn sm ghost" id="btn-add-ded" type="button">${esc(tx('addDed'))}</button></div>
     </div>
     <div class="panel">
+      <h3>${esc(tx('panelExtra'))} <span class="cnt">${esc(tx('extraHint'))}</span></h3>
+      <div class="row no-print" style="gap:8px;margin-bottom:10px;position:relative">
+        <input id="ex-search" placeholder="${esc(tx('extraSearchPh'))}" autocomplete="off" style="flex:1;min-width:220px;max-width:380px;border:1px solid var(--border2);border-radius:6px;padding:7px 9px;font-size:13px">
+        <div id="ex-picks" style="display:none;position:absolute;top:100%;left:0;z-index:30;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);max-height:260px;overflow:auto;min-width:300px;margin-top:2px"></div>
+      </div>
+      <div id="ex-rows"></div>
+    </div>
+    <div class="panel">
       <h3>${esc(tx('panelDetail'))}</h3>
       <div style="overflow:auto"><table class="list" id="list"><thead></thead><tbody></tbody></table></div>
     </div>`;
@@ -321,6 +338,8 @@ function renderUI(){
   $('#btn-xlsx').addEventListener('click',downloadXlsx);
   $('#btn-print').addEventListener('click',printReport);
   $('#btn-add-ded').addEventListener('click',addDed);
+  const exs=$('#ex-search'); if(exs){ exs.addEventListener('input',onExSearch); exs.addEventListener('focus',onExSearch);
+    document.addEventListener('click',e=>{ if(!e.target.closest('#ex-search')&&!e.target.closest('#ex-picks')){ const p=$('#ex-picks'); if(p)p.style.display='none'; } }); }
 }
 function printReport(){
   const ph=$('#print-head');
@@ -345,7 +364,7 @@ async function load(){
       .eq('session_ym',YM);
     if(e1)throw e1;
     const seqs=(bs||[]).map(b=>b.event_seq);
-    if(!seqs.length){ ROWS=[]; DEDS=[]; $('#stat').textContent=tx('noMonthData'); ACCOMSEL.clear(); renderAccomChips(); renderAll(); return; }
+    if(!seqs.length){ ROWS=[]; DEDS=[]; EXTRAS={}; EXLIST=[]; $('#stat').textContent=tx('noMonthData'); ACCOMSEL.clear(); renderAccomChips(); renderAll(); return; }
     // guests(accom), passengers(실제 인원·英文名), settle_remarks(비고)
     const GMAP={}, PCNT={}, ENG={}, REM={};
     for(let i=0;i<seqs.length;i+=200){
@@ -366,6 +385,12 @@ async function load(){
     // 차감 (settle_deductions, 월별)
     const {data:dd}=await supa.from('settle_deductions').select('*').eq('session_ym',YM).order('sort_no').order('created_at');
     DEDS=(dd||[]).map(d=>({...d}));
+    // 팀별 가산/차감(기타) — settle_extras (이 달 팀들)
+    EXTRAS={}; EXLIST=[];
+    try{
+      const {data:ex}=await supa.from('settle_extras').select('*').in('event_seq',seqs).order('sort_no').order('created_at');
+      (ex||[]).forEach(x=>{ (EXTRAS[x.event_seq]=EXTRAS[x.event_seq]||[]).push(x); EXLIST.push(x); });
+    }catch(_){}
     ROWS=(bs||[]).map((b,i)=>{
       const pp=parseProduct(b.product_name);
       const accom=GMAP[b.event_seq]||pp.accom||'';
@@ -380,9 +405,10 @@ async function load(){
       const rate=accom?(pp.rate||ACCOM_RATE[accom]||0):0;
       const rateWarn=accom?(rate>0?'':'단가 미등록'):'';
       const stay=accom?pax*nights*rate:0, transport=accom?pax*TRANSPORT_PER:0;
+      const extra=(EXTRAS[b.event_seq]||[]).reduce((s,x)=>s+(x.is_add?1:-1)*(Number(x.amount)||0),0);   // 가산(+)/차감(-) 합
       return { seq:b.event_seq, no:i+1, eventNo:b.event_no||'-', status:String(b.status||'').trim()||'-', memberType:String(b.member_type||'').trim()||'-',
         repName:b.rep_name||'', engName:ENG[b.event_seq]||'', dep, arr, nights, pax, paxWarn, accom, roomType:pp.roomType||'-',
-        rate, rateWarn, stay, transport, total:stay+transport, remark:REM[b.event_seq]||'' };
+        rate, rateWarn, stay, transport, extra, total:stay+transport+extra, remark:REM[b.event_seq]||'' };
     }).filter(r=>r.accom);
     ACCOMSEL.clear();
     $('#stat').textContent=tx('cntN')(ROWS.length);
@@ -396,25 +422,27 @@ function renderAll(){
   const rows=visibleRows();
   $('#btn-xlsx').disabled=!rows.length; { const p=$('#btn-print'); if(p)p.disabled=!rows.length; }
   // 요약 박스
-  const stayT=rows.reduce((s,r)=>s+r.stay,0), transT=rows.reduce((s,r)=>s+r.transport,0), totalT=rows.reduce((s,r)=>s+r.total,0), paxT=rows.reduce((s,r)=>s+r.pax,0);
+  const stayT=rows.reduce((s,r)=>s+r.stay,0), transT=rows.reduce((s,r)=>s+r.transport,0), extraT=rows.reduce((s,r)=>s+r.extra,0), totalT=rows.reduce((s,r)=>s+r.total,0), paxT=rows.reduce((s,r)=>s+r.pax,0);
   $('#boxes').innerHTML=ACCOM_ORDER.map(a=>{ const g=rows.filter(r=>r.accom===a); if(!g.length)return '';
-    const s=g.reduce((x,r)=>x+r.stay,0), tr=g.reduce((x,r)=>x+r.transport,0), tot=g.reduce((x,r)=>x+r.total,0);
+    const s=g.reduce((x,r)=>x+r.stay,0), tr=g.reduce((x,r)=>x+r.transport,0), ex=g.reduce((x,r)=>x+r.extra,0), tot=g.reduce((x,r)=>x+r.total,0);
     return `<div class="sbox"><div class="lab">${esc(a)}</div>
       <div class="sr"><span>${esc(tx('rate'))}</span><span class="v">${yen(ACCOM_RATE[a])}${esc(tx('perPaxNight'))}</span></div>
       <div class="sr"><span>${esc(tx('cntLabel'))}</span><span class="v">${tx('cntPaxV')(g.length,g.reduce((x,r)=>x+r.pax,0))}</span></div>
       <div class="sr"><span>${esc(tx('lodgeFee'))}</span><span class="v">${yen(s)}</span></div>
       <div class="sr"><span>${esc(tx('transFee'))}</span><span class="v">${yen(tr)}</span></div>
+      ${ex?`<div class="sr"><span>${esc(tx('extraTotal'))}</span><span class="v">${ex<0?'- ':'+ '}${yen(Math.abs(ex))}</span></div>`:''}
       <div class="sr tot"><span>${esc(tx('subtotal'))}</span><span class="v">${yen(tot)}</span></div></div>`;
   }).join('')||`<div class="cnt" style="color:var(--muted)">${esc(tx('noData'))}</div>`;
   // 차감·합계
   const dedT=DEDS.reduce((s,d)=>s+(Number(d.amount)||0),0);
   $('#grand').innerHTML=`
-    <div class="g"><span class="gl">${esc(tx('grossB2B'))}</span><span class="gv">${yen(totalT)}</span></div>
+    <div class="g"><span class="gl">${esc(tx('grossB2B'))}</span><span class="gv">${yen(stayT+transT)}</span></div>
+    ${extraT?`<div class="g"><span class="gl">${esc(tx('extraTotal'))}</span><span class="gv" style="color:${extraT<0?'#ff9d8a':'#9be08a'}">${extraT<0?'- ':'+ '}${yen(Math.abs(extraT))}</span></div>`:''}
     <div class="g"><span class="gl">${esc(tx('dedTotal'))}</span><span class="gv" style="color:#ff9d8a">- ${yen(dedT)}</span></div>
     <div class="g"><span class="gl">${esc(tx('net'))}</span><span class="gv net">${yen(totalT-dedT)}</span></div>
     <div class="g"><span class="gl">${esc(tx('lodgeTrans'))}</span><span class="gv" style="font-size:14px">${yen(stayT)} / ${yen(transT)}</span></div>
     <div class="g"><span class="gl">${esc(tx('cntPax'))}</span><span class="gv" style="font-size:14px">${tx('cntPaxV')(rows.length,paxT)}</span></div>`;
-  renderDeds();
+  renderDeds(); renderExtras();
   // 명세 테이블
   const thead=$('#list thead'), tbody=$('#list tbody');
   const HDRS=tx('hdrs');
@@ -431,11 +459,12 @@ function renderAll(){
       <td class="mono">${esc(r.dep)}</td><td class="mono">${esc(r.arr)}</td><td class="c">${r.nights}</td><td class="c">${r.pax}${r.paxWarn?`<br><span style="font-size:9px;font-weight:800;color:var(--err)" title="${esc(tx('paxWarnTitle'))}">⚠${esc(tx('paxWarnV')(r.paxWarn.pcnt,r.paxWarn.bpax))}</span>`:''}</td>
       <td class="c">${esc(r.accom)}</td><td style="font-size:10.5px">${esc(r.roomType)}</td>
       <td class="num">${r.rate?yen(r.rate):(r.rateWarn?`<span style="font-size:9px;font-weight:800;color:var(--err)">⚠${esc(tx('rateWarn'))}</span>`:'-')}</td><td class="num">${r.stay?yen(r.stay):'-'}</td><td class="num">${r.transport?yen(r.transport):'-'}</td>
+      <td class="num" style="${r.extra<0?'color:var(--err)':(r.extra>0?'color:#2f7d4f':'')}">${r.extra?((r.extra<0?'- ':'+ ')+yen(Math.abs(r.extra))):'-'}</td>
       <td class="num" style="font-weight:700;color:var(--accent2)">${r.total?yen(r.total):'-'}</td>
       <td><input class="rem" value="${esc(r.remark)}" data-seq="${r.seq}" placeholder="${esc(tx('remarkPh'))}"></td>
     </tr>`;
   });
-  html+=`<tr class="tot"><td colspan="13" style="text-align:right">${esc(tx('totalTotal'))}</td><td class="num">${yen(stayT)}</td><td class="num">${yen(transT)}</td><td class="num">${yen(totalT)}</td><td></td></tr>`;
+  html+=`<tr class="tot"><td colspan="13" style="text-align:right">${esc(tx('totalTotal'))}</td><td class="num">${yen(stayT)}</td><td class="num">${yen(transT)}</td><td class="num">${extraT?((extraT<0?'- ':'+ ')+yen(Math.abs(extraT))):'-'}</td><td class="num">${yen(totalT)}</td><td></td></tr>`;
   tbody.innerHTML=html;
   tbody.querySelectorAll('input.rem').forEach(inp=>inp.addEventListener('change',()=>saveRemark(Number(inp.dataset.seq),inp.value)));
 }
@@ -481,6 +510,59 @@ async function removeDed(id){
   catch(e){ toast(tx('delFail')+': '+e.message,'err'); }
 }
 
+// ── 팀별 가산/차감(기타) CRUD (settle_extras) — 행사번호·대표고객 검색 후 팀에 붙임 ──
+function teamOf(seq){ return ROWS.find(r=>r.seq===seq)||null; }
+function extraTeamLabel(seq){ const t=teamOf(seq); return t?`${t.repName||''} · #${t.eventNo||seq}`:('#'+seq); }
+function recomputeExtras(){
+  EXTRAS={}; EXLIST.forEach(x=>{(EXTRAS[x.event_seq]=EXTRAS[x.event_seq]||[]).push(x);});
+  ROWS.forEach(r=>{ r.extra=(EXTRAS[r.seq]||[]).reduce((s,x)=>s+(x.is_add?1:-1)*(Number(x.amount)||0),0); r.total=r.stay+r.transport+r.extra; });
+}
+function onExSearch(){
+  const q=($('#ex-search').value||'').trim().toLowerCase(); const box=$('#ex-picks'); if(!box)return;
+  if(!q){ box.style.display='none'; return; }
+  const seen=new Set(); const matches=ROWS.filter(r=>{ if(seen.has(r.seq))return false; seen.add(r.seq);
+    return (String(r.eventNo||'')+' '+String(r.repName||'')).toLowerCase().includes(q); }).slice(0,30);
+  if(!matches.length){ box.innerHTML=`<div style="padding:10px 12px;color:var(--muted);font-size:12px">${esc(tx('noMatch'))}</div>`; box.style.display='block'; return; }
+  box.innerHTML=matches.map(r=>`<div class="ex-pick" data-seq="${r.seq}" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border)"><b>${esc(r.repName||'')}</b> <span class="mono" style="color:var(--muted)">#${esc(r.eventNo)}</span> · ${esc(r.accom)} · ${esc(r.dep)}~${esc(r.arr)}</div>`).join('');
+  box.style.display='block';
+  box.querySelectorAll('.ex-pick').forEach(el=>el.addEventListener('click',()=>{ addExtra(Number(el.dataset.seq)); box.style.display='none'; $('#ex-search').value=''; }));
+}
+function renderExtras(){
+  const el=$('#ex-rows'); if(!el)return;
+  if(!EXLIST.length){ el.innerHTML=`<div class="cnt" style="color:var(--muted);padding:6px 0">${esc(tx('extraEmpty'))}</div>`; return; }
+  el.innerHTML=`<div class="ex-grid"><div class="hd">${esc(tx('exColTeam'))}</div><div class="hd">${esc(tx('exColType'))}</div><div class="hd">${esc(tx('exColSign'))}</div><div class="hd">${esc(tx('exColAmt'))}</div><div class="hd">${esc(tx('exColNote'))}</div><div></div></div>`
+    + EXLIST.map(x=>`<div class="ex-grid" data-id="${x.id}">
+        <div class="ex-team" title="${esc(extraTeamLabel(x.event_seq))}" style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(extraTeamLabel(x.event_seq))}</div>
+        <select data-f="etype">${EXTRA_TYPES.map(t=>`<option value="${esc(t)}" ${x.etype===t?'selected':''}>${esc(t)}</option>`).join('')}</select>
+        <select data-f="is_add"><option value="1" ${x.is_add?'selected':''}>${esc(tx('signAdd'))}</option><option value="0" ${!x.is_add?'selected':''}>${esc(tx('signSub'))}</option></select>
+        <input data-f="amount" type="text" value="${esc(x.amount||'')}" style="text-align:right;font-family:var(--mono)">
+        <input data-f="note" value="${esc(x.note||'')}">
+        <button class="ded-x" data-del="${x.id}">✕</button>
+      </div>`).join('');
+  el.querySelectorAll('.ex-grid[data-id]').forEach(g=>{ const id=g.dataset.id;
+    g.querySelectorAll('[data-f]').forEach(inp=>inp.addEventListener('change',()=>updateExtra(id,inp.dataset.f,inp.value))); });
+  el.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>removeExtra(b.dataset.del)));
+}
+async function addExtra(seq){
+  try{ const {data,error}=await supa.from('settle_extras').insert({event_seq:seq,etype:EXTRA_TYPES[0],is_add:true,amount:0,note:'',session_ym:YM,updated_by:curUser(),sort_no:EXLIST.length}).select().single();
+    if(error)throw error; EXLIST.push(data); recomputeExtras(); renderAll(); }
+  catch(e){ toast(tx('addFail')+': '+e.message,'err'); }
+}
+async function updateExtra(id,field,val){
+  const x=EXLIST.find(e=>String(e.id)===String(id)); if(!x)return;
+  if(field==='amount') x.amount=parseInt(String(val).replace(/[^0-9]/g,''),10)||0;
+  else if(field==='is_add') x.is_add=(String(val)==='1');
+  else x[field]=val;
+  try{ const {error}=await supa.from('settle_extras').update({[field]:x[field],updated_by:curUser()}).eq('id',id); if(error)throw error;
+    recomputeExtras(); renderAll(); }
+  catch(e){ toast(tx('editFail')+': '+e.message,'err'); }
+}
+async function removeExtra(id){
+  try{ const {error}=await supa.from('settle_extras').delete().eq('id',id); if(error)throw error;
+    EXLIST=EXLIST.filter(e=>String(e.id)!==String(id)); recomputeExtras(); renderAll(); }
+  catch(e){ toast(tx('delFail')+': '+e.message,'err'); }
+}
+
 // ── xlsx (/app/ downloadSettle 동일 — 모노크롬 회계 2시트) ──
 const XLM={ FG:'FF1A1A1A',FG_TITLE:'FFFFFFFF',BG_TITLE:'FF3A3A3A',BG_HDR:'FFE8E8E6',BG_SECTION:'FFD8D8D4',BG_TOTAL:'FFDCDCD8',BG_ALT:'FFF6F6F4',BG_WHITE:'FFFFFFFF',
   B_THIN:{style:'thin',color:{argb:'FFCFCFCB'}},B_MED:{style:'medium',color:{argb:'FF888884'}} };
@@ -518,19 +600,21 @@ async function downloadXlsx(){
     xlmHeader(ws1,r,['유형','금액(¥)','항목','대상','','']); r++;
     DEDS.forEach((d,di)=>{ xlmDataRow(ws1,r,[d.dtype||'',Number(d.amount)||0,d.label||'',d.target||'','',''],di%2===0,{numCols:[2]}); r++; });
   }
-  xlmTotalRow(ws1,r,['総売上(B2B)','','','','',grossT]); r++;
+  const extraTx=rows.reduce((a,x)=>a+x.extra,0); const grossBase=grossT-extraTx;
+  xlmTotalRow(ws1,r,['総売上(B2B)','','','','',grossBase]); r++;
+  if(extraTx){ xlmTotalRow(ws1,r,['その他(加算/控除)','','','','',extraTx]); r++; }
   xlmTotalRow(ws1,r,['控除 合計','','','','',-dedT]); r++;
   xlmTotalRow(ws1,r,['精算額(Net)','','','','',grossT-dedT]);
   // 시트2: 精算明細
-  const COL2=17; const ws2=wb.addWorksheet('精算明細',{views:[{state:'frozen',ySplit:3}],pageSetup:A4L});
-  xlColWidths(ws2,[5,12,8,10,16,22,11,11,6,5,16,12,12,12,12,12,22]);
+  const COL2=18; const ws2=wb.addWorksheet('精算明細',{views:[{state:'frozen',ySplit:3}],pageSetup:A4L});
+  xlColWidths(ws2,[5,12,8,10,16,22,11,11,6,5,16,12,12,12,12,12,12,22]);
   xlmTitle(ws2,1,'現地精算表 — 明細  '+YM+'  '+today(),COL2);
   xlmHeader(ws2,2,HDRS_SETTLE_XLSX);
   r=3; let prev='';
   sorted.forEach((rec,i)=>{ if(rec.accom!==prev){ const g=sorted.filter(x=>x.accom===rec.accom);
       xlmSection(ws2,r,'▌ '+rec.accom+'  —  '+g.length+'件 / '+g.reduce((a,x)=>a+x.pax,0)+'名 / ¥'+g.reduce((a,x)=>a+x.total,0).toLocaleString(),COL2); r++; prev=rec.accom; }
-    xlmDataRow(ws2,r,[i+1,rec.eventNo,rec.status,rec.memberType,rec.repName,rec.engName,rec.dep,rec.arr,rec.nights,rec.pax,rec.accom,rec.roomType,rec.rate,rec.stay,rec.transport,rec.total,rec.remark||''],i%2===0,{numCols:[13,14,15,16],centerCols:[1,3,9,10],boldCols:[5]}); r++; });
-  xlmTotalRow(ws2,r,['','','','','合計','','','','',rows.reduce((a,x)=>a+x.pax,0),'','','',rows.reduce((a,x)=>a+x.stay,0),rows.reduce((a,x)=>a+x.transport,0),rows.reduce((a,x)=>a+x.total,0),'']);
+    xlmDataRow(ws2,r,[i+1,rec.eventNo,rec.status,rec.memberType,rec.repName,rec.engName,rec.dep,rec.arr,rec.nights,rec.pax,rec.accom,rec.roomType,rec.rate,rec.stay,rec.transport,rec.extra||0,rec.total,rec.remark||''],i%2===0,{numCols:[13,14,15,16,17],centerCols:[1,3,9,10],boldCols:[5]}); r++; });
+  xlmTotalRow(ws2,r,['','','','','合計','','','','',rows.reduce((a,x)=>a+x.pax,0),'','','',rows.reduce((a,x)=>a+x.stay,0),rows.reduce((a,x)=>a+x.transport,0),rows.reduce((a,x)=>a+x.extra,0),rows.reduce((a,x)=>a+x.total,0),'']);
   const suffix=ACCOMSEL.size?('_'+[...ACCOMSEL].join('-')):'';
   const buf=await wb.xlsx.writeBuffer(); const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`Genchi_Seisan${suffix}_${YM}.xlsx`;
