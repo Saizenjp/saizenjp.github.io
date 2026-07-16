@@ -245,7 +245,7 @@ const L = {
     codeMatched:n=>`· グループコードxlsxなしでmember_codesから${n}件マッチ`,
     codeMatchFail:'· member_codesマッチ失敗(SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ 会員 ${mem}チーム · 非会員Fプール ${nm}チーム${full?` · プール枯渇 ${full}チーム`:''}`,
-    ghostCleaned:(n)=>`減員による残存 ${n}件を整理`,
+    ghostCleaned:(n)=>`減員による残存 ${n}件を整理`, autoGroup:(n)=>`備考「チーム:…」で ${n}件 自動グループ化(手配書・夕食)`,
     syncCleaned:(months,del)=>`✓ ${months} 残存チーム ${del}個整理 — ファイル基準で最新化`,
     syncKept:n=>`· 残存チーム ${n}個 — データ累積(削除しない)`,
     syncDelFail:'· 残存整理失敗: ',
@@ -283,7 +283,7 @@ const L = {
     codeMatched:n=>`· 그룹코드 xlsx 없이 member_codes에서 ${n}건 매칭`,
     codeMatchFail:'· member_codes 매칭 실패(22번 SQL?): ',
     guestsSummary:(mem,nm,full)=>`  └ 회원 ${mem}팀 · 비회원 F풀 ${nm}팀${full?` · 풀소진 ${full}팀`:''}`,
-    ghostCleaned:(n)=>`인원 감소로 남은 자리 ${n}건 정리`,
+    ghostCleaned:(n)=>`인원 감소로 남은 자리 ${n}건 정리`, autoGroup:(n)=>`비고 「팀:…」로 ${n}건 자동 묶기(手配書·夕食)`,
     syncCleaned:(months,del)=>`✓ ${months} 잔존 팀 ${del}개 정리 — 파일 기준 최신화`,
     syncKept:n=>`· 잔존 팀 ${n}개 — 데이터 누적(삭제 안 함)`,
     syncDelFail:'· 잔존 정리 실패: ',
@@ -321,7 +321,7 @@ const L = {
     codeMatched:n=>`· Matched ${n} from member_codes without a group-code xlsx`,
     codeMatchFail:'· member_codes match failed (SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ Members ${mem} teams · Non-member F-pool ${nm} teams${full?` · Pool exhausted ${full} teams`:''}`,
-    ghostCleaned:(n)=>`Cleaned ${n} stale rows from reduced teams`,
+    ghostCleaned:(n)=>`Cleaned ${n} stale rows from reduced teams`, autoGroup:(n)=>`Auto-grouped ${n} team-group(s) from 「팀:…」 remark`,
     syncCleaned:(months,del)=>`✓ ${months} cleaned ${del} leftover team(s) — synced to the file`,
     syncKept:n=>`· ${n} leftover team(s) — data accumulated (not deleted)`,
     syncDelFail:'· Leftover cleanup failed: ',
@@ -836,6 +836,50 @@ async function run(){
       }
       if(ghost) log(`✓ ${t('s1_dyn_log_members')} ${tx('ghostCleaned')(ghost)}${relinked?` (방 ${relinked}건 보존)`:''}`,'dim');
     } catch(_){ /* 청소 실패는 임포트 자체를 막지 않음 */ }
+
+    // ── 비고 「팀:A,B」 자동 묶기(등록 시): 「팀:…」의 대표명으로 팀을 찾아 union → 手配書·夕食 그룹핑 ──
+    //   · 한쪽 비고에만 적혀 있어도 그 이름으로 상대 팀(rep_name)을 찾아 묶음. 양쪽 다 없으면 못 묶음.
+    //   · 같은 session_ym 안에서 rep_name 매칭(동명이인·타 여정 오묶음 방지). 3팀 이상 사슬도 전이적 묶음.
+    //   · 이미 team_group 있는 팀(수동 묶기) 포함 그룹은 전체 보존(스킵). dining_group·제외 등 기존 필드 보존.
+    try {
+      const repIdx={};   // ym -> rep_name -> [event_seq]
+      bookingRows.forEach(b=>{ const nm=String(b.rep_name||'').trim(); if(!nm)return; const ym2=b.session_ym||ym;
+        (repIdx[ym2]=repIdx[ym2]||{}); (repIdx[ym2][nm]=repIdx[ym2][nm]||[]).push(b.event_seq); });
+      const parent={}; bookingRows.forEach(b=>{ parent[b.event_seq]=b.event_seq; });
+      const find=x=>{ while(parent[x]!==x){ parent[x]=parent[parent[x]]; x=parent[x]; } return x; };
+      const uni=(a,c)=>{ const ra=find(a), rb=find(c); if(ra!==rb) parent[ra]=rb; };
+      bookingRows.forEach(b=>{ const lbl=String(b.team_label||'').trim(); if(!lbl)return; const ym2=b.session_ym||ym;
+        lbl.split(/[,，、·・\/]+/).map(s=>s.trim()).filter(s=>s.length>=1).forEach(nm=>{
+          const hits=(repIdx[ym2]&&repIdx[ym2][nm])||[];
+          hits.forEach(s=>{ if(s!==b.event_seq) uni(b.event_seq,s); });
+        }); });
+      const comp={}; bookingRows.forEach(b=>{ const r=find(b.event_seq); (comp[r]=comp[r]||[]).push(b.event_seq); });
+      const groups=Object.values(comp).filter(a=>a.length>=2);
+      if(groups.length){
+        const allSeqs=[...new Set(groups.flat())];
+        const hasTG=new Set();   // 이미 team_group 있는 팀(수동)
+        for(let i=0;i<allSeqs.length;i+=200){ const chunk=allSeqs.slice(i,i+200);
+          const {data}=await supa.from('print_overrides').select('event_seq,team_group').in('event_seq',chunk);
+          (data||[]).forEach(o=>{ if(o.team_group) hasTG.add(o.event_seq); });
+        }
+        const tagBySeq={}; guestRows.forEach(g=>{ tagBySeq[g.event_seq]=g.team_tag||g.group_code||''; });
+        let grouped=0;
+        for(const seqs of groups){
+          if(seqs.some(s=>hasTG.has(s))) continue;   // 이미 수동 묶음 → 그룹 전체 보존
+          const sorted=[...new Set(seqs)].sort((a,b)=>a-b);
+          const repSeq=sorted[0]; const label=tagBySeq[repSeq]||('팀'+repSeq);
+          for(let i=0;i<sorted.length;i++){ const s=sorted[i];
+            let cur=null; try{ const {data}=await supa.from('print_overrides').select('dining_group,excluded,exclude_reason,team_tag,pax_override').eq('event_seq',s).maybeSingle(); cur=data; }catch(_){}
+            const row={ event_seq:s, session_ym:ymBySeq[s]||ym, team_group:label, team_group_rep:(s===repSeq), team_group_seq:i+1,
+              dining_group:(cur&&cur.dining_group)||null, excluded:!!(cur&&cur.excluded), exclude_reason:(cur&&cur.exclude_reason)||null,
+              team_tag:(cur&&cur.team_tag)||null, pax_override:(cur&&cur.pax_override!=null)?cur.pax_override:null };
+            await supa.from('print_overrides').upsert(row,{onConflict:'event_seq'});
+          }
+          grouped++;
+        }
+        if(grouped) log(`✓ ${tx('autoGroup')(grouped)}`,'dim');
+      }
+    } catch(_){ /* 자동 묶기 실패는 임포트 자체를 막지 않음 */ }
 
     // ── 월 단위 동기화: 이번 파일에 없는 그 달 팀 정리(잔존 데이터 제거) ──
     //   · 파일(예약리스트)에 있는 event_seq 기준. 다른 달(session_ym)은 안 건드림.
