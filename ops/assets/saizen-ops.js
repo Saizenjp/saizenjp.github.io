@@ -1714,8 +1714,11 @@
   //   안 본 새 버전이면 요약줄에 빨강 N 배지 → 펼쳐 보면(열람) 사라짐(localStorage 열람버전 기록).
   //   기본버전 1(SO_HELP_BASE) → 버전 안 올린 페이지는 배지 안 뜸(플러딩 방지).
   var SO_HELP_BASE = 1;
+  // 기본 버전 2 → 모든 설명서에 최초 1회 N 노출(전 페이지 "한 번 확인" 유도). 열어보면 그 페이지만 사라짐.
+  // 이후 특정 페이지 설명서를 또 바꾸면 그 페이지만 3,4…로 올려 다시 N 표시.
+  var SO_HELP_DEFAULT_VER = 2;
   var SO_HELP_VER = { 'dispatch.html': 2 };
-  function helpVer(file){ return SO_HELP_VER[file] || 1; }
+  function helpVer(file){ return SO_HELP_VER[file] || SO_HELP_DEFAULT_VER; }
   function helpSeenVer(file){ try { return +(localStorage.getItem('so_help_seen_' + file) || SO_HELP_BASE); } catch (e) { return SO_HELP_BASE; } }
   function helpIsNew(file){ return helpSeenVer(file) < helpVer(file); }
   function markHelpSeen(file){ try { localStorage.setItem('so_help_seen_' + file, String(helpVer(file))); } catch (e) {} }
