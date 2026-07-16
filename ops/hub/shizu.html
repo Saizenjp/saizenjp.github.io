@@ -247,7 +247,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=11"></script>
-<script src="../assets/saizen-ops.js?v=15.29"></script>
+<script src="../assets/saizen-ops.js?v=15.30"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(予約表 산출물·도메인 데이터는 일본어 유지) ──
@@ -882,7 +882,7 @@ async function saveTeamMemo(seq, text){
 function roomClosed(room,ci,co){ return CLOSURES.some(c=>c.room_no===room && ci<=c.to_date && co>c.from_date); }   // 체류구간 겹침
 function roomClosedOnDate(room,date){ return CLOSURES.some(c=>c.room_no===room && c.from_date<=date && date<=c.to_date); }
 
-// ── 자동배정: 미배정 인원을 本館·別棟 2인1실(무조건 2인). 남는 1명=1인 1실. 北條은 최후 ──
+// ── 자동배정: 미배정 인원을 本館·別棟 2인1실(무조건 2인). 남는 1명=1인 1실. 北條(203)은 本館 중 후순위 ──
 //   · auto 배정은 그 달치 전부 정리 후 재배치(manual/맞바꿈/수기추가는 보존).
 //   · 현지비고 별채/별관 팀 = 別棟 우선. 방 부족 = 미배정(예약표에 未N 표기).
 async function autoAssignShizu(){
@@ -903,10 +903,11 @@ async function autoAssignShizu(){
     const byTeam={}; gms.forEach(m=>{ if(!keep.has(m.id)){ (byTeam[m.event_seq]=byTeam[m.event_seq]||[]).push(m.id); } });
     // 현지비고에 별채/별관 포함 = 別棟(별채) 선호
     const annexPref={}; teams.forEach(t=>{ const b=bkMap[t.seq]||{}; annexPref[t.seq]=SHZ_ANNEX_RE.test(String(b.remark_local||'')+' '+String(b.remark||'')); });
-    //  · 別棟 선호팀: 별채(吉祥·瑞雲·馬酔木) 먼저 → 본관 → 北條 마지막
-    //  · 일반팀: 본관(志津·合歓·山法師) → 별채 → 北條 마지막  (北條은 항상 최후)
+    //  · 일반팀: 本館 201·202·204(志津·合歓·山法師) → 203(北條) → 離れ 301·302·303(吉祥·瑞雲·馬酔木)
+    //    (北條은 완전 최후가 아니라 '本館 중 후순위' — 別棟보다는 먼저)
+    //  · 別棟 선호팀(별채 사전신청): 離れ(吉祥·瑞雲·馬酔木) 먼저 → 本館(志津·合歓·山法師) → 北條
     const POOL_ANNEX=['吉祥','瑞雲','馬酔木','志津','合歓','山法師','北條'];
-    const POOL_MAIN =['志津','合歓','山法師','吉祥','瑞雲','馬酔木','北條'];
+    const POOL_MAIN =['志津','合歓','山法師','北條','吉祥','瑞雲','馬酔木'];
     const pending=[];
     // 점유 = 수기 배정(manual) + 이번 배치(pending)  (auto 기존분은 정리되므로 제외)
     const occ=(room,ci,co)=>{ let n=0; manual.forEach(g=>{ if(g.room_no===room && g.ci<co && ci<g.co) n++; }); pending.forEach(p=>{ if(p.room===room && p.ci<co && ci<p.co) n+=p.cnt; }); return n; };
