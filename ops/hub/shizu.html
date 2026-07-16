@@ -929,7 +929,8 @@ function renderPreview(){
 //   4일씩 페이지 묶음(.shz-pg). 만실+메모 많은 밀집일은 --fs 이분탐색으로만 살짝 축소, 평소엔 큰 글씨 그대로.
 function printChart(){
   const ax=axis(); if(!ax.length){ toast(tx('noOut'),'err'); return; }
-  const inner=$('#preview').innerHTML;
+  // 인쇄 미리보기 팝업 = 읽기전용(화면 편집칸 contenteditable·입력 비활성화). 실제 편집은 본 화면에서만.
+  const inner=$('#preview').innerHTML.replace(/contenteditable="true"/g,'contenteditable="false"');
   const css=`<style>
     @page{size:A4 landscape;margin:7mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -974,11 +975,13 @@ function printChart(){
     var tabs=[].slice.call(body.querySelectorAll('.shz-pv'));
     var pages=[];
     for(var i=0;i<tabs.length;i+=4){var pg=document.createElement('div');pg.className='shz-pg';for(var j=i;j<i+4&&j<tabs.length;j++)pg.appendChild(tabs[j]);body.appendChild(pg);pages.push(pg);}
+    // A4 가로 인쇄영역(높이) — @page margin 7mm 기준 196mm이나, 인쇄 대화상자 여백이 이를
+    // 넘겨 4번째가 다음 장으로 밀리는 것을 방지하려고 보수적으로(약 8% 여유) 목표를 낮춘다.
     var PH=Math.round((210-14)*3.7795);
     pages.forEach(function(pg,idx){
-      var avail=PH-(idx===0&&title?title.offsetHeight+8:0);
+      var avail=(PH-(idx===0&&title?title.offsetHeight+8:0))*0.92;   // 여백·반올림 여유
       pg.style.setProperty('--fs',1);
-      if(pg.scrollHeight>avail){var lo=0.4,hi=1;for(var k=0;k<14;k++){var m=(lo+hi)/2;pg.style.setProperty('--fs',m);if(pg.scrollHeight<=avail)lo=m;else hi=m;}pg.style.setProperty('--fs',lo);}
+      if(pg.scrollHeight>avail){var lo=0.3,hi=1;for(var k=0;k<16;k++){var m=(lo+hi)/2;pg.style.setProperty('--fs',m);if(pg.scrollHeight<=avail)lo=m;else hi=m;}pg.style.setProperty('--fs',lo);}
     });
   })();<\/script>`;
   const w=window.open('','_blank'); if(!w){ toast(tx('popupBlock'),'err'); return; }
