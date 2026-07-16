@@ -305,7 +305,9 @@ function genderOf(g){ return g.gender||''; }
 function axis(){ const set=new Set(); GUESTS.forEach(g=>nightsOf(g).forEach(d=>{ if(d.slice(0,7)===YM) set.add(d); })); UNASSIGNED.forEach(r=>nightsBetween(r.dep,r.arr).forEach(d=>{ if(d.slice(0,7)===YM) set.add(d); })); return [...set].sort(); }
 // 화면·인쇄·xlsx 공통 대상 날짜: 특정일 선택 시 그날만, 아니면 그 달 전체
 function activeDates(){ const ax=axis(); return (DATESEL && ax.includes(DATESEL)) ? [DATESEL] : ax; }
-function cellOcc(room,date){ return GUESTS.filter(g=>g.room_no===room && nightsOf(g).includes(date)).sort((a,b)=>(a.ci||'').localeCompare(b.ci||'')); }
+// 대표(seq=1·is_rep)를 맨 앞으로 — お名前에 팀 대표가 표시되도록(방 합류 순서 무관). ci 동률 시 대표 우선.
+function cellOcc(room,date){ return GUESTS.filter(g=>g.room_no===room && nightsOf(g).includes(date))
+  .sort((a,b)=>(a.ci||'').localeCompare(b.ci||'') || (b.isRep?1:0)-(a.isRep?1:0) || (a.seq||99)-(b.seq||99)); }
 function mf(occ){ let m=0,f=0,u=0; occ.forEach(g=>{const x=genderOf(g); if(x==='男')m++; else if(x==='女')f++; else u++;}); const p=[]; if(m)p.push('男　'+zen(m)); if(f)p.push('女　'+zen(f)); if(u)p.push('（未）'+zen(u)); return p.join('　　'); }
 
 async function connect(){
@@ -397,7 +399,7 @@ async function load(){
     const rows=(rms||[]).filter(r=>r.member_id && SHZ_ROOMS.includes(r.room_no));
     const mids=rows.map(r=>r.member_id), seqs=rows.map(r=>r.event_seq).filter(Boolean);
     // guest_members(영문/한글명)
-    const gms = mids.length? await pagedIn('guest_members','id,event_seq,name_kr,name_en','id',mids) : [];
+    const gms = mids.length? await pagedIn('guest_members','id,event_seq,name_kr,name_en,seq_in_team,is_rep','id',mids) : [];
     const gmMap={}; gms.forEach(g=>gmMap[g.id]=g);
     // passengers(성별) — seq_in_team 불일치 → event_seq+이름으로 매칭
     const pxs = seqs.length? await pagedIn('passengers','event_seq,name_kr,gender','event_seq',seqs) : [];
@@ -413,6 +415,7 @@ async function load(){
       const nameKr=String(gm.name_kr||'').trim();
       return { id:r.id, invId:r.inventory_id, member_id:r.member_id, event_seq:r.event_seq, room_no:r.room_no,
         ci:String(r.check_in).slice(0,10), co:String(r.check_out).slice(0,10), src:r.assign_source||'auto',
+        seq:gm.seq_in_team||99, isRep:!!gm.is_rep,
         nameKr, nameEn:gm.name_en||'', gender:genMap[r.event_seq+'|'+nameKr]||'' };
     });
     // ── 전체 로스터(미배정 추적): 그 달 시즈 팀 전원 − 배정된 사람 = 미배정 ──
