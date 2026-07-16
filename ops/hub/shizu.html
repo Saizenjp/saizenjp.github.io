@@ -924,6 +924,10 @@ function renderPreview(){
   const ax=axis();
   if(!ax.length){ wrap.innerHTML=`<div class="cnt" style="color:var(--muted);padding:20px;text-align:center">${tx('noData')}</div>`; return; }
   let html=`<div class="pv-title">ー志津の宿　${(parseISO(ax[0])||new Date()).getFullYear()}年　予約表ー</div>`;
+  // 팀 대표 영문명 맵(代表者 행 — お名前과 통일해 영문). is_rep 우선, 없으면 최소 seq.
+  const REPEN={};
+  GUESTS.forEach(g=>{ const s=g.event_seq; const rank=g.isRep?0:(g.seq||99); const en=titleCase(g.nameEn)||g.nameKr||'';
+    if(!REPEN[s]||rank<REPEN[s].rank) REPEN[s]={en, rank}; });
   activeDates().forEach(date=>{
     const d=parseISO(date); let tot=0,tm=0,tf=0;
     const md=iso=>{ const p=parseISO(iso); return p?`${zen(p.getMonth()+1)}／${zen(p.getDate())}`:''; };
@@ -935,7 +939,7 @@ function renderPreview(){
       const bk=BOOK[rep.event_seq]||{};
       const onsen=SHZ_BYEOLCHE.includes(room) && SHZ_ANNEX_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''));
       return { name:esc(nameOf(rep))+'様',
-        rep: esc(String((BOOK[rep.event_seq]||{}).rep_name||'').trim()),   // 팀 대표자(그룹 구분용)
+        rep: esc((REPEN[rep.event_seq]&&REPEN[rep.event_seq].en) || String((BOOK[rep.event_seq]||{}).rep_name||'').trim()),   // 팀 대표자 영문명(お名前과 통일). 없으면 한글 폴백
         mf:mf(occ), stay:`${zen(rn.length)}連泊 ${zen(rn.indexOf(date)+1)}`, cnt:zen(occ.length),
         io: rep.ci?`${md(rep.ci)}〜${md(rep.co)}`:'', onsen:onsen,
         seq: rep.event_seq, memo: TMEMO[rep.event_seq]||'' };
