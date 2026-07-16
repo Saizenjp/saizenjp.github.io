@@ -322,7 +322,8 @@ const SHZ_BYEOLCHE=['吉祥','瑞雲','馬酔木'];
 // 호수: 本館 201~204 · 別館 301~303 (순차)
 const SHZ_ROOMNO={'志津':'201','合歓':'202','北條':'203','山法師':'204','吉祥':'301','瑞雲':'302','馬酔木':'303'};
 // 현지비고에 이 단어가 있으면 別棟 사전신청(개인욕탕 물 준비 필요)로 표시
-const SHZ_ANNEX_RE=/별채|별관|別棟|別館|내탕|온천|内湯|温泉/;   // 별채(내탕) 신청 키워드 — 별채신청·별관신청·내탕신청·온천신청 등
+const SHZ_ANNEX_RE=/별채|별관|別棟|別館|내탕|온천|内湯|温泉/;   // 別棟 우선배정(자동배정)용 — 방 위치(별채·별관) + 온천 신호 전부 포함
+const SHZ_ONSEN_RE=/내탕|온천|内湯|温泉/;                      // ♨ 온천 사전신청 전용 — 온천 키워드만(「별채·별관」=방 위치일 뿐 ♨ 아님)
 const SHZ_ZONE=r=>SHZ_BYEOLCHE.includes(r)?'別棟':'本館';
 const SHZ_DOW=['日','月','火','水','木','金','土'];
 
@@ -1079,9 +1080,9 @@ function renderPreview(){
       const occ=cellOcc(room,date); if(!occ.length)return {name:'',rep:'',mf:'',stay:'',cnt:'',io:'',onsen:false,seq:null,memo:''};
       const rep=occ[0]; const rn=nightsOf(rep); tot+=occ.length;
       occ.forEach(g=>{const x=genderOf(g); if(x==='男')tm++; else if(x==='女')tf++;});
-      // 別棟 방 + 現地備考에 별채/별관 신호 = 온천 사전신청(¥19,000) 팀 → ✓ 표시
+      // 別棟 방 + 現地備考에 온천 신호(온천·내탕·温泉·内湯) = 온천 사전신청(¥19,000) 팀 → ♨ 표시 (「별채·별관」 방 위치만으론 ♨ 아님)
       const bk=BOOK[rep.event_seq]||{};
-      const onsen=SHZ_BYEOLCHE.includes(room) && SHZ_ANNEX_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''));
+      const onsen=SHZ_BYEOLCHE.includes(room) && SHZ_ONSEN_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''));
       return { name:esc(nameOf(rep))+'様',
         rep: esc((REPEN[rep.event_seq]&&REPEN[rep.event_seq].en) || String((BOOK[rep.event_seq]||{}).rep_name||'').trim()),   // 팀 대표자 영문명(お名前과 통일). 없으면 한글 폴백
         mf:mf(occ), stay:`${zen(rn.length)}連泊 ${zen(rn.indexOf(date)+1)}`, cnt:zen(occ.length),
@@ -1208,9 +1209,9 @@ async function downloadXlsx(){
       const kc=ws.getCell(r0+3,col); kc.value='　　　　　　才'; kc.font={name:FONT,size:11};
       if(!occ.length)return;
       const rep=occ[0];
-      // 別棟 방 + 別棟 온천 사전신청(¥19,000) 팀 = 이름 앞에 초록 ✓(엑셀 richText)
+      // 別棟 방 + 온천 사전신청(¥19,000, 온천·내탕 키워드) 팀 = 이름 앞에 ♨(엑셀 richText). 「별채·별관」 방 위치만으론 ♨ 아님
       const bk=BOOK[rep.event_seq]||{};
-      const onsen=SHZ_BYEOLCHE.includes(room) && SHZ_ANNEX_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''));
+      const onsen=SHZ_BYEOLCHE.includes(room) && SHZ_ONSEN_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''));
       const nc=ws.getCell(r0+1,col);
       if(onsen){ nc.value={richText:[{text:'♨ ',font:{name:FONT,size:11,bold:true,color:{argb:'FFC0392B'}}},{text:nameOf(rep)+'様',font:{name:FONT,size:11}}]}; }
       else { nc.value=nameOf(rep)+'様'; nc.font={name:FONT,size:11}; }
