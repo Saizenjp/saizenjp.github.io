@@ -76,6 +76,8 @@
   .shz-pv-nm{text-align:right;background:#fff}
   .shz-pv-rep{text-align:center;background:#f7f7f4;font-size:11px;font-weight:700;color:#444}
   .shz-onsen-chk{display:inline-block;margin-right:3px;color:#c0392b;font-weight:900;font-size:12px;background:#fdecea;border:1px solid #e3a89f;border-radius:3px;padding:0 3px;line-height:1.3;vertical-align:middle}
+  .shz-loc{display:inline-block;font-size:8.5px;font-weight:800;border:1px solid #999;border-radius:3px;padding:0 3px;margin:0 2px 0 0;color:#555;line-height:1.5;vertical-align:middle;letter-spacing:0}
+  .oc.local{border-style:dashed}
   .shz-closed{background:#ececec!important;color:#1a1a1a}
   .shz-pv td:not(.shz-pv-lb):not(.shz-pv-k):not(.shz-pv-note):not(.shz-pv-nm){background:#fff}
   .shz-pv-k{background:#ececec;font-weight:700}
@@ -144,6 +146,7 @@
     .shz-pv-io{font-size:11px}
     .shz-pv-lb{background:#e6e6e6!important;font-weight:800;width:74px;font-size:12px}
     .shz-pv-rep{text-align:center;font-weight:800;font-size:15px;color:#111;background:#f0f0ec!important}   /* 대표자=크게 */
+    .shz-loc{border:1px solid #333;color:#000;font-size:10px;font-weight:800}                                /* 現地=흑백 또렷 */
     .shz-pv-nm{text-align:right;font-weight:700;font-size:12.5px}                                            /* お名前=작게 */
     .shz-pv-k{background:#e6e6e6!important;font-weight:800;font-size:13px}
     .shz-pv-note{text-align:left;font-weight:700;font-size:12px}
@@ -247,7 +250,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=11"></script>
-<script src="../assets/saizen-ops.js?v=15.30"></script>
+<script src="../assets/saizen-ops.js?v=15.31"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(予約表 산출물·도메인 데이터는 일본어 유지) ──
@@ -322,9 +325,10 @@ const SHZ_BYEOLCHE=['吉祥','瑞雲','馬酔木'];
 // 호수: 本館 201~204 · 別館 301~303 (순차)
 const SHZ_ROOMNO={'志津':'201','合歓':'202','北條':'203','山法師':'204','吉祥':'301','瑞雲':'302','馬酔木':'303'};
 // 현지비고에 이 단어가 있으면 別棟 사전신청(개인욕탕 물 준비 필요)로 표시
-const SHZ_ANNEX_RE=/별채|별관|別棟|別館|내탕|온천|内湯|温泉/;   // 別棟 우선배정(자동배정)용 — 방 위치(별채·별관) + 온천 신호 전부 포함
-const SHZ_ONSEN_RE=/내탕|온천|内湯|温泉/;                      // ♨ 온천 사전신청 전용 — 온천 키워드만(「별채·별관」=방 위치일 뿐 ♨ 아님)
+const SHZ_ANNEX_RE=/별채|별관|別棟|別館|내탕|온천|内湯|温泉/;   // 별채(내탕) 신청 키워드 — 별채신청·별관신청·내탕신청·온천신청 등. 別棟 배정=개인탕 있어 ♨ 준비 대상
 const SHZ_ZONE=r=>SHZ_BYEOLCHE.includes(r)?'別棟':'本館';
+// 현지예약(현장 워크인) = 메리트 B2B 예약과 구분해 「現地」 배지 표기(배정보드·미리보기·인쇄·xlsx)
+function isLocalSeq(seq){ return /현지예약/.test(String((BOOK[seq]||{}).product_name||'')); }
 const SHZ_DOW=['日','月','火','水','木','金','土'];
 
 let supa=null, YM=null, FACILITY='시즈노야도 료칸';
@@ -488,7 +492,7 @@ async function load(){
     const genMap={}; pxs.forEach(p=>{ const k=p.event_seq+'|'+String(p.name_kr||'').trim(); if(!genMap[k]) genMap[k]=normGender(p.gender); });
     // ※ 온천 사전신청·물채우기 직접 관리 폐지(Min) — 현지에서는 아래 現地備考(메리트 현지비고)만 보고 판단
     // 비고·현지비고(+일본어 캐시) — 예약표 참고용
-    const bks = seqs.length? await pagedIn('bookings','event_seq,rep_name,remark,remark_local,remark_ja,remark_local_ja','event_seq',seqs) : [];
+    const bks = seqs.length? await pagedIn('bookings','event_seq,rep_name,product_name,remark,remark_local,remark_ja,remark_local_ja','event_seq',seqs) : [];
     BOOK={}; bks.forEach(b=>BOOK[b.event_seq]=b);
     // 담당자 메모(영속) — 그 달 범위
     MEMOS={}; try{ const {data:mm}=await supa.from('shizu_memo').select('memo_date,note').gte('memo_date',start).lte('memo_date',end); (mm||[]).forEach(m=>{ MEMOS[String(m.memo_date).slice(0,10)]=m.note||''; }); }catch(e){}
@@ -658,7 +662,7 @@ function renderBoardDay(date, showHd){
   const teams=rackTeams(date);
   const rackHtml = teams.length ? teams.map(t=>`
     <div class="rk-team${t.annex?' annex':''}">
-      <div class="rk-hd">${esc(t.rep||('#'+t.seq))}様 <small>#${t.seq} · ${esc(t.dep.slice(5))}~${esc(t.arr.slice(5))}</small>${t.annex?' <span style="color:var(--purple2)">別棟</span>':''}</div>
+      <div class="rk-hd">${esc(t.rep||('#'+t.seq))}様 <small>#${t.seq} · ${esc(t.dep.slice(5))}~${esc(t.arr.slice(5))}</small>${isLocalSeq(t.seq)?' <span class="shz-loc">現地</span>':''}${t.annex?' <span style="color:var(--purple2)">別棟</span>':''}</div>
       ${t.mates.length?`<div class="rk-mates">🛏 ${t.mates.map(m=>esc(m.room+' '+m.nm)).join(' · ')}</div>`:''}
       <div class="rk-mem">${t.ms.map(m=>`<button class="chip${BSEL.has(m.member_id)?' on':''}" draggable="true" ondragstart="bDragStart(event,'${m.member_id}')" onclick="bToggleSel('${m.member_id}')">${esc(shzMemName(m))}様</button>`).join('')}</div>
     </div>`).join('') : `<div class="rk-empty">${tx('unNone')}</div>`;
@@ -668,7 +672,7 @@ function renderBoardDay(date, showHd){
     const clReason=closed?((CLOSURES.find(c=>c.room_no===room&&c.from_date<=date&&date<=c.to_date)||{}).reason||''):'';
     const body=closed
       ? `<div class="rm-closed">🔒 ${esc(clReason||tx('swapClosedT'))}</div>`
-      : (occ.length? occ.map(g=>`<span class="oc${BSEL.has(g.member_id)?' sel':''}" draggable="true" ondragstart="bDragStart(event,'${g.member_id}')"><span class="nm" onclick="event.stopPropagation();bToggleSel('${g.member_id}')">${esc(nameOf(g))}様</span><button class="x" onclick="event.stopPropagation();bUnassign('${g.member_id}')">✕</button></span>`).join('') : `<div class="cnt" style="color:var(--muted)">—</div>`);
+      : (occ.length? occ.map(g=>`<span class="oc${BSEL.has(g.member_id)?' sel':''}${isLocalSeq(g.event_seq)?' local':''}" draggable="true" ondragstart="bDragStart(event,'${g.member_id}')">${isLocalSeq(g.event_seq)?'<span class="shz-loc">現地</span>':''}<span class="nm" onclick="event.stopPropagation();bToggleSel('${g.member_id}')">${esc(nameOf(g))}様</span><button class="x" onclick="event.stopPropagation();bUnassign('${g.member_id}')">✕</button></span>`).join('') : `<div class="cnt" style="color:var(--muted)">—</div>`);
     return `<div class="rm ${cls}"${closed?'':` onclick="bPlace('${room}','${date}')" ondragover="bDragOver(event,this)" ondragleave="bDragLeave(this)" ondrop="bDrop(event,'${room}','${date}')"`}>
       <div class="rm-hd"><span class="rm-no">${SHZ_ROOMNO[room]||''}</span>${room}<span class="rm-zone${bz?' bz':''}">${bz?tx('annexLbl'):tx('mainLbl')}</span><span class="rm-cap${used>2?' over':''}">${used}/2</span>${used>2?`<span class="rm-over">${tx('overLbl')}</span>`:''}</div>
       ${body}</div>`;
@@ -704,6 +708,8 @@ async function bPlaceIds(ids,room){
     accepted.push({mid,dep:sp.dep,arr:sp.arr});
   });
   if(!accepted.length){ toast(tx('placeBlocked'),'warn'); return; }
+  // 되돌리기용: 이동 대상 각자의 '이동 직전' 방 상태 스냅샷(배정돼 있던 사람=그 방들 / 미배정이던 사람=빈 rows)
+  const preSnap=accepted.map(a=>({mid:a.mid, rows:snapMembers([a.mid])}));
   const prows=accepted.map(a=>({member_id:a.mid,inventory_id:inv,room_no:room,check_in:a.dep,check_out:a.arr}));
   try{
     const {data:n,error}=await supa.rpc('shizu_place',{p_rows:prows});
@@ -711,7 +717,18 @@ async function bPlaceIds(ids,room){
     const placed=(typeof n==='number')?n:prows.length;
     const miss=skipped+Math.max(0,prows.length-placed);
     BSEL.clear();
-    toast(tx('placeDone')(placed)+(miss?tx('placeSkip')(miss):''),'ok'); load();
+    shzToastUndo(tx('placeDone')(placed)+(miss?tx('placeSkip')(miss):''), ()=>shzRestoreMove(preSnap)); load();   // ↩ 이동 되돌리기
+  }catch(e){ toast(tx('apFail')+(e.message||e),'err'); }
+}
+// 이동 되돌리기: 배정돼 있던 사람은 원래 방으로 재배치, 미배정이던 사람은 다시 미배정으로
+async function shzRestoreMove(preSnap){
+  if(!supa||!preSnap||!preSnap.length) return;
+  const restore=[], back=[];
+  preSnap.forEach(p=>{ if(p.rows&&p.rows.length) restore.push(...p.rows); else back.push(p.mid); });
+  try{
+    if(restore.length){ const {error}=await supa.rpc('shizu_place',{p_rows:restore}); if(error)throw error; }
+    if(back.length){ const {error}=await supa.rpc('shizu_unassign',{p_member_ids:back}); if(error)throw error; }
+    toast(tx('restored'),'ok'); load();
   }catch(e){ toast(tx('apFail')+(e.message||e),'err'); }
 }
 // 배정된 인원의 현재 방 상태 스냅샷(되돌리기용)
@@ -1080,20 +1097,20 @@ function renderPreview(){
       const occ=cellOcc(room,date); if(!occ.length)return {name:'',rep:'',mf:'',stay:'',cnt:'',io:'',onsen:false,seq:null,memo:''};
       const rep=occ[0]; const rn=nightsOf(rep); tot+=occ.length;
       occ.forEach(g=>{const x=genderOf(g); if(x==='男')tm++; else if(x==='女')tf++;});
-      // 別棟 방 + 現地備考에 온천 신호(온천·내탕·温泉·内湯) = 온천 사전신청(¥19,000) 팀 → ♨ 표시 (「별채·별관」 방 위치만으론 ♨ 아님)
+      // 別棟 방 + 現地備考에 별채/별관 신호 = 온천(개인탕) 준비 팀 → ♨ 표시
       const bk=BOOK[rep.event_seq]||{};
-      const onsen=SHZ_BYEOLCHE.includes(room) && SHZ_ONSEN_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''));
+      const onsen=SHZ_BYEOLCHE.includes(room) && SHZ_ANNEX_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''));
       return { name:esc(nameOf(rep))+'様',
         rep: esc((REPEN[rep.event_seq]&&REPEN[rep.event_seq].en) || String((BOOK[rep.event_seq]||{}).rep_name||'').trim()),   // 팀 대표자 영문명(お名前과 통일). 없으면 한글 폴백
         mf:mf(occ), stay:`${zen(rn.length)}連泊 ${zen(rn.indexOf(date)+1)}`, cnt:zen(occ.length),
-        io: rep.ci?`${md(rep.ci)}〜${md(rep.co)}`:'', onsen:onsen,
+        io: rep.ci?`${md(rep.ci)}〜${md(rep.co)}`:'', onsen:onsen, local:isLocalSeq(rep.event_seq),
         seq: rep.event_seq, memo: TMEMO[rep.event_seq]||'' };
     });
     const note = MEMOS[date]!=null? MEMOS[date] : (NOTES[date]!=null? NOTES[date] : buildNoteAuto(date));
     html+=`<table class="shz-pv">
       <tr class="shz-pv-zone"><th></th><th colspan="4">本館 <small>¥17,000</small></th><th colspan="3" class="bz">別棟 <small>객실내 탕</small></th><th></th></tr>
       <tr class="shz-pv-hd"><th class="shz-pv-dt">${zen(d.getMonth()+1)}／${zen(d.getDate())}<br><span>${SHZ_DOW[d.getDay()]}</span></th>${SHZ_ROOMS.map(r=>`<th${SHZ_BYEOLCHE.includes(r)?' class="bz"':''}><span class="shz-rno">${SHZ_ROOMNO[r]||''}</span>${r}</th>`).join('')}<th class="shz-pv-k">合計</th></tr>
-      <tr><td class="shz-pv-lb">代表者</td>${cells.map(c=>`<td class="shz-pv-rep">${c.rep?c.rep+'様':''}</td>`).join('')}<td class="shz-pv-k"></td></tr>
+      <tr><td class="shz-pv-lb">代表者</td>${cells.map(c=>`<td class="shz-pv-rep">${c.local?'<span class="shz-loc">現地</span>':''}${c.rep?c.rep+'様':''}</td>`).join('')}<td class="shz-pv-k"></td></tr>
       <tr><td class="shz-pv-lb">お名前</td>${SHZ_ROOMS.map((room,ri)=>{const c=cells[ri]; const cl=roomClosedOnDate(room,date); const chk=c.onsen?'<span class="shz-onsen-chk" title="別棟 内湯(개인탕) 물채우기">♨</span>':''; return `<td class="shz-pv-nm${cl?' shz-closed':''}">${cl?'🔒 ':''}${chk}${c.name}</td>`;}).join('')}<td></td></tr>
       <tr><td class="shz-pv-lb">IN／OUT</td>${cells.map(c=>`<td class="shz-pv-io">${c.io||''}</td>`).join('')}<td class="shz-pv-k"></td></tr>
       <tr><td class="shz-pv-lb">大人</td>${cells.map(c=>`<td>${c.mf}</td>`).join('')}<td class="shz-pv-k">大 ${zen(tot)} 名</td></tr>
@@ -1135,6 +1152,7 @@ function printChart(){
     .shz-pv-lb{background:#e6e6e6;font-weight:800;width:72px;text-align:center;font-size:calc(12px*var(--fs,1))}
     .shz-pv-nm{text-align:right;font-weight:800;font-size:calc(16px*var(--fs,1))}
     .shz-pv-rep{text-align:center;font-weight:700;font-size:calc(11px*var(--fs,1));color:#333}
+    .shz-loc{display:inline-block;font-size:calc(9.5px*var(--fs,1));font-weight:800;border:1px solid #333;border-radius:3px;padding:0 3px;margin:0 2px 0 0;color:#000;vertical-align:middle}
     .shz-onsen-chk{display:inline-block;margin-right:2px;color:#c0392b;font-weight:900;font-size:calc(12px*var(--fs,1));background:#fdecea;border:1px solid #e3a89f;border-radius:3px;padding:0 3px;vertical-align:middle}
     .shz-pv-k{background:#e6e6e6;font-weight:800;font-size:calc(13px*var(--fs,1))}
     .shz-pv-note{text-align:left;font-weight:700;font-size:calc(12px*var(--fs,1))}
@@ -1209,12 +1227,12 @@ async function downloadXlsx(){
       const kc=ws.getCell(r0+3,col); kc.value='　　　　　　才'; kc.font={name:FONT,size:11};
       if(!occ.length)return;
       const rep=occ[0];
-      // 別棟 방 + 온천 사전신청(¥19,000, 온천·내탕 키워드) 팀 = 이름 앞에 ♨(엑셀 richText). 「별채·별관」 방 위치만으론 ♨ 아님
+      // 別棟 방 + 別棟 온천(개인탕) 준비 팀 = 이름 앞에 ♨(엑셀 richText)
       const bk=BOOK[rep.event_seq]||{};
-      const onsen=SHZ_BYEOLCHE.includes(room) && SHZ_ONSEN_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''));
-      const nc=ws.getCell(r0+1,col);
-      if(onsen){ nc.value={richText:[{text:'♨ ',font:{name:FONT,size:11,bold:true,color:{argb:'FFC0392B'}}},{text:nameOf(rep)+'様',font:{name:FONT,size:11}}]}; }
-      else { nc.value=nameOf(rep)+'様'; nc.font={name:FONT,size:11}; }
+      const onsen=SHZ_BYEOLCHE.includes(room) && SHZ_ANNEX_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''));
+      const nc=ws.getCell(r0+1,col); const loc=isLocalSeq(rep.event_seq); const nm=(loc?'【現地】':'')+nameOf(rep)+'様';
+      if(onsen){ nc.value={richText:[{text:'♨ ',font:{name:FONT,size:11,bold:true,color:{argb:'FFC0392B'}}},{text:nm,font:{name:FONT,size:11}}]}; }
+      else { nc.value=nm; nc.font={name:FONT,size:11}; }
       nc.alignment={horizontal:'right',vertical:'middle'};
       const ac=ws.getCell(r0+2,col); ac.value=mf(occ); ac.font={name:FONT,size:11}; ac.alignment={vertical:'middle'};
       const sc=ws.getCell(r0+4,col); sc.value=zen(occ.length); sc.font={name:FONT,size:11}; sc.alignment={horizontal:'center',vertical:'middle'};
