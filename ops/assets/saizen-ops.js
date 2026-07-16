@@ -1685,7 +1685,7 @@
     'golf.html': '<h4>이 화면이 하는 일</h4>골프 <b>조편성</b>(4인 1조)을 만들고 <b>조편성표</b>를 인쇄합니다.<h4>라운딩 날짜(자동)</h4>엠클릭 <b>상품명</b> 기준으로 팀별 라운딩 날짜를 자동 추출합니다: <b>입국일=ICN 팀만</b>, <b>중간 체류일=전원</b>, <b>귀국일=PUS 팀만</b>. 날짜 칩에 그날 라운딩하는 팀이 잡힙니다.<h4>쓰는 법</h4><ul><li>월(◀▶)·라운딩 날짜 선택 → 왼쪽 <b>미편성</b> 인원(팀·성별 ♂♀)을 클릭해 선택.</li><li><b>선택 → 조에 추가</b>(새 조) 또는 오른쪽 <b>조 카드를 클릭</b>해 그 조에 넣기(최대 4명).</li><li>조마다 <b>코스(아소·소보·쿠주)·티오프 시각</b> 지정. 코스는 인기순(아소&gt;소보&gt;쿠주)으로 자동 균형 배분.</li><li><b>🪄 팀 우선 자동</b>=팀별 4인씩 조를 자동 생성. <b>남/여</b> 버튼=풀에서 성별로 일괄 선택(남자끼리·여자끼리 편성).</li><li><b>💾 저장</b> → 그날 편성 저장(재저장은 그날 전체 교체). <b>🖨 인쇄</b>=조편성표.</li></ul><h4>권한·데이터</h4>golf 영역. bookings·guests·passengers(성별)·guest_members 읽기 / golf_groups·golf_group_members 쓰기. ※카트 배정·중간 교체는 다음 단계.',
     'aircover.html': '<h4>이 화면이 하는 일</h4>팀별 <b>A5 항공커버</b> 1장(가로). 개인 항공편·시설색.<h4>계산·판정</h4><ul><li>대표=<code>is_rep</code> 우선.</li><li><b>시설색·라벨</b>=태그 끝글자(Y/K/G/S).</li><li>항공편 ZE→PUS·TW→ICN 보정.</li><li>태그·인원 <b>인라인 수정</b>=print_overrides 공유 → 석식과 동기.</li></ul><h4>주요 용어</h4>태그코드(3자리, F접두=비회원).<h4>권한·데이터</h4>print(인쇄) 영역. 태그·인원 수정은 print 또는 room 권한 필요.',
     'qrcards.html': '<h4>이 화면이 하는 일</h4>손님에게 주는 <b>팀별 주문 QR카드</b>를 인쇄합니다(手配書와 별도, 손님 전용 소품). 체크인 때 손님이 폰으로 찍어 두면, 주문 때 POS에서 그 QR을 스캔해 팀이 자동 선택됩니다.<h4>쓰는 법</h4><ul><li>월(◀▶) 선택 → 그날 <b>入国日·숙소 칩</b>으로 대상 팀을 좁힙니다(체크인 팀만 뽑기 좋음).</li><li><b>[🔳 QR카드 인쇄]</b> → A4에 팀별 미니 카드(이름+QR+안내문) 여러 장. 잘라서 체크인 때 보여주면 손님이 촬영.</li><li>토큰은 팀 고유 랜덤값 — 처음 열 때 자동 발급(발급은 print/room 권한).</li></ul><h4>주의</h4>카드엔 <b>이름·QR·안내문만</b> 담겨 다른 손님 정보는 없습니다. QR 없이 온 손님은 POS에서 검색 후 <b>「이 팀 맞습니까?」</b> 확인으로 처리합니다.',
-  'dispatch.html': '<h4>이 화면이 하는 일</h4>행사별 <b>A4 양면</b> — 앞=現地手配書, 뒤=現地発生分 記入表.<h4>주문 QR 카드는 별도 페이지</h4>손님에게 주는 <b>주문 QR카드</b>는 랜딩 인쇄물의 <b>「주문 QR카드」</b> 카드(전용 페이지)에서 인쇄합니다. 手配書 본문엔 QR을 넣지 않습니다(다른 정보 노출 방지). 토큰은 手配書를 열 때 팀별로 자동 발급됩니다.<h4>계산·판정</h4><ul><li>라운딩 일정 자동·部屋数=<code>ceil(pax/2)</code>室.</li><li><b>마스킹 토글</b>: ON=생년월일까지 / OFF=여권·전화 노출.</li><li>記入表(뒷면)=현장 손기입, B2B 정산과 별개.</li></ul><h4>권한·데이터</h4>print(인쇄) 영역.',
+  'dispatch.html': '<h4>이 화면이 하는 일</h4>행사별 <b>A4 양면</b> — 앞=現地手配書, 뒤=現地発生分 記入表.<h4>주문 QR 카드는 별도 페이지</h4>손님에게 주는 <b>주문 QR카드</b>는 랜딩 인쇄물의 <b>「주문 QR카드」</b> 카드(전용 페이지)에서 인쇄합니다. 手配書 본문엔 QR을 넣지 않습니다(다른 정보 노출 방지). 토큰은 手配書를 열 때 팀별로 자동 발급됩니다.<h4>계산·판정</h4><ul><li>라운딩 일정 자동·部屋数=<code>ceil(pax/2)</code>室.</li><li><b>마스킹 토글</b>: ON=생년월일까지 / OFF=여권·전화 노출.</li><li>記入表(뒷면)=현장 손기입, B2B 정산과 별개.</li><li><b>비고·현지요청 열</b>: 예약리스트의 <b>비고</b>·<b>현지비고</b>를 목록에 표시. <b>현지요청</b>(特食·온천·별관 등 <b>현장 필수</b>)은 빨강 강조. <b>現地메모</b>는 운영팀이 직접 쓰는 별도 메모(구분).</li><li><b>「팀:A,B」 자동 묶기</b>: 예약 비고에 「팀:…」이 있으면 등록(step1) 때 그 대표명으로 팀을 찾아 手配書·夕食에 자동 묶음. 한쪽 비고에만 적혀도 됨. 수동 묶기는 보존.</li></ul><h4>권한·데이터</h4>print(인쇄) 영역.',
     'dinner.html': '<h4>이 화면이 하는 일</h4>날짜별 <b>夕食オーダー</b>(A3) + 조·중·석 <b>식수 자동집계</b> + <b>レストラン名札</b> 인쇄.<h4>계산·판정</h4><ul><li>식수=숙소 그룹별 규칙. <b>석식=그날 묵는 전원</b>.</li><li><b>조기 퇴실 반영</b>: 방배정에서 🛫 조기 퇴실 처리한 인원은 끼니 경계대로 자동 차감 — <b>퇴실일 아침까지는 포함</b>, 점심·저녁부터 제외. 인쇄 명단·합계에 <code>早期退室 −N</code> 표기.</li><li><b>レストラン名札 = 운영팀 단위 합석</b>: 現地手配書에서 묶은 운영팀(team_group)이 <b>명패 1장으로 자동 합석</b>(대표자·태그 모두 표기·인원 합산). 같은 운영팀 중 <b>석식만 따로</b> 낼 팀은 「✂ 석식 분리」로 단독 명패로 뺀다(「↩ 합석 복원」 되돌림). 식수 집계는 그대로(각 팀 인원 유지).</li><li><b>제외(병합)</b>: 한 팀 지우고 다른 팀에 인원 취합 → 명단·식수에서 빠짐(묶기와 달리 명단에서 사라짐).</li></ul><h4>別注 → 정산 자동청구</h4>단가가 있는 <b>추가·업그레이드 別注를 등록하면 그 팀 御請求書(정산)에 자동으로 청구</b>가 잡힙니다(업그레이드=차액, 알레르기=청구 없음). 별주를 수정·삭제하면 청구도 자동으로 따라갑니다(DB 트리거). 팀 정산 계정이 없으면 자동 개설됩니다.<h4>주요 용어</h4>태그코드. レストラン名札은 운영팀(現地手配書) 단위 합석 · 「석식 분리」로 운영팀 중 그 팀만 단독 명패.<h4>권한·데이터</h4>print(인쇄) 영역. 태그·인원·묶기 저장은 print 또는 room 권한 필요. 別注 청구는 charges(트리거가 생성, 정산은 settle/pos 영역에서 열람).',
     'shizu.html': '<h4>이 화면이 하는 일</h4><b>志津の宿 予約表</b>(시즈노야도 료칸에 보내는 객실 예약표)를 출력합니다. <b>방배정(room) 화면에서 한 시즈노야도 배정을 그대로 읽어</b> 날짜별 7객실(本館 4·別棟 3) 예약표를 자동 생성합니다.<h4>계산·판정</h4><ul><li><b>맞바꾸기·빈방 이동</b>: 예약표에서 <b>방 이름 클릭 → 다른 방 클릭</b>으로 두 방을 맞바꾸거나 빈 객실로 이동(같은 날짜 내·충돌 차단). 자동배정은 방배정(room)에서 백그라운드로 진행되어 예약표를 채웁니다.</li><li><b>連泊·합계·男女</b>는 배정·명단에서 자동(성별은 일행별예약 기준, 이름으로 매칭).</li><li><b>現地備考(비고·현지비고)</b>: 예약리스트·일행별예약의 비고/현지비고를 팀별로 예약표에 표시 — <b>DeepL 일본어 자동번역</b>(원문 병기). 번역은 캐시되어 재요청 없음(내부코드·비한글은 원문 유지). ※DeepL API 키가 Supabase 엣지 시크릿에 있어야 동작.</li><li><b>別棟(吉祥·瑞雲·馬酔木) 온천 사전신청</b>: 別棟 배정 인원에 ♨ 토글 → 사전신청한 인·박만 <b>×¥2,000</b> 집계(객실료 ¥17,000은 本館·別棟 동일). 신청 시에만 현지에서 온천물을 준비. <b>온천비는 메리트 B2B 정산으로 수령</b>(현장 御請求書 청구 아님 · 집계/준비용).</li></ul><h4>출력</h4>화면 미리보기 + <b>予約表 xlsx</b>(템플릿 서식) + 印刷. 숫자는 전각(全角) 표기. <b>날짜 칩</b>으로 특정일만 <b>일별 보기·인쇄·xlsx</b> 가능(전체=그 달 전체).<h4>권한·데이터</h4><b>shizu(시즈노야도 예약표) 영역</b>(印刷과 별도로 권한 분리 — admin.html에서 개별 지정). rooms·guest_members·passengers 읽기 + shizu_onsen(온천 사전신청, shizu/room 쓰기).',
     'keytag.html': '<h4>이 화면이 하는 일</h4>체크인 때 <b>팀과 키홀더(QR/FOB)를 연결</b>합니다.<h4>흐름</h4><ul><li>① 체크인일 기준 체류 팀을 불러와 그룹코드·대표자로 검색·선택.</li><li>② 키홀더의 FOB 코드를 스캔/입력해 그 팀에 바인딩(같은 FOB가 이미 다른 팀에 묶여 있으면 자동 해제 후 재연결).</li><li>활성 바인딩 목록에서 해제할 수 있습니다.</li></ul><h4>권한·데이터</h4>room 영역. key_bindings(활성 바인딩)·guests(팀).',
@@ -1710,6 +1710,22 @@
     return ({ ja: '📖 このページの説明・計算方法', ko: '📖 이 페이지 설명 · 계산 방식', en: '📖 About this page · how it works' })[LANG]
       || '📖 이 페이지 설명 · 계산 방식';
   }
+  // ── 설명서 변경 알림(N) — 설명서 내용이 바뀌면 그 페이지 SO_HELP_VER를 올린다.
+  //   안 본 새 버전이면 요약줄에 빨강 N 배지 → 펼쳐 보면(열람) 사라짐(localStorage 열람버전 기록).
+  //   기본버전 1(SO_HELP_BASE) → 버전 안 올린 페이지는 배지 안 뜸(플러딩 방지).
+  var SO_HELP_BASE = 1;
+  var SO_HELP_VER = { 'dispatch.html': 2 };
+  function helpVer(file){ return SO_HELP_VER[file] || 1; }
+  function helpSeenVer(file){ try { return +(localStorage.getItem('so_help_seen_' + file) || SO_HELP_BASE); } catch (e) { return SO_HELP_BASE; } }
+  function helpIsNew(file){ return helpSeenVer(file) < helpVer(file); }
+  function markHelpSeen(file){ try { localStorage.setItem('so_help_seen_' + file, String(helpVer(file))); } catch (e) {} }
+  function ensureHelpBadgeCss(){
+    if (document.getElementById('so-help-badge-css')) return;
+    var s = document.createElement('style'); s.id = 'so-help-badge-css';
+    s.textContent = '.page-help .ph-new{display:inline-block;margin-left:8px;background:#e5484d;color:#fff;font-size:10px;font-weight:800;line-height:1.4;border-radius:99px;padding:0 7px;vertical-align:middle;box-shadow:0 1px 4px rgba(229,72,77,.5);animation:sohelppulse 1.25s ease-in-out infinite}'
+      + '@keyframes sohelppulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.14);opacity:.75}}';
+    document.head.appendChild(s);
+  }
   function helpBodyFor(file) {
     var tr = SO_HELP_TR[file];
     if (tr && tr[LANG]) return tr[LANG];   // ja/en 번역
@@ -1720,8 +1736,8 @@
     var d = document.querySelector('.page-help[data-so-help]');
     if (!d) return;
     var file = (location.pathname.split('/').pop() || '').toLowerCase();
-    var sum = d.querySelector('summary'), body = d.querySelector('.ph-body');
-    if (sum) sum.textContent = helpSummaryLabel();
+    var lab = d.querySelector('.ph-label'), body = d.querySelector('.ph-body');
+    if (lab) lab.textContent = helpSummaryLabel();      // 라벨만 교체 → N 배지 보존
     if (body) body.innerHTML = helpBodyFor(file);
   }
   function mountHelp() {
@@ -1729,10 +1745,18 @@
       var file = (location.pathname.split('/').pop() || '').toLowerCase();
       if (!SO_HELP[file]) return;
       if (document.querySelector('.page-help[data-so-help]')) return;  // 중복 방지
+      ensureHelpBadgeCss();
+      var isNew = helpIsNew(file);
       var d = document.createElement('details');
       d.className = 'page-help';
       d.setAttribute('data-so-help', '1');
-      d.innerHTML = '<summary>' + helpSummaryLabel() + '</summary><div class="ph-body">' + helpBodyFor(file) + '</div>';
+      d.innerHTML = '<summary><span class="ph-label">' + helpSummaryLabel() + '</span>'
+        + '<span class="ph-new"' + (isNew ? '' : ' style="display:none"') + '>N</span></summary>'
+        + '<div class="ph-body">' + helpBodyFor(file) + '</div>';
+      // 펼쳐 보면(열람) 현재 버전을 열람 처리 → N 배지 제거
+      d.addEventListener('toggle', function(){
+        if (d.open) { markHelpSeen(file); var b = d.querySelector('.ph-new'); if (b) b.style.display = 'none'; }
+      });
       var conn = document.querySelector('.conn');
       var anchor = conn || document.querySelector('.topbar, .so-bar');
       if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(d, anchor.nextSibling);
