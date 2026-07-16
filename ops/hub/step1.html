@@ -206,6 +206,7 @@
       <div id="t-delHead" style="font-size:13px;font-weight:800;color:#b13b2c;margin-bottom:4px"></div>
       <div id="t-delBody" style="font-size:12px;color:#8a2a1c;line-height:1.55"></div>
     </div>
+    <div id="done-countdown" style="font-size:12.5px;color:var(--accent2,#9a7322);font-weight:700;margin-bottom:12px;min-height:16px"></div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
       <a class="btn" href="../index.html" data-i18n="s1_btnHome" style="text-decoration:none"></a>
       <button class="btn ghost" id="done-stay" type="button" data-i18n="s1_btnStay"></button>
@@ -225,7 +226,7 @@
 <style>@keyframes runspin{to{transform:rotate(360deg)}}</style>
 
 <script src="../assets/saizen-core.js?v=11"></script>
-<script src="../assets/saizen-ops.js?v=15.24"></script>
+<script src="../assets/saizen-ops.js?v=15.25"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -246,6 +247,7 @@ const L = {
     mdNote:'選択した月のチーム・名簿・客室割当・現地記録をすべて削除(cascade)します。他の月には影響しません。元に戻せません。',
     mdNoMonths:'(登録された月なし)', btnRunning:'⏳ データ登録中…',
     runTitle:'データ登録中です', runBody:'この画面を移動・終了しないでください。<br>登録が終わると自動でお知らせが表示されます。', runStep:'処理中…',
+    goHomeIn:(n)=>`${n}秒後にホームへ移動します…`, goHomeNow:'ホームへ移動中…',
     delHead:'⚠ 元のExcelファイルの削除必須',
     delBody:'登録が完了し、データはサーバーに安全に保存されました。お客様の個人情報が含まれる<b>予約リスト・同行者別予約のExcelファイル</b>を、このPC(ダウンロードフォルダ・デスクトップ等)から<b>直ちに削除</b>してください。',
     clearFileTitle:'このファイルを初期化',
@@ -285,6 +287,7 @@ const L = {
     mdNote:'선택한 월의 팀·명단·방배정·현장기록을 모두 삭제(cascade)합니다. 다른 달은 영향 없습니다. 되돌릴 수 없습니다.',
     mdNoMonths:'(등록된 월 없음)', btnRunning:'⏳ 데이터 등록중…',
     runTitle:'데이터 등록 중입니다', runBody:'이 화면을 이동하거나 닫지 마세요.<br>등록이 끝나면 자동으로 알림이 표시됩니다.', runStep:'처리 중…',
+    goHomeIn:(n)=>`${n}초 뒤 홈 화면으로 이동합니다…`, goHomeNow:'홈으로 이동 중…',
     delHead:'⚠ 원본 엑셀 파일 삭제 필수',
     delBody:'등록이 완료되어 데이터는 서버에 안전히 저장되었습니다. 고객 개인정보가 담긴 <b>예약리스트·일행별예약 엑셀 파일</b>을 이 PC(다운로드 폴더·바탕화면 등)에서 <b>즉시 삭제</b>해 주세요.',
     clearFileTitle:'이 파일 초기화',
@@ -324,6 +327,7 @@ const L = {
     mdNote:'Deletes all teams, rosters, room assignments and field records for the selected month (cascade). Other months are unaffected. This cannot be undone.',
     mdNoMonths:'(no registered months)', btnRunning:'⏳ Registering…',
     runTitle:'Registering data…', runBody:'Please do not leave or close this screen.<br>You will be notified automatically when it finishes.', runStep:'Working…',
+    goHomeIn:(n)=>`Moving to Home in ${n}s…`, goHomeNow:'Moving to Home…',
     delHead:'⚠ You must delete the original Excel files',
     delBody:'Registration is complete and the data is safely stored on the server. Please <b>delete immediately</b> the <b>reservation-list and per-companion Excel files</b> containing customer personal data from this PC (Downloads folder, Desktop, etc.).',
     clearFileTitle:'Reset this file',
@@ -604,8 +608,10 @@ async function run(){
       if(!seq) return;
       const pax = Number(r['예약']||0);     // v13.4: 예약 컬럼 단독
       const pname = String(r['상품명']||'');
-      if(pname.includes('현지예약')||pname.includes('항공조인')||pname.includes('구마모토 시내')) return;
       const accom = detectAccom(pname);
+      // 현지예약: 엠클릭 일원화(CLAUDE.md) — 숙소가 인식되는 현지예약은 정상 import,
+      //   숙소 없는 순수 현지예약(송영 등)·항공조인·구마모토 시내는 계속 제외.
+      if((pname.includes('현지예약') && !accom) || pname.includes('항공조인') || pname.includes('구마모토 시내')) return;
       const remark = String(r['비고']||'').trim();
       const _depYm = (birthISO(r['출발일자'])||'').slice(0,7);
       if(!_depYm) badDate++;                                          // 출발일자 인식 실패
@@ -1121,6 +1127,7 @@ async function run(){
       const sm = $('#done-summary');
       if(sm) sm.innerHTML = t('s1_historyNote') + ' &nbsp; ' + (c.bookings??0)+' / '+(c.passengers??0)+' / '+(c.guests??0);
       const m = $('#done-modal'); if(m) m.style.display='flex';
+      startDoneCountdown(5);   // 5초 뒤 홈 자동 이동(3·2·1 표기, [닫기]로 취소)
     } catch(e){}
   }catch(err){
     log(`✗ ${t('s1_dyn_error')}: ${err.message}`,'err');
@@ -1313,8 +1320,19 @@ $('#btn-month-refresh') && $('#btn-month-refresh').addEventListener('click', loa
 
 $('#btn-connect').addEventListener('click', connect);
 $('#btn-run').addEventListener('click', run);
-$('#done-stay') && $('#done-stay').addEventListener('click', ()=>{ const m=$('#done-modal'); if(m) m.style.display='none'; });
-$('#done-modal') && $('#done-modal').addEventListener('click', e=>{ if(e.target.id==='done-modal') e.target.style.display='none'; });
+// ── 등록 완료 → 홈 자동 이동 카운트다운(3·2·1) · [닫기]나 바깥 클릭으로 취소 ──
+let _doneTimer=null;
+function stopDoneCountdown(){ if(_doneTimer){ clearInterval(_doneTimer); _doneTimer=null; } const cd=$('#done-countdown'); if(cd) cd.textContent=''; }
+function startDoneCountdown(sec){
+  stopDoneCountdown();
+  let n=sec; const cd=$('#done-countdown');
+  const tick=()=>{
+    if(n<=0){ clearInterval(_doneTimer); _doneTimer=null; if(cd) cd.textContent=tx('goHomeNow'); location.href='../index.html'; return; }
+    if(cd) cd.textContent=tx('goHomeIn')(n); n--; };
+  tick(); _doneTimer=setInterval(tick,1000);
+}
+$('#done-stay') && $('#done-stay').addEventListener('click', ()=>{ stopDoneCountdown(); const m=$('#done-modal'); if(m) m.style.display='none'; });
+$('#done-modal') && $('#done-modal').addEventListener('click', e=>{ if(e.target.id==='done-modal'){ stopDoneCountdown(); e.target.style.display='none'; } });
 loadCreds();
 try{ const u=localStorage.getItem('saizen_hub_uploader'); if(u){ const el=$('#uploader'); if(el) el.value=u; } }catch(e){}
 applyStaticLocal();
