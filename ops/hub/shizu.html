@@ -274,7 +274,7 @@ let SEL=null;                  // 맞바꾸기/이동 선택: {room,date}
 let GUESTS=[];                 // {id,invId,member_id,event_seq,room_no,ci,co,nameKr,nameEn,gender,onsen}
 let NOTES={};                  // date → 수기 메모(세션 한정 — 폴백)
 let MEMOS={};                  // date → 담당자 메모(Supabase 영속, shizu_memo)
-let DATESEL=null;              // 선택 날짜(ISO). null=그 달 전체
+let DATESEL=new Set();         // 선택 날짜 집합(다중 토글). 비어있으면 그 달 전체
 let BOOK={};                   // event_seq → {rep_name, remark, remark_local, remark_ja, remark_local_ja}
 let _trWarned=false;           // 번역 실패 토스트 1회만
 let ROSTER=[];                 // 그 달 시즈 전체 인원 [{member_id,event_seq,dep,arr,nameKr,nameEn}]
@@ -304,7 +304,7 @@ function genderOf(g){ return g.gender||''; }
 // 선택 월의 점유 밤(빈 날 테이블 방지)
 function axis(){ const set=new Set(); GUESTS.forEach(g=>nightsOf(g).forEach(d=>{ if(d.slice(0,7)===YM) set.add(d); })); UNASSIGNED.forEach(r=>nightsBetween(r.dep,r.arr).forEach(d=>{ if(d.slice(0,7)===YM) set.add(d); })); return [...set].sort(); }
 // 화면·인쇄·xlsx 공통 대상 날짜: 특정일 선택 시 그날만, 아니면 그 달 전체
-function activeDates(){ const ax=axis(); return (DATESEL && ax.includes(DATESEL)) ? [DATESEL] : ax; }
+function activeDates(){ const ax=axis(); const s=[...DATESEL].filter(d=>ax.includes(d)); return s.length? s.sort() : ax; }
 // 대표(seq=1·is_rep)를 맨 앞으로 — お名前에 팀 대표가 표시되도록(방 합류 순서 무관). ci 동률 시 대표 우선.
 function cellOcc(room,date){ return GUESTS.filter(g=>g.room_no===room && nightsOf(g).includes(date))
   .sort((a,b)=>(a.ci||'').localeCompare(b.ci||'') || (b.isRep?1:0)-(a.isRep?1:0) || (a.seq||99)-(b.seq||99)); }
@@ -364,8 +364,8 @@ function renderUI(){
       <h3>${tx('pvH')} <span class="cnt">${tx('pvHint')}</span></h3>
       <div class="pv-wrap" id="preview"></div>
     </div>`;
-  $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);DATESEL=null;load();});
-  $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);DATESEL=null;load();});
+  $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);DATESEL.clear();load();});
+  $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);DATESEL.clear();load();});
   $('#btn-print').addEventListener('click',printChart);
   $('#btn-auto').addEventListener('click',autoAssignShizu);
   $('#btn-close').addEventListener('click',openClosureModal);
@@ -432,7 +432,7 @@ async function load(){
       UNBYDATE={}; UNASSIGNED.forEach(r=>nightsBetween(r.dep,r.arr).forEach(d=>{ if(d.slice(0,7)===YM) UNBYDATE[d]=(UNBYDATE[d]||0)+1; }));
     }catch(e){ ROSTER=[]; UNASSIGNED=[]; UNBYDATE={}; }
     const ax=axis();
-    if(DATESEL && !ax.includes(DATESEL)) DATESEL=null;   // 다른 달로 넘어가면 선택 해제
+    [...DATESEL].forEach(d=>{ if(!ax.includes(d)) DATESEL.delete(d); });   // 다른 달 날짜는 선택 해제
     renderDateChips(); renderStats(); renderBoard(); renderPreview();
     $('#stat').textContent=`${ax.length}${lang()==='ja'?'日':lang()==='en'?'d':'일'}`;
     $('#btn-print').disabled=!ax.length;
@@ -447,16 +447,17 @@ function renderDateChips(){
   const stayN={};
   GUESTS.forEach(g=>nightsOf(g).forEach(d=>{ stayN[d]=(stayN[d]||0)+1; }));
   const chip=(val,label,on)=>`<button type="button" class="daychip${on?' on':''}" data-d="${val}">${label}</button>`;
-  let html=chip('',tx('allDays'),!DATESEL);
+  let html=chip('',tx('allDays'),DATESEL.size===0);
   ax.forEach(d=>{ const dt=parseISO(d); const un=UNBYDATE[d]||0;
     const occ=(stayN[d]||0)+un;   // 그 밤 총 재실(배정+미배정)
     const badge = un ? `<span class="un-badge">未${un}</span>`
                      : (occ ? `<span class="un-badge ok" title="全員配置済">✓</span>` : '');
     const lb=`${dt.getMonth()+1}/${dt.getDate()}<small style="opacity:.7">(${SHZ_DOW[dt.getDay()]})</small>${badge}`;
-    html+=chip(d,lb,DATESEL===d); });
+    html+=chip(d,lb,DATESEL.has(d)); });
   box.innerHTML=html;
   box.querySelectorAll('.daychip').forEach(b=>b.addEventListener('click',()=>{
-    DATESEL=b.getAttribute('data-d')||null;
+    const d=b.getAttribute('data-d')||'';   // 다중 토글: '전체'=비우기, 날짜=추가/제거
+    if(!d) DATESEL.clear(); else if(DATESEL.has(d)) DATESEL.delete(d); else DATESEL.add(d);
     BSEL.clear(); renderDateChips(); renderBoard(); renderPreview();
   }));
 }
@@ -472,7 +473,7 @@ function renderStats(){
 
 
 // ══ 배정 보드(room.html식 개인 단위: 미배정 행거 + 객실 카드 · 이동/병합) ══
-function boardDate(){ const ax=axis(); if(!ax.length) return null; return (DATESEL && ax.includes(DATESEL))?DATESEL:ax[0]; }
+function boardDate(){ const ax=axis(); if(!ax.length) return null; const s=[...DATESEL].filter(d=>ax.includes(d)).sort(); return s.length? s[0] : ax[0]; }   // 다중선택 시 가장 이른 날 포커스
 function fmtDate(d){ const dt=parseISO(d); return dt?`${dt.getMonth()+1}/${dt.getDate()}(${SHZ_DOW[dt.getDay()]})`:d; }
 // member_id → 그 사람의 체류구간(팀 입~출). ROSTER 우선(배정·미배정 모두), 없으면 GUESTS 행.
 function memSpan(mid){ const r=ROSTER.find(x=>x.member_id===mid); if(r&&r.dep&&r.arr) return {dep:r.dep,arr:r.arr}; const g=GUESTS.find(x=>x.member_id===mid); return g?{dep:g.ci,arr:g.co}:null; }
@@ -1047,7 +1048,7 @@ async function downloadXlsx(){
   });
   const buf=await wb.xlsx.writeBuffer();
   const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`Shizu_chart_${DATESEL||YM}.xlsx`; a.click();
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`Shizu_chart_${DATESEL.size?[...DATESEL].sort()[0]:YM}.xlsx`; a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1500);
 }
 
