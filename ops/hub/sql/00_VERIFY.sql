@@ -147,6 +147,8 @@ from (
   union all select 79,'79 회원마스터','PK=member_key',         case when exists(select 1 from pg_constraint where conrelid='public.member_codes'::regclass and contype='p' and array_length(conkey,1)=1) then '✅ 적용' else '❌ 미적용 (79)' end
   union all select 79,'79 회원마스터','code nullable',          case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='member_codes' and column_name='code' and is_nullable='YES') then '✅ 적용' else '❌ 미적용 (79)' end
   union all select 82,'82 데이터검수','data_audit()',           case when exists(select 1 from pg_proc where proname='data_audit') then '✅ 있음' else '❌ 없음 (82)' end
+  union all select 83,'83 시즈현지메모','shizu_team_memo',       case when to_regclass('public.shizu_team_memo') is not null then '✅ 있음' else '❌ 없음 (83)' end
+  union all select 83,'83 시즈현지메모','쓰기=room·shizu',       case when exists(select 1 from pg_policies where schemaname='public' and tablename='shizu_team_memo' and policyname='shizu_team_memo_upd' and coalesce(qual,'') like '%shizu%') then '✅ 적용' else '❌ 미적용 (83)' end
 ) t
 order by ord, 항목;
 
