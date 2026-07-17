@@ -250,7 +250,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=11"></script>
-<script src="../assets/saizen-ops.js?v=15.31"></script>
+<script src="../assets/saizen-ops.js?v=15.32"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(予約表 산출물·도메인 데이터는 일본어 유지) ──
@@ -339,7 +339,8 @@ let SEL=null;                  // 맞바꾸기/이동 선택: {room,date}
 let GUESTS=[];                 // {id,invId,member_id,event_seq,room_no,ci,co,nameKr,nameEn,gender,onsen}
 let NOTES={};                  // date → 수기 메모(세션 한정 — 폴백)
 let MEMOS={};                  // date → 담당자 메모(Supabase 영속, shizu_memo)
-let TMEMO={};                  // event_seq → 팀 現地메모(현장 수기, Supabase 영속, shizu_team_memo)
+let TMEMO={};                  // event_seq → 팀 現地메모(현장 수기, Supabase 영속, shizu_team_memo.note)
+let TREF={};                   // event_seq → 팀 参考事項(현장 수기 일본어: 트리플룸·합팀 등, shizu_team_memo.ref_note)
 let DATESEL=new Set();         // 선택 날짜(단일선택). 비어있으면 그 달 전체(예약표 전 날짜)
 let BOOK={};                   // event_seq → {rep_name, remark, remark_local, remark_ja, remark_local_ja}
 let _trWarned=false;           // 번역 실패 토스트 1회만
@@ -497,7 +498,7 @@ async function load(){
     // 담당자 메모(영속) — 그 달 범위
     MEMOS={}; try{ const {data:mm}=await supa.from('shizu_memo').select('memo_date,note').gte('memo_date',start).lte('memo_date',end); (mm||[]).forEach(m=>{ MEMOS[String(m.memo_date).slice(0,10)]=m.note||''; }); }catch(e){}
     // 팀 단위 現地메모(현장 수기, 영속) — 표시된 팀만
-    TMEMO={}; try{ if(seqs.length){ const {data:tm}=await supa.from('shizu_team_memo').select('event_seq,note').in('event_seq',seqs); (tm||[]).forEach(m=>{ TMEMO[m.event_seq]=m.note||''; }); } }catch(e){}
+    TMEMO={}; TREF={}; try{ if(seqs.length){ const {data:tm}=await supa.from('shizu_team_memo').select('event_seq,note,ref_note').in('event_seq',seqs); (tm||[]).forEach(m=>{ TMEMO[m.event_seq]=m.note||''; TREF[m.event_seq]=m.ref_note||''; }); } }catch(e){}
     GUESTS = rows.map(r=>{
       const gm=gmMap[r.member_id]||{};
       const nameKr=String(gm.name_kr||'').trim();
@@ -533,7 +534,7 @@ async function load(){
     renderDateChips(); renderStats(); renderBoard(); renderPreview();
     $('#stat').textContent=`${ax.length}${lang()==='ja'?'日':lang()==='en'?'d':'일'}`;
     $('#btn-print').disabled=!ax.length;
-    translateRemarks();   // 미번역 비고 → DeepL(엣지) 번역 후 재렌더(비차단)
+    // translateRemarks();   // 参考事項을 현장 직접입력으로 전환(Min 2026-07) → 한국 현지비고 자동표시·DeepL 번역 미사용(bigoFor 잔존이나 미호출)
   }catch(e){ toast(tx('connFail')+': '+e.message,'err'); $('#stat').textContent=''; }
 }
 
@@ -895,6 +896,17 @@ async function saveTeamMemo(seq, text){
     if(error)throw error;
   }catch(e){ toast(tx('tmemoFail')+(e.message||e),'warn'); }
 }
+// 参考事項 = 팀 단위 현장 수기(일본어: 트리플룸·합팀 등). onblur 저장. shizu_team_memo.ref_note.
+async function saveTeamRef(seq, text){
+  seq=Number(seq); if(!seq) return;
+  const val=String(text||'').replace(/ /g,' ').trim();
+  TREF[seq]=val;
+  if(!supa) return;
+  try{
+    const {error}=await supa.from('shizu_team_memo').upsert({event_seq:seq,ref_note:val,updated_by:curUser(),updated_at:new Date().toISOString()},{onConflict:'event_seq'});
+    if(error)throw error;
+  }catch(e){ toast(tx('tmemoFail')+(e.message||e),'warn'); }
+}
 
 // ── 객실 폐쇄 판정 ──
 function roomClosed(room,ci,co){ return CLOSURES.some(c=>c.room_no===room && ci<=c.to_date && co>c.from_date); }   // 체류구간 겹침
@@ -1104,7 +1116,7 @@ function renderPreview(){
         rep: esc((REPEN[rep.event_seq]&&REPEN[rep.event_seq].en) || String((BOOK[rep.event_seq]||{}).rep_name||'').trim()),   // 팀 대표자 영문명(お名前과 통일). 없으면 한글 폴백
         mf:mf(occ), stay:`${zen(rn.length)}連泊 ${zen(rn.indexOf(date)+1)}`, cnt:zen(occ.length),
         io: rep.ci?`${md(rep.ci)}〜${md(rep.co)}`:'', onsen:onsen, local:isLocalSeq(rep.event_seq),
-        seq: rep.event_seq, memo: TMEMO[rep.event_seq]||'' };
+        seq: rep.event_seq, memo: TMEMO[rep.event_seq]||'', ref: TREF[rep.event_seq]||'' };
     });
     const note = MEMOS[date]!=null? MEMOS[date] : (NOTES[date]!=null? NOTES[date] : buildNoteAuto(date));
     html+=`<table class="shz-pv">
@@ -1117,7 +1129,7 @@ function renderPreview(){
       <tr><td class="shz-pv-lb">合計人数</td>${cells.map(c=>`<td>${c.cnt}</td>`).join('')}<td class="shz-pv-k">計 ${zen(tot)} 名</td></tr>
       <tr><td class="shz-pv-lb">連泊</td>${cells.map(c=>`<td>${c.stay}</td>`).join('')}<td class="shz-pv-k">男${zen(tm)} 女${zen(tf)}</td></tr>
       <tr><td class="shz-pv-lb">現地メモ</td>${cells.map(c=>{const ed=c.seq!=null; return `<td class="shz-pv-tmemo"${ed?` contenteditable="true" spellcheck="false" data-seq="${c.seq}" onblur="saveTeamMemo(${c.seq},this.textContent)"`:''}>${esc(c.memo||'')}</td>`;}).join('')}<td class="shz-pv-k"></td></tr>
-      ${(()=>{ const bg=bigoFor(date); return bg?`<tr><td class="shz-pv-lb">参考事項</td><td colspan="8" class="shz-pv-bigo">${bg}</td></tr>`:''; })()}
+      <tr><td class="shz-pv-lb">参考事項</td>${SHZ_ROOMS.map((room,ri)=>{const c=cells[ri]; const ed=c.seq!=null; return `<td class="shz-pv-tmemo"${ed?` contenteditable="true" spellcheck="false" data-seq="${c.seq}" onblur="saveTeamRef(${c.seq},this.textContent)"`:''}>${esc(c.ref||'')}</td>`;}).join('')}<td class="shz-pv-k"></td></tr>
       ${(()=>{ const un=UNBYDATE[date]||0; return un?`<tr class="shz-pv-unrow"><td class="shz-pv-lb">未配置</td><td colspan="8" class="shz-pv-un">⚠ ${tx('unassignedN')(un)}</td></tr>`:''; })()}
     </table>`;
   });

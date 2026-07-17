@@ -151,6 +151,7 @@ from (
   union all select 83,'83 시즈현지메모','쓰기=room·shizu',       case when exists(select 1 from pg_policies where schemaname='public' and tablename='shizu_team_memo' and policyname='shizu_team_memo_upd' and coalesce(qual,'') like '%shizu%') then '✅ 적용' else '❌ 미적용 (83)' end
   union all select 84,'84 방정합가드','rooms facility 자동채움',   case when exists(select 1 from pg_trigger where tgname='rooms_aa_fill_facility') then '✅ 있음' else '❌ 없음 (84)' end
   union all select 84,'84 방정합가드','facility null=0',            case when not exists(select 1 from rooms r join room_inventory ri on ri.id=r.inventory_id where r.facility is distinct from ri.facility) then '✅ 정합' else '❌ 불일치 (84)' end
+  union all select 85,'85 시즈참고사항','shizu_team_memo.ref_note',  case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='shizu_team_memo' and column_name='ref_note') then '✅ 있음' else '❌ 없음 (85)' end
 ) t
 order by ord, 항목;
 
