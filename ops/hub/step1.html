@@ -733,6 +733,8 @@ async function run(){
     const NM_POOL   = NM_PREFIX.length * NM_KANA.length;  // 594
     // ── F풀 재활용(Phase 2): 코드 예약을 '겹치는 팀'끼리로 한정 → 이미 다녀간(안 겹치는)
     //   팀의 F코드는 자동 재사용. 594개는 '동시 체류' 기준이라 사실상 소진되지 않음(수동 리셋 불요).
+    //   ⚠ 겹침 = 폐구간(당일 포함): 퇴실일=입실일(턴오버)도 '겹침'으로 봐 다른 코드 부여.
+    //     이유=턴오버 당일 두 팀이 현장 동시 존재(오전 퇴실·오후 입실)→같은 그룹코드면 네임택·식사 혼동(Min 2026-07).
     const nmAssigned = {};        // event_seq → code (영속: 같은 행사는 같은 코드 유지)
     const fRanges = {};           // code → [{dep,arr}] (그 코드를 쓰는 팀들의 체류구간)
     const impYears = [...new Set([...(fileMonths||[]), ym].filter(Boolean).map(m=>String(m).slice(0,4)))];
@@ -747,8 +749,8 @@ async function run(){
           (fRanges[c]=fRanges[c]||[]).push({dep:String(b.dep_date||'').slice(0,10), arr:String(b.arr_date||'').slice(0,10)}); });
       }
     } catch(e){}
-    // 두 체류구간 겹침(반개구간 [dep,arr)). 날짜 없으면 안전하게 '겹침'으로 간주(전역 유니크 배정).
-    const _fOv=(d1,a1,d2,a2)=>{ if(!d1||!a1||!d2||!a2) return true; return d1<a2 && d2<a1; };
+    // 두 체류구간 겹침(폐구간 [dep,arr] — 턴오버 당일 포함). 날짜 없으면 안전하게 '겹침'으로 간주(전역 유니크 배정).
+    const _fOv=(d1,a1,d2,a2)=>{ if(!d1||!a1||!d2||!a2) return true; return d1<=a2 && d2<=a1; };
     function assignNonMemberCode(seq, dep, arr){
       if(nmAssigned[seq]) return nmAssigned[seq];               // 영속
       const reserved = new Set();                                // 이 팀과 겹치는 팀이 쓰는 코드만 예약
