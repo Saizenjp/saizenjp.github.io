@@ -510,7 +510,7 @@ function detectAccom(productName){
   const s = String(productName||'');
   if(/쿠주|구주힐즈|久住|장기숙박|별장전용/.test(s)) return '쿠주힐즈';
   if(/간지|ガーンジー|GUERNSEY/i.test(s)) return '간지호텔';
-  if(/시즈노야도|しずの宿|료칸/.test(s)) return '시즈노야도 료칸';
+  if(/시즈노야도|しずの宿/.test(s)) return '시즈노야도 료칸';   // ⚠ 넓은 '료칸' 제거: 벳푸 무츠키 료칸 등 타지 료칸 오분류 방지
   if(/야마나미|돔하우스|소보별장|아소별장|관내별장/.test(s)) return '야마나미리조트';
   return ''; // 미해당 → 운영 원장 제외(v13.4 규칙)
 }
@@ -609,9 +609,11 @@ async function run(){
       const pax = Number(r['예약']||0);     // v13.4: 예약 컬럼 단독
       const pname = String(r['상품명']||'');
       const accom = detectAccom(pname);
-      // 현지예약: 엠클릭 일원화(CLAUDE.md) — 숙소가 인식되는 현지예약은 정상 import,
-      //   숙소 없는 순수 현지예약(송영 등)·항공조인·구마모토 시내는 계속 제외.
-      if((pname.includes('현지예약') && !accom) || pname.includes('항공조인') || pname.includes('구마모토 시내')) return;
+      // ⚠ 사이젠 아소 야마나미 권역 숙소(야마나미·쿠주·간지·시즈)가 인식되지 않는 예약은 운영 원장에서 제외.
+      //   detectAccom '' = 타 리조트(스가다이라·14hills·벳푸·시로사토·미야자키 등)·항공조인·구마모토 시내·송영형 현지예약.
+      //   이전엔 이 필터가 '현지예약-무accom'만 막아 타 리조트가 bookings에 적재됐음(guests엔 없지만 手配書 오염).
+      //   이제 guests(procMap)뿐 아니라 bookings도 accom 없으면 적재 안 함(v13.4 '미해당 제외' 규칙을 bookings에도 적용).
+      if(!accom) return;
       const remark = String(r['비고']||'').trim();
       const _depYm = (birthISO(r['출발일자'])||'').slice(0,7);
       if(!_depYm) badDate++;                                          // 출발일자 인식 실패
@@ -754,16 +756,21 @@ async function run(){
     const NM_GAP_MS = 30*86400000;
     const _dms = s => { const p=String(s).slice(0,10).split('-'); return Date.UTC(+p[0],(+p[1]||1)-1,+p[2]||1); };
     const _fOv=(d1,a1,d2,a2)=>{ if(!d1||!a1||!d2||!a2) return true; return _dms(d1) <= _dms(a2)+NM_GAP_MS && _dms(d2) <= _dms(a1)+NM_GAP_MS; };
+    // 코드 ↔ 인덱스. idx = kana순서*18 + prefix순서 (idxToCode 는 kana를 18칸마다 1칸 진행 → 594개 전부 생성)
+    const idxToCode = idx => { idx=((idx%NM_POOL)+NM_POOL)%NM_POOL; return NM_PREFIX[idx % NM_PREFIX.length] + NM_KANA[Math.floor(idx / NM_PREFIX.length) % NM_KANA.length]; };
+    const codeToIdx = code => { const p=NM_PREFIX.indexOf(String(code).slice(0,2)); const k=NM_KANA.indexOf(String(code).slice(2)); return (p<0||k<0)?-1:(k*NM_PREFIX.length + p); };
+    // ── 순차 전진 커서(Min 2026-07): あ 몰림 방지 → 풀 전체로 분산. 시드=기존 최대 인덱스+1(다음 kana부터).
+    //   각 배정마다 커서 +1 → 소진(594)되면 wrap=리셋. 30일 내 겹치는 팀이 쓰는 코드는 건너뜀(안전).
+    let nmCursor = 0;
+    { let mx=-1; Object.keys(fRanges).forEach(c=>{ const i=codeToIdx(c); if(i>mx) mx=i; }); nmCursor=(mx+1)%NM_POOL; }
     function assignNonMemberCode(seq, dep, arr){
       if(nmAssigned[seq]) return nmAssigned[seq];               // 영속
-      const reserved = new Set();                                // 이 팀과 겹치는 팀이 쓰는 코드만 예약
-      Object.keys(fRanges).forEach(code=>{ if(fRanges[code].some(r=>_fOv(dep,arr,r.dep,r.arr))) reserved.add(code); });
-      for(let idx=0; idx<NM_POOL; idx++){
-        // kana 는 18개(prefix 수)마다 1칸 진행해야 594개 전부 생성됨(gcd(18,33)=3 버그 회피)
-        const code = NM_PREFIX[idx % NM_PREFIX.length] + NM_KANA[Math.floor(idx / NM_PREFIX.length) % NM_KANA.length];
-        if(!reserved.has(code)){ nmAssigned[seq]=code; (fRanges[code]=fRanges[code]||[]).push({dep,arr}); return code; }
+      for(let step=0; step<NM_POOL; step++){
+        const idx=(nmCursor+step)%NM_POOL; const code=idxToCode(idx);
+        if((fRanges[code]||[]).some(r=>_fOv(dep,arr,r.dep,r.arr))) continue;   // 30일 내 겹침=건너뜀
+        nmAssigned[seq]=code; (fRanges[code]=fRanges[code]||[]).push({dep,arr}); nmCursor=(idx+1)%NM_POOL; return code;
       }
-      return null;  // 594팀 동시 체류(사실상 불가) = 소진
+      return null;  // 594 전부 30일 내 겹침(사실상 불가) = 소진
     }
 
     // ── 그룹코드 xlsx 미업로드 시: member_codes(Supabase)에서 매칭(RPC) — xlsx 없이도 동작 ──
@@ -782,7 +789,8 @@ async function run(){
     }
 
     let nmCnt = 0, memCnt = 0, nmFull = 0;
-    Object.keys(procMap).forEach(seqStr=>{
+    // 출발일(dep) 순으로 배정 → F코드 커서가 시간순 전진(분산·재사용 순서 안정)
+    Object.keys(procMap).sort((a,b)=>{ const da=String((procMap[a]||{}).dep||''), db=String((procMap[b]||{}).dep||''); return da<db?-1:da>db?1:(a-b); }).forEach(seqStr=>{
       const seq = parseInt(seqStr,10);
       const info = procMap[seq];
       const b = birthByKey[seq+'|'+info.repName] || '';
