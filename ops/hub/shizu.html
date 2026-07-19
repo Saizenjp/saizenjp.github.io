@@ -511,10 +511,12 @@ async function load(){
     });
     // ── 전체 로스터(미배정 추적): 그 달 시즈 팀 전원 − 배정된 사람 = 미배정 ──
     try{
-      const {data:tgs}=await supa.from('guests').select('event_seq,accom,bookings!inner(dep_date,arr_date,product_name,remark_local)').eq('accom',FACILITY);
+      const {data:tgs}=await supa.from('guests').select('event_seq,accom,bookings!inner(dep_date,arr_date,product_name,remark_local,event_no,rep_name)').eq('accom',FACILITY);
       const tMap={};
       (tgs||[]).forEach(g=>{ const b=g.bookings||{}; const dep=String(b.dep_date||'').slice(0,10), arr=String(b.arr_date||'').slice(0,10);
-        if(dep&&arr&&dep<=end&&arr>start) tMap[g.event_seq]={dep,arr,product:b.product_name||'',remark:b.remark_local||''}; });
+        if(dep&&arr&&dep<=end&&arr>start){ tMap[g.event_seq]={dep,arr,product:b.product_name||'',remark:b.remark_local||''};
+          // 미배정 팀은 BOOK(배정팀만 로드)에 없음 → 여기서 행사번호·대표자 채움(헤더 #예약번호 폴백 방지)
+          if(!BOOK[g.event_seq]) BOOK[g.event_seq]={event_seq:g.event_seq,event_no:b.event_no||null,rep_name:b.rep_name||null,product_name:b.product_name||null,remark_local:b.remark_local||null}; } });
       const tSeqs=Object.keys(tMap).map(Number);
       const rgms=tSeqs.length? await pagedIn('guest_members','id,event_seq,name_kr,name_en','event_seq',tSeqs) : [];
       const asg=new Set(GUESTS.map(g=>g.member_id));
