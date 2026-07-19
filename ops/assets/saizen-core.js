@@ -126,10 +126,21 @@
   function accomFromProduct(name) {
     var s = String(name == null ? '' : name);
     if (/쿠주힐즈|구주힐즈|久住|장기\s*숙박|별장전용/.test(s)) return '쿠주힐즈';
-    if (/간지/.test(s)) return '간지호텔';
-    if (/시즈노야도|료칸/.test(s)) return '시즈노야도 료칸';
+    if (/간지|ガーンジー|GUERNSEY/i.test(s)) return '간지호텔';
+    if (/시즈노야도|しずの宿/.test(s)) return '시즈노야도 료칸';   // ⚠ 넓은 '료칸' 제거: 벳푸 무츠키 료칸 등 타지 료칸 오분류 방지
     if (/야마나미|돔하우스|관내별장|소보별장|아소별장/.test(s)) return '야마나미리조트';
-    return '';
+    return '';   // 미해당 = 타 리조트(스가다이라·14hills·벳푸·시로사토·미야자키 등) → 운영 원장 제외
+  }
+
+  // ── 비회원 F풀 코드 재사용 충돌 판정(30일 쿨다운) ──────────────────────────
+  //  두 팀 체류가 gapDays(기본 30) 이내면 '충돌'(같은 F코드 금지). 30일+ 지나면 재사용 허용.
+  //  이유=① 턴오버 당일(퇴실=입실) 현장 동시존재 ② 한 달 내 같은 코드 재등장 → 네임택·식사 혼동.
+  //  한 팀 체류를 arr+gap까지 확장해 겹치면 충돌. 날짜 없으면 안전하게 '충돌'로 간주(전역 유니크).
+  function nmCodeConflict(dep1, arr1, dep2, arr2, gapDays) {
+    if (!dep1 || !arr1 || !dep2 || !arr2) return true;
+    var g = (gapDays == null ? 30 : gapDays) * 86400000;
+    var dms = function (x) { var p = String(x).slice(0, 10).split('-'); return Date.UTC(+p[0], (+p[1] || 1) - 1, +p[2] || 1); };
+    return dms(dep1) <= dms(arr2) + g && dms(dep2) <= dms(arr1) + g;
   }
 
   // ── 출발지 공항 판정 (釜山 PUS / 仁川 ICN) ──────────────────────────────────
@@ -365,6 +376,7 @@
     accomRate: accomRate,
     b2bFees: b2bFees,
     accomFromProduct: accomFromProduct,
+    nmCodeConflict: nmCodeConflict,
     originPort: originPort,
     isPus: isPus,
     FLOOR_FIXED: FLOOR_FIXED,

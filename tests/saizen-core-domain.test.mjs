@@ -176,3 +176,35 @@ test('tagStripSeq: -1Y → -Y (숫자만 제거)', () => {
   assert.equal(SZ.tagStripSeq('FAあ'), 'FAあ');   // 접미 없으면 그대로
   assert.equal(SZ.tagStripSeq(''), '');
 });
+
+// ── 숙박지 판정(타 리조트 오염·오분류 방지, 2026-07 버그 회귀) ───────────────
+test('accomFromProduct: 사이젠 권역', () => {
+  assert.equal(SZ.accomFromProduct('[7박 8일] 시즈노야도 료칸 골프 투어'), '시즈노야도 료칸');
+  assert.equal(SZ.accomFromProduct('시즈노야도 현지예약'), '시즈노야도 료칸');
+  assert.equal(SZ.accomFromProduct('[4박 5일] 간지호텔 골프 투어'), '간지호텔');
+  assert.equal(SZ.accomFromProduct('야마나미CC 장기숙박형 별장전용 골프투어'), '쿠주힐즈');  // 쿠주-first
+  assert.equal(SZ.accomFromProduct('[3박 4일] 야마나미CC 골프 투어'), '야마나미리조트');
+});
+test('accomFromProduct: 타 리조트=미해당(오염 차단)', () => {
+  assert.equal(SZ.accomFromProduct('[3박 4일] 벳푸 무츠키 료칸 2색 골프 투어'), '');  // ⚠ 넓은 료칸 오분류 금지
+  assert.equal(SZ.accomFromProduct('[7박 8일] 스가다이라 그린CC 골프 투어'), '');
+  assert.equal(SZ.accomFromProduct('14hills'), '');
+  assert.equal(SZ.accomFromProduct('[6박 7일] 시로사토CC 골프 투어'), '');
+  assert.equal(SZ.accomFromProduct(''), '');
+});
+
+// ── F코드 재사용 30일 쿨다운(턴오버·한달내 재등장 충돌, 2026-07 버그 회귀) ────
+test('nmCodeConflict: 30일 쿨다운', () => {
+  // 턴오버(퇴실=입실) = 충돌(다른 코드)
+  assert.equal(SZ.nmCodeConflict('2026-07-23','2026-07-26','2026-07-26','2026-07-30'), true);
+  // 27일 gap(<30) = 충돌
+  assert.equal(SZ.nmCodeConflict('2026-07-01','2026-07-05','2026-08-01','2026-08-05'), true);
+  // 36일 gap(>30) = 재사용 허용(비충돌)
+  assert.equal(SZ.nmCodeConflict('2026-07-01','2026-07-05','2026-08-10','2026-08-15'), false);
+  // 순서 무관(대칭)
+  assert.equal(SZ.nmCodeConflict('2026-08-10','2026-08-15','2026-07-01','2026-07-05'), false);
+  // 실제 겹침
+  assert.equal(SZ.nmCodeConflict('2026-07-01','2026-07-10','2026-07-05','2026-07-12'), true);
+  // 날짜 없음 = 안전 충돌
+  assert.equal(SZ.nmCodeConflict('','2026-07-05','2026-08-05','2026-08-09'), true);
+});
