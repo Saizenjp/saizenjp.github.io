@@ -235,12 +235,12 @@
   <span class="hint" id="t-connhint">방배정(room) 결과를 읽어 志津の宿 予約表를 출력. 현지비고(메리트)는 각 예약 아래에 표시.</span>
 </div>
 
-<!-- 🚫 취소 이력 — step1 자동 취소(팀/개인)를 cancel_log로 기록 → 상단 배치(실무 동선) -->
+<!-- 🗂 등록·취소 이력 — 신규 등록(bookings.created_at)+자동 취소(cancel_log) 병합 → 상단 배치(실무 동선) -->
 <details id="cxbox" style="margin:12px 20px 0;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
-  <summary id="cx-title" style="cursor:pointer;padding:10px 16px;font-weight:800;font-size:13.5px;color:var(--red,#c0392b);list-style:none">🚫 취소 이력 <span style="font-weight:600;color:var(--muted);font-size:12px">— 팀·개인 취소 (행사번호·일정·팀·영문명)</span></summary>
+  <summary id="cx-title" style="cursor:pointer;padding:10px 16px;font-weight:800;font-size:13.5px;color:var(--text);list-style:none">🗂 등록·취소 이력 <span style="font-weight:600;color:var(--muted);font-size:12px">— 시즈노야도 신규 등록·취소 (행사번호·일정·팀·영문명)</span></summary>
   <div style="padding:0 16px 16px">
-    <div id="cx-list"><div class="cnt" style="padding:14px;color:var(--muted)">펼치면 최근 취소 내역이 표시됩니다.</div></div>
-    <div style="text-align:center;margin-top:10px"><button class="btn ghost sm" id="cx-more" type="button" style="display:none">더 보기 (다음 40건)</button></div>
+    <div id="cx-list"><div class="cnt" style="padding:14px;color:var(--muted)">펼치면 최근 등록·취소 내역이 표시됩니다.</div></div>
+    <div style="text-align:center;margin-top:10px"><button class="btn ghost sm" id="cx-more" type="button" style="display:none">더 보기</button></div>
   </div>
 </details>
 
@@ -1283,7 +1283,7 @@ function applyStatic(){
 window.onSaizenLangChange=function(){
   applyStatic();
   if(typeof _cxSetTitle==='function') _cxSetTitle();                       // 취소 이력 제목 언어 갱신
-  { const box=$('#cxbox'); if(box && box.open) loadCancelHist(true); }     // 취소 이력 목록도 현재 언어로 재렌더
+  { const box=$('#cxbox'); if(box && box.open) loadHist(true); }     // 등록·취소 이력 목록도 현재 언어로 재렌더
   if(supa && $('#ym-label')){ renderUI(); $('#ym-label').textContent=YM; renderDateChips(); renderStats(); renderBoard(); renderPreview();
     const ax=axis(); $('#stat').textContent=`${ax.length}${lang()==='ja'?'日':lang()==='en'?'d':'일'}`;
     $('#btn-print').disabled=!ax.length; }
@@ -1295,7 +1295,7 @@ applyStatic();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }
 
 // ── 🚫 취소 이력(cancel_log) — step1 자동 취소 팀/개인. 행사번호·일정·팀·영문명·방해제 ──
-const CX_PAGE=40; let _cxRaw=0, _cxLoading=false, _cxDone=false, _cxShown=0;
+const CX_PAGE=40; let _cxRaw=0, _rgRaw=0, _cxLoading=false, _cxDoneC=false, _cxDoneR=false, _cxShown=0;
 function _cxT(ko,ja,en){ const l=lang(); return l==='ja'?ja:l==='en'?en:ko; }
 // 시즈노야도 관련 취소만: 팀=시즈 방 해제가 있는 취소 / 개인=시즈 방 해제. (다른 시설 취소는 그 섹션 이력에서 확인)
 const _cxShzRe=/시즈노야도|志津|しずの/;
@@ -1325,35 +1325,57 @@ function _cxRowHtml(c, changed_by, changed_at){
     <span style="flex:1;min-width:0">${main}${who}</span>
   </div>`;
 }
-async function loadCancelHist(reset){
+// 신규 등록 행(초록) — bookings.created_at 기준 시즈 등록
+function _rgRowHtml(b){
+  const when=(b.created_at||'').replace('T',' ').slice(5,16);
+  const sched=`${(b.dep_date||'').slice(5)}~${(b.arr_date||'').slice(5)}`;
+  const local=/현지예약/.test(String(b.product_name||''));
+  const main=`<b>${esc(b.rep_name||'')}</b> · ${b.pax||0}${_cxT('명','名','')}${local?` <span class="shz-loc">現地</span>`:''} <span style="color:var(--green,#15803D);font-weight:700">${_cxT('신규 등록','新規登録','New')}</span>`;
+  return `<div style="display:flex;gap:8px;align-items:baseline;padding:7px 4px;border-top:1px solid var(--border);font-size:12.5px">
+    <span style="flex:0 0 16px;text-align:center">➕</span>
+    <span style="flex:0 0 78px;font-family:var(--mono);color:var(--muted)">${when}</span>
+    <span style="flex:0 0 92px;font-family:var(--mono);color:var(--text2)">${esc(b.event_no||('#'+b.event_seq))}</span>
+    <span style="flex:0 0 84px;font-family:var(--mono);color:var(--muted)">${sched}</span>
+    <span style="flex:1;min-width:0">${main}</span>
+  </div>`;
+}
+// 등록(bookings.created_at)+취소(cancel_log)를 시간순 병합. 각 소스 페이지 넘겨가며 누적·재정렬.
+let _histRows=[];
+async function loadHist(reset){
   if(!supa){ $('#cx-list').innerHTML=`<div class="cnt" style="padding:14px;color:var(--muted)">${_cxT('먼저 연결하세요.','先に接続してください。','Connect first.')}</div>`; return; }
   if(_cxLoading) return; _cxLoading=true;
-  if(reset){ _cxRaw=0; _cxDone=false; _cxShown=0; $('#cx-list').innerHTML=`<div class="cnt" style="padding:14px;color:var(--muted)">…</div>`; }
+  if(reset){ _cxRaw=0; _rgRaw=0; _cxDoneC=false; _cxDoneR=false; _cxShown=0; _histRows=[]; $('#cx-list').innerHTML=`<div class="cnt" style="padding:14px;color:var(--muted)">…</div>`; }
   try{
-    // 시즈만 골라 CX_PAGE개 모을 때까지 DB 페이지를 넘겨가며 조회(다른 시설 취소는 그 섹션에서).
-    const acc=[];
-    while(acc.length<CX_PAGE && !_cxDone){
+    // 취소(시즈만) — CX_PAGE개 모을 때까지 페이지 넘김
+    let gotC=0;
+    while(gotC<CX_PAGE && !_cxDoneC){
       const {data,error}=await supa.from('change_log').select('changes,changed_by,changed_at')
         .eq('entity','cancel_log').order('changed_at',{ascending:false}).range(_cxRaw,_cxRaw+CX_PAGE-1);
       if(error) throw error;
-      const batch=data||[]; _cxRaw+=batch.length;
-      if(batch.length<CX_PAGE) _cxDone=true;
-      batch.forEach(r=>{ const c=r.changes||{}; if(_cxIsShizu(c)) acc.push(_cxRowHtml(c,r.changed_by,r.changed_at)); });
+      const batch=data||[]; _cxRaw+=batch.length; if(batch.length<CX_PAGE) _cxDoneC=true;
+      batch.forEach(r=>{ const c=r.changes||{}; if(_cxIsShizu(c)){ _histRows.push({ts:r.changed_at||'', html:_cxRowHtml(c,r.changed_by,r.changed_at)}); gotC++; } });
       if(!batch.length) break;
     }
-    const html=acc.join('');
-    if(reset) $('#cx-list').innerHTML=html||`<div class="cnt" style="padding:14px;color:var(--muted)">${_cxT('시즈노야도 취소 내역이 없습니다.','志津の宿のキャンセル履歴はありません。','No Shizu-no-Yado cancellations.')}</div>`;
-    else $('#cx-list').insertAdjacentHTML('beforeend',html);
-    _cxShown+=acc.length;
-    $('#cx-more').style.display=_cxDone?'none':'';
+    // 신규 등록(시즈 상품, created_at desc)
+    if(!_cxDoneR){
+      const {data,error}=await supa.from('bookings').select('event_seq,event_no,rep_name,pax,dep_date,arr_date,product_name,created_at')
+        .ilike('product_name','%시즈노야도%').order('created_at',{ascending:false}).range(_rgRaw,_rgRaw+CX_PAGE-1);
+      if(error) throw error;
+      const batch=data||[]; _rgRaw+=batch.length; if(batch.length<CX_PAGE) _cxDoneR=true;
+      batch.forEach(b=>{ _histRows.push({ts:b.created_at||'', html:_rgRowHtml(b)}); });
+    }
+    _histRows.sort((a,b)=> a.ts<b.ts?1:a.ts>b.ts?-1:0);
+    $('#cx-list').innerHTML=_histRows.map(r=>r.html).join('')||`<div class="cnt" style="padding:14px;color:var(--muted)">${_cxT('시즈노야도 등록·취소 내역이 없습니다.','志津の宿の登録·キャンセル履歴はありません。','No Shizu registrations or cancellations.')}</div>`;
+    _cxShown=_histRows.length;
+    $('#cx-more').style.display=(_cxDoneC&&_cxDoneR)?'none':'';
   }catch(e){ $('#cx-list').innerHTML=`<div class="cnt" style="padding:14px;color:var(--muted)">${esc(e.message||e)}</div>`; }
   finally{ _cxLoading=false; }
 }
-function _cxSetTitle(){ const ttl=$('#cx-title'); if(ttl) ttl.innerHTML=`🚫 ${_cxT('취소 이력','キャンセル履歴','Cancellations')} <span style="font-weight:600;color:var(--muted);font-size:12px">— ${_cxT('시즈노야도 관련 취소 (행사번호·일정·팀·영문명)','志津の宿の関連キャンセル (行事番号·日程·チーム·英文名)','Shizu-related (event no · dates · team · eng name)')}</span>`; }
+function _cxSetTitle(){ const ttl=$('#cx-title'); if(ttl) ttl.innerHTML=`🗂 ${_cxT('등록·취소 이력','登録·キャンセル履歴','Registrations & cancellations')} <span style="font-weight:600;color:var(--muted);font-size:12px">— ${_cxT('시즈노야도 신규 등록·취소 (행사번호·일정·팀·영문명)','志津の宿の新規登録·キャンセル (行事番号·日程·チーム·英文名)','Shizu new/cancelled (event no · dates · team · eng name)')}</span>`; }
 function bindCx(){ const box=$('#cxbox'); if(!box) return;
   _cxSetTitle();
-  box.addEventListener('toggle',()=>{ if(box.open && !_cxShown) loadCancelHist(true); });
-  const mb=$('#cx-more'); if(mb) mb.addEventListener('click',()=>loadCancelHist(false));
+  box.addEventListener('toggle',()=>{ if(box.open && !_cxShown) loadHist(true); });
+  const mb=$('#cx-more'); if(mb) mb.addEventListener('click',()=>loadHist(false));
 }
 if(document.readyState!=='loading') bindCx(); else document.addEventListener('DOMContentLoaded',bindCx);
 </script>
