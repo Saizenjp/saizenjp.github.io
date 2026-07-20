@@ -117,6 +117,9 @@
   <input class="inp" id="d-to" type="date" style="width:150px">
   <button class="btn sm" id="btn-run" type="button">조회</button>
   <span style="width:8px"></span>
+  <button class="chip" id="t-prevm" type="button">◀ 이전 달</button>
+  <button class="chip" id="t-nextm" type="button">다음 달 ▶</button>
+  <span style="width:8px"></span>
   <button class="chip" id="t-q1" data-q="thismonth" type="button">이번 달</button>
   <button class="chip" id="t-q2" data-q="thisyear" type="button">올해</button>
   <button class="chip" id="t-q3" data-q="lastyear" type="button">작년</button>
@@ -138,7 +141,7 @@ let supa=null, DATA=null;
 const L={
   ja:{ navHome:'ホーム', step:'経営統計', connIdle:'未接続', connecting:'接続中…', connOk:'接続済', connFail:'接続失敗', connect:'接続', connectedBtn:'✓ 接続済',
     connHint:'代表・部署長向けの月/年 統合統計(送客・売上・稼働率・顧客構成)。読み取り専用集計。',
-    period:'期間', run:'照会', qThisMonth:'今月', qThisYear:'今年', qLastYear:'昨年', qLast12:'直近12ヶ月',
+    period:'期間', run:'照会', qThisMonth:'今月', qThisYear:'今年', qLastYear:'昨年', qLast12:'直近12ヶ月', prevMonth:'前月', nextMonth:'翌月',
     emptyHint:'期間を選んで「照会」を押してください。', loading:'集計中…', loadFail:'集計に失敗', noAuth:'権限がありません(管理者またはstats権限者のみ)。',
     kInTeam:'送客チーム', kInPax:'送客人数', kB2B:'B2B売上', kOnsite:'現地売上', kOcc:'客室稼働率', kMember:'会員比率',
     uTeam:'チーム', uPpl:'名', uNight:'泊', perMonth:'月別推移', mPax:'人数', mB2B:'B2B売上', mOnsite:'現地売上',
@@ -150,7 +153,7 @@ const L={
  },
   ko:{ navHome:'홈', step:'경영 통계', connIdle:'미연결', connecting:'연결 중…', connOk:'연결됨', connFail:'연결 실패', connect:'연결', connectedBtn:'✓ 연결됨',
     connHint:'대표·부서장용 월/연 통합 통계(입도·매출·가동률·고객구성). 읽기 전용 집계.',
-    period:'기간', run:'조회', qThisMonth:'이번 달', qThisYear:'올해', qLastYear:'작년', qLast12:'최근 12개월',
+    period:'기간', run:'조회', qThisMonth:'이번 달', qThisYear:'올해', qLastYear:'작년', qLast12:'최근 12개월', prevMonth:'이전 달', nextMonth:'다음 달',
     emptyHint:'기간을 선택하고 「조회」를 누르세요.', loading:'집계 중…', loadFail:'집계 실패', noAuth:'권한이 없습니다(관리자 또는 stats 권한자만).',
     kInTeam:'입도 팀', kInPax:'입도 인원', kB2B:'B2B 매출', kOnsite:'현장 매출', kOcc:'객실 가동률', kMember:'회원 비율',
     uTeam:'팀', uPpl:'명', uNight:'박', perMonth:'월별 추이', mPax:'인원', mB2B:'B2B 매출', mOnsite:'현장 매출',
@@ -162,7 +165,7 @@ const L={
  },
   en:{ navHome:'Home', step:'Exec Stats', connIdle:'Not connected', connecting:'Connecting…', connOk:'Connected', connFail:'Connect failed', connect:'Connect', connectedBtn:'✓ Connected',
     connHint:'Monthly/yearly consolidated stats for execs (arrivals, revenue, occupancy, customer mix). Read-only aggregation.',
-    period:'Period', run:'Run', qThisMonth:'This month', qThisYear:'This year', qLastYear:'Last year', qLast12:'Last 12 months',
+    period:'Period', run:'Run', qThisMonth:'This month', qThisYear:'This year', qLastYear:'Last year', qLast12:'Last 12 months', prevMonth:'Prev month', nextMonth:'Next month',
     emptyHint:'Pick a period and press Run.', loading:'Aggregating…', loadFail:'Aggregation failed', noAuth:'No permission (admin or stats holders only).',
     kInTeam:'Arrival teams', kInPax:'Arrival pax', kB2B:'B2B revenue', kOnsite:'On-site revenue', kOcc:'Room occupancy', kMember:'Member ratio',
     uTeam:' teams', uPpl:' ppl', uNight:' nt', perMonth:'Monthly trend', mPax:'Pax', mB2B:'B2B revenue', mOnsite:'On-site revenue',
@@ -182,6 +185,7 @@ function applyStatic(){
   $('#t-connhint').textContent=tx('connHint');
   $('#t-period').textContent=tx('period');
   $('#btn-run').textContent=tx('run');
+  $('#t-prevm').textContent='◀ '+tx('prevMonth'); $('#t-nextm').textContent=tx('nextMonth')+' ▶';
   $('#t-q1').textContent=tx('qThisMonth'); $('#t-q2').textContent=tx('qThisYear');
   $('#t-q3').textContent=tx('qLastYear'); $('#t-q4').textContent=tx('qLast12');
   const emp=$('#t-empty'); if(emp) emp.textContent=tx('emptyHint');
@@ -206,6 +210,15 @@ function quick(q){
   else if(q==='thisyear'){ setRange(y+'-01-01', y+'-12-31'); }
   else if(q==='lastyear'){ setRange((y-1)+'-01-01', (y-1)+'-12-31'); }
   else if(q==='last12'){ setRange(iso(new Date(y,m-11,1)), iso(new Date(y,m+1,0))); }
+  if(supa) run();
+}
+// ◀/▶ 월 이동: 현재 기간을 n개월 앞뒤로. from=이동 월 1일, to=이동 종료월 말일(단일 월=스텝, 여러 달=폭 유지).
+function shiftMonths(n){
+  const f=$('#d-from').value; if(!f) return;
+  const t=$('#d-to').value||f;
+  const [fy,fm]=f.split('-').map(Number), [ty,tm]=t.split('-').map(Number);
+  const nf=new Date(fy,(fm-1)+n,1), nt=new Date(ty,(tm-1)+n+1,0);
+  setRange(iso(nf), iso(nt));
   if(supa) run();
 }
 
@@ -325,6 +338,8 @@ window.onSaizenLangChange=function(){ applyStatic(); if(DATA) render(); };
 /* ── 부팅 ── */
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-run').addEventListener('click',run);
+$('#t-prevm').addEventListener('click',()=>shiftMonths(-1));
+$('#t-nextm').addEventListener('click',()=>shiftMonths(1));
 document.querySelectorAll('.chip[data-q]').forEach(b=>b.addEventListener('click',()=>quick(b.dataset.q)));
 applyStatic();
 loadCreds();
