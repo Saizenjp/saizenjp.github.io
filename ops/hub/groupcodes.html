@@ -136,6 +136,7 @@ const L={
     unDesc:'登録データ(会員権区分)では会員なのにタグコードが無い人。エムクリックに職位(コード)を入れずここで空きコードを割り当てます。名簿(会員権区分)から自動検出 — その人だけ割り当てればOK。',
     unRefresh:'再読込', unNone:'コード未保有の会員はいません。', unLoading:'読込中…',
     mxTitle:'⚠ コード不一致の会員 — 会員なのに一般(F)コード', mxDesc:'会員権区分では会員なのに、グループコードがF接頭(一般プール)コードになっている人。会員コードは等級接頭のはず。「コード変更」で等級に合う空きコードを割り当てます。', mxNone:'コード不一致の会員はいません。', thCurCode:'現在のコード',
+    gtTitle:'グループコード配置表', gtDesc:'等級を選ぶと 18×33 の空き/配置が一目で分かります(セルにカーソルで氏名)。下に配置済みコード一覧。', gtColN:'人数', gtColNames:'配置者', gtNone:'配置済みコードなし', gtHover:'セルにカーソルを合わせると氏名表示', gtCnt:(u,t)=>`使用 ${u} / ${t}`,
     unInherit:c=>`同一コード ${c} 付与`, unPick:'空きコード割当',
     unAssignDone:(nm,c,n)=>`${nm} → ${c} 付与${n>0?` (指定会員${n}名にも同一付与)`:''}`,
     repMember:'正会員', desigMember:'指定会員', thMembers:'構成員' },
@@ -180,6 +181,7 @@ const L={
     unDesc:'등록 데이터(회원권구분)상 회원인데 태그코드가 없는 사람. 엠클릭에 직위(코드)를 안 넣고 여기서 빈코드를 배정합니다. 명단(회원권구분)에서 자동 검출 — 그 사람만 배정하면 됩니다.',
     unRefresh:'새로고침', unNone:'코드 미보유 회원이 없습니다.', unLoading:'불러오는 중…',
     mxTitle:'⚠ 코드 불일치 회원 — 회원인데 일반(F)코드', mxDesc:'회원권구분상 회원인데 그룹코드가 <b>F접두(일반풀)</b> 코드로 들어가 있는 사람. 회원 코드는 등급 접두여야 합니다. 「코드 변경」으로 등급에 맞는 빈코드를 배정하세요.', mxNone:'코드 불일치 회원이 없습니다.', thCurCode:'현재 코드',
+    gtTitle:'그룹코드 배정표', gtDesc:'등급을 고르면 18×33 빈칸/배정이 한눈에(칸에 마우스=성명). 아래에 배정된 코드 목록.', gtColN:'인원', gtColNames:'배정자', gtNone:'배정된 코드 없음', gtHover:'칸에 마우스를 올리면 성명 표시', gtCnt:(u,t)=>`사용 ${u} / ${t}`,
     unInherit:c=>`동일코드 ${c} 부여`, unPick:'빈코드 배정',
     unAssignDone:(nm,c,n)=>`${nm} → ${c} 부여${n>0?` (지정회원 ${n}명에게도 동일 부여)`:''}`,
     repMember:'정회원', desigMember:'지정회원', thMembers:'구성원' },
@@ -224,6 +226,7 @@ const L={
     unDesc:'People who are members (by 회원권구분 in the imported data) but have no tag code. Assign an empty code here — no need to enter a position code in M-click. Auto-detected from the roster; just assign that person.',
     unRefresh:'Reload', unNone:'No members without a code.', unLoading:'Loading…',
     mxTitle:'⚠ Mismatched code — member with general (F) code', mxDesc:'Members (by grade) whose group code is an F-prefixed (general pool) code. Member codes should use a grade prefix. Use "Change code" to assign a proper empty code.', mxNone:'No members with mismatched codes.', thCurCode:'Current code',
+    gtTitle:'Group code assignment grid', gtDesc:'Pick a grade to see 18×33 empty/assigned at a glance (hover a cell for names). Used codes listed below.', gtColN:'Count', gtColNames:'Assignees', gtNone:'No assigned codes', gtHover:'Hover a cell to see names', gtCnt:(u,t)=>`Used ${u} / ${t}`,
     unInherit:c=>`Give same code ${c}`, unPick:'Assign empty code',
     unAssignDone:(nm,c,n)=>`${nm} → ${c}${n>0?` (also to ${n} designated)`:''}`,
     repMember:'Named', desigMember:'Designated', thMembers:'Members' }
@@ -312,6 +315,42 @@ function gcRenderPicker(bg, grade, used){
   </div>`;
 }
 function gcReopen(g){ const bg=document.getElementById('gc-pick-bg'); if(bg && _gcUsed) gcRenderPicker(bg, gcNormGrade(g)||g, _gcUsed); }
+// ── 그룹코드 배정표(읽기 전용): 등급 선택 → 18×33 그리드(빈칸/배정·hover=성명) + 배정자 목록 ──
+async function gcRenderAssignTable(){
+  const box=$('#gt-grid'); if(!box||!supa) return;
+  const sel=$('#gt-grade'); const grade=(sel&&sel.value)||Object.keys(GC_GRADE_PREFIX)[0];
+  box.innerHTML=`<div class="cnt" style="color:var(--muted)">${esc(tx('unLoading'))}</div>`;
+  let used; try{ used=await gcLoadUsed(); }catch(e){ box.innerHTML=`<div class="cnt" style="color:var(--err)">${esc(tx('loadFail'))+(e.message||e)}</div>`; return; }
+  const prefixes=GC_GRADE_PREFIX[grade]||[];
+  const thS='padding:4px 7px;text-align:center;background:var(--surface2);color:var(--text2);font-weight:700;font-size:11.5px;border:.5px solid var(--border);position:sticky';
+  let usedCnt=0; const filled=[];
+  const grid=prefixes.map(pfx=>{
+    const head=`<tr><th style="${thS};left:0;z-index:2">${pfx}</th>${GC_POS2.map(c=>`<th style="${thS};top:0">${c}</th>`).join('')}</tr>`;
+    const rows=GC_KANA.map(kana=>{
+      const cells=GC_POS2.map(c2=>{
+        const code=pfx+c2+kana; const mem=used[code]||[]; const n=mem.length;
+        if(n){ usedCnt++; filled.push({code,mem}); }
+        const cb=n?'#f5ecd6':'#e4ecd9', cf=n?'#9a7322':'#2f7d4f';
+        const t=n?code+' · '+n+tx('cellPpl')+mem.join(', '):code+' · '+tx('cellEmpty');
+        return `<td title="${esc(t)}" style="text-align:center;font-family:var(--mono);font-size:12.5px;font-weight:700;padding:5px 7px;min-width:26px;background:${cb};color:${cf};border:.5px solid var(--border)">${n||''}</td>`;
+      }).join('');
+      return `<tr><th style="${thS};left:0">${kana}</th>${cells}</tr>`;
+    }).join('');
+    return `<div style="margin-bottom:12px"><div style="font-weight:700;font-size:12px;color:var(--accent2);margin-bottom:4px">prefix「${pfx}」 18×33</div><div style="overflow:auto;max-height:50vh;border:1px solid var(--border);border-radius:6px"><table style="border-collapse:collapse">${head}${rows}</table></div></div>`;
+  }).join('');
+  const total=prefixes.length*GC_POS2.length*GC_KANA.length;
+  filled.sort((a,b)=>a.code.localeCompare(b.code));
+  const listHTML = filled.length
+    ? `<div style="margin-top:10px"><table class="gc"><thead><tr><th>${esc(tx('thCode'))}</th><th>${esc(tx('gtColN'))}</th><th>${esc(tx('gtColNames'))}</th></tr></thead><tbody>`
+      + filled.map(f=>`<tr><td class="mono"><b>${esc(f.code)}</b></td><td class="c">${f.mem.length}</td><td>${esc(f.mem.join(', '))}</td></tr>`).join('')
+      + `</tbody></table></div>`
+    : `<div class="cnt" style="color:var(--muted);padding:8px 0">${esc(tx('gtNone'))}</div>`;
+  const gt=$('#gt-cnt'); if(gt) gt.textContent=tx('gtCnt')(usedCnt,total);
+  box.innerHTML=`<div style="font-size:12px;color:var(--text2);margin-bottom:8px">
+      <span style="display:inline-block;width:11px;height:11px;background:#e4ecd9;border:1px solid #b4cda0;vertical-align:middle"></span> <b style="color:#2f7d4f">${esc(tx('legendEmpty'))}</b>
+      &nbsp; <span style="display:inline-block;width:11px;height:11px;background:#f5ecd6;border:1px solid #e0c48f;vertical-align:middle"></span> <b style="color:#9a7322">${esc(tx('legendFull'))}</b> — ${esc(tx('gtHover'))}
+    </div>${grid}${listHTML}`;
+}
 function gcPick(code,n){
   if(n>0 && !confirm(tx('pickConfirm1')+n+tx('pickConfirm2'))) return;
   const cb=_gcPickCb; _gcPickCb=null; const bg=document.getElementById('gc-pick-bg'); if(bg) bg.remove(); if(typeof cb==='function') cb(code);
@@ -366,12 +405,22 @@ function renderUI(){
         <span class="cnt">${esc(tx('searchMax'))}</span>
       </div>
       <div id="gc-list"></div>
+    </div>
+    <div class="panel" id="gt-panel">
+      <h3>${esc(tx('gtTitle'))} <span class="cnt" id="gt-cnt"></span>
+        <select id="gt-grade" class="inp" style="margin-left:10px;padding:3px 8px;font-weight:700;color:var(--accent2)">${Object.keys(GC_GRADE_PREFIX).map(g=>`<option value="${esc(g)}">${esc(gradeLabel(g))}</option>`).join('')}</select>
+        <button class="btn ghost sm" id="gt-refresh" type="button" style="float:right">${esc(tx('unRefresh'))}</button></h3>
+      <div class="desc">${tx('gtDesc')}</div>
+      <div id="gt-grid"><div class="cnt" style="color:var(--muted)">${esc(tx('unLoading'))}</div></div>
     </div>`;
   $('#btn-search').addEventListener('click',search);
   $('#un-refresh').addEventListener('click',loadUnassigned);
   loadUnassigned();
   $('#mx-refresh').addEventListener('click',loadMismatch);
   loadMismatch();
+  $('#gt-grade').addEventListener('change',gcRenderAssignTable);
+  $('#gt-refresh').addEventListener('click',()=>{ _gcUsed=null; gcRenderAssignTable(); });
+  gcRenderAssignTable();
   $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
   loadMasterStatus();
 }
