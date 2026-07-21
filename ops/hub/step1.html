@@ -907,11 +907,20 @@ async function run(){
           (data||[]).forEach(o=>{ poMap[o.event_seq]=o; if(o.team_group) hasTG.add(o.event_seq); });
         }
         const tagBySeq={}; guestRows.forEach(g=>{ tagBySeq[g.event_seq]=g.team_tag||g.group_code||''; });
+        // 대표팀 기본값 = 회원이 대표인 팀 우선(없으면 최소 seq). 각 booking 대표승객의 회원 여부(3컬럼 OR).
+        //  예) 김용하(일반)·권준희(회원)·김태영 묶음 → 권준희 팀이 대표 기본값.
+        const repNameBySeq={}; bookingRows.forEach(b=>{ repNameBySeq[b.event_seq]=String(b.rep_name||'').trim(); });
+        const paxByTeam={}; paxRows.forEach(p=>{ (paxByTeam[p.event_seq]=paxByTeam[p.event_seq]||[]).push(p); });
+        const repMem={};   // event_seq -> 대표승객이 회원?
+        Object.keys(paxByTeam).forEach(s=>{ const list=paxByTeam[s].slice().sort((a,b)=>(a.seq_in_team||99)-(b.seq_in_team||99));
+          const rn=repNameBySeq[s]||''; const rp=list.find(p=>String(p.name_kr||'').trim()===rn)||list[0]||{};
+          repMem[s]=!!(window.SZCore&&SZCore.isMember(rp)); });
         let grouped=0; const upRows=[];
         for(const seqs of groups){
           if(seqs.some(s=>hasTG.has(s))) continue;   // 이미 수동 묶음 → 그룹 전체 보존
           const sorted=[...new Set(seqs)].sort((a,b)=>a-b);
-          const repSeq=sorted[0]; const label=tagBySeq[repSeq]||('팀'+repSeq);
+          const memSorted=sorted.filter(s=>repMem[s]);   // 회원 대표 팀(최소 seq 우선)
+          const repSeq=(memSorted.length?memSorted[0]:sorted[0]); const label=tagBySeq[repSeq]||('팀'+repSeq);
           for(let i=0;i<sorted.length;i++){ const s=sorted[i]; const cur=poMap[s]||null;
             upRows.push({ event_seq:s, session_ym:ymBySeq[s]||ym, team_group:label, team_group_rep:(s===repSeq), team_group_seq:i+1,
               dining_group:(cur&&cur.dining_group)||null, excluded:!!(cur&&cur.excluded), exclude_reason:(cur&&cur.exclude_reason)||null,
