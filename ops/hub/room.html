@@ -1445,7 +1445,7 @@ function renderUnassigned(){
       return `<div class="rmember${m.is_rep?' rep':''}${isDone?' done':''}${checked?' sel':''}" data-mid="${m.id}" ${isDone?'':'draggable="true"'}>
         <input type="checkbox" class="mchk" data-mid="${m.id}" ${isDone?'disabled':''} ${checked?'checked':''}>
         <span class="rtag">${m.tag||(m.num)}</span>
-        <span class="rname">${m.name_kr||'-'}${m.is_rep?`<i class="repbadge">${tx('repBadge')}</i>`:''}<i class="gbadge${isMember(m)?' mem':''}">${gradeLabel(m)}</i></span>
+        <span class="rname">${m.name_kr||'-'}${m.is_rep?`<i class="repbadge">${tx('repBadge')}</i>`:''}<i class="gbadge${isMember(m)?' mem':''}" title="${esc(gradeLabel(m))}">${gradeShort(m)}</i></span>
         <span class="ren">${m.name_en||''}</span>
         ${isDone?`<span class="rdone" title="${tx('assignedRoomT')}">${memberRoomLabel(m.id)} <button class="runassign" data-mid="${m.id}" title="${tx('unassignClearT')}">${tx('unassignClear')}</button></span>`:''}
         ${(!isDone && m.actual_dep)?`<button class="reco-cancel" data-mid="${m.id}" title="${tx('ecoUndoUnassignedT')}" style="margin-left:auto;font-size:10.5px;font-weight:700;color:#9a6b00;background:#fff4d6;border:1px solid #f0d48a;border-radius:99px;padding:1px 7px;cursor:pointer">🛫${fmtMD(m.actual_dep)} ✕</button>`:''}
@@ -1548,7 +1548,7 @@ function openAssignPicker(inv){
     if(fa!==fb) return fa-fb;
     return String(a.event_no||'').localeCompare(String(b.event_no||'')) || a.event_seq-b.event_seq;
   });
-  const gbadge=(m)=>`<i class="gbadge${isMember(m)?' mem':''}">${gradeLabel(m)}</i>`;
+  const gbadge=(m)=>`<i class="gbadge${isMember(m)?' mem':''}" title="${esc(gradeLabel(m))}">${gradeShort(m)}</i>`;
   const body = teams.length ? teams.map(g=>{
     const fit=roomFitsTeam(inv,g);
     const gcode=teamGroupCode(g.event_seq)||tx('codeUndecided');
@@ -1830,7 +1830,7 @@ function renderRoom(inv){
       const m=r.member_id!=null?memberById(r.member_id):null;
       const nameKr=m?(m.name_kr||'-'):gcode;
       const nameEn=m?(m.name_en||''):'';
-      const gb=m?`<i class="gbadge${isMember(m)?' mem':''}">${gradeLabel(m)}</i>`:'';
+      const gb=m?`<i class="gbadge${isMember(m)?' mem':''}" title="${esc(gradeLabel(m))}">${gradeShort(m)}</i>`:'';
       const ecoMk=(m&&m.actual_dep)?`<span class="ceco" title="${tx('ecoMark',m.actual_dep)}">🛫${fmtMD(m.actual_dep)}</span>`:'';
       const ecoBtn=m?`<span class="ceco-btn${m.actual_dep?' on':''}" data-room-id="${r.id}" title="${tx('chipEcoT')}">🛫</span>`:'';
       return `<div class="cmem${(m&&m.actual_dep)?' eco':''}"><b>${nameKr}</b><span class="cmen">${nameEn}</span>${gb}${ecoMk}<span class="cmem-act">${ecoBtn}<span class="csplit" data-room-id="${r.id}" title="${tx('chipSplitT')}">✂</span><span class="cx" data-room-id="${r.id}" title="${tx('chipCancelT')}">✕</span></span></div>`;
@@ -2243,6 +2243,18 @@ const DELUXE_TYPES=['디럭스더블트윈','디럭스트윈']; // 우선순위 
 //   회원 판정 = 고객등급(T)·회원권구분(V)·회원구분(U) 3컬럼 OR(회원 우선).
 function isMember(m){ return SZCore.isMember(m); }
 function gradeLabel(m){ return SZCore.gradeLabel(m); }
+// 회원권구분 배지 축약: 다이아몬드→DI1·다이아몬드Ⅱ→DI2·EWRC(이용권)→EW1·EWRCⅡ→EW2·골드/특별/일반은 그대로
+function gradeShort(m){
+  const s=String(gradeLabel(m)||'').trim(); if(!s) return '';
+  if(/다이아몬드\s*(Ⅱ|II|2)/i.test(s)) return 'DI2';
+  if(/다이아몬드/.test(s)) return 'DI1';
+  if(/EWRC\s*(Ⅱ|II|2)/i.test(s)) return 'EW2';
+  if(/EWRC/i.test(s)) return 'EW1';
+  if(/골드|gold/i.test(s)) return '골드';
+  if(/특별/.test(s)) return '특별';
+  if(/일반|비회원/.test(s)) return '일반';
+  return s;
+}
 
 // 팀의 판매분류·숙소 → 배정 라우팅. null 이면 자동배정 제외(소보 등).
 function autoRoute(g){
