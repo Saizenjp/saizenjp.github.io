@@ -259,7 +259,7 @@ const L = {
     codeMatched:n=>`· グループコードxlsxなしでmember_codesから${n}件マッチ`,
     codeMatchFail:'· member_codesマッチ失敗(SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ 会員 ${mem}チーム · 非会員Fプール ${nm}チーム${full?` · プール枯渇 ${full}チーム`:''}`,
-    ghostCleaned:(n)=>`減員による残存 ${n}件を整理`, autoGroup:(n)=>`備考「チーム:…」で ${n}件 自動グループ化(手配書・夕食)`,
+    ghostCleaned:(n)=>`減員による残存 ${n}件を整理`, autoGroup:(n)=>`備考「チーム:…」で ${n}件 自動グループ化(手配書・夕食)`, repFixed:(n)=>`既存グループ ${n}件 の代表を会員に更新`,
     syncCleaned:(months,del)=>`✓ ${months} 残存チーム ${del}個整理 — ファイル基準で最新化`,
     syncKept:n=>`· 残存チーム ${n}個 — データ累積(削除しない)`,
     syncDelFail:'· 残存整理失敗: ',
@@ -299,7 +299,7 @@ const L = {
     codeMatched:n=>`· 그룹코드 xlsx 없이 member_codes에서 ${n}건 매칭`,
     codeMatchFail:'· member_codes 매칭 실패(22번 SQL?): ',
     guestsSummary:(mem,nm,full)=>`  └ 회원 ${mem}팀 · 비회원 F풀 ${nm}팀${full?` · 풀소진 ${full}팀`:''}`,
-    ghostCleaned:(n)=>`인원 감소로 남은 자리 ${n}건 정리`, autoGroup:(n)=>`비고 「팀:…」로 ${n}건 자동 묶기(手配書·夕食)`,
+    ghostCleaned:(n)=>`인원 감소로 남은 자리 ${n}건 정리`, autoGroup:(n)=>`비고 「팀:…」로 ${n}건 자동 묶기(手配書·夕食)`, repFixed:(n)=>`기존 묶음 ${n}건 대표를 회원으로 교정`,
     syncCleaned:(months,del)=>`✓ ${months} 잔존 팀 ${del}개 정리 — 파일 기준 최신화`,
     syncKept:n=>`· 잔존 팀 ${n}개 — 데이터 누적(삭제 안 함)`,
     syncDelFail:'· 잔존 정리 실패: ',
@@ -339,7 +339,7 @@ const L = {
     codeMatched:n=>`· Matched ${n} from member_codes without a group-code xlsx`,
     codeMatchFail:'· member_codes match failed (SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ Members ${mem} teams · Non-member F-pool ${nm} teams${full?` · Pool exhausted ${full} teams`:''}`,
-    ghostCleaned:(n)=>`Cleaned ${n} stale rows from reduced teams`, autoGroup:(n)=>`Auto-grouped ${n} team-group(s) from 「팀:…」 remark`,
+    ghostCleaned:(n)=>`Cleaned ${n} stale rows from reduced teams`, autoGroup:(n)=>`Auto-grouped ${n} team-group(s) from 「팀:…」 remark`, repFixed:(n)=>`Upgraded rep to member on ${n} existing group(s)`,
     syncCleaned:(months,del)=>`✓ ${months} cleaned ${del} leftover team(s) — synced to the file`,
     syncKept:n=>`· ${n} leftover team(s) — data accumulated (not deleted)`,
     syncDelFail:'· Leftover cleanup failed: ',
@@ -903,7 +903,7 @@ async function run(){
         // ⚡ 성능: 기존 print_overrides를 한 번에 벌크 조회(팀별 select 왕복 제거) → 맵으로 재사용.
         const poMap={}; const hasTG=new Set();   // event_seq -> 기존 행, hasTG=수동 묶음
         for(let i=0;i<allSeqs.length;i+=200){ const chunk=allSeqs.slice(i,i+200);
-          const {data}=await supa.from('print_overrides').select('event_seq,team_group,dining_group,excluded,exclude_reason,team_tag,pax_override').in('event_seq',chunk);
+          const {data}=await supa.from('print_overrides').select('event_seq,team_group,team_group_rep,team_group_seq,dining_group,excluded,exclude_reason,team_tag,pax_override').in('event_seq',chunk);
           (data||[]).forEach(o=>{ poMap[o.event_seq]=o; if(o.team_group) hasTG.add(o.event_seq); });
         }
         const tagBySeq={}; guestRows.forEach(g=>{ tagBySeq[g.event_seq]=g.team_tag||g.group_code||''; });
@@ -915,11 +915,27 @@ async function run(){
         Object.keys(paxByTeam).forEach(s=>{ const list=paxByTeam[s].slice().sort((a,b)=>(a.seq_in_team||99)-(b.seq_in_team||99));
           const rn=repNameBySeq[s]||''; const rp=list.find(p=>String(p.name_kr||'').trim()===rn)||list[0]||{};
           repMem[s]=!!(window.SZCore&&SZCore.isMember(rp)); });
-        let grouped=0; const upRows=[];
+        let grouped=0, repFixed=0; const upRows=[];
         for(const seqs of groups){
-          if(seqs.some(s=>hasTG.has(s))) continue;   // 이미 수동 묶음 → 그룹 전체 보존
           const sorted=[...new Set(seqs)].sort((a,b)=>a-b);
           const memSorted=sorted.filter(s=>repMem[s]);   // 회원 대표 팀(최소 seq 우선)
+          if(seqs.some(s=>hasTG.has(s))){
+            // ── 이미 묶인 그룹: 그룹 구성·순번·묶기는 그대로 두고, '대표만' 회원으로 승격 ──
+            //  · 현재 대표가 일반인데 팀에 회원이 있으면 → 그 회원을 대표로. (예: 김용하→권준희)
+            //  · 현재 대표가 이미 회원이거나(=수동 회원 선택 보존) 회원이 아예 없으면 그대로 둠(다운그레이드 금지).
+            if(!memSorted.length) continue;
+            const curRepSeq=sorted.find(s=>poMap[s]&&poMap[s].team_group_rep);
+            if(curRepSeq!=null && repMem[curRepSeq]) continue;   // 이미 회원 대표 → 손대지 않음
+            const newRep=memSorted[0]; const label=tagBySeq[newRep]||('팀'+newRep);
+            for(const s of sorted){ const cur=poMap[s]||null; if(!cur) continue;   // 기존 행만 갱신(구성 유지)
+              upRows.push({ event_seq:s, session_ym:ymBySeq[s]||ym, team_group:label, team_group_rep:(s===newRep),
+                team_group_seq:(cur.team_group_seq!=null?cur.team_group_seq:null),   // 담당자 순번(드래그) 보존
+                dining_group:cur.dining_group||null, excluded:!!cur.excluded, exclude_reason:cur.exclude_reason||null,
+                team_tag:cur.team_tag||null, pax_override:(cur.pax_override!=null)?cur.pax_override:null });
+            }
+            repFixed++; continue;
+          }
+          // ── 신규 그룹: 회원 우선 대표로 처음부터 묶기 ──
           const repSeq=(memSorted.length?memSorted[0]:sorted[0]); const label=tagBySeq[repSeq]||('팀'+repSeq);
           for(let i=0;i<sorted.length;i++){ const s=sorted[i]; const cur=poMap[s]||null;
             upRows.push({ event_seq:s, session_ym:ymBySeq[s]||ym, team_group:label, team_group_rep:(s===repSeq), team_group_seq:i+1,
@@ -930,6 +946,7 @@ async function run(){
         }
         for(let i=0;i<upRows.length;i+=200){ await supa.from('print_overrides').upsert(upRows.slice(i,i+200),{onConflict:'event_seq'}); }
         if(grouped) log(`✓ ${tx('autoGroup')(grouped)}`,'dim');
+        if(repFixed) log(`✓ ${tx('repFixed')(repFixed)}`,'dim');   // 기존 그룹 대표=회원 승격 건수
       }
     } catch(_){ /* 자동 묶기 실패는 임포트 자체를 막지 않음 */ }
 
