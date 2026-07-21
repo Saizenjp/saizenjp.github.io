@@ -114,6 +114,7 @@ const L={
     needLogin:'ログインが必要です', loginDeny:'ログインが必要です。', loginDenySub:'中央のログインカードでログインしてから再接続してください。',
     pre:'接続すると表示されます。',
     panelTitle:'月選択 · フィルター', searchPh:'代表者·イベント番号·タグコード·参考/備考 検索', maskLbl:'旅券·電話番号を隠す',
+    anoTitle:'要確認(既定と相違)', anoCombo:'コンボ滞在(複数施設)', anoPortAsym:(o,r)=>`出${o}/帰${r}`, anoPortMixed:'チーム内 空港混在', anoPortDiff:(p)=>`空港${p}(既定外)`, anoWdIn:(w)=>`入${w}曜(既定外)`, anoWdOut:(w)=>`帰${w}曜(既定外)`, anoAirMiss:'航空情報なし', anoAirMixed:'チーム内 航空混在', anoAirDiff:(a)=>`航空${a}(既定外)`,
     printAll:'🖨 現地手配書 プレビュー(両面)', qrCards:'🔳 注文QRカード', qrNoToken:'QRトークン未発行 — 先に手配書を開いて発行してください', depDate:'出発日', accom:'宿泊施設', all:'全体',
     panelDesc:'イベント1件 = 表面 現地手配書 + 裏面 現地発生分 記入表(2ページ)。<b>A4縦 · 両面(長辺とじ)</b>で印刷してください。記入表は現場手書き用(<b>メリットツアーB2B ⑤現地精算表とは別管理</b>)。',
     listTitle:'対象イベント', loading:'読み込み中…', noMonthData:'該当月データなし', cntUnit:'件',
@@ -133,6 +134,7 @@ const L={
     needLogin:'로그인 필요', loginDeny:'로그인이 필요합니다.', loginDenySub:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
     pre:'연결 후 표시됩니다.',
     panelTitle:'월 선택 · 필터', searchPh:'代表者·イベント番号·タグコード·참고/비고 검색', maskLbl:'여권·전화번호 숨김',
+    anoTitle:'특이(디폴트와 다름)', anoCombo:'콤보 체류(복수 시설)', anoPortAsym:(o,r)=>`출${o}/귀${r}`, anoPortMixed:'팀내 공항 혼재', anoPortDiff:(p)=>`공항 ${p}(디폴트 아님)`, anoWdIn:(w)=>`입실 ${w}요일(디폴트 아님)`, anoWdOut:(w)=>`퇴실 ${w}요일(디폴트 아님)`, anoAirMiss:'항공정보 없음', anoAirMixed:'팀내 항공 혼재', anoAirDiff:(a)=>`항공 ${a}(디폴트 아님)`,
     printAll:'🖨 現地手配書 미리보기(양면)', qrCards:'🔳 주문 QR카드', qrNoToken:'QR 토큰 미발급 — 먼저 手配書를 열어 발급하세요', depDate:'出発日', accom:'숙소', all:'전체',
     panelDesc:'행사 1건 = 앞면 現地手配書 + 뒷면 現地発生分 記入表(2페이지). <b>A4 세로 · 양면(긴 가장자리 제본)</b>으로 인쇄하세요. 記入表는 현장 손기입용(<b>메리트투어 B2B ⑤現地精算表와 별도</b>).',
     listTitle:'대상 행사', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', cntUnit:'件',
@@ -152,6 +154,7 @@ const L={
     needLogin:'Login required', loginDeny:'Login required.', loginDenySub:'Sign in via the center login card, then reconnect.',
     pre:'Shown after connecting.',
     panelTitle:'Month · Filters', searchPh:'Search rep / event no. / tag / notes', maskLbl:'Hide passport & phone',
+    anoTitle:'Check (differs from default)', anoCombo:'Combo stay (multi-facility)', anoPortAsym:(o,r)=>`out ${o}/ret ${r}`, anoPortMixed:'mixed airports in team', anoPortDiff:(p)=>`airport ${p} (non-default)`, anoWdIn:(w)=>`check-in ${w} (non-default)`, anoWdOut:(w)=>`check-out ${w} (non-default)`, anoAirMiss:'no flight info', anoAirMixed:'mixed airlines in team', anoAirDiff:(a)=>`airline ${a} (non-default)`,
     printAll:'🖨 Dispatch preview (double-sided)', qrCards:'🔳 Order QR cards', qrNoToken:'QR tokens not issued — open the dispatch sheet first', depDate:'Departure', accom:'Lodging', all:'All',
     panelDesc:'1 event = front 現地手配書 + back 現地発生分 記入表 (2 pages). Print <b>A4 portrait · double-sided (long-edge binding)</b>. The 記入表 is for on-site handwriting (<b>separate from the Merit B2B ⑤現地精算表</b>).',
     listTitle:'Target events', loading:'Loading…', noMonthData:'No data for this month', cntUnit:' items',
@@ -452,6 +455,8 @@ async function load(){
     computeGroupTags();              // GTAG·GREP(대표) 먼저 → 팀별 규칙 정렬에 사용
     ROWS.sort(dispatchOrder);        // 入国→ICN/PUS→숙소→코드→묶음번호(Y1,Y2 인접)→대표자
     ROWS.forEach((d,i)=>{ d.no=i+1; });
+    computeAnomBaseline();           // 특이패턴 기준(최빈) — 전체 ROWS 기준 1회
+
     DATESEL.clear(); ACCOMSEL.clear();
     $('#stat').textContent=`${ROWS.length}${tx('cntUnit')}`;
     renderDateChips(); renderAccomChips(); renderList();
@@ -466,6 +471,47 @@ function pass(d){
 }
 // 선택(날짜·숙소 토글)된 표시분의 회원/일반 인원 합계 — 명단(paxList)의 회원판정 3컬럼 OR 기준.
 function memGenCount(list){ let mem=0,gen=0; list.forEach(d=>(d.paxList||[]).forEach(p=>{ (window.SZCore&&SZCore.isMember(p))?mem++:gen++; })); return {mem,gen,tot:mem+gen}; }
+// ── 특이 패턴(디폴트=데이터 최빈과 다른 투어) 자동 판정: 콤보체류·출귀국공항·입퇴실요일·항공 ──
+//   기준(디폴트)=로드된 전체 ROWS의 최빈값(자동 적응). 화면 목록 「特」 배지 + 툴팁 사유.
+let ANOM={outPort:null, ci:{}, co:{}, air:null, airDom:false};
+function _mode(arr){ const c={}; let best=null,bn=0; arr.forEach(v=>{ if(v==null||v===''||v===-1)return; c[v]=(c[v]||0)+1; if(c[v]>bn){bn=c[v];best=v;} }); return {v:best,n:bn}; }
+function _anWd(s){ const d=parseLocalDate(s); return d?d.getDay():-1; }
+function _normAir(a){ return String(a||'').trim().toUpperCase().replace(/\s+/g,''); }
+function _pPort(p){ return (window.SZCore&&SZCore.isPus&&SZCore.isPus(p.origin||'',p.dep_flight||''))?'PUS':'ICN'; }
+function _retPort(d){ const rp=(d.paxList||[]).find(p=>p.id===d.repPid)||(d.paxList||[])[0]||{}; return (window.SZCore&&SZCore.isPus&&SZCore.isPus(rp.origin||'',d.retFlight||''))?'PUS':'ICN'; }
+function _comboCount(pn){ const s=String(pn||''); let n=0;
+  if(/야마나미.*호텔|골프텔|관내별장/.test(s))n++; if(/간지/.test(s))n++; if(/시즈|료칸/.test(s))n++;
+  if(/쿠주|별장전용/.test(s))n++; if(/소보별장/.test(s))n++; if(/아소별장/.test(s))n++; if(/돔하우스/.test(s))n++;
+  if(/\+/.test(s))n=Math.max(n,2); return n; }
+function computeAnomBaseline(){
+  ANOM={outPort:null,ci:{},co:{},air:null,airDom:false};
+  if(!ROWS.length) return;
+  ANOM.outPort=_mode(ROWS.map(d=>d.port)).v;
+  const am=_mode(ROWS.map(d=>_normAir(d.airline))); ANOM.air=am.v; ANOM.airDom=am.n>ROWS.length*0.5;
+  const byN={}; ROWS.forEach(d=>{ const n=d.rec.nights; (byN[n]=byN[n]||{ci:[],co:[]}); byN[n].ci.push(_anWd(d.rec.dep)); byN[n].co.push(_anWd(d.rec.arr)); });
+  Object.keys(byN).forEach(n=>{ ANOM.ci[n]=_mode(byN[n].ci).v; ANOM.co[n]=_mode(byN[n].co).v; });
+}
+const _WDJP=['日','月','火','水','木','金','土'];
+function teamAnomaly(d){
+  const r=[];
+  if(_comboCount(d.prodName)>=2) r.push(tx('anoCombo'));
+  const retP=_retPort(d);
+  if(retP!==d.port) r.push(tx('anoPortAsym')(d.port,retP));
+  const ports=[...new Set((d.paxList||[]).map(_pPort))];
+  if(ports.length>1) r.push(tx('anoPortMixed'));
+  if(ANOM.outPort && d.port!==ANOM.outPort) r.push(tx('anoPortDiff')(d.port));
+  const n=d.rec.nights, ci=_anWd(d.rec.dep), co=_anWd(d.rec.arr);
+  if(ANOM.ci[n]!=null && ci!==-1 && ci!==ANOM.ci[n]) r.push(tx('anoWdIn')(_WDJP[ci]));
+  if(ANOM.co[n]!=null && co!==-1 && co!==ANOM.co[n]) r.push(tx('anoWdOut')(_WDJP[co]));
+  const airs=[...new Set((d.paxList||[]).map(p=>_normAir(p.airline||p.dep_flight)).filter(Boolean))];
+  const hasAir=!!_normAir(d.airline)||airs.length>0;
+  if(!hasAir) r.push(tx('anoAirMiss'));
+  else if(airs.length>1) r.push(tx('anoAirMixed'));
+  else if(ANOM.airDom && ANOM.air && _normAir(d.airline) && _normAir(d.airline)!==ANOM.air) r.push(tx('anoAirDiff')(d.airline));
+  return r;
+}
+function anomBadge(d){ const rs=teamAnomaly(d); if(!rs.length) return '';
+  return `<span title="${esc(tx('anoTitle')+': '+rs.join(' / '))}" style="display:inline-block;background:#fdecea;color:#b0472c;border:1px solid #e6a99b;border-radius:5px;padding:0 5px;font-size:10.5px;font-weight:800;margin-right:5px;vertical-align:middle">特</span>`; }
 // 묶은 팀의 표시 태그 = 대표 기준코드 + 팀번호(DRな-Y1/Y2). 단독은 원래 태그.
 //   대표=team_group_rep, 없으면 최소 seq. 팀번호=SZCore.orderGroup(대표먼저·dep·seq).
 function computeGroupTags(){
@@ -522,7 +568,7 @@ function renderList(){
     <td class="c">${d.no}</td>
     <td class="c mono" style="font-weight:700">${esc(dTag(d))}</td>
     <td class="c mono">${esc(d.rec.eventNo||'-')}</td>
-    <td style="font-weight:600">${esc(d.rec.repName||'-')}</td>
+    <td style="font-weight:600">${anomBadge(d)}${esc(d.rec.repName||'-')}</td>
     <td class="mono" style="font-size:11px">${esc(d.engName||'')}</td>
     <td class="c mono">${esc(d.rec.dep||'')}</td>
     <td class="c mono">${esc(d.rec.arr||'')}</td>
