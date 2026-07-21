@@ -477,6 +477,10 @@ let ANOM={ci:{}, co:{}};
 // 기본 항공편(정상): 인천-티웨이 TW287/288 · 부산-이스타 ZE967/968. 이 외 = 비표준(특이).
 const STD_FLIGHTS=['TW287','TW288','ZE967','ZE968'];
 function _fnorm(f){ return String(f||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
+// 표준 체류 요일 패턴(입실→퇴실): 3박 목~일 · 4박 일~목 · 7박 수~수. (日0 水3 木4)
+// 그 외 박수는 입/퇴실이 수·목·일(3·4·0)이 아니면 특이.
+const STD_STAY={3:{ci:4,co:0}, 4:{ci:0,co:4}, 7:{ci:3,co:3}};
+const STD_WDAYS=[3,4,0];
 function _mode(arr){ const c={}; let best=null,bn=0; arr.forEach(v=>{ if(v==null||v===''||v===-1)return; c[v]=(c[v]||0)+1; if(c[v]>bn){bn=c[v];best=v;} }); return {v:best,n:bn}; }
 function _anWd(s){ const d=parseLocalDate(s); return d?d.getDay():-1; }
 function _normAir(a){ return String(a||'').trim().toUpperCase().replace(/\s+/g,''); }
@@ -501,10 +505,15 @@ function teamAnomaly(d){
   if(retP!==d.port) r.push(tx('anoPortAsym')(d.port,retP));
   const ports=[...new Set((d.paxList||[]).map(_pPort))];
   if(ports.length>1) r.push(tx('anoPortMixed'));
-  // 요일: 박수별 최빈과 다름
-  const n=d.rec.nights, ci=_anWd(d.rec.dep), co=_anWd(d.rec.arr);
-  if(ANOM.ci[n]!=null && ci!==-1 && ci!==ANOM.ci[n]) r.push(tx('anoWdIn')(_WDJP[ci]));
-  if(ANOM.co[n]!=null && co!==-1 && co!==ANOM.co[n]) r.push(tx('anoWdOut')(_WDJP[co]));
+  // 요일: 표준 패턴(3박 목~일·4박 일~목·7박 수~수) 외 = 특이. 그 외 박수는 입/퇴실이 수·목·일이 아니면 특이.
+  const n=d.rec.nights, ci=_anWd(d.rec.dep), co=_anWd(d.rec.arr), std=STD_STAY[n];
+  if(std){
+    if(ci!==-1 && ci!==std.ci) r.push(tx('anoWdIn')(_WDJP[ci]));
+    if(co!==-1 && co!==std.co) r.push(tx('anoWdOut')(_WDJP[co]));
+  }else{
+    if(ci!==-1 && STD_WDAYS.indexOf(ci)<0) r.push(tx('anoWdIn')(_WDJP[ci]));
+    if(co!==-1 && STD_WDAYS.indexOf(co)<0) r.push(tx('anoWdOut')(_WDJP[co]));
+  }
   // 항공: 기본편(TW287/288·ZE967/968) 외 = 비표준. 정보 없으면 결측.
   const flights=[d.depFlight,d.retFlight].concat((d.paxList||[]).map(p=>p.dep_flight),(d.paxList||[]).map(p=>p.ret_flight)).map(_fnorm).filter(Boolean);
   const uniq=[...new Set(flights)];
