@@ -90,7 +90,7 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','
 // ── i18n (한·일 직원 공용. ja 기본) ──
 const L={
   ja:{ step:'グループコード管理 · マスター', home:'← ホーム',
-    connHint:'会員マスター(PII) — マスター(admin)のみ使用。グループコード xlsx なしでここで直接管理。',
+    connHint:'会員マスター(PII) — マスター または 会員マスター権限の付与者。グループコード xlsx なしでここで直接管理。',
     connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connRetryBtn:'接続・再試行',
     notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
     deny0:'接続すると表示されます。',
@@ -135,11 +135,12 @@ const L={
     unTitle:'⚠ コード未保有の会員 — 空きコード割当',
     unDesc:'登録データ(会員権区分)では会員なのにタグコードが無い人。エムクリックに職位(コード)を入れずここで空きコードを割り当てます。名簿(会員権区分)から自動検出 — その人だけ割り当てればOK。',
     unRefresh:'再読込', unNone:'コード未保有の会員はいません。', unLoading:'読込中…',
+    mxTitle:'⚠ コード不一致の会員 — 会員なのに一般(F)コード', mxDesc:'会員権区分では会員なのに、グループコードがF接頭(一般プール)コードになっている人。会員コードは等級接頭のはず。「コード変更」で等級に合う空きコードを割り当てます。', mxNone:'コード不一致の会員はいません。', thCurCode:'現在のコード',
     unInherit:c=>`同一コード ${c} 付与`, unPick:'空きコード割当',
     unAssignDone:(nm,c,n)=>`${nm} → ${c} 付与${n>0?` (指定会員${n}名にも同一付与)`:''}`,
     repMember:'正会員', desigMember:'指定会員', thMembers:'構成員' },
   ko:{ step:'그룹코드 관리 · 마스터', home:'← 홈',
-    connHint:'회원 마스터(PII) — 마스터(admin)만 사용. 그룹코드 xlsx 없이 여기서 직접 관리.',
+    connHint:'회원 마스터(PII) — 마스터 또는 회원마스터 권한 부여자. 그룹코드 xlsx 없이 여기서 직접 관리.',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connRetryBtn:'연결·재시도',
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
     deny0:'연결 후 표시됩니다.',
@@ -178,11 +179,12 @@ const L={
     unTitle:'⚠ 코드 미보유 회원 — 빈코드 배정',
     unDesc:'등록 데이터(회원권구분)상 회원인데 태그코드가 없는 사람. 엠클릭에 직위(코드)를 안 넣고 여기서 빈코드를 배정합니다. 명단(회원권구분)에서 자동 검출 — 그 사람만 배정하면 됩니다.',
     unRefresh:'새로고침', unNone:'코드 미보유 회원이 없습니다.', unLoading:'불러오는 중…',
+    mxTitle:'⚠ 코드 불일치 회원 — 회원인데 일반(F)코드', mxDesc:'회원권구분상 회원인데 그룹코드가 <b>F접두(일반풀)</b> 코드로 들어가 있는 사람. 회원 코드는 등급 접두여야 합니다. 「코드 변경」으로 등급에 맞는 빈코드를 배정하세요.', mxNone:'코드 불일치 회원이 없습니다.', thCurCode:'현재 코드',
     unInherit:c=>`동일코드 ${c} 부여`, unPick:'빈코드 배정',
     unAssignDone:(nm,c,n)=>`${nm} → ${c} 부여${n>0?` (지정회원 ${n}명에게도 동일 부여)`:''}`,
     repMember:'정회원', desigMember:'지정회원', thMembers:'구성원' },
   en:{ step:'Group code · Master', home:'← Home',
-    connHint:'Member master (PII) — admin master only. Manage group codes here directly without xlsx.',
+    connHint:'Member master (PII) — master or users granted member-master permission. Manage group codes here directly without xlsx.',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connRetryBtn:'Connect · retry',
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
     deny0:'Shown after connecting.',
@@ -221,6 +223,7 @@ const L={
     unTitle:'⚠ Members without a code — assign empty code',
     unDesc:'People who are members (by 회원권구분 in the imported data) but have no tag code. Assign an empty code here — no need to enter a position code in M-click. Auto-detected from the roster; just assign that person.',
     unRefresh:'Reload', unNone:'No members without a code.', unLoading:'Loading…',
+    mxTitle:'⚠ Mismatched code — member with general (F) code', mxDesc:'Members (by grade) whose group code is an F-prefixed (general pool) code. Member codes should use a grade prefix. Use "Change code" to assign a proper empty code.', mxNone:'No members with mismatched codes.', thCurCode:'Current code',
     unInherit:c=>`Give same code ${c}`, unPick:'Assign empty code',
     unAssignDone:(nm,c,n)=>`${nm} → ${c}${n>0?` (also to ${n} designated)`:''}`,
     repMember:'Named', desigMember:'Designated', thMembers:'Members' }
@@ -350,6 +353,11 @@ function renderUI(){
       <div class="desc">${tx('unDesc')}</div>
       <div id="un-list"><div class="cnt" style="color:var(--muted)">${esc(tx('unLoading'))}</div></div>
     </div>
+    <div class="panel" id="mx-panel" style="border-color:#e3bdb4">
+      <h3>${esc(tx('mxTitle'))} <span class="cnt" id="mx-cnt"></span><button class="btn ghost sm" id="mx-refresh" type="button" style="float:right">${esc(tx('unRefresh'))}</button></h3>
+      <div class="desc">${tx('mxDesc')}</div>
+      <div id="mx-list"><div class="cnt" style="color:var(--muted)">${esc(tx('unLoading'))}</div></div>
+    </div>
     <div class="panel">
       <h3>${esc(tx('searchTitle'))} <span class="cnt" id="gc-cnt"></span></h3>
       <div class="form-row" style="margin-bottom:8px">
@@ -362,6 +370,8 @@ function renderUI(){
   $('#btn-search').addEventListener('click',search);
   $('#un-refresh').addEventListener('click',loadUnassigned);
   loadUnassigned();
+  $('#mx-refresh').addEventListener('click',loadMismatch);
+  loadMismatch();
   $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
   loadMasterStatus();
 }
@@ -422,6 +432,39 @@ async function assignMissingCode(memberKey, name, grade, code){
     toast(tx('recodeDone')(name||memberKey, code),'ok');
     _gcUsed=null; loadUnassigned(); loadMasterStatus();
   }catch(e){ toast(tx('saveFail')+(e.message||e),'err'); }
+}
+// ── 코드 불일치 회원: member_codes에 코드는 있으나 F접두(일반풀) = 회원권과 안 맞음 → 등급 맞는 코드로 재배정 ──
+//   회원 코드 첫 글자는 등급 접두(D/M/H/G/T/S/E/W/R/C). F는 비회원 풀 전용이라 member_codes의 F코드 = 불일치.
+async function loadMismatch(){
+  const box=$('#mx-list'), cnt=$('#mx-cnt'); if(!box||!supa) return;
+  box.innerHTML=`<div class="cnt" style="color:var(--muted)">${esc(tx('unLoading'))}</div>`;
+  try{
+    const {data,error}=await supa.from('member_codes')
+      .select('member_key,name_kr,code,member_class').like('code','F%').order('name_kr').limit(500);
+    if(error) throw error;
+    const list=data||[];
+    if(cnt) cnt.textContent=list.length?`(${list.length}${tx('cntUnit')})`:'';
+    if(!list.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:8px 0">${esc(tx('mxNone'))}</div>`; return; }
+    box.innerHTML='<table class="gc"><thead><tr>'
+      +`<th>${esc(tx('thCurCode'))}</th><th>${esc(tx('thName'))}</th><th>${esc(tx('thGrade'))}</th><th>${esc(tx('thKey'))}</th><th></th></tr></thead><tbody>`
+      +list.map(r=>`<tr data-key="${esc(r.member_key)}" data-grade="${esc(r.member_class||'')}" data-name="${esc(r.name_kr||'')}">
+          <td class="mono"><b style="color:var(--err)">${esc(r.code)}</b></td>
+          <td>${esc(r.name_kr||'')}</td>
+          <td>${esc(gradeLabel(r.member_class||''))}</td>
+          <td class="mono" style="font-size:11px;color:var(--muted)">${esc(r.member_key)}</td>
+          <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-fix style="background:var(--accent2);border-color:var(--accent2)">${esc(tx('recode'))}</button></td>
+        </tr>`).join('')
+      +'</tbody></table>';
+    box.querySelectorAll('[data-fix]').forEach(b=>b.addEventListener('click',e=>{
+      const tr=e.target.closest('tr'), key=tr.dataset.key, grade=tr.dataset.grade||'', name=tr.dataset.name||key;
+      gcOpenPicker(grade, async code=>{
+        const {error}=await supa.from('member_codes').update({code}).eq('member_key',key);
+        if(error){ toast(tx('saveFail')+(error.message||error),'err'); return; }
+        toast(tx('recodeDone')(name, code),'ok');
+        _gcUsed=null; loadMismatch(); loadMasterStatus();
+      });
+    }));
+  }catch(e){ box.innerHTML=`<div class="cnt" style="color:var(--err)">${esc(tx('loadFail'))+(e.message||e)}</div>`; }
 }
 
 async function search(){
