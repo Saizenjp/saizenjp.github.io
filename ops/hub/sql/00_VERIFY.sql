@@ -154,6 +154,7 @@ from (
   union all select 85,'85 시즈참고사항','shizu_team_memo.ref_note',  case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='shizu_team_memo' and column_name='ref_note') then '✅ 있음' else '❌ 없음 (85)' end
   union all select 86,'86 예약접수일','bookings.reserved_at',        case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='bookings' and column_name='reserved_at') then '✅ 있음' else '❌ 없음 (86)' end
   union all select 87,'87 미보유RPC영역','gc_missing_codes=groupcodes', case when exists(select 1 from pg_proc where proname='gc_missing_codes' and prosrc like '%has_any_read_area%') then '✅ 적용' else '❌ 미적용 (87)' end
+  union all select 88,'88 태그재동기화','resync_group_codes()', case when exists(select 1 from pg_proc where proname='resync_group_codes') then '✅ 있음' else '❌ 없음 (88)' end
 ) t
 order by ord, 항목;
 
