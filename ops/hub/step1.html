@@ -226,7 +226,7 @@
 <style>@keyframes runspin{to{transform:rotate(360deg)}}</style>
 
 <script src="../assets/saizen-core.js?v=12"></script>
-<script src="../assets/saizen-ops.js?v=15.35"></script>
+<script src="../assets/saizen-ops.js?v=15.36"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -259,7 +259,7 @@ const L = {
     codeMatched:n=>`· グループコードxlsxなしでmember_codesから${n}件マッチ`,
     codeMatchFail:'· member_codesマッチ失敗(SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ 会員 ${mem}チーム · 非会員Fプール ${nm}チーム${full?` · プール枯渇 ${full}チーム`:''}`,
-    ghostCleaned:(n)=>`減員による残存 ${n}件を整理`, autoGroup:(n)=>`備考「チーム:…」で ${n}件 自動グループ化(手配書・夕食)`, repFixed:(n)=>`既存グループ ${n}件 の代表を会員に更新`,
+    ghostCleaned:(n)=>`減員による残存 ${n}件を整理`, autoGroup:(n)=>`備考「チーム:…」で ${n}件 自動グループ化(手配書・夕食)`, repFixed:(n)=>`既存グループ ${n}件 の代表を会員に更新`, shizuAuto:(n)=>`志津の宿 未配置 ${n}名を空室へ自動配置`,
     syncCleaned:(months,del)=>`✓ ${months} 残存チーム ${del}個整理 — ファイル基準で最新化`,
     syncKept:n=>`· 残存チーム ${n}個 — データ累積(削除しない)`,
     syncDelFail:'· 残存整理失敗: ',
@@ -299,7 +299,7 @@ const L = {
     codeMatched:n=>`· 그룹코드 xlsx 없이 member_codes에서 ${n}건 매칭`,
     codeMatchFail:'· member_codes 매칭 실패(22번 SQL?): ',
     guestsSummary:(mem,nm,full)=>`  └ 회원 ${mem}팀 · 비회원 F풀 ${nm}팀${full?` · 풀소진 ${full}팀`:''}`,
-    ghostCleaned:(n)=>`인원 감소로 남은 자리 ${n}건 정리`, autoGroup:(n)=>`비고 「팀:…」로 ${n}건 자동 묶기(手配書·夕食)`, repFixed:(n)=>`기존 묶음 ${n}건 대표를 회원으로 교정`,
+    ghostCleaned:(n)=>`인원 감소로 남은 자리 ${n}건 정리`, autoGroup:(n)=>`비고 「팀:…」로 ${n}건 자동 묶기(手配書·夕食)`, repFixed:(n)=>`기존 묶음 ${n}건 대표를 회원으로 교정`, shizuAuto:(n)=>`시즈노야도 미배정 ${n}명을 빈 방에 자동 배정`,
     syncCleaned:(months,del)=>`✓ ${months} 잔존 팀 ${del}개 정리 — 파일 기준 최신화`,
     syncKept:n=>`· 잔존 팀 ${n}개 — 데이터 누적(삭제 안 함)`,
     syncDelFail:'· 잔존 정리 실패: ',
@@ -339,7 +339,7 @@ const L = {
     codeMatched:n=>`· Matched ${n} from member_codes without a group-code xlsx`,
     codeMatchFail:'· member_codes match failed (SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ Members ${mem} teams · Non-member F-pool ${nm} teams${full?` · Pool exhausted ${full} teams`:''}`,
-    ghostCleaned:(n)=>`Cleaned ${n} stale rows from reduced teams`, autoGroup:(n)=>`Auto-grouped ${n} team-group(s) from 「팀:…」 remark`, repFixed:(n)=>`Upgraded rep to member on ${n} existing group(s)`,
+    ghostCleaned:(n)=>`Cleaned ${n} stale rows from reduced teams`, autoGroup:(n)=>`Auto-grouped ${n} team-group(s) from 「팀:…」 remark`, repFixed:(n)=>`Upgraded rep to member on ${n} existing group(s)`, shizuAuto:(n)=>`Auto-placed ${n} unassigned Shizu guest(s) into empty rooms`,
     syncCleaned:(months,del)=>`✓ ${months} cleaned ${del} leftover team(s) — synced to the file`,
     syncKept:n=>`· ${n} leftover team(s) — data accumulated (not deleted)`,
     syncDelFail:'· Leftover cleanup failed: ',
@@ -1157,6 +1157,15 @@ async function run(){
       if(by){ try{ localStorage.setItem('saizen_hub_uploader', by); }catch(e){} }
       await loadHistory();
     } catch(e){ log('· '+t('s1_dyn_histFail')+': '+e.message, 'warn'); }
+    // ── 시즈노야도 미배정팀 자동배정(등록 시 시스템이 판단) ──
+    //   취소 정리까지 끝난 상태에서, 미배정 시즈팀을 빈 방에 2인 페어로 자동 배정.
+    //   비파괴(삽입만·기존 manual/auto 보존) · 권한(room/shizu/step1) 없으면 조용히 skip.
+    try {
+      const _months = fileMonths.length ? fileMonths : [ym];
+      let _sz=0;
+      for(const mm of _months){ try{ const {data:pn}=await supa.rpc('shizu_autofill',{p_ym:mm}); if(typeof pn==='number') _sz+=pn; }catch(_){} }
+      if(_sz) log(tx('shizuAuto')(_sz), 'ok');
+    } catch(e){}
     // ── 등록 완료 라이트박스 ──
     try {
       const c = stat||{};
