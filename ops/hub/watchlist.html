@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 運営管理 · 特異予約 監視(マスター)</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad;
+    --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh;}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06);}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .topbar .grow{flex:1}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 15px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{padding:16px 20px 90px;max-width:1040px;margin:0 auto}
+  .bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .bar h2{font-size:16px;font-weight:800;color:var(--accent)}
+  .bar .meta{font-size:12px;color:var(--muted);font-weight:600}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+  .allok{padding:34px 20px;text-align:center;color:var(--ok);font-size:17px;font-weight:800;background:var(--accentSoft);border:1px solid #b4cda0;border-radius:12px}
+  .card{background:var(--surface);border:1px solid var(--border);border-left-width:5px;border-radius:11px;padding:13px 16px;margin-bottom:13px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .card.ok{border-left-color:var(--ok)}
+  .card.warn{border-left-color:var(--warn)}
+  .card.err{border-left-color:var(--err)}
+  .card .hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .card .nm{font-size:14.5px;font-weight:800;color:var(--text)}
+  .cnt{font-size:12px;font-weight:800;border-radius:99px;padding:2px 11px;white-space:nowrap}
+  .cnt.zero{background:var(--accentSoft);color:var(--ok);border:1px solid #b4cda0}
+  .cnt.hit{background:#f7e6e2;color:var(--err);border:1px solid #e3bdb4}
+  .cnt.hitw{background:#fbf3e2;color:#7a5a16;border:1px solid #e6d3a8}
+  .card .ds{font-size:12.5px;color:var(--text2);margin-top:7px;line-height:1.55}
+  .cases{margin-top:10px;border-top:1px dashed var(--border2);padding-top:9px;display:flex;flex-direction:column;gap:8px}
+  .cs{font-size:12.5px;color:var(--text2);border-bottom:1px dotted var(--border);padding-bottom:7px}
+  .cs:last-child{border-bottom:none;padding-bottom:0}
+  .cs .h{font-weight:800;color:var(--text);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .cs .mb{font-size:10.5px;font-weight:800;border-radius:99px;padding:1px 8px}
+  .cs .mb.mem{background:#efe4f7;color:#5e3a86;border:1px solid #d5bfe6}
+  .cs .mb.gen{background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .cs .sub{margin-top:3px;font-family:var(--mono);font-size:11.5px;color:var(--text2)}
+  .cs .es{color:var(--accent);font-weight:800}
+  .more{font-size:11.5px;color:var(--muted);font-weight:600;margin-top:6px}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.24">
+</head>
+<body data-so-area="admin">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム">
+    <img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen">
+  </a>
+  <span class="step" id="t-step">特異予約 監視 · マスター</span>
+  <a class="navhome" href="../index.html" style="margin-left:14px" id="t-home">← ホーム</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">未接続</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key (sb_publishable_…)" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">接続</button>
+  <span class="hint" id="t-connhint">ログイン後、マスター(admin)のみ利用できます。</span>
+</div>
+
+<div class="wrap">
+  <div class="bar">
+    <h2 id="t-title">特異予約 監視</h2>
+    <button class="btn" id="btn-run" type="button" disabled>再スキャン</button>
+    <input class="inp" id="search" type="text" placeholder="名前検索" style="width:160px">
+    <span class="meta" id="run-meta"></span>
+  </div>
+  <div class="ds" id="t-intro" style="font-size:12.5px;color:var(--text2);margin-bottom:14px;line-height:1.6"></div>
+  <div id="result"><div class="deny" id="t-empty" style="color:var(--muted)">接続後、[再スキャン]で実行します。</div></div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-core.js?v=12"></script>
+<script src="../assets/saizen-ops.js?v=15.33"></script>
+<script>
+// ════════════════════════════════════════════════════════════════════════
+//  SaiZen Hub — 特異予約 監視(마스터 전용). 임포트된 전체 예약을 신원(이름+생년) 기준
+//    으로 스캔해 편법·이상 패턴을 잡는다. 서버 변경 없음(읽기 전용 클라이언트 집계).
+//  · 여러 연도가 한 테이블에 쌓이므로, 같은 신원이 작년에도 그랬는지 자동으로 드러남.
+//  · 감지: ①장기 체류(7+7 병합 의심) ②연속 예약·다른 명단(체이닝 편법 의심)
+//          ③연속 예약·동일 명단(명단 등록 오류) ④빈번 묶음 신원.
+// ════════════════════════════════════════════════════════════════════════
+const $=s=>document.querySelector(s);
+let supa=null, myRole=null, RESULT=null;
+
+// ── 임계값(넉넉히 잡고 결과 보며 조정) ──────────────────────────────────────
+const LONG_NIGHTS=8;   // 이 박수 이상 = 장기(병합 의심). 통상 최대 7박.
+const FREQ_GROUP=3;    // 이 횟수 이상 묶음 예약에 등장 = 빈번 묶음 신원.
+const DUP_JAC=0.6;     // 연속 예약 두 명단의 자카드 유사도 ≥ 이 값 = 동일 명단(등록 오류).
+const CAP=40;          // 카드별 표시 상한.
+
+const CATS=['long_stay','chaining','dup_roster','freq_group'];
+
+const L={
+  ja:{
+    step:'特異予約 監視 · マスター', home:'← ホーム', title:'特異予約 監視',
+    connHint:'ログイン後、マスター(admin)のみ利用できます。',
+    searchPh:'名前検索',
+    intro:'エムクリック由来の全予約(step1で取込済)を<b>本人(氏名+生年)基準</b>でスキャンし、抜け道・異常パターンを検出します。複数年が同じテーブルに蓄積されるため、<b>同じ人が昨年も同様の予約をしたか</b>が自動で見えます。<b>読み取り専用</b>(データ変更なし)。',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続 · 再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL·key必要', needLogin:'ログイン必要',
+    needConnLogin:'ログインが必要です。', needConnLoginSub:'マスターアカウントでログイン後、再接続してください。',
+    adminOnly:'マスター(管理者)専用ページです。', currentRole:'現在の役割: ', noAccess:' · アクセス権限がありません。',
+    emptyHint:'接続後、[再スキャン]で実行します。',
+    runBtn:'再スキャン', running:'スキャン中…', ranAt:d=>`最終スキャン ${d}`, loading:n=>`読込中… ${n}件`,
+    allClear:'✓ 特異な予約は見つかりませんでした', issuesN:n=>`検出 ${n}件`,
+    okNone:'なし ✓', casesUnit:'件', peopleUnit:'名', moreN:n=>`… ほか ${n}件`,
+    connFailHint:' (ログイン確認)',
+    nightsU:n=>`${n}泊`, memBadge:'会員', genBadge:'一般',
+    n_long_stay:`長期滞在(${LONG_NIGHTS}泊以上 · 併合の疑い)`,
+    d_long_stay:'7泊+7泊を14泊に併合するなど、通常(最大7泊)を超える長期滞在。名簿提出時に2件を1件へまとめた形跡。',
+    n_chaining:'連続予約・別名簿(裏技の疑い)',
+    d_chaining:'退室日=入室日で連結された2予約の名簿が異なり、後ろが会員名義。非会員が会員特典を受ける「後半を知人会員で予約して連結」パターン。',
+    n_dup_roster:'連続予約・同一名簿(名簿登録ミス)',
+    d_dup_roster:'連続する2予約に同じ名簿が入っている。14泊を7+7で登録したのに両方へ同一メンバーを入れた登録ミス。',
+    n_freq_group:`頻繁な結合予約(${FREQ_GROUP}回以上)`,
+    d_freq_group:'複数のチームを結合(묶기)する予約に繰り返し登場する本人。結合を多用する常連の把握用。',
+    lblChain:d=>`前 #${d.aNo}(${d.aRep}様 ${d.aDates}) → 後 #${d.bNo}(${d.bRep}様 ${d.bDates})`,
+    lblDup:d=>`#${d.aNo} ↔ #${d.bNo} · ${d.dates} · 共有 ${d.shared}名`,
+    lblLong:d=>`#${d.no} · ${d.dates} · ${d.accom}`,
+    lblFreq:d=>`結合 ${d.count}回 · ${d.groups}`
+  },
+  ko:{
+    step:'특이 예약 감시 · 마스터', home:'← 홈', title:'특이 예약 감시',
+    connHint:'로그인 후, 마스터(admin)만 이용할 수 있습니다.',
+    searchPh:'이름 검색',
+    intro:'엠클릭에서 들어온 전체 예약(step1 임포트분)을 <b>본인(이름+생년) 기준</b>으로 스캔해 편법·이상 패턴을 잡습니다. 여러 해가 한 테이블에 쌓이므로 <b>같은 사람이 작년에도 그랬는지</b>가 자동으로 드러납니다. <b>읽기 전용</b>(데이터 변경 없음).',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 · 재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
+    needConnLogin:'로그인이 필요합니다.', needConnLoginSub:'마스터 계정으로 로그인 후 다시 연결하세요.',
+    adminOnly:'마스터(관리자) 전용 페이지입니다.', currentRole:'현재 역할: ', noAccess:' · 접근 권한이 없습니다.',
+    emptyHint:'연결 후 [재스캔]으로 실행합니다.',
+    runBtn:'재스캔', running:'스캔 중…', ranAt:d=>`최종 스캔 ${d}`, loading:n=>`불러오는 중… ${n}건`,
+    allClear:'✓ 특이한 예약이 없습니다', issuesN:n=>`검출 ${n}건`,
+    okNone:'없음 ✓', casesUnit:'건', peopleUnit:'명', moreN:n=>`… 외 ${n}건`,
+    connFailHint:' (로그인 확인)',
+    nightsU:n=>`${n}박`, memBadge:'회원', genBadge:'일반',
+    n_long_stay:`장기 체류(${LONG_NIGHTS}박 이상 · 병합 의심)`,
+    d_long_stay:'7박+7박을 14박으로 합치는 등, 통상(최대 7박)을 넘는 장기 체류. 명단 보낼 때 두 건을 한 건으로 합친 흔적.',
+    n_chaining:'연속 예약·다른 명단(편법 의심)',
+    d_chaining:'퇴실일=입실일로 이어진 두 예약의 명단이 다르고, 뒷건이 회원 명의. 비회원이 회원 혜택을 타는 「뒷부분을 지인 회원으로 예약해 연결」 패턴.',
+    n_dup_roster:'연속 예약·동일 명단(명단 등록 오류)',
+    d_dup_roster:'연속된 두 예약에 같은 명단이 들어감. 14박을 7+7로 등록하면서 양쪽에 같은 인원을 넣은 등록 오류.',
+    n_freq_group:`빈번한 묶음 예약(${FREQ_GROUP}회 이상)`,
+    d_freq_group:'여러 팀을 묶는(연결) 예약에 반복 등장하는 본인. 묶기를 자주 쓰는 상습 파악용.',
+    lblChain:d=>`앞 #${d.aNo}(${d.aRep}様 ${d.aDates}) → 뒤 #${d.bNo}(${d.bRep}様 ${d.bDates})`,
+    lblDup:d=>`#${d.aNo} ↔ #${d.bNo} · ${d.dates} · 공유 ${d.shared}명`,
+    lblLong:d=>`#${d.no} · ${d.dates} · ${d.accom}`,
+    lblFreq:d=>`묶음 ${d.count}회 · ${d.groups}`
+  },
+  en:{
+    step:'Anomalous Booking Watch · Master', home:'← Home', title:'Anomalous Booking Watch',
+    connHint:'After login, master (admin) only.',
+    searchPh:'Search name',
+    intro:'Scans all imported bookings (via step1) <b>by person (name + birth)</b> to catch loophole / anomaly patterns. Since multiple years accumulate in one table, <b>whether the same person did it last year too</b> surfaces automatically. <b>Read-only</b> (no data changes).',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Connect · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
+    needConnLogin:'Login required.', needConnLoginSub:'Log in with a master account, then reconnect.',
+    adminOnly:'Master (admin) only page.', currentRole:'Current role: ', noAccess:' · No access.',
+    emptyHint:'After connecting, run with [Re-scan].',
+    runBtn:'Re-scan', running:'Scanning…', ranAt:d=>`Last scan ${d}`, loading:n=>`Loading… ${n} rows`,
+    allClear:'✓ No anomalous bookings found', issuesN:n=>`${n} found`,
+    okNone:'None ✓', casesUnit:'cases', peopleUnit:'people', moreN:n=>`… +${n} more`,
+    connFailHint:' (check login)',
+    nightsU:n=>`${n}n`, memBadge:'Member', genBadge:'General',
+    n_long_stay:`Long stay (≥${LONG_NIGHTS} nights · merge suspected)`,
+    d_long_stay:'Stays beyond the usual max of 7 nights (e.g., 7+7 merged into 14). A trace of two bookings combined into one at roster submission.',
+    n_chaining:'Consecutive · different roster (loophole suspected)',
+    d_chaining:'Two bookings joined checkout=checkin with different rosters, the later under a member. The "book the tail under a member acquaintance and connect" pattern letting a non-member get member perks.',
+    n_dup_roster:'Consecutive · same roster (registration error)',
+    d_dup_roster:'The same roster in two consecutive bookings. A registration error putting identical members on both halves of a 7+7 split.',
+    n_freq_group:`Frequent grouping (≥${FREQ_GROUP} times)`,
+    d_freq_group:'A person recurring across many grouped (linked) bookings. For spotting heavy repeat users of grouping.',
+    lblChain:d=>`before #${d.aNo}(${d.aRep} ${d.aDates}) → after #${d.bNo}(${d.bRep} ${d.bDates})`,
+    lblDup:d=>`#${d.aNo} ↔ #${d.bNo} · ${d.dates} · ${d.shared} shared`,
+    lblLong:d=>`#${d.no} · ${d.dates} · ${d.accom}`,
+    lblFreq:d=>`grouped ${d.count}× · ${d.groups}`
+  }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; const v=(k in d)?d[k]:(L.ja[k]); return v==null?k:v; }
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(msg,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.textContent=msg;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,cls){const e=$('#conn-state');e.textContent=t;e.className='pill'+(cls?' '+cls:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+
+function applyStatic(){
+  $('#t-step').textContent=tx('step');
+  $('#t-home').textContent=tx('home');
+  $('#t-title').textContent=tx('title');
+  $('#t-connhint').textContent=tx('connHint');
+  $('#search').placeholder=tx('searchPh');
+  $('#t-intro').innerHTML=tx('intro');
+  const em=$('#t-empty'); if(em) em.textContent=tx('emptyHint');
+  $('#btn-run').textContent=tx('runBtn');
+  const bc=$('#btn-connect'); if(bc && !supa) bc.textContent=tx('connect');
+}
+window.onSaizenLangChange=function(){ applyStatic(); if(RESULT) render(); };
+
+// ── 유틸 ─────────────────────────────────────────────────────────────────
+function parseD(s){ const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(s||'')); return m?new Date(+m[1],+m[2]-1,+m[3]):null; }
+function nightsBetween(dep,arr){ const a=parseD(dep),b=parseD(arr); return (a&&b)?Math.max(0,Math.round((b-a)/86400000)):0; }
+function mmdd(s){ const m=/^\d{4}-(\d{2})-(\d{2})/.exec(String(s||'')); return m?`${m[1]}/${m[2]}`:''; }
+function ymd(s){ return String(s||'').slice(0,10); }
+function pmember(p){ return !!(window.SZCore&&SZCore.isMember(p)); }
+function pkey(p){ return String(p.name_kr||'').trim()+'|'+String(p.birth_yymmdd||'').trim(); }
+function accomOf(pn){ try{ return (window.SZCore&&SZCore.accomFromProduct)?SZCore.accomFromProduct(pn):(pn||''); }catch(e){ return pn||''; } }
+
+async function connect(){
+  const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
+  if(!url||!key){ setConn(tx('needUrlKey'),'err'); return; }
+  localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.textContent=tx('connecting'); btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect'); btn.disabled=false;
+      $('#result').innerHTML='<div class="deny">'+esc(tx('needConnLogin'))+'<small>'+esc(tx('needConnLoginSub'))+'</small></div>'; return; }
+    const {data:acc,error}=await supa.rpc('me_access');
+    if(error) throw error;
+    myRole=(acc&&acc[0]&&acc[0].role)||'staff';
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
+    if(myRole!=='admin'){
+      $('#btn-run').disabled=true;
+      $('#result').innerHTML='<div class="deny">'+esc(tx('adminOnly'))+'<small>'+esc(tx('currentRole'))+esc(myRole)+esc(tx('noAccess'))+'</small></div>';
+      return;
+    }
+    $('#btn-run').disabled=false;
+    await runScan();
+  }catch(e){
+    setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn'); btn.disabled=false; supa=null;
+    toast(tx('connFail')+': '+e.message+tx('connFailHint'),'err');
+  }
+}
+
+// 전체 테이블 페이지네이션 로드
+async function loadAll(table, cols){
+  const out=[]; let pg=0;
+  for(;;){
+    const {data,error}=await supa.from(table).select(cols).order('event_seq').range(pg,pg+999);
+    if(error) throw error;
+    (data||[]).forEach(r=>out.push(r));
+    $('#run-meta').textContent=tx('loading')(out.length);
+    if(!data||data.length<1000) break; pg+=1000;
+  }
+  return out;
+}
+
+async function runScan(){
+  if(!supa) return;
+  const btn=$('#btn-run'); btn.disabled=true; btn.textContent=tx('running');
+  try{
+    const bookings=await loadAll('bookings','event_seq,event_no,rep_name,dep_date,arr_date,product_name,pax,session_ym');
+    const pax=await loadAll('passengers','event_seq,name_kr,birth_yymmdd,member_grade,member_class,member_div');
+    const ovr=await loadAll('print_overrides','event_seq,team_group');
+    RESULT=analyze(bookings,pax,ovr);
+    const now=new Date();
+    const stamp=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    $('#run-meta').textContent=tx('ranAt')(stamp);
+    render();
+  }catch(e){ toast(tx('connFail')+': '+e.message,'err'); }
+  finally{ btn.disabled=(myRole!=='admin'); btn.textContent=tx('runBtn'); }
+}
+
+// ── 핵심 분석(순수 함수) ────────────────────────────────────────────────
+function analyze(bookings,pax,ovr){
+  const BK={}; bookings.forEach(b=>{ BK[b.event_seq]=b; });
+  const roster={}; pax.forEach(p=>{ (roster[p.event_seq]=roster[p.event_seq]||[]).push(p); });
+  const tgOf={}; ovr.forEach(o=>{ if(o.team_group) tgOf[o.event_seq]=o.team_group; });
+  const keysOf=seq=>new Set((roster[seq]||[]).map(pkey).filter(k=>k!=='|'));
+  const teamHasMember=seq=>(roster[seq]||[]).some(pmember);
+  const repMemberOf=b=>{ const rn=String(b.rep_name||'').trim(); const list=roster[b.event_seq]||[];
+    const rp=list.find(p=>String(p.name_kr||'').trim()===rn)||list[0]; return rp?pmember(rp):false; };
+
+  const cats={ long_stay:[], chaining:[], dup_roster:[], freq_group:[] };
+
+  // ① 장기 체류(병합 의심)
+  bookings.forEach(b=>{
+    const n=nightsBetween(b.dep_date,b.arr_date);
+    if(n>=LONG_NIGHTS){
+      cats.long_stay.push({ names:[String(b.rep_name||'').trim()], member:repMemberOf(b),
+        head:String(b.rep_name||'-'), seqs:[b.event_no||b.event_seq],
+        detail:{no:b.event_no||b.event_seq, dates:`${mmdd(b.dep_date)}~${mmdd(b.arr_date)}`, accom:accomOf(b.product_name)},
+        kind:'long', nights:n });
+    }
+  });
+  cats.long_stay.sort((a,b)=>b.nights-a.nights);
+
+  // ②③ 연속 예약(퇴실일=입실일) — 관련된 쌍만
+  const depMap={}; bookings.forEach(b=>{ const d=ymd(b.dep_date); if(d)(depMap[d]=depMap[d]||[]).push(b); });
+  bookings.forEach(A=>{
+    const arr=ymd(A.arr_date); if(!arr) return;
+    const cands=depMap[arr]||[];   // B.dep == A.arr → A가 끝나고 B 시작
+    cands.forEach(B=>{
+      if(B.event_seq===A.event_seq) return;
+      const ka=keysOf(A.event_seq), kb=keysOf(B.event_seq);
+      let inter=0; ka.forEach(k=>{ if(kb.has(k)) inter++; });
+      const sameGroup=tgOf[A.event_seq]&&tgOf[A.event_seq]===tgOf[B.event_seq];
+      const sameRep=String(A.rep_name||'').trim()&&String(A.rep_name||'').trim()===String(B.rep_name||'').trim();
+      const related = sameGroup || sameRep || inter>=1;
+      if(!related) return;   // 남남 턴오버는 제외
+      const uni=new Set([...ka,...kb]).size||1;
+      const jac=inter/uni;
+      const dates=`${mmdd(A.dep_date)}~${mmdd(A.arr_date)}~${mmdd(B.arr_date)}`;
+      if(jac>=DUP_JAC){
+        // 동일 명단 → 명단 등록 오류
+        cats.dup_roster.push({ names:[...ka].map(k=>k.split('|')[0]), member:teamHasMember(A.event_seq)||teamHasMember(B.event_seq),
+          head:String(A.rep_name||'-'), seqs:[A.event_no||A.event_seq,B.event_no||B.event_seq],
+          detail:{aNo:A.event_no||A.event_seq,bNo:B.event_no||B.event_seq,dates,shared:inter}, kind:'dup' });
+      } else if(teamHasMember(B.event_seq)){
+        // 다른 명단 + 뒤가 회원 → 체이닝 편법 의심
+        const nm=new Set([...ka,...kb].map(k=>k.split('|')[0]));
+        cats.chaining.push({ names:[...nm], member:true,
+          head:`${String(A.rep_name||'-')} → ${String(B.rep_name||'-')}`, seqs:[A.event_no||A.event_seq,B.event_no||B.event_seq],
+          detail:{aNo:A.event_no||A.event_seq,bNo:B.event_no||B.event_seq,
+            aRep:String(A.rep_name||'-'),bRep:String(B.rep_name||'-'),
+            aDates:`${mmdd(A.dep_date)}~${mmdd(A.arr_date)}`,bDates:`${mmdd(B.dep_date)}~${mmdd(B.arr_date)}`}, kind:'chain' });
+      }
+    });
+  });
+
+  // ④ 빈번 묶음 신원 — 신원별 등장 묶음(team_group) 개수
+  const byPerson={};   // pkey -> {name, member, groups:Set}
+  bookings.forEach(b=>{
+    const tg=tgOf[b.event_seq]; if(!tg) return;
+    (roster[b.event_seq]||[]).forEach(p=>{
+      const k=pkey(p); if(k==='|') return;
+      const e=byPerson[k]||(byPerson[k]={name:String(p.name_kr||'').trim(),member:pmember(p),groups:new Set()});
+      e.groups.add(tg); if(pmember(p)) e.member=true;
+    });
+  });
+  Object.keys(byPerson).forEach(k=>{ const e=byPerson[k]; if(e.groups.size>=FREQ_GROUP){
+    cats.freq_group.push({ names:[e.name], member:e.member, head:e.name, seqs:[],
+      detail:{count:e.groups.size, groups:[...e.groups].slice(0,6).join(', ')}, kind:'freq', count:e.groups.size });
+  }});
+  cats.freq_group.sort((a,b)=>b.count-a.count);
+
+  return cats;
+}
+
+// ── 렌더 ─────────────────────────────────────────────────────────────────
+function caseLabel(c){
+  const d=c.detail;
+  if(c.kind==='long') return tx('lblLong')(d);
+  if(c.kind==='chain') return tx('lblChain')(d);
+  if(c.kind==='dup') return tx('lblDup')(d);
+  if(c.kind==='freq') return tx('lblFreq')(d);
+  return '';
+}
+function matchQ(c,q){ if(!q) return true; const hay=(c.names||[]).join(' ')+' '+(c.head||''); return hay.toLowerCase().includes(q); }
+
+function render(){
+  if(!RESULT) return;
+  const q=String($('#search').value||'').trim().toLowerCase();
+  const box=$('#result');
+  const sev={ long_stay:'warn', chaining:'error', dup_roster:'warn', freq_group:'warn' };
+  let total=0;
+  const cards=CATS.map(k=>{
+    const all=(RESULT[k]||[]).filter(c=>matchQ(c,q));
+    const n=all.length; total+=n;
+    const s=sev[k];
+    const cls=n===0?'ok':(s==='error'?'err':'warn');
+    const cntCls=n===0?'zero':(s==='error'?'hit':'hitw');
+    const unit=(k==='freq_group')?tx('peopleUnit'):tx('casesUnit');
+    const cntTxt=n===0?tx('okNone'):`${n} ${unit}`;
+    let body='';
+    if(n>0){
+      const shown=all.slice(0,CAP);
+      const rows=shown.map(c=>{
+        const mb=c.member?`<span class="mb mem">${esc(tx('memBadge'))}</span>`:`<span class="mb gen">${esc(tx('genBadge'))}</span>`;
+        return `<div class="cs"><div class="h">${mb}<span>${esc(c.head)}</span></div><div class="sub">${esc(caseLabel(c))}</div></div>`;
+      }).join('');
+      const more=(n>shown.length)?`<div class="more">${esc(tx('moreN')(n-shown.length))}</div>`:'';
+      body=`<div class="ds">${tx('d_'+k)}</div><div class="cases">${rows}${more}</div>`;
+    }
+    return `<div class="card ${cls}">
+      <div class="hd"><span class="nm">${esc(tx('n_'+k))}</span><span class="cnt ${cntCls}">${esc(cntTxt)}</span></div>
+      ${body}
+    </div>`;
+  }).join('');
+  const head = total===0
+    ? `<div class="allok">${esc(tx('allClear'))}</div>`
+    : `<div class="bar" style="margin-bottom:12px"><span class="pill err">${esc(tx('issuesN')(total))}</span></div>`;
+  box.innerHTML=head+cards;
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  applyStatic(); loadCreds();
+  $('#btn-connect').addEventListener('click',connect);
+  $('#btn-run').addEventListener('click',runScan);
+  $('#search').addEventListener('input',()=>{ if(RESULT) render(); });
+  if(($('#sb-url').value||'').trim() && ($('#sb-key').value||'').trim()){ connect(); }
+});
+</script>
+</body>
+</html>
