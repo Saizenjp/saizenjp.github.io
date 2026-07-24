@@ -707,7 +707,9 @@ function renderBoardDay(date, showHd){
     // 포커스일엔 비었지만(0/2) 선택팀 체류기간 중 다른 팀이 점유 → 체류중(기간)으로 차단
     let spanHit=null;
     if(selSpan && !closed && used===0){
-      const others=GUESTS.filter(g=>g.room_no===room && g.ci<selSpan.arr && selSpan.dep<g.co && !BSEL.has(g.member_id) && String(g.event_seq)!==String(selSeq));
+      // ⚠ 체크아웃일(g.co===date)엔 그날 밤 안 묵으므로 '滞在中' 제외(방 비어 있음 — Min: 담당자 헷갈림 방지).
+      //   g.co>date = 그 날짜 밤에도 재실(아직 퇴실 전)인 팀만 기간점유로 표시.
+      const others=GUESTS.filter(g=>g.room_no===room && g.ci<selSpan.arr && selSpan.dep<g.co && g.co>date && !BSEL.has(g.member_id) && String(g.event_seq)!==String(selSeq));
       if(others.length){ others.sort((a,b)=>(a.ci||'').localeCompare(b.ci||'')); spanHit=others[0]; cls='empty spanbusy'; }
     }
     const clReason=closed?((CLOSURES.find(c=>c.room_no===room&&c.from_date<=date&&date<=c.to_date)||{}).reason||''):'';
