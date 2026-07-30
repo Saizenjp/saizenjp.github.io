@@ -52,6 +52,11 @@
   .trow.settled .val{color:var(--ok)}
   .note{text-align:center;color:var(--muted);font-size:13px;margin-top:22px;line-height:1.6}
   .upd{text-align:center;color:var(--muted);font-size:11px;margin-top:10px}
+  /* 직원 바 — 같은 QR을 직원이 스캔했을 때만(로그인 세션 감지) 노출. 손님에겐 안 보임. */
+  #staffbar{display:none;align-items:center;gap:8px;flex-wrap:wrap;background:#eef3e6;border-bottom:2px solid var(--accent);padding:9px 14px}
+  #staffbar .sb-t{font-size:12px;font-weight:800;color:var(--accent);margin-right:auto}
+  #staffbar a{font-size:13px;font-weight:800;text-decoration:none;color:#fff;background:var(--accent);border-radius:7px;padding:7px 13px}
+  #staffbar a.alt{background:#fff;color:var(--accent);border:1px solid var(--accent)}
 </style>
 </head>
 <body>
@@ -63,6 +68,7 @@
       <button data-l="en">EN</button>
     </div>
   </div>
+  <div id="staffbar"></div>
   <div class="body" id="body"></div>
 
 <script>
@@ -75,17 +81,23 @@ const T={
        noLines:'아직 청구 내역이 없습니다.', subtotal:'청구 합계', paid:'결제 완료', due:'미결제 잔액',
        settled:'전액 결제 완료 ✓', note:'※ 실시간 반영됩니다. 결제는 프런트/직원이 도와드립니다.',
        loading:'불러오는 중…', noToken:'QR 정보가 없습니다', noTokenSub:'체크인 때 받으신 QR을 다시 스캔해 주세요.',
-       invalid:'유효하지 않은 QR입니다', invalidSub:'프런트에 문의해 주세요.', errH:'일시적으로 불러오지 못했습니다', errSub:'잠시 후 다시 시도합니다.', updated:'업데이트' },
+       invalid:'유효하지 않은 QR입니다', invalidSub:'프런트에 문의해 주세요.', errH:'일시적으로 불러오지 못했습니다', errSub:'잠시 후 다시 시도합니다.', updated:'업데이트',
+       expired:'이용이 종료된 QR입니다', expiredSub:'체크아웃 후에는 조회할 수 없습니다. 문의사항은 프런트로 연락해 주세요.',
+       sbStaff:'직원 모드', sbOrder:'POS 주문', sbSettle:'정산' },
   ja:{ title:'ご精算確認', guest:'お客様', item:'品目', qty:'数量', amount:'金額',
        noLines:'まだご請求はありません。', subtotal:'ご請求合計', paid:'お支払い済', due:'未払い残高',
        settled:'全額お支払い済 ✓', note:'※ リアルタイムで反映されます。お支払いはフロント／スタッフが承ります。',
        loading:'読み込み中…', noToken:'QR情報がありません', noTokenSub:'チェックイン時のQRをもう一度スキャンしてください。',
-       invalid:'無効なQRです', invalidSub:'フロントへお問い合わせください。', errH:'一時的に読み込めませんでした', errSub:'しばらくして再試行します。', updated:'更新' },
+       invalid:'無効なQRです', invalidSub:'フロントへお問い合わせください。', errH:'一時的に読み込めませんでした', errSub:'しばらくして再試行します。', updated:'更新',
+       expired:'ご利用済みのQRです', expiredSub:'チェックアウト後はご確認いただけません。お問い合わせはフロントまで。',
+       sbStaff:'スタッフモード', sbOrder:'POS 注文', sbSettle:'精算' },
   en:{ title:'Your Bill', guest:'Guest', item:'Item', qty:'Qty', amount:'Amount',
        noLines:'No charges yet.', subtotal:'Subtotal', paid:'Paid', due:'Balance due',
        settled:'Fully paid ✓', note:'※ Updates in real time. Staff will assist with payment.',
        loading:'Loading…', noToken:'No QR data', noTokenSub:'Please scan the QR from your check-in again.',
-       invalid:'Invalid QR', invalidSub:'Please ask the front desk.', errH:'Temporarily unavailable', errSub:'Retrying shortly.', updated:'Updated' }
+       invalid:'Invalid QR', invalidSub:'Please ask the front desk.', errH:'Temporarily unavailable', errSub:'Retrying shortly.', updated:'Updated',
+       expired:'This QR has expired', expiredSub:'Not viewable after checkout. Please contact the front desk with any questions.',
+       sbStaff:'Staff mode', sbOrder:'POS order', sbSettle:'Settlement' }
 };
 let lang=localStorage.getItem('saizen_lang')||'ko'; if(!T[lang]) lang='ko';
 // 토큰: ?t= 우선, URL 전체가 토큰만인 구형도 허용
@@ -100,7 +112,7 @@ function hhmm(){ const d=new Date(); return String(d.getHours()).padStart(2,'0')
 document.querySelectorAll('#langs button').forEach(b=>b.addEventListener('click',()=>{
   lang=b.dataset.l; localStorage.setItem('saizen_lang',lang);
   document.querySelectorAll('#langs button').forEach(x=>x.classList.toggle('on',x===b));
-  document.documentElement.lang=lang; lastSig=''; tick();
+  document.documentElement.lang=lang; lastSig=''; tick(); renderStaffBar();
 }));
 document.querySelectorAll('#langs button').forEach(x=>x.classList.toggle('on',x.dataset.l===lang));
 document.documentElement.lang=lang;
@@ -140,14 +152,48 @@ async function tick(){
   try{
     const {data,error}=await supa.rpc('guest_bill',{p_token:TOKEN});
     if(error) throw error;
+    // 체크아웃 + 유예기간 경과 = 만료(SQL 90) → 폴링 중단하고 '이용 종료' 안내
+    if(data && data.expired===true){
+      if(lastSig!=='exp'){ stateView(L.expired,L.expiredSub); lastSig='exp'; }
+      if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
+      return;
+    }
     if(!data || data.ok!==true){ if(lastSig!=='inv'){ stateView(L.invalid,L.invalidSub); lastSig='inv'; } return; }
     const sig=lang+'|'+JSON.stringify(data);
     if(sig!==lastSig){ renderBill(data); lastSig=sig; }
   }catch(e){ if(lastSig!=='err'){ stateView(L.errH,L.errSub); lastSig='err'; } }
 }
 
+// ── 같은 QR의 이중 용도: 직원(로그인 세션)이 스캔하면 POS·정산 바로가기 바를 띄운다 ──
+//   손님(비로그인)에겐 아무것도 안 보임 → QR 1장으로 손님=청구조회 / 직원=팀 딥링크.
+//   세션은 같은 origin·기본 storageKey라 ops 페이지 로그인과 공유됨. order_tokens 읽기=로그인 직원 허용.
+let STAFF=null;   // {seq, ym}
+function renderStaffBar(){
+  const bar=$('#staffbar'); if(!bar||!STAFF) return;
+  const L=T[lang];
+  bar.innerHTML=`<span class="sb-t">🔐 ${esc(L.sbStaff)}</span>`
+    +`<a href="pos.html?seq=${encodeURIComponent(STAFF.seq)}">${esc(L.sbOrder)}</a>`
+    +`<a class="alt" href="settle.html?ym=${encodeURIComponent(STAFF.ym||'')}&seq=${encodeURIComponent(STAFF.seq)}">${esc(L.sbSettle)}</a>`;
+  bar.style.display='flex';
+}
+async function initStaffBar(){
+  if(!TOKEN) return;
+  try{
+    if(!supa) supa=window.supabase.createClient(SB_URL,SB_KEY);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session) return;                       // 손님 → 바 없음
+    const {data:ot}=await supa.from('order_tokens').select('event_seq').eq('token',TOKEN).maybeSingle();
+    if(!ot||!ot.event_seq) return;
+    let ym='';
+    try{ const {data:g}=await supa.from('guests').select('session_ym').eq('event_seq',ot.event_seq).maybeSingle(); ym=(g&&g.session_ym)||''; }catch(e){}
+    STAFF={seq:ot.event_seq, ym};
+    renderStaffBar();
+  }catch(e){ /* 직원 바 실패는 손님 화면에 영향 없음 */ }
+}
+
 stateView(T[lang].loading,'');
 tick();
+initStaffBar();
 pollTimer=setInterval(tick, 8000);   // 8초 폴링 — 직원이 청구 추가하면 자동 갱신
 </script>
 </body>
