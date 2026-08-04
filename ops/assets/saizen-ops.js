@@ -35,6 +35,8 @@
     ja: {
       /* 공통 */
       brandSub: 'Yamanami '+r('運営','うんえい')+r('管理','かんり')+'システム',
+      so_update: '🔄 '+r('更新','こうしん')+'あり',
+      so_updateT: 'この'+r('画面','がめん')+'の'+r('新','あたら')+'しいバージョンがあります。クリックで'+r('再','さい')+r('読','よ')+'み'+r('込','こ')+'み('+r('入力','にゅうりょく')+r('中','ちゅう')+'の'+r('内容','ないよう')+'は'+r('先','さき')+'に'+r('保存','ほぞん')+'してください)。',
       so_footer: r('本','ほん')+'サイトはメリットツアーが'+r('制作','せいさく')+'・'+r('提供','ていきょう')+'しています',
       so_privacy: r('個人情報','こじんじょうほう')+'の'+r('取扱','とりあつか')+'い',
       reset: r('初期化','しょきか'),
@@ -365,6 +367,8 @@
     },
     ko: {
       brandSub: 'Yamanami 운영 관리 시스템',
+      so_update: '🔄 업데이트 있음',
+      so_updateT: '이 화면의 새 버전이 있습니다. 클릭하면 새로고침됩니다(입력 중인 내용은 먼저 저장해 주세요).',
       so_footer: '본 사이트는 메리트투어가 제작·제공합니다',
       so_privacy: '개인정보처리방침',
       reset: '초기화',
@@ -691,6 +695,8 @@
     en: {
       /* common */
       brandSub: 'Yamanami Operations Management System',
+      so_update: '🔄 Update available',
+      so_updateT: 'A newer version of this screen is available. Click to reload (save any in-progress input first).',
       so_footer: 'This site is built &amp; provided by Merit Tour',
       so_privacy: 'Privacy Policy',
       reset: 'Reset',
@@ -1796,6 +1802,62 @@
   }
 
   // ── 맨 위로 버튼 — 전 ops 페이지 공통. 스크롤 내려가면 우하단에 노출. ──
+  // ── 업데이트 감지 — 이 페이지가 재배포되면 상단(담당자 이름 옆)에 「업데이트 있음」 버튼 ──
+  //   왜: 페이지 단위 수정은 공유 asset ?v= 와 무관해서, 브라우저가 예전 HTML을 물고 있으면
+  //       고친 내용이 반영되지 않는다(특히 화면을 오래 켜 둔 현장 PC).
+  //   방식: 별도 버전 파일 없이 '현재 페이지 HTML의 ETag/Last-Modified' 비교.
+  //     · 관리 파일이 없어 배포 때 갱신을 빠뜨릴 위험이 없고, 그 페이지가 실제로 바뀐 경우에만 뜬다.
+  //     · 공유 asset 변경도 전 페이지의 ?v= 가 바뀌므로 HTML 해시가 달라져 자동 포착.
+  //   ⚠ 자동 새로고침은 하지 않는다(메모·비고 입력 중 유실 방지) — 누르는 건 담당자.
+  var _updBase = null, _updShown = false;
+  function _updSig(res) {
+    if (!res || !res.ok) return '';
+    return (res.headers.get('etag') || '') + '|' + (res.headers.get('last-modified') || '');
+  }
+  function _updFetch() {   // HEAD + no-store = 캐시 우회, 본문 없이 서버 현재 버전만 확인
+    try { return fetch(location.pathname + location.search, { method: 'HEAD', cache: 'no-store' }).catch(function () { return null; }); }
+    catch (e) { return Promise.resolve(null); }
+  }
+  function showUpdateChip() {
+    if (_updShown) return;
+    var box = document.querySelector('.so-controls'); if (!box) return;
+    _updShown = true;
+    try {
+      var st = document.createElement('style');
+      st.textContent = '@keyframes so-updp{0%,100%{opacity:1}50%{opacity:.6}}';
+      document.head.appendChild(st);
+    } catch (e) {}
+    var b = document.createElement('button');
+    b.id = 'so-upd'; b.type = 'button';
+    b.setAttribute('data-i18n', 'so_update');
+    b.setAttribute('data-i18n-title', 'so_updateT');
+    b.textContent = t('so_update'); b.title = stripRuby(t('so_updateT'));
+    b.style.cssText = 'font-family:inherit;font-size:12px;font-weight:800;color:#fff;background:#b5402f;'
+      + 'border:1px solid #963427;border-radius:99px;padding:5px 12px;cursor:pointer;white-space:nowrap;'
+      + 'animation:so-updp 1.8s ease-in-out infinite';
+    b.addEventListener('click', function () { location.reload(); });
+    box.insertBefore(b, box.firstChild);
+  }
+  function mountUpdateCheck() {
+    if (!/^https?:$/.test(location.protocol)) return;         // file:// 등 제외
+    if (!window.fetch || !document.querySelector('.so-controls')) return;
+    _updFetch().then(function (res) {
+      var sig = _updSig(res);
+      if (!sig || sig === '|') return;                        // ETag·Last-Modified 없음 → 기능 비활성(오탐 방지)
+      _updBase = sig;
+      var check = function () {
+        if (_updShown || document.hidden) return;
+        _updFetch().then(function (r) {
+          var s = _updSig(r);
+          if (s && s !== '|' && _updBase && s !== _updBase) showUpdateChip();
+        });
+      };
+      setInterval(check, 5 * 60 * 1000);                      // 5분마다
+      // 탭으로 돌아왔을 때 즉시 확인(현장에서 다른 창 보다 돌아오는 흐름)
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
+    });
+  }
+
   function mountToTop() {
     if (document.getElementById('so-totop')) return;   // 페이지 자체 버튼이 있으면 중복 방지
     var b = document.createElement('button');
@@ -1824,7 +1886,7 @@
   function boot() {
     mountHead();
     if (handleAuthRedirect()) { applyLang(); return; }   // 초대/재설정 모드면 비번 설정만
-    mountAuth(); mountFooter(); applyLang(); guardPage(); mountConnToggle(); mountHelp(); mountToTop(); mountAudit();
+    mountAuth(); mountFooter(); applyLang(); guardPage(); mountConnToggle(); mountHelp(); mountToTop(); mountAudit(); mountUpdateCheck();
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
