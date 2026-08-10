@@ -254,6 +254,18 @@ function evCartText(rec){ return pickNoteHits(rec, DISPATCH_CART_KW); }
 function roomChargeText(rec){ return pickNoteHits(rec, DISPATCH_ROOM_KW); }
 // 記入表(뒷면) 자동 기입 행 — 비고에 룸/카트 내용이 있으면 区分에 ○ 찍고 内容을 미리 채움.
 //   금액·수량·담당은 현장 손기입(자동으로 채우지 않음 — 실제 발생분만 적도록).
+// 참고사항 셀에서 '전기카트' 언급 부분만 연두색 강조(Min). 나머지 색은 그대로 유지.
+//   · 줄바꿈·/ 로 나눈 조각 중 카트 키워드가 걸린 조각만 감싼다(문장 단위 → 어디가 카트 건인지 바로 보임).
+//   · esc() 로 이스케이프한 뒤 span 을 붙이므로 XSS 안전.
+function cartHl(text){
+  const raw=String(text||''); if(!raw) return '';
+  return raw.split(/(\n|\/)/).map(seg=>{
+    if(seg==='\n') return '<br>';
+    if(seg==='/')  return esc(seg);
+    const hit=DISPATCH_CART_KW.some(kw=>seg.toLowerCase().includes(kw));
+    return hit ? `<span class="d-cart">${esc(seg)}</span>` : esc(seg);
+  }).join('');
+}
 function dispatchPrefill(rec){
   const out=[];
   const room=roomChargeText(rec); if(room) out.push({n:1, ja:'ルームチャージ', txt:room});
@@ -653,8 +665,8 @@ function renderList(){
     <td class="c">${esc(d.accom||'')}</td>
     <td class="c">${teamGroupBadge(d.rec.teamGroup)}</td>
     <td class="c">${esc(d.rec.memberType||'-')}</td>
-    <td style="max-width:180px;font-size:11.5px;white-space:normal;line-height:1.35;color:#333">${d.rec.remark?esc(d.rec.remark):'<span style="color:var(--muted)">-</span>'}</td>
-    <td style="max-width:200px;font-size:11.5px;white-space:normal;line-height:1.35;font-weight:700;color:#b1400f">${d.rec.remarkLocal?esc(d.rec.remarkLocal):'<span style="color:var(--muted);font-weight:400">-</span>'}</td>
+    <td style="max-width:180px;font-size:11.5px;white-space:normal;line-height:1.35;color:#333">${d.rec.remark?cartHl(d.rec.remark):'<span style="color:var(--muted)">-</span>'}</td>
+    <td style="max-width:200px;font-size:11.5px;white-space:normal;line-height:1.35;font-weight:700;color:#b1400f">${d.rec.remarkLocal?cartHl(d.rec.remarkLocal):'<span style="color:var(--muted);font-weight:400">-</span>'}</td>
     <td><input class="dm-inp" data-seq="${d.seq}" value="${esc(d.rec.noteMemo||'')}" placeholder="${esc(tx('memoPh'))}" style="width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border2);border-radius:5px"></td>
     <td class="c"><button class="btn sm pv-btn" onclick="printDispatch('${d.seq}')">${esc(tx('preview'))}</button></td>
   </tr>`).join('');
@@ -909,6 +921,8 @@ async function printDispatch(seq){
   .hp-t .yomi{display:block;font-size:.92em;color:#1f2a18;font-weight:600;line-height:1.12;margin-bottom:.4mm}
   .c{text-align:center} .mono{font-family:Consolas,Menlo,monospace}
   /* EVカート 신청 — 있으면 눈에 띄게(현장 준비·과금 대상), 없으면 담백하게 */
+  /* 목록 참고사항 — 전기카트 언급 부분만 연두색(Min) */
+  .d-cart{color:#3f8f1f;font-weight:800}
   .hp-cart{font-weight:800;background:#fdf3e3;border-left:3px solid #9a7322}
   .hp-cart-no{color:#666}
   /* 記入表 자동 기입 행 — 비고에서 가져온 항목(区分 ○ + 内容 채움) */
