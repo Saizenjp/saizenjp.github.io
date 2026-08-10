@@ -120,7 +120,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=12"></script>
+<script src="../assets/saizen-core.js?v=13"></script>
 <script src="../assets/saizen-ops.js?v=15.41"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -214,6 +214,7 @@ const L={
     panelExtra:'Add / deduct (Etc.)', extraHint:'— annex-request fee, single charge, etc., per team. Reflected in total', extraSearchPh:'Search by event no. / rep name', extraAddBtn:'＋ Add to team', extraEmpty:'No items. Search above to pick a team and add.', exColTeam:'Team', exColType:'Type', exColSign:'Add/Deduct', exColAmt:'Amount(¥)', exColNote:'Note', signAdd:'Add(+)', signSub:'Deduct(−)', extraTotal:'Etc. total', pickTeam:'Pick team', noMatch:'No match' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,lang()):(a||''); }   // 숙소·구역 표시 라벨(ja/ko/en) = saizen-core 단일 진실원
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
 // 차감 유형(DB 저장값 한국어) — 저장은 유지, 표시만 번역
 const DEDTL={
@@ -351,7 +352,7 @@ function renderAccomChips(){
   const accoms=[...new Set(ROWS.map(r=>r.accom).filter(Boolean))].sort((a,b)=>accIdx(a)-accIdx(b));
   const box=$('#accomchips'); if(!box)return;
   box.innerHTML=`<div class="chip ${ACCOMSEL.size===0?'on':''}" data-a="__all">${esc(tx('all'))}</div>`
-    + accoms.map(a=>`<div class="chip ${ACCOMSEL.has(a)?'on':''}" data-a="${esc(a)}">${esc(a)}</div>`).join('');
+    + accoms.map(a=>`<div class="chip ${ACCOMSEL.has(a)?'on':''}" data-a="${esc(a)}">${esc(accomL(a))}</div>`).join('');
   box.querySelectorAll('.chip[data-a]').forEach(c=>c.addEventListener('click',()=>{ const a=c.dataset.a; if(a==='__all'){ACCOMSEL.clear();}else{ACCOMSEL.has(a)?ACCOMSEL.delete(a):ACCOMSEL.add(a);} renderAccomChips(); renderAll(); }));
 }
 
@@ -425,7 +426,7 @@ function renderAll(){
   const stayT=rows.reduce((s,r)=>s+r.stay,0), transT=rows.reduce((s,r)=>s+r.transport,0), extraT=rows.reduce((s,r)=>s+r.extra,0), totalT=rows.reduce((s,r)=>s+r.total,0), paxT=rows.reduce((s,r)=>s+r.pax,0);
   $('#boxes').innerHTML=ACCOM_ORDER.map(a=>{ const g=rows.filter(r=>r.accom===a); if(!g.length)return '';
     const s=g.reduce((x,r)=>x+r.stay,0), tr=g.reduce((x,r)=>x+r.transport,0), ex=g.reduce((x,r)=>x+r.extra,0), tot=g.reduce((x,r)=>x+r.total,0);
-    return `<div class="sbox"><div class="lab">${esc(a)}</div>
+    return `<div class="sbox"><div class="lab">${esc(accomL(a))}</div>
       <div class="sr"><span>${esc(tx('rate'))}</span><span class="v">${yen(ACCOM_RATE[a])}${esc(tx('perPaxNight'))}</span></div>
       <div class="sr"><span>${esc(tx('cntLabel'))}</span><span class="v">${tx('cntPaxV')(g.length,g.reduce((x,r)=>x+r.pax,0))}</span></div>
       <div class="sr"><span>${esc(tx('lodgeFee'))}</span><span class="v">${yen(s)}</span></div>
@@ -457,7 +458,7 @@ function renderAll(){
       <td class="c">${i+1}</td><td class="mono">${esc(r.eventNo)}</td><td class="c">${esc(r.status)}</td><td class="mono">${esc(r.memberType)}</td>
       <td style="font-weight:600">${esc(r.repName)}</td><td class="mono">${esc(r.engName)}</td>
       <td class="mono">${esc(r.dep)}</td><td class="mono">${esc(r.arr)}</td><td class="c">${r.nights}</td><td class="c">${r.pax}${r.paxWarn?`<br><span style="font-size:9px;font-weight:800;color:var(--err)" title="${esc(tx('paxWarnTitle'))}">⚠${esc(tx('paxWarnV')(r.paxWarn.pcnt,r.paxWarn.bpax))}</span>`:''}</td>
-      <td class="c">${esc(r.accom)}</td><td style="font-size:10.5px">${esc(r.roomType)}</td>
+      <td class="c">${esc(accomL(r.accom))}</td><td style="font-size:10.5px">${esc(r.roomType)}</td>
       <td class="num">${r.rate?yen(r.rate):(r.rateWarn?`<span style="font-size:9px;font-weight:800;color:var(--err)">⚠${esc(tx('rateWarn'))}</span>`:'-')}</td><td class="num">${r.stay?yen(r.stay):'-'}</td><td class="num">${r.transport?yen(r.transport):'-'}</td>
       <td class="num" style="${r.extra<0?'color:var(--err)':(r.extra>0?'color:#2f7d4f':'')}">${r.extra?((r.extra<0?'- ':'+ ')+yen(Math.abs(r.extra))):'-'}</td>
       <td class="num" style="font-weight:700;color:var(--accent2)">${r.total?yen(r.total):'-'}</td>
@@ -523,7 +524,7 @@ function onExSearch(){
   const seen=new Set(); const matches=ROWS.filter(r=>{ if(seen.has(r.seq))return false; seen.add(r.seq);
     return (String(r.eventNo||'')+' '+String(r.repName||'')).toLowerCase().includes(q); }).slice(0,30);
   if(!matches.length){ box.innerHTML=`<div style="padding:10px 12px;color:var(--muted);font-size:12px">${esc(tx('noMatch'))}</div>`; box.style.display='block'; return; }
-  box.innerHTML=matches.map(r=>`<div class="ex-pick" data-seq="${r.seq}" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border)"><b>${esc(r.repName||'')}</b> <span class="mono" style="color:var(--muted)">#${esc(r.eventNo)}</span> · ${esc(r.accom)} · ${esc(r.dep)}~${esc(r.arr)}</div>`).join('');
+  box.innerHTML=matches.map(r=>`<div class="ex-pick" data-seq="${r.seq}" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border)"><b>${esc(r.repName||'')}</b> <span class="mono" style="color:var(--muted)">#${esc(r.eventNo)}</span> · ${esc(accomL(r.accom))} · ${esc(r.dep)}~${esc(r.arr)}</div>`).join('');
   box.style.display='block';
   box.querySelectorAll('.ex-pick').forEach(el=>el.addEventListener('click',()=>{ addExtra(Number(el.dataset.seq)); box.style.display='none'; $('#ex-search').value=''; }));
 }

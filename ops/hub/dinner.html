@@ -95,7 +95,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=12"></script>
+<script src="../assets/saizen-core.js?v=13"></script>
 <script src="../assets/saizen-ops.js?v=15.41"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -190,6 +190,7 @@ const L={
     teams:'teams', day:'days', teamUnit:'teams', paxUnit:'ppl', cntUnit:'d' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,lang()):(a||''); }   // 숙소·구역 표시 라벨(ja/ko/en) = saizen-core 단일 진실원
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
 let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set(), OVR={}, ADDONS=[], EARLY={}, _TGT=null;
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
@@ -378,7 +379,7 @@ function fillAddonTeams(){
   const sel=$('#ad-team'); if(!sel)return; const prev=sel.value; const date=$('#ad-date').value;
   const teams=TEAMS.filter(t=>t.dep<=date&&t.arr>date)
     .sort((a,b)=>accomIdx(a.accom)-accomIdx(b.accom)||String(a.tag).localeCompare(String(b.tag)));
-  sel.innerHTML=teams.length? `<option value="">${tx('selTeam')}</option>`+teams.map(t=>`<option value="${t.seq}">${esc(t.tag||tx('noTag'))} · ${esc(t.repName||'')} (${parseInt(t.pax,10)||0}名) · ${esc(t.accom)}</option>`).join('')
+  sel.innerHTML=teams.length? `<option value="">${tx('selTeam')}</option>`+teams.map(t=>`<option value="${t.seq}">${esc(t.tag||tx('noTag'))} · ${esc(t.repName||'')} (${parseInt(t.pax,10)||0}名) · ${esc(accomL(t.accom))}</option>`).join('')
     : `<option value="">${tx('noTeamDay')}</option>`;
   if(prev&&teams.some(t=>String(t.seq)===prev)) sel.value=prev; else sel.value='';
 }
@@ -457,7 +458,7 @@ function renderTeamEdit(){
   tbody.innerHTML=rows.map(t=>{ const ex=!!t.excluded;
     return `<tr data-seq="${t.seq}" style="${ex?'opacity:.45':''}">
       <td class="c mono">${esc((t.dep||'').slice(5))}</td>
-      <td class="c">${esc(t.accom)}</td>
+      <td class="c">${esc(accomL(t.accom))}</td>
       <td>${ex?`<span style="text-decoration:line-through">${esc(t.repName||'')}</span>${t.excludeReason?`<br><span class="exr" title="${tx('exReasonTitle')}">夕食除外: ${esc(t.excludeReason)}</span>`:''}`:esc(t.repName||'')}</td>
       <td class="c mono">${esc(teamDisplayTag(t))}</td>
       <td class="c">${tgroupBadge(t.tgroup)}</td>
@@ -546,7 +547,7 @@ function renderAccomChips(){
   const accoms=[...new Set(TEAMS.map(t=>t.accom).filter(Boolean))].sort((a,b)=>{const ai=ACCOM_ORDER.indexOf(a),bi=ACCOM_ORDER.indexOf(b);return (ai<0?9:ai)-(bi<0?9:bi);});
   const box=$('#accomchips'); if(!box)return;
   box.innerHTML=`<div class="chip ${ACCOMSEL.size===0?'on':''}" data-a="__all">${tx('all')}</div>`
-    + accoms.map(a=>`<div class="chip ${ACCOMSEL.has(a)?'on':''}" data-a="${esc(a)}">${esc(a)}</div>`).join('');
+    + accoms.map(a=>`<div class="chip ${ACCOMSEL.has(a)?'on':''}" data-a="${esc(a)}">${esc(accomL(a))}</div>`).join('');
   box.querySelectorAll('.chip[data-a]').forEach(c=>c.addEventListener('click',()=>{ const a=c.dataset.a; if(a==='__all'){ACCOMSEL.clear();}else{ACCOMSEL.has(a)?ACCOMSEL.delete(a):ACCOMSEL.add(a);} renderAccomChips(); renderDateChips(); renderPreview(); }));
 }
 

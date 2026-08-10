@@ -15,6 +15,32 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  // ── 숙소·구역 표시 라벨 (ja/ko/en) ──────────────────────────────────────
+  //  DB 저장값은 한국어 그대로 두고 화면 표기만 언어 토글에 맞춘다(필터 키·집계 불변).
+  //  정식 명칭: 간지호텔 = くじゅう赤川温泉 ザ・ガンジー ホテル＆リゾート / The Guernsey Hotel
+  //             (ガンジー = 건지 젖소 Guernsey. Gandhi 아님)
+  //             시즈노야도 = 満願寺温泉 志津の宿 / Shizu-no-Yado
+  //  ⚠ 인쇄 산출물(手配書 등)은 일본어 고정 → 각 페이지의 인쇄 전용 함수를 쓴다.
+  var ACCOM_LABEL = {
+    '야마나미리조트': { ja: 'やまなみリゾート', ko: '야마나미리조트', en: 'Yamanami Resort' },
+    '쿠주힐즈':       { ja: '久住ヒルズ',       ko: '쿠주힐즈',       en: 'Kuju Hills' },
+    '간지호텔':       { ja: 'ガンジーホテル',   ko: '간지호텔',       en: 'The Guernsey Hotel' },
+    '시즈노야도 료칸':{ ja: '志津の宿',         ko: '시즈노야도 료칸', en: 'Shizu-no-Yado' },
+    '시즈노야도':     { ja: '志津の宿',         ko: '시즈노야도',     en: 'Shizu-no-Yado' },
+    // 야마나미 안의 구역(room.html 필터 등)
+    '골프텔':         { ja: 'ゴルフテル',       ko: '골프텔',         en: 'Golftel' },
+    '관내별장':       { ja: '館内別荘',         ko: '관내별장',       en: 'On-site Villa' },
+    '소보별장':       { ja: '祖母別荘',         ko: '소보별장',       en: 'Sobo Villa' },
+    '아소별장':       { ja: '阿蘇別荘',         ko: '아소별장',       en: 'Aso Villa' },
+    '돔하우스':       { ja: 'ドームハウス',     ko: '돔하우스',       en: 'Dome House' }
+  };
+  // 미등록 이름은 원문 그대로 반환(신규 숙소가 들어와도 화면이 비지 않게).
+  function accomLabel(name, lang) {
+    var m = ACCOM_LABEL[name];
+    if (!m) return name == null ? '' : String(name);
+    return m[lang] || m.ja || String(name);
+  }
+
   // ── 회원 판정 (3컬럼 OR · 회원 우선) ─────────────────────────────────────
   //  고객등급(T)·회원권구분(V)·회원구분(U) 셋 중 하나라도 회원신호면 회원.
   //  초기 회원등록 오류로 컬럼이 어긋난 케이스 대비(Min 결정).
@@ -367,6 +393,8 @@
   return {
     looksMember: looksMember,
     isMember: isMember,
+    ACCOM_LABEL: ACCOM_LABEL,
+    accomLabel: accomLabel,
     gradeLabel: gradeLabel,
     fmtDate: fmtDate,
     parseFlexDate: parseFlexDate,

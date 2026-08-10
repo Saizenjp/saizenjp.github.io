@@ -208,3 +208,21 @@ test('nmCodeConflict: 30일 쿨다운', () => {
   // 날짜 없음 = 안전 충돌
   assert.equal(SZ.nmCodeConflict('','2026-07-05','2026-08-05','2026-08-09'), true);
 });
+
+// ── 숙소·구역 표시 라벨 (ja/ko/en) ──────────────────────────────────────
+test('accomLabel: 3개국어 라벨 · 키 패리티 · 미등록 폴백', () => {
+  assert.equal(SZCore.accomLabel('간지호텔', 'en'), 'The Guernsey Hotel');   // Gandhi 아님(건지 젖소 Guernsey)
+  assert.equal(SZCore.accomLabel('시즈노야도 료칸', 'ja'), '志津の宿');       // 満願寺温泉 志津の宿(가타카나 음차 아님)
+  assert.equal(SZCore.accomLabel('시즈노야도', 'ja'), '志津の宿');            // 구역 표기도 동일
+  assert.equal(SZCore.accomLabel('야마나미리조트', 'ko'), '야마나미리조트');
+  assert.equal(SZCore.accomLabel('돔하우스', 'en'), 'Dome House');
+  // 3개국어 전부 채워져 있어야 함(빈 값이면 화면에 빈칸)
+  for (const k of Object.keys(SZCore.ACCOM_LABEL)) {
+    for (const l of ['ja', 'ko', 'en']) {
+      assert.ok(SZCore.accomLabel(k, l), `${k}.${l} 누락`);
+    }
+  }
+  // 미등록 이름은 원문 그대로(신규 숙소 유입 시 화면이 비지 않게)
+  assert.equal(SZCore.accomLabel('신규숙소', 'en'), '신규숙소');
+  assert.equal(SZCore.accomLabel(null, 'ko'), '');
+});
