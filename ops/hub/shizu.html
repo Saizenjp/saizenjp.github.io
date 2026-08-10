@@ -72,6 +72,7 @@
   .shz-pv-dt{background:#ececec!important;font-size:13px;font-weight:700}
   .shz-pv-dt span{font-size:10px;color:#666}
   .shz-pv-io{font-size:10px;color:#333;letter-spacing:-.02em}
+  .shz-pv-bd{font-size:10px;color:#333;text-align:right;background:#fff;line-height:1.35;white-space:nowrap}
   .shz-pv-lb{background:#ececec;font-weight:700;color:#1a1a1a;width:78px}
   .shz-pv-nm{text-align:right;background:#fff}
   .shz-pv-rep{text-align:center;background:#f7f7f4;font-size:11px;font-weight:700;color:#444}
@@ -144,6 +145,7 @@
     .shz-pv-dt{background:#e0e0e0!important;font-size:15px;font-weight:800}
     .shz-pv-dt span{font-size:11px;color:#555}
     .shz-pv-io{font-size:11px}
+    .shz-pv-bd{font-size:11px;text-align:right;font-weight:700;line-height:1.3;white-space:nowrap}
     .shz-pv-lb{background:#e6e6e6!important;font-weight:800;width:74px;font-size:12px}
     .shz-pv-rep{text-align:center;font-weight:800;font-size:15px;color:#111;background:#f0f0ec!important}   /* 대표자=크게 */
     .shz-loc{border:1px solid #333;color:#000;font-size:10px;font-weight:800}                                /* 現地=흑백 또렷 */
@@ -398,6 +400,21 @@ function parseShizuSpan(remark, product, bookDep, bookArr){
 }
 function nameOf(g){ return titleCase(g.nameEn)||g.nameKr||''; }
 function genderOf(g){ return g.gender||''; }
+// 生年月日 표기 — 료칸 숙박자명부용. passengers.birth(date) 우선, 없으면 birth_yymmdd(6자리) 보정.
+//   6자리는 세기 판단이 필요: 두 자리 연도가 현재연도 뒤 2자리보다 크면 19xx, 아니면 20xx.
+function fmtBirth(b, y6){
+  const s=String(b||'').slice(0,10);
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s.replace(/-/g,'/');
+  const t=String(y6||'').replace(/\D/g,'');
+  if(t.length===6){
+    const yy=+t.slice(0,2), mm=t.slice(2,4), dd=t.slice(4,6);
+    const cut=new Date().getFullYear()%100;
+    const yyyy=(yy>cut?1900:2000)+yy;
+    return `${yyyy}/${mm}/${dd}`;
+  }
+  return '';
+}
+function birthOf(g){ return g.birth||''; }
 // 선택 월의 점유 밤(빈 날 테이블 방지)
 function axis(){ const set=new Set(); GUESTS.forEach(g=>nightsOf(g).forEach(d=>{ if(inScope(d)) set.add(d); })); UNASSIGNED.forEach(r=>nightsBetween(r.dep,r.arr).forEach(d=>{ if(inScope(d)) set.add(d); })); return [...set].sort(); }
 // 화면·인쇄·xlsx 공통 대상 날짜: 특정일 선택 시 그날만, 아니면 그 달 전체
@@ -523,8 +540,12 @@ async function load(){
     const gms = mids.length? await pagedIn('guest_members','id,event_seq,name_kr,name_en,seq_in_team,is_rep','id',mids) : [];
     const gmMap={}; gms.forEach(g=>gmMap[g.id]=g);
     // passengers(성별) — seq_in_team 불일치 → event_seq+이름으로 매칭
-    const pxs = seqs.length? await pagedIn('passengers','event_seq,name_kr,gender','event_seq',seqs) : [];
-    const genMap={}; pxs.forEach(p=>{ const k=p.event_seq+'|'+String(p.name_kr||'').trim(); if(!genMap[k]) genMap[k]=normGender(p.gender); });
+    const pxs = seqs.length? await pagedIn('passengers','event_seq,name_kr,gender,birth,birth_yymmdd','event_seq',seqs) : [];
+    const genMap={}, birthMap={};
+    pxs.forEach(p=>{ const k=p.event_seq+'|'+String(p.name_kr||'').trim();
+      if(!genMap[k]) genMap[k]=normGender(p.gender);
+      if(!birthMap[k]) birthMap[k]=fmtBirth(p.birth,p.birth_yymmdd);   // 予約表 生年月日(료칸 숙박자명부용)
+    });
     // ※ 온천 사전신청·물채우기 직접 관리 폐지(Min) — 현지에서는 아래 現地備考(메리트 현지비고)만 보고 판단
     // 비고·현지비고(+일본어 캐시) — 예약표 참고용
     const bks = seqs.length? await pagedIn('bookings','event_seq,event_no,rep_name,product_name,remark,remark_local,remark_ja,remark_local_ja','event_seq',seqs) : [];
@@ -539,7 +560,8 @@ async function load(){
       return { id:r.id, invId:r.inventory_id, member_id:r.member_id, event_seq:r.event_seq, room_no:r.room_no,
         ci:String(r.check_in).slice(0,10), co:String(r.check_out).slice(0,10), src:r.assign_source||'auto',
         seq:gm.seq_in_team||99, isRep:!!gm.is_rep,
-        nameKr, nameEn:gm.name_en||'', gender:genMap[r.event_seq+'|'+nameKr]||'' };
+        nameKr, nameEn:gm.name_en||'', gender:genMap[r.event_seq+'|'+nameKr]||'',
+        birth:birthMap[r.event_seq+'|'+nameKr]||'' };
     });
     // ── 전체 로스터(미배정 추적): 그 달 시즈 팀 전원 − 배정된 사람 = 미배정 ──
     try{
@@ -1192,7 +1214,8 @@ function renderPreview(){
       // 別棟 방 + 現地備考에 별채/별관 신호 = 온천(개인탕) 준비 팀 → ♨ 표시
       const bk=BOOK[rep.event_seq]||{};
       const onsen=SHZ_BYEOLCHE.includes(room) && SHZ_ANNEX_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''));
-      return { name:esc(nameOf(rep))+'様',
+      return { name:occ.map(g=>esc(nameOf(g))+'様').join('<br>'),                 // 방 전원(Min) — 生年月日과 1:1
+               birth:occ.map(g=>esc(birthOf(g))||'&nbsp;').join('<br>'),          // 같은 순서로 생년월일
         rep: esc((REPEN[rep.event_seq]&&REPEN[rep.event_seq].en) || String((BOOK[rep.event_seq]||{}).rep_name||'').trim()),   // 팀 대표자 영문명(お名前과 통일). 없으면 한글 폴백
         mf:mf(occ), stay:`${zen(rn.length)}連泊 ${zen(rn.indexOf(date)+1)}`, cnt:zen(occ.length),
         io: rep.ci?`${md(rep.ci)}〜${md(rep.co)}`:'', onsen:onsen, local:isLocalSeq(rep.event_seq),
@@ -1204,6 +1227,7 @@ function renderPreview(){
       <tr class="shz-pv-hd"><th class="shz-pv-dt">${zen(d.getMonth()+1)}／${zen(d.getDate())}<br><span>${SHZ_DOW[d.getDay()]}</span></th>${SHZ_ROOMS.map(r=>`<th${SHZ_BYEOLCHE.includes(r)?' class="bz"':''}><span class="shz-rno">${SHZ_ROOMNO[r]||''}</span>${r}</th>`).join('')}<th class="shz-pv-k">合計</th></tr>
       <tr><td class="shz-pv-lb">代表者</td>${cells.map(c=>`<td class="shz-pv-rep">${c.local?'<span class="shz-loc">現地</span>':''}${c.rep?c.rep+'様':''}</td>`).join('')}<td class="shz-pv-k"></td></tr>
       <tr><td class="shz-pv-lb">お名前</td>${SHZ_ROOMS.map((room,ri)=>{const c=cells[ri]; const cl=roomClosedOnDate(room,date); const chk=c.onsen?'<span class="shz-onsen-chk" title="別棟 内湯(개인탕) 물채우기">♨</span>':''; return `<td class="shz-pv-nm${cl?' shz-closed':''}">${cl?'🔒 ':''}${chk}${c.name}</td>`;}).join('')}<td></td></tr>
+      <tr><td class="shz-pv-lb">生年月日</td>${cells.map(c=>`<td class="shz-pv-bd">${c.birth||''}</td>`).join('')}<td class="shz-pv-k"></td></tr>
       <tr><td class="shz-pv-lb">IN／OUT</td>${cells.map(c=>`<td class="shz-pv-io">${c.io||''}</td>`).join('')}<td class="shz-pv-k"></td></tr>
       <tr><td class="shz-pv-lb">大人</td>${cells.map(c=>`<td>${c.mf}</td>`).join('')}<td class="shz-pv-k">大 ${zen(tot)} 名</td></tr>
       <tr><td class="shz-pv-lb">合計人数</td>${cells.map(c=>`<td>${c.cnt}</td>`).join('')}<td class="shz-pv-k">計 ${zen(tot)} 名</td></tr>
