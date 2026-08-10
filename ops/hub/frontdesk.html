@@ -86,6 +86,12 @@
   .trow:hover{border-color:var(--accent);box-shadow:0 3px 10px rgba(15,23,42,.10);transform:translateY(-1px);background:var(--surface2)}
   .trow:active{transform:translateY(0)}
   .trow.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  /* 체크아웃 처리 — 완료 팀은 눌러 죽이고, 선택 체크박스는 체크아웃 섹션에만 */
+  .trow.done{opacity:.62;background:var(--surface2)}
+  .cock{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex:0 0 auto}
+  .cobadge{font-size:10.5px;font-weight:800;color:#fff;background:var(--ok);border-radius:5px;padding:1px 6px;white-space:nowrap}
+  .cobar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0 0 8px}
+  .cohint{font-size:11px;color:var(--muted)}
   .trow::after{content:"›";font-size:19px;font-weight:800;line-height:1;color:var(--border2);margin-left:2px;transition:.12s;flex:none}
   .trow:hover::after{color:var(--accent);transform:translateX(2px)}
   .trow.sel::after{color:var(--accent)}
@@ -177,7 +183,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=13"></script>
-<script src="../assets/saizen-ops.js?v=15.41"></script>
+<script src="../assets/saizen-ops.js?v=15.42"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -192,6 +198,10 @@ const L={
     emptyConnect:'上部で接続すると本日の状況が表示されます。', detailNone:'チームを選択すると<br>客室・残高・メモがここに表示されます。',
     kpiIn:'🛬 チェックイン', kpiOut:'🛫 チェックアウト', kpiStay:'🏨 滞在中(連泊)', kpiDinner:'🍽 本日夕食', kpiDue:'💴 未収残高', kpiGo:'↓ 一覧へ',
     secIn:'🛬 本日チェックイン', secOut:'🛫 本日チェックアウト', secStay:'🏨 滞在中(連泊)',
+    connectFirst:'先に接続してください', coDone:'チェックアウト済', btnCo:'✓ チェックアウト', btnCoUndo:'↩ チェックアウト取消', btnCoSel:(n)=>`✓ 選択 ${n}件 チェックアウト`, btnCoAll:'✓ 本日退室 全件',
+    coNone:'チェックアウトするチームを選択してください', coConfirm:(n)=>`${n}チームをチェックアウト処理しますか？`,
+    coDue:(n,a)=>`未決済 ${n}チーム（${a}）が含まれています。そのまま進めますか？`, coOk:(n)=>`${n}チーム チェックアウト`, coFail:'チェックアウト失敗: ',
+    coUndoConfirm:'チェックアウトを取り消しますか？', coHint:'チェックアウトすると注文・請求QRは無効になります',
     teamWord:'チーム', nameWord:'名', teamPrefix:'チーム', unassigned:'未割当', noneApplicable:'該当なし',
     searchNone:'検索結果なし — 別の名前・タグ・部屋番号で検索してください', honor:'様',
     roster:'👥 名簿', roomNo:'🛏 部屋番号', charge:'請求', payment:'支払', balance:'残高',
@@ -211,6 +221,10 @@ const L={
     emptyConnect:'상단에서 연결하면 오늘 현황이 표시됩니다.', detailNone:'팀을 선택하면<br>방·잔액·메모가 여기 표시됩니다.',
     kpiIn:'🛬 체크인', kpiOut:'🛫 체크아웃', kpiStay:'🏨 체류중(연박)', kpiDinner:'🍽 오늘 석식', kpiDue:'💴 미수 잔액', kpiGo:'↓ 목록으로',
     secIn:'🛬 오늘 체크인', secOut:'🛫 오늘 체크아웃', secStay:'🏨 체류중(연박)',
+    connectFirst:'먼저 연결하세요', coDone:'체크아웃 완료', btnCo:'✓ 체크아웃', btnCoUndo:'↩ 체크아웃 취소', btnCoSel:(n)=>`✓ 선택 ${n}팀 체크아웃`, btnCoAll:'✓ 오늘 퇴실 전체',
+    coNone:'체크아웃할 팀을 선택하세요', coConfirm:(n)=>`${n}팀을 체크아웃 처리할까요?`,
+    coDue:(n,a)=>`미결제 ${n}팀(${a})이 포함되어 있습니다. 그래도 진행할까요?`, coOk:(n)=>`${n}팀 체크아웃`, coFail:'체크아웃 실패: ',
+    coUndoConfirm:'체크아웃을 취소할까요?', coHint:'체크아웃하면 주문·청구 QR이 만료됩니다',
     teamWord:'팀', nameWord:'名', teamPrefix:'팀', unassigned:'미배정', noneApplicable:'해당 없음',
     searchNone:'검색 결과 없음 — 다른 이름·태그·방번호로 검색해 보세요', honor:'様',
     roster:'👥 명단', roomNo:'🛏 방번호', charge:'청구', payment:'결제', balance:'잔액',
@@ -230,6 +244,10 @@ const L={
     emptyConnect:'Connect above to see today’s status.', detailNone:'Select a team to see<br>room, balance &amp; memo here.',
     kpiIn:'🛬 Check-in', kpiOut:'🛫 Check-out', kpiStay:'🏨 In-house (staying)', kpiDinner:'🍽 Dinner today', kpiDue:'💴 Outstanding', kpiGo:'↓ list',
     secIn:'🛬 Check-in today', secOut:'🛫 Check-out today', secStay:'🏨 In-house (staying)',
+    connectFirst:'Connect first', coDone:'Checked out', btnCo:'✓ Check out', btnCoUndo:'↩ Undo check-out', btnCoSel:(n)=>`✓ Check out ${n} selected`, btnCoAll:'✓ All departures today',
+    coNone:'Select teams to check out', coConfirm:(n)=>`Check out ${n} team(s)?`,
+    coDue:(n,a)=>`${n} team(s) with an outstanding balance (${a}) are included. Proceed anyway?`, coOk:(n)=>`${n} team(s) checked out`, coFail:'Check-out failed: ',
+    coUndoConfirm:'Undo this check-out?', coHint:'Order & bill QR expires once checked out',
     teamWord:'teams', nameWord:' ppl', teamPrefix:'Team', unassigned:'Unassigned', noneApplicable:'None',
     searchNone:'No results — try another name / tag / room', honor:'',
     roster:'👥 Roster', roomNo:'🛏 Room', charge:'Charges', payment:'Paid', balance:'Balance',
@@ -253,7 +271,7 @@ function renderAccomChips(){
   const accoms=[...new Set(state.teams.map(t=>t.accom).filter(Boolean))]
     .sort((a,b)=>{const O=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];const ai=O.indexOf(a),bi=O.indexOf(b);return (ai<0?9:ai)-(bi<0?9:bi);});
   const chip=(k,l,on)=>`<div class="chip${on?' on':''}" data-a="${esc(k)}">${esc(l)}</div>`;
-  box.innerHTML=chip('__all',tx('all'),state.accomSel.size===0)+accoms.map(a=>chip(a,a,state.accomSel.has(a))).join('');
+  box.innerHTML=chip('__all',tx('all'),state.accomSel.size===0)+accoms.map(a=>chip(a,accomL(a),state.accomSel.has(a))).join('');
   box.querySelectorAll('[data-a]').forEach(c=>c.addEventListener('click',()=>{
     const a=c.dataset.a;
     if(a==='__all') state.accomSel.clear();
@@ -333,7 +351,7 @@ async function load(){
     const G={},R={},BAL={},NOTE={},MEM={},ECO={},OVR={},KEY={},FU={},MB={};
     for(let i=0;i<seqs.length;i+=300){
       const chunk=seqs.slice(i,i+300);
-      const {data:gs}=await supa.from('guests').select('event_seq,team_tag,group_code,accom,pax').in('event_seq',chunk); (gs||[]).forEach(g=>G[g.event_seq]=g);
+      const {data:gs}=await supa.from('guests').select('event_seq,team_tag,group_code,accom,pax,check_status').in('event_seq',chunk); (gs||[]).forEach(g=>G[g.event_seq]=g);
       const rr=await pagedQuery(()=>supa.from('rooms').select('event_seq,room_no').in('event_seq',chunk)); (rr.data||[]).forEach(r=>{if(r.room_no){(R[r.event_seq]=R[r.event_seq]||new Set()).add(r.room_no);}});
       const {data:nt}=await supa.from('event_notes').select('event_seq,remarks,memo,team_label').in('event_seq',chunk); (nt||[]).forEach(n=>NOTE[n.event_seq]=n);
       // 동행자 명단 + 조기퇴실(actual_dep) + 회원·등급 집계 — "누구와 누가 팀인지" 검색·표시 + 운영상태
@@ -360,7 +378,8 @@ async function load(){
         accom:g.accom||'',tag,rooms,bal:bal.bal,gross:bal.gross,paid:bal.paid,cnt:bal.cnt,
         memo,remarks:n.remarks||'',noteMemo:n.memo||'',teamLabel:n.team_label||'',members,search,
         ecoCnt:ECO[b.event_seq]||0, excluded:!!ov.excluded, dinnerSplit:!!ov.dinner_split, teamGroup:ov.team_group||'',
-        fobs:KEY[b.event_seq]||[], followups:FU[b.event_seq]||[], memb:MB[b.event_seq]||{n:0,g:{}}};
+        fobs:KEY[b.event_seq]||[], followups:FU[b.event_seq]||[], memb:MB[b.event_seq]||{n:0,g:{}},
+        co:(g.check_status==='체크아웃')};   // 체크아웃 처리 여부(담당자 버튼) — QR 만료 기준
     });
     state.byId={}; state.teams.forEach(t=>state.byId[t.seq]=t);
     // 확인 필요(후속 조치) — 미완료 전체(날짜 무관: 놓치지 않게 항상 노출)
@@ -426,16 +445,26 @@ function render(){
   const block=(kind,title,list)=>{const f=list.filter(qp);return (q&&!f.length)?'':sect(kind,title,f);};
   const html=block('arr',tx('secIn'),arr)+block('dep',tx('secOut'),dep)+block('stay',tx('secStay'),stay);
   $('#lists').innerHTML = html || `<div class="empty">${q?tx('searchNone'):tx('noneApplicable')}</div>`;
-  $('#lists').querySelectorAll('[data-seq]').forEach(el=>el.addEventListener('click',()=>selectTeam(Number(el.dataset.seq))));
+  $('#lists').querySelectorAll('[data-seq]').forEach(el=>el.addEventListener('click',e=>{
+    if(e.target.classList&&e.target.classList.contains('cock')) return;   // 체크박스 클릭은 행 선택으로 번지지 않게
+    selectTeam(Number(el.dataset.seq));
+  }));
+  $('#lists').querySelectorAll('.cock').forEach(c=>c.addEventListener('change',refreshCoBar));
+  const bSel=document.getElementById('btn-co-sel'); if(bSel) bSel.addEventListener('click',()=>doCheckout(coSelected(),'체크아웃'));
+  // 「전체」는 화면에 보이는 것만(검색 중이면 검색 결과) — 보이지 않는 팀이 처리되지 않게
+  const bAll=document.getElementById('btn-co-all'); if(bAll) bAll.addEventListener('click',()=>doCheckout(dep.filter(qp).filter(t=>!t.co).map(t=>t.seq),'체크아웃'));
+  refreshCoBar();
   if(state.selSeq && state.byId[state.selSeq]) renderDetail(state.byId[state.selSeq]);
 }
 function kpi(l,v,cls,go){return `<div class="kpi ${cls||''} ${go?'go':''}"${go?` data-go="${go}"`:''}><div class="l">${l}</div><div class="v">${v}</div>${go?`<span class="goh">${tx('kpiGo')}</span>`:''}</div>`;}
 function sect(kind,title,list){
   const nw=tx('nameWord'), tw=tx('teamWord');
+  const co=(kind==='dep');   // 체크아웃 섹션에만 선택 체크박스·처리 버튼(개별/다중/일괄)
   let rows = list.length? list.sort((a,b)=>(a.accom||'').localeCompare(b.accom||'')||(a.rep||'').localeCompare(b.rep||'')).map(t=>{
     const balCls=t.bal>0?'due':(t.cnt?'':'zero');
-    return `<div class="trow ${t.seq===state.selSeq?'sel':''}" data-seq="${t.seq}">
-      <span class="tag">${esc(t.tag)}</span>
+    return `<div class="trow ${t.seq===state.selSeq?'sel':''}${t.co?' done':''}" data-seq="${t.seq}">
+      ${co?`<input type="checkbox" class="cock" data-cos="${t.seq}"${t.co?' disabled':''}>`:''}
+      <span class="tag">${esc(t.tag)}</span>${t.co?`<span class="cobadge">${tx('coDone')}</span>`:''}
       <span class="rep">${esc(t.rep)}</span>${membChip(t)}
       <span class="pax">${t.pax}${nw}</span>
       <span class="room">${t.rooms.length?t.rooms.join(','):`<span style="color:var(--muted)">${tx('unassigned')}</span>`}</span>
@@ -443,7 +472,36 @@ function sect(kind,title,list){
       <span class="bal ${balCls}">${t.cnt?yen(t.bal):'-'}</span>
     </div>`;
   }).join('') : `<div class="empty">${tx('noneApplicable')}</div>`;
-  return `<div class="sect" id="sec-${kind}"><div class="sh ${kind}">${title}<span class="c">${list.length}${tw}</span></div>${rows}</div>`;
+  const bar=co&&list.length ? `<div class="cobar">
+      <button class="btn sm" id="btn-co-sel" type="button">${tx('btnCoSel')(0)}</button>
+      <button class="btn sm ghost" id="btn-co-all" type="button">${tx('btnCoAll')}</button>
+      <span class="cohint">${tx('coHint')}</span>
+    </div>` : '';
+  return `<div class="sect" id="sec-${kind}"><div class="sh ${kind}">${title}<span class="c">${list.length}${tw}</span></div>${bar}${rows}</div>`;
+}
+// ── 체크아웃 처리 ────────────────────────────────────────────────────────
+//  담당자가 명시적으로 누르는 행위 = 정산완료 신호(Min 결정). 잔액 0 자동판정은
+//  아무것도 안 산 팀이 입실 첫날부터 잔액 0이라 쓸 수 없다.
+//  잔액이 남아도 막지 않는다(후불·B2B 이월이 실제로 있음) — 경고 후 진행.
+function coSelected(){ return [...document.querySelectorAll('.cock:checked')].map(c=>Number(c.dataset.cos)); }
+function refreshCoBar(){ const b=document.getElementById('btn-co-sel'); if(b) b.textContent=tx('btnCoSel')(coSelected().length); }
+async function doCheckout(seqs,status){
+  if(!supa){ toast(tx('connectFirst'),'err'); return; }
+  seqs=[...new Set(seqs)].filter(Boolean);
+  if(!seqs.length){ toast(tx('coNone'),'warn'); return; }
+  if(status==='체크아웃'){
+    const due=seqs.map(s=>state.byId[s]).filter(t=>t&&t.bal>0);
+    const msg=due.length ? tx('coDue')(due.length, yen(due.reduce((s,t)=>s+t.bal,0)))
+                         : tx('coConfirm')(seqs.length);
+    if(!confirm(msg)) return;
+  }else if(!confirm(tx('coUndoConfirm'))) return;
+  try{
+    const {data,error}=await supa.rpc('set_check_status',{p_seqs:seqs,p_status:status,p_by:curUser()});
+    if(error) throw error;
+    seqs.forEach(s=>{ if(state.byId[s]) state.byId[s].co=(status==='체크아웃'); });
+    render();
+    toast(tx('coOk')((data&&data.updated)||seqs.length),'ok');
+  }catch(e){ toast(tx('coFail')+e.message,'err'); }
 }
 // 목록 행 회원 칩 — 클릭 전 VIP 식별. 등급 라벨 그대로(서열 없음), 없으면 '회원'
 function membChip(t){
@@ -494,8 +552,11 @@ function renderDetail(t){
     <div class="links">
       <a class="btn ghost sm" href="room.html?ym=${ymOf(t.dep)}&date=${state.day}&seq=${t.seq}" title="${tx('linkRoomT')}">${tx('linkRoom')}</a>
       <a class="btn ghost sm" href="settle.html?ym=${ymOf(t.dep)}&seq=${t.seq}" title="${tx('linkSettleT')}">${tx('linkSettle')}</a>
+      <button class="btn sm${t.co?' ghost':''}" id="btn-co-one" type="button" title="${tx('coHint')}">${t.co?tx('btnCoUndo'):tx('btnCo')}</button>
     </div>`;
   $('#detail').querySelectorAll('.ntf').forEach(el=>el.addEventListener('blur',()=>saveNote(el.dataset.seq,el.dataset.nf,el.value)));
+  const bOne=document.getElementById('btn-co-one');
+  if(bOne) bOne.addEventListener('click',()=>doCheckout([t.seq], t.co?'체크인':'체크아웃'));
 }
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 // 프론트에서 바로 비고/메모 저장 → event_note_set RPC(front 영역 허용, 변경이력 자동기록). 별도 메모 페이지 불요.
