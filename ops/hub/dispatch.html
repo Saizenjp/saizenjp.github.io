@@ -195,6 +195,15 @@ let RFROM='', RTO='';   // 로드 날짜범위(달력) — 월경계 팀(7↔8�
 let TOKMAP={};   // event_seq → 주문 QR 토큰(order_tokens)
 const MASK=true;   // 여권·전화번호 항상 숨김(체크박스 폐지, Min)
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
+// 숙소명 표시 라벨 — DB 저장값(한국어)은 그대로 두고 화면 표기만 언어 토글에 맞춤.
+//   ※인쇄물(手配書)은 일본어 고정 → dispatchAccomJp 별도 유지.
+const ACCOM_LABEL={
+  '야마나미리조트':{ja:'やまなみリゾート', ko:'야마나미리조트', en:'Yamanami Resort'},
+  '쿠주힐즈':      {ja:'久住ヒルズ',       ko:'쿠주힐즈',      en:'Kuju Hills'},
+  '간지호텔':      {ja:'ガンジーホテル',   ko:'간지호텔',      en:'Gandhi Hotel'},
+  '시즈노야도 료칸':{ja:'シズノヤド旅館',   ko:'시즈노야도 료칸',en:'Shizunoyado Ryokan'}
+};
+function accomLabel(a){ const m=ACCOM_LABEL[a]; return (m&&m[lang()])||a||''; }
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
@@ -400,7 +409,7 @@ function renderAccomChips(){
   const accoms=[...new Set(ROWS.map(r=>r.accom).filter(Boolean))].sort((a,b)=>{const ai=ACCOM_ORDER.indexOf(a),bi=ACCOM_ORDER.indexOf(b);return (ai<0?9:ai)-(bi<0?9:bi);});
   const box=$('#accomchips'); if(!box)return;
   box.innerHTML=`<div class="chip ${ACCOMSEL.size===0?'on':''}" data-a="__all">${tx('all')}</div>`
-    + accoms.map(a=>`<div class="chip ${ACCOMSEL.has(a)?'on':''}" data-a="${esc(a)}">${esc(a)}</div>`).join('');
+    + accoms.map(a=>`<div class="chip ${ACCOMSEL.has(a)?'on':''}" data-a="${esc(a)}">${esc(accomLabel(a))}</div>`).join('');
   box.querySelectorAll('.chip[data-a]').forEach(c=>c.addEventListener('click',()=>{ const a=c.dataset.a; if(a==='__all'){ACCOMSEL.clear();}else{ACCOMSEL.has(a)?ACCOMSEL.delete(a):ACCOMSEL.add(a);} renderAccomChips(); renderList(); }));
 }
 
@@ -650,7 +659,7 @@ function renderList(){
     <td class="c mono">${esc(d.rec.arr||'')}</td>
     <td class="c">${d.rec.nights}${esc(tx('unitNights'))}</td>
     <td class="c">${d.rec.pax}${esc(tx('unitPax'))}</td>
-    <td class="c">${esc(d.accom||'')}</td>
+    <td class="c">${esc(accomLabel(d.accom))}</td>
     <td class="c">${teamGroupBadge(d.rec.teamGroup)}</td>
     <td class="c">${esc(d.rec.memberType||'-')}</td>
     <td style="max-width:180px;font-size:11.5px;white-space:normal;line-height:1.35;color:#333">${d.rec.remark?esc(d.rec.remark):'<span style="color:var(--muted)">-</span>'}</td>
@@ -951,7 +960,7 @@ window.onSaizenLangChange=function(){
   applyStatic();
   if(!ROWS.length) return;
   const keep=new Set(_dCkSeqs().map(String));
-  renderList();
+  renderAccomChips(); renderList();
   document.querySelectorAll('#list .d-ck').forEach(c=>{ if(keep.has(String(c.dataset.seq))) c.checked=true; });
   updateFab();
 };
