@@ -101,7 +101,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=12"></script>
-<script src="../assets/saizen-ops.js?v=15.40"></script>
+<script src="../assets/saizen-ops.js?v=15.41"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -233,6 +233,33 @@ function dispatchNoteSegments(rec){ const segs=[]; const nl=()=>{ if(segs.length
   // ※現地メモ(memo)는 参考事項에서 분리 → 아래 별도 '現地メモ' 박스로 출력
   while(segs.length&&segs[0].t==='\n') segs.shift(); return segs; }
 function dispatchNotesHTML(rec){ return dispatchNoteSegments(rec).map(s=>s.b?`<b>${esc(s.t)}</b>`:esc(s.t)).join(''); }
+// ── EVカート(전기카트) 신청 추출 — 현지비고 등에 적힌 카트 문구만 뽑아 앞면에 별도 표기 ──
+//   엠클릭 '현지 비고'에 「전기카트 2대」처럼 적히면 현장이 手配書 앞면에서 바로 확인(뒷면 記入表는 정산 기입용).
+//   · 카트는 記入表 구분에서도 ② EVカート 로 라운딩과 별개 항목 → 앞면도 전용 섹션으로 노출.
+//   · 소스=현지비고 우선 + 비고·참고사항도 함께 훑음(담당자가 다른 칸에 적어도 놓치지 않게).
+const DISPATCH_CART_KW=['전기카트','전동카트','전기 카트','전동 카트','ev카트','ev 카트','카트','cart','カート','電動'];
+// 룸차지(객실 추가·업그레이드·싱글차지) — 記入表 ① ルームチャージ 자동 기입용
+const DISPATCH_ROOM_KW=['룸차지','룸 차지','룸업','룸 업','업그레이드','싱글차지','싱글 차지','싱글차지','추가객실','객실추가','객실 추가','room charge','ルームチャージ','アップグレード'];
+// 비고류에서 키워드에 걸리는 '문장 조각만' 뽑아 합침(줄바꿈·/ 로 분리, 중복 제거)
+function pickNoteHits(rec, kws){
+  const src=[rec.remarkLocal,rec.noteRemarks,rec.remark].map(s=>String(s||'').trim()).filter(Boolean).join('\n');
+  if(!src) return '';
+  const hits=src.split(/[\n\/]+/).map(s=>s.trim()).filter(s=>{
+    if(!s) return false; const low=s.toLowerCase();
+    return kws.some(kw=>low.includes(kw));
+  });
+  return [...new Set(hits)].join(' / ');
+}
+function evCartText(rec){ return pickNoteHits(rec, DISPATCH_CART_KW); }
+function roomChargeText(rec){ return pickNoteHits(rec, DISPATCH_ROOM_KW); }
+// 記入表(뒷면) 자동 기입 행 — 비고에 룸/카트 내용이 있으면 区分에 ○ 찍고 内容을 미리 채움.
+//   금액·수량·담당은 현장 손기입(자동으로 채우지 않음 — 실제 발생분만 적도록).
+function dispatchPrefill(rec){
+  const out=[];
+  const room=roomChargeText(rec); if(room) out.push({n:1, ja:'ルームチャージ', txt:room});
+  const cart=evCartText(rec);     if(cart) out.push({n:2, ja:'EVカート',      txt:cart});
+  return out;
+}
 
 // ── 라운딩 일정 (/app/ dispatchGolfRows 동일) ──────────────
 function dispatchGolfRows(rec,isPUS){
@@ -742,6 +769,7 @@ async function saveDispatchMemo(seq,val){
 // ── 인쇄용 HTML (/app/ dispatchFrontHTML / dispatchBackHTML 완전 동일) ──
 function dispatchFrontHTML(d,masked){
   const r=d.rec; const periodStr=`${r.nights}泊${Number(r.nights)+1}日`;
+  const cartTxt=evCartText(r);   // EVカート 신청(현지비고 등에서 추출) — 앞면 전용 섹션
   const privHead=masked?'':'<th style="width:12%">旅券番号</th><th style="width:12%">電話番号</th>';
   const colCount=masked?8:10;
   const guestHead=`<tr><th style="width:5%">No</th><th style="width:9%">資格</th><th style="width:11%">氏名</th><th style="width:9%">英文姓</th><th>英文名</th><th style="width:6%">性別</th><th style="width:11%">生年月日</th>${privHead}<th>備考</th></tr>`;
@@ -798,6 +826,12 @@ function dispatchFrontHTML(d,masked){
     <table class="hp-t">
       <tr><th style="width:24%">ゴルフ場</th><td class="c"><b>${esc(courseStr)}</b></td></tr>
     </table>
+    <div class="hp-sec">EVカート 申請</div>
+    <table class="hp-t">
+      <tr><th style="width:24%">申請内容</th>${cartTxt
+        ? `<td class="hp-cart">${esc(cartTxt)}</td>`
+        : `<td class="c hp-cart-no">申請なし（現地備考に記載なし）</td>`}</tr>
+    </table>
     <div class="hp-sec">参考事項</div>
     <div class="hp-memo">${notesHTML}</div>
     <div class="hp-sec">現地メモ</div>
@@ -806,8 +840,13 @@ function dispatchFrontHTML(d,masked){
 }
 function dispatchBackHTML(d){
   const r=d.rec;
-  const blankCount=12;
-  const blankRows=Array.from({length:blankCount},()=>`<tr class="hp-fill"><td></td><td class="c"><span class="hp-cat">① ② ③ ④ ⑤</span></td><td></td><td></td><td></td><td></td><td></td></tr>`).join('');
+  // 비고에 룸차지·EV카트가 적혀 있으면 해당 구분에 ○ 찍고 内容을 미리 채운 행을 맨 위에(현장 재기입 방지).
+  //   금액·수량·담당은 비워 둠 = 실제 발생분만 손기입.
+  const pre=dispatchPrefill(r);
+  const catCell=(hit)=>[1,2,3,4,5].map(i=>i===hit?`<b class="hp-cat-on">${'①②③④⑤'[i-1]}</b>`:`${'①②③④⑤'[i-1]}`).join(' ');
+  const preRows=pre.map(p=>`<tr class="hp-fill hp-pre"><td></td><td class="c"><span class="hp-cat">${catCell(p.n)}</span></td><td class="hp-pre-txt">${esc(p.txt)}</td><td></td><td></td><td></td><td></td></tr>`).join('');
+  const blankCount=Math.max(4, 12-pre.length);
+  const blankRows=preRows+Array.from({length:blankCount},()=>`<tr class="hp-fill"><td></td><td class="c"><span class="hp-cat">① ② ③ ④ ⑤</span></td><td></td><td></td><td></td><td></td><td></td></tr>`).join('');
   return `<div class="hp-page">
     <div class="hp-head">
       <div>
@@ -869,6 +908,13 @@ async function printDispatch(seq){
   .hp-t.g-xs{font-size:7.4pt} .hp-t.g-xs th, .hp-t.g-xs td{padding:.7mm 1.2mm}
   .hp-t .yomi{display:block;font-size:.92em;color:#1f2a18;font-weight:600;line-height:1.12;margin-bottom:.4mm}
   .c{text-align:center} .mono{font-family:Consolas,Menlo,monospace}
+  /* EVカート 신청 — 있으면 눈에 띄게(현장 준비·과금 대상), 없으면 담백하게 */
+  .hp-cart{font-weight:800;background:#fdf3e3;border-left:3px solid #9a7322}
+  .hp-cart-no{color:#666}
+  /* 記入表 자동 기입 행 — 비고에서 가져온 항목(区分 ○ + 内容 채움) */
+  .hp-pre td{background:#fdf3e3}
+  .hp-pre-txt{font-weight:800;padding-left:2mm!important}
+  .hp-cat-on{font-size:12pt;color:#1e3a5f}
   .hp-memo{border:1px solid #555;min-height:14mm;padding:2mm;font-size:9.5pt;white-space:pre-wrap}
   .hp-memo-local{min-height:15mm}
   /* 顧客情報가 많아 페이지가 넘칠 때 하단 現地メモ가 잘리지 않도록 — 큰 팀은 메모/여백 더 축소 */
