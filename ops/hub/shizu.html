@@ -73,6 +73,8 @@
   .shz-pv-dt span{font-size:10px;color:#666}
   .shz-pv-io{font-size:10px;color:#333;letter-spacing:-.02em}
   .shz-pv-bd{font-size:10px;color:#333;letter-spacing:-.02em;text-align:right;background:#fff;line-height:1.3;white-space:nowrap}
+  /* 出発地 ICN/PUS — 팀 단위 태그(代表者 칸·미배정 행거 공용) */
+  .shz-port{display:inline-block;font-size:9.5px;font-weight:800;line-height:1.5;border:1px solid #888;border-radius:3px;padding:0 4px;margin-right:4px;color:#222;background:#f2f2f2;vertical-align:middle}
   .shz-pv-lb{background:#ececec;font-weight:700;color:#1a1a1a;width:78px}
   .shz-pv-nm{text-align:right;background:#fff;font-size:11px;line-height:1.3}   /* お名前=방 전원 여러 줄 */
   .shz-pv-rep{text-align:center;background:#f7f7f4;font-size:13px;font-weight:800;color:#222}   /* 代表者=크게(인쇄와 같은 서열) */
@@ -146,6 +148,7 @@
     .shz-pv-dt span{font-size:11px;color:#555}
     .shz-pv-io{font-size:11px}
     .shz-pv-bd{font-size:11px;text-align:right;line-height:1.3;white-space:nowrap}
+    .shz-port{display:inline-block;font-size:10px;font-weight:800;border:1px solid #333;border-radius:3px;padding:0 4px;margin-right:4px;color:#000;background:#fff!important;vertical-align:middle}
     .shz-pv-lb{background:#e6e6e6!important;font-weight:800;width:74px;font-size:12px}
     .shz-pv-rep{text-align:center;font-weight:800;font-size:15px;color:#111;background:#f0f0ec!important}   /* 대표자=크게 */
     .shz-loc{border:1px solid #333;color:#000;font-size:10px;font-weight:800}                                /* 現地=흑백 또렷 */
@@ -354,6 +357,7 @@ let NOTES={};                  // date → 수기 메모(세션 한정 — 폴�
 let MEMOS={};                  // date → 담당자 메모(Supabase 영속, shizu_memo)
 let TMEMO={};                  // event_seq → 팀 現地메모(현장 수기, Supabase 영속, shizu_team_memo.note)
 let TREF={};                   // event_seq → 팀 参考事項(현장 수기 일본어: 트리플룸·합팀 등, shizu_team_memo.ref_note)
+let REPEN={};                  // event_seq → 팀 대표 영문명(is_rep 우선, 없으면 최소 seq)
 let DATESEL=new Set();         // 선택 날짜(단일선택). 비어있으면 그 달 전체(예약표 전 날짜)
 let RFROM='', RTO='';          // 달력 범위(월경계 이어보기). 비면 선택 월 전체(monthBounds).
 let BOOK={};                   // event_seq → {rep_name, remark, remark_local, remark_ja, remark_local_ja}
@@ -415,6 +419,13 @@ function fmtBirth(b, y6){
   return '';
 }
 function birthOf(g){ return g.birth||''; }
+// 팀 대표 '영문명' — 予約表 代表者·배정보드 요약/행거 공용(방 칩의 お名前과 표기 통일).
+//   영문이 없으면 한글명 → 그것도 없으면 bookings.rep_name(한글) 폴백.
+function buildRepEn(){ REPEN={}; GUESTS.forEach(g=>{ const s=g.event_seq, rank=g.isRep?0:(g.seq||99);
+  const en=titleCase(g.nameEn)||g.nameKr||''; if(!REPEN[s]||rank<REPEN[s].rank) REPEN[s]={en,rank}; }); }
+function repEnOf(seq){ return (REPEN[seq]&&REPEN[seq].en) || String((BOOK[seq]||{}).rep_name||'').trim(); }
+// 出発地(ICN/PUS) — 팀 단위. SZCore.originPort 단일 소스(항공편 ZE→PUS·TW→ICN 우선, 없으면 출발지).
+function portOf(seq){ const b=BOOK[seq]||{}; try{ return (window.SZCore&&SZCore.originPort)?SZCore.originPort(b.origin||'',b.airline||''):''; }catch(e){ return ''; } }
 // 선택 월의 점유 밤(빈 날 테이블 방지)
 function axis(){ const set=new Set(); GUESTS.forEach(g=>nightsOf(g).forEach(d=>{ if(inScope(d)) set.add(d); })); UNASSIGNED.forEach(r=>nightsBetween(r.dep,r.arr).forEach(d=>{ if(inScope(d)) set.add(d); })); return [...set].sort(); }
 // 화면·인쇄·xlsx 공통 대상 날짜: 특정일 선택 시 그날만, 아니면 그 달 전체
@@ -548,7 +559,7 @@ async function load(){
     });
     // ※ 온천 사전신청·물채우기 직접 관리 폐지(Min) — 현지에서는 아래 現地備考(메리트 현지비고)만 보고 판단
     // 비고·현지비고(+일본어 캐시) — 예약표 참고용
-    const bks = seqs.length? await pagedIn('bookings','event_seq,event_no,rep_name,product_name,remark,remark_local,remark_ja,remark_local_ja','event_seq',seqs) : [];
+    const bks = seqs.length? await pagedIn('bookings','event_seq,event_no,rep_name,product_name,origin,airline,remark,remark_local,remark_ja,remark_local_ja','event_seq',seqs) : [];
     BOOK={}; bks.forEach(b=>BOOK[b.event_seq]=b);
     // 담당자 메모(영속) — 그 달 범위
     MEMOS={}; try{ const {data:mm}=await supa.from('shizu_memo').select('memo_date,note').gte('memo_date',start).lte('memo_date',end); (mm||[]).forEach(m=>{ MEMOS[String(m.memo_date).slice(0,10)]=m.note||''; }); }catch(e){}
@@ -563,14 +574,15 @@ async function load(){
         nameKr, nameEn:gm.name_en||'', gender:genMap[r.event_seq+'|'+nameKr]||'',
         birth:birthMap[r.event_seq+'|'+nameKr]||'' };
     });
+    buildRepEn();   // 대표 영문명 맵(요약 띠·予約表 공용)
     // ── 전체 로스터(미배정 추적): 그 달 시즈 팀 전원 − 배정된 사람 = 미배정 ──
     try{
-      const {data:tgs}=await supa.from('guests').select('event_seq,accom,bookings!inner(dep_date,arr_date,product_name,remark_local,event_no,rep_name)').eq('accom',FACILITY);
+      const {data:tgs}=await supa.from('guests').select('event_seq,accom,bookings!inner(dep_date,arr_date,product_name,remark_local,event_no,rep_name,origin,airline)').eq('accom',FACILITY);
       const tMap={};
       (tgs||[]).forEach(g=>{ const b=g.bookings||{}; const dep=String(b.dep_date||'').slice(0,10), arr=String(b.arr_date||'').slice(0,10);
         if(dep&&arr&&dep<=end&&arr>start){ tMap[g.event_seq]={dep,arr,product:b.product_name||'',remark:b.remark_local||''};
           // 미배정 팀은 BOOK(배정팀만 로드)에 없음 → 여기서 행사번호·대표자 채움(헤더 #예약번호 폴백 방지)
-          if(!BOOK[g.event_seq]) BOOK[g.event_seq]={event_seq:g.event_seq,event_no:b.event_no||null,rep_name:b.rep_name||null,product_name:b.product_name||null,remark_local:b.remark_local||null}; } });
+          if(!BOOK[g.event_seq]) BOOK[g.event_seq]={event_seq:g.event_seq,event_no:b.event_no||null,rep_name:b.rep_name||null,product_name:b.product_name||null,origin:b.origin||null,airline:b.airline||null,remark_local:b.remark_local||null}; } });
       const tSeqs=Object.keys(tMap).map(Number);
       const rgms=tSeqs.length? await pagedIn('guest_members','id,event_seq,name_kr,name_en','event_seq',tSeqs) : [];
       const asg=new Set(GUESTS.map(g=>g.member_id));
@@ -683,8 +695,8 @@ function rackTeams(date){
       .filter((g,i,a)=>a.findIndex(x=>x.member_id===g.member_id)===i)
       .map(g=>({nm:nameOf(g),room:g.room_no}));
     const annex=SHZ_ANNEX_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''));
-    return {seq,rep:bk.rep_name||'',ms,mates,annex,dep:ms[0].dep,arr:ms[0].arr};
-  }).sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||(a.seq-b.seq));
+    return {seq,rep:repEnOf(seq)||bk.rep_name||'',ms,mates,annex,port:portOf(seq),dep:ms[0].dep,arr:ms[0].arr};
+  }).sort((a,b)=>(a.port||'').localeCompare(b.port||'')||(a.dep||'').localeCompare(b.dep||'')||(a.seq-b.seq));   // 出発地(ICN/PUS)끼리 묶어 표시(Min)
 }
 function renderBoard(){
   const board=$('#board'); if(!board) return;
@@ -721,7 +733,7 @@ function renderBoardDay(date, showHd){
   const teams=rackTeams(date);
   const rackHtml = teams.length ? teams.map(t=>`
     <div class="rk-team${t.annex?' annex':''}">
-      <div class="rk-hd">${esc(t.rep||evNo(t.seq))}様 <small>${esc(evNo(t.seq))} · ${esc(t.dep.slice(5))}~${esc(t.arr.slice(5))}</small>${isLocalSeq(t.seq)?' <span class="shz-loc">現地</span>':''}${t.annex?' <span style="color:var(--purple2)">別棟</span>':''}</div>
+      <div class="rk-hd">${t.port?`<span class="shz-port">${esc(t.port)}</span>`:''}${esc(t.rep||evNo(t.seq))}様 <small>${esc(evNo(t.seq))} · ${esc(t.dep.slice(5))}~${esc(t.arr.slice(5))}</small>${isLocalSeq(t.seq)?' <span class="shz-loc">現地</span>':''}${t.annex?' <span style="color:var(--purple2)">別棟</span>':''}</div>
       ${t.mates.length?`<div class="rk-mates">🛏 ${t.mates.map(m=>esc(m.room+' '+m.nm)).join(' · ')}</div>`:''}
       <div class="rk-mem">${t.ms.map(m=>`<button class="chip${BSEL.has(m.member_id)?' on':''}" draggable="true" ondragstart="bDragStart(event,'${m.member_id}')" onclick="bToggleSel('${m.member_id}')">${esc(shzMemName(m))}様</button>`).join('')}</div>
     </div>`).join('') : `<div class="rk-empty">${tx('unNone')}</div>`;
@@ -758,7 +770,7 @@ function renderBoardDay(date, showHd){
   const _rno=r=>SHZ_ROOMNO[r]||r;
   const tsumHtml=Object.values(tsum)
     .sort((a,b)=>_rno([...a.rooms].sort()[0]).localeCompare(_rno([...b.rooms].sort()[0])))
-    .map(e=>{ const rep=String((BOOK[e.seq]||{}).rep_name||'').trim()||evNo(e.seq);
+    .map(e=>{ const rep=repEnOf(e.seq)||evNo(e.seq);   // 방 칩과 동일하게 영문명(Min)
       const rooms=[...e.rooms].sort((x,y)=>_rno(x).localeCompare(_rno(y))).map(_rno).join('·');
       const loc=isLocalSeq(e.seq)?'<span class="shz-loc">現地</span> ':'';
       return `<span class="shz-tsum">${loc}${esc(rep)}様<b>${e.n}${tx('nameUnit')}</b><small>${esc(rooms)}</small></span>`; }).join('');
@@ -1200,10 +1212,7 @@ function renderPreview(){
   const ax=axis();
   if(!ax.length){ wrap.innerHTML=`<div class="cnt" style="color:var(--muted);padding:20px;text-align:center">${tx('noData')}</div>`; return; }
   let html=`<div class="pv-title">ー志津の宿　${(parseISO(ax[0])||new Date()).getFullYear()}年　予約表ー</div>`;
-  // 팀 대표 영문명 맵(代表者 행 — お名前과 통일해 영문). is_rep 우선, 없으면 최소 seq.
-  const REPEN={};
-  GUESTS.forEach(g=>{ const s=g.event_seq; const rank=g.isRep?0:(g.seq||99); const en=titleCase(g.nameEn)||g.nameKr||'';
-    if(!REPEN[s]||rank<REPEN[s].rank) REPEN[s]={en, rank}; });
+  // 대표 영문명은 공용 REPEN/repEnOf 사용(load에서 buildRepEn으로 생성) — 요약 띠와 표기 통일.
   activeDates().forEach(date=>{
     const d=parseISO(date); let tot=0,tm=0,tf=0;
     const md=iso=>{ const p=parseISO(iso); return p?`${zen(p.getMonth()+1)}／${zen(p.getDate())}`:''; };
@@ -1216,16 +1225,16 @@ function renderPreview(){
       const onsen=SHZ_BYEOLCHE.includes(room) && SHZ_ANNEX_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''));
       return { name:occ.map(g=>esc(nameOf(g))+'様').join('<br>'),                 // 방 전원(Min) — 生年月日과 1:1
                birth:occ.map(g=>esc(birthOf(g))||'&nbsp;').join('<br>'),          // 같은 순서로 생년월일
-        rep: esc((REPEN[rep.event_seq]&&REPEN[rep.event_seq].en) || String((BOOK[rep.event_seq]||{}).rep_name||'').trim()),   // 팀 대표자 영문명(お名前과 통일). 없으면 한글 폴백
+        rep: esc(repEnOf(rep.event_seq)),   // 팀 대표자 영문명(お名前·요약 띠와 통일). 없으면 한글 폴백
         mf:mf(occ), stay:`${zen(rn.length)}連泊 ${zen(rn.indexOf(date)+1)}`, cnt:zen(occ.length),
         io: rep.ci?`${md(rep.ci)}〜${md(rep.co)}`:'', onsen:onsen, local:isLocalSeq(rep.event_seq),
-        seq: rep.event_seq, memo: TMEMO[rep.event_seq]||'', ref: TREF[rep.event_seq]||'' };
+        seq: rep.event_seq, port: portOf(rep.event_seq), memo: TMEMO[rep.event_seq]||'', ref: TREF[rep.event_seq]||'' };
     });
     const note = MEMOS[date]!=null? MEMOS[date] : (NOTES[date]!=null? NOTES[date] : buildNoteAuto(date));
     html+=`<table class="shz-pv">
       <tr class="shz-pv-zone"><th></th><th colspan="4">本館 <small>¥17,000</small></th><th colspan="3" class="bz">別棟 <small>객실내 탕</small></th><th></th></tr>
       <tr class="shz-pv-hd"><th class="shz-pv-dt">${zen(d.getMonth()+1)}／${zen(d.getDate())}<br><span>${SHZ_DOW[d.getDay()]}</span></th>${SHZ_ROOMS.map(r=>`<th${SHZ_BYEOLCHE.includes(r)?' class="bz"':''}><span class="shz-rno">${SHZ_ROOMNO[r]||''}</span>${r}</th>`).join('')}<th class="shz-pv-k">合計</th></tr>
-      <tr><td class="shz-pv-lb">代表者</td>${cells.map(c=>`<td class="shz-pv-rep">${c.local?'<span class="shz-loc">現地</span>':''}${c.rep?c.rep+'様':''}</td>`).join('')}<td class="shz-pv-k"></td></tr>
+      <tr><td class="shz-pv-lb">代表者</td>${cells.map(c=>`<td class="shz-pv-rep">${c.local?'<span class="shz-loc">現地</span>':''}${c.port?`<span class="shz-port">${c.port}</span>`:''}${c.rep?c.rep+'様':''}</td>`).join('')}<td class="shz-pv-k"></td></tr>
       <tr><td class="shz-pv-lb">お名前</td>${SHZ_ROOMS.map((room,ri)=>{const c=cells[ri]; const cl=roomClosedOnDate(room,date); const chk=c.onsen?'<span class="shz-onsen-chk" title="別棟 内湯(개인탕) 물채우기">♨</span>':''; return `<td class="shz-pv-nm${cl?' shz-closed':''}">${cl?'🔒 ':''}${chk}${c.name}</td>`;}).join('')}<td></td></tr>
       <tr><td class="shz-pv-lb">生年月日</td>${cells.map(c=>`<td class="shz-pv-bd">${c.birth||''}</td>`).join('')}<td class="shz-pv-k"></td></tr>
       <tr><td class="shz-pv-lb">IN／OUT</td>${cells.map(c=>`<td class="shz-pv-io">${c.io||''}</td>`).join('')}<td class="shz-pv-k"></td></tr>
@@ -1267,6 +1276,7 @@ function printChart(){
     .shz-pv-io{font-size:calc(11.5px*var(--fs,1));color:#222;letter-spacing:-.02em}
     /* 生年月日 = 滞在日(IN／OUT)와 동일 크기(Min). 이 팝업 CSS에 규칙이 없으면 기본 셀 크기(16px)로 커짐 */
     .shz-pv-bd{font-size:calc(11.5px*var(--fs,1));color:#222;letter-spacing:-.02em;text-align:right;line-height:1.3;white-space:nowrap}
+    .shz-port{display:inline-block;font-size:calc(10px*var(--fs,1));font-weight:800;border:1px solid #333;border-radius:3px;padding:0 4px;margin-right:4px;color:#000;vertical-align:middle}
     .shz-pv-lb{background:#e6e6e6;font-weight:800;width:72px;text-align:center;font-size:calc(12px*var(--fs,1))}
     .shz-pv-nm{text-align:right;font-weight:700;font-size:calc(12.5px*var(--fs,1));line-height:1.3}   /* お名前=작게 · 이제 방 전원 여러 줄 */
     .shz-pv-rep{text-align:center;font-weight:800;font-size:calc(15px*var(--fs,1));color:#111}   /* 代表者=크게(@media print와 통일) */
