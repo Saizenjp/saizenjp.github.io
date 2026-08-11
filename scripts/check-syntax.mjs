@@ -43,8 +43,34 @@ for (const f of files) {
 }
 
 console.log(`검사 대상: HTML ${files.length}개 · 인라인 스크립트 ${scripts}개`);
-if (errors) {
-  console.error(`\n✗ 문법 오류 ${errors}건 — 위 위치를 확인하세요.`);
+
+// ── 미정의 공용 헬퍼 검사 ───────────────────────────────────────────────
+//  문법 검사는 통과하지만 실행 시 ReferenceError 로 죽는 부류를 잡는다.
+//  실제 사고: room.html 이 esc() 를 정의 없이 호출 → render() 가 중간에 멈추고
+//  connect() 의 catch 에 걸려 화면에 「연결 실패」로 표시됨(Supabase 는 정상이었음).
+//  함수 안 지역 정의(const esc = …)도 정의로 인정한다.
+const HELPERS = ['esc', 'tx', 'lang', 'toast'];
+let undef = 0;
+for (const f of files) {
+  const html = readFileSync(f, 'utf8');
+  const code = [...html.matchAll(RE)].map((m) => m[1]).join('\n');
+  if (!code.trim()) continue;
+  for (const name of HELPERS) {
+    const used = new RegExp(`[^\\w.$]${name}\\s*\\(`).test(code);
+    if (!used) continue;
+    const declared = new RegExp(
+      `(function\\s+${name}\\s*\\()|((const|let|var)\\s+${name}\\s*=)|(window\\.${name}\\s*=)`
+    ).test(code);
+    if (!declared) {
+      undef++;
+      console.error(`✗ ${f}: ${name}() 를 호출하는데 정의가 없습니다(실행 시 ReferenceError).`);
+    }
+  }
+}
+
+if (errors || undef) {
+  if (errors) console.error(`\n✗ 문법 오류 ${errors}건 — 위 위치를 확인하세요.`);
+  if (undef) console.error(`✗ 미정의 헬퍼 ${undef}건 — 위 파일에 정의를 추가하세요.`);
   process.exit(1);
 }
-console.log('✓ 전체 인라인 스크립트 문법 검사 통과');
+console.log('✓ 전체 인라인 스크립트 문법 검사 통과 · 공용 헬퍼 정의 확인');
