@@ -265,6 +265,10 @@
     <div style="padding:16px 18px">
       <div id="qr-reader" style="width:100%;border-radius:10px;overflow:hidden"></div>
       <div id="qr-status" style="font-size:12.5px;color:var(--text2);margin-top:8px;min-height:18px"></div>
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <input class="inp" id="qr-manual-in" type="text" autocomplete="off" style="flex:1" data-i18n-ph="po_qrManualPh">
+        <button class="btn sm" id="qr-manual-go" type="button" data-i18n="po_qrManualGo"></button>
+      </div>
       <div style="font-size:11.5px;color:var(--muted);margin-top:8px" data-i18n="po_qrNoQrHint"></div>
     </div>
   </div>
@@ -294,7 +298,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=13"></script>
-<script src="../assets/saizen-ops.js?v=15.47"></script>
+<script src="../assets/saizen-ops.js?v=15.48"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -1022,25 +1026,61 @@ async function teamBySeq(seq){
 async function scanResolve(raw){
   let token=String(raw||'').trim(); if(!token) return;
   const m=token.match(/[?&]t=([^&\s]+)/); if(m) token=decodeURIComponent(m[1]);   // QR=bill URL이면 ?t= 토큰 추출(구형 raw 토큰도 그대로 호환)
+  // 모달이 닫혀 있으면(=하드웨어 스캐너 전역 입력) 상태줄이 안 보이므로 토스트로 알린다.
+  const openM=$('#qr-modal') && $('#qr-modal').style.display!=='none';
+  const fail=(msg)=>{ if(openM) qrStatus(msg); else toast(msg,'err'); };
   await stopScan();   // 한 번 인식하면 카메라 정지(중복 방지)
   try{
     const {data,error}=await supa.from('order_tokens').select('event_seq').eq('token',token).limit(1);
     if(error) throw error;
-    if(!data||!data.length){ qrStatus(tx('qrNoMatch')); return; }
+    if(!data||!data.length){ fail(tx('qrNoMatch')); return; }
     const seq=data[0].event_seq;
     const tm=await teamBySeq(seq);
-    if(!tm){ qrStatus(tx('qrTeamGone')); return; }
+    if(!tm){ fail(tx('qrTeamGone')); return; }
     $('#qr-modal').style.display='none';
     toast(tx('qrMatched')(tm.team_tag||tm.group_code||('#'+tm.event_no)),'ok');
     selectTeam(tm);
-  }catch(e){ qrStatus(tx('qrNoMatch')); }
+  }catch(e){ fail(tx('qrNoMatch')); }
 }
+
+// ── 하드웨어 스캐너(2D 이미저, HID 키보드 모드) 전역 입력 ────────────────────
+//  스캐너는 읽은 문자열을 '키보드 입력'으로 흘려보내고 끝에 Enter 를 붙인다.
+//  → 어느 화면에 있든, 어디에 포커스가 있든 스캔하면 그 팀이 바로 열린다(모달·카메라 불필요).
+//  사람 타이핑과 구분: 사람은 8자 이상을 글자당 50ms 미만으로 연속 입력하지 못한다.
+//  ⚠ 스캐너가 없어도 키보드로 토큰을 치고 Enter 치면 같은 경로로 동작(하드웨어 없이 검증 가능).
+const HID_MAX_GAP=50;    // 글자 간격 상한(ms) — 넘으면 사람 입력으로 보고 버퍼 리셋
+const HID_MIN_LEN=8;     // 이 길이 미만은 스캔으로 보지 않음
+let _hidBuf='', _hidLast=0, _hidEl=null, _hidPrev='';
+function hidReset(){ _hidBuf=''; _hidEl=null; _hidPrev=''; }
+document.addEventListener('keydown',(e)=>{
+  if(!supa) return;
+  const now=Date.now();
+  if(e.key==='Enter'){
+    const fast=_hidBuf.length>=HID_MIN_LEN && (now-_hidLast)<=HID_MAX_GAP;
+    if(fast){
+      const raw=_hidBuf;
+      // 스캔 문자가 입력칸에 섞였으면 원래 값으로 되돌린다(검색창에 토큰이 남지 않게).
+      if(_hidEl && 'value' in _hidEl){ try{ _hidEl.value=_hidPrev; _hidEl.dispatchEvent(new Event('input',{bubbles:true})); }catch(_){} }
+      hidReset(); e.preventDefault();
+      scanResolve(raw);
+    }else hidReset();
+    return;
+  }
+  if(e.key.length!==1) return;                 // 제어키는 무시
+  if(now-_hidLast>HID_MAX_GAP){                // 간격이 벌어지면 새 버스트 시작
+    _hidBuf=''; _hidEl=document.activeElement||null;
+    _hidPrev=(_hidEl && 'value' in _hidEl)?_hidEl.value:'';
+  }
+  _hidBuf+=e.key; _hidLast=now;
+});
 
 // ── 부팅 ──
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-load').addEventListener('click',loadTeams);
 $('#btn-qr-scan').addEventListener('click',openScan);
 $('#qr-close').addEventListener('click',closeScan);
+$('#qr-manual-go').addEventListener('click',()=>{ const v=$('#qr-manual-in').value.trim(); if(!v){ qrStatus(tx('qrEmpty')); return; } scanResolve(v); });
+$('#qr-manual-in').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#qr-manual-go').click(); } });
 $('#qr-modal').addEventListener('click',e=>{ if(e.target.id==='qr-modal') closeScan(); });
 $('#conf-yes').addEventListener('click',()=>{ const tm=_confTm; $('#conf-modal').style.display='none'; _confTm=null; if(tm) selectTeam(tm); });
 $('#conf-no').addEventListener('click',closeConfirm);
