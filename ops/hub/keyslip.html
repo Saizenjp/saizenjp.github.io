@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · ルームキー ラベル(룸키 라벨) 인쇄</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad; --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --mono:'SFMono-Regular',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{max-width:1060px;margin:0 auto;padding:16px 20px 90px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:10px}
+  .panel .desc{font-size:12px;color:var(--text2);margin-bottom:11px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .ymctrl{display:flex;align-items:center;gap:6px}
+  .ymctrl b{font-size:15px;font-family:var(--mono);min-width:78px;text-align:center}
+  .chip{font-size:12px;font-weight:700;padding:5px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border);cursor:pointer}
+  .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .chip .c{opacity:.7;font-weight:600;margin-left:4px}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  .sep{width:1px;height:20px;background:var(--border)}
+  /* 용지 칸 미니 지도(라벨 크기에 따라 열·행 수가 바뀜, 왼→오·위→아래) */
+  .slot-map{display:grid;gap:3px}
+  .slot-map .sm-cell{height:23px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:var(--mono);border:1px solid var(--border2);border-radius:4px;background:var(--surface);color:var(--text2);cursor:pointer;transition:.1s}
+  .slot-map .sm-cell:hover{border-color:var(--accent)}
+  .slot-map .sm-cell.used{background:var(--surface3);color:var(--muted);text-decoration:line-through}
+  .slot-map .sm-cell.use{background:var(--accentSoft);color:var(--accent);border-color:#b4cda0}
+  .slot-map .sm-cell.start{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .slot-legend{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted);font-weight:600}
+  .slot-legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:middle}
+  /* 출력 대상 목록(표) */
+  .ltbl{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  .ltbl th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:6px 8px;text-align:left;font-size:11px;color:var(--text2);font-weight:700;white-space:nowrap}
+  .ltbl td{border-bottom:1px solid var(--border);padding:5px 8px;vertical-align:middle}
+  .ltbl tr:hover td{background:var(--surface2)}
+  .ltbl .rn{font-family:var(--mono);font-weight:800;font-size:13.5px}
+  .ltbl .gc{font-weight:800;color:var(--accent2)}
+  .ltbl .st{font-family:var(--mono);font-size:11.5px;color:var(--text2);white-space:nowrap}
+  .ltbl .nb{font-weight:700;font-size:11px;padding:2px 7px;border-radius:99px;background:var(--surface3);color:var(--text2);white-space:nowrap}
+  .warnbox{background:#fdf6e7;border:1px solid #e6d3a3;border-radius:9px;padding:9px 12px;font-size:12px;color:#6b5312;font-weight:600;margin-top:10px}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.24">
+</head>
+<body data-so-area="print">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">ルームキー ラベル · 룸키 라벨 인쇄</span>
+  <a class="navhome" href="../index.html" id="t-home">← 홈</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connhint">방배정을 읽어 룸키 통에 꽂는 라벨(그룹코드·투숙자·방번호·숙박기간)을 인쇄합니다.</span>
+</div>
+
+<div class="wrap" id="content">
+  <div class="panel"><div class="deny" id="t-preconn" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-core.js?v=14"></script><!-- 공유 도메인 규칙(숙소 라벨·박수 등) -->
+<script src="../assets/saizen-ops.js?v=15.50"></script>
+<script>
+const $=s=>document.querySelector(s);
+
+// ── i18n (ja 기본 · 화면 chrome만. 인쇄 라벨은 현장 운영 양식대로 일본어 요일 표기 고정) ──
+const L={
+  ja:{ step:'ルームキー ラベル', home:'← ホーム',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
+    connHint:'部屋割当を読み込み、キーボックスに挿すラベル(グループコード・宿泊者・部屋番号・宿泊期間)を印刷します。',
+    preConn:'接続すると表示されます。', loginNeedTitle:'ログインが必要です。', loginNeedSub:'中央のログインカードでログインしてから再接続してください。',
+    monFilter:'月選択 · フィルター', all:'全体', nights:'泊数', size:'ラベルサイズ', date:'チェックイン日', lodging:'宿泊施設',
+    n3:'3泊', n4:'4泊', n7:'7泊', n8:'8泊以上', netc:'その他',
+    dateMode:'日付表記', dateModeLast:'最終宿泊日まで', dateModeOut:'チェックアウト日',
+    dateModeT:'「最終宿泊日まで」= 日〜木の4泊なら 日〜水 と表記(鍵が出ている最後の夜)。「チェックアウト日」= 日〜木 と表記。',
+    startSlot:'開始マス', startSlotT:'用紙の開始位置 — 使いかけの用紙の続き印刷',
+    slotMap:'用紙のマス', slotMapHint:n=>`クリックで開始マス指定 ・ 1=左上 → 右 → 下(1枚 ${n}面)`,
+    slotUsed:'使用済み', slotPrint:'印刷される', slotStart:'開始マス',
+    printBtn:'🖨 ルームキー ラベル プレビュー',
+    deskNote:'選択した月に<b>チェックイン</b>する部屋割当を、1部屋につき1枚のラベルで出力します。<b>泊数</b>で絞ってから印刷すると、その色の付箋だけをセットして印刷できます(3泊・4泊・7泊・8泊以上の色分け運用)。並び順は<b>チェックイン日 → 部屋番号</b>。',
+    printTarget:'出力対象', loading:'読み込み中…', noMonthData:'当月の部屋割当なし', loadFail:'読み込み失敗',
+    cntRooms:(n,t)=>`${n}部屋 · ${t}チーム`, sheets:n=>`(${n}枚)`, noList:'出力する部屋がありません。',
+    colRoom:'部屋', colCode:'コード', colNames:'宿泊者', colStay:'宿泊期間', colNights:'泊数', colAccom:'施設',
+    previewCap:n=>`※ 一覧は150件まで表示 · 印刷は全体 ${n}枚`,
+    unassigned:(n,names)=>`⚠ 当月チェックインで<b>部屋未割当</b>のチームが ${n} 件あります(ラベルは出ません): ${names}`,
+    noPrintList:'印刷する部屋がありません', popupBlocked:'ポップアップブロック — 許可が必要',
+    pvTitle:'ルームキー ラベル プレビュー', pvMeta:(s,n,p)=>`${s} · ${n}枚 · ${p}ページ`, pvPrint:'印刷', pvClose:'閉じる' },
+  ko:{ step:'룸키 라벨 인쇄', home:'← 홈',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결·재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
+    connHint:'방배정을 읽어 룸키 통에 꽂는 라벨(그룹코드·투숙자·방번호·숙박기간)을 인쇄합니다.',
+    preConn:'연결 후 표시됩니다.', loginNeedTitle:'로그인이 필요합니다.', loginNeedSub:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
+    monFilter:'월 선택 · 필터', all:'전체', nights:'박수', size:'라벨 크기', date:'체크인일', lodging:'숙소',
+    n3:'3박', n4:'4박', n7:'7박', n8:'8박 이상', netc:'기타',
+    dateMode:'날짜 표기', dateModeLast:'마지막 숙박일까지', dateModeOut:'퇴실일',
+    dateModeT:'「마지막 숙박일까지」= 일~목 4박이면 일~수로 표기(키가 나가 있는 마지막 밤). 「퇴실일」= 일~목으로 표기.',
+    startSlot:'시작칸', startSlotT:'용지 시작 위치 — 쓰던 용지 이어쓰기',
+    slotMap:'용지 칸', slotMapHint:n=>`클릭=시작칸 지정 ・ 1=좌상단 → 오른쪽 → 아래(1장 ${n}면)`,
+    slotUsed:'이미 쓴 칸', slotPrint:'인쇄될 칸', slotStart:'시작칸',
+    printBtn:'🖨 룸키 라벨 미리보기',
+    deskNote:'선택 월에 <b>체크인</b>하는 방배정을 방 1개당 1장으로 출력합니다. <b>박수</b>로 거른 뒤 인쇄하면 그 색 포스트잇만 물려 인쇄할 수 있습니다(3박·4박·7박·8박이상 색 구분 운영). 정렬은 <b>체크인일 → 방번호</b>.',
+    printTarget:'출력 대상', loading:'불러오는 중…', noMonthData:'해당 월 방배정 없음', loadFail:'로드 실패',
+    cntRooms:(n,t)=>`${n}실 · ${t}팀`, sheets:n=>`(${n}장)`, noList:'출력할 방이 없습니다.',
+    colRoom:'방', colCode:'코드', colNames:'투숙자', colStay:'숙박기간', colNights:'박수', colAccom:'숙소',
+    previewCap:n=>`※ 목록은 150건까지 표시 · 인쇄는 전체 ${n}장`,
+    unassigned:(n,names)=>`⚠ 이번 달 체크인인데 <b>방 미배정</b>인 팀이 ${n}건 있습니다(라벨이 안 나옵니다): ${names}`,
+    noPrintList:'인쇄할 방이 없음', popupBlocked:'팝업 차단 — 허용 필요',
+    pvTitle:'룸키 라벨 미리보기', pvMeta:(s,n,p)=>`${s} · ${n}장 · ${p}페이지`, pvPrint:'인쇄', pvClose:'닫기' },
+  en:{ step:'Room key labels', home:'← Home',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
+    connHint:'Reads room assignments and prints the slips for the key box (group code, occupants, room no, stay dates).',
+    preConn:'Shown after connecting.', loginNeedTitle:'Login required.', loginNeedSub:'Log in via the central login card, then reconnect.',
+    monFilter:'Month · Filter', all:'All', nights:'Nights', size:'Label size', date:'Check-in', lodging:'Lodging',
+    n3:'3 nights', n4:'4 nights', n7:'7 nights', n8:'8+ nights', netc:'Other',
+    dateMode:'Date shown', dateModeLast:'Through last night', dateModeOut:'Check-out date',
+    dateModeT:'“Through last night” = a Sun–Thu 4-night stay prints Sun–Wed (the last night the key is out). “Check-out date” prints Sun–Thu.',
+    startSlot:'Start cell', startSlotT:'Start position on the sheet — continue on a partly-used sheet',
+    slotMap:'Sheet cells', slotMapHint:n=>`Click to set the start cell ・ 1 = top-left → right → down (${n} per sheet)`,
+    slotUsed:'Used', slotPrint:'Will print', slotStart:'Start',
+    printBtn:'🖨 Room key label preview',
+    deskNote:'Prints one slip per room assignment <b>checking in</b> during the selected month. Filter by <b>nights</b> first so you can load just that colour of sticky note (3 / 4 / 7 / 8+ night colour coding). Sorted by <b>check-in date → room number</b>.',
+    printTarget:'Print list', loading:'Loading…', noMonthData:'No room assignments this month', loadFail:'Load failed',
+    cntRooms:(n,t)=>`${n} rooms · ${t} teams`, sheets:n=>`(${n})`, noList:'No rooms to print.',
+    colRoom:'Room', colCode:'Code', colNames:'Occupants', colStay:'Stay', colNights:'Nights', colAccom:'Lodging',
+    previewCap:n=>`※ List shows up to 150 · printing all ${n}`,
+    unassigned:(n,names)=>`⚠ ${n} team(s) check in this month with <b>no room assigned</b> (no slip will print): ${names}`,
+    noPrintList:'No rooms to print', popupBlocked:'Popup blocked — allow it',
+    pvTitle:'Room key label preview', pvMeta:(s,n,p)=>`${s} · ${n} labels · ${p} pages`, pvPrint:'Print', pvClose:'Close' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,lang()):(a||''); }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+
+// ── 라벨 크기 프리셋 (A4 210×297mm 기준 · 여백은 남는 폭/높이를 반으로) ──
+const SIZES={
+  '50x50':{w:50,h:50,cols:4,rows:5,label:'50×50mm'},
+  '75x50':{w:75,h:50,cols:2,rows:5,label:'75×50mm'},
+  '75x25':{w:75,h:25,cols:2,rows:11,label:'75×25mm'}
+};
+const NIGHT_CATS=['3','4','7','8','etc'];
+const CAT_KEY={'3':'n3','4':'n4','7':'n7','8':'n8','etc':'netc'};
+const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
+const WD_JA=['日','月','火','水','木','金','土'];
+
+let supa=null, YM=null, LABELS=[], UNASSIGNED=[],
+    SELCATS=new Set(), SELDATES=new Set(), SELACCOMS=new Set(),
+    SIZE=localStorage.getItem('saizen_keyslip_size')||'50x50',
+    DATEMODE=localStorage.getItem('saizen_keyslip_datemode')||'last',   // last=마지막 숙박일 / out=퇴실일
+    START=1;
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+function thisYM(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function shiftYM(ym,delta){const [y,m]=ym.split('-').map(Number);const d=new Date(y,m-1+delta,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function ymFirst(ym){ return ym+'-01'; }
+function ymLast(ym){ const [y,m]=ym.split('-').map(Number); return `${y}-${String(m).padStart(2,'0')}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`; }
+function pd(s){ const m=String(s||'').match(/(\d{4})-(\d{2})-(\d{2})/); return m?new Date(+m[1],+m[2]-1,+m[3]):null; }
+function addDays(s,n){ const d=pd(s); if(!d) return s; d.setDate(d.getDate()+n);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function mmdd(s){ const d=pd(s); return d?`${d.getMonth()+1}/${d.getDate()}`:'-'; }
+// 인쇄용 날짜 = 8/5(水) — 요일은 현장 운영대로 일본어 고정
+function mdw(s){ const d=pd(s); return d?`${d.getMonth()+1}/${d.getDate()}(${WD_JA[d.getDay()]})`:'-'; }
+function nights(ci,co){ const a=pd(ci),b=pd(co); if(!a||!b) return 0; return Math.max(0,Math.round((b-a)/86400000)); }
+function nightCat(n){ if(n===3)return '3'; if(n===4)return '4'; if(n===7)return '7'; if(n>=8)return '8'; return 'etc'; }
+function roomCmp(a,b){ const na=parseInt(a,10),nb=parseInt(b,10);
+  if(!isNaN(na)&&!isNaN(nb)&&na!==nb) return na-nb; return String(a||'').localeCompare(String(b||'')); }
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent=tx('connecting');btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">'+tx('loginNeedTitle')+'<small>'+tx('loginNeedSub')+'</small></div></div>'; return; }
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
+    YM=YM||thisYM();
+    renderUI(); load();
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
+}
+
+// 1000행 제한 회피 — range() 페이지네이션
+async function paged(qf){
+  const out=[]; let from=0;
+  for(;;){ const {data,error}=await qf(from,from+999); if(error) return {error};
+    out.push(...(data||[])); if(!data||data.length<1000) break; from+=1000; }
+  return {data:out};
+}
+async function pagedIn(table, cols, col, vals, extra){
+  const out=[];
+  for(let i=0;i<vals.length;i+=200){
+    const chunk=vals.slice(i,i+200);
+    const r=await paged((a,b)=>{ let q=supa.from(table).select(cols).in(col,chunk); if(extra) q=extra(q); return q.order(col).range(a,b); });
+    if(r.error) return r; out.push(...r.data);
+  }
+  return {data:out};
+}
+
+function renderUI(){
+  $('#content').innerHTML=`
+    <div class="panel">
+      <h3>${tx('monFilter')}</h3>
+      <div class="row">
+        <div class="ymctrl">
+          <button class="btn sm ghost" id="ym-prev" type="button">◀</button>
+          <b id="ym-label"></b>
+          <button class="btn sm ghost" id="ym-next" type="button">▶</button>
+        </div>
+        <span class="sep"></span>
+        <span class="cnt">${tx('size')}</span>
+        <select class="inp" id="size-sel">${Object.keys(SIZES).map(k=>`<option value="${k}"${k===SIZE?' selected':''}>${SIZES[k].label} (${SIZES[k].cols*SIZES[k].rows})</option>`).join('')}</select>
+        <span class="sep"></span>
+        <span class="cnt">${tx('dateMode')}</span>
+        <select class="inp" id="dm-sel" title="${esc(tx('dateModeT'))}">
+          <option value="last"${DATEMODE==='last'?' selected':''}>${tx('dateModeLast')}</option>
+          <option value="out"${DATEMODE==='out'?' selected':''}>${tx('dateModeOut')}</option>
+        </select>
+        <span style="flex:1"></span>
+        <span class="cnt" id="stat"></span>
+        <button class="btn" id="btn-print" type="button" disabled>${tx('printBtn')}</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <span class="cnt" style="min-width:62px">${tx('nights')}</span>
+        <div id="catchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="cnt" style="min-width:62px">${tx('date')}</span>
+        <div id="daychips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="cnt" style="min-width:62px">${tx('lodging')}</span>
+        <div id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <div class="row" style="margin-top:10px;align-items:flex-start">
+        <span class="cnt" style="min-width:62px">${tx('slotMap')}</span>
+        <div id="slot-map" class="slot-map"></div>
+        <div class="slot-legend">
+          <span id="slot-hint"></span>
+          <span><i style="background:var(--accent)"></i>${tx('slotStart')} &nbsp; <i style="background:var(--accentSoft);border:1px solid #b4cda0"></i>${tx('slotPrint')} &nbsp; <i style="background:var(--surface3)"></i>${tx('slotUsed')}</span>
+        </div>
+        <input class="inp" id="start-slot" type="number" min="1" value="${START}" style="width:64px;text-align:center" title="${esc(tx('startSlotT'))}">
+      </div>
+      <div class="desc" style="margin-top:10px">${tx('deskNote')}</div>
+      <div id="unassigned-box"></div>
+    </div>
+    <div class="panel">
+      <h3>${tx('printTarget')} <span class="cnt" id="prev-cnt"></span></h3>
+      <div id="prev"></div>
+    </div>`;
+  $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
+  $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
+  $('#btn-print').addEventListener('click',printLabels);
+  $('#size-sel').addEventListener('change',e=>{ SIZE=e.target.value; localStorage.setItem('saizen_keyslip_size',SIZE);
+    START=1; $('#start-slot').value=1; renderSlotMap(); });
+  $('#dm-sel').addEventListener('change',e=>{ DATEMODE=e.target.value; localStorage.setItem('saizen_keyslip_datemode',DATEMODE); renderPreview(); });
+  $('#start-slot').addEventListener('input',e=>{ const per=perSheet();
+    START=Math.max(1,Math.min(per,parseInt(e.target.value,10)||1)); renderSlotMap(); });
+  renderSlotMap();
+}
+
+function perSheet(){ const s=SIZES[SIZE]; return s.cols*s.rows; }
+
+// 용지 칸 미니 지도 — 클릭=시작칸 지정
+function renderSlotMap(){
+  const box=$('#slot-map'); if(!box) return;
+  const s=SIZES[SIZE], per=s.cols*s.rows;
+  if(START>per){ START=1; const i=$('#start-slot'); if(i) i.value=1; }
+  const inp=$('#start-slot'); if(inp) inp.max=per;
+  const hint=$('#slot-hint'); if(hint) hint.textContent=tx('slotMapHint')(per);
+  box.style.gridTemplateColumns=`repeat(${s.cols},32px)`;
+  let h='';
+  for(let i=1;i<=per;i++){
+    const cls = i<START ? 'used' : (i===START ? 'start' : 'use');
+    h+=`<div class="sm-cell ${cls}" data-slot="${i}" title="${i}">${i}</div>`;
+  }
+  box.innerHTML=h;
+  box.querySelectorAll('[data-slot]').forEach(c=>c.addEventListener('click',()=>{
+    START=parseInt(c.dataset.slot,10)||1; const i=$('#start-slot'); if(i) i.value=START; renderSlotMap();
+  }));
+}
+
+function renderCatChips(){
+  const box=$('#catchips'); if(!box) return;
+  const cnt={}; LABELS.forEach(l=>{ cnt[l.cat]=(cnt[l.cat]||0)+1; });
+  box.innerHTML=`<div class="chip ${SELCATS.size===0?'on':''}" data-c="__all">${tx('all')}<span class="c">${LABELS.length}</span></div>`
+    + NIGHT_CATS.filter(c=>cnt[c]).map(c=>`<div class="chip ${SELCATS.has(c)?'on':''}" data-c="${c}">${tx(CAT_KEY[c])}<span class="c">${cnt[c]}</span></div>`).join('');
+  box.querySelectorAll('.chip[data-c]').forEach(el=>el.addEventListener('click',()=>{
+    const c=el.dataset.c;
+    if(c==='__all') SELCATS.clear(); else { if(SELCATS.has(c)) SELCATS.delete(c); else SELCATS.add(c); }
+    renderCatChips(); renderPreview();
+  }));
+}
+function renderDayChips(){
+  const box=$('#daychips'); if(!box) return;
+  const dates=[...new Set(LABELS.map(l=>l.ci))].sort();
+  box.innerHTML=`<div class="chip ${SELDATES.size===0?'on':''}" data-d="__all">${tx('all')}</div>`
+    + dates.map(d=>`<div class="chip ${SELDATES.has(d)?'on':''}" data-d="${d}">${mmdd(d)}</div>`).join('');
+  box.querySelectorAll('.chip[data-d]').forEach(el=>el.addEventListener('click',()=>{
+    const d=el.dataset.d;
+    if(d==='__all') SELDATES.clear(); else { if(SELDATES.has(d)) SELDATES.delete(d); else SELDATES.add(d); }
+    renderDayChips(); renderPreview();
+  }));
+}
+function renderAccomChips(){
+  const box=$('#accomchips'); if(!box) return;
+  const accoms=[...new Set(LABELS.map(l=>l.accom).filter(Boolean))]
+    .sort((a,b)=>{const ai=ACCOM_ORDER.indexOf(a),bi=ACCOM_ORDER.indexOf(b);return (ai<0?9:ai)-(bi<0?9:bi);});
+  box.innerHTML=`<div class="chip ${SELACCOMS.size===0?'on':''}" data-a="__all">${tx('all')}</div>`
+    + accoms.map(a=>`<div class="chip ${SELACCOMS.has(a)?'on':''}" data-a="${esc(a)}">${esc(accomL(a))}</div>`).join('');
+  box.querySelectorAll('.chip[data-a]').forEach(el=>el.addEventListener('click',()=>{
+    const a=el.dataset.a;
+    if(a==='__all') SELACCOMS.clear(); else { if(SELACCOMS.has(a)) SELACCOMS.delete(a); else SELACCOMS.add(a); }
+    renderAccomChips(); renderPreview();
+  }));
+}
+
+async function load(){
+  if(!supa) return;
+  $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true;
+  const from=ymFirst(YM), to=ymLast(YM);
+  try{
+    // 1) 그 달에 체크인하는 방배정(rooms 1행=1명)
+    const rr=await paged((a,b)=>supa.from('rooms')
+      .select('id,event_seq,member_id,inventory_id,facility,room_type,room_no,check_in,check_out')
+      .gte('check_in',from).lte('check_in',to).order('id').range(a,b));
+    if(rr.error) throw rr.error;
+    const rooms=rr.data||[];
+    // 2) 팀(guests+bookings) — 그 달 체크인 팀 + 미배정 점검용으로 그 달 입국 팀도 함께
+    const gs=await paged((a,b)=>supa.from('guests')
+      .select('event_seq,group_code,team_tag,accom,bookings!inner(rep_name,dep_date,arr_date)')
+      .lte('bookings.dep_date',to).gt('bookings.arr_date',from).order('event_seq').range(a,b));
+    if(gs.error) throw gs.error;
+    const gmap={}; (gs.data||[]).forEach(g=>{ gmap[g.event_seq]=g; });
+    // 3) 투숙자 이름(guest_members)
+    const mids=[...new Set(rooms.map(r=>r.member_id).filter(Boolean))];
+    const mm=mids.length? await pagedIn('guest_members','id,event_seq,seq_in_team,name_kr,name_en','id',mids) : {data:[]};
+    if(mm.error) throw mm.error;
+    const mmap={}; (mm.data||[]).forEach(m=>{ mmap[m.id]=m; });
+
+    // 4) 라벨 단위로 묶기 = 같은 팀 · 같은 방 · 같은 체류구간(분할 체류는 각각 별도 라벨)
+    const byKey={};
+    rooms.forEach(r=>{
+      const k=`${r.event_seq}|${r.inventory_id}|${r.check_in}|${r.check_out}`;
+      const g=gmap[r.event_seq]||{};
+      if(!byKey[k]) byKey[k]={
+        eventSeq:r.event_seq, roomNo:r.room_no||'', facility:r.facility||'',
+        ci:r.check_in, co:r.check_out,
+        code:g.group_code||g.team_tag||'', accom:g.accom||'', rep:(g.bookings&&g.bookings.rep_name)||'',
+        members:[]
+      };
+      const m=mmap[r.member_id]; if(m) byKey[k].members.push(m);
+    });
+    LABELS=Object.values(byKey).map(l=>{
+      l.members.sort((a,b)=>(a.seq_in_team||0)-(b.seq_in_team||0)||String(a.name_kr||'').localeCompare(String(b.name_kr||'')));
+      l.names=l.members.map(m=>m.name_kr||m.name_en||'').filter(Boolean);
+      l.pax=l.members.length;
+      l.n=nights(l.ci,l.co);
+      l.cat=nightCat(l.n);
+      return l;
+    });
+
+    // 5) 그 달 체크인(입국)인데 방배정이 하나도 없는 팀 — 라벨이 안 나오므로 경고
+    const assigned=new Set(rooms.map(r=>r.event_seq));
+    UNASSIGNED=(gs.data||[]).filter(g=>{
+      const dep=g.bookings&&g.bookings.dep_date;
+      return dep && dep>=from && dep<=to && !assigned.has(g.event_seq);
+    }).map(g=>`${g.group_code||g.team_tag||g.event_seq}${g.bookings&&g.bookings.rep_name?' '+g.bookings.rep_name:''}`);
+
+    SELCATS.clear(); SELDATES.clear(); SELACCOMS.clear(); START=1;
+    const inp=$('#start-slot'); if(inp) inp.value=1;
+    renderSlotMap();
+    if(!LABELS.length){ $('#stat').textContent=tx('noMonthData'); }
+    else $('#stat').textContent=tx('cntRooms')(LABELS.length,new Set(LABELS.map(l=>l.eventSeq)).size);
+    renderCatChips(); renderDayChips(); renderAccomChips(); renderUnassigned(); renderPreview();
+  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
+}
+
+function renderUnassigned(){
+  const box=$('#unassigned-box'); if(!box) return;
+  if(!UNASSIGNED.length){ box.innerHTML=''; return; }
+  const show=UNASSIGNED.slice(0,12).map(esc).join(', ')+(UNASSIGNED.length>12?' …':'');
+  box.innerHTML=`<div class="warnbox">${tx('unassigned')(UNASSIGNED.length,show)}</div>`;
+}
+
+function filtered(){
+  return LABELS.filter(l=>{
+    if(SELCATS.size && !SELCATS.has(l.cat)) return false;
+    if(SELDATES.size && !SELDATES.has(l.ci)) return false;
+    if(SELACCOMS.size && !SELACCOMS.has(l.accom)) return false;
+    return true;
+  }).sort((a,b)=>{
+    const ai=NIGHT_CATS.indexOf(a.cat), bi=NIGHT_CATS.indexOf(b.cat);
+    if(ai!==bi) return ai-bi;                       // 박수(=포스트잇 색)별로 묶어 출력
+    if(a.ci!==b.ci) return a.ci.localeCompare(b.ci);
+    return roomCmp(a.roomNo,b.roomNo);
+  });
+}
+
+// 라벨에 찍는 기간 — DATEMODE: last=마지막 숙박일(퇴실 전날) / out=퇴실일
+function stayText(l){
+  const end = DATEMODE==='last' ? addDays(l.co,-1) : l.co;
+  return `${mdw(l.ci)}~${mdw(end)}`;
+}
+
+function renderPreview(){
+  const list=filtered();
+  $('#btn-print').disabled=!list.length;
+  $('#prev-cnt').textContent=list.length?tx('sheets')(list.length):'';
+  const box=$('#prev');
+  if(!list.length){ box.innerHTML='<div class="cnt" style="color:var(--muted);padding:10px 0">'+tx('noList')+'</div>'; return; }
+  const rows=list.slice(0,150).map(l=>`<tr>
+      <td class="rn">${esc(l.roomNo)}</td>
+      <td class="gc">${esc(l.code)}</td>
+      <td>${esc(l.names.join(' '))}</td>
+      <td class="st">${esc(stayText(l))}</td>
+      <td><span class="nb">${esc(tx(CAT_KEY[l.cat]))}</span></td>
+      <td class="cnt" style="font-weight:600;color:var(--muted)">${esc(accomL(l.accom))}</td>
+    </tr>`).join('');
+  box.innerHTML=`<table class="ltbl"><thead><tr>
+      <th>${tx('colRoom')}</th><th>${tx('colCode')}</th><th>${tx('colNames')}</th>
+      <th>${tx('colStay')}</th><th>${tx('colNights')}</th><th>${tx('colAccom')}</th>
+    </tr></thead><tbody>${rows}</tbody></table>`
+    + (list.length>150?`<div class="cnt" style="color:var(--muted);padding:8px 0">${esc(tx('previewCap')(list.length))}</div>`:'');
+}
+
+// 이름 길이에 따라 자동 축소(방 최대 4명까지 한 줄에)
+function nameSize(names){
+  const len=names.join(' ').length;
+  if(len<=8) return 1; if(len<=12) return .84; if(len<=17) return .70; return .58;
+}
+
+function printLabels(){
+  const list=filtered();
+  if(!list.length){ toast(tx('noPrintList'),'err'); return; }
+  const s=SIZES[SIZE], PER=s.cols*s.rows;
+  const mx=(210-s.w*s.cols)/2, my=(297-s.h*s.rows)/2;
+  const slots=[...Array(Math.max(0,START-1)).fill(null), ...list];
+  const pages=[]; for(let i=0;i<slots.length;i+=PER){ const pg=slots.slice(i,i+PER); while(pg.length<PER) pg.push(null); pages.push(pg); }
+  const cell=l=> l? `<div class="ks-cell"><div class="ks-body">
+      <div class="ks-top"><span class="ks-code">${esc(l.code)}</span><span class="ks-names" style="font-size:calc(var(--fn) * ${nameSize(l.names)})">${esc(l.names.join(' '))}</span></div>
+      <div class="ks-room">${esc(l.roomNo)}<span class="ks-pax">${l.pax}名</span></div>
+      <div class="ks-stay">${esc(stayText(l))}<span class="ks-nt">${l.n}泊</span></div>
+    </div></div>` : '<div class="ks-cell ks-empty"></div>';
+  const sizeLabel=`${s.label} · ${lang()==='ja'?'1枚':lang()==='en'?'per sheet':'1장'} ${PER}${lang()==='en'?'':'면'}`;
+  const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>ルームキー ラベル — ${esc(YM)}</title>
+  <style>
+  @page{size:A4 portrait;margin:0}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{font-family:'Meiryo','Malgun Gothic',sans-serif;background:#f5f5f5;color:#111}
+  .ks-toolbar{position:sticky;top:0;background:#fff;padding:14px 20px;box-shadow:0 2px 8px rgba(0,0,0,.1);display:flex;align-items:center;gap:16px;z-index:100}
+  .ks-toolbar h1{font-size:16px;font-weight:700}.ks-toolbar .meta{font-size:11px;color:#666}
+  .ks-toolbar button{padding:8px 20px;background:#15803D;color:#fff;border:none;border-radius:5px;font-size:13px;font-weight:600;cursor:pointer}
+  .ks-toolbar .ks-close{background:#999}
+  .ks-container{padding:20px}
+  .ks-page{width:210mm;height:297mm;margin:0 auto 20px;background:#fff;padding:${my}mm ${mx}mm;
+    display:grid;grid-template-columns:repeat(${s.cols},${s.w}mm);grid-template-rows:repeat(${s.rows},${s.h}mm);
+    box-shadow:0 2px 12px rgba(0,0,0,.08);page-break-after:always}
+  .ks-page:last-child{page-break-after:auto}
+  .ks-cell{width:${s.w}mm;height:${s.h}mm;overflow:hidden;border:.3pt dashed #ddd;display:flex;align-items:center;justify-content:center;padding:${s.h>=50?'2.5mm 3mm':'1.2mm 2.5mm'}}
+  .ks-empty{background:repeating-linear-gradient(45deg,#fafafa,#fafafa 6px,#f0f0f0 6px,#f0f0f0 12px)}
+  .ks-body{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:${s.h>=50?'1.2mm':'.4mm'}}
+  .ks-top{display:flex;align-items:baseline;justify-content:center;gap:1.6mm;width:100%;white-space:nowrap;overflow:hidden}
+  .ks-code{font-family:'Arial','Meiryo',sans-serif;font-weight:800;letter-spacing:.3px;line-height:1}
+  .ks-names{font-weight:700;line-height:1}
+  .ks-room{font-family:'Arial','Meiryo',sans-serif;font-weight:800;line-height:1;letter-spacing:.5px;display:flex;align-items:baseline;justify-content:center;gap:1.6mm}
+  .ks-pax{font-family:'Meiryo',sans-serif;font-weight:700}
+  .ks-stay{font-weight:700;line-height:1.1;white-space:nowrap;display:flex;align-items:baseline;justify-content:center;gap:1.8mm}
+  .ks-nt{font-weight:800;border:.8pt solid #111;border-radius:1mm;padding:.2mm 1mm}
+  /* 크기별 타이포 */
+  .s-50x50 .ks-cell{--fn:11pt}
+  .s-50x50 .ks-code{font-size:14pt}.s-50x50 .ks-names{font-size:var(--fn)}
+  .s-50x50 .ks-room{font-size:27pt}.s-50x50 .ks-pax{font-size:9.5pt}
+  .s-50x50 .ks-stay{font-size:9.5pt}.s-50x50 .ks-nt{font-size:8.5pt}
+  .s-75x50 .ks-cell{--fn:13pt}
+  .s-75x50 .ks-code{font-size:17pt}.s-75x50 .ks-names{font-size:var(--fn)}
+  .s-75x50 .ks-room{font-size:32pt}.s-75x50 .ks-pax{font-size:11pt}
+  .s-75x50 .ks-stay{font-size:11.5pt}.s-75x50 .ks-nt{font-size:9.5pt}
+  .s-75x25 .ks-cell{--fn:9.5pt}
+  .s-75x25 .ks-code{font-size:12pt}.s-75x25 .ks-names{font-size:var(--fn)}
+  .s-75x25 .ks-room{font-size:17pt}.s-75x25 .ks-pax{font-size:8pt}
+  .s-75x25 .ks-stay{font-size:8.5pt}.s-75x25 .ks-nt{font-size:7.5pt}
+  @media print{html,body{background:#fff}.ks-toolbar{display:none}.ks-container{padding:0}
+    .ks-page{margin:0 auto;box-shadow:none}.ks-cell{border:none}.ks-empty{background:#fff}}
+  </style></head><body>
+  <div class="ks-toolbar"><h1>${esc(tx('pvTitle'))}</h1>
+    <div class="meta">${esc(tx('pvMeta')(sizeLabel,list.length,pages.length))} · ${esc(YM)}</div>
+    <div style="flex:1"></div>
+    <button onclick="window.print()">🖨 ${esc(tx('pvPrint'))}</button>
+    <button class="ks-close" onclick="window.close()">✕ ${esc(tx('pvClose'))}</button>
+  </div>
+  <div class="ks-container">${pages.map(pg=>`<div class="ks-page s-${SIZE}">${pg.map(cell).join('')}</div>`).join('')}</div>
+  </body></html>`;
+  const w=window.open('','_blank'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
+  w.document.write(html); w.document.close();
+}
+
+// 연결 전 정적 chrome 라벨 — 로컬 키는 data-i18n 대신 id로 채운다(전역 applyLang이 덮어쓰지 않도록)
+function applyStatic(){
+  const step=$('#t-step'); if(step) step.textContent=tx('step');
+  const home=$('#t-home'); if(home) home.textContent=tx('home');
+  const hint=$('#t-connhint'); if(hint) hint.textContent=tx('connHint');
+  const pre=$('#t-preconn'); if(pre) pre.textContent=tx('preConn');
+  const btn=$('#btn-connect');
+  if(supa){ setConn(tx('connOk'),'ok'); if(btn) btn.textContent=tx('connectedBtn'); }
+  else { setConn(tx('notConn'),''); if(btn) btn.textContent=tx('connect'); }
+}
+window.onSaizenLangChange=function(){ applyStatic(); if(supa){ renderUI(); renderCatChips(); renderDayChips(); renderAccomChips(); renderUnassigned(); renderPreview(); } };
+
+$('#btn-connect').addEventListener('click',connect);
+applyStatic();
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>

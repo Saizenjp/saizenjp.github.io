@@ -169,6 +169,37 @@
     return dms(dep1) <= dms(arr2) + g && dms(dep2) <= dms(arr1) + g;
   }
 
+  // ── 비회원 F풀 코드 = 알파벳2 + 가나1 (18 × 33 = 594) ─────────────────────
+  var NM_PREFIX = ['FA','FB','FF','FG','FH','FJ','FK','FL','FM','FO','FP','FR','FS','FT','FW','FX','FY','FZ'];
+  var NM_KANA   = ['あ','ウ','カ','キ','コ','サ','す','セ','た','ち','テ','と','な','ニ','ネ','の','は','ヒ','ふ','ホ','マ','み','ム','め','モ','ヤ','ヨ','ラ','リ','ル','れ','ロ','わ'];
+  var NM_POOL   = NM_PREFIX.length * NM_KANA.length;   // 594
+  // idx = 가나순서*18 + 알파벳순서
+  function nmIdxToCode(idx) {
+    idx = ((idx % NM_POOL) + NM_POOL) % NM_POOL;
+    return NM_PREFIX[idx % NM_PREFIX.length] + NM_KANA[Math.floor(idx / NM_PREFIX.length) % NM_KANA.length];
+  }
+  function nmCodeToIdx(code) {
+    var p = NM_PREFIX.indexOf(String(code).slice(0, 2));
+    var k = NM_KANA.indexOf(String(code).slice(2));
+    return (p < 0 || k < 0) ? -1 : (k * NM_PREFIX.length + p);
+  }
+
+  // ── F풀 순회 순서 = '흩뿌리기'(Min 2026-08) ────────────────────────────────
+  //  ⚠ 이전 방식(커서 +1)은 idx%18 이 알파벳이라 연속 배정이 FAあ·FBあ·FFあ… 처럼
+  //    가나가 고정된 채 알파벳만 줄줄이 바뀌어(또는 그 반대) 현장이 헷갈려 했다.
+  //  n번째 순회 위치가 알파벳·가나 **양쪽 모두** 매번 바뀌도록 좌표를 각각 서로 다른
+  //  서로소 보폭으로 돌린다: 알파벳 +5(mod 18) · 가나 +7(mod 33).
+  //  두 좌표의 동시 주기는 lcm(18,33)=198 이므로 198개마다 알파벳을 1칸 밀어(cyc)
+  //  서로 겹치지 않는 다음 198개로 넘어간다 → 594개 전체를 정확히 한 번씩 순회(전단사).
+  var NM_PAIR = 198, NM_STEP_P = 5, NM_STEP_K = 7;
+  function nmSpreadIdx(n) {
+    n = ((n % NM_POOL) + NM_POOL) % NM_POOL;
+    var cyc = Math.floor(n / NM_PAIR), j = n % NM_PAIR;
+    var p = (j * NM_STEP_P + cyc) % NM_PREFIX.length;
+    var k = (j * NM_STEP_K) % NM_KANA.length;
+    return k * NM_PREFIX.length + p;
+  }
+
   // ── 출발지 공항 판정 (釜山 PUS / 仁川 ICN) ──────────────────────────────────
   //  여러 페이지가 제각각(김해 누락·항공편 미고려)이던 것을 단일화.
   //   · 항공편 코드 우선: ZE(에어부산)→PUS / TW(티웨이)→ICN
@@ -405,6 +436,12 @@
     b2bFees: b2bFees,
     accomFromProduct: accomFromProduct,
     nmCodeConflict: nmCodeConflict,
+    NM_PREFIX: NM_PREFIX,
+    NM_KANA: NM_KANA,
+    NM_POOL: NM_POOL,
+    nmIdxToCode: nmIdxToCode,
+    nmCodeToIdx: nmCodeToIdx,
+    nmSpreadIdx: nmSpreadIdx,
     originPort: originPort,
     isPus: isPus,
     FLOOR_FIXED: FLOOR_FIXED,

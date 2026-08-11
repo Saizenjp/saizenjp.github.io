@@ -225,8 +225,8 @@
 </div>
 <style>@keyframes runspin{to{transform:rotate(360deg)}}</style>
 
-<script src="../assets/saizen-core.js?v=13"></script>
-<script src="../assets/saizen-ops.js?v=15.49"></script>
+<script src="../assets/saizen-core.js?v=14"></script>
+<script src="../assets/saizen-ops.js?v=15.50"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -726,9 +726,8 @@ async function run(){
 
     // ── 비회원 F풀 태그코드 (회원 미매칭 팀 자동 배정) ──
     // 18 prefix × 33 가나 = 594개/연도. eventSeq별 영속 · 연도 범위는 session_ym로 충돌 회피.
-    const NM_PREFIX = ['FA','FB','FF','FG','FH','FJ','FK','FL','FM','FO','FP','FR','FS','FT','FW','FX','FY','FZ'];
-    const NM_KANA   = ['あ','ウ','カ','キ','コ','サ','す','セ','た','ち','テ','と','な','ニ','ネ','の','は','ヒ','ふ','ホ','マ','み','ム','め','モ','ヤ','ヨ','ラ','リ','ル','れ','ロ','わ'];
-    const NM_POOL   = NM_PREFIX.length * NM_KANA.length;  // 594
+    //  코드표(18×33=594)·순회 순서는 SZCore 단일 진실원.
+    const NM_PREFIX = SZCore.NM_PREFIX, NM_KANA = SZCore.NM_KANA, NM_POOL = SZCore.NM_POOL;
     // ── F풀 재활용(Phase 2): 코드 예약을 '겹치는 팀'끼리로 한정 → 충분히 지난(30일+) 팀의 F코드는 자동 재사용.
     //   ⚠ 겹침 판정 = 30일 쿨다운(Min 2026-07): 두 팀 체류가 30일 이내면 '겹침'으로 봐 다른 코드 부여.
     //     이유=① 턴오버 당일(퇴실=입실) 동시 존재 ② 한 달 안에 같은 코드가 다른 팀에 재등장 → 네임택·식사·기억 혼동.
@@ -749,21 +748,42 @@ async function run(){
     } catch(e){}
     // F코드 재사용 30일 쿨다운 판정 = SZCore 단일 소스 위임(턴오버·한달내 재등장 충돌 방지).
     const _fOv=(d1,a1,d2,a2)=>SZCore.nmCodeConflict(d1,a1,d2,a2,30);
-    // 코드 ↔ 인덱스. idx = kana순서*18 + prefix순서 (idxToCode 는 kana를 18칸마다 1칸 진행 → 594개 전부 생성)
-    const idxToCode = idx => { idx=((idx%NM_POOL)+NM_POOL)%NM_POOL; return NM_PREFIX[idx % NM_PREFIX.length] + NM_KANA[Math.floor(idx / NM_PREFIX.length) % NM_KANA.length]; };
-    const codeToIdx = code => { const p=NM_PREFIX.indexOf(String(code).slice(0,2)); const k=NM_KANA.indexOf(String(code).slice(2)); return (p<0||k<0)?-1:(k*NM_PREFIX.length + p); };
-    // ── 순차 전진 커서(Min 2026-07): あ 몰림 방지 → 풀 전체로 분산. 시드=기존 최대 인덱스+1(다음 kana부터).
-    //   각 배정마다 커서 +1 → 소진(594)되면 wrap=리셋. 30일 내 겹치는 팀이 쓰는 코드는 건너뜀(안전).
-    let nmCursor = 0;
-    { let mx=-1; Object.keys(fRanges).forEach(c=>{ const i=codeToIdx(c); if(i>mx) mx=i; }); nmCursor=(mx+1)%NM_POOL; }
+    const idxToCode = idx => SZCore.nmIdxToCode(idx);
+    // ── 닮은꼴 회피 배정(Min 2026-08) ─────────────────────────────────────────
+    //  ⚠ 이전 방식(커서 +1)의 문제: idx%18 이 알파벳이라 연속 배정이 FAあ·FBあ·FFあ… 처럼
+    //    가나 고정 + 알파벳만 줄줄이(또는 그 반대)로 나와 현장이 서로 헷갈려 했다.
+    //  두 가지로 해결한다.
+    //   ① 순회 순서 = SZCore.nmSpreadIdx — 한 칸 갈 때마다 알파벳·가나가 **둘 다** 바뀐다.
+    //   ② 같은 시기(30일 창)에 현장에 있는 F코드들의 알파벳·가나 사용횟수를 세어
+    //      **가장 덜 쓰인 조합**을 고른다(+ 직전 배정과 같은 글자는 강한 감점).
+    //      동시 체류가 18팀을 넘으면 알파벳 중복은 수학적으로 불가피 → '몰리지 않게 고르게' 퍼뜨린다.
+    let nmCursor = Object.keys(fRanges).length % NM_POOL;   // 재임포트 때도 이어서 전진(기존 팀 코드는 nmAssigned로 보존)
+    let lastP='', lastK='';
     function assignNonMemberCode(seq, dep, arr){
       if(nmAssigned[seq]) return nmAssigned[seq];               // 영속
+      // 이 팀과 같은 시기(30일 창)에 존재하는 코드 = 사용 불가 + 글자 사용횟수 집계
+      const busy=new Set(), pUse={}, kUse={};
+      Object.keys(fRanges).forEach(c=>{
+        if(!(fRanges[c]||[]).some(r=>_fOv(dep,arr,r.dep,r.arr))) return;
+        busy.add(c);
+        const p=c.slice(0,2), k=c.slice(2);
+        pUse[p]=(pUse[p]||0)+1; kUse[k]=(kUse[k]||0)+1;
+      });
+      let bestIdx=-1, bestCode=null, bestScore=Infinity;
       for(let step=0; step<NM_POOL; step++){
-        const idx=(nmCursor+step)%NM_POOL; const code=idxToCode(idx);
-        if((fRanges[code]||[]).some(r=>_fOv(dep,arr,r.dep,r.arr))) continue;   // 30일 내 겹침=건너뜀
-        nmAssigned[seq]=code; (fRanges[code]=fRanges[code]||[]).push({dep,arr}); nmCursor=(idx+1)%NM_POOL; return code;
+        const idx=SZCore.nmSpreadIdx(nmCursor+step), code=idxToCode(idx);
+        if(busy.has(code)) continue;                                          // 30일 내 겹침=사용 불가
+        const p=code.slice(0,2), k=code.slice(2);
+        let sc=(pUse[p]||0)+(kUse[k]||0);
+        if(p===lastP) sc+=3;                                                  // 직전 배정과 닮은꼴 회피
+        if(k===lastK) sc+=3;
+        if(sc<bestScore){ bestScore=sc; bestIdx=idx; bestCode=code; if(sc===0) break; }
       }
-      return null;  // 594 전부 30일 내 겹침(사실상 불가) = 소진
+      if(!bestCode) return null;  // 594 전부 30일 내 겹침(사실상 불가) = 소진
+      nmAssigned[seq]=bestCode; (fRanges[bestCode]=fRanges[bestCode]||[]).push({dep,arr});
+      lastP=bestCode.slice(0,2); lastK=bestCode.slice(2);
+      nmCursor=(nmCursor+1)%NM_POOL;
+      return bestCode;
     }
 
     // ── 그룹코드 xlsx 미업로드 시: member_codes(Supabase)에서 매칭(RPC) — xlsx 없이도 동작 ──
