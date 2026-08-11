@@ -1831,7 +1831,9 @@
     b.id = 'so-upd'; b.type = 'button';
     b.setAttribute('data-i18n', 'so_update');
     b.setAttribute('data-i18n-title', 'so_updateT');
-    b.textContent = t('so_update'); b.title = stripRuby(t('so_updateT'));
+    // ⚠ innerHTML — 일본어 라벨에 후리가나 루비(<ruby><rt>)가 들어 있어 textContent 로 넣으면
+    //    태그가 글자로 노출된다(applyLang 의 data-i18n 처리와 동일하게 innerHTML).
+    b.innerHTML = t('so_update'); b.title = stripRuby(t('so_updateT'));
     b.style.cssText = 'font-family:inherit;font-size:12px;font-weight:800;color:#fff;background:#b5402f;'
       + 'border:1px solid #963427;border-radius:99px;padding:5px 12px;cursor:pointer;white-space:nowrap;'
       + 'animation:so-updp 1.8s ease-in-out infinite';
