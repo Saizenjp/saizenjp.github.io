@@ -158,7 +158,6 @@ from (
   union all select 89,'89 시즈미배정자동','shizu_autofill()', case when exists(select 1 from pg_proc where proname='shizu_autofill') then '✅ 있음' else '❌ 없음 (89)' end
   union all select 89,'89 시즈미배정자동','_impl 무권한 revoke', case when not has_function_privilege('authenticated','public._shizu_autofill_impl(text)','execute') then '✅ 차단' else '❌ 노출 (89)' end
   union all select 90,'90 손님QR만료','guest_bill 퇴실+7일 차단', case when exists(select 1 from pg_proc where proname='guest_bill' and prosrc like '%arr_date + 7%') then '✅ 적용' else '❌ 미적용 (90)' end
-  union all select 91,'91 체크아웃처리','set_check_status()', case when exists(select 1 from pg_proc where proname='set_check_status') then '✅ 있음' else '❌ 없음 (91)' end
 ) t
 order by ord, 항목;
 

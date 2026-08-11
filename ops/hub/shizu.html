@@ -264,7 +264,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=13"></script>
-<script src="../assets/saizen-ops.js?v=15.42"></script>
+<script src="../assets/saizen-ops.js?v=15.43"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(予約表 산출물·도메인 데이터는 일본어 유지) ──
@@ -419,6 +419,14 @@ function fmtBirth(b, y6){
   return '';
 }
 function birthOf(g){ return g.birth||''; }
+// 기준일(체크인일) 시점 만나이. 생일 전이면 -1. 잘못된 값은 -1 반환(정렬에서 맨 뒤).
+function ageOn(birthISO, refISO){
+  const b=String(birthISO||'').slice(0,10), r=String(refISO||'').slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(b)||!/^\d{4}-\d{2}-\d{2}$/.test(r)) return -1;
+  let a=(+r.slice(0,4))-(+b.slice(0,4));
+  if(r.slice(5)<b.slice(5)) a--;          // 생일 전이면 한 살 빼기
+  return (a>=0&&a<130)?a:-1;
+}
 // 팀 대표 '영문명' — 予約表 代表者·배정보드 요약/행거 공용(방 칩의 お名前과 표기 통일).
 //   영문이 없으면 한글명 → 그것도 없으면 bookings.rep_name(한글) 폴백.
 function buildRepEn(){ REPEN={}; GUESTS.forEach(g=>{ const s=g.event_seq, rank=g.isRep?0:(g.seq||99);
@@ -855,7 +863,7 @@ function shzToastUndo(msg, undoFn){
   const b=document.createElement('button'); b.className='btn sm'; b.textContent='↩ '+tx('undo');
   b.onclick=()=>{ t.remove(); (undoFn||shzRestore)(); }; t.appendChild(b);
   box.appendChild(t);
-  setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); }, 6000);
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); }, 10000);   // 되돌리기 판단 여유(6초→10초, Min)
 }
 // 자동배정 되돌리기: 배정 직전 auto 스냅샷을 같은 RPC로 재적용(auto만 정리·manual 보존)
 async function shzRestoreAuto(snap,start,end){
@@ -1040,6 +1048,8 @@ async function autoAssignShizu(){
     const seqs=[...new Set(teams.map(t=>t.seq))];
     const gms=seqs.length? await pagedIn('guest_members','id,event_seq','event_seq',seqs) : [];
     const bks=seqs.length? await pagedIn('bookings','event_seq,remark,remark_local','event_seq',seqs) : [];
+    // 팀 최고령 나이 — 「어르신이 있는 팀을 本館(2층)에」 우선 배정용(Min). 생년월일은 passengers 보유.
+    const pxAge=seqs.length? await pagedIn('passengers','event_seq,birth,birth_yymmdd','event_seq',seqs) : [];
     const bkMap={}; bks.forEach(b=>bkMap[b.event_seq]=b);
     // 수기(맞바꿈·강제추가)만 점유 시드로 보존 — auto는 서버에서 정리 후 새로 채움
     const manual=GUESTS.filter(g=>g.src==='manual');
@@ -1077,9 +1087,29 @@ async function autoAssignShizu(){
       }
       holds += leftover;   // 홀수로 남는 1명 = 미배정(자동으론 3인방 안 만듦, 현장 수기)
     };
-    const sorted=teams.slice().sort((a,b)=>a.seq-b.seq);
+    // ── 처리 순서: 별채 선호팀 먼저 → 각 그룹 안에서 '최고령 내림차순' → 동률이면 예약순 ──
+    //   本館(志津·合歓·山法師·北條)이 일반팀 풀의 앞이라, 먼저 처리된 팀이 本館을 가져간다.
+    //   즉 어르신이 있는 팀이 계단 적은 本館(2층)을 우선 배정받고, 젊은 팀이 離れ(別棟)로 밀린다.
+    //   ⚠ 別棟 선호팀은 나이와 무관하게 離れ 우선 — 사전 요청이 나이보다 앞선다.
+    //   ⚠ 나이 = 그 팀 체크인일 기준 만나이의 팀 내 최댓값. 생년월일이 없으면 -1(맨 뒤).
+    const teamAge={};
+    pxAge.forEach(p=>{
+      const d=(function(){
+        if(p.birth) return String(p.birth).slice(0,10);
+        const y6=String(p.birth_yymmdd||'').replace(/\D/g,''); if(y6.length!==6) return '';
+        const yy=+y6.slice(0,2), cy=new Date().getFullYear()%100;
+        return (yy>cy?1900+yy:2000+yy)+'-'+y6.slice(2,4)+'-'+y6.slice(4,6);
+      })();
+      if(!d) return;
+      const t=teams.find(x=>x.seq===p.event_seq); if(!t) return;
+      const ref=t.dep, a=ageOn(d,ref);
+      if(a>=0 && a>(teamAge[p.event_seq]===undefined?-1:teamAge[p.event_seq])) teamAge[p.event_seq]=a;
+    });
+    const ageOf=s2=>(teamAge[s2]===undefined?-1:teamAge[s2]);
+    const byAge=(a,b)=>(ageOf(b.seq)-ageOf(a.seq))||(a.seq-b.seq);
+    const sorted=teams.slice().sort(byAge);
     sorted.filter(t=>annexPref[t.seq]).forEach(placeTeam);   // 별채 선호팀 먼저(별채 확보)
-    sorted.filter(t=>!annexPref[t.seq]).forEach(placeTeam);  // 그다음 일반팀
+    sorted.filter(t=>!annexPref[t.seq]).forEach(placeTeam);  // 그다음 일반팀(최고령 순)
     if(!rows.length){ toast(tx('autoNone'),'warn'); return; }
     if(!confirm(tx('autoConfirm')(rows.length))) return;
     // 되돌리기용: 배정 직전 auto 방 스냅샷(manual 제외 — RPC가 manual은 안 건드림)
