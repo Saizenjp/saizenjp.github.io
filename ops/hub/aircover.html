@@ -84,7 +84,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=14"></script><!-- 공유 도메인 규칙(출발지 PUS/ICN 등) -->
-<script src="../assets/saizen-ops.js?v=15.60"></script>
+<script src="../assets/saizen-ops.js?v=15.61"></script>
 <script>
 const $=s=>document.querySelector(s);
 const L={
@@ -281,7 +281,7 @@ async function load(){
         from:portOf(inF,outF,g.origin), pax:pax,
         inFlight:inF||'-', inTime:FLIGHT_TIMES[inF]||'', inDate:mmdd(g.dep),
         outFlight:outF||'-', outTime:FLIGHT_TIMES[outF]||'', outDate:mmdd(g.arr),
-        depRaw:g.dep||'',
+        depRaw:g.dep||'', arrRaw:g.arr||'',
         numStart:1, numEnd:pax,                 // 番호 범위(단독=1〜pax, 묶음=연속 오프셋)
         grpBase:tag, grpNo:0,                    // 정렬용: 그룹 기준코드·팀번호
         sortDep:g.dep||'', sortFrom:'', sortAccom:g.accom||''   // 정렬 앵커(묶음은 대표 기준으로 대체)
@@ -293,9 +293,27 @@ async function load(){
     if(window.SZCore&&SZCore.orderGroup&&SZCore.teamTagN){
       const groups={};
       CARDS.forEach(c=>{ const ov=OVR[c.seq]; if(ov&&ov.team_group){ (groups[ov.team_group]=groups[ov.team_group]||[]).push(c); } });
+      const merged=new Set();   // 한 장으로 합쳐져 사라지는 카드(seq)
       Object.keys(groups).forEach(k=>{ const list=groups[k]; if(list.length<2)return;
         const rep=list.find(c=>{ const ov=OVR[c.seq]; return ov&&ov.team_group_rep; }); if(!rep)return;
         const base=rep.tag, repColor=rep.accomColor, repLabel=rep.accomLabel;   // 대표 기준 고정(루프 중 rep.tag 오염 방지)
+        // ── 완전 동일 판정(Min 2026-08) ────────────────────────────────────
+        //  묶은 팀 전부가 출국일·귀국일·출국편·귀국편·출발지(ICN/PUS)까지 똑같으면
+        //  실질적으로 한 팀이 예약만 나뉜 것 → 航空カバー는 1장으로 합친다.
+        //  (하나라도 다르면 커버에 적을 내용이 달라지므로 기존대로 Y1·Y2로 나눠 출력)
+        const sig=c=>[c.depRaw,c.arrRaw,c.inFlight,c.outFlight,c.from].join('|');
+        const same=list.every(c=>sig(c)===sig(rep));
+        if(same){
+          // 대표 카드 1장만 남기고 인원 합산 · 태그는 팀번호 없이 기준코드 그대로
+          const totPax=list.reduce((n,c)=>n+(c.pax||0),0);
+          rep.tag=base; rep.pax=totPax; rep.numStart=1; rep.numEnd=totPax;
+          rep.accomColor=repColor; rep.accomLabel=repLabel;
+          rep.mergedFrom=list.length;                       // 합친 팀 수(미리보기 표시용)
+          rep.grpBase=base; rep.grpNo=0;
+          rep.sortDep=rep.depRaw; rep.sortFrom=rep.from; rep.sortAccom=rep.accom;
+          list.forEach(c=>{ if(c!==rep) merged.add(c.seq); });
+          return;
+        }
         let off=0;   // 番호 연속 오프셋(네임택 개인번호와 동일: Y1=1〜4 · Y2=5〜8)
         SZCore.orderGroup(list.map(c=>({event_seq:c.seq,dep:c.depRaw})),rep.seq).forEach((o,i)=>{
           const card=CARDS.find(c=>c.seq===String(o.event_seq)); if(!card)return;
@@ -307,6 +325,7 @@ async function load(){
           card.sortDep=rep.depRaw; card.sortFrom=rep.from; card.sortAccom=rep.accom;
         });
       });
+      if(merged.size) CARDS=CARDS.filter(c=>!merged.has(c.seq));
     }
     SELDATES.clear(); SELACCOMS.clear();
     $('#stat').textContent=`${CARDS.length}${tx('teamUnit')}`;

@@ -157,6 +157,13 @@
   <!-- ── 업로드 파일 ── -->
   <div class="grid" id="drop-grid"></div>
 
+  <!-- ── F코드 재발급(예외 작업) ── -->
+  <div style="margin:0 0 6px;padding:10px 14px;border:1px solid #e6d3a3;border-left:4px solid #d9a52b;border-radius:10px;background:#fdf6e7;color:#6b5312;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span data-i18n="s1_recodeLbl"></span>
+    <input class="inp" id="recode-from" type="date" style="width:170px">
+    <span data-i18n="s1_recodeHint" style="font-weight:500;opacity:.9"></span>
+  </div>
+
   <!-- ── 실행 ── -->
   <div class="actions">
     <span class="session" id="session-label"></span>
@@ -226,7 +233,7 @@
 <style>@keyframes runspin{to{transform:rotate(360deg)}}</style>
 
 <script src="../assets/saizen-core.js?v=14"></script>
-<script src="../assets/saizen-ops.js?v=15.60"></script>
+<script src="../assets/saizen-ops.js?v=15.61"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -732,6 +739,9 @@ async function run(){
     //   ⚠ 겹침 판정 = 30일 쿨다운(Min 2026-07): 두 팀 체류가 30일 이내면 '겹침'으로 봐 다른 코드 부여.
     //     이유=① 턴오버 당일(퇴실=입실) 동시 존재 ② 한 달 안에 같은 코드가 다른 팀에 재등장 → 네임택·식사·기억 혼동.
     //     30일 쿨다운 기준 최대 필요 코드 ≈139(594 풀 여유 충분). 30일+ 지난 팀은 재사용(사실상 소진 없음).
+    // 한번 정한 코드는 그 일정이 지나기 전까지 바꾸지 않는다(Min 원칙) — 아래 재발급 기준일을 넣었을 때만 예외.
+    const RECODE_FROM = (document.getElementById('recode-from')||{}).value || '';
+    let recodeFreed = 0;
     const nmAssigned = {};        // event_seq → code (영속: 같은 행사는 같은 코드 유지)
     const fRanges = {};           // code → [{dep,arr}] (그 코드를 쓰는 팀들의 체류구간)
     const impYears = [...new Set([...(fileMonths||[]), ym].filter(Boolean).map(m=>String(m).slice(0,4)))];
@@ -742,8 +752,13 @@ async function run(){
           .like('session_ym', yr+'-%')
           .like('group_code', 'F%');
         (ex||[]).forEach(g=>{ const c=g.group_code; if(!c) return; const b=g.bookings||{};
+          const _dep=String(b.dep_date||'').slice(0,10);
+          // F코드 재발급(예외): 기준일 이후 출발 + 이번 파일에 들어있는 팀만 코드를 비워 새 규칙으로 다시 받는다.
+          //   기존 코드 예약(fRanges)도 함께 풀어 그 코드를 다시 쓸 수 있게 한다.
+          //   ⚠ 파일에 없는 팀은 손대지 않는다(인쇄물이 이미 나갔을 수 있음).
+          if(RECODE_FROM && _dep && _dep>=RECODE_FROM && procMap[g.event_seq]){ recodeFreed++; return; }
           nmAssigned[g.event_seq]=c;
-          (fRanges[c]=fRanges[c]||[]).push({dep:String(b.dep_date||'').slice(0,10), arr:String(b.arr_date||'').slice(0,10)}); });
+          (fRanges[c]=fRanges[c]||[]).push({dep:_dep, arr:String(b.arr_date||'').slice(0,10)}); });
       }
     } catch(e){}
     // F코드 재사용 30일 쿨다운 판정 = SZCore 단일 소스 위임(턴오버·한달내 재등장 충돌 방지).
@@ -813,6 +828,7 @@ async function run(){
       }
     }
 
+    if(RECODE_FROM) log(t('s1_recodeLog').replace('{d}',RECODE_FROM).replace('{n}',String(recodeFreed)),'warn');
     let nmCnt = 0, memCnt = 0, nmFull = 0;
     // 출발일(dep) 순으로 배정 → F코드 커서가 시간순 전진(분산·재사용 순서 안정)
     Object.keys(procMap).sort((a,b)=>{ const da=String((procMap[a]||{}).dep||''), db=String((procMap[b]||{}).dep||''); return da<db?-1:da>db?1:(a-b); }).forEach(seqStr=>{
