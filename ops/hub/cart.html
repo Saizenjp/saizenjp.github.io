@@ -74,6 +74,11 @@
   .cd .d.sun{color:var(--err)} .cd .d.sat{color:#2b5f9e}
   .cd .tm{font-size:10.5px;color:var(--text2);font-weight:700}
   .cd .ln{display:flex;justify-content:space-between;font-size:10.5px;font-family:var(--mono);font-weight:700}
+  .cd .ln3{display:flex;justify-content:space-between;gap:3px;font-size:10.5px;font-family:var(--mono);font-weight:800;margin-top:1px}
+  .cd .ln3 i{font-style:normal;color:var(--muted);font-weight:600;margin-right:2px}
+  .cd .ln3 .u{color:var(--accent2)} .cd .ln3 .l{color:var(--ok)}
+  .cd .ln3.over .l{color:var(--err)}
+  .cd.sel{border-color:var(--accent);background:var(--accentSoft);box-shadow:0 0 0 2px var(--accent) inset}
   .cd .ln i{font-style:normal;color:var(--muted)}
   .cd .ln.over b{color:var(--err)}
   .cd .un{font-size:10px;font-weight:800;color:var(--err)}
@@ -174,6 +179,7 @@ const L={
       +'<b>電動カートの有料事前申請</b>は<b>やまなみリゾートゴルフクラブ利用時のみ</b> — やまなみ/久住ヒルズ/志津の宿は常に可、'
       +'<b>ガンジーホテルは平日が九重高原CCなので、やまなみCCの日(週末・祝日・入国日)のみ</b>可です。<b>現場申請</b>はいつでも可。'
       +'コース・ティ時刻は<b>ゴルフ組編成</b>で保存された値を読み込みます(未編成なら空欄)。',
+    showAllTeams:'この日の全チーム', noElecTeam:'この日 電動カートの申請チームはありません。',
     autoMark:'自動', dispBtn:'手配書', dispT:'現地手配書をポップアップで開きます',
     cuUsed:'この日 使用中', cuOffT:'クリックで「整備中」にします(割当から除外)', cuOn:'整備中 — クリックで使用可に戻します',
     cuNone:'カートが登録されていません。下の欄で追加してください(例 1-36)。',
@@ -219,6 +225,7 @@ const L={
       +'<b>전기카트 유료 사전신청</b>은 <b>야마나미 리조트 골프클럽 이용 시에만</b> 가능합니다 — 야마나미·쿠주힐즈·시즈노야도는 항상 가능, '
       +'<b>간지호텔은 평일이 구주고원CC라 야마나미CC를 쓰는 날(주말·공휴일·입국일)만</b> 가능합니다. <b>현장 신청</b>은 언제나 가능합니다. '
       +'코스·티오프는 <b>골프 조편성</b>에서 저장한 값을 읽어옵니다(미편성이면 빈칸).',
+    showAllTeams:'그날 전체 팀', noElecTeam:'이 날 전기카트 신청 팀이 없습니다.',
     autoMark:'자동', dispBtn:'수배서', dispT:'現地手配書를 팝업으로 엽니다',
     cuUsed:'이 날 사용 중', cuOffT:'클릭하면 「정비중」으로 바꿔 배정에서 뺍니다', cuOn:'정비중 — 클릭하면 사용 가능으로 되돌립니다',
     cuNone:'등록된 카트가 없습니다. 아래 칸에서 추가하세요(예 1-36).',
@@ -264,6 +271,7 @@ const L={
       +'<b>Paid pre-booking of electric carts</b> requires playing <b>Yamanami Resort Golf Club</b> — Yamanami, Kuju Hills and Shizu-no-Yado always qualify; '
       +'<b>The Guernsey Hotel plays Kuju Kogen CC on weekdays</b>, so only Yamanami CC days (weekends, holidays, arrival day) qualify. On-site requests are always fine. '
       +'Course and tee time are read from the <b>golf grouping</b> screen (blank if not yet grouped).',
+    showAllTeams:'all teams that day', noElecTeam:'No electric-cart request on this date.',
     autoMark:'auto', dispBtn:'Sheet', dispT:'Opens the local arrangement sheet in a popup',
     cuUsed:'in use this day', cuOffT:'Click to mark as under maintenance (excluded from assignment)', cuOn:'Under maintenance — click to make available again',
     cuNone:'No carts registered. Add them below (e.g. 1-36).',
@@ -304,7 +312,7 @@ const SHOW_CODES=['electric'];
 function visibleTypes(list){ return (list||[]).filter(t=>SHOW_CODES.includes(t.code)); }
 
 let supa=null, DATE=todayISO(), TYPES=[], ROWS=[], DIRTY=new Set(), UNITS={};
-let VIEW='day', YM=todayISO().slice(0,7), MDAYS=[], MTEAMS=[];
+let YM=todayISO().slice(0,7), MDAYS=[], MTEAMS=[], ONLY_ELEC=true;
 function ymBounds(ym){ const [y,m]=ym.split('-').map(Number); const last=new Date(y,m,0).getDate();
   return {from:`${ym}-01`, to:`${ym}-${String(last).padStart(2,'0')}`}; }
 function shiftYM(ym,n){ const [y,m]=ym.split('-').map(Number); const d=new Date(y,m-1+n,1);
@@ -321,7 +329,7 @@ async function connect(){
     if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
       $('#content').innerHTML='<div class="panel"><div class="deny">'+tx('loginNeedTitle')+'<small>'+tx('loginNeedSub')+'</small></div></div>'; return; }
     setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
-    renderUI(); load();
+    renderUI(); loadMonth(); load();
   }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
 }
 
@@ -332,15 +340,29 @@ async function paged(qf){
   return {data:out};
 }
 
+// ── 화면 = 월 캘린더(메인) + 그 아래 선택 날짜 상세(Min 2026-08 컨셉) ─────────
 function renderUI(){
   $('#content').innerHTML=`
-    <div class="panel noprint" style="padding-top:11px;padding-bottom:11px">
-      <div class="row">
-        <button class="btn sm ${VIEW==='day'?'':'ghost'}" id="v-day" type="button">${tx('vDay')}</button>
-        <button class="btn sm ${VIEW==='month'?'':'ghost'}" id="v-month" type="button">${tx('vMonth')}</button>
+    <div class="panel">
+      <div class="row noprint">
+        <span class="cnt">${tx('month')}</span>
+        <div class="dctrl">
+          <button class="btn sm ghost" id="m-prev" type="button">◀</button>
+          <input class="inp" id="m-pick" type="month" value="${YM}" style="width:150px">
+          <button class="btn sm ghost" id="m-next" type="button">▶</button>
+          <button class="btn sm ghost" id="d-today" type="button">${tx('today')}</button>
+        </div>
+        <span style="flex:1"></span>
+        <span class="cnt" id="m-stat"></span>
+        <button class="btn sm ghost" id="btn-mauto" type="button">${tx('autoMonth')}</button>
+        <button class="btn sm ghost" id="btn-mreload" type="button">${tx('reload')}</button>
+        <button class="btn sm ghost" id="btn-print" type="button">${tx('print')}</button>
       </div>
+      <h3 style="margin-top:12px">${tx('mSumTitle')} <span class="cnt" id="m-label"></span></h3>
+      <div id="m-sum"></div>
+      <div class="desc noprint" style="margin-top:10px">${tx('mNote')}</div>
     </div>
-    <div id="view-day" style="display:${VIEW==='day'?'':'none'}">
+
     <div class="panel">
       <div class="row noprint">
         <span class="cnt">${tx('date')}</span>
@@ -349,76 +371,55 @@ function renderUI(){
           <input class="inp" id="d-pick" type="date" value="${DATE}" style="width:158px">
           <button class="btn sm ghost" id="d-next" type="button">▶</button>
           <span class="cnt" id="d-wd" style="min-width:64px"></span>
-          <button class="btn sm ghost" id="d-today" type="button">${tx('today')}</button>
         </div>
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
+        <label class="cnt noprint" style="display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="checkbox" id="ck-all"${ONLY_ELEC?'':' checked'}> ${tx('showAllTeams')}</label>
         <button class="btn sm ghost" id="btn-auto" type="button">${tx('autoDay')}</button>
         <button class="btn sm ghost" id="btn-reload" type="button">${tx('reload')}</button>
-        <button class="btn sm ghost" id="btn-print" type="button">${tx('print')}</button>
         <button class="btn" id="btn-save" type="button" disabled>${tx('save')}</button>
       </div>
       <h3 style="margin-top:12px">${tx('stockTitle')} <span class="cnt" id="d-label"></span></h3>
       <div class="stock" id="stock"></div>
-      <div class="desc noprint" style="margin-top:11px">${tx('deskNote')}</div>
       <div id="warn"></div>
-    </div>
-    <div class="panel">
-      <h3>${tx('tblTitle')} <span class="cnt" id="tbl-cnt"></span></h3>
+      <h3 style="margin-top:14px">${tx('tblTitle')} <span class="cnt" id="tbl-cnt"></span></h3>
       <div style="overflow:auto"><div id="tbl"></div></div>
+      <div class="desc noprint" style="margin-top:11px">${tx('deskNote')}</div>
     </div>
-    </div>
-    <div id="view-month" style="display:${VIEW==='month'?'':'none'}">
-      <div class="panel">
-        <div class="row noprint">
-          <span class="cnt">${tx('month')}</span>
-          <div class="dctrl">
-            <button class="btn sm ghost" id="m-prev" type="button">◀</button>
-            <input class="inp" id="m-pick" type="month" value="${YM}" style="width:150px">
-            <button class="btn sm ghost" id="m-next" type="button">▶</button>
-          </div>
-          <span style="flex:1"></span>
-          <span class="cnt" id="m-stat"></span>
-          <button class="btn sm ghost" id="btn-mauto" type="button">${tx('autoMonth')}</button>
-          <button class="btn sm ghost" id="btn-mreload" type="button">${tx('reload')}</button>
-          <button class="btn sm ghost" id="btn-mprint" type="button">${tx('print')}</button>
-        </div>
-        <div class="desc noprint" style="margin-top:11px">${tx('mNote')}</div>
-      </div>
-      <div class="panel">
-        <h3>${tx('mSumTitle')} <span class="cnt" id="m-label"></span></h3>
-        <div style="overflow:auto"><div id="m-sum"></div></div>
-      </div>
-      <div class="panel">
-        <h3>${tx('mTeamTitle')}</h3>
-        <div style="overflow:auto"><div id="m-team"></div></div>
-      </div>
-    </div>`;
-  $('#v-day').addEventListener('click',()=>setView('day'));
-  $('#v-month').addEventListener('click',()=>setView('month'));
+
+    <details class="panel noprint">
+      <summary style="cursor:pointer;font-size:14px;font-weight:800;color:var(--accent)">${tx('mTeamTitle')}</summary>
+      <div style="overflow:auto;margin-top:9px"><div id="m-team"></div></div>
+    </details>`;
   $('#m-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);$('#m-pick').value=YM;loadMonth();});
   $('#m-next').addEventListener('click',()=>{YM=shiftYM(YM,1);$('#m-pick').value=YM;loadMonth();});
   $('#m-pick').addEventListener('change',e=>{YM=e.target.value||YM;loadMonth();});
-  $('#btn-mreload').addEventListener('click',loadMonth);
-  $('#btn-mprint').addEventListener('click',()=>window.print());
+  $('#btn-mreload').addEventListener('click',()=>{ loadMonth(); load(); });
   $('#btn-mauto').addEventListener('click',autoAssignMonth);
-  $('#btn-auto').addEventListener('click',autoAssignDay);
-  $('#d-prev').addEventListener('click',()=>{DATE=shiftDay(DATE,-1);$('#d-pick').value=DATE;load();});
-  $('#d-next').addEventListener('click',()=>{DATE=shiftDay(DATE,1);$('#d-pick').value=DATE;load();});
-  $('#d-today').addEventListener('click',()=>{DATE=todayISO();$('#d-pick').value=DATE;load();});
-  $('#d-pick').addEventListener('change',e=>{DATE=e.target.value||todayISO();load();});
-  $('#btn-reload').addEventListener('click',load);
   $('#btn-print').addEventListener('click',()=>window.print());
+  $('#btn-auto').addEventListener('click',autoAssignDay);
+  $('#ck-all').addEventListener('change',e=>{ ONLY_ELEC=!e.target.checked; renderStock(); renderTable(); });
+  $('#d-prev').addEventListener('click',()=>{DATE=shiftDay(DATE,-1);syncDate();});
+  $('#d-next').addEventListener('click',()=>{DATE=shiftDay(DATE,1);syncDate();});
+  $('#d-today').addEventListener('click',()=>{DATE=todayISO();syncDate();});
+  $('#d-pick').addEventListener('change',e=>{DATE=e.target.value||todayISO();syncDate();});
+  $('#btn-reload').addEventListener('click',load);
   $('#btn-save').addEventListener('click',save);
 }
-function setView(v){
-  VIEW=v;
-  $('#view-day').style.display = v==='day'?'':'none';
-  $('#view-month').style.display = v==='month'?'':'none';
-  $('#v-day').classList.toggle('ghost', v!=='day');
-  $('#v-month').classList.toggle('ghost', v!=='month');
-  if(v==='month' && !MDAYS.length) loadMonth();
+// 날짜가 바뀌면 캘린더도 그 달로 따라간다.
+function syncDate(){
+  const dp=$('#d-pick'); if(dp) dp.value=DATE;
+  const ym=DATE.slice(0,7);
+  if(ym!==YM){ YM=ym; const mp=$('#m-pick'); if(mp) mp.value=YM; loadMonth(); }
+  else markCalendar();
+  load();
 }
+// 캘린더에서 선택 날짜 강조
+function markCalendar(){
+  document.querySelectorAll('#m-sum .cd[data-d]').forEach(el=>el.classList.toggle('sel', el.dataset.d===DATE));
+}
+
 
 // 숙소별 전기카트 사전신청 자격 — 야마나미CC를 쓰는 날인지로 판정(Min 2026-08)
 //  야마나미·쿠주힐즈·시즈노야도 = 항상 야마나미CC → 가능
@@ -651,14 +652,20 @@ function eligBadge(r){
   return `<span class="bdg ${e}" title="${esc(tx(t))}">${esc(tx(k))}</span>`;
 }
 
+// 목록 = 그날 전기카트 신청·배정 팀(기본). 체크박스로 그날 라운딩 전 팀까지.
+function shownRows(){
+  if(!ONLY_ELEC) return ROWS;
+  return ROWS.filter(r=>r.elec || TYPES.some(t=>(+r.qty[t.code]||0)>0));
+}
 function renderTable(){
   const box=$('#tbl'); if(!box) return;
   $('#tbl-cnt').textContent = DIRTY.size?tx('dirty')(DIRTY.size):'';
   $('#btn-save').disabled = !DIRTY.size;
-  if(!ROWS.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:10px 0">${tx('noRound')}</div>`; return; }
+  const LIST=shownRows();
+  if(!LIST.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:10px 0">${ONLY_ELEC?tx('noElecTeam'):tx('noRound')}</div>`; return; }
   const th=TYPES.map(t=>`<th>${esc(lang()==='ja'?t.name_ja:t.name_ko)}</th>`).join('');
   const NOS=allocForDay();
-  const rows=ROWS.map((r,i)=>{
+  const rows=LIST.map(r=>{ const i=ROWS.indexOf(r);
     const fee=TYPES.reduce((s,t)=>s+(+r.qty[t.code]||0)*(+t.fee_yen||0),0);
     const gc=r.grpCourse?`${COURSE_NAME[r.grpCourse]||r.grpCourse}`:'';
     return `<tr data-i="${i}" class="${DIRTY.has(r.seq)?'dirty':''}">
@@ -681,7 +688,7 @@ function renderTable(){
       <td class="tee">${fee?('¥'+fee.toLocaleString()):'-'}</td>
     </tr>`;
   }).join('');
-  const totFee=ROWS.reduce((s,r)=>s+TYPES.reduce((n,t)=>n+(+r.qty[t.code]||0)*(+t.fee_yen||0),0),0);
+  const totFee=LIST.reduce((s,r)=>s+TYPES.reduce((n,t)=>n+(+r.qty[t.code]||0)*(+t.fee_yen||0),0),0);
   box.innerHTML=`<table class="t"><thead><tr>
       <th>${tx('thTeam')}</th><th>${tx('thRep')}</th><th>${tx('thAccom')}</th><th>${tx('thPax')}</th>
       <th>${tx('thElig')}</th><th>${tx('thCourse')}</th><th>${tx('thTee')}</th>${th}
@@ -838,10 +845,13 @@ function renderMonth(){
     const dc=wd===0?' sun':(wd===6?' sat':'');
     const x=byD[ds];
     if(!x){ cells.push(`<div class="cd none"><div class="d${dc}">${d}</div><div class="tm">${esc(tx('calNone'))}</div></div>`); continue; }
+    // 실제 보유 · 사용 · 잔여 (Min 2026-08)
     const lines=TYPES.map(t=>{
-      const q=+x.qty[t.code]||0; if(!q) return '';
-      const own=activeOf(t);
-      return `<div class="ln${q>own?' over':''}"><i>${esc(shortType(t.code))}</i><b>${q}<span style="color:var(--muted);font-weight:600">/${own}</span></b></div>`;
+      const q=+x.qty[t.code]||0, own=activeOf(t), left=own-q;
+      return `<div class="ln3${left<0?' over':''}">
+        <span><i>${esc(tx('own'))}</i>${own}</span>
+        <span class="u"><i>${esc(tx('use'))}</i>${q}</span>
+        <span class="l"><i>${esc(tx('left'))}</i>${left}</span></div>`;
     }).join('');
     cells.push(`<div class="cd${ds===todayISO()?' today':''}" data-d="${ds}">
       <div class="d${dc}">${d}</div>
@@ -855,8 +865,11 @@ function renderMonth(){
   sum.innerHTML=`<div class="cal">${WD.map((w,i)=>`<div class="wd${i===0?' sun':(i===6?' sat':'')}">${esc(w)}</div>`).join('')}${cells.join('')}</div>`
     +`<div class="lgd" style="margin-top:8px;font-size:12px;color:var(--text2);font-weight:700">${esc(tx('thTotal'))}: ${totLine} · ${tx('thFee')} ¥${feeOf(gTot).toLocaleString()}</div>`;
   sum.querySelectorAll('.cd[data-d]').forEach(el=>el.addEventListener('click',()=>{
-    DATE=el.dataset.d; setView('day'); const dp=$('#d-pick'); if(dp) dp.value=DATE; load();
+    DATE=el.dataset.d; const dp=$('#d-pick'); if(dp) dp.value=DATE;
+    markCalendar(); load();
+    const st=$('#stock'); if(st) st.scrollIntoView({behavior:'smooth',block:'start'});
   }));
+  markCalendar();
 
   const teamRows=MTEAMS.map(t=>{
     const all={}; Object.keys(t.saved).forEach(c=>all[c]=(all[c]||0)+t.saved[c]);
