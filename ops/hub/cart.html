@@ -129,7 +129,10 @@ const L={
     notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
     connHint:'日付ごとのカート保有・使用・残数と、チーム別の割当(コース・ティ時刻を含む)を1画面で管理します。',
     preConn:'接続すると表示されます。', loginNeedTitle:'ログインが必要です。', loginNeedSub:'中央のログインカードでログインしてから再接続してください。',
-    date:'日付', today:'今日', loading:'読み込み中…', loadFail:'読み込み失敗', saveOk:n=>`${n}件 保存`, saveFail:'保存失敗',
+    date:'日付', today:'今日', loading:'読み込み中…', loadFail:'読み込み失敗',
+    sqlTitle:'カートのテーブルがまだ作られていません',
+    sqlBody:'この画面は <code>cart_types</code>・<code>cart_bookings</code> を使います。Supabase の SQL Editor で <b>ops/hub/sql/93_cart.sql</b> を実行してください（1回だけ・冪等）。実行後この画面を再読込すると、電動36・ガソリン2人乗り27・4人乗り48 が入った状態で開きます。',
+    sqlRetry:'↻ 実行後 再読込', saveOk:n=>`${n}件 保存`, saveFail:'保存失敗',
     noRound:'この日にラウンドするチームはありません。', save:'💾 変更を保存', print:'🖨 印刷', reload:'↻ 再読込',
     stockTitle:'保有・使用・残数', own:'保有', use:'使用', left:'残', unit:'台', feeEach:n=>`1台1日 ¥${n.toLocaleString()}`,
     tblTitle:'チーム別 カート割当', dirty:n=>`未保存 ${n}件`,
@@ -151,7 +154,10 @@ const L={
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
     connHint:'날짜별 카트 보유·사용·잔여와 팀별 배정(코스·티오프 포함)을 한 화면에서 관리합니다.',
     preConn:'연결 후 표시됩니다.', loginNeedTitle:'로그인이 필요합니다.', loginNeedSub:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
-    date:'날짜', today:'오늘', loading:'불러오는 중…', loadFail:'로드 실패', saveOk:n=>`${n}건 저장`, saveFail:'저장 실패',
+    date:'날짜', today:'오늘', loading:'불러오는 중…', loadFail:'로드 실패',
+    sqlTitle:'카트 테이블이 아직 만들어지지 않았습니다',
+    sqlBody:'이 화면은 <code>cart_types</code>·<code>cart_bookings</code> 테이블을 씁니다. Supabase SQL Editor에서 <b>ops/hub/sql/93_cart.sql</b>을 한 번 실행해 주세요(멱등이라 여러 번 실행해도 안전). 실행 뒤 이 화면을 새로고침하면 전기 36 · 가솔린 2인승 27 · 4인승 48이 들어간 상태로 열립니다.',
+    sqlRetry:'↻ 실행했습니다 · 다시 불러오기', saveOk:n=>`${n}건 저장`, saveFail:'저장 실패',
     noRound:'이 날 라운딩하는 팀이 없습니다.', save:'💾 변경 저장', print:'🖨 인쇄', reload:'↻ 새로고침',
     stockTitle:'보유 · 사용 · 잔여', own:'보유', use:'사용', left:'잔여', unit:'대', feeEach:n=>`1대 1일 ¥${n.toLocaleString()}`,
     tblTitle:'팀별 카트 배정', dirty:n=>`미저장 ${n}건`,
@@ -173,7 +179,10 @@ const L={
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
     connHint:'Daily cart stock, usage and remaining, plus per-team assignment (course and tee time) on one screen.',
     preConn:'Shown after connecting.', loginNeedTitle:'Login required.', loginNeedSub:'Log in via the central login card, then reconnect.',
-    date:'Date', today:'Today', loading:'Loading…', loadFail:'Load failed', saveOk:n=>`Saved ${n}`, saveFail:'Save failed',
+    date:'Date', today:'Today', loading:'Loading…', loadFail:'Load failed',
+    sqlTitle:'The cart tables have not been created yet',
+    sqlBody:'This screen uses <code>cart_types</code> and <code>cart_bookings</code>. Run <b>ops/hub/sql/93_cart.sql</b> once in the Supabase SQL Editor (it is idempotent). Reload afterwards and it opens with electric 36, gasoline 2-seater 27 and 4-seater 48 already set.',
+    sqlRetry:'↻ I ran it · reload', saveOk:n=>`Saved ${n}`, saveFail:'Save failed',
     noRound:'No team plays golf on this date.', save:'💾 Save changes', print:'🖨 Print', reload:'↻ Reload',
     stockTitle:'Stock · in use · remaining', own:'Stock', use:'In use', left:'Left', unit:'', feeEach:n=>`¥${n.toLocaleString()} per cart/day`,
     tblTitle:'Cart assignment by team', dirty:n=>`${n} unsaved`,
@@ -329,7 +338,23 @@ async function load(){
     DIRTY.clear();
     $('#stat').textContent=`${ROWS.length}${lang()==='en'?' teams':'팀'}`;
     renderStock(); renderTable();
-  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
+  }catch(e){
+    $('#stat').textContent=tx('loadFail');
+    // 테이블 미생성(93_cart.sql 미실행)은 '오류'가 아니라 '설치 안내'로 보여준다.
+    const msg=String(e&&e.message||e);
+    if(/cart_types|cart_bookings/.test(msg) && /schema cache|does not exist|not find/i.test(msg)){
+      const w=$('#warn');
+      if(w) w.innerHTML=`<div class="warnbox" style="font-size:13px;line-height:1.65">
+        <b style="font-size:14px">⚠ ${esc(tx('sqlTitle'))}</b><br>${tx('sqlBody')}
+        <div style="margin-top:9px"><button class="btn sm" type="button" id="sql-retry">${esc(tx('sqlRetry'))}</button></div>
+        <div style="margin-top:7px;font-size:11px;opacity:.75">${esc(msg)}</div></div>`;
+      const rb=$('#sql-retry'); if(rb) rb.addEventListener('click',load);
+      const st=$('#stock'); if(st) st.innerHTML='';
+      const tb=$('#tbl'); if(tb) tb.innerHTML='';
+      return;
+    }
+    toast(tx('loadFail')+': '+msg,'err');
+  }
 }
 
 function usedOf(code){ return ROWS.reduce((n,r)=>n+(+r.qty[code]||0),0); }

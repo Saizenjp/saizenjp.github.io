@@ -28,11 +28,6 @@ insert into public.cart_types(code,name_ja,name_ko,total_count,fee_yen,sort_orde
   ('gas4',    'ガソリン 4人乗り','가솔린 4인승',        48, 2000, 3)
 on conflict (code) do nothing;
 
--- 1차 시드의 임시 코드 정리(배정에 쓰이지 않은 것만 — 이미 실행했어도 안전)
-delete from public.cart_types t
- where t.code in ('gasoline','two_seater')
-   and not exists (select 1 from public.cart_bookings b where b.cart_code = t.code);
-
 drop trigger if exists trg_cart_types_updated on public.cart_types;
 create trigger trg_cart_types_updated before update on public.cart_types
   for each row execute function set_updated_at();
@@ -60,6 +55,12 @@ create index if not exists idx_cart_bookings_seq  on public.cart_bookings(event_
 drop trigger if exists trg_cart_bookings_updated on public.cart_bookings;
 create trigger trg_cart_bookings_updated before update on public.cart_bookings
   for each row execute function set_updated_at();
+
+-- 1차 시드의 임시 코드 정리(배정에 쓰이지 않은 것만 — 이미 실행했어도 안전)
+-- ※ cart_bookings 생성 뒤에 둔다(참조 순서).
+delete from public.cart_types t
+ where t.code in ('gasoline','two_seater')
+   and not exists (select 1 from public.cart_bookings b where b.cart_code = t.code);
 
 -- ── 3) RLS — 읽기=로그인 전체 / 쓰기=golf 영역(+admin) ──────────────────────
 alter table public.cart_types    enable row level security;
