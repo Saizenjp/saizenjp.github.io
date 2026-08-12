@@ -109,3 +109,18 @@ test('묶음 클러스터 — 같은 태그코드를 쓰는 다른 시기 묶음
   const real = [{ event_seq: '1', dep: '2026-07-28' }, { event_seq: '2', dep: '2026-08-02' }, { event_seq: '3', dep: '2026-08-09' }];
   assert.equal(SZ.groupClusters(real).length, 1);
 });
+
+test('묶음 분리 — 대표가 둘이면 같은 달이어도 정확히 갈라진다', () => {
+  const m = [
+    { event_seq: '201', dep: '2026-08-02', rep: true }, { event_seq: '202', dep: '2026-08-02' }, { event_seq: '203', dep: '2026-08-03' },
+    { event_seq: '301', dep: '2026-08-20', rep: true }, { event_seq: '302', dep: '2026-08-20' }, { event_seq: '303', dep: '2026-08-22' },
+  ];
+  const parts = SZ.splitByReps(m);
+  assert.equal(parts.length, 2);
+  assert.deepEqual(SZ.clusterOf(m, '302').map(x => x.event_seq), ['301', '302', '303']);
+  assert.deepEqual(SZ.clusterOf(m, '202').map(x => x.event_seq), ['201', '202', '203']);
+  // 대표가 하나면 쪼개지 않는다(정상 묶음)
+  const one = [{ event_seq: '1', dep: '2026-07-28', rep: true }, { event_seq: '2', dep: '2026-08-02' }, { event_seq: '3', dep: '2026-08-09' }];
+  assert.equal(SZ.splitByReps(one).length, 1);
+  assert.equal(SZ.clusterOf(one, '3').length, 3);
+});

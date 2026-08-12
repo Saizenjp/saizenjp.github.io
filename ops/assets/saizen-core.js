@@ -550,9 +550,33 @@
     if (cur.length) out.push(cur);
     return out;
   }
+  // 대표(rep)가 2개 이상이면 = 서로 다른 묶음이 한 이름으로 합쳐진 것(확정 신호).
+  //  각 팀을 '가장 가까운 대표'에게 붙여 정확히 갈라낸다(같은 달에 겹쳐도 동작).
+  function splitByReps(members) {
+    var list = (members || []).slice();
+    var reps = list.filter(function (m) { return !!m.rep; });
+    if (reps.length < 2) return [list];
+    var buckets = reps.map(function (r) { return { rep: r, items: [] }; });
+    list.forEach(function (m) {
+      if (m.rep) { buckets.find(function (b) { return b.rep === m; }).items.push(m); return; }
+      var best = 0, bd = Infinity;
+      buckets.forEach(function (b, i) {
+        var a = parseLocalDate(m.dep), c = parseLocalDate(b.rep.dep);
+        var d = (isNaN(a) || isNaN(c)) ? Infinity : Math.abs(a - c);
+        if (d < bd) { bd = d; best = i; }
+      });
+      buckets[best].items.push(m);
+    });
+    return buckets.map(function (b) { return b.items; }).filter(function (x) { return x.length; });
+  }
   // 그 팀이 속한 클러스터만 돌려준다(없으면 전체).
   function clusterOf(members, seq, gapDays) {
-    var cs = groupClusters(members, gapDays), s = String(seq);
+    var s = String(seq);
+    // ① 대표가 둘 이상이면 대표 기준으로 먼저 가른다(확정) ② 그다음 날짜 간격으로 한 번 더
+    var cs = [];
+    splitByReps(members).forEach(function (part) {
+      groupClusters(part, gapDays).forEach(function (c) { cs.push(c); });
+    });
     for (var i = 0; i < cs.length; i++) {
       for (var j = 0; j < cs[i].length; j++) {
         if (String(cs[i][j].event_seq != null ? cs[i][j].event_seq : cs[i][j].seq) === s) return cs[i];
@@ -641,6 +665,7 @@
     personTagN: personTagN,
     orderGroup: orderGroup,
     groupClusters: groupClusters,
+    splitByReps: splitByReps,
     clusterOf: clusterOf
   };
 });
