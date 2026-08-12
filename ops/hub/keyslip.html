@@ -101,7 +101,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=14"></script><!-- 공유 도메인 규칙(숙소 라벨·박수 등) -->
-<script src="../assets/saizen-ops.js?v=15.59"></script>
+<script src="../assets/saizen-ops.js?v=15.60"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -114,8 +114,6 @@ const L={
     preConn:'接続すると表示されます。', loginNeedTitle:'ログインが必要です。', loginNeedSub:'中央のログインカードでログインしてから再接続してください。',
     monFilter:'月選択 · フィルター', all:'全体', origin:'出発地', oIcn:'ICN(仁川)', oPus:'PUS(釜山·金海)', colOrigin:'出発地', faceUnit:'面', nights:'泊数', size:'ラベルサイズ', sizeFixed:'用紙=A4 52×37mm 32面(4列×8行) — 余白なしでA4を割り切るサイズ', date:'チェックイン日', lodging:'宿泊施設',
     n3:'3泊', n4:'4泊', n7:'7泊', netc:'特殊パターン',
-    dateMode:'日付表記', dateModeLast:'最終宿泊日まで', dateModeOut:'チェックアウト日',
-    dateModeT:'「チェックアウト日」(既定)= 日〜木の4泊なら 日〜木 と表記(現場の手書きと同じ)。「最終宿泊日まで」= 日〜水(鍵が出ている最後の夜)と表記。',
     startSlot:'開始マス', startSlotT:'用紙の開始位置 — 使いかけの用紙の続き印刷',
     slotMap:'用紙のマス', slotMapHint:n=>`クリックで開始マス指定 ・ 1=左上 → 右 → 下(1枚 ${n}面)`,
     slotUsed:'使用済み', slotPrint:'印刷される', slotStart:'開始マス',
@@ -135,8 +133,6 @@ const L={
     preConn:'연결 후 표시됩니다.', loginNeedTitle:'로그인이 필요합니다.', loginNeedSub:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
     monFilter:'월 선택 · 필터', all:'전체', origin:'출발지', oIcn:'ICN(인천)', oPus:'PUS(부산·김해)', colOrigin:'출발지', faceUnit:'면', nights:'박수', size:'라벨 크기', sizeFixed:'용지=A4 52×37mm 32면(4열×8행) — 여백 없이 A4를 정확히 나누는 크기', date:'체크인일', lodging:'숙소',
     n3:'3박', n4:'4박', n7:'7박', netc:'특이 패턴',
-    dateMode:'날짜 표기', dateModeLast:'마지막 숙박일까지', dateModeOut:'퇴실일',
-    dateModeT:'「퇴실일」(기본)= 일~목 4박이면 일~목으로 표기(현장 수기 방식과 동일). 「마지막 숙박일까지」= 일~수(키가 나가 있는 마지막 밤)로 표기.',
     startSlot:'시작칸', startSlotT:'용지 시작 위치 — 쓰던 용지 이어쓰기',
     slotMap:'용지 칸', slotMapHint:n=>`클릭=시작칸 지정 ・ 1=좌상단 → 오른쪽 → 아래(1장 ${n}면)`,
     slotUsed:'이미 쓴 칸', slotPrint:'인쇄될 칸', slotStart:'시작칸',
@@ -156,8 +152,6 @@ const L={
     preConn:'Shown after connecting.', loginNeedTitle:'Login required.', loginNeedSub:'Log in via the central login card, then reconnect.',
     monFilter:'Month · Filter', all:'All', origin:'Origin', oIcn:'ICN (Incheon)', oPus:'PUS (Busan/Gimhae)', colOrigin:'Origin', faceUnit:'/sheet', nights:'Nights', size:'Label size', sizeFixed:'Sheet = A4, 52×37mm, 32 per sheet (4×8) — divides A4 exactly, no margin', date:'Check-in', lodging:'Lodging',
     n3:'3 nights', n4:'4 nights', n7:'7 nights', netc:'Irregular',
-    dateMode:'Date shown', dateModeLast:'Through last night', dateModeOut:'Check-out date',
-    dateModeT:'“Check-out date” (default) = a Sun–Thu 4-night stay prints Sun–Thu, same as the handwritten slips. “Through last night” prints Sun–Wed (the last night the key is out).',
     startSlot:'Start cell', startSlotT:'Start position on the sheet — continue on a partly-used sheet',
     slotMap:'Sheet cells', slotMapHint:n=>`Click to set the start cell ・ 1 = top-left → right → down (${n} per sheet)`,
     slotUsed:'Used', slotPrint:'Will print', slotStart:'Start',
@@ -192,7 +186,6 @@ const WD_JA=['日','月','火','水','木','金','土'];
 
 let supa=null, YM=null, LABELS=[], UNASSIGNED=[],
     SELCATS=new Set(), SELDATES=new Set(), SELACCOMS=new Set(), ORIGINSEL='all',
-    DATEMODE=localStorage.getItem('saizen_keyslip_datemode')||'out',    // out=퇴실일(기본·현장 수기 방식) / last=마지막 숙박일
     START=1;
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -204,8 +197,6 @@ function shiftYM(ym,delta){const [y,m]=ym.split('-').map(Number);const d=new Dat
 function ymFirst(ym){ return ym+'-01'; }
 function ymLast(ym){ const [y,m]=ym.split('-').map(Number); return `${y}-${String(m).padStart(2,'0')}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`; }
 function pd(s){ const m=String(s||'').match(/(\d{4})-(\d{2})-(\d{2})/); return m?new Date(+m[1],+m[2]-1,+m[3]):null; }
-function addDays(s,n){ const d=pd(s); if(!d) return s; d.setDate(d.getDate()+n);
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function mmdd(s){ const d=pd(s); return d?`${d.getMonth()+1}/${d.getDate()}`:'-'; }
 // 인쇄용 날짜 = 8/5(水) — 요일은 현장 운영대로 일본어 고정
 function mdw(s){ const d=pd(s); return d?`${d.getMonth()+1}/${d.getDate()}(${WD_JA[d.getDay()]})`:'-'; }
@@ -258,12 +249,6 @@ function renderUI(){
           <b id="ym-label"></b>
           <button class="btn sm ghost" id="ym-next" type="button">▶</button>
         </div>
-        <span class="sep"></span>
-        <span class="cnt">${tx('dateMode')}</span>
-        <select class="inp" id="dm-sel" title="${esc(tx('dateModeT'))}">
-          <option value="out"${DATEMODE==='out'?' selected':''}>${tx('dateModeOut')}</option>
-          <option value="last"${DATEMODE==='last'?' selected':''}>${tx('dateModeLast')}</option>
-        </select>
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
         <button class="btn" id="btn-print" type="button" disabled>${tx('printBtn')}</button>
@@ -304,7 +289,6 @@ function renderUI(){
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
   $('#btn-print').addEventListener('click',printLabels);
-  $('#dm-sel').addEventListener('change',e=>{ DATEMODE=e.target.value; localStorage.setItem('saizen_keyslip_datemode',DATEMODE); renderPreview(); });
   $('#start-slot').addEventListener('input',e=>{ const per=perSheet();
     START=Math.max(1,Math.min(per,parseInt(e.target.value,10)||1)); renderSlotMap(); });
   renderSlotMap();
@@ -476,11 +460,9 @@ function filtered(){
   });
 }
 
-// 라벨에 찍는 기간 — DATEMODE: last=마지막 숙박일(퇴실 전날) / out=퇴실일
-function stayText(l){
-  const end = DATEMODE==='last' ? addDays(l.co,-1) : l.co;
-  return `${mdw(l.ci)}~${mdw(end)}`;
-}
+// 라벨에 찍는 기간 = 체크인일 ~ 퇴실일 (Min 확정 — 현장 수기 방식과 동일).
+//  일~목 4박이면 8/9(日)~8/13(木). 선택지 없음.
+function stayText(l){ return `${mdw(l.ci)}~${mdw(l.co)}`; }
 
 function renderPreview(){
   const list=filtered();
