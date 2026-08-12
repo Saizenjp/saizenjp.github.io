@@ -171,7 +171,7 @@ const L={
     gLoaded:(g,t)=>`グループ ${g}件 · チーム ${t}件`,
     gHitN:n=>`${n}件 一致`,
     thNo:'順番', thSeq:'行事番号', thRep:'代表者', thOrig:'元コード', thUni:'統一コード', thDep:'入国', thPax:'人数', thYm:'月',
-    gRepMark:'代表', gCross:'⚠ 月をまたぐ', gNoRep:'⚠ 代表 未指定', gNoBase:'⚠ 基準コード なし', gManual:'順番 手動',
+    gSplit:'⚠ 同名の別グループを分離', gRepMark:'代表', gCross:'⚠ 月をまたぐ', gNoRep:'⚠ 代表 未指定', gNoBase:'⚠ 基準コード なし', gManual:'順番 手動',
     gSumG:n=>`グループ ${n}`, gSumCross:n=>`月またぎ ${n}`, gSumNoRep:n=>`代表未指定 ${n}`, gOkAll:'✓ 全グループ 正常',
     gCrossNote:'月をまたぐグループ = 以前コード・番号がずれていた条件。現在は全員基準で計算するので手配書と航空カバーは一致します。',
     gNoRepNote:'代表 未指定 = 統一コードを付けず、各チームの元コードのまま出力されます(旧まとめ)。手配書で代表を選ぶと統一されます。'
@@ -204,7 +204,7 @@ const L={
     gLoaded:(g,t)=>`묶음 ${g}건 · 팀 ${t}건`,
     gHitN:n=>`${n}건 일치`,
     thNo:'순번', thSeq:'행사번호', thRep:'대표자', thOrig:'원래코드', thUni:'통일코드', thDep:'입국', thPax:'인원', thYm:'월',
-    gRepMark:'대표', gCross:'⚠ 월경계', gNoRep:'⚠ 대표 미지정', gNoBase:'⚠ 기준코드 없음', gManual:'순번 수동',
+    gSplit:'⚠ 같은 이름의 다른 묶음 분리', gRepMark:'대표', gCross:'⚠ 월경계', gNoRep:'⚠ 대표 미지정', gNoBase:'⚠ 기준코드 없음', gManual:'순번 수동',
     gSumG:n=>`묶음 ${n}`, gSumCross:n=>`월경계 ${n}`, gSumNoRep:n=>`대표 미지정 ${n}`, gOkAll:'✓ 전 묶음 정상',
     gCrossNote:'월경계 묶음 = 예전에 코드·번호가 갈리던 조건입니다. 지금은 전원 기준으로 계산하므로 手配書와 航空カバー가 일치합니다.',
     gNoRepNote:'대표 미지정 = 통일코드를 붙이지 않고 각 팀 원래코드 그대로 인쇄됩니다(구 묶음). 手配書에서 대표를 지정하면 통일됩니다.'
@@ -237,7 +237,7 @@ const L={
     gLoaded:(g,t)=>`${g} groups · ${t} teams`,
     gHitN:n=>`${n} match`,
     thNo:'No.', thSeq:'Event no.', thRep:'Rep', thOrig:'Original', thUni:'Unified', thDep:'Arrival', thPax:'Pax', thYm:'Month',
-    gRepMark:'rep', gCross:'⚠ crosses months', gNoRep:'⚠ no rep set', gNoBase:'⚠ no base code', gManual:'manual order',
+    gSplit:'⚠ split from a same-named group', gRepMark:'rep', gCross:'⚠ crosses months', gNoRep:'⚠ no rep set', gNoBase:'⚠ no base code', gManual:'manual order',
     gSumG:n=>`Groups ${n}`, gSumCross:n=>`Cross-month ${n}`, gSumNoRep:n=>`No rep ${n}`, gOkAll:'✓ All groups OK',
     gCrossNote:'Cross-month groups are exactly the case where codes/numbers used to diverge. They are now computed from the whole group, so 手配書 and 航空カバー agree.',
     gNoRepNote:'No rep set = no unified code; each team prints its own original code (legacy grouping). Pick a rep in 手配書 to unify.'
@@ -358,7 +358,12 @@ async function ensureGroups(){
   });
   GRPS={};
   Object.keys(map).forEach(k=>{
-    const teams=map[k];
+    // ⚠ 묶음 이름이 태그코드라 코드 재사용 시 다른 시기 묶음이 합쳐진다(대표가 2명 이상).
+    //   手配書·航空カバー·네임택과 같은 규칙(SZCore.clusterOf)으로 갈라 보여준다.
+    const parts=(window.SZCore&&SZCore.splitByReps)
+      ? SZCore.splitByReps(map[k].map(x=>({...x,event_seq:x.seq}))) : [map[k]];
+    parts.forEach((teams,pi)=>{
+    const key=parts.length>1?(k+' ('+(pi+1)+'/'+parts.length+')'):k;
     if(teams.length<2) return;                       // 혼자 남은 묶음 = 단독 취급
     const rep=teams.find(x=>x.rep)||null;
     const base=rep?rep.tag:'';
@@ -370,8 +375,10 @@ async function ensureGroups(){
               .map(o=>teams.find(x=>x.seq===String(o.event_seq))).filter(Boolean)
           : teams.slice());
     const yms=[...new Set(teams.map(x=>x.ym).filter(Boolean))];
-    GRPS[k]={ key:k, teams, rep, base, manual, ordered,
+    GRPS[key]={ key, teams, rep, base, manual, ordered,
+      split:parts.length>1,
       cross:yms.length>1, noRep:!rep, noBase:!!rep&&!base };
+    });
   });
   return GRPS;
 }
@@ -400,7 +407,8 @@ function grpTable(g){
     g.cross?`<span class="gwarn">${esc(tx('gCross'))}</span>`:'',
     g.noRep?`<span class="gerr">${esc(tx('gNoRep'))}</span>`:'',
     g.noBase?`<span class="gerr">${esc(tx('gNoBase'))}</span>`:'',
-    g.manual?`<span class="gok">${esc(tx('gManual'))}</span>`:''
+    g.manual?`<span class="gok">${esc(tx('gManual'))}</span>`:'',
+    g.split?`<span class="gwarn">${esc(tx('gSplit'))}</span>`:''
   ].filter(Boolean).join(' ');
   return `<div class="ghd"><span class="gn">${esc(g.base||'—')}</span>
       <span class="gk">${esc(g.key)}</span>${flags}</div>
