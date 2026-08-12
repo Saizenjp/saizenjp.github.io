@@ -52,6 +52,31 @@
   .st .own{display:flex;align-items:center;gap:5px;margin-top:7px}
   .st .own input{width:62px;text-align:center}
   .st .fee{font-size:11px;color:var(--muted);font-weight:600;margin-top:5px}
+  .st .units{display:flex;flex-wrap:wrap;gap:3px;margin-top:8px;max-height:132px;overflow:auto;padding:1px}
+  .cu{font-size:11px;font-weight:800;font-family:var(--mono);border:1px solid var(--border2);background:var(--surface);
+      border-radius:5px;padding:2px 6px;cursor:pointer;user-select:none;line-height:1.4;color:var(--text)}
+  .cu:hover{border-color:var(--accent)}
+  .cu.off{background:#f7e6e2;border-color:#e3bdb4;color:var(--err);text-decoration:line-through}
+  .cu.used{background:var(--accentSoft);border-color:#b4cda0;color:#2f5d3a}
+  .st .uadd{display:flex;gap:4px;margin-top:6px}
+  .st .uadd input{width:70px;text-align:center}
+  /* 월별 캘린더 */
+  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:8px}
+  .cal .wd{font-size:11px;font-weight:800;color:var(--text2);text-align:center;padding:3px 0}
+  .cal .wd.sun{color:var(--err)} .cal .wd.sat{color:#2b5f9e}
+  .cd{min-height:82px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);padding:5px 6px;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+  .cd:hover{border-color:var(--accent);background:var(--accentSoft)}
+  .cd.empty{background:transparent;border-color:transparent;cursor:default}
+  .cd.empty:hover{background:transparent}
+  .cd.none{opacity:.45;cursor:default}
+  .cd .d{font-size:12px;font-weight:800;font-family:var(--mono)}
+  .cd .d.sun{color:var(--err)} .cd .d.sat{color:#2b5f9e}
+  .cd .tm{font-size:10.5px;color:var(--text2);font-weight:700}
+  .cd .ln{display:flex;justify-content:space-between;font-size:10.5px;font-family:var(--mono);font-weight:700}
+  .cd .ln i{font-style:normal;color:var(--muted)}
+  .cd .ln.over b{color:var(--err)}
+  .cd .un{font-size:10px;font-weight:800;color:var(--err)}
+  .cd.today{border-color:var(--accent2);box-shadow:0 0 0 1px var(--accent2)}
   /* 관리표 */
   table.t{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
   table.t th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:7px 8px;text-align:center;font-size:11px;color:var(--text2);font-weight:700;white-space:nowrap}
@@ -148,7 +173,14 @@ const L={
       +'<b>電動カートの有料事前申請</b>は<b>やまなみリゾートゴルフクラブ利用時のみ</b> — やまなみ/久住ヒルズ/志津の宿は常に可、'
       +'<b>ガンジーホテルは平日が九重高原CCなので、やまなみCCの日(週末・祝日・入国日)のみ</b>可です。<b>現場申請</b>はいつでも可。'
       +'コース・ティ時刻は<b>ゴルフ組編成</b>で保存された値を読み込みます(未編成なら空欄)。',
-    nosLbl:'番号', nosCnt:n=>`${n}台 登録`, autoMark:'自動',
+    autoMark:'自動',
+    cuUsed:'この日 使用中', cuOffT:'クリックで「整備中」にします(割当から除外)', cuOn:'整備中 — クリックで使用可に戻します',
+    cuNone:'カートが登録されていません。下の欄で追加してください(例 1-36)。',
+    cuOff:n=>`整備中 ${n}台`, cuTotal:n=>`登録 ${n}台`,
+    cuAddPh:'例 37 / 37-40', cuAdd:'＋追加', cuAddQ:'追加する番号',
+    cuOffAsk:'整備中にします。理由(任意):', cuOnDone:n=>`${n}番 使用可`, cuOffDone:n=>`${n}番 整備中`,
+    cuDup:'すでに登録済みの番号です。', cuAdded:n=>`${n}台 追加`,
+    wd:['日','月','火','水','木','金','土'], calNone:'ラウンドなし',
     courseRule:'規則', courseGrp:'組編成',
     vDay:'日別', vMonth:'月別 割当状況', month:'月',
     autoDay:'🪄 この日 自動割当', autoMonth:'🪄 この月 自動割当',
@@ -186,7 +218,14 @@ const L={
       +'<b>전기카트 유료 사전신청</b>은 <b>야마나미 리조트 골프클럽 이용 시에만</b> 가능합니다 — 야마나미·쿠주힐즈·시즈노야도는 항상 가능, '
       +'<b>간지호텔은 평일이 구주고원CC라 야마나미CC를 쓰는 날(주말·공휴일·입국일)만</b> 가능합니다. <b>현장 신청</b>은 언제나 가능합니다. '
       +'코스·티오프는 <b>골프 조편성</b>에서 저장한 값을 읽어옵니다(미편성이면 빈칸).',
-    nosLbl:'번호', nosCnt:n=>`${n}대 등록`, autoMark:'자동',
+    autoMark:'자동',
+    cuUsed:'이 날 사용 중', cuOffT:'클릭하면 「정비중」으로 바꿔 배정에서 뺍니다', cuOn:'정비중 — 클릭하면 사용 가능으로 되돌립니다',
+    cuNone:'등록된 카트가 없습니다. 아래 칸에서 추가하세요(예 1-36).',
+    cuOff:n=>`정비중 ${n}대`, cuTotal:n=>`등록 ${n}대`,
+    cuAddPh:'예 37 / 37-40', cuAdd:'＋추가', cuAddQ:'추가할 번호',
+    cuOffAsk:'정비중으로 바꿉니다. 사유(선택):', cuOnDone:n=>`${n}번 사용 가능`, cuOffDone:n=>`${n}번 정비중`,
+    cuDup:'이미 등록된 번호입니다.', cuAdded:n=>`${n}대 추가`,
+    wd:['일','월','화','수','목','금','토'], calNone:'라운딩 없음',
     courseRule:'규칙', courseGrp:'조편성',
     vDay:'일별', vMonth:'월별 배정현황', month:'월',
     autoDay:'🪄 이 날 자동 분배', autoMonth:'🪄 이 달 자동 분배',
@@ -224,7 +263,14 @@ const L={
       +'<b>Paid pre-booking of electric carts</b> requires playing <b>Yamanami Resort Golf Club</b> — Yamanami, Kuju Hills and Shizu-no-Yado always qualify; '
       +'<b>The Guernsey Hotel plays Kuju Kogen CC on weekdays</b>, so only Yamanami CC days (weekends, holidays, arrival day) qualify. On-site requests are always fine. '
       +'Course and tee time are read from the <b>golf grouping</b> screen (blank if not yet grouped).',
-    nosLbl:'Numbers', nosCnt:n=>`${n} registered`, autoMark:'auto',
+    autoMark:'auto',
+    cuUsed:'in use this day', cuOffT:'Click to mark as under maintenance (excluded from assignment)', cuOn:'Under maintenance — click to make available again',
+    cuNone:'No carts registered. Add them below (e.g. 1-36).',
+    cuOff:n=>`${n} under maintenance`, cuTotal:n=>`${n} registered`,
+    cuAddPh:'e.g. 37 / 37-40', cuAdd:'＋Add', cuAddQ:'Numbers to add',
+    cuOffAsk:'Mark as under maintenance. Reason (optional):', cuOnDone:n=>`Cart ${n} available`, cuOffDone:n=>`Cart ${n} under maintenance`,
+    cuDup:'Already registered.', cuAdded:n=>`Added ${n}`,
+    wd:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], calNone:'no rounds',
     courseRule:'rule', courseGrp:'grouping',
     vDay:'Daily', vMonth:'Monthly assignment', month:'Month',
     autoDay:'🪄 Auto-assign this day', autoMonth:'🪄 Auto-assign this month',
@@ -253,7 +299,7 @@ function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catc
 // 코스 코드 → 표기(조편성에서 저장한 야마나미CC 내 3코스)
 const COURSE_NAME={aso:'阿蘇',sobo:'祖母',kuju:'久住'};
 
-let supa=null, DATE=todayISO(), TYPES=[], ROWS=[], DIRTY=new Set();
+let supa=null, DATE=todayISO(), TYPES=[], ROWS=[], DIRTY=new Set(), UNITS={};
 let VIEW='day', YM=todayISO().slice(0,7), MDAYS=[], MTEAMS=[];
 function ymBounds(ym){ const [y,m]=ym.split('-').map(Number); const last=new Date(y,m,0).getDate();
   return {from:`${ym}-01`, to:`${ym}-${String(last).padStart(2,'0')}`}; }
@@ -389,6 +435,7 @@ async function load(){
     const ct=await supa.from('cart_types').select('*').eq('active',true).order('sort_order');
     if(ct.error) throw ct.error;
     TYPES=ct.data||[];
+    await loadUnits();
     // 2) 그 날짜에 체류 중인 팀(입국<=날짜<=귀국) — 라운딩 여부는 규칙으로 거른다
     const bs=await paged((a,b)=>supa.from('bookings')
       .select('event_seq,rep_name,dep_date,arr_date,origin,airline,pax,remark_local')
@@ -484,59 +531,113 @@ function autoAssignDay(){
   toast(tx('autoDone')(n),'ok');
 }
 
-function renderStock(){
-  const box=$('#stock'); if(!box) return;
-  box.innerHTML=TYPES.map(t=>{
-    const use=usedOf(t.code), own=+t.total_count||0, left=own-use;
-    return `<div class="st">
-      <h4>${esc(lang()==='ja'?t.name_ja:t.name_ko)}</h4>
-      <div class="nums">
-        <div class="n"><span>${tx('own')}</span><b>${own}</b></div>
-        <div class="n use"><span>${tx('use')}</span><b>${use}</b></div>
-        <div class="n left ${left<0?'bad':''}"><span>${tx('left')}</span><b>${left}</b></div>
-      </div>
-      <div class="own noprint"><span class="cnt">${tx('own')}</span>
-        <input class="inp" type="number" min="0" data-own="${t.code}" value="${own}"><span class="cnt">${tx('unit')}</span></div>
-      <div class="own noprint"><span class="cnt">${tx('nosLbl')}</span>
-        <input class="inp" type="text" data-nos="${t.code}" value="${esc(t.numbers||'')}" placeholder="1-${own||36}" style="width:130px"></div>
-      <div class="fee">${esc(tx('nosCnt')(SZCore.parseCartNos(t.numbers||'').length))}${(+t.fee_yen||0)?' · '+tx('feeEach')(+t.fee_yen||0):''}</div>
-    </div>`;
-  }).join('');
-  box.querySelectorAll('[data-own]').forEach(el=>el.addEventListener('change',()=>saveOwn(el.dataset.own,+el.value||0)));
-  box.querySelectorAll('[data-nos]').forEach(el=>el.addEventListener('change',()=>saveNos(el.dataset.nos,el.value)));
-  const w=$('#warn'); if(w){
-    const over=TYPES.filter(t=>usedOf(t.code)>(+t.total_count||0));
-    w.innerHTML=over.length?over.map(t=>`<div class="warnbox">${esc(tx('overWarn')(lang()==='ja'?t.name_ja:t.name_ko,+t.total_count||0))}</div>`).join(''):'';
+function unitsOf(code){ return UNITS[code]||[]; }
+function activeUnits(code){ return unitsOf(code).filter(u=>u.active); }
+// 보유 대수 = 등록된 카트 수(없으면 legacy total_count)
+function ownOf(t){ const u=unitsOf(t.code); return u.length? u.length : (+t.total_count||0); }
+function activeOf(t){ const u=unitsOf(t.code); return u.length? u.filter(x=>x.active).length : (+t.total_count||0); }
+
+async function loadUnits(){
+  UNITS={};
+  try{
+    const {data,error}=await supa.from('cart_units').select('*').order('cart_code').order('sort_order').order('no');
+    if(error) throw error;
+    (data||[]).forEach(u=>{ (UNITS[u.cart_code]=UNITS[u.cart_code]||[]).push(u); });
+  }catch(e){
+    const msg=String(e&&e.message||e);
+    if(!/cart_units/.test(msg)) throw e;      // 94 미실행이면 legacy(numbers)로 동작
   }
 }
 
-async function saveOwn(code,n){
-  try{
-    const {error}=await supa.from('cart_types').update({total_count:n}).eq('code',code);
-    if(error) throw error;
-    const t=TYPES.find(x=>x.code===code); if(t) t.total_count=n;
-    renderStock(); toast(tx('saveOk')(1),'ok');
-  }catch(e){ toast(tx('saveFail')+': '+e.message,'err'); }
+function renderStock(){
+  const box=$('#stock'); if(!box) return;
+  const dayNos=allocForDay();                       // 그 날 실제 배정된 번호(칩 색)
+  const usedNo={}; TYPES.forEach(t=>usedNo[t.code]=new Set());
+  Object.values(dayNos).forEach(m=>Object.keys(m).forEach(c=>m[c].forEach(n=>usedNo[c]&&usedNo[c].add(n))));
+  box.innerHTML=TYPES.map(t=>{
+    const use=usedOf(t.code), own=ownOf(t), act=activeOf(t), off=own-act, left=act-use;
+    const us=unitsOf(t.code);
+    const chips=us.length? us.map(u=>{
+      const on=u.active, isUsed=on&&usedNo[t.code]&&usedNo[t.code].has(String(u.no));
+      const title=on?(isUsed?tx('cuUsed'):tx('cuOffT')):(tx('cuOn')+(u.note?' — '+u.note:''));
+      return `<span class="cu${on?(isUsed?' used':''):' off'}" data-u="${u.id}" title="${esc(title)}">${esc(u.no)}</span>`;
+    }).join('') : `<span class="cnt" style="color:var(--muted)">${esc(tx('cuNone'))}</span>`;
+    return `<div class="st">
+      <h4>${esc(lang()==='ja'?t.name_ja:t.name_ko)}</h4>
+      <div class="nums">
+        <div class="n"><span>${tx('own')}</span><b>${act}</b></div>
+        <div class="n use"><span>${tx('use')}</span><b>${use}</b></div>
+        <div class="n left ${left<0?'bad':''}"><span>${tx('left')}</span><b>${left}</b></div>
+      </div>
+      <div class="fee">${off?`<span style="color:var(--err);font-weight:800">${esc(tx('cuOff')(off))}</span> · `:''}${esc(tx('cuTotal')(own))}${(+t.fee_yen||0)?' · '+tx('feeEach')(+t.fee_yen||0):''}</div>
+      <div class="units" data-code="${t.code}">${chips}</div>
+      <div class="uadd noprint">
+        <input class="inp" type="text" data-add="${t.code}" placeholder="${esc(tx('cuAddPh'))}">
+        <button class="btn sm ghost" type="button" data-addbtn="${t.code}">${esc(tx('cuAdd'))}</button>
+      </div>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('[data-u]').forEach(el=>el.addEventListener('click',()=>toggleUnit(el.dataset.u)));
+  box.querySelectorAll('[data-addbtn]').forEach(b=>b.addEventListener('click',()=>{
+    const code=b.dataset.addbtn, inp=box.querySelector(`[data-add="${code}"]`);
+    addUnits(code, inp.value); inp.value='';
+  }));
+  box.querySelectorAll('[data-add]').forEach(i=>i.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){ addUnits(i.dataset.add, i.value); i.value=''; }
+  }));
+  const w=$('#warn'); if(w){
+    const over=TYPES.filter(t=>usedOf(t.code)>activeOf(t));
+    w.innerHTML=over.length?over.map(t=>`<div class="warnbox">${esc(tx('overWarn')(lang()==='ja'?t.name_ja:t.name_ko,activeOf(t)))}</div>`).join(''):'';
+  }
 }
-// 보유 카트 번호는 여기서 종류별로 한 번만 적는다 → 팀별 번호는 자동 배분(수기 입력 없음).
-async function saveNos(code,v){
+
+// 카트 1대 사용/정비 토글 — 정비중이면 그 날 배정 번호에서 자동으로 빠진다.
+async function toggleUnit(id){
+  let unit=null, code=null;
+  Object.keys(UNITS).forEach(c=>{ const u=UNITS[c].find(x=>x.id===id); if(u){ unit=u; code=c; } });
+  if(!unit) return;
+  const next=!unit.active;
+  let note=unit.note||null;
+  if(!next){ const r=prompt(tx('cuOffAsk'), note||''); if(r===null) return; note=r.trim()||null; }
+  else note=null;
   try{
-    const {error}=await supa.from('cart_types').update({numbers:v||null}).eq('code',code);
+    const {error}=await supa.from('cart_units').update({active:next, note}).eq('id',id);
     if(error) throw error;
-    const t=TYPES.find(x=>x.code===code); if(t) t.numbers=v||'';
-    renderStock(); renderTable(); toast(tx('saveOk')(1),'ok');
-  }catch(e){ toast(tx('saveFail')+': '+e.message,'err'); }
+    unit.active=next; unit.note=note;
+    renderStock(); renderTable();
+    toast(next?tx('cuOnDone')(unit.no):tx('cuOffDone')(unit.no), next?'ok':'');
+  }catch(e){ toast(tx('saveFail')+': '+String(e&&e.message||e),'err'); }
 }
+
+// 카트 번호 추가 — "37" · "37,38" · "37-40" 전부 허용(중복은 무시)
+async function addUnits(code, text){
+  const nos=SZCore.parseCartNos(text||''); if(!nos.length) return;
+  const have=new Set(unitsOf(code).map(u=>String(u.no)));
+  const fresh=nos.filter(n=>!have.has(String(n)));
+  if(!fresh.length){ toast(tx('cuDup')); return; }
+  const base=unitsOf(code).reduce((m,u)=>Math.max(m,+u.sort_order||0),0);
+  const rows=fresh.map((n,i)=>({cart_code:code, no:String(n), sort_order:base+i+1}));
+  try{
+    const {data,error}=await supa.from('cart_units').insert(rows).select('*');
+    if(error) throw error;
+    (data||[]).forEach(u=>{ (UNITS[code]=UNITS[code]||[]).push(u); });
+    (UNITS[code]||[]).sort((a,b)=>(a.sort_order-b.sort_order)||String(a.no).localeCompare(String(b.no)));
+    renderStock(); renderTable(); toast(tx('cuAdded')(fresh.length),'ok');
+  }catch(e){ toast(tx('saveFail')+': '+String(e&&e.message||e),'err'); }
+}
+
 // 그 날 팀별 카트 번호 = 종류별 번호 풀에서 표시 순서대로 자동 배분(결정적).
 function allocForDay(){
   const out={};
   TYPES.forEach(t=>{
-    const pool=SZCore.parseCartNos(t.numbers||'');
+    // 등록된 카트가 있으면 '사용 가능(active)' 카트만 풀에 넣는다. 없으면 legacy numbers.
+    const us=activeUnits(t.code);
+    const pool=us.length? us.map(u=>String(u.no)) : SZCore.parseCartNos(t.numbers||'');
     const need=ROWS.map((r,i)=>({key:i, qty:+r.qty[t.code]||0}));
     const got=SZCore.allocCartNos(pool,need);
-    Object.keys(got).forEach(i=>{ if(got[i].length){ (out[i]=out[i]||[]).push(got[i].join(',')); } });
+    Object.keys(got).forEach(i=>{ if(got[i].length){ (out[i]=out[i]||{})[t.code]=got[i]; } });
   });
-  return out;
+  return out;   // { 행번호: { cart_code: ['1','2'] } }
 }
 
 function eligBadge(r){
@@ -571,7 +672,7 @@ function renderTable(){
             <option value="pre"${r.src==='pre'?' selected':''}>${tx('srcPre')}</option>
             <option value="onsite"${r.src==='onsite'?' selected':''}>${tx('srcOnsite')}</option>
           </select></td>
-      <td class="mono">${esc((NOS[i]||[]).join(' / ')||'-')}</td>
+      <td class="mono">${esc(TYPES.map(t=>((NOS[i]||{})[t.code]||[]).join(',')).filter(Boolean).join(' / ')||'-')}</td>
       <td><input class="inp memo" type="text" data-f="memo" value="${esc(r.memo)}"></td>
       <td class="tee">${fee?('¥'+fee.toLocaleString()):'-'}</td>
     </tr>`;
@@ -705,29 +806,38 @@ function feeOf(qty){ return TYPES.reduce((s,t)=>s+(+qty[t.code]||0)*(+t.fee_yen|
 function renderMonth(){
   const sum=$('#m-sum'), team=$('#m-team'); if(!sum||!team) return;
   if(!MDAYS.length){ sum.innerHTML=`<div class="cnt" style="color:var(--muted);padding:10px 0">${tx('mNone')}</div>`; team.innerHTML=''; return; }
-  const th=TYPES.map(t=>`<th>${esc(typeName(t.code))}</th>`).join('');
-  const dayRows=MDAYS.map(d=>{
-    const tot=TYPES.reduce((n,t)=>n+(+d.qty[t.code]||0),0);
-    return `<tr data-d="${d.date}" style="cursor:pointer">
-      <td class="l">${esc(SZCore.mdWd(d.date,lang()))}</td>
-      <td>${d.teams}${d.unassigned?` <span class="bdg no">${esc(tx('unassigned'))} ${d.unassigned}</span>`:''}</td>
-      ${TYPES.map(t=>{ const q=+d.qty[t.code]||0, own=+t.total_count||0;
-        return `<td class="${q>own?'over':''}">${q?q:'-'}${q?`<small style="color:var(--muted)">/${own}</small>`:''}</td>`; }).join('')}
-      <td>${tot}</td>
-      <td class="tee">${feeOf(d.qty)?('¥'+feeOf(d.qty).toLocaleString()):'-'}</td>
-    </tr>`;
-  }).join('');
+
+  // ── 캘린더(Min 2026-08: 표보다 달력이 낫다) ─────────────────────────────
+  const byD={}; MDAYS.forEach(d=>byD[d.date]=d);
+  const [Y,M]=YM.split('-').map(Number);
+  const first=new Date(Y,M-1,1), lastDay=new Date(Y,M,0).getDate(), lead=first.getDay();
+  const WD=tx('wd');
+  const cells=[];
+  for(let i=0;i<lead;i++) cells.push('<div class="cd empty"></div>');
+  for(let d=1;d<=lastDay;d++){
+    const ds=`${YM}-${String(d).padStart(2,'0')}`;
+    const wd=new Date(Y,M-1,d).getDay();
+    const dc=wd===0?' sun':(wd===6?' sat':'');
+    const x=byD[ds];
+    if(!x){ cells.push(`<div class="cd none"><div class="d${dc}">${d}</div><div class="tm">${esc(tx('calNone'))}</div></div>`); continue; }
+    const lines=TYPES.map(t=>{
+      const q=+x.qty[t.code]||0; if(!q) return '';
+      const own=activeOf(t);
+      return `<div class="ln${q>own?' over':''}"><i>${esc(shortType(t.code))}</i><b>${q}<span style="color:var(--muted);font-weight:600">/${own}</span></b></div>`;
+    }).join('');
+    cells.push(`<div class="cd${ds===todayISO()?' today':''}" data-d="${ds}">
+      <div class="d${dc}">${d}</div>
+      <div class="tm">${x.teams}${lang()==='en'?' teams':(lang()==='ja'?'チーム':'팀')}</div>
+      ${lines}
+      ${x.unassigned?`<div class="un">${esc(tx('unassigned'))} ${x.unassigned}</div>`:''}
+    </div>`);
+  }
   const gTot={}; MDAYS.forEach(d=>TYPES.forEach(t=>{ gTot[t.code]=(gTot[t.code]||0)+(+d.qty[t.code]||0); }));
-  sum.innerHTML=`<table class="t"><thead><tr>
-      <th>${tx('thDate')}</th><th>${tx('thTeams')}</th>${th}<th>${tx('thTotalCarts')}</th><th>${tx('thFee')}</th>
-    </tr></thead><tbody>${dayRows}
-    <tr class="sum"><td class="l" colspan="2">${tx('thTotal')}</td>
-      ${TYPES.map(t=>`<td>${gTot[t.code]||0}</td>`).join('')}
-      <td>${TYPES.reduce((n,t)=>n+(gTot[t.code]||0),0)}</td>
-      <td>¥${feeOf(gTot).toLocaleString()}</td></tr>
-    </tbody></table>`;
-  sum.querySelectorAll('tr[data-d]').forEach(tr=>tr.addEventListener('click',()=>{
-    DATE=tr.dataset.d; setView('day'); const dp=$('#d-pick'); if(dp) dp.value=DATE; load();
+  const totLine=TYPES.map(t=>`${esc(shortType(t.code))} ${gTot[t.code]||0}`).join(' · ');
+  sum.innerHTML=`<div class="cal">${WD.map((w,i)=>`<div class="wd${i===0?' sun':(i===6?' sat':'')}">${esc(w)}</div>`).join('')}${cells.join('')}</div>`
+    +`<div class="lgd" style="margin-top:8px;font-size:12px;color:var(--text2);font-weight:700">${esc(tx('thTotal'))}: ${totLine} · ${tx('thFee')} ¥${feeOf(gTot).toLocaleString()}</div>`;
+  sum.querySelectorAll('.cd[data-d]').forEach(el=>el.addEventListener('click',()=>{
+    DATE=el.dataset.d; setView('day'); const dp=$('#d-pick'); if(dp) dp.value=DATE; load();
   }));
 
   const teamRows=MTEAMS.map(t=>{
@@ -751,6 +861,12 @@ function renderMonth(){
       <th>${tx('thTeam')}</th><th>${tx('thRep')}</th><th>${tx('thAccom')}</th><th>${tx('thPax')}</th>
       <th>${tx('thKind')}</th><th>${tx('thDays')}</th><th>${tx('thAlloc')}</th><th>${tx('thCartDays')}</th><th>${tx('thFee')}</th>
     </tr></thead><tbody>${teamRows}</tbody></table>`;
+}
+// 캘린더 칸이 좁아 종류명을 짧게(전기/2인/4인)
+function shortType(code){
+  const ja={electric:'電動',gas2:'2人',gas4:'4人'}, ko={electric:'전기',gas2:'2인',gas4:'4인'}, en={electric:'EV',gas2:'2s',gas4:'4s'};
+  const m=lang()==='ja'?ja:(lang()==='en'?en:ko);
+  return m[code]||typeName(code);
 }
 
 async function autoAssignMonth(){

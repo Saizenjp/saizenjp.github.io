@@ -161,6 +161,7 @@ from (
   union all select 91,'91 체크아웃처리','set_check_status()', case when exists(select 1 from pg_proc where proname='set_check_status') then '✅ 있음' else '❌ 없음 (91)' end
   union all select 92,'92 QR만료=체크아웃','guest_bill check_status 반영', case when exists(select 1 from pg_proc where proname='guest_bill' and prosrc like '%check_status%') then '✅ 적용' else '❌ 미적용 (92)' end
   union all select 93,'93 카트 관리표','cart_types·cart_bookings', case when exists(select 1 from information_schema.tables where table_schema='public' and table_name='cart_types') and exists(select 1 from information_schema.tables where table_schema='public' and table_name='cart_bookings') then '✅ 있음' else '❌ 없음 (93)' end
+  union all select 94,'94 카트 개별번호','cart_units(정비중 제외)', case when exists(select 1 from information_schema.tables where table_schema='public' and table_name='cart_units') then '✅ 있음' else '❌ 없음 (94)' end
 ) t
 order by ord, 항목;
 
