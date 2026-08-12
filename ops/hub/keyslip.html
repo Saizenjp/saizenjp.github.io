@@ -476,7 +476,7 @@ function renderPreview(){
   const box=$('#prev');
   if(!list.length){ box.innerHTML='<div class="cnt" style="color:var(--muted);padding:10px 0">'+tx('noList')+'</div>'; return; }
   const rows=list.slice(0,150).map(l=>`<tr>
-      <td class="rn">${esc(l.roomNo)}</td>
+      <td class="rn">${esc(roomLabel(l.roomNo))}</td>
       <td class="gc">${esc(l.code)}</td>
       <td>${esc(l.names.join(' '))}</td>
       <td class="st">${esc(stayText(l))}</td>
@@ -492,6 +492,14 @@ function renderPreview(){
 }
 
 // 방번호·방이름은 항상 한 줄 — 「志津の宿 合歓」 같은 긴 이름은 글자만 줄여 넣는다.
+// 방 번호 표시 = 영문 + 번호 (Min 2026-08: "KUJU 1 이런식으로 영어와 번호로만").
+//  DB 저장값(쿠주 1호)은 그대로 두고 인쇄·목록 표시만 바꾼다.
+const ROOM_EN=[[/^쿠주\s*/,'KUJU '],[/^돔\s*/,'DOME '],[/^소보\s*/,'SOBO '],[/^아소\s*/,'ASO '],[/^간지\s*/,'GANJI ']];
+function roomLabel(no){
+  let t=String(no==null?'':no).trim();
+  for(const [re,en] of ROOM_EN){ if(re.test(t)){ t=t.replace(re,en); break; } }
+  return t.replace(/호\s*$/,'').trim();
+}
 function roomSize(no){
   const len=String(no||'').length;
   if(len<=6) return 1; if(len<=8) return .82; if(len<=11) return .66; return .52;
@@ -511,8 +519,9 @@ function printLabels(){
   const pages=[]; for(let i=0;i<slots.length;i+=PER){ const pg=slots.slice(i,i+PER); while(pg.length<PER) pg.push(null); pages.push(pg); }
   const cell=l=> l? `<div class="ks-cell"><div class="ks-body">
       <div class="ks-top"><span class="ks-code" style="color:${catColor(l.cat)}">${esc(l.code)}</span><span class="ks-names" style="font-size:calc(var(--fn) * ${nameSize(l.names)})">${esc(l.names.join(' '))}</span></div>
-      <div class="ks-room"><span class="ks-rno" style="font-size:${(roomSize(l.roomNo)*100).toFixed(0)}%">${esc(l.roomNo)}</span><span class="ks-pax">${l.pax}名</span></div>
-      <div class="ks-stay">${esc(stayText(l))}<span class="ks-port">${esc(l.port||'')}</span><span class="ks-nt" style="color:${catColor(l.cat)};border-color:${catColor(l.cat)}">${l.n}泊</span></div>
+      <div class="ks-room"><span class="ks-rno" style="font-size:${(roomSize(l.roomNo)*100).toFixed(0)}%">${esc(roomLabel(l.roomNo))}</span><span class="ks-pax">${l.pax}名</span></div>
+      <div class="ks-stay">${esc(stayText(l))}</div>
+      <div class="ks-meta"><span class="ks-port">${esc(l.port||'')}</span><span class="ks-nt" style="color:${catColor(l.cat)};border-color:${catColor(l.cat)}">${l.n}泊</span></div>
     </div></div>` : '<div class="ks-cell ks-empty"></div>';
   const sizeLabel=`${s.label} · ${lang()==='ja'?'1枚':lang()==='en'?'per sheet':'1장'} ${PER}${lang()==='en'?'':'면'}`;
   const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>ルームキー ラベル — ${esc(YM)}</title>
@@ -533,31 +542,32 @@ function printLabels(){
   .ks-empty{background:repeating-linear-gradient(45deg,#fafafa,#fafafa 6px,#f0f0f0 6px,#f0f0f0 12px)}
   .ks-body{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:${s.h>=50?'1.2mm':'.4mm'}}
   .ks-top{display:flex;align-items:baseline;justify-content:center;gap:1.6mm;width:100%;white-space:nowrap;overflow:hidden}
-  .ks-code{font-family:'Arial','Meiryo',sans-serif;font-weight:800;letter-spacing:.3px;line-height:1}
+  .ks-code{font-family:'Arial','Meiryo',sans-serif;font-weight:800;letter-spacing:.3px;line-height:1;font-size:1em}
   .ks-names{font-weight:700;line-height:1}
   .ks-room{font-family:'Arial','Meiryo',sans-serif;font-weight:800;line-height:1;letter-spacing:.5px;display:flex;align-items:baseline;justify-content:center;gap:1.6mm;white-space:nowrap;overflow:hidden;width:100%}
   .ks-rno{white-space:nowrap}
-  .ks-pax{font-family:'Meiryo',sans-serif;font-weight:700}
-  .ks-stay{font-weight:700;line-height:1.1;white-space:nowrap;display:flex;align-items:baseline;justify-content:center;gap:1.8mm}
-  .ks-nt{font-weight:800;border:.8pt solid currentColor;border-radius:1mm;padding:.2mm 1mm}
-  .ks-port{font-family:'Arial',sans-serif;font-weight:800;letter-spacing:.2px}
+  .ks-pax{font-family:'Meiryo',sans-serif;font-weight:700;font-size:.38em}
+  .ks-stay{font-weight:800;line-height:1.15;white-space:nowrap;padding:0 .5mm}
+  .ks-meta{display:flex;align-items:baseline;justify-content:center;gap:1.8mm;line-height:1.1}
+  .ks-nt{font-weight:800;border:.8pt solid currentColor;border-radius:1mm;padding:.2mm 1mm;font-size:.93em}
+  .ks-port{font-family:'Arial',sans-serif;font-weight:800;letter-spacing:.2px;font-size:1em}
   /* 크기별 타이포 — 가로가 길어 방번호 한 줄이 넉넉히 들어간다 */
-  .s-70x37 .ks-cell{--fn:11.5pt}
-  .s-70x37 .ks-code{font-size:15pt}.s-70x37 .ks-names{font-size:var(--fn)}
-  .s-70x37 .ks-room{font-size:26pt}.s-70x37 .ks-pax{font-size:9.5pt}
-  .s-70x37 .ks-stay{font-size:10pt}.s-70x37 .ks-port{font-size:9.5pt}.s-70x37 .ks-nt{font-size:8.5pt}
-  .s-70x49 .ks-cell{--fn:12.5pt}
-  .s-70x49 .ks-code{font-size:16.5pt}.s-70x49 .ks-names{font-size:var(--fn)}
-  .s-70x49 .ks-room{font-size:30pt}.s-70x49 .ks-pax{font-size:10.5pt}
-  .s-70x49 .ks-stay{font-size:11pt}.s-70x49 .ks-port{font-size:10.5pt}.s-70x49 .ks-nt{font-size:9pt}
-  .s-105x49 .ks-cell{--fn:15pt}
-  .s-105x49 .ks-code{font-size:20pt}.s-105x49 .ks-names{font-size:var(--fn)}
-  .s-105x49 .ks-room{font-size:36pt}.s-105x49 .ks-pax{font-size:12.5pt}
-  .s-105x49 .ks-stay{font-size:13pt}.s-105x49 .ks-port{font-size:12.5pt}.s-105x49 .ks-nt{font-size:11pt}
-  .s-52x37 .ks-cell{--fn:9pt}
-  .s-52x37 .ks-code{font-size:11.5pt}.s-52x37 .ks-names{font-size:var(--fn)}
-  .s-52x37 .ks-room{font-size:20pt}.s-52x37 .ks-pax{font-size:8pt}
-  .s-52x37 .ks-stay{font-size:8.2pt}.s-52x37 .ks-port{font-size:8pt}.s-52x37 .ks-nt{font-size:7.2pt}
+  .s-70x37 .ks-cell{--fn:.75em}
+  .s-70x37 .ks-top{font-size:18pt}
+  .s-70x37 .ks-room{font-size:26pt}
+  .s-70x37 .ks-stay{font-size:13pt}.s-70x37 .ks-meta{font-size:9pt}
+  .s-70x49 .ks-cell{--fn:.76em}
+  .s-70x49 .ks-top{font-size:19pt}
+  .s-70x49 .ks-room{font-size:30pt}
+  .s-70x49 .ks-stay{font-size:14pt}.s-70x49 .ks-meta{font-size:10.5pt}
+  .s-105x49 .ks-cell{--fn:.75em}
+  .s-105x49 .ks-top{font-size:22pt}
+  .s-105x49 .ks-room{font-size:36pt}
+  .s-105x49 .ks-stay{font-size:16pt}.s-105x49 .ks-meta{font-size:12.5pt}
+  .s-52x37 .ks-cell{--fn:.73em}
+  .s-52x37 .ks-top{font-size:15pt}
+  .s-52x37 .ks-room{font-size:21pt}
+  .s-52x37 .ks-stay{font-size:11.5pt}.s-52x37 .ks-meta{font-size:7.5pt}
   @media print{html,body{background:#fff}.ks-toolbar{display:none}.ks-container{padding:0}
     .ks-page{margin:0 auto;box-shadow:none}.ks-cell{border:none}.ks-empty{background:#fff}}
   </style></head><body>
@@ -568,6 +578,22 @@ function printLabels(){
     <button class="ks-close" onclick="window.close()">✕ ${esc(tx('pvClose'))}</button>
   </div>
   <div class="ks-container">${pages.map(pg=>`<div class="ks-page s-${SIZE}">${pg.map(cell).join('')}</div>`).join('')}</div>
+  <script>
+  // 줄별 자동 축소 — 태그코드+이름(3명)·긴 방이름·긴 날짜가 칸을 넘지 않게 실제로 재서 줄인다.
+  //  (글자수 계산식만으론 한글·가나·영문 혼합 폭을 못 맞춘다)
+  function ksFit(){
+    document.querySelectorAll('.ks-cell').forEach(function(cell){
+      ['.ks-top','.ks-room','.ks-stay','.ks-meta'].forEach(function(sel){
+        var box=cell.querySelector(sel); if(!box) return;
+        box.style.fontSize='';
+        var pt=parseFloat(getComputedStyle(box).fontSize)/(96/72);
+        for(var i=0;i<60 && box.scrollWidth>box.clientWidth+0.5; i++){ pt-=0.4; box.style.fontSize=pt+'pt'; }
+      });
+    });
+  }
+  window.addEventListener('load',ksFit);
+  window.addEventListener('beforeprint',ksFit);
+  <\/script>
   </body></html>`;
   const w=window.open('','_blank'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
   w.document.write(html); w.document.close();
