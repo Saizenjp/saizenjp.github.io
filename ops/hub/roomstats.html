@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 방배정 통계(회원 객실등급)</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad; --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --mono:'SFMono-Regular',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{max-width:1180px;margin:0 auto;padding:16px 20px 90px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:4px}
+  .panel .desc{font-size:12px;color:var(--text2);margin:6px 0 11px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .ymctrl{display:flex;align-items:center;gap:6px}
+  .ymctrl b{font-size:15px;font-family:var(--mono);min-width:58px;text-align:center}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:4px}
+  .kpi{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:10px 12px}
+  .kpi .k{font-size:11px;color:var(--muted);font-weight:700}
+  .kpi .v{font-size:22px;font-weight:800;font-family:var(--mono);line-height:1.2;margin-top:2px}
+  .kpi.bad .v{color:var(--err)} .kpi.good .v{color:var(--ok)}
+  .kpi .s{font-size:11px;color:var(--text2);font-weight:600}
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  table.t th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:7px 9px;text-align:right;font-size:11px;color:var(--text2);font-weight:700;white-space:nowrap}
+  table.t th:first-child{text-align:left}
+  table.t td{border-bottom:1px solid var(--border);padding:6px 9px;text-align:right;font-family:var(--mono);white-space:nowrap}
+  table.t td:first-child{text-align:left;font-family:inherit;font-weight:700}
+  table.t tr:hover td{background:var(--surface2)}
+  table.t tr.hl td{background:#fdf6e7}
+  table.t tr.sum td{border-top:2px solid var(--border2);font-weight:800;background:var(--surface2)}
+  table.t td.z{color:var(--muted)}
+  .bar{display:inline-block;height:8px;border-radius:3px;background:var(--accent);vertical-align:middle;margin-left:6px;min-width:2px}
+  .bar.d{background:var(--accent2)} .bar.c{background:var(--muted)}
+  .lgd{font-size:11px;color:var(--muted);font-weight:600;margin-top:6px}
+  .warnbox{background:#fdf6e7;border:1px solid #e6d3a3;border-radius:9px;padding:9px 12px;font-size:12px;color:#6b5312;font-weight:600;margin-top:10px}
+  .okbox{background:var(--accentSoft);border:1px solid #b4cda0;border-radius:9px;padding:9px 12px;font-size:12px;color:#234d2f;font-weight:700;margin-top:10px}
+  .namelist{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;max-height:280px;overflow:auto}
+  .nm{font-size:12px;font-weight:700;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 9px}
+  .nm small{font-weight:600;color:var(--muted);margin-left:5px}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.24">
+</head>
+<body data-so-area="room">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">방배정 통계</span>
+  <a class="navhome" href="../index.html" id="t-home">← 홈</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connhint">야마나미 호텔동 방배정을 읽어 회원이 어느 객실등급에 배정됐는지 집계합니다. 읽기 전용.</span>
+</div>
+
+<div class="wrap" id="content">
+  <div class="panel"><div class="deny" id="t-preconn" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-core.js?v=14"></script><!-- 회원 판정(3컬럼 OR)·박수→층 규칙 단일 진실원 -->
+<script src="../assets/saizen-ops.js?v=15.54"></script>
+<script>
+const $=s=>document.querySelector(s);
+
+const L={
+  ja:{ step:'部屋割当 統計', home:'← ホーム',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
+    connHint:'やまなみホテル棟の部屋割当を読み込み、会員がどの客室等級に割り当てられたかを集計します。読み取り専用。',
+    preConn:'接続すると表示されます。', loginNeedTitle:'ログインが必要です。', loginNeedSub:'中央のログインカードでログインしてから再接続してください。',
+    year:'対象年', loading:'集計中…', loadFail:'読み込み失敗', noData:'当年のデータなし',
+    scope:'集計対象', scopeNote:'<b>やまなみホテル棟</b>(3〜12階)の割当のみ。別荘・ドームハウス・久住・ガンジー・志津は対象外です。等級は<b>3階を1段下げた実質等級</b>(3階デラックス=ツイン・3階ツイン=コンパクト)で数えます。',
+    kMembers:'会員(実人数)', kStays:'会員の割当(のべ)', kNoDlx:'デラックス0回の会員', kDlxRate:'デラックス充足率',
+    ofMembers:n=>`会員 ${n}名中`, perStay:'のべ割当ベース',
+    t1:'① 予約月 × 割り当てられた客室等級（会員）',
+    t1d:'エムクリックの<b>予約日</b>(reserved_at)の月ごとに、その予約で会員が実際に入った等級。1行=予約月、数字=のべ人数。',
+    t2:'② 年間デラックス0回の会員',
+    t2d:'その年に1回以上宿泊した会員のうち、<b>一度もデラックスに入らなかった</b>人。ここが0になるのが目標です。',
+    t3:'③ 泊数別 デラックス競合',
+    t3d:'清掃効率の階ルールにより、泊数ごとに使えるデラックスが決まります。<b>ピーク日の会員数</b>が定員を超えるとその分がツインへ下がります。',
+    cMonth:'予約月', cDlx:'デラックス', cTwin:'スタンダードツイン', cCompact:'コンパクト(小型)', cEtc:'その他', cTotal:'計', cDlxPct:'デラックス率',
+    cNights:'泊数', cFloors:'許可階', cCap:'デラックス定員', cPeak:'ピーク日の会員', cShort:'不足',
+    cName:'氏名', cStays:'宿泊', cGrades:'入った等級',
+    noneGood:'✅ 該当なし — その年に泊まった会員は全員1回以上デラックスに入っています。',
+    someBad:n=>`⚠ ${n}名がその年に一度もデラックスに入っていません。`,
+    noRsv:'※ 予約日(reserved_at)が未登録の予約は「不明」行に入ります。エムクリックの予約リストに「予約日」列が無かった時期のデータです。',
+    unknown:'不明', nights:n=>`${n}泊`, etcNights:'その他', people:n=>`${n}名`, rooms:n=>`${n}室`, floors:a=>a.join('・')+'階',
+    gDlx:'デラックス', gTwin:'ツイン', gCompact:'コンパクト', gEtc:'その他' },
+  ko:{ step:'방배정 통계', home:'← 홈',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결·재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
+    connHint:'야마나미 호텔동 방배정을 읽어 회원이 어느 객실등급에 배정됐는지 집계합니다. 읽기 전용.',
+    preConn:'연결 후 표시됩니다.', loginNeedTitle:'로그인이 필요합니다.', loginNeedSub:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
+    year:'대상 연도', loading:'집계 중…', loadFail:'로드 실패', noData:'해당 연도 데이터 없음',
+    scope:'집계 대상', scopeNote:'<b>야마나미 호텔동</b>(3~12층) 배정만 셉니다. 별장·돔하우스·쿠주·간지·시즈는 대상 외입니다. 등급은 <b>3층을 한 단계 낮춘 실질 등급</b>(3층 디럭스=트윈·3층 트윈=컴팩트)으로 계산합니다.',
+    kMembers:'회원(실인원)', kStays:'회원 배정(연인원)', kNoDlx:'디럭스 0회 회원', kDlxRate:'디럭스 충족률',
+    ofMembers:n=>`회원 ${n}명 중`, perStay:'연인원 기준',
+    t1:'① 예약월 × 배정된 객실등급 (회원)',
+    t1d:'엠클릭 <b>예약일</b>(reserved_at) 기준 월별로, 그 예약에서 회원이 실제로 들어간 등급입니다. 한 행=예약월, 숫자=연인원.',
+    t2:'② 연간 디럭스 0회 회원',
+    t2d:'그 해에 한 번 이상 묵은 회원 중 <b>디럭스에 한 번도 못 들어간</b> 사람입니다. 여기가 0이 되는 게 목표입니다.',
+    t3:'③ 박수별 디럭스 경합',
+    t3d:'청소효율 층 규칙 때문에 박수마다 쓸 수 있는 디럭스가 정해집니다. <b>피크일 회원 수</b>가 정원을 넘으면 그만큼 트윈으로 내려갑니다.',
+    cMonth:'예약월', cDlx:'디럭스', cTwin:'스탠다드 트윈', cCompact:'컴팩트(소형)', cEtc:'기타', cTotal:'계', cDlxPct:'디럭스 비율',
+    cNights:'박수', cFloors:'허용 층', cCap:'디럭스 정원', cPeak:'피크일 회원', cShort:'부족',
+    cName:'이름', cStays:'숙박', cGrades:'받은 등급',
+    noneGood:'✅ 해당 없음 — 그 해에 묵은 회원 전원이 한 번 이상 디럭스에 들어갔습니다.',
+    someBad:n=>`⚠ ${n}명이 그 해에 한 번도 디럭스에 들어가지 못했습니다.`,
+    noRsv:'※ 예약일(reserved_at)이 없는 예약은 「불명」 행으로 들어갑니다. 엠클릭 예약리스트에 「예약일자」 열이 없던 시기의 데이터입니다.',
+    unknown:'불명', nights:n=>`${n}박`, etcNights:'그 외', people:n=>`${n}명`, rooms:n=>`${n}실`, floors:a=>a.join('·')+'층',
+    gDlx:'디럭스', gTwin:'트윈', gCompact:'컴팩트', gEtc:'기타' },
+  en:{ step:'Room assignment stats', home:'← Home',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
+    connHint:'Reads Yamanami hotel-block room assignments and shows which room grade each member ended up in. Read-only.',
+    preConn:'Shown after connecting.', loginNeedTitle:'Login required.', loginNeedSub:'Log in via the central login card, then reconnect.',
+    year:'Year', loading:'Calculating…', loadFail:'Load failed', noData:'No data for this year',
+    scope:'Scope', scopeNote:'Counts <b>Yamanami hotel block</b> (floors 3–12) only. Villas, dome houses, Kuju, Guernsey and Shizu are excluded. Grades use the <b>effective grade with floor 3 downgraded</b> (3F deluxe = twin, 3F twin = compact).',
+    kMembers:'Members (unique)', kStays:'Member assignments', kNoDlx:'Members with no deluxe', kDlxRate:'Deluxe share',
+    ofMembers:n=>`of ${n} members`, perStay:'per assignment',
+    t1:'① Booking month × assigned room grade (members)',
+    t1d:'By the month of the M-Click <b>booking date</b> (reserved_at), the grade members actually got. One row = booking month, numbers = assignments.',
+    t2:'② Members with no deluxe all year',
+    t2d:'Members who stayed at least once that year but <b>never got a deluxe room</b>. The goal is zero here.',
+    t3:'③ Deluxe contention by nights',
+    t3d:'The cleaning-efficiency floor rule fixes how much deluxe each night-length can use. When <b>peak-day members</b> exceed that capacity, the excess drops to twin.',
+    cMonth:'Booking month', cDlx:'Deluxe', cTwin:'Standard twin', cCompact:'Compact', cEtc:'Other', cTotal:'Total', cDlxPct:'Deluxe %',
+    cNights:'Nights', cFloors:'Floors', cCap:'Deluxe capacity', cPeak:'Peak-day members', cShort:'Short by',
+    cName:'Name', cStays:'Stays', cGrades:'Grades received',
+    noneGood:'✅ None — every member who stayed that year got deluxe at least once.',
+    someBad:n=>`⚠ ${n} member(s) never got a deluxe room that year.`,
+    noRsv:'※ Bookings with no reserved_at fall into the “unknown” row — data from before the M-Click list carried a booking-date column.',
+    unknown:'Unknown', nights:n=>`${n} nights`, etcNights:'Other', people:n=>`${n}`, rooms:n=>`${n} rooms`, floors:a=>'F'+a.join('·'),
+    gDlx:'Deluxe', gTwin:'Twin', gCompact:'Compact', gEtc:'Other' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+
+// ── 등급 판정 = room.html 자동배정과 동일 규칙 ────────────────────────────────
+//  3층은 실질 등급 한 단계 아래(3층 디럭스=트윈 / 3층 트윈=컴팩트). 3층엔 컴팩트가 없음.
+const LOW_GRADE_FLOOR=3;
+const TYPE_DOWNGRADE={'디럭스더블트윈':'트윈','디럭스트윈':'트윈','트윈':'컴팩트트윈'};
+const DELUXE_TYPES=['디럭스더블트윈','디럭스트윈'];
+function floorOf(inv){ const m=String(inv&&inv.zone||'').match(/^(\d+)층$/); return m?+m[1]:0; }
+function effType(inv){
+  const t=inv&&inv.room_type||'';
+  return (floorOf(inv)===LOW_GRADE_FLOOR && TYPE_DOWNGRADE[t]) ? TYPE_DOWNGRADE[t] : t;
+}
+function gradeOf(inv){
+  const t=effType(inv);
+  if(DELUXE_TYPES.includes(t)) return 'dlx';
+  if(t==='트윈') return 'twin';
+  if(t==='컴팩트트윈') return 'compact';
+  return 'etc';
+}
+const GRADES=['dlx','twin','compact','etc'];
+// 실질 등급 기준 디럭스 정원(05_room_inventory_real.sql 실제 재고 · 3층 강등 반영)
+//  3·4박=9·6층 각 4실=8실 / 7박=11층(디럭스3+디럭스트윈1)·10·7·4층=16실 / 그 외=12층(디럭스트윈4)·8·5층=10실
+const CAPS={3:8, 4:8, 7:16, etc:10};
+const GKEY={dlx:'gDlx',twin:'gTwin',compact:'gCompact',etc:'gEtc'};
+
+let supa=null, YEAR=new Date().getFullYear(), DATA=null;
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent=tx('connecting');btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">'+tx('loginNeedTitle')+'<small>'+tx('loginNeedSub')+'</small></div></div>'; return; }
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
+    renderUI(); load();
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
+}
+
+async function paged(qf){
+  const out=[]; let from=0;
+  for(;;){ const {data,error}=await qf(from,from+999); if(error) return {error};
+    out.push(...(data||[])); if(!data||data.length<1000) break; from+=1000; }
+  return {data:out};
+}
+async function pagedIn(table,cols,col,vals){
+  const out=[];
+  for(let i=0;i<vals.length;i+=200){
+    const chunk=vals.slice(i,i+200);
+    const r=await paged((a,b)=>supa.from(table).select(cols).in(col,chunk).order(col).range(a,b));
+    if(r.error) return r; out.push(...r.data);
+  }
+  return {data:out};
+}
+
+function renderUI(){
+  $('#content').innerHTML=`
+    <div class="panel">
+      <div class="row">
+        <span class="cnt">${tx('year')}</span>
+        <div class="ymctrl">
+          <button class="btn sm ghost" id="y-prev" type="button">◀</button>
+          <b id="y-label"></b>
+          <button class="btn sm ghost" id="y-next" type="button">▶</button>
+        </div>
+        <span style="flex:1"></span>
+        <span class="cnt" id="stat"></span>
+      </div>
+      <div class="desc" style="margin-top:8px"><b>${tx('scope')}</b> — ${tx('scopeNote')}</div>
+      <div class="kpis" id="kpis"></div>
+    </div>
+    <div class="panel"><h3>${tx('t1')}</h3><div class="desc">${tx('t1d')}</div><div id="tbl1"></div></div>
+    <div class="panel"><h3>${tx('t2')}</h3><div class="desc">${tx('t2d')}</div><div id="tbl2"></div></div>
+    <div class="panel"><h3>${tx('t3')}</h3><div class="desc">${tx('t3d')}</div><div id="tbl3"></div></div>`;
+  $('#y-prev').addEventListener('click',()=>{YEAR--;load();});
+  $('#y-next').addEventListener('click',()=>{YEAR++;load();});
+}
+
+async function load(){
+  if(!supa) return;
+  $('#y-label').textContent=YEAR; $('#stat').textContent=tx('loading');
+  const from=`${YEAR}-01-01`, to=`${YEAR}-12-31`;
+  try{
+    // 1) 그 해 입국(dep_date) 예약
+    const bs=await paged((a,b)=>supa.from('bookings')
+      .select('event_seq,reserved_at,dep_date,arr_date,rep_name').gte('dep_date',from).lte('dep_date',to).order('event_seq').range(a,b));
+    if(bs.error) throw bs.error;
+    const BMAP={}; (bs.data||[]).forEach(x=>BMAP[x.event_seq]=x);
+    const seqs=Object.keys(BMAP).map(Number);
+    if(!seqs.length){ DATA=null; $('#stat').textContent=tx('noData'); ['#kpis','#tbl1','#tbl2','#tbl3'].forEach(s=>{const e=$(s); if(e)e.innerHTML='';}); return; }
+    // 2) 객실 마스터 · 배정 · 개인 · 생년(사람 식별)
+    const invR=await paged((a,b)=>supa.from('room_inventory').select('id,facility,zone,room_no,room_type').order('id').range(a,b));
+    if(invR.error) throw invR.error;
+    const INV={}; (invR.data||[]).forEach(i=>INV[i.id]=i);
+    const rmR=await pagedIn('rooms','event_seq,member_id,inventory_id,room_no,check_in,check_out','event_seq',seqs);
+    if(rmR.error) throw rmR.error;
+    const gmR=await pagedIn('guest_members','id,event_seq,passenger_id,name_kr,member_grade,member_class,member_div','event_seq',seqs);
+    if(gmR.error) throw gmR.error;
+    const GM={}; (gmR.data||[]).forEach(m=>GM[m.id]=m);
+    const pxR=await pagedIn('passengers','id,name_kr,birth_yymmdd','event_seq',seqs);
+    if(pxR.error) throw pxR.error;
+    const PX={}; (pxR.data||[]).forEach(p=>PX[p.id]=p);
+
+    // 3) 야마나미 호텔동(3~12층) 배정만, 회원만
+    const rows=[];
+    (rmR.data||[]).forEach(r=>{
+      const inv=INV[r.inventory_id]; if(!inv) return;
+      if(inv.facility!=='야마나미리조트' || !/^\d+층$/.test(inv.zone||'')) return;   // 호텔동만
+      const m=GM[r.member_id]; if(!m) return;
+      if(!(window.SZCore&&SZCore.isMember(m))) return;                              // 회원만
+      const b=BMAP[r.event_seq]||{};
+      const px=m.passenger_id!=null?PX[m.passenger_id]:null;
+      const name=(m.name_kr||(px&&px.name_kr)||'').trim();
+      const birth=(px&&px.birth_yymmdd)||'';
+      rows.push({
+        eventSeq:r.event_seq, grade:gradeOf(inv), floor:floorOf(inv), roomNo:r.room_no,
+        rsvM: b.reserved_at ? String(b.reserved_at).slice(0,7) : '',
+        ci:r.check_in, co:r.check_out,
+        nights: Math.max(0,Math.round((new Date(r.check_out)-new Date(r.check_in))/864e5)),
+        key: name+(birth?'|'+birth:'|?'+r.event_seq), name
+      });
+    });
+    DATA={rows};
+    $('#stat').textContent=`${rows.length}`;
+    renderAll();
+  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
+}
+
+function renderAll(){
+  if(!DATA||!DATA.rows.length){ ['#kpis','#tbl1','#tbl2','#tbl3'].forEach(s=>{const e=$(s); if(e)e.innerHTML='';}); return; }
+  const rows=DATA.rows;
+  // ── 사람 단위 집계 ──
+  const byPerson={};
+  rows.forEach(r=>{ const p=byPerson[r.key]||(byPerson[r.key]={name:r.name,stays:0,grades:{}});
+    p.stays++; p.grades[r.grade]=(p.grades[r.grade]||0)+1; });
+  const people=Object.values(byPerson);
+  const noDlx=people.filter(p=>!p.grades.dlx).sort((a,b)=>b.stays-a.stays||a.name.localeCompare(b.name));
+  const dlxStays=rows.filter(r=>r.grade==='dlx').length;
+
+  // KPI
+  $('#kpis').innerHTML=[
+    {k:tx('kMembers'),v:people.length,s:''},
+    {k:tx('kStays'),v:rows.length,s:tx('perStay')},
+    {k:tx('kNoDlx'),v:noDlx.length,s:tx('ofMembers')(people.length),cls:noDlx.length?'bad':'good'},
+    {k:tx('kDlxRate'),v:Math.round(dlxStays/rows.length*100)+'%',s:tx('perStay')}
+  ].map(x=>`<div class="kpi ${x.cls||''}"><div class="k">${esc(x.k)}</div><div class="v">${esc(String(x.v))}</div><div class="s">${esc(x.s)}</div></div>`).join('');
+
+  // ── ① 예약월 × 등급 ──
+  const byM={};
+  rows.forEach(r=>{ const k=r.rsvM||'__'; (byM[k]=byM[k]||{dlx:0,twin:0,compact:0,etc:0}); byM[k][r.grade]++; });
+  const months=Object.keys(byM).filter(k=>k!=='__').sort();
+  if(byM['__']) months.push('__');
+  const tot={dlx:0,twin:0,compact:0,etc:0};
+  const maxTot=Math.max(1,...months.map(m=>GRADES.reduce((s,g)=>s+byM[m][g],0)));
+  const trs=months.map(m=>{
+    const c=byM[m], t=GRADES.reduce((s,g)=>s+c[g],0);
+    GRADES.forEach(g=>tot[g]+=c[g]);
+    const pct=t?Math.round(c.dlx/t*100):0;
+    const hl=(m!=='__' && +m.slice(0,4)===YEAR-1 && +m.slice(5,7)>=9);   // 작년 9~12월 강조
+    return `<tr class="${hl?'hl':''}"><td>${m==='__'?esc(tx('unknown')):esc(m)}</td>`
+      +GRADES.map(g=>`<td class="${c[g]?'':'z'}">${c[g]||'·'}</td>`).join('')
+      +`<td>${t}</td><td>${pct}%<span class="bar${pct>=60?'':pct>=30?' d':' c'}" style="width:${Math.round(pct*0.42)}px"></span></td></tr>`;
+  }).join('');
+  const totT=GRADES.reduce((s,g)=>s+tot[g],0);
+  $('#tbl1').innerHTML=`<table class="t"><thead><tr><th>${tx('cMonth')}</th><th>${tx('cDlx')}</th><th>${tx('cTwin')}</th><th>${tx('cCompact')}</th><th>${tx('cEtc')}</th><th>${tx('cTotal')}</th><th>${tx('cDlxPct')}</th></tr></thead>`
+    +`<tbody>${trs}<tr class="sum"><td>${tx('cTotal')}</td>`+GRADES.map(g=>`<td>${tot[g]}</td>`).join('')
+    +`<td>${totT}</td><td>${totT?Math.round(tot.dlx/totT*100):0}%</td></tr></tbody></table>`
+    +(byM['__']?`<div class="lgd">${esc(tx('noRsv'))}</div>`:'');
+
+  // ── ② 디럭스 0회 회원 ──
+  $('#tbl2').innerHTML = noDlx.length
+    ? `<div class="warnbox">${esc(tx('someBad')(noDlx.length))}</div>`
+      +`<div class="namelist">${noDlx.map(p=>`<span class="nm">${esc(p.name||'-')}<small>${p.stays}× · ${GRADES.filter(g=>p.grades[g]).map(g=>esc(tx(GKEY[g]))).join('/')}</small></span>`).join('')}</div>`
+    : `<div class="okbox">${esc(tx('noneGood'))}</div>`;
+
+  // ── ③ 박수별 디럭스 경합 ──
+  const FIXED={3:[9,6,3],4:[9,6,3],7:[11,10,7,4]}, FLEX=[12,8,5];
+  const buckets=[{n:3,fl:FIXED[3]},{n:4,fl:FIXED[4]},{n:7,fl:FIXED[7]},{n:null,fl:FLEX}];
+  // 각 버킷의 디럭스 정원(실질 등급 기준) — 로드된 재고에서 직접 센다
+  const rows3=buckets.map(bk=>{
+    const inBucket=r=> bk.n!=null ? r.nights===bk.n : ![3,4,7].includes(r.nights);
+    const sel=rows.filter(inBucket);
+    // 피크일 = 그 버킷에서 같은 날 밤에 동시에 묵은 회원 최대 수
+    const days={};
+    sel.forEach(r=>{ for(let d=new Date(r.ci); d<new Date(r.co); d.setDate(d.getDate()+1)){
+      const k=d.toISOString().slice(0,10); days[k]=(days[k]||0)+1; } });
+    const peak=Math.max(0,...Object.values(days));
+    const cap=(CAPS[bk.n==null?'etc':bk.n]||0);
+    const short=Math.max(0,peak-cap*2);
+    return `<tr class="${short?'hl':''}"><td>${bk.n!=null?tx('nights')(bk.n):tx('etcNights')}</td>`
+      +`<td style="font-family:inherit">${esc(tx('floors')(bk.fl))}</td>`
+      +`<td>${esc(tx('rooms')(cap))} (${esc(tx('people')(cap*2))})</td>`
+      +`<td>${peak}</td><td class="${short?'':'z'}">${short||'·'}</td></tr>`;
+  }).join('');
+  $('#tbl3').innerHTML=`<table class="t"><thead><tr><th>${tx('cNights')}</th><th>${tx('cFloors')}</th><th>${tx('cCap')}</th><th>${tx('cPeak')}</th><th>${tx('cShort')}</th></tr></thead><tbody>${rows3}</tbody></table>`;
+}
+function applyStatic(){
+  const step=$('#t-step'); if(step) step.textContent=tx('step');
+  const home=$('#t-home'); if(home) home.textContent=tx('home');
+  const hint=$('#t-connhint'); if(hint) hint.textContent=tx('connHint');
+  const pre=$('#t-preconn'); if(pre) pre.textContent=tx('preConn');
+  const btn=$('#btn-connect');
+  if(supa){ setConn(tx('connOk'),'ok'); if(btn) btn.textContent=tx('connectedBtn'); }
+  else { setConn(tx('notConn'),''); if(btn) btn.textContent=tx('connect'); }
+}
+window.onSaizenLangChange=function(){ applyStatic(); if(supa){ renderUI(); $('#y-label').textContent=YEAR; renderAll(); } };
+
+$('#btn-connect').addEventListener('click',connect);
+applyStatic();
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
