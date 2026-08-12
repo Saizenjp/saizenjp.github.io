@@ -257,6 +257,58 @@
     return !!(r && r.course === 'やまなみCC');
   }
 
+  // ── 카트 배정 규칙 (카트 관리표) ────────────────────────────────────────────
+  //  · 전기(전동)카트 = 유료 사전신청. 현지전달비고(remark_local)에 신청 표기가 있는 팀만.
+  //    → 그 팀의 라운딩 일수(golfRows) 전부에 자동 분배.
+  //  · 그 외 팀 = 가솔린. 2인 예약팀은 2인승, 3인 이상은 4인승.
+  //  카트 1대 정원 = 4명(2인승은 2명).
+  var CART_ELECTRIC = /전기\s*카트|전동\s*카트|電動\s*カ[ーー]?ト|EV\s*카트|EV\s*カ[ーー]?ト|E\s*카트/i;
+  function wantsElectricCart(remark) {
+    return CART_ELECTRIC.test(String(remark == null ? '' : remark));
+  }
+  //  pax → {code, qty}. electric=true 면 전기카트, 아니면 가솔린(2인승/4인승).
+  //  code 는 cart_types.code 와 동일: 'electric' | 'gas2' | 'gas4'
+  function cartPlan(pax, electric) {
+    var p = Math.max(0, Math.floor(+pax || 0));
+    if (!p) return null;
+    if (electric) return { code: 'electric', qty: Math.max(1, Math.ceil(p / 4)) };
+    if (p <= 2) return { code: 'gas2', qty: 1 };
+    return { code: 'gas4', qty: Math.ceil(p / 4) };
+  }
+
+  //  보유 카트 번호 목록 문자열 → 번호 배열.
+  //   "1-36" · "1,2,5-9" · "E1-E10" (접두 문자 유지) 를 모두 받는다. 중복 제거·입력 순서 유지.
+  function parseCartNos(text) {
+    var out = [], seen = {};
+    String(text == null ? '' : text).split(/[,\s、･·]+/).forEach(function (tok) {
+      tok = tok.trim(); if (!tok) return;
+      var m = tok.match(/^([^\d]*)(\d+)\s*[-~〜]\s*([^\d]*)(\d+)$/);
+      if (m && (!m[3] || m[3] === m[1])) {
+        var pre = m[1], a = +m[2], b = +m[4], w = m[2].length;
+        var step = a <= b ? 1 : -1;
+        for (var i = a; step > 0 ? i <= b : i >= b; i += step) {
+          var s = pre + (m[2][0] === '0' ? String(i).padStart(w, '0') : String(i));
+          if (!seen[s]) { seen[s] = 1; out.push(s); }
+        }
+        return;
+      }
+      if (!seen[tok]) { seen[tok] = 1; out.push(tok); }
+    });
+    return out;
+  }
+  //  번호 풀에서 순서대로 꺼내 배분. need=[{key, qty}] → {key: [번호…]}
+  //  풀이 모자라면 그만큼만 준다(부족분은 빈칸 = 현장 조정).
+  function allocCartNos(pool, need) {
+    var list = Array.isArray(pool) ? pool.slice() : parseCartNos(pool);
+    var out = {}, i = 0;
+    (need || []).forEach(function (n) {
+      var q = Math.max(0, Math.floor(+n.qty || 0)), got = [];
+      for (var k = 0; k < q && i < list.length; k++, i++) got.push(list[i]);
+      out[n.key] = got;
+    });
+    return out;
+  }
+
   // ── 출발지 공항 판정 (釜山 PUS / 仁川 ICN) ──────────────────────────────────
   //  여러 페이지가 제각각(김해 누락·항공편 미고려)이던 것을 단일화.
   //   · 항공편 코드 우선: ZE(에어부산)→PUS / TW(티웨이)→ICN
@@ -501,6 +553,10 @@
     isNonWorkday: isNonWorkday,
     golfRows: golfRows,
     usesYamanamiCC: usesYamanamiCC,
+    wantsElectricCart: wantsElectricCart,
+    cartPlan: cartPlan,
+    parseCartNos: parseCartNos,
+    allocCartNos: allocCartNos,
     NM_PREFIX: NM_PREFIX,
     NM_KANA: NM_KANA,
     NM_POOL: NM_POOL,

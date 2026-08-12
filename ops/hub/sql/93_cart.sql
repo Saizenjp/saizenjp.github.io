@@ -15,17 +15,23 @@ create table if not exists public.cart_types (
   name_ja     text        not null,
   name_ko     text        not null,
   total_count int         not null default 0,       -- 실제 보유 대수
+  numbers     text,                                  -- 보유 카트 번호(예 "1-36" / "1,2,5-9" / "E1-E36")
   fee_yen     int         not null default 2000,    -- 1대 1일 사용료
   sort_order  int         not null default 99,
   active      boolean     not null default true,
   updated_at  timestamptz not null default now()
 );
 
+-- 이미 만들어진 DB에도 번호 컬럼 추가(멱등)
+alter table public.cart_types add column if not exists numbers text;
+
 -- 실제 보유(Min 2026-08): 가솔린 2인승 27 · 가솔린 4인승 48 · 전기 36
-insert into public.cart_types(code,name_ja,name_ko,total_count,fee_yen,sort_order) values
-  ('electric','電動カート','전기카트',                36, 2000, 1),
-  ('gas2',    'ガソリン 2人乗り','가솔린 2인승',        27, 2000, 2),
-  ('gas4',    'ガソリン 4人乗り','가솔린 4인승',        48, 2000, 3)
+--   numbers = 관리표에서 종류별로 한 번만 적어두면 팀별 배정 시 순서대로 자동 배분된다.
+--   요금 ¥2,000 = 전기카트 유료 사전신청분. 가솔린은 기본 제공이라 0.
+insert into public.cart_types(code,name_ja,name_ko,total_count,numbers,fee_yen,sort_order) values
+  ('electric','電動カート','전기카트',                36, '1-36', 2000, 1),
+  ('gas2',    'ガソリン 2人乗り','가솔린 2인승',        27, '1-27',    0, 2),
+  ('gas4',    'ガソリン 4人乗り','가솔린 4인승',        48, '1-48',    0, 3)
 on conflict (code) do nothing;
 
 drop trigger if exists trg_cart_types_updated on public.cart_types;
