@@ -200,6 +200,42 @@
     return k * NM_PREFIX.length + p;
   }
 
+
+  // ── 라운딩 일정 규칙 (야마나미 골프 · dispatch/카트 공용) ──────────────────
+  //  · 입국일 = ICN 팀만 18H(부산편은 도착이 늦어 없음)
+  //  · 귀국일 = PUS 팀만 9H(인천편은 오전 출발이라 없음)
+  //  · 체류 중 = 전원 18H. 단 간지호텔은 평일이면 九重高原CC, 주말·공휴일은 やまなみCC.
+  var JP_HOLIDAYS = ['2025-01-01','2025-01-13','2025-02-11','2025-02-23','2025-02-24','2025-03-20','2025-04-29','2025-05-03','2025-05-04','2025-05-05','2025-05-06','2025-07-21','2025-08-11','2025-09-15','2025-09-22','2025-09-23','2025-10-13','2025-11-03','2025-11-23','2025-11-24','2026-01-01','2026-01-12','2026-02-11','2026-02-23','2026-03-20','2026-04-29','2026-05-03','2026-05-04','2026-05-05','2026-05-06','2026-07-20','2026-08-11','2026-09-21','2026-09-22','2026-09-23','2026-10-12','2026-11-03','2026-11-23','2027-01-01','2027-01-11','2027-02-11','2027-02-23','2027-03-22','2027-04-29','2027-05-03','2027-05-04','2027-05-05','2027-07-19','2027-08-11','2027-09-20','2027-09-23','2027-10-11','2027-11-03','2027-11-23'];
+  var JP_HOLIDAY_SET = new Set(JP_HOLIDAYS);
+  function isJpHoliday(date) { return JP_HOLIDAY_SET.has(String(date).slice(0, 10)); }
+  function isNonWorkday(date) {
+    var d = parseLocalDate(date); if (!d || isNaN(d)) return false;
+    var w = d.getDay();
+    return w === 0 || w === 6 || isJpHoliday(date);
+  }
+  // team={dep,arr,accom} · isPus=귀국편이 부산인지 → [{date,course,holes,note}]
+  function golfRows(team, isPus) {
+    var rows = []; if (!team || !team.dep || !team.arr) return rows;
+    var cur = parseLocalDate(team.dep), end = parseLocalDate(team.arr);
+    if (!cur || !end || isNaN(cur) || isNaN(end)) return rows;
+    for (; cur <= end; cur.setDate(cur.getDate() + 1)) {
+      var ds = fmtDate(cur);
+      if (ds === team.dep) { if (isPus) continue; rows.push({ date: ds, course: 'やまなみCC', holes: 18, note: '入国日' }); }
+      else if (ds === team.arr) { if (!isPus) continue; rows.push({ date: ds, course: 'やまなみCC', holes: 9, note: '帰国日(釜山便)' }); }
+      else {
+        var nw = isNonWorkday(ds);
+        var course = (team.accom === '간지호텔' && !nw) ? '九重高原CC' : 'やまなみCC';
+        rows.push({ date: ds, course: course, holes: 18, note: nw ? (isJpHoliday(ds) ? '祝日' : '週末') : '+9Hサービス対象' });
+      }
+    }
+    return rows;
+  }
+  // 그 날짜에 야마나미CC에서 라운딩하는가(= 전기카트 사전신청 가능 조건)
+  function usesYamanamiCC(team, isPus, date) {
+    var r = golfRows(team, isPus).find(function (x) { return x.date === String(date).slice(0, 10); });
+    return !!(r && r.course === 'やまなみCC');
+  }
+
   // ── 출발지 공항 판정 (釜山 PUS / 仁川 ICN) ──────────────────────────────────
   //  여러 페이지가 제각각(김해 누락·항공편 미고려)이던 것을 단일화.
   //   · 항공편 코드 우선: ZE(에어부산)→PUS / TW(티웨이)→ICN
@@ -436,6 +472,11 @@
     b2bFees: b2bFees,
     accomFromProduct: accomFromProduct,
     nmCodeConflict: nmCodeConflict,
+    JP_HOLIDAYS: JP_HOLIDAYS,
+    isJpHoliday: isJpHoliday,
+    isNonWorkday: isNonWorkday,
+    golfRows: golfRows,
+    usesYamanamiCC: usesYamanamiCC,
     NM_PREFIX: NM_PREFIX,
     NM_KANA: NM_KANA,
     NM_POOL: NM_POOL,

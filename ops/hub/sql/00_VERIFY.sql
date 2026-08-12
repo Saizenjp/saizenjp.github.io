@@ -160,6 +160,7 @@ from (
   union all select 90,'90 손님QR만료','guest_bill 퇴실+7일 백스톱', case when exists(select 1 from pg_proc where proname='guest_bill' and prosrc like '%arr_date + 7%') then '✅ 적용' else '❌ 미적용 (90)' end
   union all select 91,'91 체크아웃처리','set_check_status()', case when exists(select 1 from pg_proc where proname='set_check_status') then '✅ 있음' else '❌ 없음 (91)' end
   union all select 92,'92 QR만료=체크아웃','guest_bill check_status 반영', case when exists(select 1 from pg_proc where proname='guest_bill' and prosrc like '%check_status%') then '✅ 적용' else '❌ 미적용 (92)' end
+  union all select 93,'93 카트 관리표','cart_types·cart_bookings', case when exists(select 1 from information_schema.tables where table_schema='public' and table_name='cart_types') and exists(select 1 from information_schema.tables where table_schema='public' and table_name='cart_bookings') then '✅ 있음' else '❌ 없음 (93)' end
 ) t
 order by ord, 항목;
 

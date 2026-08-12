@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 카트 관리표</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad; --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --mono:'SFMono-Regular',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{max-width:1320px;margin:0 auto;padding:16px 20px 90px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:4px}
+  .panel .desc{font-size:12px;color:var(--text2);margin:6px 0 11px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .dctrl{display:flex;align-items:center;gap:6px}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+  /* 보유·사용·잔여 */
+  .stock{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:4px}
+  .st{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px 13px}
+  .st h4{font-size:13px;font-weight:800;color:var(--text);margin-bottom:7px}
+  .st .nums{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .st .n{display:flex;flex-direction:column}
+  .st .n span{font-size:10.5px;color:var(--muted);font-weight:700}
+  .st .n b{font-size:21px;font-family:var(--mono);line-height:1.15}
+  .st .n.use b{color:var(--accent2)} .st .n.left b{color:var(--ok)} .st .n.left.bad b{color:var(--err)}
+  .st .own{display:flex;align-items:center;gap:5px;margin-top:7px}
+  .st .own input{width:62px;text-align:center}
+  .st .fee{font-size:11px;color:var(--muted);font-weight:600;margin-top:5px}
+  /* 관리표 */
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  table.t th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:7px 8px;text-align:center;font-size:11px;color:var(--text2);font-weight:700;white-space:nowrap}
+  table.t td{border-bottom:1px solid var(--border);padding:5px 8px;text-align:center;white-space:nowrap;vertical-align:middle}
+  table.t td.l{text-align:left}
+  table.t tr:hover td{background:var(--surface2)}
+  table.t tr.sum td{border-top:2px solid var(--border2);font-weight:800;background:var(--surface2);font-family:var(--mono)}
+  table.t tr.dirty td{background:#fdf6e7}
+  .tag{font-weight:800;color:var(--accent2);font-family:Arial,sans-serif}
+  .qty{width:52px;text-align:center;padding:4px 5px;font-family:var(--mono);font-weight:700}
+  .nos{width:96px;padding:4px 6px;font-size:12px}
+  .memo{width:120px;padding:4px 6px;font-size:12px}
+  .src{padding:4px 6px;font-size:12px}
+  .bdg{font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:99px;white-space:nowrap}
+  .bdg.ok{background:var(--accentSoft);color:#234d2f;border:1px solid #b4cda0}
+  .bdg.cond{background:#fdf6e7;color:#6b5312;border:1px solid #e6d3a3}
+  .bdg.no{background:#f7e6e2;color:#8a2a1c;border:1px solid #e3bdb4}
+  .course{font-size:11.5px;color:var(--text2);font-weight:700}
+  .course.kuju{color:#8a5a12}
+  .tee{font-family:var(--mono);font-weight:700}
+  .warnbox{background:#fdf6e7;border:1px solid #e6d3a3;border-radius:9px;padding:9px 12px;font-size:12px;color:#6b5312;font-weight:600;margin-top:10px}
+  .okbox{background:var(--accentSoft);border:1px solid #b4cda0;border-radius:9px;padding:9px 12px;font-size:12px;color:#234d2f;font-weight:700;margin-top:10px}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
+  @media print{
+    .topbar,.conn,#toast,.noprint{display:none!important}
+    body{background:#fff}.wrap{max-width:none;padding:0}
+    .panel{border:none;box-shadow:none;padding:0 0 8px;margin-bottom:8px;break-inside:avoid}
+    table.t{font-size:10.5pt}
+    .qty,.nos,.memo,.src{border:none;background:transparent;font-size:10.5pt}
+    @page{size:A4 landscape;margin:10mm}
+  }
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.24">
+</head>
+<body data-so-area="golf">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">카트 관리표</span>
+  <a class="navhome" href="../index.html" id="t-home">← 홈</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connhint">날짜별 카트 보유·사용·잔여와 팀별 배정(코스·티오프 포함)을 한 화면에서 관리합니다.</span>
+</div>
+
+<div class="wrap" id="content">
+  <div class="panel"><div class="deny" id="t-preconn" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-core.js?v=15"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
+<script src="../assets/saizen-ops.js?v=15.67"></script>
+<script>
+const $=s=>document.querySelector(s);
+
+const L={
+  ja:{ step:'カート管理表', home:'← ホーム',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
+    connHint:'日付ごとのカート保有・使用・残数と、チーム別の割当(コース・ティ時刻を含む)を1画面で管理します。',
+    preConn:'接続すると表示されます。', loginNeedTitle:'ログインが必要です。', loginNeedSub:'中央のログインカードでログインしてから再接続してください。',
+    date:'日付', today:'今日', loading:'読み込み中…', loadFail:'読み込み失敗', saveOk:n=>`${n}件 保存`, saveFail:'保存失敗',
+    noRound:'この日にラウンドするチームはありません。', save:'💾 変更を保存', print:'🖨 印刷', reload:'↻ 再読込',
+    stockTitle:'保有・使用・残数', own:'保有', use:'使用', left:'残', unit:'台', feeEach:n=>`1台1日 ¥${n.toLocaleString()}`,
+    tblTitle:'チーム別 カート割当', dirty:n=>`未保存 ${n}件`,
+    thTeam:'チーム', thRep:'代表', thAccom:'宿泊', thPax:'人数', thElig:'事前申請', thCourse:'コース', thTee:'ティ',
+    thSrc:'申請区分', thNos:'カート番号', thMemo:'メモ', thFee:'料金', thTotal:'計',
+    srcPre:'事前', srcOnsite:'現場',
+    eligOk:'可', eligCond:'可（やまなみCC日）', eligNo:'不可',
+    eligOkT:'やまなみリゾートゴルフクラブ利用 → 電動カート事前申請 可',
+    eligCondT:'ガンジーホテルは平日=九重高原CC。この日はやまなみCC(週末・祝日/入国日)なので事前申請 可',
+    eligNoT:'この日はやまなみCCを利用しないため事前申請 不可(現場申請は可)',
+    overWarn:(t,n)=>`⚠ ${t}: 保有 ${n}台 を超えています`,
+    deskNote:'その日<b>ラウンドするチーム</b>だけを出します(入国日=仁川チームのみ・帰国日=釜山チームのみ・滞在中=全員)。'
+      +'<b>電動カートの有料事前申請</b>は<b>やまなみリゾートゴルフクラブ利用時のみ</b> — やまなみ/久住ヒルズ/志津の宿は常に可、'
+      +'<b>ガンジーホテルは平日が九重高原CCなので、やまなみCCの日(週末・祝日・入国日)のみ</b>可です。<b>現場申請</b>はいつでも可。'
+      +'コース・ティ時刻は<b>ゴルフ組編成</b>で保存された値を読み込みます(未編成なら空欄)。',
+    courseRule:'規則', courseGrp:'組編成' },
+  ko:{ step:'카트 관리표', home:'← 홈',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결·재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
+    connHint:'날짜별 카트 보유·사용·잔여와 팀별 배정(코스·티오프 포함)을 한 화면에서 관리합니다.',
+    preConn:'연결 후 표시됩니다.', loginNeedTitle:'로그인이 필요합니다.', loginNeedSub:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
+    date:'날짜', today:'오늘', loading:'불러오는 중…', loadFail:'로드 실패', saveOk:n=>`${n}건 저장`, saveFail:'저장 실패',
+    noRound:'이 날 라운딩하는 팀이 없습니다.', save:'💾 변경 저장', print:'🖨 인쇄', reload:'↻ 새로고침',
+    stockTitle:'보유 · 사용 · 잔여', own:'보유', use:'사용', left:'잔여', unit:'대', feeEach:n=>`1대 1일 ¥${n.toLocaleString()}`,
+    tblTitle:'팀별 카트 배정', dirty:n=>`미저장 ${n}건`,
+    thTeam:'팀', thRep:'대표', thAccom:'숙소', thPax:'인원', thElig:'사전신청', thCourse:'코스', thTee:'티오프',
+    thSrc:'신청구분', thNos:'카트번호', thMemo:'메모', thFee:'요금', thTotal:'계',
+    srcPre:'사전', srcOnsite:'현장',
+    eligOk:'가능', eligCond:'가능(야마나미CC일)', eligNo:'불가',
+    eligOkT:'야마나미 리조트 골프클럽 이용 → 전기카트 유료 사전신청 가능',
+    eligCondT:'간지호텔은 평일=구주고원CC. 이 날은 야마나미CC(주말·공휴일/입국일)라 사전신청 가능',
+    eligNoT:'이 날은 야마나미CC를 이용하지 않아 사전신청 불가(현장 신청은 가능)',
+    overWarn:(t,n)=>`⚠ ${t}: 보유 ${n}대를 초과했습니다`,
+    deskNote:'그 날 <b>라운딩하는 팀</b>만 나옵니다(입국일=인천팀만 · 귀국일=부산팀만 · 체류 중=전원). '
+      +'<b>전기카트 유료 사전신청</b>은 <b>야마나미 리조트 골프클럽 이용 시에만</b> 가능합니다 — 야마나미·쿠주힐즈·시즈노야도는 항상 가능, '
+      +'<b>간지호텔은 평일이 구주고원CC라 야마나미CC를 쓰는 날(주말·공휴일·입국일)만</b> 가능합니다. <b>현장 신청</b>은 언제나 가능합니다. '
+      +'코스·티오프는 <b>골프 조편성</b>에서 저장한 값을 읽어옵니다(미편성이면 빈칸).',
+    courseRule:'규칙', courseGrp:'조편성' },
+  en:{ step:'Cart control sheet', home:'← Home',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
+    connHint:'Daily cart stock, usage and remaining, plus per-team assignment (course and tee time) on one screen.',
+    preConn:'Shown after connecting.', loginNeedTitle:'Login required.', loginNeedSub:'Log in via the central login card, then reconnect.',
+    date:'Date', today:'Today', loading:'Loading…', loadFail:'Load failed', saveOk:n=>`Saved ${n}`, saveFail:'Save failed',
+    noRound:'No team plays golf on this date.', save:'💾 Save changes', print:'🖨 Print', reload:'↻ Reload',
+    stockTitle:'Stock · in use · remaining', own:'Stock', use:'In use', left:'Left', unit:'', feeEach:n=>`¥${n.toLocaleString()} per cart/day`,
+    tblTitle:'Cart assignment by team', dirty:n=>`${n} unsaved`,
+    thTeam:'Team', thRep:'Rep', thAccom:'Lodging', thPax:'Pax', thElig:'Pre-booking', thCourse:'Course', thTee:'Tee',
+    thSrc:'Type', thNos:'Cart no.', thMemo:'Note', thFee:'Fee', thTotal:'Total',
+    srcPre:'Pre', srcOnsite:'On-site',
+    eligOk:'Yes', eligCond:'Yes (Yamanami CC day)', eligNo:'No',
+    eligOkT:'Plays Yamanami Resort Golf Club → electric cart pre-booking available',
+    eligCondT:'The Guernsey Hotel plays Kuju Kogen CC on weekdays; this is a Yamanami CC day (weekend/holiday or arrival), so pre-booking is available',
+    eligNoT:'Not playing Yamanami CC this day, so no pre-booking (on-site request still fine)',
+    overWarn:(t,n)=>`⚠ ${t}: exceeds the ${n} available`,
+    deskNote:'Shows only teams <b>playing golf</b> that day (arrival day = ICN teams, departure day = PUS teams, mid-stay = everyone). '
+      +'<b>Paid pre-booking of electric carts</b> requires playing <b>Yamanami Resort Golf Club</b> — Yamanami, Kuju Hills and Shizu-no-Yado always qualify; '
+      +'<b>The Guernsey Hotel plays Kuju Kogen CC on weekdays</b>, so only Yamanami CC days (weekends, holidays, arrival day) qualify. On-site requests are always fine. '
+      +'Course and tee time are read from the <b>golf grouping</b> screen (blank if not yet grouped).',
+    courseRule:'rule', courseGrp:'grouping' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,lang()):(a||''); }
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+function todayISO(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function shiftDay(iso,n){const d=new Date(iso+'T00:00:00');d.setDate(d.getDate()+n);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
+
+// 코스 코드 → 표기(조편성에서 저장한 야마나미CC 내 3코스)
+const COURSE_NAME={aso:'阿蘇',sobo:'祖母',kuju:'久住'};
+
+let supa=null, DATE=todayISO(), TYPES=[], ROWS=[], DIRTY=new Set();
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent=tx('connecting');btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">'+tx('loginNeedTitle')+'<small>'+tx('loginNeedSub')+'</small></div></div>'; return; }
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
+    renderUI(); load();
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
+}
+
+async function paged(qf){
+  const out=[]; let from=0;
+  for(;;){ const {data,error}=await qf(from,from+999); if(error) return {error};
+    out.push(...(data||[])); if(!data||data.length<1000) break; from+=1000; }
+  return {data:out};
+}
+
+function renderUI(){
+  $('#content').innerHTML=`
+    <div class="panel">
+      <div class="row noprint">
+        <span class="cnt">${tx('date')}</span>
+        <div class="dctrl">
+          <button class="btn sm ghost" id="d-prev" type="button">◀</button>
+          <input class="inp" id="d-pick" type="date" value="${DATE}" style="width:158px">
+          <button class="btn sm ghost" id="d-next" type="button">▶</button>
+          <button class="btn sm ghost" id="d-today" type="button">${tx('today')}</button>
+        </div>
+        <span style="flex:1"></span>
+        <span class="cnt" id="stat"></span>
+        <button class="btn sm ghost" id="btn-reload" type="button">${tx('reload')}</button>
+        <button class="btn sm ghost" id="btn-print" type="button">${tx('print')}</button>
+        <button class="btn" id="btn-save" type="button" disabled>${tx('save')}</button>
+      </div>
+      <h3 style="margin-top:12px">${tx('stockTitle')} <span class="cnt" id="d-label"></span></h3>
+      <div class="stock" id="stock"></div>
+      <div class="desc noprint" style="margin-top:11px">${tx('deskNote')}</div>
+      <div id="warn"></div>
+    </div>
+    <div class="panel">
+      <h3>${tx('tblTitle')} <span class="cnt" id="tbl-cnt"></span></h3>
+      <div style="overflow:auto"><div id="tbl"></div></div>
+    </div>`;
+  $('#d-prev').addEventListener('click',()=>{DATE=shiftDay(DATE,-1);$('#d-pick').value=DATE;load();});
+  $('#d-next').addEventListener('click',()=>{DATE=shiftDay(DATE,1);$('#d-pick').value=DATE;load();});
+  $('#d-today').addEventListener('click',()=>{DATE=todayISO();$('#d-pick').value=DATE;load();});
+  $('#d-pick').addEventListener('change',e=>{DATE=e.target.value||todayISO();load();});
+  $('#btn-reload').addEventListener('click',load);
+  $('#btn-print').addEventListener('click',()=>window.print());
+  $('#btn-save').addEventListener('click',save);
+}
+
+// 숙소별 전기카트 사전신청 자격 — 야마나미CC를 쓰는 날인지로 판정(Min 2026-08)
+//  야마나미·쿠주힐즈·시즈노야도 = 항상 야마나미CC → 가능
+//  간지호텔 = 평일 구주고원CC → 야마나미CC 날(주말·공휴일·입국일)만 가능
+function eligOf(team){
+  const yc = SZCore.usesYamanamiCC({dep:team.dep,arr:team.arr,accom:team.accom}, team.isPus, DATE);
+  if(!yc) return 'no';
+  return team.accom==='간지호텔' ? 'cond' : 'ok';
+}
+
+async function load(){
+  if(!supa) return;
+  $('#stat').textContent=tx('loading');
+  const dl=$('#d-label'); if(dl) dl.textContent=DATE;
+  try{
+    // 1) 카트 종류(보유 대수)
+    const ct=await supa.from('cart_types').select('*').eq('active',true).order('sort_order');
+    if(ct.error) throw ct.error;
+    TYPES=ct.data||[];
+    // 2) 그 날짜에 체류 중인 팀(입국<=날짜<=귀국) — 라운딩 여부는 규칙으로 거른다
+    const bs=await paged((a,b)=>supa.from('bookings')
+      .select('event_seq,rep_name,dep_date,arr_date,origin,airline,pax')
+      .lte('dep_date',DATE).gte('arr_date',DATE).order('event_seq').range(a,b));
+    if(bs.error) throw bs.error;
+    const seqs=(bs.data||[]).map(b=>b.event_seq);
+    if(!seqs.length){ ROWS=[]; DIRTY.clear(); $('#stat').textContent=''; renderStock(); renderTable(); return; }
+    // 3) 팀 정보(숙소·그룹코드) · 대표 항공편 · 조편성 · 카트 배정
+    const GM={}, PX={}, GG={}, CB={};
+    for(let i=0;i<seqs.length;i+=200){ const ch=seqs.slice(i,i+200);
+      const {data:gs}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,pax').in('event_seq',ch);
+      (gs||[]).forEach(g=>GM[g.event_seq]=g);
+      const {data:ps}=await supa.from('passengers').select('event_seq,seq_in_team,origin,dep_flight,ret_flight').in('event_seq',ch).order('seq_in_team');
+      (ps||[]).forEach(p=>{ if(!PX[p.event_seq]) PX[p.event_seq]=p; });
+    }
+    const {data:gg}=await supa.from('golf_groups').select('event_seq,course_code,tee_time,cart_no,slot_no').eq('play_date',DATE);
+    (gg||[]).forEach(g=>{ if(g.event_seq!=null && !GG[g.event_seq]) GG[g.event_seq]=g; });
+    const {data:cb}=await supa.from('cart_bookings').select('*').eq('play_date',DATE);
+    (cb||[]).forEach(x=>{ (CB[x.event_seq]=CB[x.event_seq]||{})[x.cart_code]=x; });
+
+    // 4) 라운딩하는 팀만 남긴다
+    ROWS=[];
+    (bs.data||[]).forEach(b=>{
+      const g=GM[b.event_seq]||{}; const p=PX[b.event_seq]||{};
+      const accom=g.accom||'';
+      const isPus = SZCore.isPus(p.origin||b.origin||'', p.ret_flight||p.dep_flight||b.airline||'');
+      const team={dep:b.dep_date,arr:b.arr_date,accom};
+      const row=SZCore.golfRows(team,isPus).find(x=>x.date===DATE);
+      if(!row) return;                                   // 그날 라운딩 없음(인천팀 귀국일 등)
+      const grp=GG[b.event_seq]||{}; const bk=CB[b.event_seq]||{};
+      const qty={}, src={}; let nos='', memo='';
+      TYPES.forEach(t=>{ const r=bk[t.code]; qty[t.code]=r?r.qty:0; if(r){ src[t.code]=r.source; nos=nos||r.cart_nos||''; memo=memo||r.note||''; } });
+      const srcOne=Object.values(src)[0]||'pre';
+      ROWS.push({
+        seq:b.event_seq, tag:g.team_tag||g.group_code||'', rep:b.rep_name||'', accom,
+        pax:g.pax||b.pax||0, dep:b.dep_date, arr:b.arr_date, isPus,
+        ruleCourse:row.course, holes:row.holes, note:row.note,
+        grpCourse:grp.course_code||'', tee:grp.tee_time||'', cartNo:grp.cart_no||'',
+        qty, src:srcOne, nos, memo, orig:JSON.stringify({qty,src:srcOne,nos,memo})
+      });
+    });
+    ROWS.sort((a,b)=>String(a.tee||'zz').localeCompare(String(b.tee||'zz'))||String(a.tag).localeCompare(String(b.tag)));
+    DIRTY.clear();
+    $('#stat').textContent=`${ROWS.length}${lang()==='en'?' teams':'팀'}`;
+    renderStock(); renderTable();
+  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
+}
+
+function usedOf(code){ return ROWS.reduce((n,r)=>n+(+r.qty[code]||0),0); }
+
+function renderStock(){
+  const box=$('#stock'); if(!box) return;
+  box.innerHTML=TYPES.map(t=>{
+    const use=usedOf(t.code), own=+t.total_count||0, left=own-use;
+    return `<div class="st">
+      <h4>${esc(lang()==='ja'?t.name_ja:t.name_ko)}</h4>
+      <div class="nums">
+        <div class="n"><span>${tx('own')}</span><b>${own}</b></div>
+        <div class="n use"><span>${tx('use')}</span><b>${use}</b></div>
+        <div class="n left ${left<0?'bad':''}"><span>${tx('left')}</span><b>${left}</b></div>
+      </div>
+      <div class="own noprint"><span class="cnt">${tx('own')}</span>
+        <input class="inp" type="number" min="0" data-own="${t.code}" value="${own}"><span class="cnt">${tx('unit')}</span></div>
+      <div class="fee">${tx('feeEach')(+t.fee_yen||0)}</div>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('[data-own]').forEach(el=>el.addEventListener('change',()=>saveOwn(el.dataset.own,+el.value||0)));
+  const w=$('#warn'); if(w){
+    const over=TYPES.filter(t=>usedOf(t.code)>(+t.total_count||0));
+    w.innerHTML=over.length?over.map(t=>`<div class="warnbox">${esc(tx('overWarn')(lang()==='ja'?t.name_ja:t.name_ko,+t.total_count||0))}</div>`).join(''):'';
+  }
+}
+
+async function saveOwn(code,n){
+  try{
+    const {error}=await supa.from('cart_types').update({total_count:n}).eq('code',code);
+    if(error) throw error;
+    const t=TYPES.find(x=>x.code===code); if(t) t.total_count=n;
+    renderStock(); toast(tx('saveOk')(1),'ok');
+  }catch(e){ toast(tx('saveFail')+': '+e.message,'err'); }
+}
+
+function eligBadge(r){
+  const e=eligOf(r);
+  const k=e==='ok'?'eligOk':e==='cond'?'eligCond':'eligNo';
+  const t=e==='ok'?'eligOkT':e==='cond'?'eligCondT':'eligNoT';
+  return `<span class="bdg ${e}" title="${esc(tx(t))}">${esc(tx(k))}</span>`;
+}
+
+function renderTable(){
+  const box=$('#tbl'); if(!box) return;
+  $('#tbl-cnt').textContent = DIRTY.size?tx('dirty')(DIRTY.size):'';
+  $('#btn-save').disabled = !DIRTY.size;
+  if(!ROWS.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:10px 0">${tx('noRound')}</div>`; return; }
+  const th=TYPES.map(t=>`<th>${esc(lang()==='ja'?t.name_ja:t.name_ko)}</th>`).join('');
+  const rows=ROWS.map((r,i)=>{
+    const fee=TYPES.reduce((s,t)=>s+(+r.qty[t.code]||0)*(+t.fee_yen||0),0);
+    const gc=r.grpCourse?`${COURSE_NAME[r.grpCourse]||r.grpCourse}`:'';
+    return `<tr data-i="${i}" class="${DIRTY.has(r.seq)?'dirty':''}">
+      <td class="l"><span class="tag">${esc(r.tag)}</span></td>
+      <td class="l">${esc(r.rep)}</td>
+      <td class="l">${esc(accomL(r.accom))}</td>
+      <td>${r.pax}</td>
+      <td>${eligBadge(r)}</td>
+      <td><span class="course ${r.ruleCourse==='九重高原CC'?'kuju':''}">${esc(r.ruleCourse)}</span>
+          <small style="color:var(--muted)"> ${r.holes}H</small>
+          ${gc?`<div class="cnt" style="font-weight:600">${esc(tx('courseGrp'))}: ${esc(gc)}</div>`:''}</td>
+      <td class="tee">${esc(r.tee||'-')}</td>
+      ${TYPES.map(t=>`<td><input class="inp qty" type="number" min="0" data-q="${t.code}" value="${+r.qty[t.code]||0}"></td>`).join('')}
+      <td><select class="inp src" data-f="src">
+            <option value="pre"${r.src==='pre'?' selected':''}>${tx('srcPre')}</option>
+            <option value="onsite"${r.src==='onsite'?' selected':''}>${tx('srcOnsite')}</option>
+          </select></td>
+      <td><input class="inp nos" type="text" data-f="nos" value="${esc(r.nos)}"></td>
+      <td><input class="inp memo" type="text" data-f="memo" value="${esc(r.memo)}"></td>
+      <td class="tee">${fee?('¥'+fee.toLocaleString()):'-'}</td>
+    </tr>`;
+  }).join('');
+  const totFee=ROWS.reduce((s,r)=>s+TYPES.reduce((n,t)=>n+(+r.qty[t.code]||0)*(+t.fee_yen||0),0),0);
+  box.innerHTML=`<table class="t"><thead><tr>
+      <th>${tx('thTeam')}</th><th>${tx('thRep')}</th><th>${tx('thAccom')}</th><th>${tx('thPax')}</th>
+      <th>${tx('thElig')}</th><th>${tx('thCourse')}</th><th>${tx('thTee')}</th>${th}
+      <th>${tx('thSrc')}</th><th>${tx('thNos')}</th><th>${tx('thMemo')}</th><th>${tx('thFee')}</th>
+    </tr></thead><tbody>${rows}
+    <tr class="sum"><td class="l" colspan="7">${tx('thTotal')}</td>
+      ${TYPES.map(t=>`<td>${usedOf(t.code)}</td>`).join('')}
+      <td colspan="3"></td><td>¥${totFee.toLocaleString()}</td></tr>
+    </tbody></table>`;
+  box.querySelectorAll('tr[data-i]').forEach(tr=>{
+    const r=ROWS[+tr.dataset.i];
+    tr.querySelectorAll('[data-q]').forEach(el=>el.addEventListener('input',()=>{ r.qty[el.dataset.q]=Math.max(0,+el.value||0); mark(r); renderStock(); }));
+    tr.querySelectorAll('[data-f]').forEach(el=>el.addEventListener('input',()=>{ r[el.dataset.f]=el.value; mark(r); }));
+  });
+}
+function mark(r){
+  const now=JSON.stringify({qty:r.qty,src:r.src,nos:r.nos,memo:r.memo});
+  if(now!==r.orig) DIRTY.add(r.seq); else DIRTY.delete(r.seq);
+  $('#tbl-cnt').textContent = DIRTY.size?tx('dirty')(DIRTY.size):'';
+  $('#btn-save').disabled = !DIRTY.size;
+  document.querySelectorAll('tr[data-i]').forEach(tr=>tr.classList.toggle('dirty',DIRTY.has(ROWS[+tr.dataset.i].seq)));
+}
+
+async function save(){
+  if(!DIRTY.size) return;
+  const btn=$('#btn-save'); btn.disabled=true;
+  const by=curUser()||null;
+  const ups=[], dels=[];
+  ROWS.filter(r=>DIRTY.has(r.seq)).forEach(r=>{
+    TYPES.forEach(t=>{
+      const q=+r.qty[t.code]||0;
+      if(q>0) ups.push({play_date:DATE,event_seq:r.seq,cart_code:t.code,qty:q,source:r.src||'pre',cart_nos:r.nos||null,note:r.memo||null,created_by:by});
+      else dels.push({seq:r.seq,code:t.code});
+    });
+  });
+  try{
+    if(ups.length){
+      const {error}=await supa.from('cart_bookings').upsert(ups,{onConflict:'play_date,event_seq,cart_code,source'});
+      if(error) throw error;
+    }
+    for(const d of dels){
+      const {error}=await supa.from('cart_bookings').delete().eq('play_date',DATE).eq('event_seq',d.seq).eq('cart_code',d.code);
+      if(error) throw error;
+    }
+    toast(tx('saveOk')(DIRTY.size),'ok');
+    await load();
+  }catch(e){ toast(tx('saveFail')+': '+e.message,'err'); btn.disabled=false; }
+}
+
+function applyStatic(){
+  const step=$('#t-step'); if(step) step.textContent=tx('step');
+  const home=$('#t-home'); if(home) home.textContent=tx('home');
+  const hint=$('#t-connhint'); if(hint) hint.textContent=tx('connHint');
+  const pre=$('#t-preconn'); if(pre) pre.textContent=tx('preConn');
+  const btn=$('#btn-connect');
+  if(supa){ setConn(tx('connOk'),'ok'); if(btn) btn.textContent=tx('connectedBtn'); }
+  else { setConn(tx('notConn'),''); if(btn) btn.textContent=tx('connect'); }
+}
+window.onSaizenLangChange=function(){ applyStatic(); if(supa){ renderUI(); $('#d-pick').value=DATE; renderStock(); renderTable(); } };
+
+$('#btn-connect').addEventListener('click',connect);
+applyStatic();
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
