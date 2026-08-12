@@ -56,6 +56,8 @@
   table.t tr.hl td{background:#fdf6e7}
   table.t tr.sum td{border-top:2px solid var(--border2);font-weight:800;background:var(--surface2)}
   table.t td.z{color:var(--muted)}
+  table.t td.bad{color:var(--err);font-weight:800}
+  table.t td.good{color:var(--ok)}
   .bar{display:inline-block;height:8px;border-radius:3px;background:var(--accent);vertical-align:middle;margin-left:6px;min-width:2px}
   .bar.d{background:var(--accent2)} .bar.c{background:var(--muted)}
   .lgd{font-size:11px;color:var(--muted);font-weight:600;margin-top:6px}
@@ -127,7 +129,13 @@ const L={
     someBad:n=>`⚠ ${n}名がその年に一度もデラックスに入っていません。`,
     noRsv:'※ 予約日(reserved_at)が未登録の予約は「不明」行に入ります。エムクリックの予約リストに「予約日」列が無かった時期のデータです。',
     unknown:'不明', nights:n=>`${n}泊`, etcNights:'その他', people:n=>`${n}名`, rooms:n=>`${n}室`, floors:a=>a.join('・')+'階',
-    gDlx:'デラックス', gTwin:'ツイン', gCompact:'コンパクト', gEtc:'その他' },
+    gDlx:'デラックス', gTwin:'ツイン', gCompact:'コンパクト', gEtc:'その他',
+    t4:'④ 会員同行の一般客まで同じ等級にした場合の不足',
+    t4d:'「一般客は会員より後回し」ではなく、<b>会員と一緒に来た一般客も その会員と同じ等級(デラックス)</b>で入れる場合に、デラックスが何室足りないかを泊単位で数えます。<b>会員のいないチームは対象外</b>(従来どおり予約種別)。1室=2名で計算。',
+    c4Month:'月', c4NeedM:'会員のみ 必要', c4NeedC:'同行込み 必要', c4Supply:'デラックス保有', c4Short:'最大不足', c4Days:'不足日数', c4Peak:'ピーク日',
+    c4Add:'追加で必要', t4ok:'✅ すべての泊で足ります — 同行の一般客まで同じ等級にしても不足しません。',
+    t4bad:(r,d)=>`⚠ 最大 ${r}室不足 · 不足の出る泊 ${d}日`, t4sup:n=>`デラックス ${n}室(3階の格下げ反映)`,
+    unitRoom:'室', unitNight:'泊' },
   ko:{ step:'방배정 통계', home:'← 홈',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결·재시도',
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
@@ -150,7 +158,14 @@ const L={
     someBad:n=>`⚠ ${n}명이 그 해에 한 번도 디럭스에 들어가지 못했습니다.`,
     noRsv:'※ 예약일(reserved_at)이 없는 예약은 「불명」 행으로 들어갑니다. 엠클릭 예약리스트에 「예약일자」 열이 없던 시기의 데이터입니다.',
     unknown:'불명', nights:n=>`${n}박`, etcNights:'그 외', people:n=>`${n}명`, rooms:n=>`${n}실`, floors:a=>a.join('·')+'층',
-    gDlx:'디럭스', gTwin:'트윈', gCompact:'컴팩트', gEtc:'기타' },
+    gDlx:'디럭스', gTwin:'트윈', gCompact:'컴팩트', gEtc:'기타',
+    t4:'④ 회원 동반 일반고객까지 같은 등급으로 줄 때의 부족분',
+    t4d:'「일반고객은 무조건 회원보다 후순위」가 아니라, <b>회원과 같이 온 일반고객도 그 회원과 같은 등급(디럭스)</b>으로 배정할 경우 디럭스가 몇 실 모자라는지를 <b>1박 단위</b>로 셉니다. <b>회원이 없는 팀은 대상 외</b>(기존대로 예약종류). 1실=2명 기준.',
+    c4Month:'월', c4NeedM:'회원만 필요', c4NeedC:'동반 포함 필요', c4Supply:'디럭스 보유', c4Short:'최대 부족', c4Days:'부족 발생일',
+    c4Peak:'피크일', c4Add:'추가로 필요',
+    t4ok:'✅ 모든 밤에 충분합니다 — 동반 일반고객까지 같은 등급으로 줘도 부족하지 않습니다.',
+    t4bad:(r,d)=>`⚠ 최대 ${r}실 부족 · 부족이 생기는 밤 ${d}일`, t4sup:n=>`디럭스 ${n}실(3층 강등 반영)`,
+    unitRoom:'실', unitNight:'박' },
   en:{ step:'Room assignment stats', home:'← Home',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
@@ -173,7 +188,14 @@ const L={
     someBad:n=>`⚠ ${n} member(s) never got a deluxe room that year.`,
     noRsv:'※ Bookings with no reserved_at fall into the “unknown” row — data from before the M-Click list carried a booking-date column.',
     unknown:'Unknown', nights:n=>`${n} nights`, etcNights:'Other', people:n=>`${n}`, rooms:n=>`${n} rooms`, floors:a=>'F'+a.join('·'),
-    gDlx:'Deluxe', gTwin:'Twin', gCompact:'Compact', gEtc:'Other' }
+    gDlx:'Deluxe', gTwin:'Twin', gCompact:'Compact', gEtc:'Other',
+    t4:'④ Shortfall if member companions get the same grade',
+    t4d:'Instead of “general guests always rank below members”, this counts how many deluxe rooms are missing <b>per night</b> if <b>general guests travelling with a member also get that member\'s grade (deluxe)</b>. <b>Teams with no member are excluded</b> (they keep booking-type rooms). 2 guests per room.',
+    c4Month:'Month', c4NeedM:'Members only', c4NeedC:'With companions', c4Supply:'Deluxe stock', c4Short:'Max short', c4Days:'Nights short',
+    c4Peak:'Peak night', c4Add:'Extra needed',
+    t4ok:'✅ Enough on every night — companions can get the same grade without a shortfall.',
+    t4bad:(r,d)=>`⚠ Short by up to ${r} rooms on ${d} night(s)`, t4sup:n=>`${n} deluxe rooms (3F downgrade applied)`,
+    unitRoom:'', unitNight:'nights' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
@@ -256,7 +278,8 @@ function renderUI(){
     </div>
     <div class="panel"><h3>${tx('t1')}</h3><div class="desc">${tx('t1d')}</div><div id="tbl1"></div></div>
     <div class="panel"><h3>${tx('t2')}</h3><div class="desc">${tx('t2d')}</div><div id="tbl2"></div></div>
-    <div class="panel"><h3>${tx('t3')}</h3><div class="desc">${tx('t3d')}</div><div id="tbl3"></div></div>`;
+    <div class="panel"><h3>${tx('t3')}</h3><div class="desc">${tx('t3d')}</div><div id="tbl3"></div></div>
+    <div class="panel"><h3>${tx('t4')}</h3><div class="desc">${tx('t4d')}</div><div id="tbl4"></div></div>`;
   $('#y-prev').addEventListener('click',()=>{YEAR--;load();});
   $('#y-next').addEventListener('click',()=>{YEAR++;load();});
 }
@@ -272,7 +295,7 @@ async function load(){
     if(bs.error) throw bs.error;
     const BMAP={}; (bs.data||[]).forEach(x=>BMAP[x.event_seq]=x);
     const seqs=Object.keys(BMAP).map(Number);
-    if(!seqs.length){ DATA=null; $('#stat').textContent=tx('noData'); ['#kpis','#tbl1','#tbl2','#tbl3'].forEach(s=>{const e=$(s); if(e)e.innerHTML='';}); return; }
+    if(!seqs.length){ DATA=null; $('#stat').textContent=tx('noData'); ['#kpis','#tbl1','#tbl2','#tbl3','#tbl4'].forEach(s=>{const e=$(s); if(e)e.innerHTML='';}); return; }
     // 2) 객실 마스터 · 배정 · 개인 · 생년(사람 식별)
     const invR=await paged((a,b)=>supa.from('room_inventory').select('id,facility,zone,room_no,room_type').order('id').range(a,b));
     if(invR.error) throw invR.error;
@@ -286,7 +309,18 @@ async function load(){
     if(pxR.error) throw pxR.error;
     const PX={}; (pxR.data||[]).forEach(p=>PX[p.id]=p);
 
-    // 3) 야마나미 호텔동(3~12층) 배정만, 회원만
+    // 3-a) 호텔동 배정 전체(회원·일반 모두) — ④ 동반 일반고객 부족분 계산용
+    const stays=[];
+    (rmR.data||[]).forEach(r=>{
+      const inv=INV[r.inventory_id]; if(!inv) return;
+      if(inv.facility!=='야마나미리조트' || !/^\d+층$/.test(inv.zone||'')) return;
+      const m=GM[r.member_id]; if(!m) return;
+      stays.push({ seq:r.event_seq, mem:!!(window.SZCore&&SZCore.isMember(m)), ci:r.check_in, co:r.check_out });
+    });
+    // 실질 등급 기준 디럭스 보유 실수(호텔동)
+    const dlxSupply=(invR.data||[]).filter(i=>i.facility==='야마나미리조트' && /^\d+층$/.test(i.zone||'') && gradeOf(i)==='dlx').length;
+
+    // 3-b) 회원 배정만(①②③용)
     const rows=[];
     (rmR.data||[]).forEach(r=>{
       const inv=INV[r.inventory_id]; if(!inv) return;
@@ -305,14 +339,14 @@ async function load(){
         key: name+(birth?'|'+birth:'|?'+r.event_seq), name
       });
     });
-    DATA={rows};
+    DATA={rows, stays, dlxSupply};
     $('#stat').textContent=`${rows.length}`;
     renderAll();
   }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
 
 function renderAll(){
-  if(!DATA||!DATA.rows.length){ ['#kpis','#tbl1','#tbl2','#tbl3'].forEach(s=>{const e=$(s); if(e)e.innerHTML='';}); return; }
+  if(!DATA||!DATA.rows.length){ ['#kpis','#tbl1','#tbl2','#tbl3','#tbl4'].forEach(s=>{const e=$(s); if(e)e.innerHTML='';}); return; }
   const rows=DATA.rows;
   // ── 사람 단위 집계 ──
   const byPerson={};
@@ -378,6 +412,62 @@ function renderAll(){
       +`<td>${peak}</td><td class="${short?'':'z'}">${short||'·'}</td></tr>`;
   }).join('');
   $('#tbl3').innerHTML=`<table class="t"><thead><tr><th>${tx('cNights')}</th><th>${tx('cFloors')}</th><th>${tx('cCap')}</th><th>${tx('cPeak')}</th><th>${tx('cShort')}</th></tr></thead><tbody>${rows3}</tbody></table>`;
+
+  // ── ④ 회원 동반 일반고객까지 같은 등급으로 줄 때의 부족분 ──────────────
+  //  Min 2026-08: "일반고객은 무조건 회원보다 후순위"가 아니라, 회원과 같이 온
+  //  일반고객도 그 회원과 같은 등급으로 넣을 경우 얼마나 부족한지.
+  //  · 1박 단위로 그 밤에 묵는 팀을 보고, 회원이 있는 팀만 디럭스 대상.
+  //  · 필요 실수 = ceil(그 팀 인원/2). 회원만/동반포함 두 가지로 계산.
+  const stays=DATA.stays||[], supply=DATA.dlxSupply||0;
+  const nights={};   // 날짜 → { event_seq → {mem,gen} }
+  stays.forEach(st=>{
+    if(!st.ci||!st.co) return;
+    const c=SZCore.parseLocalDate(st.ci), e=SZCore.parseLocalDate(st.co);
+    if(isNaN(c)||isNaN(e)) return;
+    for(const d=new Date(c); d<e; d.setDate(d.getDate()+1)){
+      const ds=SZCore.fmtDate(d); if(ds.slice(0,4)!==String(YEAR)) continue;
+      const t=(nights[ds]=nights[ds]||{});
+      const x=(t[st.seq]=t[st.seq]||{mem:0,gen:0});
+      st.mem?x.mem++:x.gen++;
+    }
+  });
+  const perNight=Object.keys(nights).sort().map(d=>{
+    let needM=0, needC=0;
+    Object.values(nights[d]).forEach(x=>{
+      if(!x.mem) return;                               // 회원 없는 팀 = 디럭스 대상 아님
+      needM+=Math.ceil(x.mem/2);
+      needC+=Math.ceil((x.mem+x.gen)/2);
+    });
+    return {d, needM, needC, short:Math.max(0,needC-supply)};
+  });
+  const byMon={};
+  perNight.forEach(n=>{ const m=n.d.slice(0,7);
+    const b=byMon[m]||(byMon[m]={needM:0,needC:0,short:0,days:0,peak:''});
+    if(n.needM>b.needM) b.needM=n.needM;
+    if(n.needC>b.needC){ b.needC=n.needC; b.peak=n.d; }
+    if(n.short>b.short) b.short=n.short;
+    if(n.short>0) b.days++;
+  });
+  const mk=Object.keys(byMon).sort();
+  const maxShort=perNight.reduce((n,x)=>Math.max(n,x.short),0);
+  const shortDays=perNight.filter(x=>x.short>0).length;
+  const rows4=mk.map(m=>{ const b=byMon[m];
+    return `<tr>
+      <td>${esc(m)}</td>
+      <td>${b.needM}</td>
+      <td class="${b.needC>supply?'bad':''}">${b.needC}</td>
+      <td>${b.needC-b.needM>0?('+'+(b.needC-b.needM)):'-'}</td>
+      <td>${supply}</td>
+      <td class="${b.short?'bad':'good'}">${b.short||'-'}</td>
+      <td>${b.days||'-'}</td>
+      <td class="mono" style="font-size:11px">${esc(b.peak?b.peak.slice(5):'')}</td>
+    </tr>`; }).join('');
+  $('#tbl4').innerHTML = mk.length
+    ? (maxShort?`<div class="warnbox">${esc(tx('t4bad')(maxShort,shortDays))}</div>`:`<div class="okbox">${esc(tx('t4ok'))}</div>`)
+      +`<table class="t"><thead><tr><th>${tx('c4Month')}</th><th>${tx('c4NeedM')}</th><th>${tx('c4NeedC')}</th><th>${tx('c4Add')}</th>`
+      +`<th>${tx('c4Supply')}</th><th>${tx('c4Short')}</th><th>${tx('c4Days')}</th><th>${tx('c4Peak')}</th></tr></thead><tbody>${rows4}</tbody></table>`
+      +`<div class="lgd">${esc(tx('t4sup')(supply))}</div>`
+    : '';
 }
 function applyStatic(){
   const step=$('#t-step'); if(step) step.textContent=tx('step');
