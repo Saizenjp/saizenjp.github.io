@@ -226,7 +226,7 @@
 <style>@keyframes runspin{to{transform:rotate(360deg)}}</style>
 
 <script src="../assets/saizen-core.js?v=14"></script>
-<script src="../assets/saizen-ops.js?v=15.55"></script>
+<script src="../assets/saizen-ops.js?v=15.56"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -762,22 +762,34 @@ async function run(){
     function assignNonMemberCode(seq, dep, arr){
       if(nmAssigned[seq]) return nmAssigned[seq];               // 영속
       // 이 팀과 같은 시기(30일 창)에 존재하는 코드 = 사용 불가 + 글자 사용횟수 집계
-      const busy=new Set(), pUse={}, kUse={};
+      //  + 같은 날 도착(dep 동일) 팀의 글자는 따로 모은다 — 룸키 통·명단에서 나란히 놓여
+      //    한 글자만 다른 코드(FXめ/FYめ)가 제일 헷갈리는 지점이라 여기는 '금지'로 건다.
+      const busy=new Set(), pUse={}, kUse={}, dayP=new Set(), dayK=new Set();
       Object.keys(fRanges).forEach(c=>{
-        if(!(fRanges[c]||[]).some(r=>_fOv(dep,arr,r.dep,r.arr))) return;
+        const rs=fRanges[c]||[];
+        if(rs.some(r=>r.dep===dep)){ dayP.add(c.slice(0,2)); dayK.add(c.slice(2)); }   // 같은 날 도착
+        if(!rs.some(r=>_fOv(dep,arr,r.dep,r.arr))) return;
         busy.add(c);
         const p=c.slice(0,2), k=c.slice(2);
         pUse[p]=(pUse[p]||0)+1; kUse[k]=(kUse[k]||0)+1;
       });
+      // 1차 = 같은 날 도착 팀과 알파벳·가나가 '둘 다' 다른 코드만(하드 조건).
+      //   같은 날 팀이 18개를 넘어가면 알파벳이 모자라 불가능 → 2차(점수)로 완화.
       let bestIdx=-1, bestCode=null, bestScore=Infinity;
-      for(let step=0; step<NM_POOL; step++){
-        const idx=SZCore.nmSpreadIdx(nmCursor+step), code=idxToCode(idx);
-        if(busy.has(code)) continue;                                          // 30일 내 겹침=사용 불가
-        const p=code.slice(0,2), k=code.slice(2);
-        let sc=(pUse[p]||0)+(kUse[k]||0);
-        if(p===lastP) sc+=3;                                                  // 직전 배정과 닮은꼴 회피
-        if(k===lastK) sc+=3;
-        if(sc<bestScore){ bestScore=sc; bestIdx=idx; bestCode=code; if(sc===0) break; }
+      for(const strict of [true,false]){
+        bestIdx=-1; bestCode=null; bestScore=Infinity;
+        for(let step=0; step<NM_POOL; step++){
+          const idx=SZCore.nmSpreadIdx(nmCursor+step), code=idxToCode(idx);
+          if(busy.has(code)) continue;                                        // 30일 내 겹침=사용 불가
+          const p=code.slice(0,2), k=code.slice(2);
+          if(strict && (dayP.has(p)||dayK.has(k))) continue;                   // 같은 날 닮은꼴 금지
+          let sc=(pUse[p]||0)+(kUse[k]||0);
+          if(dayP.has(p)) sc+=6; if(dayK.has(k)) sc+=6;                        // 완화해도 같은 날은 최대한 회피
+          if(p===lastP) sc+=3;                                                 // 직전 배정과 닮은꼴 회피
+          if(k===lastK) sc+=3;
+          if(sc<bestScore){ bestScore=sc; bestIdx=idx; bestCode=code; if(sc===0) break; }
+        }
+        if(bestCode) break;
       }
       if(!bestCode) return null;  // 594 전부 30일 내 겹침(사실상 불가) = 소진
       nmAssigned[seq]=bestCode; (fRanges[bestCode]=fRanges[bestCode]||[]).push({dep,arr});
