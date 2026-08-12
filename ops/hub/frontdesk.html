@@ -191,6 +191,8 @@ let supa=null;
 // ── i18n (한·일 직원 공용. ja 기본) ──
 const L={
   ja:{ step:'フロントデスク', connHint:'リアルタイム到着・出発・在室 ＋ チーム別の客室番号・残高・メモ。閲覧中心。',
+    custShow:'🖥 お客様画面に表示', custOn:'🖥 表示中 · 消す', custT:'カウンターのお客様タブレットにこのチームのご精算を表示します',
+    custDone:'お客様画面に表示しました', custClear:'お客様画面を消しました', custFail:'お客様画面の更新に失敗',
     connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
     notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要',
     dateLbl:'日付', prevDay:'前日', nextDay:'翌日', today:'今日', reload:'↻ 更新',
@@ -214,6 +216,8 @@ const L={
     fuH:'確認が必要（後続対応）', fuGo:'対応へ', fuDone:'✓ 完了', fuConfirm:'この確認項目を完了にしますか？', fuDoneToast:'完了にしました', fuFail:'更新失敗',
     area_settle:'精算', area_room:'客室', area_print:'印刷', area_front:'フロント', area_pos:'POS', area_kitchen:'厨房', area_menu:'メニュー' },
   ko:{ step:'프론트 데스크', connHint:'실시간 도착·출발·재실 + 팀별 방번호·잔액·메모. 읽기 중심.',
+    custShow:'🖥 손님 화면 표시', custOn:'🖥 표시 중 · 지우기', custT:'카운터 손님 태블릿에 이 팀 계산서를 띄웁니다',
+    custDone:'손님 화면에 표시했습니다', custClear:'손님 화면을 지웠습니다', custFail:'손님 화면 갱신 실패',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패 · 재시도',
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요',
     dateLbl:'날짜', prevDay:'전날', nextDay:'다음날', today:'오늘', reload:'↻ 새로고침',
@@ -237,6 +241,8 @@ const L={
     fuH:'확인 필요(후속 조치)', fuGo:'처리하기', fuDone:'✓ 완료', fuConfirm:'이 확인 항목을 완료 처리할까요?', fuDoneToast:'완료 처리했습니다', fuFail:'갱신 실패',
     area_settle:'정산', area_room:'객실', area_print:'인쇄', area_front:'프론트', area_pos:'POS', area_kitchen:'주방', area_menu:'메뉴' },
   en:{ step:'Front Desk', connHint:'Real-time arrivals / departures / in-house + room no., balance & memo per team. Read-only.',
+    custShow:'🖥 Show to guest', custOn:'🖥 Showing · clear', custT:'Shows this team\'s bill on the counter guest tablet',
+    custDone:'Shown on the guest display', custClear:'Guest display cleared', custFail:'Guest display update failed',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required',
     dateLbl:'Date', prevDay:'Prev', nextDay:'Next', today:'Today', reload:'↻ Reload',
@@ -321,7 +327,7 @@ async function connect(){
     const {error}=await supa.from('bookings').select('event_seq',{count:'exact',head:true});
     if(error)throw error;
     state.conn='ok';refreshConn();btn.disabled=false;
-    $('#btn-reload').disabled=false; await load(); startAutoRefresh();
+    $('#btn-reload').disabled=false; await loadCustomerDisplay(); await load(); startAutoRefresh();
   }catch(e){state.conn='fail';refreshConn();toast(tx('connFail')+': '+e.message,'err');btn.disabled=false;supa=null;}
 }
 // POS 주문·결제가 프론트에 바로 뜨도록 주기적 자동 갱신(모니터링 화면이라 안전).
@@ -554,11 +560,40 @@ function renderDetail(t){
       <a class="btn ghost sm" href="room.html?ym=${ymOf(t.dep)}&date=${state.day}&seq=${t.seq}" title="${tx('linkRoomT')}">${tx('linkRoom')}</a>
       <a class="btn ghost sm" href="settle.html?ym=${ymOf(t.dep)}&seq=${t.seq}" title="${tx('linkSettleT')}">${tx('linkSettle')}</a>
       <button class="btn sm${t.co?' ghost':''}" id="btn-co-one" type="button" title="${tx('coHint')}">${t.co?tx('btnCoUndo'):tx('btnCo')}</button>
+      <button class="btn sm${CUST_SEQ===t.seq?'':' ghost'}" id="btn-cust" type="button" title="${tx('custT')}">${CUST_SEQ===t.seq?tx('custOn'):tx('custShow')}</button>
     </div>`;
   $('#detail').querySelectorAll('.ntf').forEach(el=>el.addEventListener('blur',()=>saveNote(el.dataset.seq,el.dataset.nf,el.value)));
   const bOne=document.getElementById('btn-co-one');
   if(bOne) bOne.addEventListener('click',()=>doCheckout([t.seq], t.co?'체크인':'체크아웃'));
+  const bCu=document.getElementById('btn-cust');
+  if(bCu) bCu.addEventListener('click',()=>pushCustomerDisplay(CUST_SEQ===t.seq?null:t.seq));
 }
+// ── 카운터 손님 태블릿(pos_customer.html) 연동 ────────────────────────────
+//  프런트에서 팀을 고르고 「손님 화면 표시」 → pos_display(station) 에 기록.
+//  태블릿은 그 행을 폴링해 그 팀 계산서만 읽기전용으로 띄운다(41_pos_display.sql).
+//  계산대가 여럿이면 주소에 ?station=front2 처럼 붙여 나눈다.
+const CUST_STATION=new URLSearchParams(location.search).get('station')||'main';
+let CUST_SEQ=null;
+async function loadCustomerDisplay(){
+  if(!supa) return;
+  try{
+    const {data}=await supa.from('pos_display').select('event_seq').eq('station',CUST_STATION).maybeSingle();
+    CUST_SEQ=data&&data.event_seq!=null?Number(data.event_seq):null;
+  }catch(e){ CUST_SEQ=null; }
+}
+async function pushCustomerDisplay(seq){
+  if(!supa) return;
+  try{
+    const {error}=await supa.from('pos_display').upsert(
+      {station:CUST_STATION, event_seq:seq, updated_by:curUser()||null, updated_at:new Date().toISOString()},
+      {onConflict:'station'});
+    if(error) throw error;
+    CUST_SEQ=seq;
+    toast(seq?tx('custDone'):tx('custClear'),'ok');
+    if(state.selSeq && state.byId[state.selSeq]) renderDetail(state.byId[state.selSeq]);
+  }catch(e){ toast(tx('custFail')+': '+String(e&&e.message||e),'err'); }
+}
+
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 // 프론트에서 바로 비고/메모 저장 → event_note_set RPC(front 영역 허용, 변경이력 자동기록). 별도 메모 페이지 불요.
 async function saveNote(seq, field, val){
