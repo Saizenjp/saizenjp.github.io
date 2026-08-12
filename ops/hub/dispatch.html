@@ -101,7 +101,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=15"></script>
-<script src="../assets/saizen-ops.js?v=15.67"></script>
+<script src="../assets/saizen-ops.js?v=15.68"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -190,7 +190,7 @@ function refreshConn(){
 }
 const state={ conn:'none' };
 
-let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DATESEL=new Set(), ORIGINSEL='all', SEARCHQ='', GTAG={}, GREP={}, FILT_ANOM=false, FILT_GROUP=false;
+let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DATESEL=new Set(), ORIGINSEL='all', SEARCHQ='', GTAG={}, GREP={}, GFULL={}, FILT_ANOM=false, FILT_GROUP=false;
 let RFROM='', RTO='';   // 로드 날짜범위(달력) — 월경계 팀(7↔8월)을 이어서 보기. 기본=선택 월 전체.
 let TOKMAP={};   // event_seq → 주문 QR 토큰(order_tokens)
 const MASK=true;   // 여권·전화번호 항상 숨김(체크박스 폐지, Min)
@@ -524,6 +524,37 @@ async function load(){
         orderToken:TOKMAP[seq]||''
       };
     });
+    // ── 묶음 전원(기간 무관) ───────────────────────────────────────────────
+    //  이 화면은 날짜 범위로 읽으므로 묶음 상대가 범위 밖이면 순번이 어긋난다
+    //  (航空カバー와 코드·번호가 갈리는 원인). 그룹 전원을 따로 조회해 기준을 고정한다.
+    GFULL={};
+    try{
+      const gkeys=[...new Set(ROWS.map(r=>r.rec.teamGroup).filter(Boolean))];
+      if(gkeys.length){
+        const {data:allOv}=await supa.from('print_overrides')
+          .select('event_seq,team_group,team_group_rep,team_group_seq').in('team_group',gkeys);
+        const ovRows=allOv||[];
+        const inView={}; ROWS.forEach(r=>{ inView[r.seq]=r; });
+        const need=[...new Set(ovRows.map(r=>r.event_seq))].filter(s2=>!inView[s2]);
+        const ext={};
+        for(let i=0;i<need.length;i+=200){ const ch=need.slice(i,i+200);
+          const {data:g2}=await supa.from('guests').select('event_seq,group_code,bookings!inner(dep_date)').in('event_seq',ch);
+          (g2||[]).forEach(g=>{ ext[g.event_seq]={dep:(g.bookings||{}).dep_date||'', tag:g.group_code||''}; });
+          const {data:m2}=await supa.from('guest_members').select('event_seq,person_tag,seq_in_team').in('event_seq',ch).order('seq_in_team');
+          (m2||[]).forEach(m=>{ const e=ext[m.event_seq]; if(e&&!e.ptag&&m.person_tag) e.ptag=m.person_tag; });
+        }
+        const strip=t=>(window.SZCore&&SZCore.tagStripSeq)?SZCore.tagStripSeq(t||''):(t||'');
+        ovRows.forEach(r=>{
+          const v=inView[r.event_seq], e=ext[r.event_seq]||{};
+          (GFULL[r.team_group]=GFULL[r.team_group]||[]).push({
+            seq:String(r.event_seq), rep:!!r.team_group_rep,
+            gseq:(r.team_group_seq==null?null:r.team_group_seq),
+            dep: v? (v.dep||'') : (e.dep||''),
+            tag: v? (v.tagCode||'') : strip(e.ptag||e.tag||'')
+          });
+        });
+      }
+    }catch(e){ console.warn('묶음 전원 조회 실패:',e.message); }
     computeGroupTags();              // GTAG·GREP(대표) 먼저 → 팀별 규칙 정렬에 사용
     ROWS.sort(dispatchOrder);        // 入国→ICN/PUS→숙소→코드→묶음번호(Y1,Y2 인접)→대표자
     ROWS.forEach((d,i)=>{ d.no=i+1; });
@@ -539,7 +570,7 @@ function pass(d){
   if(ORIGINSEL!=='all' && !(d.ports||[d.port]).includes(ORIGINSEL)) return false;
   if(ACCOMSEL.size && !ACCOMSEL.has(d.accom)) return false;
   if(DATESEL.size && !DATESEL.has(d.dep)) return false;
-  if(SEARCHQ){ const hay=`${d.rec.repName||''} ${d.rec.eventNo||''} ${d.tagCode||''} ${d.seq} ${d.rec.remark||''} ${d.rec.remarkLocal||''} ${d.rec.noteRemarks||''} ${d.rec.noteMemo||''}`.toLowerCase(); if(!hay.includes(SEARCHQ)) return false; }
+  if(SEARCHQ){ const hay=`${d.rec.repName||''} ${d.rec.eventNo||''} ${d.tagCode||''} ${dTag(d)||''} ${d.seq} ${d.rec.remark||''} ${d.rec.remarkLocal||''} ${d.rec.noteRemarks||''} ${d.rec.noteMemo||''}`.toLowerCase(); if(!hay.includes(SEARCHQ)) return false; }
   if(FILT_ANOM && teamAnomaly(d).length===0) return false;   // 特(특이)만 보기
   if(FILT_GROUP && !d.rec.teamGroup) return false;            // 운영팀(묶음) 있는 팀만
   return true;
@@ -603,19 +634,28 @@ function anomBadge(d){ const rs=teamAnomaly(d); if(!rs.length) return '';
 function computeGroupTags(){
   GTAG={}; GREP={};
   if(!(window.SZCore&&SZCore.teamTagN&&SZCore.orderGroup)) return;
+  // ⚠ 기준은 GFULL(그룹 전원 · 기간 무관). 화면에 일부만 있어도 순번이 흔들리지 않는다
+  //   → 航空カバー·네임택과 항상 같은 코드·번호.
+  const keys=Object.keys(GFULL||{});
   const groups={};
   ROWS.forEach(r=>{ const g=r.rec.teamGroup; if(g){ (groups[g]=groups[g]||[]).push(r); } });
-  Object.keys(groups).forEach(k=>{
-    const list=groups[k]; if(list.length<2) return;   // 단독은 번호 없음
-    const rep=list.find(r=>r.rec.teamGroupRep);
-    if(!rep) return;   // 대표 미지정(구 묶음) → 원래 태그 유지. 대표 선택 시에만 통일코드 부여.
-    GREP[k]=rep;       // 그룹 대표(정렬 앵커용)
-    const base=rep.tagCode||'';
-    // 수동 순번(team_group_seq) 전원 지정 시 그 순서 우선, 아니면 자동정렬(대표먼저→dep→seq)로 fallback
-    const hasManual=list.every(r=>r.rec.teamGroupSeq!=null);
+  (keys.length?keys:Object.keys(groups)).forEach(k=>{
+    const all=(GFULL&&GFULL[k])||null;
+    const list=groups[k]||[];
+    const src = all && all.length ? all
+              : (list.length>1 ? list.map(r=>({seq:String(r.seq),rep:!!r.rec.teamGroupRep,gseq:r.rec.teamGroupSeq,dep:r.dep,tag:r.tagCode||''})) : null);
+    if(!src || src.length<2) return;                       // 단독은 번호 없음
+    const rep=src.find(x=>x.rep);
+    if(!rep || !rep.tag) return;   // 대표 미지정(구 묶음) → 원래 태그 유지. 대표 선택 시에만 통일코드.
+    const repRow=list.find(r=>String(r.seq)===rep.seq);
+    if(repRow) GREP[k]=repRow;     // 그룹 대표(정렬 앵커용) — 화면에 있을 때만
+    else if(list.length) GREP[k]=list[0];
+    const base=rep.tag;
+    // 수동 순번(team_group_seq) 전원 지정 시 그 순서 우선, 아니면 자동정렬(대표먼저→dep→seq)
+    const hasManual=src.every(x=>x.gseq!=null);
     const ordered=hasManual
-      ? list.slice().sort((a,b)=>(a.rec.teamGroupSeq-b.rec.teamGroupSeq)||(a.seq-b.seq)).map(r=>({event_seq:r.seq,dep:r.dep}))
-      : SZCore.orderGroup(list.map(r=>({event_seq:r.seq,dep:r.dep})), rep.seq);
+      ? src.slice().sort((a,b)=>(a.gseq-b.gseq)||(Number(a.seq)-Number(b.seq))).map(x=>({event_seq:x.seq,dep:x.dep}))
+      : SZCore.orderGroup(src.map(x=>({event_seq:x.seq,dep:x.dep})), rep.seq);
     ordered.forEach((o,i)=>{ GTAG[o.event_seq]=SZCore.teamTagN(base,i+1); });
   });
 }
