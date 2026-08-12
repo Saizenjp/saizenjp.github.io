@@ -388,11 +388,11 @@
   <button class="btn ghost sm" id="date-today" type="button" title="이번 달·오늘">오늘</button>
   <button class="btn sm" id="btn-load" type="button" disabled data-i18n="rm_btnLoad"></button>
   <input type="date" id="date-pick" hidden><input type="date" id="date-to" hidden>
-  <button class="btn sm" id="btn-auto" type="button" disabled title="회원 우선(회원 짝을 일반보다 먼저 배정 → 예약 늦어도 회원 우선). 회원=디럭스, 일반=예약종류. 각 그룹 내 예약순. 기존 수기배정 보호. 불러온 그 달만." style="background:var(--accent2);border-color:var(--accent2)">월별 자동배정</button>
+  <button class="btn sm" id="btn-auto" type="button" disabled title="회원 우선. 불러온 기간 전체를 다시 배정합니다. 기존 수기배정 보호." style="background:var(--accent2);border-color:var(--accent2)">자동배정</button>
   <button class="btn ghost sm" id="btn-clear-all" type="button" disabled title="불러온 범위의 모든 배정 해제(수기·자동 전부)" style="color:var(--err);border-color:#e3bdb4">전체 비우기</button>
   <button class="btn ghost sm" id="btn-conflicts" type="button" disabled title="정원 초과(겹침) 방을 스캔 → 초과 auto 배정을 정리(수기·분할은 보호)" style="color:var(--warn);border-color:#e6cf95">⚠ 충돌 점검</button>
   <button class="btn ghost sm" id="btn-closure" type="button" disabled title="특정 객실을 기간 지정해 폐쇄(잠금) — 대표님 사용 중·점검 등. 폐쇄 기간엔 배정 불가" style="color:var(--err);border-color:#e3bdb4">🔒 객실 폐쇄</button>
-  <button class="btn sm" id="btn-undo-bulk" type="button" style="display:none;background:#fff;color:var(--accent2);border-color:var(--accent2);font-weight:800" title="직전 대량 작업(전체 비우기·층 비우기·월별 자동배정) 1회만 되돌립니다"></button>
+  <button class="btn sm" id="btn-undo-bulk" type="button" style="display:none;background:#fff;color:var(--accent2);border-color:var(--accent2);font-weight:800" title="직전 대량 작업(전체 비우기·층 비우기·자동배정) 1회만 되돌립니다"></button>
   <!-- 위 버튼 라벨/타이틀은 applyStaticRoom()이 언어별로 채움(월/오늘/자동배정/전체 비우기/충돌 점검/객실 폐쇄) -->
   <span class="hint" id="session-hint"></span>
   <span id="sel-bar" style="display:none;align-items:center;gap:8px;margin-left:auto">
@@ -465,7 +465,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=14"></script>
-<script src="../assets/saizen-ops.js?v=15.52"></script>
+<script src="../assets/saizen-ops.js?v=15.53"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -483,7 +483,7 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const L={
   ja:{
     prevMonth:'前月', nextMonth:'翌月', thisMonthToday:'今月・今日', monthLbl:'月', today:'今日',
-    btnAuto:'月別 自動割当', btnAutoT:'会員優先(会員ペアを一般より先に割当 → 予約が遅くても会員が優先)。会員同士でペアにしてデラックスへ — 一般はデラックスに入りません(会員が奇数で1名余る場合のみ、その1名が一般1名とデラックス同室)。一般=スタンダードツイン→コンパクト。3階は実質等級を1段下げて計算(3階デラックス=ツイン扱い/3階ツイン=コンパクト扱い)。各グループ内は予約順。手動割当を保護。読込中の月のみ。',
+    btnAuto:'自動割当', btnAutoRange:r=>`🪄 自動割当（${r}）`, btnAutoT:'会員優先(会員ペアを一般より先に割当 → 予約が遅くても会員が優先)。会員同士でペアにしてデラックスへ — 一般はデラックスに入りません(会員が奇数で1名余る場合のみ、その1名が一般1名とデラックス同室)。一般=スタンダードツイン→コンパクト。3階は実質等級を1段下げて計算(3階デラックス=ツイン扱い/3階ツイン=コンパクト扱い)。各グループ内は予約順。手動割当を保護。読み込んだ期間全体を対象に、その都度すべて割り当て直します（月単位ではありません）。',
     lowGrade:'実質等級 1段下げ', lowGradeT:'3階は同じタイプ名でも等級が下 → 割当計算では デラックス=ツイン扱い・ツイン=コンパクト扱い。表示・保存値はそのまま。',
     btnClearAll:'全クリア', btnClearAllT:'読み込んだ範囲の全割当を解除(手動・自動すべて)',
     btnConflicts:'⚠ 競合チェック', btnConflictsT:'定員超過(重複)の客室をスキャン → 超過autoを整理(手動・分割は保護)',
@@ -646,7 +646,7 @@ const L={
   },
   ko:{
     prevMonth:'이전 달', nextMonth:'다음 달', thisMonthToday:'이번 달·오늘', monthLbl:'월', today:'오늘',
-    btnAuto:'월별 자동배정', btnAutoT:'회원 우선(회원 짝을 일반보다 먼저 배정 → 예약 늦어도 회원 우선). 회원끼리 묶어 디럭스 — 일반은 디럭스에 들어가지 않음(회원이 홀수로 1명 남을 때만 그 1명이 일반 1명과 디럭스 동실). 일반=스탠다드 트윈→컴팩트. 3층은 실질 등급을 한 단계 낮춰 계산(3층 디럭스=트윈 취급/3층 트윈=컴팩트 취급). 각 그룹 내 예약순. 기존 수기배정 보호. 불러온 그 달만.',
+    btnAuto:'자동배정', btnAutoRange:r=>`🪄 자동배정 (${r})`, btnAutoT:'회원 우선(회원 짝을 일반보다 먼저 배정 → 예약 늦어도 회원 우선). 회원끼리 묶어 디럭스 — 일반은 디럭스에 들어가지 않음(회원이 홀수로 1명 남을 때만 그 1명이 일반 1명과 디럭스 동실). 일반=스탠다드 트윈→컴팩트. 3층은 실질 등급을 한 단계 낮춰 계산(3층 디럭스=트윈 취급/3층 트윈=컴팩트 취급). 각 그룹 내 예약순. 기존 수기배정 보호. 불러온 기간 전체를 대상으로 매번 전부 다시 배정합니다(월 단위가 아닙니다).',
     lowGrade:'실질 등급 한 단계 아래', lowGradeT:'3층은 같은 타입명이어도 급이 낮음 → 배정 계산에서 디럭스=트윈 취급·트윈=컴팩트(소형) 취급. 화면 표시와 저장값은 그대로입니다.',
     btnClearAll:'전체 비우기', btnClearAllT:'불러온 범위의 모든 배정 해제(수기·자동 전부)',
     btnConflicts:'⚠ 충돌 점검', btnConflictsT:'정원 초과(겹침) 방을 스캔 → 초과 auto 배정을 정리(수기·분할은 보호)',
@@ -802,7 +802,7 @@ const L={
   },
   en:{
     prevMonth:'Prev month', nextMonth:'Next month', thisMonthToday:'This month · today', monthLbl:'Month', today:'Today',
-    btnAuto:'Monthly auto-assign', btnAutoT:'Member priority (member pairs are placed before general ones → members win even if they booked later). Members are paired together into Deluxe — non-members do not enter Deluxe (only when one member is left over does that person share a Deluxe with one non-member). General = standard twin → compact. Floor 3 counts one grade lower (3F deluxe = twin, 3F twin = compact). Reservation order within each group. Protects manual assignments. Loaded month only.',
+    btnAuto:'Auto-assign', btnAutoRange:r=>`🪄 Auto-assign (${r})`, btnAutoT:'Member priority (member pairs are placed before general ones → members win even if they booked later). Members are paired together into Deluxe — non-members do not enter Deluxe (only when one member is left over does that person share a Deluxe with one non-member). General = standard twin → compact. Floor 3 counts one grade lower (3F deluxe = twin, 3F twin = compact). Reservation order within each group. Protects manual assignments. Re-assigns everything across the whole loaded date range (not per month).',
     lowGrade:'One grade lower', lowGradeT:'Rooms on floor 3 are a grade below their type name → for assignment they count as deluxe=twin and twin=compact. Display and stored values are unchanged.',
     btnClearAll:'Clear all', btnClearAllT:'Release all assignments in the loaded range (manual + auto)',
     btnConflicts:'⚠ Conflict check', btnConflictsT:'Scan capacity-over (overlapping) rooms → resolve over-capacity auto assignments (manual/split protected)',
@@ -969,7 +969,7 @@ function applyStaticRoom(){
   set('#date-prev','title','prevMonth'); set('#date-next','title','nextMonth');
   set('#date-today','title','thisMonthToday'); set('#date-today','textContent','today');
   set('#lbl-from','textContent','monthLbl');
-  set('#btn-auto','textContent','btnAuto'); set('#btn-auto','title','btnAutoT');
+  set('#btn-auto','title','btnAutoT'); updateAutoBtnLabel();
   set('#btn-clear-all','textContent','btnClearAll'); set('#btn-clear-all','title','btnClearAllT');
   set('#btn-conflicts','textContent','btnConflicts'); set('#btn-conflicts','title','btnConflictsT');
   set('#btn-closure','textContent','btnClosure'); set('#btn-closure','title','btnClosureT');
@@ -1068,7 +1068,7 @@ async function restoreRooms(snaps){
 }
 function _roomSnap(row){ if(!row) return null; const s={...row}; delete s.id; return s; }
 
-// ── 직전 1회 대량작업 되돌리기(전체 비우기·층 비우기·월별 자동배정) ──
+// ── 직전 1회 대량작업 되돌리기(전체 비우기·층 비우기·자동배정) ──
 //   동시편집 환경이라 무한 undo는 충돌 위험 → '직전 1회'만. 다음 대량작업/새로고침 시 무효화.
 //   undo는 각 작업이 자기 복원 클로저(undo)를 담아둔다(전체/층=재삽입, 자동=현 auto 삭제 후 옛 auto 재삽입).
 let _lastBulk=null;
@@ -1099,6 +1099,18 @@ function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className
 // ── 날짜/통계 헬퍼 ──
 function isoToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function isoShift(iso,delta){const d=new Date((iso||isoToday())+'T00:00:00');d.setDate(d.getDate()+delta);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+// 자동배정 버튼 = 「🪄 자동배정 (8/25~10/31)」 — '월별'이라는 말이 실제 동작(불러온 기간 전체)과
+//  달라 현장이 헷갈려 해서(Min 2026-08), 라벨에 대상 기간을 그대로 박아 오해를 없앤다.
+function autoRangeLabel(){
+  const f=state&&state.from, t=state&&state.to;
+  if(!f) return '';
+  return (f===t) ? fmtMD(f) : `${fmtMD(f)}~${fmtMD(t)}`;
+}
+function updateAutoBtnLabel(){
+  const btn=$('#btn-auto'); if(!btn||btn.disabled&&btn.dataset.busy==='1') return;
+  const r=autoRangeLabel();
+  btn.textContent = r ? tx('btnAutoRange',r) : tx('btnAuto');
+}
 function fmtMD(iso){const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${+m[2]}/${+m[3]}`:'-';}
 function teamNights(g){if(!g.dep||!g.arr)return 0;return Math.max(0,Math.round((new Date(g.arr)-new Date(g.dep))/864e5));}
 // 특정 객실의 '기준일(state.from) 하룻밤' 점유 행들 (카드 보기 = 그날 현황)
@@ -1312,6 +1324,7 @@ function rebuildAssignMap(){
 let viewMode='card';   // 'card' | 'timeline'
 function render(){
   _tagMapCache=null;
+  updateAutoBtnLabel();   // 불러온 기간이 바뀌면 버튼의 대상 기간 표기도 따라감
   renderDayStrip();
   renderUnassigned();
   if(viewMode==='timeline'){ renderTimeline(); } else { renderFacilities(); }
@@ -2450,7 +2463,7 @@ function placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,oc
 async function autoAssign(){
   if(!supa){toast(tx('connectFirst'),'warn');return;}
   if(!state.guests||!state.guests.length){toast(tx('loadDateFirst'),'warn');return;}
-  const btn=$('#btn-auto'); btn.disabled=true; const old=btn.textContent; btn.textContent=tx('autoBtnBusy');
+  const btn=$('#btn-auto'); btn.disabled=true; btn.dataset.busy='1'; btn.textContent=tx('autoBtnBusy');
   try{
     // 0) 이동 추적용 — 재배치 '전' 각 인원의 방을 스냅샷(어디서→어디로 기록)
     const _beforeRoom={}; state.rooms.forEach(r=>{ if(r.member_id!=null && _beforeRoom[r.member_id]==null) _beforeRoom[r.member_id]={f:r.facility,no:r.room_no}; });
@@ -2576,7 +2589,7 @@ async function autoAssign(){
     });
     toast(tx('autoDone',pending.length,holds.length), holds.length?'warn':'ok');
     if(holds.length) console.warn(tx('autoHoldsLog',holds.length)+holds.join('\n'));
-  }finally{ btn.disabled=false; btn.textContent=old; }
+  }finally{ btn.disabled=false; btn.dataset.busy=''; updateAutoBtnLabel(); }
 }
 
 // ════════════════════════════════════════════════════════════════
