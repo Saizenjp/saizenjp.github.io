@@ -466,7 +466,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=19"></script>
-<script src="../assets/saizen-ops.js?v=15.71"></script>
+<script src="../assets/saizen-ops.js?v=15.72"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -594,6 +594,12 @@ const L={
     holdCatNoRoom:'客室不足', holdFixNoRoom:'その等級の部屋がその期間に空いていません。閉鎖期間・他月の予約も確認してください。',
     holdCatOddLeft:'奇数残り', holdFixOddLeft:'ペアを組んだ後の余り1名です。手動で相部屋または1名利用に。',
     holdCatEtc:'その他',
+    holdNoAuto:'※ この理由は自動では直せません（空室そのものが足りない）。日付・施設を変えるか手動で配置してください。',
+    optSplitOdd:'3名チームを 2名＋1名 に分けて配置する（1名は1室を単独使用）',
+    optAllowSingle:'シングル指定・奇数の残り1名を 1室に単独で配置する',
+    optIgnoreFloor:'泊数→階のルールを無視して、空いている階に配置する（清掃効率は落ちます）',
+    holdsApply:'この方法で再配置',
+    holdsApplyNote:'チェックした方法だけを有効にして自動配置をやり直します。手動で入れた配置はそのまま残ります。',
     holdOddTeam:gc=>`${gc} 3名チーム 保留`, holdSingle:gc=>`${gc} シングル指定 — 手動配置`, holdNoFloor:(gc,n)=>`${gc} ${n}泊: 泊数ルールで可能な階なし(フレックス階満室) — 手動確認`,
     holdOddLeft:(gc,name)=>`${gc} ${name}: 奇数残り`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} 客室不足`,
     deluxe:'デラックス', byReservation:'予約種別',
@@ -761,6 +767,12 @@ const L={
     holdCatNoRoom:'객실 부족', holdFixNoRoom:'그 등급 방이 그 기간에 비어 있지 않습니다. 폐쇄 기간과 다른 달 예약도 확인하세요.',
     holdCatOddLeft:'홀수 잔여', holdFixOddLeft:'짝을 지은 뒤 남은 1명입니다. 합방 또는 1인 사용으로 수기 배정하세요.',
     holdCatEtc:'기타',
+    holdNoAuto:'※ 이 사유는 자동으로 못 고칩니다(빈 방 자체가 부족). 날짜·숙소를 바꾸거나 수기로 배정하세요.',
+    optSplitOdd:'3명 팀을 2명＋1명으로 나눠 배정 (1명은 방 하나를 단독 사용)',
+    optAllowSingle:'싱글 지정·홀수 잔여 1명을 방 하나에 단독 배정',
+    optIgnoreFloor:'박수→층 규칙을 무시하고 빈 층에 배정 (청소 효율은 떨어집니다)',
+    holdsApply:'이 방법으로 재배정',
+    holdsApplyNote:'체크한 방법만 켜서 자동배정을 다시 돌립니다. 수기로 넣은 배정은 그대로 남습니다.',
     holdOddTeam:gc=>`${gc} 3명팀 보류`, holdSingle:gc=>`${gc} 싱글 지정 — 수기 배정`, holdNoFloor:(gc,n)=>`${gc} ${n}박: 박수 규칙 가능 층 없음(유동층 만석) — 수기 확인`,
     holdOddLeft:(gc,name)=>`${gc} ${name}: 홀수 잔여`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} 객실부족`,
     deluxe:'디럭스', byReservation:'예약종류',
@@ -925,6 +937,12 @@ const L={
     holdCatNoRoom:'No room available', holdFixNoRoom:'No room of that grade is free for those dates. Check closures and bookings from other months too.',
     holdCatOddLeft:'Odd leftover', holdFixOddLeft:'One person left after pairing. Share a room or assign single use manually.',
     holdCatEtc:'Other',
+    holdNoAuto:'※ Auto-assign cannot fix this (there simply are not enough free rooms). Change dates/facility or place manually.',
+    optSplitOdd:'Split 3-person teams into 2 + 1 (the single takes a room alone)',
+    optAllowSingle:'Place single-designated teams and odd leftovers alone in a room',
+    optIgnoreFloor:'Ignore the nights→floor rule and use any free floor (cleaning efficiency drops)',
+    holdsApply:'Re-assign this way',
+    holdsApplyNote:'Re-runs auto-assign with only the ticked relaxations. Manual assignments stay untouched.',
     holdOddTeam:gc=>`${gc} 3-person team held`, holdSingle:gc=>`${gc} single requested — manual`, holdNoFloor:(gc,n)=>`${gc} ${n}n: no floor available by night-count rule (flex floors full) — manual check`,
     holdOddLeft:(gc,name)=>`${gc} ${name}: odd leftover`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} not enough rooms`,
     deluxe:'Deluxe', byReservation:'Reservation type',
@@ -2076,15 +2094,17 @@ function updateHoldsBtn(){
 }
 function openHoldsModal(){
   const holds=state.lastHolds||[]; if(!holds.length){ toast(tx('holdsNone'),'ok'); return; }
-  // 사유별로 묶어서 보여준다(무엇을 먼저 손봐야 하는지 바로 보이게)
+  // 사유별로 묶어서 보여주고, 사유마다 '이 방법으로 배정' 을 제공한다(Min 2026-08).
+  //  체크한 조치만 켜서 자동배정을 다시 돌린다 — 수기 배정은 그대로 보호된다.
   const RULES=[
-    ['oddTeam',  tx('holdCatOddTeam'),  tx('holdFixOddTeam')],
-    ['single',   tx('holdCatSingle'),   tx('holdFixSingle')],
-    ['noFloor',  tx('holdCatNoFloor'),  tx('holdFixNoFloor')],
-    ['noRoom',   tx('holdCatNoRoom'),   tx('holdFixNoRoom')],
-    ['oddLeft',  tx('holdCatOddLeft'),  tx('holdFixOddLeft')],
-    ['etc',      tx('holdCatEtc'),      '']
+    ['oddTeam',  tx('holdCatOddTeam'),  tx('holdFixOddTeam'),  'splitOdd'],
+    ['single',   tx('holdCatSingle'),   tx('holdFixSingle'),   'allowSingle'],
+    ['noFloor',  tx('holdCatNoFloor'),  tx('holdFixNoFloor'),  'ignoreFloor'],
+    ['noRoom',   tx('holdCatNoRoom'),   tx('holdFixNoRoom'),   null],
+    ['oddLeft',  tx('holdCatOddLeft'),  tx('holdFixOddLeft'),  'allowSingle'],
+    ['etc',      tx('holdCatEtc'),      '',                    null]
   ];
+  const OPT_LABEL={ splitOdd:tx('optSplitOdd'), allowSingle:tx('optAllowSingle'), ignoreFloor:tx('optIgnoreFloor') };
   const cat=t=>{
     if(/3名|3명|3-person/.test(t)) return 'oddTeam';
     if(/シングル|싱글|single/i.test(t)) return 'single';
@@ -2095,23 +2115,44 @@ function openHoldsModal(){
   };
   const by={}; holds.forEach(h=>{ (by[cat(h)]=by[cat(h)]||[]).push(h); });
   const bg=document.createElement('div'); bg.className='modal-bg';
-  const m=document.createElement('div'); m.className='modal'; m.style.maxWidth='720px';
-  const body=RULES.filter(([k])=>by[k]&&by[k].length).map(([k,label,fix])=>`
-    <div style="margin-bottom:14px">
+  const m=document.createElement('div'); m.className='modal'; m.style.maxWidth='760px';
+  const body=RULES.filter(([k])=>by[k]&&by[k].length).map(([k,label,fix,opt])=>`
+    <div style="margin-bottom:15px;border:1px solid var(--border);border-radius:9px;padding:10px 12px;background:var(--surface)">
       <div style="font-size:13px;font-weight:800;color:var(--accent);margin-bottom:2px">${esc(label)} <span style="color:var(--text2);font-weight:700">${by[k].length}</span></div>
-      ${fix?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:6px">${esc(fix)}</div>`:''}
-      <div style="display:flex;flex-direction:column;gap:3px">
+      ${fix?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:7px">${esc(fix)}</div>`:''}
+      ${opt?`<label style="display:flex;align-items:flex-start;gap:7px;font-size:12.5px;font-weight:700;color:var(--text);
+          background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:7px 10px;margin-bottom:8px;cursor:pointer">
+          <input type="checkbox" class="hd-opt" data-opt="${opt}" style="margin-top:2px">
+          <span>${esc(OPT_LABEL[opt])}</span></label>`
+        :`<div style="font-size:11.5px;color:var(--err);font-weight:700;margin-bottom:7px">${esc(tx('holdNoAuto'))}</div>`}
+      <div style="display:flex;flex-direction:column;gap:3px;max-height:150px;overflow:auto">
         ${by[k].map(h=>`<div style="font-size:12.5px;padding:4px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">${esc(h)}</div>`).join('')}
       </div>
     </div>`).join('');
+  const hasOpt=RULES.some(([k,,,opt])=>opt&&by[k]&&by[k].length);
   m.innerHTML=`<h2>${tx('holdsTitle',holds.length)}</h2>
     <div class="mbody" style="padding:12px 16px 4px;max-height:60vh;overflow:auto">
-      <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${tx('holdsDesc')}</div>${body}</div>
-    <div class="mfoot"><button class="btn ghost sm" id="hd-close" type="button">${tx('close')}</button></div>`;
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${tx('holdsDesc')}</div>${body}
+      ${hasOpt?`<div style="font-size:11.5px;color:var(--text2);background:#fdf6e7;border:1px solid #e6d3a3;border-radius:7px;padding:8px 11px;margin-bottom:8px">${tx('holdsApplyNote')}</div>`:''}</div>
+    <div class="mfoot">
+      <button class="btn ghost sm" id="hd-close" type="button">${tx('close')}</button>
+      ${hasOpt?`<button class="btn sm" id="hd-apply" type="button" disabled>${tx('holdsApply')}</button>`:''}
+    </div>`;
   bg.appendChild(m); document.body.appendChild(bg);
   const close=()=>bg.remove();
   m.querySelector('#hd-close').addEventListener('click',close);
   bg.addEventListener('click',e=>{ if(e.target===bg) close(); });
+  const apply=m.querySelector('#hd-apply');
+  const boxes=[...m.querySelectorAll('.hd-opt')];
+  const sync=()=>{ if(apply) apply.disabled=!boxes.some(b=>b.checked); };
+  boxes.forEach(b=>b.addEventListener('change',sync)); sync();
+  if(apply) apply.addEventListener('click',async()=>{
+    const opts={...AUTO_OPT_DEFAULT};
+    boxes.forEach(b=>{ if(b.checked) opts[b.dataset.opt]=true; });
+    close();
+    AUTO_OPTS=opts;
+    try{ await autoAssign(); } finally{ AUTO_OPTS={...AUTO_OPT_DEFAULT}; }
+  });
 }
 
 function openFloorplanModal(zone, zoneRooms){
@@ -2506,8 +2547,11 @@ function pickFloor(pool,needRooms,dep,arr,pending,occ,floorOrder){
 function placePairs(g,list,primaryPool,fallbackPool,label,pending,holds,occ,floorOrder){
   const pairs=[]; let i=0;
   for(; i+1<list.length; i+=2) pairs.push([list[i], list[i+1]]);
-  if(i<list.length){ const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq)); holds.push(tx('holdOddLeft',gc,list[i].name_kr||'')); }
   placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,occ,floorOrder);
+  if(i<list.length){
+    if(AUTO_OPTS.allowSingle||AUTO_OPTS.splitOdd) placeSingles(g,[list[i]],primaryPool,fallbackPool,label,pending,holds,occ,floorOrder);
+    else { const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq)); holds.push(tx('holdOddLeft',gc,list[i].name_kr||'')); }
+  }
 }
 // 미리 구성된 짝 배열을 받아 같은 층 묶기 + 방 배정(부족 시 fallbackPool로 강등).
 //   floorOrder 가 있으면(야마나미 호텔동) 박수 규칙 허용 층만 우선순위대로 사용.
@@ -2531,6 +2575,25 @@ function placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,oc
     if(!inv){ holds.push(tx('holdNoRoom',gc,pair[0].name_kr||'',pair[1].name_kr||'',label)); continue; }
     pending.push(mkRow(g,pair[0],inv));
     pending.push(mkRow(g,pair[1],inv));
+  }
+}
+
+// ── 자동배정 완화 옵션(Min 2026-08) ──────────────────────────────────────────
+//  보류 사유별 '추천 조치'를 그대로 실행하기 위한 스위치. 기본은 전부 꺼짐(현 규칙 그대로).
+//   splitOdd    : 3명 팀을 2명+1명으로 나눠 배정(1명은 단독 사용)
+//   allowSingle : 싱글 지정 팀·홀수 잔여 1명을 단독 방으로 배정
+//   ignoreFloor : 박수→층 규칙을 무시하고 빈 층 아무 데나 배정
+const AUTO_OPT_DEFAULT={splitOdd:false, allowSingle:false, ignoreFloor:false};
+let AUTO_OPTS={...AUTO_OPT_DEFAULT};
+// 1명을 방 하나에 단독 배정(정원 2 이상 방도 1명만 쓰게 둠).
+function placeSingles(g,list,primaryPool,fallbackPool,label,pending,holds,occ,floorOrder){
+  if(!list||!list.length) return;
+  const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq));
+  for(const m of list){
+    let inv=pickRoom(primaryPool,g.dep,g.arr,1,pending,occ);
+    if(!inv && fallbackPool && fallbackPool!==primaryPool) inv=pickRoom(fallbackPool,g.dep,g.arr,1,pending,occ);
+    if(!inv){ holds.push(tx('holdNoRoom',gc,m.name_kr||'','',label)); continue; }
+    pending.push(mkRow(g,m,inv));
   }
 }
 
@@ -2579,10 +2642,10 @@ async function autoAssign(){
       const roster=teamRoster(g.event_seq).filter(m=>!manual.has(m.id));
       if(!roster.length) continue;
       const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq));
-      if(roster.length===3){ holds.push(tx('holdOddTeam',gc)); continue; }
+      if(roster.length===3 && !AUTO_OPTS.splitOdd){ holds.push(tx('holdOddTeam',gc)); continue; }
       // 싱글 지정 팀(현지비고/비고에 '싱글')은 자동배정 제외 → 미배정으로 두고 수기 배정.
       //  (누가 싱글인지 팀단위 비고로는 특정 불가 + 트리플 등 변형 혼재 가능 → 짝짓기 강행 금지. Min 결정)
-      if(/싱글|single|シングル/i.test((g.remark_local||'')+' '+(g.remark||''))){
+      if(!AUTO_OPTS.allowSingle && /싱글|single|シングル/i.test((g.remark_local||'')+' '+(g.remark||''))){
         holds.push(tx('holdSingle',gc)); continue;
       }
       // ── 청소 효율 박수→층 규칙: 야마나미 호텔동(floorOnly) 팀만 허용 층으로 제한 ──
@@ -2590,7 +2653,10 @@ async function autoAssign(){
       let floorOrder=null;
       if(route.floorOnly){
         floorOrder=nightFloors(teamNights(g), occ, pending);
-        if(!floorOrder.length){ holds.push(tx('holdNoFloor',gc,teamNights(g))); continue; }
+        if(!floorOrder.length){
+          if(!AUTO_OPTS.ignoreFloor){ holds.push(tx('holdNoFloor',gc,teamNights(g))); continue; }
+          floorOrder=null;                       // 층 규칙 무시 = 빈 층 아무 데나
+        }
       }
       plans.push({g,route,roster,floorOrder,gc});
     }
@@ -2627,7 +2693,10 @@ async function autoAssign(){
           placeGivenPairs(g, memberPairs, dlx, memDown, tx('deluxe'), pending, holds, occ, floorOrder, dlxAny);
         }else{
           placeGivenPairs(g, generalPairs, gp, null, tx('byReservation'), pending, holds, occ, floorOrder);
-          leftovers.forEach(m=>holds.push(tx('holdOddLeft',gc,m.name_kr||'')));
+          if(leftovers.length){
+            if(AUTO_OPTS.allowSingle||AUTO_OPTS.splitOdd) placeSingles(g, leftovers, gp, dlx, tx('byReservation'), pending, holds, occ, floorOrder);
+            else leftovers.forEach(m=>holds.push(tx('holdOddLeft',gc,m.name_kr||'')));
+          }
         }
       }else{
         // 비디럭스 시설(쿠주·간지·돔): 룸타입 없음 → 회원 포함 팀은 회원 패스, 순수 일반팀은 일반 패스(회원 우선 일관)
