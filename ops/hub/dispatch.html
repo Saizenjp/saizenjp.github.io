@@ -191,6 +191,7 @@ function refreshConn(){
 const state={ conn:'none' };
 
 let _deepSeq=null;
+let _loadGen=0;   // load() 겹침 방지 — 마지막 호출만 화면에 반영
 let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DATESEL=new Set(), ORIGINSEL='all', SEARCHQ='', GTAG={}, GREP={}, GFULL={}, FILT_ANOM=false, FILT_GROUP=false;
 let RFROM='', RTO='';   // 로드 날짜범위(달력) — 월경계 팀(7↔8월)을 이어서 보기. 기본=선택 월 전체.
 let TOKMAP={};   // event_seq → 주문 QR 토큰(order_tokens)
@@ -440,6 +441,7 @@ async function ensureOrderTokens(seqs){
   }catch(_){ /* 토큰 없이도 手配書는 출력 */ }
 }
 async function load(){
+  const _gen=++_loadGen;               // 이 호출이 최신인지 확인용(겹치면 옛 결과는 버린다)
   if(!supa)return;
   if(!RFROM||!RTO){ resetRange(); }   // 최초 진입/월변경 직후 기본=선택 월 전체
   const _f=$('#rng-from'),_t=$('#rng-to'); if(_f&&_f.value!==RFROM)_f.value=RFROM; if(_t&&_t.value!==RTO)_t.value=RTO;
@@ -553,7 +555,10 @@ async function load(){
           (m2||[]).forEach(m=>{ const e=ext[m.event_seq]; if(e&&!e.ptag&&m.person_tag) e.ptag=m.person_tag; });
         }
         const strip=t=>(window.SZCore&&SZCore.tagStripSeq)?SZCore.tagStripSeq(t||''):(t||'');
+        const _seen=new Set();
         ovRows.forEach(r=>{
+          // ⚠ 같은 팀이 두 번 들어가면 순번이 2,4,6 으로 밀린다(로드 겹침 시 실제 발생).
+          const _k=r.team_group+'|'+r.event_seq; if(_seen.has(_k)) return; _seen.add(_k);
           const v=inView[r.event_seq], e=ext[r.event_seq]||{};
           (GFULL[r.team_group]=GFULL[r.team_group]||[]).push({
             seq:String(r.event_seq), rep:!!r.team_group_rep,
@@ -564,6 +569,7 @@ async function load(){
         });
       }
     }catch(e){ console.warn('묶음 전원 조회 실패:',e.message); }
+    if(_gen!==_loadGen) return;      // 그 사이 새 로드가 시작됐으면 이 결과는 버린다
     computeGroupTags();              // GTAG·GREP(대표) 먼저 → 팀별 규칙 정렬에 사용
     ROWS.sort(dispatchOrder);        // 入国→ICN/PUS→숙소→코드→묶음번호(Y1,Y2 인접)→대표자
     ROWS.forEach((d,i)=>{ d.no=i+1; });
