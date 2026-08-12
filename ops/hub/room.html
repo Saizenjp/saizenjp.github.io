@@ -465,7 +465,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=14"></script>
-<script src="../assets/saizen-ops.js?v=15.51"></script>
+<script src="../assets/saizen-ops.js?v=15.52"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -483,7 +483,8 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const L={
   ja:{
     prevMonth:'前月', nextMonth:'翌月', thisMonthToday:'今月・今日', monthLbl:'月', today:'今日',
-    btnAuto:'月別 自動割当', btnAutoT:'会員優先(会員ペアを一般より先に割当 → 予約が遅くても会員が優先)。会員=デラックス、一般=予約種別。各グループ内は予約順。手動割当を保護。読込中の月のみ。',
+    btnAuto:'月別 自動割当', btnAutoT:'会員優先(会員ペアを一般より先に割当 → 予約が遅くても会員が優先)。会員同士でペアにしてデラックスへ — 一般はデラックスに入りません(会員が奇数で1名余る場合のみ、その1名が一般1名とデラックス同室)。一般=スタンダードツイン→コンパクト。3階は実質等級を1段下げて計算(3階デラックス=ツイン扱い/3階ツイン=コンパクト扱い)。各グループ内は予約順。手動割当を保護。読込中の月のみ。',
+    lowGrade:'実質等級 1段下げ', lowGradeT:'3階は同じタイプ名でも等級が下 → 割当計算では デラックス=ツイン扱い・ツイン=コンパクト扱い。表示・保存値はそのまま。',
     btnClearAll:'全クリア', btnClearAllT:'読み込んだ範囲の全割当を解除(手動・自動すべて)',
     btnConflicts:'⚠ 競合チェック', btnConflictsT:'定員超過(重複)の客室をスキャン → 超過autoを整理(手動・分割は保護)',
     btnClosure:'🔒 客室閉鎖', btnClosureT:'特定の客室を期間指定で閉鎖(ロック) — 代表使用中・点検など。閉鎖期間は割当不可',
@@ -645,7 +646,8 @@ const L={
   },
   ko:{
     prevMonth:'이전 달', nextMonth:'다음 달', thisMonthToday:'이번 달·오늘', monthLbl:'월', today:'오늘',
-    btnAuto:'월별 자동배정', btnAutoT:'회원 우선(회원 짝을 일반보다 먼저 배정 → 예약 늦어도 회원 우선). 회원=디럭스, 일반=예약종류. 각 그룹 내 예약순. 기존 수기배정 보호. 불러온 그 달만.',
+    btnAuto:'월별 자동배정', btnAutoT:'회원 우선(회원 짝을 일반보다 먼저 배정 → 예약 늦어도 회원 우선). 회원끼리 묶어 디럭스 — 일반은 디럭스에 들어가지 않음(회원이 홀수로 1명 남을 때만 그 1명이 일반 1명과 디럭스 동실). 일반=스탠다드 트윈→컴팩트. 3층은 실질 등급을 한 단계 낮춰 계산(3층 디럭스=트윈 취급/3층 트윈=컴팩트 취급). 각 그룹 내 예약순. 기존 수기배정 보호. 불러온 그 달만.',
+    lowGrade:'실질 등급 한 단계 아래', lowGradeT:'3층은 같은 타입명이어도 급이 낮음 → 배정 계산에서 디럭스=트윈 취급·트윈=컴팩트(소형) 취급. 화면 표시와 저장값은 그대로입니다.',
     btnClearAll:'전체 비우기', btnClearAllT:'불러온 범위의 모든 배정 해제(수기·자동 전부)',
     btnConflicts:'⚠ 충돌 점검', btnConflictsT:'정원 초과(겹침) 방을 스캔 → 초과 auto 배정을 정리(수기·분할은 보호)',
     btnClosure:'🔒 객실 폐쇄', btnClosureT:'특정 객실을 기간 지정해 폐쇄(잠금) — 대표님 사용 중·점검 등. 폐쇄 기간엔 배정 불가',
@@ -800,7 +802,8 @@ const L={
   },
   en:{
     prevMonth:'Prev month', nextMonth:'Next month', thisMonthToday:'This month · today', monthLbl:'Month', today:'Today',
-    btnAuto:'Monthly auto-assign', btnAutoT:'Member priority (member pairs assigned before general → members win even if booked later). Member=Deluxe, standard=reservation type. Reservation order within each group. Protects manual. Loaded month only.',
+    btnAuto:'Monthly auto-assign', btnAutoT:'Member priority (member pairs are placed before general ones → members win even if they booked later). Members are paired together into Deluxe — non-members do not enter Deluxe (only when one member is left over does that person share a Deluxe with one non-member). General = standard twin → compact. Floor 3 counts one grade lower (3F deluxe = twin, 3F twin = compact). Reservation order within each group. Protects manual assignments. Loaded month only.',
+    lowGrade:'One grade lower', lowGradeT:'Rooms on floor 3 are a grade below their type name → for assignment they count as deluxe=twin and twin=compact. Display and stored values are unchanged.',
     btnClearAll:'Clear all', btnClearAllT:'Release all assignments in the loaded range (manual + auto)',
     btnConflicts:'⚠ Conflict check', btnConflictsT:'Scan capacity-over (overlapping) rooms → resolve over-capacity auto assignments (manual/split protected)',
     btnClosure:'🔒 Room closure', btnClosureT:'Close (lock) a specific room for a period — in use by chairman / inspection, etc. No assignment during closure',
@@ -1684,6 +1687,12 @@ function renderFacilities(){
       if(zones.length>1){
         const zl=document.createElement('div'); zl.className='zone-label';
         zl.innerHTML=`<span>— ${zone}</span>`;
+        if(isHotelFloor && parseInt(zone,10)===LOW_GRADE_FLOOR){
+          // 3층 = 실질 등급 한 단계 아래로 계산됨을 현장이 알 수 있게 표기
+          const lg=document.createElement('small');
+          lg.className='zone-pin'; lg.textContent=tx('lowGrade'); lg.title=tx('lowGradeT');
+          zl.appendChild(lg);
+        }
         if(isHotelFloor){
           // 층 라벨 + 단면도 보기 버튼
           const btn=document.createElement('button');
@@ -2236,6 +2245,17 @@ async function assign(seq,inv){
 //   · assign_source='auto' 만 재정렬(수기 배정·잠금은 안 건드림) → 재실행=승급 반영.
 // ════════════════════════════════════════════════════════════════════════
 const DELUXE_TYPES=['디럭스더블트윈','디럭스트윈']; // 우선순위 순(최상급 먼저)
+// ── 3층 실질 등급 강등 (Min 2026-08, 현장 기준) ──────────────────────────────
+//  3층은 같은 타입명이어도 급이 낮다 → 배정 계산에서만 한 단계 내려서 취급한다.
+//   3층 디럭스 → '트윈' 취급 / 3층 트윈 → '컴팩트트윈'(소형) 취급.
+//   ※3층엔 컴팩트트윈이 애초에 등록돼 있지 않음(트윈4·싱글4·디럭스더블트윈4).
+//   ⚠ DB의 room_type·화면 표시는 그대로 — 자동배정 풀 판정에만 쓴다.
+const LOW_GRADE_FLOOR=3;
+const TYPE_DOWNGRADE={'디럭스더블트윈':'트윈','디럭스트윈':'트윈','트윈':'컴팩트트윈'};
+function effType(inv){
+  const t=inv&&inv.room_type||'';
+  return (floorOf(inv)===LOW_GRADE_FLOOR && TYPE_DOWNGRADE[t]) ? TYPE_DOWNGRADE[t] : t;
+}
 
 // 예약순(선착) = event_seq 오름차순. 작을수록 먼저 예약 → 좋은 객실 우선.
 //  엠클릭 번호 체계: 이전 시스템에서 이관한 '가장 빠른 예약'들 = 정상 번호대(~98,219, 예: 90000번대) /
@@ -2316,15 +2336,15 @@ function roomPool(route, kind){
   // 공통 1순위: 높은 층 우선(3층=기피층이라 맨 뒤). 예약 빠른 팀이 먼저 좋은 층을 받음.
   const byFloorDesc=(a,b)=>floorOf(b)-floorOf(a);
   if(kind==='deluxe'){
-    rooms=rooms.filter(r=>DELUXE_TYPES.includes(r.room_type));
+    rooms=rooms.filter(r=>DELUXE_TYPES.includes(effType(r)));   // 3층 디럭스는 강등되어 여기서 빠짐
     rooms.sort((a,b)=>byFloorDesc(a,b)
-                      || (DELUXE_TYPES.indexOf(a.room_type)-DELUXE_TYPES.indexOf(b.room_type))
+                      || (DELUXE_TYPES.indexOf(effType(a))-DELUXE_TYPES.indexOf(effType(b)))
                       || (a.sort_order||0)-(b.sort_order||0));
   }else{
     if(route.genTypes){
-      rooms=rooms.filter(r=>route.genTypes.includes(r.room_type));
+      rooms=rooms.filter(r=>route.genTypes.includes(effType(r)));  // 3층 디럭스=트윈 / 3층 트윈=컴팩트 취급
       rooms.sort((a,b)=>byFloorDesc(a,b)
-                        || (route.genTypes.indexOf(a.room_type)-route.genTypes.indexOf(b.room_type))
+                        || (route.genTypes.indexOf(effType(a))-route.genTypes.indexOf(effType(b)))
                         || (a.sort_order||0)-(b.sort_order||0));
     }else{
       rooms=rooms.filter(r=>(r.max_capacity||r.capacity)>=2); // 비호텔: 2인 이상 방
@@ -2498,15 +2518,29 @@ async function autoAssign(){
         // 회원 강등 풀: 디럭스 전층 만실 → 스탠다드 트윈 먼저, 그다음 컴팩트트윈(타입 우선·전층).
         const MEM_DOWN=['트윈','컴팩트트윈'];
         const memDown=roomPool({fac:route.fac, floorOnly:route.floorOnly, zone:route.zone, genTypes:MEM_DOWN},'general')
-          .slice().sort((a,b)=> (MEM_DOWN.indexOf(a.room_type)-MEM_DOWN.indexOf(b.room_type)) || (floorOf(b)-floorOf(a)) || ((a.sort_order||0)-(b.sort_order||0)));
-        const memberPairs=[], generalPairs=[]; let pi=0;
-        for(; pi+1<roster.length; pi+=2){ const pair=[roster[pi], roster[pi+1]]; (pair.some(isMember)?memberPairs:generalPairs).push(pair); }
+          .slice().sort((a,b)=> (MEM_DOWN.indexOf(effType(a))-MEM_DOWN.indexOf(effType(b))) || (floorOf(b)-floorOf(a)) || ((a.sort_order||0)-(b.sort_order||0)));
+        // ── 짝짓기 = 회원 우선(Min 2026-08) ────────────────────────────────
+        //  이전: 명단 순서대로 1-2·3-4 → 짝에 회원이 하나라도 있으면 디럭스
+        //        → 회원2+일반2 팀이 (회원,일반)×2가 되어 디럭스 2실을 쓰고 일반 2명이 디럭스에 들어갔다.
+        //  현재: 회원끼리 먼저 묶어 디럭스(→일반은 디럭스에 안 들어감).
+        //        회원이 홀수로 남을 때만 그 1명이 일반 1명과 디럭스를 같이 쓴다(회원3+일반1 → 디럭스 2실).
+        //        동행 일반도 없이 회원 1명만 남으면 보류(수기).
+        const mems=roster.filter(m=>isMember(m)), gens=roster.filter(m=>!isMember(m));
+        const memberPairs=[], generalPairs=[], leftovers=[];
+        let mi=0, gi=0;
+        for(; mi+1<mems.length; mi+=2) memberPairs.push([mems[mi], mems[mi+1]]);
+        if(mi<mems.length){                                  // 회원 홀수 → 1명 남음
+          if(gens.length){ memberPairs.push([mems[mi], gens[0]]); gi=1; }   // 일반 1명과 디럭스 동실
+          else leftovers.push(mems[mi]);
+        }
+        for(; gi+1<gens.length; gi+=2) generalPairs.push([gens[gi], gens[gi+1]]);
+        if(gi<gens.length) leftovers.push(gens[gi]);
         if(phase==='member'){
           // 회원 짝: 허용 층 디럭스 → 전층 디럭스(층 이동) → 스탠다드 트윈→컴팩트 강등
           placeGivenPairs(g, memberPairs, dlx, memDown, tx('deluxe'), pending, holds, occ, floorOrder, dlxAny);
         }else{
           placeGivenPairs(g, generalPairs, gp, null, tx('byReservation'), pending, holds, occ, floorOrder);
-          if(pi<roster.length){ holds.push(tx('holdOddLeft',gc,roster[pi].name_kr||'')); }
+          leftovers.forEach(m=>holds.push(tx('holdOddLeft',gc,m.name_kr||'')));
         }
       }else{
         // 비디럭스 시설(쿠주·간지·돔): 룸타입 없음 → 회원 포함 팀은 회원 패스, 순수 일반팀은 일반 패스(회원 우선 일관)
