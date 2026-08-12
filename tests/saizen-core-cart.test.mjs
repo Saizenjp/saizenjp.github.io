@@ -93,3 +93,19 @@ test('팀 인원 → 조 나누기(4명 정원, 균등)', () => {
   assert.deepEqual(SZ.splitTeam(9), [3, 3, 3]);
   assert.deepEqual(SZ.splitTeam(0), []);
 });
+
+test('묶음 클러스터 — 같은 태그코드를 쓰는 다른 시기 묶음을 갈라낸다', () => {
+  const merged = [
+    { event_seq: '201', dep: '2026-03-05' }, { event_seq: '202', dep: '2026-03-05' }, { event_seq: '203', dep: '2026-03-08' },
+    { event_seq: '301', dep: '2026-08-09' }, { event_seq: '302', dep: '2026-08-09' }, { event_seq: '303', dep: '2026-08-12' },
+  ];
+  const cs = SZ.groupClusters(merged);
+  assert.equal(cs.length, 2);
+  assert.deepEqual(cs[0].map(x => x.event_seq), ['201', '202', '203']);
+  assert.deepEqual(cs[1].map(x => x.event_seq), ['301', '302', '303']);
+  assert.deepEqual(SZ.clusterOf(merged, '302').map(x => x.event_seq), ['301', '302', '303']);
+
+  // 월 경계에 걸친 진짜 한 묶음(7/28 · 8/2 · 8/9)은 쪼개지 않는다
+  const real = [{ event_seq: '1', dep: '2026-07-28' }, { event_seq: '2', dep: '2026-08-02' }, { event_seq: '3', dep: '2026-08-09' }];
+  assert.equal(SZ.groupClusters(real).length, 1);
+});

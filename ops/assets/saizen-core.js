@@ -528,6 +528,39 @@
     var m = base.match(/^(.*-)([A-Za-z])$/);   // ...-Y → 시설문자 앞에 번호 삽입
     return m ? m[1] + n + m[2] : base + '-' + n;
   }
+  // 묶음 이름(team_group)이 대표팀 태그코드라, 같은 코드를 쓰는 '다른 시기의 묶음'과
+  //  한 덩어리로 합쳐질 수 있다(F풀 코드 재사용·회원코드 재등장). 합쳐지면 순번이
+  //  1,1,2,2,3,3 → 재부여 1..6 이 되어 한쪽이 Y2/Y4/Y6 로 밀린다(실제 발생).
+  //  → 입국일 간격으로 실제 묶음을 갈라낸다. 한 묶음은 같은 여정이라 며칠 안에 모인다.
+  //  members=[{event_seq, dep, …}] → 날짜순 클러스터 배열(원본 객체 유지).
+  function groupClusters(members, gapDays) {
+    var gap = (gapDays == null ? 45 : gapDays) * 86400000;
+    var list = (members || []).slice().sort(function (a, b) {
+      var ad = String(a.dep || ''), bd = String(b.dep || '');
+      if (ad !== bd) return ad < bd ? -1 : 1;
+      return String(a.event_seq || a.seq) < String(b.event_seq || b.seq) ? -1 : 1;
+    });
+    var out = [], cur = [];
+    list.forEach(function (m) {
+      if (!cur.length) { cur.push(m); return; }
+      var prev = parseLocalDate(cur[cur.length - 1].dep), now = parseLocalDate(m.dep);
+      if (!isNaN(prev) && !isNaN(now) && (now - prev) > gap) { out.push(cur); cur = [m]; }
+      else cur.push(m);
+    });
+    if (cur.length) out.push(cur);
+    return out;
+  }
+  // 그 팀이 속한 클러스터만 돌려준다(없으면 전체).
+  function clusterOf(members, seq, gapDays) {
+    var cs = groupClusters(members, gapDays), s = String(seq);
+    for (var i = 0; i < cs.length; i++) {
+      for (var j = 0; j < cs[i].length; j++) {
+        if (String(cs[i][j].event_seq != null ? cs[i][j].event_seq : cs[i][j].seq) === s) return cs[i];
+      }
+    }
+    return members || [];
+  }
+
   // 그룹 내 팀 정렬: 대표 먼저, 그다음 (출발일 dep, event_seq) 오름차순. 팀번호=인덱스+1.
   //   teams=[{event_seq, dep}], repSeq=대표 event_seq. 원본 불변(새 배열 반환).
   function orderGroup(teams, repSeq) {
@@ -606,6 +639,8 @@
     tagStripSeq: tagStripSeq,
     teamTagN: teamTagN,
     personTagN: personTagN,
-    orderGroup: orderGroup
+    orderGroup: orderGroup,
+    groupClusters: groupClusters,
+    clusterOf: clusterOf
   };
 });

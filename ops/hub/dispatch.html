@@ -100,7 +100,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=17"></script>
+<script src="../assets/saizen-core.js?v=18"></script>
 <script src="../assets/saizen-ops.js?v=15.70"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -662,9 +662,17 @@ function computeGroupTags(){
   (keys.length?keys:Object.keys(groups)).forEach(k=>{
     const all=(GFULL&&GFULL[k])||null;
     const list=groups[k]||[];
-    const src = all && all.length ? all
+    let src = all && all.length ? all
               : (list.length>1 ? list.map(r=>({seq:String(r.seq),rep:!!r.rec.teamGroupRep,gseq:r.rec.teamGroupSeq,dep:r.dep,tag:r.tagCode||''})) : null);
     if(!src || src.length<2) return;                       // 단독은 번호 없음
+    // ⚠ 묶음 이름 = 대표 태그코드라, 같은 코드를 쓰는 다른 시기 묶음과 합쳐질 수 있다
+    //   (합쳐지면 순번이 Y2/Y4/Y6 로 밀림). 입국일 간격으로 실제 묶음만 갈라낸다.
+    if(SZCore.clusterOf && list.length){
+      const anchorSeq=String(list[0].seq);
+      const cl=SZCore.clusterOf(src.map(x=>({...x,event_seq:x.seq})), anchorSeq);
+      if(cl && cl.length>=2) src=cl;
+    }
+    if(src.length<2) return;
     const rep=src.find(x=>x.rep);
     if(!rep || !rep.tag) return;   // 대표 미지정(구 묶음) → 원래 태그 유지. 대표 선택 시에만 통일코드.
     const repRow=list.find(r=>String(r.seq)===rep.seq);

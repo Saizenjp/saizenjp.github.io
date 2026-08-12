@@ -83,7 +83,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=17"></script><!-- 공유 도메인 규칙(출발지 PUS/ICN 등) -->
+<script src="../assets/saizen-core.js?v=18"></script><!-- 공유 도메인 규칙(출발지 PUS/ICN 등) -->
 <script src="../assets/saizen-ops.js?v=15.70"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -335,7 +335,14 @@ async function load(){
       }));
       const merged=new Set();   // 한 장으로 합쳐져 사라지는 카드(seq)
       Object.keys(GRPALL).forEach(k=>{
-        const all=GRPALL[k]; if(!all||all.length<2) return;              // 진짜 단독 = 번호 없음
+        let all=GRPALL[k]; if(!all||all.length<2) return;                // 진짜 단독 = 번호 없음
+        // 같은 태그코드를 쓰는 다른 시기 묶음이 합쳐지는 것 방지(순번 Y2/Y4/Y6 밀림)
+        const _anchor=CARDS.find(c=>all.some(x=>x.seq===String(c.seq)));
+        if(SZCore.clusterOf && _anchor){
+          const cl=SZCore.clusterOf(all.map(x=>({...x,event_seq:x.seq})), String(_anchor.seq));
+          if(cl && cl.length>=2) all=cl;
+        }
+        if(all.length<2) return;
         const allRep=all.find(x=>x.rep); if(!allRep) return;             // 대표 미지정(구 묶음) = 원래 태그 유지
         const base=allRep.tag; if(!base) return;
         const list=CARDS.filter(c=>all.some(x=>x.seq===String(c.seq))); // 이 달에 있는 카드만

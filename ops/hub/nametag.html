@@ -94,7 +94,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=17"></script><!-- 공유 도메인 규칙(출발지 PUS/ICN 등) -->
+<script src="../assets/saizen-core.js?v=18"></script><!-- 공유 도메인 규칙(출발지 PUS/ICN 등) -->
 <script src="../assets/saizen-ops.js?v=15.70"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -356,7 +356,14 @@ async function load(){
     //                        ② 아니면 SZCore.orderGroup(대표 먼저 → 입국일 → 행사번호)
     if(window.SZCore&&SZCore.orderGroup&&SZCore.personTagN&&SZCore.tagStripSeq){
       Object.keys(GALL).forEach(k=>{
-        const all=GALL[k]; if(!all||all.length<2) return;
+        let all=GALL[k]; if(!all||all.length<2) return;
+        // 같은 태그코드를 쓰는 다른 시기 묶음이 합쳐지는 것 방지(개인번호 밀림)
+        const _anchor=CELLS.find(c=>all.some(x=>x.seq===String(c.eventSeq)));
+        if(SZCore.clusterOf && _anchor){
+          const cl=SZCore.clusterOf(all.map(x=>({...x,event_seq:x.seq})), String(_anchor.eventSeq));
+          if(cl && cl.length>=2) all=cl;
+        }
+        if(all.length<2) return;
         const rep=all.find(x=>x.rep); if(!rep||!rep.tag) return;   // 대표 미지정(구 묶음) = 원래 태그 유지
         const base=rep.tag;                                        // 이미 tagStripSeq 적용됨
         const gcode=tagCode(base);
