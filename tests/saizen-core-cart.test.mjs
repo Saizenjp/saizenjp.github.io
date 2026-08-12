@@ -72,3 +72,24 @@ test('전기 신청팀은 라운딩 일수 전부에 분배된다(golfRows 기�
   assert.equal(plan.code, 'electric');
   assert.equal(total, days.length, '하루 1대 × 라운딩 일수');
 });
+
+test('티오프 슬롯 — 6:50 시작 7분 간격 8:42 마지막 = 17조', () => {
+  const s = SZ.teeSlots();
+  assert.equal(s.length, 17);
+  assert.equal(s[0], '06:50');
+  assert.equal(s[1], '06:57');
+  assert.equal(s[10], '08:00');
+  assert.equal(s[s.length - 1], '08:42');
+  assert.deepEqual(SZ.teeSlots('07:00', 10, '07:30'), ['07:00', '07:10', '07:20', '07:30']);
+});
+
+test('팀 인원 → 조 나누기(4명 정원, 균등)', () => {
+  assert.deepEqual(SZ.splitTeam(2), [2]);
+  assert.deepEqual(SZ.splitTeam(4), [4]);
+  assert.deepEqual(SZ.splitTeam(5), [3, 2]);
+  assert.deepEqual(SZ.splitTeam(6), [3, 3]);
+  assert.deepEqual(SZ.splitTeam(7), [4, 3]);
+  assert.deepEqual(SZ.splitTeam(8), [4, 4]);
+  assert.deepEqual(SZ.splitTeam(9), [3, 3, 3]);
+  assert.deepEqual(SZ.splitTeam(0), []);
+});

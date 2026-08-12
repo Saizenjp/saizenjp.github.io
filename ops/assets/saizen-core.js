@@ -257,6 +257,28 @@
     return !!(r && r.course === 'やまなみCC');
   }
 
+  // ── 티오프 슬롯 (코스별 조 편성) ────────────────────────────────────────────
+  //  현장 게시판 기준(Min 2026-08): 코스마다 첫 조 6:50, 7분 간격, 마지막 조 8:42 = 17조.
+  var TEE_FIRST = '06:50', TEE_STEP = 7, TEE_LAST = '08:42';
+  function _hm2min(s) { var m = String(s || '').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : NaN; }
+  function _min2hm(n) { return String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0'); }
+  function teeSlots(first, step, last) {
+    var a = _hm2min(first || TEE_FIRST), b = _hm2min(last || TEE_LAST), s = +(step || TEE_STEP);
+    if (isNaN(a) || isNaN(b) || !(s > 0)) return [];
+    var out = [];
+    for (var t = a; t <= b; t += s) out.push(_min2hm(t));
+    return out;
+  }
+  //  팀 인원 → 조 나누기. 4명 정원, 최소 조 수로 균등 분할.
+  //   2→[2] · 4→[4] · 5→[3,2] · 6→[3,3] · 7→[4,3] · 8→[4,4] · 9→[3,3,3]
+  function splitTeam(pax, cap) {
+    var n = Math.max(0, Math.floor(+pax || 0)), c = Math.max(1, Math.floor(+cap || 4));
+    if (!n) return [];
+    var k = Math.ceil(n / c), base = Math.floor(n / k), rem = n % k, out = [];
+    for (var i = 0; i < k; i++) out.push(base + (i < rem ? 1 : 0));
+    return out;
+  }
+
   // ── 카트 배정 규칙 (카트 관리표) ────────────────────────────────────────────
   //  · 전기(전동)카트 = 유료 사전신청. 현지전달비고(remark_local)에 신청 표기가 있는 팀만.
   //    → 그 팀의 라운딩 일수(golfRows) 전부에 자동 분배.
@@ -553,6 +575,11 @@
     isNonWorkday: isNonWorkday,
     golfRows: golfRows,
     usesYamanamiCC: usesYamanamiCC,
+    TEE_FIRST: TEE_FIRST,
+    TEE_STEP: TEE_STEP,
+    TEE_LAST: TEE_LAST,
+    teeSlots: teeSlots,
+    splitTeam: splitTeam,
     wantsElectricCart: wantsElectricCart,
     cartPlan: cartPlan,
     parseCartNos: parseCartNos,

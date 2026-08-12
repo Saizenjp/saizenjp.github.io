@@ -127,7 +127,8 @@ const JP_HOLIDAYS=new Set(['2025-01-01','2025-01-13','2025-02-11','2025-02-23','
 const L={
   ja:{ step:'ゴルフ組編成', connHint:'接続情報はこのブラウザにのみ保存されます。', monthSel:'月選択',
     daySel:'ラウンド日', dayNote:'※ 商品名からラウンド日を自動抽出(入国ICN・滞在中・帰国PUS)。',
-    poolH:'未編成', groupsH:'組', addGrp:'＋ 新しい組', autoTeam:'🪄 4名以下 自動', clearAll:'🧹 全消去', autoManualHint:n=>`${n}チームは5名以上 — 手動で組編成してください`,
+    poolH:'未編成', groupsH:'組', addGrp:'＋ 新しい組', autoTeam:'🪄 自動 組編成', clearAll:'🧹 全消去', autoManualHint:n=>`${n}チームは5名以上 — 手動で組編成してください`,
+    teeOver:(c,n)=>`${c} コースは${n}組を超えました — ティ時刻が足りません`,
     selToGrp:'選択を組へ', male:'男', female:'女', course:'コース', tee:'ティ', cart:'カート',
     save:'💾 保存', print:'🖨 組編成表 プレビュー', noDay:'ラウンド日を選択してください。', noData:'この日にラウンドはありません。',
     savedN:n=>`${n}組を保存しました`, saveFail:'保存失敗: ', loadFail:'読み込み失敗', capFull:'この組は満員です(最大4名)',
@@ -136,7 +137,8 @@ const L={
     grp:'組', unassigned:n=>`未編成 ${n}名` },
   ko:{ step:'골프 조편성', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', monthSel:'월 선택',
     daySel:'라운딩 날짜', dayNote:'※ 상품명으로 라운딩 날짜 자동 추출(입국ICN·체류중·귀국PUS).',
-    poolH:'미편성', groupsH:'조', addGrp:'＋ 새 조', autoTeam:'🪄 4명 이하 자동', clearAll:'🧹 전체 비우기', autoManualHint:n=>`${n}팀은 5명 이상 — 수기로 조편성 하세요`,
+    poolH:'미편성', groupsH:'조', addGrp:'＋ 새 조', autoTeam:'🪄 자동 조편성', clearAll:'🧹 전체 비우기', autoManualHint:n=>`${n}팀은 5명 이상 — 수기로 조편성 하세요`,
+    teeOver:(c,n)=>`${c} 코스가 ${n}조를 넘었습니다 — 티오프 시간이 모자랍니다`,
     selToGrp:'선택 → 조에 추가', male:'남', female:'여', course:'코스', tee:'티오프', cart:'카트',
     save:'💾 저장', print:'🖨 조편성표 미리보기', noDay:'라운딩 날짜를 선택하세요.', noData:'이 날 라운딩이 없습니다.',
     savedN:n=>`${n}개 조 저장했습니다`, saveFail:'저장 실패: ', loadFail:'불러오기 실패', capFull:'이 조는 만원입니다(최대 4명)',
@@ -145,7 +147,8 @@ const L={
     grp:'조', unassigned:n=>`미편성 ${n}명` },
   en:{ step:'Golf grouping', connHint:'Connection info is stored only in this browser.', monthSel:'Month',
     daySel:'Round date', dayNote:'※ Round days auto-derived from product (arrival ICN · during stay · departure PUS).',
-    poolH:'Unassigned', groupsH:'Groups', addGrp:'＋ New group', autoTeam:'🪄 Auto (≤4)', clearAll:'🧹 Clear all', autoManualHint:n=>`${n} team(s) have 5+ — group manually`,
+    poolH:'Unassigned', groupsH:'Groups', addGrp:'＋ New group', autoTeam:'🪄 Auto grouping', clearAll:'🧹 Clear all', autoManualHint:n=>`${n} team(s) have 5+ — group manually`,
+    teeOver:(c,n)=>`${c} course exceeds ${n} groups — not enough tee slots`,
     selToGrp:'Selected → group', male:'M', female:'F', course:'Course', tee:'Tee', cart:'Cart',
     save:'💾 Save', print:'🖨 Sheet preview', noDay:'Select a round date.', noData:'No rounds on this day.',
     savedN:n=>`Saved ${n} groups`, saveFail:'Save failed: ', loadFail:'Load failed', capFull:'This group is full (max 4)',
@@ -380,16 +383,43 @@ function assignSelTo(gi){
   SEL.clear(); renderBoard();
 }
 function removeMember(gi,mi){ const g=GROUPS[gi]; if(!g)return; g.members.splice(mi,1); renderBoard(); }
+// 그 날 그 팀의 홀 수(9홀=귀국일 부산팀 / 18홀=그 외) — 게시판 備考·티오프 순서 기준
+function holesOfTeam(t){
+  const r=SZCore.golfRows({dep:t.dep,arr:t.arr,accom:t.accom},t.isPus).find(x=>x.date===DATESEL);
+  return r?r.holes:18;
+}
+function teamOfGroup(g){ const s=g.members&&g.members[0]&&g.members[0].seq; return TEAMS.find(t=>t.seq===s)||null; }
+// 코스별 티오프 = 6:50부터 7분 간격(마지막 8:42 = 17조). GROUPS 순서대로 채운다.
+function applyTeeTimes(){
+  const slots=SZCore.teeSlots(); const idx={};
+  GROUPS.forEach((g,i)=>{ const c=g.course||''; idx[c]=idx[c]||0; g.tee=slots[idx[c]]||''; idx[c]++; g.slot=i+1; });
+  return slots.length;
+}
 function autoAssign(){
-  // 규칙(Min): 4명 이하 팀 = 그대로 한 조 자동. 4명 초과(5·6·8…) 팀 = 수기 조편성 필요 → 풀에 남김.
-  const a=assignedIds(); let manualN=0;
-  teamsOnDate(DATESEL).forEach(t=>{
-    if(t.members.length>4){ manualN++; return; }        // 4명 초과 = 수기(자동 제외)
-    const ms=t.members.filter(m=>!a.has(m.id)); if(!ms.length)return;
-    GROUPS.push({course:autoCourse(),tee:'',cart:'',slot:GROUPS.length+1,note:'',members:ms.map(m=>({...m,tag:t.tag}))});
+  // 규칙(Min 2026-08): 팀을 4명 정원으로 균등 분할(2명=1조 · 4명=1조 · 6명=3+3 · 8명=4+4).
+  //  한 팀의 조는 같은 코스에 연속으로 두고, 9홀(귀국일) 팀을 앞 시간대에 배치.
+  //  티오프는 코스별 6:50 시작 7분 간격(마지막 8:42).
+  const teams=teamsOnDate(DATESEL);
+  if(!teams.length){ toast(tx('noData'),'warn'); return; }
+  GROUPS=[];                                   // 자동 편성은 그날 전체를 다시 짠다
+  const order=teams.slice().sort((a,b)=>(holesOfTeam(a)-holesOfTeam(b))||String(a.tag).localeCompare(String(b.tag)));
+  const cnt={}; COURSES.forEach(c=>cnt[c.code]=0);
+  order.forEach(t=>{
+    const sizes=SZCore.splitTeam(t.members.length);
+    if(!sizes.length) return;
+    // 코스 = 조 수 적은 곳(인기순 타이브레이크) — 한 팀은 한 코스에 몰아서
+    const c=COURSES.slice().sort((a,b)=>(cnt[a.code]-cnt[b.code])||(a.pop-b.pop))[0].code;
+    let i=0;
+    sizes.forEach(sz=>{
+      const ms=t.members.slice(i,i+sz).map(m=>({...m,tag:t.tag})); i+=sz;
+      GROUPS.push({course:c,tee:'',cart:'',slot:0,note:'',members:ms});
+      cnt[c]++;
+    });
   });
+  const cap=applyTeeTimes();
   renderBoard();
-  if(manualN) toast(tx('autoManualHint')(manualN),'warn');
+  const over=COURSES.filter(c=>cnt[c.code]>cap);
+  if(over.length) toast(tx('teeOver')(over.map(c=>lang()==='ja'?c.ja:c.ko).join('·'),cap),'warn');
 }
 
 async function saveBoard(){
@@ -413,30 +443,75 @@ async function saveBoard(){
 function printSheet(){
   if(!DATESEL||!GROUPS.length){ toast(tx('noData'),'err'); return; }
   const dt=parseLocalDate(DATESEL);
-  const cName=c=>c?(lang()==='ja'?CMAP[c].ja:CMAP[c].ko):'-';
-  // 코스 인기순 → slot 순 정렬
-  const ordered=GROUPS.slice().map((g,i)=>({...g,_i:i})).sort((a,b)=>{
-    const pa=a.course?CMAP[a.course].pop:9, pb=b.course?CMAP[b.course].pop:9; if(pa!==pb)return pa-pb;
-    return (a.slot||a._i)-(b.slot||b._i);
-  });
-  const rows=ordered.map((g,i)=>`<tr>
-    <td class="c">${i+1}</td><td class="c">${esc(cName(g.course))}</td><td class="c">${esc(g.tee||'')}</td><td class="c">${esc(g.cart||'')}</td>
-    <td>${g.members.map(m=>`${esc(m.name)}${m.gender==='男'?'<span class="mm">♂</span>':m.gender==='女'?'<span class="ff">♀</span>':''} <span class="tg">${esc(m.tag||'')}</span>`).join(' ／ ')}</td>
-    <td class="c">${g.members.length}</td></tr>`).join('');
-  const css=`<style>@page{size:A4 portrait;margin:12mm}*{box-sizing:border-box}body{font-family:'Yu Gothic','Malgun Gothic',sans-serif;color:#1a2540}
-    h1{font-size:20px;margin-bottom:3mm}.sub{color:#666;font-size:12px;margin-bottom:5mm}
-    table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #888;padding:5px 7px}
-    th{background:#eef2e6}td.c{text-align:center}.tg{font-family:monospace;color:#9a7322;font-size:11px}
-    .mm{color:#1A4D8F;font-weight:800}.ff{color:#b23b6e;font-weight:800}
-    .bar{position:sticky;top:0;background:#fff;border-bottom:2px solid #647548;padding:9px 14px;display:flex;gap:10px}
+  const slots=SZCore.teeSlots();
+  // ── 현장 게시판 양식(Min 2026-08 사진 기준) ─────────────────────────────
+  //  코스마다 [시간 · Group · 대표자명 · 備考] 표. 시간은 6:50~8:42 고정 17행.
+  //  備考 = 9홀(귀국일) 「9홀 플레이 이후 점심/출국」 · 그 외 「18홀 이후 점심식사 예정」.
+  //  같은 문구가 이어지면 세로로 병합(rowspan) — 사진과 동일.
+  //  ⚠ 손님(한국 골퍼)용 게시물이라 한국어 고정(화면 언어 토글과 무관).
+  const N9='9홀 플레이 이후\n점심/출국', N18='18홀 플레이 이후\n점심식사 예정';
+  const byC={}; COURSES.forEach(c=>byC[c.code]=[]);
+  GROUPS.forEach(g=>{ if(byC[g.course]) byC[g.course].push(g); });
+  const courseTable=c=>{
+    const list=byC[c.code].slice().sort((a,b)=>String(a.tee||'zz').localeCompare(String(b.tee||'zz')));
+    const bySlot={}; list.forEach(g=>{ if(g.tee) bySlot[g.tee]=g; });
+    let free=list.filter(g=>!g.tee), fi=0;
+    const rows=slots.map(t=>{
+      const g=bySlot[t]||free[fi++]||null;
+      if(!g) return {t, tag:'', rep:'', note:''};
+      const team=teamOfGroup(g);
+      const holes=team?holesOfTeam(team):18;
+      const rep=team&&team.rep?`${team.rep}님 일행`:'';
+      return {t, tag:(g.members[0]&&g.members[0].tag)||'', rep, note:(holes===9?N9:N18)};
+    });
+    // 備考 세로 병합 — 같은 문구가 이어지는 구간을 한 칸으로
+    const span=rows.map(()=>0);
+    for(let i=0;i<rows.length;){
+      if(!rows[i].note){ span[i]=1; i++; continue; }
+      let j=i; while(j+1<rows.length && rows[j+1].note===rows[i].note) j++;
+      span[i]=j-i+1; for(let k=i+1;k<=j;k++) span[k]=0; i=j+1;
+    }
+    const tr=rows.map((r,i)=>`<tr>
+      <td class="tm">${esc(r.t.replace(/^0/,''))}</td>
+      <td class="gp">${esc(r.tag)}</td>
+      <td class="rp">${esc(r.rep)}</td>
+      ${span[i]?`<td class="bg${r.note===N9?' n9':(r.note?' n18':'')}" rowspan="${span[i]}">${esc(r.note).replace(/\n/g,'<br>')}</td>`:''}
+    </tr>`).join('');
+    return `<div class="ct">
+      <table><thead>
+        <tr><th class="dt" colspan="4">${dt.getMonth()+1}/${dt.getDate()} &nbsp; ${esc(c.ko)}(${c.code.toUpperCase()}) 코스</th></tr>
+        <tr><th class="tm">시간</th><th class="gp">Group</th><th class="rp">대표자명</th><th class="bg">備考</th></tr>
+      </thead><tbody>${tr}</tbody></table>
+      <div class="foot"><b>점심식사 권장</b>
+        <div>◆ 당일 코스 내 흐름에 따라 18홀 플레이 후 식사에서 9홀 플레이 후 식사로 변경될 수 있사오니 양해 부탁드립니다.</div></div>
+    </div>`;
+  };
+  const css=`<style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}
+    body{font-family:'Malgun Gothic','Yu Gothic',sans-serif;color:#111}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:6mm;padding:4mm}
+    .ct{break-inside:avoid}
+    table{width:100%;border-collapse:collapse;font-size:11.5pt}
+    th,td{border:1px solid #444;padding:1.6mm 2mm;text-align:center}
+    th.dt{background:#e8e8e8;font-size:13pt;text-align:left;padding:2.4mm 3mm}
+    thead tr:nth-child(2) th{background:#f2f2f2;font-size:10.5pt}
+    td.tm{width:15%;font-weight:700;font-variant-numeric:tabular-nums}
+    td.gp{width:16%;font-family:'Yu Gothic',monospace;font-weight:800}
+    td.rp{width:34%;text-align:left;padding-left:3mm}
+    td.bg{width:35%;font-weight:800;line-height:1.35}
+    td.bg.n9{background:#e6e6e6}
+    td.bg.n18{background:#f7f2dd}
+    .foot{border:1px solid #444;border-top:none;background:#eef2ea;font-size:9.5pt;padding:2mm 3mm;line-height:1.4}
+    .foot b{display:inline-block;margin-right:3mm}
+    .bar{position:sticky;top:0;background:#fff;border-bottom:2px solid #647548;padding:9px 14px;display:flex;gap:10px;align-items:center}
     .bar button{padding:8px 18px;border:none;border-radius:6px;font-weight:800;cursor:pointer}
     .bar .p{background:#15803D;color:#fff}.bar .c{background:#e5e7e0}
     @media print{.bar{display:none}}</style>`;
-  const w=window.open('','_blank'); if(!w){ toast('popup',' err'); return; }
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>ゴルフ組編成 ${DATESEL}</title>${css}</head><body>
-    <div class="bar"><b style="flex:1">ゴルフ組編成 · ${DATESEL} ${dow(DATESEL)}</b><button class="p" onclick="window.print()">🖨 ${lang()==='ja'?'印刷':lang()==='en'?'Print':'인쇄'}</button><button class="c" onclick="window.close()">✕ ${lang()==='ja'?'閉じる':lang()==='en'?'Close':'닫기'}</button></div>
-    <div style="padding:6mm 8mm"><h1>ゴルフ組編成表</h1><div class="sub">${dt.getFullYear()}年 ${dt.getMonth()+1}月 ${dt.getDate()}日 ${dow(DATESEL)} · ${GROUPS.length}${tx('grp')}</div>
-    <table><thead><tr><th>${tx('grp')}</th><th>${tx('course')}</th><th>${tx('tee')}</th><th>${tx('cart')}</th><th>${lang()==='ja'?'メンバー':lang()==='en'?'Members':'조원'}</th><th>${tx('person')||'名'}</th></tr></thead><tbody>${rows}</tbody></table></div>
+  const w=window.open('','_blank'); if(!w){ toast('popup','err'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>golf_tee_${DATESEL}</title>${css}</head><body>
+    <div class="bar"><b style="flex:1">티오프 안내 · ${DATESEL} ${dow(DATESEL)}</b>
+      <button class="p" onclick="window.print()">🖨 ${lang()==='ja'?'印刷':lang()==='en'?'Print':'인쇄'}</button>
+      <button class="c" onclick="window.close()">✕ ${lang()==='ja'?'閉じる':lang()==='en'?'Close':'닫기'}</button></div>
+    <div class="grid">${COURSES.map(courseTable).join('')}</div>
   </body></html>`);
   w.document.close();
 }
