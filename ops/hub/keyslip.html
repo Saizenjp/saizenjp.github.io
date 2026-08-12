@@ -101,7 +101,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=14"></script><!-- 공유 도메인 규칙(숙소 라벨·박수 등) -->
-<script src="../assets/saizen-ops.js?v=15.61"></script>
+<script src="../assets/saizen-ops.js?v=15.62"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -181,7 +181,9 @@ const NIGHT_CATS=['3','4','7','etc'];
 const NIGHT_COLOR={'3':'#C0392B','4':'#1F6FB2','7':'#1E7A46','etc':'#7B3F9D'};
 function catColor(c){ return NIGHT_COLOR[c]||NIGHT_COLOR.etc; }
 const CAT_KEY={'3':'n3','4':'n4','7':'n7','etc':'netc'};
-const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
+// 룸키 통은 야마나미·쿠주가 주력 → 칩을 앞에 두고 기본으로 켜 둔다(Min 2026-08).
+const ACCOM_ORDER=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
+const ACCOM_DEFAULT=['야마나미리조트','쿠주힐즈'];
 const WD_JA=['日','月','火','水','木','金','土'];
 
 let supa=null, YM=null, LABELS=[], UNASSIGNED=[],
@@ -254,6 +256,10 @@ function renderUI(){
         <button class="btn" id="btn-print" type="button" disabled>${tx('printBtn')}</button>
       </div>
       <div class="row" style="margin-top:10px">
+        <span class="cnt" style="min-width:62px">${tx('lodging')}</span>
+        <div id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
         <span class="cnt" style="min-width:62px">${tx('nights')}</span>
         <div id="catchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
@@ -264,10 +270,6 @@ function renderUI(){
       <div class="row" style="margin-top:8px">
         <span class="cnt" style="min-width:62px">${tx('date')}</span>
         <div id="daychips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <span class="cnt" style="min-width:62px">${tx('lodging')}</span>
-        <div id="accomchips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
       <div class="row" style="margin-top:10px;align-items:flex-start">
         <span class="cnt" style="min-width:62px">${tx('slotMap')}</span>
@@ -429,6 +431,9 @@ async function load(){
     }).map(g=>`${g.group_code||g.team_tag||g.event_seq}${g.bookings&&g.bookings.rep_name?' '+g.bookings.rep_name:''}`);
 
     SELCATS.clear(); SELDATES.clear(); SELACCOMS.clear(); ORIGINSEL='all'; START=1;
+    // 숙소 기본값 = 야마나미·쿠주(그 달에 실제로 있는 것만). 둘 다 없으면 전체.
+    { const have=new Set(LABELS.map(l=>l.accom));
+      ACCOM_DEFAULT.forEach(a=>{ if(have.has(a)) SELACCOMS.add(a); }); }
     const inp=$('#start-slot'); if(inp) inp.value=1;
     renderSlotMap();
     if(!LABELS.length){ $('#stat').textContent=tx('noMonthData'); }
