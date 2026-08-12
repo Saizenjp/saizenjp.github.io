@@ -289,7 +289,7 @@ async function load(){
     // 2.5) 묶음(대표 지정) — 연속 개인번호용 print_overrides
     const OVR={};
     for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
-      const {data:ov}=await supa.from('print_overrides').select('event_seq,team_group,team_group_rep').in('event_seq',chunk);
+      const {data:ov}=await supa.from('print_overrides').select('event_seq,team_group,team_group_rep,team_group_seq').in('event_seq',chunk);
       (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
     }
     // 3) 셀 구성
@@ -315,23 +315,63 @@ async function load(){
         c.tag=`${c.grpCode}-${n}${pfx}`; c.grpNum=n;
       });
     });
-    // 대표 지정 묶음: 개인 태그를 대표 기준코드 기반 '연속 개인번호'로(DRな-1Y…DRな-8Y, 대표팀부터).
+    // ── 묶음 전원(달 무관) ─────────────────────────────────────────────────
+    //  ⚠ 이 화면은 session_ym 한 달만 읽는데 手配書는 기간으로 읽는다.
+    //     묶음 상대가 다른 달이면 그 팀 인원만큼 개인번호가 앞당겨져 순서가 꼬였다.
+    //     → 그룹 전원을 조회해 화면에 없는 팀도 번호 자리를 차지하게 한다.
+    const GALL={};
+    try{
+      const gkeys=[...new Set(Object.values(OVR).map(o=>o.team_group).filter(Boolean))];
+      if(gkeys.length){
+        const {data:allOv}=await supa.from('print_overrides')
+          .select('event_seq,team_group,team_group_rep,team_group_seq').in('team_group',gkeys);
+        const ovRows=allOv||[];
+        const need=[...new Set(ovRows.map(r=>r.event_seq))].filter(s2=>!gmap[s2]);
+        const ext={};
+        for(let i=0;i<need.length;i+=200){ const ch=need.slice(i,i+200);
+          const {data:g2}=await supa.from('guests').select('event_seq,group_code,pax,bookings!inner(dep_date,pax)').in('event_seq',ch);
+          (g2||[]).forEach(g=>{ const bb=g.bookings||{}; ext[g.event_seq]={dep:bb.dep_date||'', pax:g.pax||bb.pax||0, tag:g.group_code||''}; });
+          const {data:m2}=await supa.from('guest_members').select('event_seq,person_tag,seq_in_team').in('event_seq',ch).order('seq_in_team');
+          (m2||[]).forEach(m=>{ const e=ext[m.event_seq]; if(e){ e.cnt=(e.cnt||0)+1; if(!e.ptag&&m.person_tag) e.ptag=m.person_tag; } });
+        }
+        const strip=t=>(window.SZCore&&SZCore.tagStripSeq)?SZCore.tagStripSeq(t||''):(t||'');
+        ovRows.forEach(r=>{
+          const inView=CELLS.filter(c=>String(c.eventSeq)===String(r.event_seq));
+          const e=ext[r.event_seq]||{};
+          (GALL[r.team_group]=GALL[r.team_group]||[]).push({
+            seq:String(r.event_seq), rep:!!r.team_group_rep,
+            gseq:(r.team_group_seq==null?null:r.team_group_seq),
+            dep: inView.length? inView[0].depRaw : (e.dep||''),
+            pax: inView.length? inView.length : (e.cnt||e.pax||0),
+            tag: inView.length? strip(inView[0].tag) : strip(e.ptag||e.tag||'')
+          });
+        });
+      }
+    }catch(e){ console.warn('묶음 전원 조회 실패:', e && e.message); }
+
+    // 대표 지정 묶음: 개인 태그를 대표 기준코드 기반 '연속 개인번호'로(DRな-1Y…DRな-8Y).
+    //  순서 = 手配書와 동일: ① 순번(team_group_seq) 전원 지정 시 그 순서
+    //                        ② 아니면 SZCore.orderGroup(대표 먼저 → 입국일 → 행사번호)
     if(window.SZCore&&SZCore.orderGroup&&SZCore.personTagN&&SZCore.tagStripSeq){
-      const groups={}, repFlag={};
-      Object.keys(OVR).forEach(s=>{ const o=OVR[s]; if(o.team_group){ repFlag[s]=!!o.team_group_rep; (groups[o.team_group]=groups[o.team_group]||new Set()).add(String(s)); } });
-      Object.keys(groups).forEach(k=>{
-        const teamSeqs=[...groups[k]]; if(teamSeqs.length<2)return;
-        const repSeq=teamSeqs.find(s=>repFlag[s]); if(!repSeq)return;
-        const repCell=CELLS.find(c=>String(c.eventSeq)===String(repSeq)&&c.tag); if(!repCell)return;
-        const base=SZCore.tagStripSeq(repCell.tag);
-        const gcode=tagCode(base);   // 그룹 공통코드(정렬 클러스터 키)
-        const meta=teamSeqs.map(s=>{ const c=CELLS.find(x=>String(x.eventSeq)===String(s)); return {event_seq:s,dep:c?c.depRaw:''}; });
+      Object.keys(GALL).forEach(k=>{
+        const all=GALL[k]; if(!all||all.length<2) return;
+        const rep=all.find(x=>x.rep); if(!rep||!rep.tag) return;   // 대표 미지정(구 묶음) = 원래 태그 유지
+        const base=rep.tag;                                        // 이미 tagStripSeq 적용됨
+        const gcode=tagCode(base);
+        const hasManual=all.every(x=>x.gseq!=null);
+        const ordered = hasManual
+          ? all.slice().sort((a,b)=>(a.gseq-b.gseq)||(Number(a.seq)-Number(b.seq)))
+          : SZCore.orderGroup(all.map(x=>({event_seq:x.seq,dep:x.dep})), rep.seq)
+                  .map(o=>all.find(x=>x.seq===String(o.event_seq))).filter(Boolean);
+        // 정렬 앵커 = 대표(이 달에 없으면 이 달에 있는 첫 팀)
+        const anchor=CELLS.find(c=>String(c.eventSeq)===rep.seq)
+                  || CELLS.find(c=>all.some(x=>x.seq===String(c.eventSeq)));
         let n=0;
-        SZCore.orderGroup(meta,repSeq).forEach(tm=>{
-          CELLS.filter(c=>String(c.eventSeq)===String(tm.event_seq)).sort((a,b)=>(a.seq||0)-(b.seq||0))
-            .forEach(c=>{ n++; c.tag=SZCore.personTagN(base,n);
-              // 대표 앵커로 묶음을 한 블록으로 인접(출국지·숙소 갈려도 함께) + 연속 개인번호로 정렬
-              c.grpCode=gcode; c.grpNum=n; c.sortDep=repCell.depRaw; c.sortPort=repCell.port; c.sortAccom=repCell.accom; });
+        ordered.forEach(x=>{
+          const list=CELLS.filter(c=>String(c.eventSeq)===x.seq).sort((a,b)=>(a.seq||0)-(b.seq||0));
+          if(!list.length){ n+=(x.pax||0); return; }   // 이 달에 없는 팀도 번호 자리를 차지
+          list.forEach(c=>{ n++; c.tag=SZCore.personTagN(base,n); c.grpCode=gcode; c.grpNum=n;
+            if(anchor){ c.sortDep=anchor.depRaw; c.sortPort=anchor.port; c.sortAccom=anchor.accom; } });
         });
       });
     }
