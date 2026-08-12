@@ -201,6 +201,27 @@
   }
 
 
+  // ── 날짜 표기 (화면 공통) ────────────────────────────────────────────────
+  //  Min 2026-08: 같은 시스템이면 날짜 토글도 보는 방식이 같아야 한다 →
+  //  모든 화면의 날짜 칩·라벨을 여기 한 곳에서 만든다. 화면 언어를 따라간다.
+  var WD_JA = ['日','月','火','水','木','金','土'];
+  var WD_KO = ['일','월','화','수','목','금','토'];
+  var WD_EN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  function weekday(date, lang) {
+    var d = parseLocalDate(date); if (!d || isNaN(d)) return '';
+    var i = d.getDay();
+    return lang === 'ko' ? WD_KO[i] : lang === 'en' ? WD_EN[i] : WD_JA[i];
+  }
+  // 'M/D(수)' — 날짜 토글·라벨 표준 표기
+  function mdWd(date, lang) {
+    var d = parseLocalDate(date); if (!d || isNaN(d)) return '-';
+    return (d.getMonth() + 1) + '/' + d.getDate() + '(' + weekday(date, lang) + ')';
+  }
+  function isWeekendDay(date) {
+    var d = parseLocalDate(date); if (!d || isNaN(d)) return false;
+    var w = d.getDay(); return w === 0 || w === 6;
+  }
+
   // ── 라운딩 일정 규칙 (야마나미 골프 · dispatch/카트 공용) ──────────────────
   //  · 입국일 = ICN 팀만 18H(부산편은 도착이 늦어 없음)
   //  · 귀국일 = PUS 팀만 9H(인천편은 오전 출발이라 없음)
@@ -472,6 +493,9 @@
     b2bFees: b2bFees,
     accomFromProduct: accomFromProduct,
     nmCodeConflict: nmCodeConflict,
+    weekday: weekday,
+    mdWd: mdWd,
+    isWeekendDay: isWeekendDay,
     JP_HOLIDAYS: JP_HOLIDAYS,
     isJpHoliday: isJpHoliday,
     isNonWorkday: isNonWorkday,

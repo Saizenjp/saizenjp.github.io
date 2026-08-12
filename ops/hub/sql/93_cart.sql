@@ -2,6 +2,7 @@
 --  93_cart.sql — 카트 관리표 (전기·가솔린·2인용)
 -- ----------------------------------------------------------------------------
 --  · cart_types      : 보유 카트 종류·대수 마스터(화면에서 수정)
+--    실제 보유: 전기 36 · 가솔린 2인승 27 · 가솔린 4인승 48
 --  · cart_bookings   : 날짜×팀 단위 카트 배정(대수·종류·신청구분)
 --  요금: 1대 1일 ¥2,000 (기본값, 종류별로 바꿀 수 있게 컬럼으로)
 --  신청구분: 'pre'=유료 사전신청 / 'onsite'=현장 신청
@@ -20,11 +21,17 @@ create table if not exists public.cart_types (
   updated_at  timestamptz not null default now()
 );
 
+-- 실제 보유(Min 2026-08): 가솔린 2인승 27 · 가솔린 4인승 48 · 전기 36
 insert into public.cart_types(code,name_ja,name_ko,total_count,fee_yen,sort_order) values
-  ('electric',  '電動カート',   '전기카트',  36, 2000, 1),
-  ('gasoline',  'ガソリンカート','가솔린카트', 0, 2000, 2),
-  ('two_seater','2人乗りカート','2인용카트',  0, 2000, 3)
+  ('electric','電動カート','전기카트',                36, 2000, 1),
+  ('gas2',    'ガソリン 2人乗り','가솔린 2인승',        27, 2000, 2),
+  ('gas4',    'ガソリン 4人乗り','가솔린 4인승',        48, 2000, 3)
 on conflict (code) do nothing;
+
+-- 1차 시드의 임시 코드 정리(배정에 쓰이지 않은 것만 — 이미 실행했어도 안전)
+delete from public.cart_types t
+ where t.code in ('gasoline','two_seater')
+   and not exists (select 1 from public.cart_bookings b where b.cart_code = t.code);
 
 drop trigger if exists trg_cart_types_updated on public.cart_types;
 create trigger trg_cart_types_updated before update on public.cart_types
