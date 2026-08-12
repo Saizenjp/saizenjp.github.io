@@ -190,6 +190,7 @@ function refreshConn(){
 }
 const state={ conn:'none' };
 
+let _deepSeq=null;
 let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DATESEL=new Set(), ORIGINSEL='all', SEARCHQ='', GTAG={}, GREP={}, GFULL={}, FILT_ANOM=false, FILT_GROUP=false;
 let RFROM='', RTO='';   // 로드 날짜범위(달력) — 월경계 팀(7↔8월)을 이어서 보기. 기본=선택 월 전체.
 let TOKMAP={};   // event_seq → 주문 QR 토큰(order_tokens)
@@ -283,6 +284,13 @@ async function connect(){
     if(!sess||!sess.session){ state.conn='login'; setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
       $('#content').innerHTML='<div class="panel"><div class="deny">'+esc(tx('loginDeny'))+'<small>'+esc(tx('loginDenySub'))+'</small></div></div>'; return; }
     state.conn='ok'; setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
+    // 딥링크 ?ym=YYYY-MM&seq=행사번호 — 카트 관리표 등에서 「手配書」로 바로 열 때
+    try{
+      const q=new URLSearchParams(location.search);
+      const qy=q.get('ym'), qs=q.get('seq');
+      if(qy && /^\d{4}-\d{2}$/.test(qy)) YM=qy;
+      if(qs) _deepSeq=String(qs).trim();
+    }catch(e){}
     YM=YM||thisYM();
     renderUI(); load();
   }catch(e){ state.conn='fail'; setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
@@ -564,6 +572,11 @@ async function load(){
     DATESEL.clear(); ACCOMSEL.clear();
     $('#stat').textContent=`${ROWS.length}${tx('cntUnit')}`;
     renderDateChips(); renderAccomChips(); renderOriginChips(); renderList();
+    if(_deepSeq){                                  // 딥링크로 들어왔으면 그 팀만 바로 인쇄 미리보기
+      const seq=_deepSeq; _deepSeq=null;
+      if(ROWS.some(r=>String(r.seq)===seq)){ SEARCHQ=seq.toLowerCase(); const sx=$('#search'); if(sx) sx.value=seq; renderList(); printDispatch(seq); }
+      else toast(tx('noTargets'),'err');
+    }
   }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
 

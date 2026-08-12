@@ -26,6 +26,7 @@
   .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
   .btn:hover:not(:disabled){background:var(--accentDeep)}
   .btn:disabled{opacity:.5;cursor:default}
+  .btn.xs{font-size:11px;padding:2px 8px;border-radius:6px}
   .btn.sm{font-size:12px;padding:5px 11px}
   .btn.ghost{background:transparent;color:var(--accent)}
   .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -173,7 +174,7 @@ const L={
       +'<b>電動カートの有料事前申請</b>は<b>やまなみリゾートゴルフクラブ利用時のみ</b> — やまなみ/久住ヒルズ/志津の宿は常に可、'
       +'<b>ガンジーホテルは平日が九重高原CCなので、やまなみCCの日(週末・祝日・入国日)のみ</b>可です。<b>現場申請</b>はいつでも可。'
       +'コース・ティ時刻は<b>ゴルフ組編成</b>で保存された値を読み込みます(未編成なら空欄)。',
-    autoMark:'自動',
+    autoMark:'自動', dispBtn:'手配書', dispT:'現地手配書をポップアップで開きます',
     cuUsed:'この日 使用中', cuOffT:'クリックで「整備中」にします(割当から除外)', cuOn:'整備中 — クリックで使用可に戻します',
     cuNone:'カートが登録されていません。下の欄で追加してください(例 1-36)。',
     cuOff:n=>`整備中 ${n}台`, cuTotal:n=>`登録 ${n}台`,
@@ -218,7 +219,7 @@ const L={
       +'<b>전기카트 유료 사전신청</b>은 <b>야마나미 리조트 골프클럽 이용 시에만</b> 가능합니다 — 야마나미·쿠주힐즈·시즈노야도는 항상 가능, '
       +'<b>간지호텔은 평일이 구주고원CC라 야마나미CC를 쓰는 날(주말·공휴일·입국일)만</b> 가능합니다. <b>현장 신청</b>은 언제나 가능합니다. '
       +'코스·티오프는 <b>골프 조편성</b>에서 저장한 값을 읽어옵니다(미편성이면 빈칸).',
-    autoMark:'자동',
+    autoMark:'자동', dispBtn:'수배서', dispT:'現地手配書를 팝업으로 엽니다',
     cuUsed:'이 날 사용 중', cuOffT:'클릭하면 「정비중」으로 바꿔 배정에서 뺍니다', cuOn:'정비중 — 클릭하면 사용 가능으로 되돌립니다',
     cuNone:'등록된 카트가 없습니다. 아래 칸에서 추가하세요(예 1-36).',
     cuOff:n=>`정비중 ${n}대`, cuTotal:n=>`등록 ${n}대`,
@@ -263,7 +264,7 @@ const L={
       +'<b>Paid pre-booking of electric carts</b> requires playing <b>Yamanami Resort Golf Club</b> — Yamanami, Kuju Hills and Shizu-no-Yado always qualify; '
       +'<b>The Guernsey Hotel plays Kuju Kogen CC on weekdays</b>, so only Yamanami CC days (weekends, holidays, arrival day) qualify. On-site requests are always fine. '
       +'Course and tee time are read from the <b>golf grouping</b> screen (blank if not yet grouped).',
-    autoMark:'auto',
+    autoMark:'auto', dispBtn:'Sheet', dispT:'Opens the local arrangement sheet in a popup',
     cuUsed:'in use this day', cuOffT:'Click to mark as under maintenance (excluded from assignment)', cuOn:'Under maintenance — click to make available again',
     cuNone:'No carts registered. Add them below (e.g. 1-36).',
     cuOff:n=>`${n} under maintenance`, cuTotal:n=>`${n} registered`,
@@ -298,6 +299,9 @@ function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catc
 
 // 코스 코드 → 표기(조편성에서 저장한 야마나미CC 내 3코스)
 const COURSE_NAME={aso:'阿蘇',sobo:'祖母',kuju:'久住'};
+// ⚠ 화면에 표시·배정하는 카트 종류(Min 2026-08: 전기만). 가솔린을 다시 보려면 여기에 code 추가.
+const SHOW_CODES=['electric'];
+function visibleTypes(list){ return (list||[]).filter(t=>SHOW_CODES.includes(t.code)); }
 
 let supa=null, DATE=todayISO(), TYPES=[], ROWS=[], DIRTY=new Set(), UNITS={};
 let VIEW='day', YM=todayISO().slice(0,7), MDAYS=[], MTEAMS=[];
@@ -434,7 +438,7 @@ async function load(){
     // 1) 카트 종류(보유 대수)
     const ct=await supa.from('cart_types').select('*').eq('active',true).order('sort_order');
     if(ct.error) throw ct.error;
-    TYPES=ct.data||[];
+    TYPES=visibleTypes(ct.data);
     await loadUnits();
     // 2) 그 날짜에 체류 중인 팀(입국<=날짜<=귀국) — 라운딩 여부는 규칙으로 거른다
     const bs=await paged((a,b)=>supa.from('bookings')
@@ -658,7 +662,7 @@ function renderTable(){
     const fee=TYPES.reduce((s,t)=>s+(+r.qty[t.code]||0)*(+t.fee_yen||0),0);
     const gc=r.grpCourse?`${COURSE_NAME[r.grpCourse]||r.grpCourse}`:'';
     return `<tr data-i="${i}" class="${DIRTY.has(r.seq)?'dirty':''}">
-      <td class="l"><span class="tag">${esc(r.tag)}</span>${r.auto?` <span class="bdg" style="opacity:.65">${esc(tx('autoMark'))}</span>`:''}</td>
+      <td class="l"><span class="tag">${esc(r.tag)}</span>${r.auto?` <span class="bdg" style="opacity:.65">${esc(tx('autoMark'))}</span>`:''}<button class="btn xs ghost noprint" type="button" data-disp="${r.seq}" title="${esc(tx('dispT'))}" style="margin-left:6px">${esc(tx('dispBtn'))}</button></td>
       <td class="l">${esc(r.rep)}</td>
       <td class="l">${esc(accomL(r.accom))}</td>
       <td>${r.pax}</td>
@@ -687,12 +691,21 @@ function renderTable(){
       ${TYPES.map(t=>`<td>${usedOf(t.code)}</td>`).join('')}
       <td colspan="3"></td><td>¥${totFee.toLocaleString()}</td></tr>
     </tbody></table>`;
+  box.querySelectorAll('[data-disp]').forEach(el=>el.addEventListener('click',e=>{ e.stopPropagation(); openDispatch(el.dataset.disp); }));
   box.querySelectorAll('tr[data-i]').forEach(tr=>{
     const r=ROWS[+tr.dataset.i];
     tr.querySelectorAll('[data-q]').forEach(el=>el.addEventListener('input',()=>{ r.qty[el.dataset.q]=Math.max(0,+el.value||0); mark(r); renderStock(); }));
     tr.querySelectorAll('[data-f]').forEach(el=>el.addEventListener('input',()=>{ r[el.dataset.f]=el.value; mark(r); }));
   });
 }
+// 現地手配書를 팝업으로 — dispatch.html 딥링크(?ym=&seq=)가 그 팀 인쇄 미리보기까지 열어준다.
+function openDispatch(seq){
+  const ym=DATE.slice(0,7);
+  const w=window.open(`dispatch.html?ym=${encodeURIComponent(ym)}&seq=${encodeURIComponent(seq)}`,
+    'saizen_dispatch','width=1180,height=900,scrollbars=yes,resizable=yes');
+  if(w) w.focus(); else toast(tx('saveFail'),'err');
+}
+
 function mark(r){
   const now=JSON.stringify({qty:r.qty,src:r.src,memo:r.memo});
   if(now!==r.orig) DIRTY.add(r.seq); else DIRTY.delete(r.seq);
@@ -739,7 +752,7 @@ async function loadMonth(){
   try{
     if(!TYPES.length){
       const ct=await supa.from('cart_types').select('*').eq('active',true).order('sort_order');
-      if(ct.error) throw ct.error; TYPES=ct.data||[];
+      if(ct.error) throw ct.error; TYPES=visibleTypes(ct.data);
     }
     const b=ymBounds(YM);
     const bs=await paged((a,z)=>supa.from('bookings')
@@ -776,9 +789,14 @@ async function loadMonth(){
                 days:rows.map(r=>r.date), planned:{}, saved:{}, missing:[] };
       rows.forEach(r=>{
         const courseOk = (r.course==='やまなみCC');
-        const plan=SZCore.cartPlan(pax, elec&&courseOk);
-        const got=CB[bk.event_seq+'|'+r.date]||null;
+        let plan=SZCore.cartPlan(pax, elec&&courseOk);
+        if(plan && !SHOW_CODES.includes(plan.code)) plan=null;      // 표시 대상 외(가솔린)는 집계하지 않음
+        const got0=CB[bk.event_seq+'|'+r.date]||null;
+        let got=null;
+        if(got0){ const f={}; Object.keys(got0).forEach(c=>{ if(SHOW_CODES.includes(c)) f[c]=got0[c]; });
+                  if(Object.keys(f).length) got=f; }
         const eff = got || (plan?{[plan.code]:plan.qty}:{});
+        if(!Object.keys(eff).length) return;                        // 전기 대상 아닌 날은 집계 제외
         if(!got) t.missing.push({date:r.date, plan});
         Object.keys(eff).forEach(c=>{
           t[got?'saved':'planned'][c]=(t[got?'saved':'planned'][c]||0)+eff[c];
@@ -788,7 +806,7 @@ async function loadMonth(){
         const d=(byDate[r.date]=byDate[r.date]||{teams:0,qty:{},unassigned:0});
         d.teams++; if(!got) d.unassigned++;
       });
-      MTEAMS.push(t);
+      if(Object.keys(t.saved).length||Object.keys(t.planned).length) MTEAMS.push(t);
     });
     MDAYS=Object.keys(byDate).sort().map(d=>Object.assign({date:d},byDate[d]));
     MTEAMS.sort((a,b2)=>String(a.days[0]).localeCompare(String(b2.days[0]))||String(a.tag).localeCompare(String(b2.tag)));
