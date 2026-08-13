@@ -635,7 +635,12 @@ const L={
     wzFree:n=>`空き${n}`, wzSearchTeam:'チーム・氏名で検索', wzSearchRoom:'部屋番号で検索', wzSel:n=>`${n}名を割り当て`,
     waitBadge:'待機', waitBadgeT:'予約リストの区分が「待機」— 確定後に割り当てます',
     holdWait:gc=>`${gc} 待機予約 — 確定後に割当`, holdCatWait:'待機予約(確定前)', holdFixWait:'エムクリックの区分が「待機」です。確定に変わってから割り当てます — 部屋がなくても正常です。',
-    hdOpen:'この チームを割り当て', hdOptTitle:'自動で直せるもの — チェックして再配置',
+    wzOwn:'このチームの宿泊施設', wzOther:g=>`ほかの宿泊施設も見る (${g})`,
+    wzAllSel:'全員選択', wzNoneSel:'選択解除',
+    wzAsk:(no,ty,names,n)=>`${no}（${ty}）に ${names} ${n}名を割り当てますか？`,
+    wzCap:(no,f)=>`${no} は空き ${f}名分です — 先頭から ${f}名だけ割り当てます。`,
+    wzPickWho:'割り当てる人をチェックしてください。',
+        hdOpen:'この チームを割り当て', hdOptTitle:'自動で直せるもの — チェックして再配置',
     hdReason:'未割当の理由', hdMore:n=>`ほか ${n}件`,
         wzAll:'すべて', wzOnlySingle:n=>`シングル指定 ${n}`, wzOnlyWait:n=>`待機 ${n}`,
     viewCard:'カード', viewTimeline:'タイムライン', viewTimelineT:'客室×日付の占有を一覧',
@@ -865,7 +870,12 @@ const L={
     wzFree:n=>`빈자리 ${n}`, wzSearchTeam:'팀·이름 검색', wzSearchRoom:'방번호 검색', wzSel:n=>`${n}명 배정`,
     waitBadge:'대기', waitBadgeT:'예약리스트 구분이 「대기」 — 확정된 뒤 배정합니다',
     holdWait:gc=>`${gc} 대기예약 — 확정 후 배정`, holdCatWait:'대기예약(확정 전)', holdFixWait:'엠클릭 구분이 「대기」입니다. 확정으로 바뀐 뒤 배정합니다 — 방이 없어도 정상입니다.',
-    hdOpen:'이 팀 배정하기', hdOptTitle:'자동으로 풀 수 있는 것 — 체크하고 다시 배정',
+    wzOwn:'이 팀 숙소', wzOther:g=>`다른 숙소도 보기 (${g})`,
+    wzAllSel:'전원 선택', wzNoneSel:'선택 해제',
+    wzAsk:(no,ty,names,n)=>`${no}(${ty})에 ${names} ${n}명 배정할까요?`,
+    wzCap:(no,f)=>`${no}은(는) 빈자리가 ${f}명입니다 — 앞에서 ${f}명만 배정합니다.`,
+    wzPickWho:'배정할 인원을 체크해 주세요.',
+        hdOpen:'이 팀 배정하기', hdOptTitle:'자동으로 풀 수 있는 것 — 체크하고 다시 배정',
     hdReason:'미배정 사유', hdMore:n=>`외 ${n}건`,
         wzAll:'전체', wzOnlySingle:n=>`싱글 지정 ${n}`, wzOnlyWait:n=>`대기 ${n}`,
     viewCard:'카드', viewTimeline:'타임라인', viewTimelineT:'객실×날짜 점유 한눈에',
@@ -1088,7 +1098,12 @@ const L={
     wzFree:n=>`${n} free`, wzSearchTeam:'Search team or name', wzSearchRoom:'Search room no.', wzSel:n=>`Assign ${n}`,
     waitBadge:'Waitlist', waitBadgeT:'Booking list marks this as waitlisted — assign after it is confirmed',
     holdWait:gc=>`${gc} waitlisted — assign after confirmation`, holdCatWait:'Waitlisted (not confirmed)', holdFixWait:'M-Click marks this booking as waitlisted. Assign once it becomes confirmed — having no room is normal.',
-    hdOpen:'Assign this team', hdOptTitle:'What auto-assign can relax — tick and re-run',
+    wzOwn:'This team\'s lodging', wzOther:g=>`Show other lodgings (${g})`,
+    wzAllSel:'Select all', wzNoneSel:'Clear',
+    wzAsk:(no,ty,names,n)=>`Assign ${names} (${n}) to ${no} (${ty})?`,
+    wzCap:(no,f)=>`${no} has only ${f} free — assigning the first ${f}.`,
+    wzPickWho:'Tick who to assign.',
+        hdOpen:'Assign this team', hdOptTitle:'What auto-assign can relax — tick and re-run',
     hdReason:'Why unassigned', hdMore:n=>`+${n} more`,
         wzAll:'All', wzOnlySingle:n=>`Single requested ${n}`, wzOnlyWait:n=>`Waitlist ${n}`,
     viewCard:'Card', viewTimeline:'Timeline', viewTimelineT:'Room × date occupancy at a glance',
@@ -1846,13 +1861,25 @@ function wzTeams(){
   return state.guests.filter(g=>!teamFullyAssigned(g.event_seq) && teamMatch(g) && teamInDayScope(g))
     .sort((a,b)=>String(a.dep).localeCompare(String(b.dep))||a.event_seq-b.event_seq);
 }
+// 그 팀이 예약한 숙소의 방인가 — 간지 팀에 야마나미 방을 먼저 내미는 일이 없게(Min 2026-08).
+//   숙소 토글(상단)이 「전체」면 오프사이트(간지·시즈)가 빠지는데, 자기 숙소만은 토글과 무관하게 항상 보여준다.
+function wzOwnRoom(g,inv){
+  const tk=teamPlaceKeys(g);
+  return roomPlaceKeys(inv).some(k=>tk.includes(k));
+}
 function wzRooms(g,need){
   return state.inventory.filter(inv=>{
-    if(!inv.active || !roomMatch(inv)) return false;
+    if(!inv.active) return false;
+    if(!wzOwnRoom(g,inv) && !roomMatch(inv)) return false;
     if(roomClosure(inv.id,g.dep,g.arr)) return false;
     const cap=inv.max_capacity||inv.capacity;
     return (cap-roomOccOver(inv.id,g.dep,g.arr).peak)>=Math.max(1,need);
-  }).map(inv=>({inv, free:(inv.max_capacity||inv.capacity)-roomOccOver(inv.id,g.dep,g.arr).peak}));
+  }).map(inv=>({inv, own:wzOwnRoom(g,inv), free:(inv.max_capacity||inv.capacity)-roomOccOver(inv.id,g.dep,g.arr).peak}));
+}
+// 객실 카드 타입 표기 — 간지호텔·돔하우스는 「트윈」 하나뿐(야마나미 등급명을 쓰지 않는다)
+function wzTypeLabel(inv){
+  if(inv.facility==='간지호텔'||inv.zone==='돔하우스') return typeLabel(inv.room_type,inv.facility,inv.zone);
+  return TYPE_KO[inv.room_type]||inv.room_type||'';
 }
 function wzBody(){
   if(!_wzSeq){
@@ -1884,29 +1911,40 @@ function wzBody(){
   const g=state.guests.find(x=>x.event_seq===_wzSeq); if(!g) return '';
   const mem=unassignedMembers(g.event_seq);
   const rooms=wzRooms(g,1);
-  const byZone={};
-  rooms.forEach(c=>{ const z=(c.inv.zone||c.inv.facility||''); (byZone[z]=byZone[z]||[]).push(c); });
-  const zones=Object.keys(byZone).sort((a,b)=>{ const fa=a.match(/^(\d+)층$/), fb=b.match(/^(\d+)층$/);
-    if(fa&&fb) return (+fb[1])-(+fa[1]); if(fa) return -1; if(fb) return 1; return a.localeCompare(b); });
-  return `<div style="padding:8px 0">
-    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px">
-      ${mem.map(m=>`<label style="display:inline-flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:4px 9px;font-size:12.5px;cursor:pointer">
-        <input type="checkbox" class="wz-m" data-mid="${m.id}" checked><b>${esc(m.name_kr||'')}</b>
-        <i class="gbadge${isMember(m)?' mem':''}">${gradeShort(m)}</i></label>`).join('')}
-    </div>
-    ${rooms.length?zones.map(z=>`<div style="margin-bottom:9px">
+  const zoneBlock=list=>{
+    const byZone={};
+    list.forEach(c=>{ const z=(c.inv.zone||c.inv.facility||''); (byZone[z]=byZone[z]||[]).push(c); });
+    const zones=Object.keys(byZone).sort((a,b)=>{ const fa=a.match(/^(\d+)층$/), fb=b.match(/^(\d+)층$/);
+      if(fa&&fb) return (+fb[1])-(+fa[1]); if(fa) return -1; if(fb) return 1; return a.localeCompare(b); });
+    return zones.map(z=>`<div style="margin-bottom:9px">
       <div style="font-size:12px;font-weight:800;color:var(--text2);background:var(--surface3);border-radius:7px;padding:4px 9px;margin-bottom:5px">${esc(z)}</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:7px">
-        ${byZone[z].map(c=>`<button type="button" class="wz-room" data-inv="${c.inv.id}" data-hay="${esc(String(c.inv.room_no||'').toLowerCase())}"
+        ${byZone[z].map(c=>`<button type="button" class="wz-room" data-inv="${c.inv.id}" data-hay="${esc((String(c.inv.room_no||'')+' '+(c.inv.facility||'')).toLowerCase())}"
           style="text-align:left;font-family:inherit;background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:7px 10px;cursor:pointer">
           <b style="font-family:var(--mono);font-size:14px">${esc(c.inv.room_no)}</b>
-          <span style="display:block;font-size:10.5px;color:var(--text2)">${esc(TYPE_KO[c.inv.room_type]||c.inv.room_type||'')}</span>
+          <span style="display:block;font-size:10.5px;color:var(--text2)">${esc(wzTypeLabel(c.inv))}</span>
           <span style="display:block;font-size:10.5px;font-weight:800;color:var(--ok)">${esc(tx('wzFree',c.free))}</span>
         </button>`).join('')}
-      </div></div>`).join('')
-      :`<div style="padding:24px;text-align:center;color:var(--muted)">${tx('wzNoRoom')}</div>`}
+      </div></div>`).join('');
+  };
+  const own=rooms.filter(c=>c.own), other=rooms.filter(c=>!c.own);
+  // 인원 체크는 **처음부터 전원 켜지 않는다**(Min 2026-08) — 싱글 요청 팀은 한 명씩 배정해야 한다.
+  //   그래도 다른 빈 방으로 함께 넣을 수 있으니 방 목록은 그대로 다 보여준다.
+  return `<div style="padding:8px 0">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:9px">
+      ${mem.map((m,i)=>`<label style="display:inline-flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:4px 9px;font-size:12.5px;cursor:pointer">
+        <input type="checkbox" class="wz-m" data-mid="${m.id}"${i===0?' checked':''}><b>${esc(m.name_kr||'')}</b>
+        <i class="gbadge${isMember(m)?' mem':''}">${gradeShort(m)}</i></label>`).join('')}
+      ${mem.length>1?`<button type="button" class="btn xs ghost" id="wz-all">${tx('wzAllSel')}</button>`:''}
+    </div>
+    ${own.length?`<div style="font-size:11.5px;font-weight:800;color:var(--accent);margin:0 0 5px">${tx('wzOwn')} · ${esc(g.accom||'')}</div>${zoneBlock(own)}`:''}
+    ${other.length?`<details${own.length?'':' open'} style="margin-top:4px">
+      <summary style="cursor:pointer;font-size:11.5px;font-weight:800;color:var(--text2);padding:5px 0">${tx('wzOther',other.length)}</summary>
+      <div style="margin-top:6px">${zoneBlock(other)}</div></details>`:''}
+    ${rooms.length?'':`<div style="padding:24px;text-align:center;color:var(--muted)">${tx('wzNoRoom')}</div>`}
   </div>`;
 }
+function _g(){ return state.guests.find(x=>x.event_seq===_wzSeq)||{}; }
 function renderWizard(){
   const bg=$('#assign-wz'); if(!bg) return;
   const g=_wzSeq?state.guests.find(x=>x.event_seq===_wzSeq):null;
@@ -1930,11 +1968,22 @@ function renderWizard(){
   }
   bg.querySelector('#wz-body').innerHTML=wzBody();
   bg.querySelectorAll('.wz-team').forEach(b=>b.addEventListener('click',()=>{ _wzSeq=+b.dataset.seq; renderWizard(); }));
+  const wzAll=bg.querySelector('#wz-all');
+  if(wzAll) wzAll.addEventListener('click',()=>{
+    const boxes=[...bg.querySelectorAll('.wz-m')];
+    const on=!boxes.every(c=>c.checked);
+    boxes.forEach(c=>{ c.checked=on; });
+    wzAll.textContent=on?tx('wzNoneSel'):tx('wzAllSel');
+  });
   bg.querySelectorAll('.wz-room').forEach(b=>b.addEventListener('click',async()=>{
     const inv=state.inventory.find(x=>String(x.id)===b.dataset.inv); if(!inv) return;
-    const ids=[...bg.querySelectorAll('.wz-m:checked')].map(c=>c.dataset.mid);
-    if(!ids.length) return;
-    if(!confirm(tx('assignAsk',inv.room_no,ids.length))) return;
+    let ids=[...bg.querySelectorAll('.wz-m:checked')].map(c=>c.dataset.mid);
+    if(!ids.length){ toast(tx('wzPickWho'),'warn'); return; }
+    // 싱글(빈자리 1)에 3명을 넣으려 하면 앞에서 1명만 — 정원 초과를 애초에 만들지 않는다
+    const free=(inv.max_capacity||inv.capacity)-roomOccOver(inv.id,_g().dep,_g().arr).peak;
+    if(ids.length>free){ toast(tx('wzCap',inv.room_no,free),'warn'); ids=ids.slice(0,Math.max(1,free)); }
+    const names=ids.map(id=>{ const m=memberById(id); return (m&&(m.name_kr||m.name_en))||''; }).filter(Boolean).join(', ');
+    if(!confirm(tx('wzAsk',inv.room_no,wzTypeLabel(inv),names,ids.length))) return;
     await assignMembers(ids,inv);
     const g2=state.guests.find(x=>x.event_seq===_wzSeq);
     if(g2 && unassignedMembers(g2.event_seq).length===0) _wzSeq=null;   // 그 팀 끝나면 목록으로
@@ -1942,7 +1991,8 @@ function renderWizard(){
   }));
 }
 function openWizard(){
-  closeWizard(); _wzSeq=null; _wzFilter='all';
+  closeWizard(); { const h=$('#holds-modal'); if(h) h.remove(); }   // 사유 팝업과 겹치지 않게
+  _wzSeq=null; _wzFilter='all';
   const bg=document.createElement('div'); bg.className='modal-bg'; bg.id='assign-wz';
   bg.innerHTML=`<div class="modal" style="max-width:720px">
     <h2 style="display:flex;align-items:center;gap:9px">
@@ -3093,6 +3143,7 @@ function updateHoldsBtn(){
 }
 function openHoldsModal(){
   const raw=state.lastHolds||[]; if(!raw.length){ toast(tx('holdsNone'),'ok'); return; }
+  closeWizard();   // 배정 팝업이 열려 있으면 닫는다 — 닫았을 때 뒤에 남아 있으면 오작동처럼 보인다(Min 2026-08)
   // 사유 = 팀 카드로 보여준다(배정 팝업과 같은 모양) — 카드를 누르면 그 팀 배정 화면이 바로 열린다.
   //   예전엔 사유 문자열만 줄줄이 나와 "뭘 어떻게 하라는지" 알 수 없었다(Min 2026-08).
   const RULES=[
