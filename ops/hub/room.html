@@ -616,6 +616,7 @@ const L={
     selSpan:(dep,arr)=>` · 占有基準 ${dep}~${arr}`,
     autoRunLbl:'月を開いたら自動割当', autoRunT:'月を読み込んだ時に自動割当を1回走らせます。切ると手動のみ。',
     assignAsk:(r,n)=>`${r} に ${n}名 を割り当てますか？`,
+    badInv:(n,ids)=>`⚠ 部屋番号のない客室 ${n}件を除外しました(room_inventory id: ${ids}) — 客室マスターを確認してください`,
     viewCard:'カード', viewTimeline:'タイムライン', viewTimelineT:'客室×日付の占有を一覧',
     viewTable:'一覧', viewTableT:'表形式 — 一画面で多くの客室(大量割当向け)',
     thRoom:'部屋', thType:'タイプ', thCap:'定員', thGuests:'宿泊者',
@@ -833,6 +834,7 @@ const L={
     selSpan:(dep,arr)=>` · 점유 기준 ${dep}~${arr}`,
     autoRunLbl:'열 때 자동배정', autoRunT:'월을 불러올 때 자동배정을 한 번 실행합니다. 끄면 수기로만 배정합니다.',
     assignAsk:(r,n)=>`${r} 에 ${n}명 배정할까요?`,
+    badInv:(n,ids)=>`⚠ 호수가 비어 있는 객실 ${n}건을 제외했습니다(room_inventory id: ${ids}) — 객실 마스터를 확인해 주세요`,
     viewCard:'카드', viewTimeline:'타임라인', viewTimelineT:'객실×날짜 점유 한눈에',
     viewTable:'표', viewTableT:'표 형식 — 한 화면에 더 많은 객실(대량 배정용)',
     thRoom:'호수', thType:'타입', thCap:'정원', thGuests:'점유자',
@@ -1043,6 +1045,7 @@ const L={
     selSpan:(dep,arr)=>` · basis ${dep}–${arr}`,
     autoRunLbl:'Auto-assign on load', autoRunT:'Runs auto-assign once when a month is loaded. Turn off for manual only.',
     assignAsk:(r,n)=>`Assign ${n} guest(s) to ${r}?`,
+    badInv:(n,ids)=>`⚠ Skipped ${n} rooms with no room number (room_inventory id: ${ids}) — check the room master`,
     viewCard:'Card', viewTimeline:'Timeline', viewTimelineT:'Room × date occupancy at a glance',
     viewTable:'Table', viewTableT:'Table view — more rooms per screen (bulk assignment)',
     thRoom:'Room', thType:'Type', thCap:'Cap.', thGuests:'Guests',
@@ -3413,7 +3416,7 @@ async function autoAssign(){
     }catch(e){ console.warn('점유원장 로드 실패, state.rooms로 폴백:', e.message); }
 
     const manual=assignedMemberSet();  // 수기로 이미 배정된 사람(보호)
-    const pending=[], holds=[];
+    let pending=[], holds=[];
     const teams=[...state.guests].sort((a,b)=>a.event_seq-b.event_seq); // 예약순(선착): 옛(이관)예약 ~98,219 < 신규 30M
 
     // ── 회원 우선 강화(Min): 회원 짝을 일반 짝보다 '먼저' 배정 → 디럭스 소진 후 스탠다드도
@@ -3459,6 +3462,8 @@ async function autoAssign(){
     //   ※ 디럭스가 남아 있으면 일반고객도 디럭스로 채운다 — 그건 일반 패스의 폴백이 처리한다.
     const soboPool=state.inventory.filter(r=>r.facility==='야마나미리조트' && (r.zone||'')==='소보별장' && r.active)
       .slice().sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+    // 아소별장(8인 1동)도 관내별장 예약을 받는다 — 소보로 다 안 들어가면 통째로 아소로(Min 2026-08)
+    const asoPool=state.inventory.filter(r=>r.facility==='야마나미리조트' && (r.zone||'')==='아소별장' && r.active);
     function placeSobo(){
       if(!soboPool.length) return;
       const cand=plans.filter(pl=>pl.g.sale_type==='관내별장' && !pl.done && pl.roster.length);
@@ -3479,7 +3484,14 @@ async function autoAssign(){
           const take=Math.min(free,left);
           rooms.push({inv,take}); used.push(inv.id); left-=take;
         }
-        if(left>0) return;                                          // 팀 전원이 안 들어가면 소보 배정 안 함
+        if(left>0){
+          // 소보로 다 못 담으면 아소별장 한 동에 통째로 시도(8인 1동)
+          const aso=asoPool.find(inv=>((inv.max_capacity||inv.capacity)-dbUsedFor(inv,g.dep,g.arr,occ,pending))>=roster.length);
+          if(!aso) return;                                          // 둘 다 안 되면 호텔로
+          roster.forEach(m=>pending.push(mkRow(g,m,aso)));
+          pl.done=true; console.info(tx('soboNote',gc,roster.length));
+          return;
+        }
         let i=0;
         rooms.forEach(({inv,take})=>{ for(let k=0;k<take;k++){ pending.push(mkRow(g,roster[i++],inv)); } });
         pl.done=true;                                               // 이후 호텔 패스에서 제외
@@ -3551,6 +3563,19 @@ async function autoAssign(){
     for(const plan of plans) placePlan(plan,'member');    // ① 회원 짝 먼저(전 팀, 예약순)
     for(const plan of plans) placePlan(plan,'general');   // ② 일반 짝(전 팀, 예약순)
 
+    // 객실 마스터에 호수(room_no)가 비어 있는 방이 있으면 insert 가 통째로 실패한다
+    //   (null value in column "room_no" violates not-null constraint).
+    //   그 방만 빼고 나머지는 정상 저장하고, 어떤 방인지 알려준다.(Min 2026-08)
+    {
+      const bad=pending.filter(r=>!r.room_no||r.member_id==null||r.inventory_id==null);
+      if(bad.length){
+        const ids=[...new Set(bad.map(r=>r.inventory_id))].join(', ');
+        pending=pending.filter(r=>r.room_no&&r.member_id!=null&&r.inventory_id!=null);
+        holds.push(tx('badInv',bad.length,ids));
+        toast(tx('badInv',bad.length,ids),'warn');
+        console.warn('배정 제외(호수 없음):',bad);
+      }
+    }
     if(!pending.length){ toast(tx('autoNoTarget',holds.length),'warn'); return; }
     const {data,error}=await insertRoomsChunked(pending);
     if(error){toast(tx('autoSaveFail',error.message),'err');return;}
