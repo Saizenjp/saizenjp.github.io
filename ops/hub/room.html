@@ -65,7 +65,19 @@
   .legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
 
   /* 2단 레이아웃 */
-  .stage{display:grid;grid-template-columns:300px 1fr;gap:16px;padding:16px 20px;align-items:start}
+  /* 미배정 목록을 서랍으로 뺐으므로 객실 배정표가 화면 전폭을 쓴다(Min 2026-08) */
+  .stage{display:grid;grid-template-columns:1fr;gap:16px;padding:16px 20px;align-items:start}
+  /* 미배정 서랍 — 화면을 막지 않는다(뒤의 객실을 그대로 클릭해 배정) */
+  .ua-drawer{position:fixed;left:0;top:0;bottom:0;width:340px;max-width:88vw;z-index:60;
+    background:var(--surface);border-right:2px solid var(--accent);box-shadow:6px 0 22px rgba(15,23,42,.16);
+    display:flex;flex-direction:column;transform:translateX(-102%);transition:transform .18s ease}
+  .ua-drawer.open{transform:none}
+  .ua-drawer .uah{display:flex;align-items:center;gap:9px;padding:11px 13px;border-bottom:1px solid var(--border);
+    background:var(--surface2);font-size:14px;font-weight:800;color:var(--accent)}
+  .ua-drawer .uah .cnt{font-weight:700;color:var(--text2)}
+  .ua-drawer .uab{flex:1;overflow:auto;padding:11px}
+  .ua-fab{position:fixed;left:14px;bottom:16px;z-index:59}
+  @media(max-width:860px){ .ua-drawer{width:92vw} }
   /* 좌측 미배정 팀 패널 = 스크롤 동행(고정바 아래 sticky, 길면 내부 스크롤). 순수 CSS라 랙 없음 */
   /* 컨트롤 바(월·버튼+날짜칩) = 상단 topbar 아래 고정. top은 JS가 topbar 높이로 동기화. */
   .ctrlbar{position:sticky;top:56px;z-index:25;background:var(--bg);box-shadow:0 4px 8px -5px rgba(0,0,0,.22)}
@@ -181,6 +193,7 @@
   .mm-now{font-size:12.5px;font-family:var(--mono);background:var(--surface2);border-radius:7px;padding:6px 10px;margin-bottom:4px}
   .mm-name{cursor:pointer}
   .mm-name:hover{text-decoration:underline;text-decoration-style:dotted}
+  .cpin{font-size:10px;margin-left:2px;filter:saturate(.9)}
   .asob{display:inline-block;font-size:9px;font-weight:800;color:#fff;background:#7a5aa8;border-radius:4px;padding:1px 5px;margin-left:4px;white-space:nowrap}
   .aso-panel{background:#f6f2fb;border:1px solid #d6c8ea;border-radius:11px;padding:11px 13px;margin-bottom:12px}
   .aso-panel h4{font-size:13px;font-weight:800;color:#5e3a86;margin-bottom:3px}
@@ -463,6 +476,8 @@
   <input type="date" id="date-pick" hidden><input type="date" id="date-to" hidden>
   <button class="btn sm" id="btn-auto" type="button" disabled title="회원 우선. 불러온 기간 전체를 다시 배정합니다. 기존 수기배정 보호." style="background:var(--accent2);border-color:var(--accent2)">자동배정</button>
   <button class="btn ghost sm" id="btn-clear-all" type="button" disabled title="불러온 범위의 모든 배정 해제(수기·자동 전부)" style="color:var(--err);border-color:#e3bdb4">전체 비우기</button>
+  <button class="btn sm" id="btn-unassigned" type="button" title="미배정 팀 열기(선택 후 객실 클릭)" style="background:var(--accent2);border-color:var(--accent2)">미배정</button>
+  <span class="hint" id="t-autoNote" style="max-width:230px;line-height:1.35"></span>
   <button class="btn ghost sm" id="btn-conflicts" type="button" disabled title="정원 초과(겹침) 방을 스캔 → 초과 auto 배정을 정리(수기·분할은 보호)" style="color:var(--warn);border-color:#e6cf95">⚠ 충돌 점검</button>
   <button class="btn ghost sm" id="btn-closure" type="button" disabled title="특정 객실을 기간 지정해 폐쇄(잠금) — 대표님 사용 중·점검 등. 폐쇄 기간엔 배정 불가" style="color:var(--err);border-color:#e3bdb4">🔒 객실 폐쇄</button>
   <button class="btn sm" id="btn-holds" type="button" style="display:none;background:#fdf6e7;color:#6b5312;border-color:#e6d3a3;font-weight:800"></button>
@@ -486,6 +501,9 @@
   <span class="hint" id="room-search-cnt"></span>
   <div id="room-search-results"></div>
 </div>
+<!-- 숙소 토글 — 날짜 칩(+N·미N)과 미배정 목록이 모두 이 범위를 따른다(Min 2026-08:
+     "이 토글을 상단 일정 토글 위쪽으로"). id 는 그대로라 기존 핸들러·필터가 그대로 동작. -->
+<div class="fac-filter" id="team-filter"></div>
 <div class="day-strip" id="day-strip"></div>
 </div><!-- /ctrlbar -->
 
@@ -512,16 +530,19 @@
   </div>
 </details>
 
-<div class="stage">
-  <!-- 좌: 미배정 팀 -->
-  <div class="col">
-    <h2><span data-i18n="rm_colUnassigned"></span> <span class="cnt" id="unassigned-cnt"></span></h2>
-    <div class="fac-filter" id="team-filter"></div>
-    <div class="col-body" id="unassigned" data-drop="unassign">
-      <div class="empty-hint" data-i18n="rm_emptyHint"></div>
-    </div>
+<!-- 미배정 팀 = 서랍(팝업). 배정은 "선택 → 객실 클릭"이라 화면을 막지 않는 서랍이 맞다.
+     반대 방향(빈 방 클릭 → 그 방에 넣을 사람 고르기)은 기존 배정 피커가 그대로 담당. -->
+<div class="ua-drawer" id="ua-drawer">
+  <div class="uah">
+    <span id="t-uaTitle">미배정 팀</span> <span class="cnt" id="unassigned-cnt"></span>
+    <button class="btn ghost sm" id="ua-close" type="button" style="margin-left:auto">닫기</button>
   </div>
-  <!-- 우: 시설별 객실 -->
+  <div class="uab" id="unassigned" data-drop="unassign">
+    <div class="empty-hint" data-i18n="rm_emptyHint"></div>
+  </div>
+</div>
+
+<div class="stage">
   <div class="col">
     <h2><span data-i18n="rm_colRooms"></span> <span class="cnt" id="assign-summary"></span>
       <span class="view-toggle">
@@ -586,6 +607,10 @@ const L={
     mmOpenT:'名前を押すと操作パネル',
     optSingleRemark:'備考に「シングル」とあるチームも自動で2人ずつ割り当てる(誰がシングル希望かは特定できません)',
     autoRunNote:n=>`未割当 ${n}名 → 自動割当を実行しました`,
+    uaBtn:(t,p)=>`未割当 ${t}チーム · ${p}名`, uaBtnNone:'未割当なし', uaOpenT:'未割当チームを開く（選んで客室をクリック）',
+    uaClose:'閉じる', uaDrawerT:'未割当チーム',
+    pinT:'手動割当（固定 — 自動割当で動きません）', pinMark:'📌',
+    autoNote:'月を開くと自動で割り当てます。手動で置いた部屋は📌固定。',
     viewCard:'カード', viewTimeline:'タイムライン', viewTimelineT:'客室×日付の占有を一覧',
     viewTable:'一覧', viewTableT:'表形式 — 一画面で多くの客室(大量割当向け)',
     thRoom:'部屋', thType:'タイプ', thCap:'定員', thGuests:'宿泊者',
@@ -788,6 +813,10 @@ const L={
     mmOpenT:'이름을 누르면 작업 패널',
     optSingleRemark:'비고에 「싱글」이라 적힌 팀도 자동으로 2명씩 배정(누가 싱글인지는 특정할 수 없습니다)',
     autoRunNote:n=>`미배정 ${n}명 → 자동배정을 실행했습니다`,
+    uaBtn:(t,p)=>`미배정 ${t}팀 · ${p}명`, uaBtnNone:'미배정 없음', uaOpenT:'미배정 팀 열기(선택 후 객실 클릭)',
+    uaClose:'닫기', uaDrawerT:'미배정 팀',
+    pinT:'수기 배정(고정 — 자동배정이 건드리지 않음)', pinMark:'📌',
+    autoNote:'월을 열면 자동으로 배정합니다. 수기로 놓은 방은 📌 고정됩니다.',
     viewCard:'카드', viewTimeline:'타임라인', viewTimelineT:'객실×날짜 점유 한눈에',
     viewTable:'표', viewTableT:'표 형식 — 한 화면에 더 많은 객실(대량 배정용)',
     thRoom:'호수', thType:'타입', thCap:'정원', thGuests:'점유자',
@@ -983,6 +1012,10 @@ const L={
     mmOpenT:'Click the name for actions',
     optSingleRemark:'Also auto-pair teams whose remarks mention a single room (we cannot tell who wants it)',
     autoRunNote:n=>`${n} unassigned → auto-assign ran`,
+    uaBtn:(t,p)=>`Unassigned ${t} teams · ${p}`, uaBtnNone:'None unassigned', uaOpenT:'Open unassigned teams (select, then click a room)',
+    uaClose:'Close', uaDrawerT:'Unassigned teams',
+    pinT:'Manual assignment (pinned — auto-assign will not move it)', pinMark:'📌',
+    autoNote:'Opens and assigns automatically. Rooms you place by hand are pinned.',
     viewCard:'Card', viewTimeline:'Timeline', viewTimelineT:'Room × date occupancy at a glance',
     viewTable:'Table', viewTableT:'Table view — more rooms per screen (bulk assignment)',
     thRoom:'Room', thType:'Type', thCap:'Cap.', thGuests:'Guests',
@@ -1169,6 +1202,9 @@ function applyStaticRoom(){
   set('#room-search','placeholder','roomSearchPh');
   set('#view-card','textContent','viewCard'); set('#view-timeline','textContent','viewTimeline'); set('#view-timeline','title','viewTimelineT');
   set('#view-table','textContent','viewTable'); set('#view-table','title','viewTableT');
+  set('#t-uaTitle','textContent','uaDrawerT'); set('#ua-close','textContent','uaClose');
+  set('#t-autoNote','textContent','autoNote');
+  try{ updateUaBtn(); }catch(e){}
   const _oe=$('#tbl-empty-lbl'); if(_oe) _oe.textContent=tx('onlyEmpty');
   set('#hist-q','placeholder','histQph'); set('#hist-search','textContent','histSearch');
   const ht=$('#hist-title'); if(ht) ht.innerHTML=`${tx('histTitle')} <span style="font-weight:600;color:var(--muted);font-size:12px">${tx('histTitleSub')}</span>`;
@@ -1665,6 +1701,22 @@ function dayScopeLabel(){
   if(viewMode==='timeline') return (state.days && state.days.size) ? [...state.days].sort().map(fmtMD).join('·') : tx('dcAll');
   return fmtMD(state.focus||state.from);
 }
+// ── 미배정 서랍 열고 닫기 ──
+function uaOpen(on){
+  const d=$('#ua-drawer'); if(!d) return;
+  const open = (on===undefined) ? !d.classList.contains('open') : !!on;
+  d.classList.toggle('open',open);
+  try{ localStorage.setItem('saizen_room_ua', open?'1':'0'); }catch(e){}
+}
+function updateUaBtn(){
+  const b=$('#btn-unassigned'); if(!b) return;
+  const list=(state.guests||[]).filter(g=>!teamFullyAssigned(g.event_seq) && teamMatch(g) && teamInDayScope(g));
+  const ppl=list.reduce((n,g)=>n+unassignedMembers(g.event_seq).length,0);
+  b.textContent = list.length ? tx('uaBtn',list.length,ppl) : tx('uaBtnNone');
+  b.title=tx('uaOpenT');
+  b.style.opacity = list.length ? '' : '.55';
+}
+
 // 팀별 「배정됨 N명」 펼침 상태(미배정 목록)
 const uaDoneOpen=new Set();
 // 팀 전체 선택/해제 — 미배정 인원만 대상
@@ -1790,7 +1842,7 @@ function renderUnassigned(){
   } else {
     list.forEach(g=>box.appendChild(mkCard(g)));
   }
-  renderSelBar();
+  renderSelBar(); updateUaBtn();
 }
 
 // 선택된 멤버들을 한 방에 한꺼번에 배정. 선택이 없으면 → 그 방·날짜 배정가능 인원 팝업.
@@ -2193,6 +2245,9 @@ function roomChipsHtml(assigned, refDay, compact){
     const _g=state.guests.find(x=>String(x.event_seq)===String(seq));
     const asoB=(_g&&asoEligible(_g)&&!isAsoRoom(r0.inventory_id))
       ? `<span class="asob" title="${esc(tx('asoBadgeT',asoPax(_g)))}">${tx('asoBadge')}</span>` : '';
+    // 수기(분할 포함) 배정 = 고정. 자동배정이 다시 돌아도 이 방은 그대로다.
+    const pinned = rows.some(r=>r.assign_source==='manual');
+    const pin = pinned ? `<span class="cpin" title="${tx('pinT')}">${tx('pinMark')}</span>` : '';
     const isIn = refDay && r0.check_in===refDay;                       // 오늘 입실 팀
     const chipCls = !refDay ? '' : (isIn?' chip-in' : ' chip-cont');
     const flag = !refDay ? '' : (isIn?`<span class="cflag cf-in">${tx('flagIn')}</span>` : `<span class="cflag cf-cont">${tx('flagCont')}</span>`);
@@ -2210,12 +2265,12 @@ function roomChipsHtml(assigned, refDay, compact){
       return `<div class="cmem${(m&&m.actual_dep)?' eco':''}">${nm}<span class="cmen">${nameEn}</span>${gb}${ecoMk}<span class="cmem-act">${acts}</span></div>`;
     };
     if(compact){
-      return `<span class="tchip${chipCls}" data-seq="${seq}"><span class="ctag">${gcode}</span>${asoB}${flag}`
+      return `<span class="tchip${chipCls}" data-seq="${seq}"><span class="ctag">${gcode}</span>${pin}${asoB}${flag}`
         + rows.map(mem).join('')
         + `<span class="tdate">${fmtMD(r0.check_in)}~${fmtMD(r0.check_out)}</span></span>`;
     }
     return `<div class="chip${chipCls}" data-seq="${seq}">
-      <div class="chip-head"><span class="ctag">${gcode}</span>${asoB}${flag}<span class="cnum">${rows.length}${tx('nameUnit')}</span><span class="cdate">${fmtMD(r0.check_in)}~${fmtMD(r0.check_out)}</span></div>
+      <div class="chip-head"><span class="ctag">${gcode}</span>${pin}${asoB}${flag}<span class="cnum">${rows.length}${tx('nameUnit')}</span><span class="cdate">${fmtMD(r0.check_in)}~${fmtMD(r0.check_out)}</span></div>
       <div class="cmems">${rows.map(mem).join('')}</div>
     </div>`;
   }).join('');
@@ -3975,6 +4030,9 @@ $('#view-table')&&$('#view-table').classList.toggle('active',viewMode==='table')
 $('#view-timeline').classList.toggle('active',viewMode==='timeline');
 $('#facilities').style.display=(viewMode==='timeline')?'none':'';
 $('#timeline').style.display  =(viewMode==='timeline')?'':'none';
+$('#btn-unassigned')&&$('#btn-unassigned').addEventListener('click',()=>uaOpen());
+$('#ua-close')&&$('#ua-close').addEventListener('click',()=>uaOpen(false));
+try{ if(localStorage.getItem('saizen_room_ua')==='1') uaOpen(true); }catch(e){}
 $('#view-card').addEventListener('click',()=>setView('card'));
 $('#view-table')&&$('#view-table').addEventListener('click',()=>setView('table'));
 $('#view-timeline').addEventListener('click',()=>setView('timeline'));
@@ -3982,7 +4040,7 @@ $('#btn-clear-all').addEventListener('click',clearAllAssignments);
 $('#btn-undo-bulk').addEventListener('click',undoLastBulk);
 $('#btn-conflicts').addEventListener('click',checkConflicts);
 $('#btn-closure').addEventListener('click',openClosureModal);
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeMemberModal(); cancelSplit(); } });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeMemberModal(); cancelSplit(); uaOpen(false); } });
 // 일별 칩: 타임라인=복수선택 토글, 카드=하루 단일선택. 재조회 없음
 $('#day-strip').addEventListener('click',e=>{
   const b=e.target.closest('.day-chip'); if(!b) return;
