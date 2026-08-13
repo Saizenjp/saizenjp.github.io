@@ -128,6 +128,29 @@
   .note.linen{background:#efeaf7;color:#5e3a86;border-color:#cfc0e4}
   .note.next{background:var(--accentSoft);color:#2f5d3a;border-color:#b4cda0}
   .note.clo{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  /* 카드 보기 — 태블릿에서 한 층을 한눈에. 상태색을 머리줄 배경으로 크게 */
+  .rcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:11px}
+  .rc{border:1px solid var(--border2);border-radius:11px;overflow:hidden;background:var(--surface);box-shadow:0 1px 3px rgba(15,23,42,.05)}
+  .rc-h{display:flex;align-items:center;gap:8px;padding:7px 11px;color:#fff}
+  .rc-h .no{font-family:var(--mono);font-size:22px;font-weight:800;line-height:1.1}
+  .rc-h .st2{font-size:11.5px;font-weight:800;margin-left:auto;white-space:nowrap;opacity:.95}
+  .rc.s-turn .rc-h{background:#b13b2c} .rc.s-out .rc-h{background:#c8891f}
+  .rc.s-stay .rc-h{background:#2b5f9e} .rc.s-in .rc-h{background:#2f7d4f}
+  .rc.s-vacant .rc-h{background:#aeb4bd} .rc.s-ooo .rc-h{background:#4b5563}
+  .rc-ty{font-size:11px;font-weight:700;opacity:.9}
+  .rc-b{padding:8px 11px 10px}
+  .rc-team{font-size:13px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rc-team i{font-size:10px;font-weight:800;color:var(--muted);font-style:normal;margin-right:4px}
+  .rc-meta{font-size:12px;color:var(--text2);font-family:var(--mono);margin-top:4px}
+  .rc-tee{font-weight:800;color:var(--text)}
+  .rc-notes{margin-top:5px}
+  .rc.s-vacant .rc-b{min-height:34px;color:var(--muted);font-size:12px}
+  .zchips{display:flex;gap:6px;flex-wrap:wrap}
+  .zchip{font-size:14px;font-weight:800;padding:7px 15px;border-radius:9px;border:1px solid var(--border2);
+    background:var(--surface);color:var(--text2);cursor:pointer;user-select:none}
+  .zchip:hover{border-color:var(--accent)}
+  .zchip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .zchip .zn{font-size:10.5px;font-weight:700;opacity:.8;margin-left:6px}
   .lgd{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);font-weight:700;margin-top:9px;align-items:center}
 
   @media print{
@@ -175,7 +198,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=21"></script>
-<script src="../assets/saizen-ops.js?v=15.73"></script>
+<script src="../assets/saizen-ops.js?v=15.74"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -192,6 +215,8 @@ const L={
     notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
     loginTitle:'ログインが必要です。', loginSub:'中央のログインカードでログイン後、再接続してください。',
     loading:'集計中…', loadFail:'読み込み失敗', reload:'↻ 再読込', print:'🖨 印刷',
+    viewCard:'カード', viewTable:'表', viewT:'表示',
+    floorSel:'階・棟', allFloors:'全体', place:'宿泊', cleanN:n=>`清掃 ${n}`,
     prev:'◀ 前日', next:'翌日 ▶', today:'今日', date:'日付', accom:'宿泊施設', all:'全体',
     sortPrio:'優先順', sortNo:'部屋番号順', sortT:'並び替え',
     title:'客室清掃 割当表', readonly:'閲覧のみ（変更はフロント事務所）',
@@ -212,6 +237,8 @@ const L={
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
     loginTitle:'로그인이 필요합니다.', loginSub:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
     loading:'집계 중…', loadFail:'로드 실패', reload:'↻ 새로고침', print:'🖨 인쇄',
+    viewCard:'카드', viewTable:'표', viewT:'보기',
+    floorSel:'층·동', allFloors:'전체', place:'숙소', cleanN:n=>`청소 ${n}`,
     prev:'◀ 전날', next:'다음날 ▶', today:'오늘', date:'날짜', accom:'숙소', all:'전체',
     sortPrio:'우선순', sortNo:'호수순', sortT:'정렬',
     title:'객실 청소 배정표', readonly:'보기 전용 (변경은 프론트 사무실)',
@@ -232,6 +259,8 @@ const L={
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
     loginTitle:'Login required.', loginSub:'Log in via the central login card, then reconnect.',
     loading:'Loading…', loadFail:'Load failed', reload:'↻ Reload', print:'🖨 Print',
+    viewCard:'Cards', viewTable:'Table', viewT:'View',
+    floorSel:'Floor / block', allFloors:'All', place:'Lodging', cleanN:n=>`clean ${n}`,
     prev:'◀ Prev', next:'Next ▶', today:'Today', date:'Date', accom:'Lodging', all:'All',
     sortPrio:'Priority', sortNo:'Room no.', sortT:'Sort',
     title:'Housekeeping worksheet', readonly:'Read-only (changes at the front office)',
@@ -267,7 +296,15 @@ function accomIdx(a){ const i=ACCOM_ORDER.indexOf(a); return i<0?99:i; }
 const PRIO={turn:0, out:1, stay:2, in:3, vacant:4, ooo:5};
 
 let supa=null, INV=[], ROWS=[], TEAM={}, CLO=[], TEE={}, COURSE={};
-let DATE=todayISO(), ACCOMSEL=new Set(), SORT='prio', FOLD=new Set();
+let DATE=todayISO(), SORT='prio';
+// 숙소 구분은 방배정 화면과 같은 기준(SZCore) — 소보별장·아소별장·돔하우스 배정도 그대로 보인다
+let PLACESEL=new Set();          // 비면 「전체」 = 야마나미 복합 + 쿠주힐즈(간지·시즈 제외)
+let ZONE=null;                   // 선택한 층/동 (null = 전체)
+let VIEW=(function(){ try{ const v=localStorage.getItem('saizen_hk_view'); return (v==='table'||v==='card')?v:'card'; }catch(e){ return 'card'; } })();
+function placeKeys(inv){ return SZCore.roomPlaceKeys(inv); }
+function invInScope(inv){ return SZCore.placeInScope(placeKeys(inv), PLACESEL); }
+function zoneKey(inv){ return (inv.facility||'')+'|'+(inv.zone||inv.facility||''); }
+function zoneRank(z){ const m=String(z).match(/^(\d+)층$/); return m?(+m[1]):999; }
 
 async function connect(){
   const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
@@ -318,11 +355,17 @@ function renderUI(){
         <button class="btn sm ghost" id="btn-print" type="button">${tx('print')}</button>
       </div>
       <div class="row" style="margin-top:9px">
-        <span class="lbl">${tx('accom')}</span><span id="achips" class="row" style="gap:6px"></span>
+        <span class="lbl">${tx('place')}</span><span id="achips" class="row" style="gap:6px"></span>
         <span style="flex:1"></span>
-        <span class="lbl">${tx('sortT')}</span>
+        <span class="lbl">${tx('viewT')}</span>
+        <button type="button" class="chip${VIEW==='card'?' on':''}" data-view="card">${tx('viewCard')}</button>
+        <button type="button" class="chip${VIEW==='table'?' on':''}" data-view="table">${tx('viewTable')}</button>
+        <span class="lbl" style="margin-left:10px">${tx('sortT')}</span>
         <button type="button" class="chip${SORT==='prio'?' on':''}" data-sort="prio">${tx('sortPrio')}</button>
         <button type="button" class="chip${SORT==='no'?' on':''}" data-sort="no">${tx('sortNo')}</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <span class="lbl">${tx('floorSel')}</span><span id="zchips" class="zchips"></span>
       </div>
     </div>
     <div class="panel">
@@ -342,6 +385,11 @@ function renderUI(){
     document.querySelectorAll('[data-sort]').forEach(x=>x.classList.toggle('on',x.dataset.sort===SORT));
     render();
   }));
+  document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{
+    VIEW=b.dataset.view; try{ localStorage.setItem('saizen_hk_view',VIEW); }catch(e){}
+    document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('on',x.dataset.view===VIEW));
+    render();
+  }));
   renderWd();
 }
 function renderWd(){
@@ -352,14 +400,30 @@ function renderWd(){
 }
 function renderAccomChips(){
   const box=$('#achips'); if(!box) return;
-  const list=[...new Set(INV.map(i=>i.facility).filter(Boolean))].sort((a,b)=>accomIdx(a)-accomIdx(b));
-  box.innerHTML=`<button type="button" class="chip${ACCOMSEL.size?'':' on'}" data-a="">${esc(tx('all'))}</button>`
-    +list.map(a=>`<button type="button" class="chip${ACCOMSEL.has(a)?' on':''}" data-a="${esc(a)}">${esc(accomL(a))}</button>`).join('');
+  // 방배정 화면과 같은 항목 — 「전체」는 야마나미 복합+쿠주힐즈(간지·시즈는 칩을 눌러야 나온다)
+  const have=new Set(); INV.forEach(i=>placeKeys(i).forEach(k=>have.add(k)));
+  const list=SZCore.PLACE_ITEMS.filter(k=>have.has(k));
+  box.innerHTML=`<button type="button" class="chip${PLACESEL.size?'':' on'}" data-a="">${esc(tx('all'))}</button>`
+    +list.map(a=>`<button type="button" class="chip${PLACESEL.has(a)?' on':''}" data-a="${esc(a)}">${esc(accomL(a))}</button>`).join('');
   box.querySelectorAll('[data-a]').forEach(b=>b.addEventListener('click',()=>{
     const a=b.dataset.a;
-    if(!a) ACCOMSEL.clear();
-    else { if(ACCOMSEL.has(a)) ACCOMSEL.delete(a); else ACCOMSEL.add(a); }
+    if(!a) PLACESEL.clear();
+    else { if(PLACESEL.has(a)) PLACESEL.delete(a); else PLACESEL.add(a); }
+    ZONE=null;   // 숙소를 바꾸면 층 선택은 초기화
     renderAccomChips(); render();
+  }));
+}
+// 층·동 칩 — 누르면 그 층만 본다(아래로 스크롤하며 찾지 않게, Min 2026-08)
+function renderZoneChips(groups,keys){
+  const box=$('#zchips'); if(!box) return;
+  const cleanN=k=>groups[k].list.filter(r=>r.status!=='ooo'&&r.status!=='vacant').length;
+  box.innerHTML=`<button type="button" class="zchip${ZONE?'':' on'}" data-z="">${esc(tx('allFloors'))}</button>`
+    +keys.map(k=>{
+      const g=groups[k], n=cleanN(k);
+      return `<button type="button" class="zchip${ZONE===k?' on':''}" data-z="${esc(k)}">${esc(g.zone)}${n?`<span class="zn">${n}</span>`:''}</button>`;
+    }).join('');
+  box.querySelectorAll('[data-z]').forEach(b=>b.addEventListener('click',()=>{
+    ZONE=b.dataset.z||null; render();
   }));
 }
 
@@ -415,6 +479,7 @@ async function load(){
       const gc=await supa.from('golf_courses').select('code,name_ja,name_ko');
       if(!gc.error) (gc.data||[]).forEach(c=>{ COURSE[c.code]=c; });
     }
+    renderAccomChips();
     render();
   }catch(e){ if(st) st.textContent=tx('loadFail'); toast(tx('loadFail')+': '+String(e&&e.message||e),'err'); }
 }
@@ -474,7 +539,7 @@ function stLabel(s){ return {turn:tx('sTurn'),out:tx('sOut'),stay:tx('sStay'),in
 
 function render(){
   const box=$('#floors'); if(!box) return;
-  const invs=INV.filter(i=>!ACCOMSEL.size||ACCOMSEL.has(i.facility));
+  const invs=INV.filter(invInScope);
   const recs=invs.map(roomRecord);
   renderKpis(recs);
   const st=$('#stat'); if(st) st.textContent=tx('statN')(md(DATE),recs.length);
@@ -492,10 +557,10 @@ function render(){
     if(fa) return -1; if(fb) return 1;
     return String(A.zone).localeCompare(String(B.zone));
   });
-  box.innerHTML=keys.map(k=>floorHtml(groups[k],k)).join('');
-  box.querySelectorAll('[data-fold]').forEach(h=>h.addEventListener('click',()=>{
-    const key=h.dataset.fold; FOLD.has(key)?FOLD.delete(key):FOLD.add(key); render();
-  }));
+  if(ZONE && !groups[ZONE]) ZONE=null;              // 필터가 바뀌어 사라진 층 → 전체로
+  renderZoneChips(groups,keys);
+  const show = ZONE ? [ZONE] : keys;
+  box.innerHTML=show.map(k=>floorHtml(groups[k],k)).join('');
 }
 
 function renderKpis(recs){
@@ -518,7 +583,6 @@ function renderKpis(recs){
 }
 
 function floorHtml(g,key){
-  const folded=FOLD.has(key);
   const clean=g.list.filter(r=>r.status!=='ooo'&&r.status!=='vacant').length;
   const mins=g.list.reduce((s,r)=>s+r.minutes,0);
   const c={turn:0,out:0,stay:0,in:0};
@@ -535,8 +599,7 @@ function floorHtml(g,key){
   });
   const badge=(cls,lab,n)=>n?`<span class="st ${cls}" style="font-size:10.5px;padding:2px 7px">${esc(lab)} ${n}</span>`:'';
   return `<div class="flr">
-    <div class="flr-h" data-fold="${esc(key)}">
-      <span class="car">${folded?'▸':'▾'}</span>
+    <div class="flr-h">
       <span>${esc(g.zone)}</span><span class="fac">${esc(accomL(g.fac))}</span>
       <span class="fst">
         ${badge('turn',tx('sTurn'),c.turn)}${badge('out',tx('sOut'),c.out)}
@@ -544,7 +607,7 @@ function floorHtml(g,key){
         <span class="cnt">${esc(tx('floorStat')(clean,mins))}</span>
       </span>
     </div>
-    ${folded?'':`<table class="hkt">
+    ${VIEW==='card'?`<div class="rcards" style="padding:11px">${list.map(cardHtml).join('')}</div>`:`<table class="hkt">
       <thead><tr>
         <th>${tx('thState')}</th><th>${tx('thRoom')}</th><th>${tx('thType')}</th>
         <th style="text-align:center">${tx('thPax')}</th><th>${tx('thTeam')}</th>
@@ -552,6 +615,34 @@ function floorHtml(g,key){
         <th>${tx('thTee')}</th><th>${tx('thNote')}</th>
       </tr></thead>
       <tbody>${list.map(rowHtml).join('')}</tbody></table>`}
+  </div>`;
+}
+
+// 카드 한 장 = 객실 하나. 상태색을 머리줄로 크게 잡아 멀리서도 구분되게.
+function cardHtml(r){
+  const line=(lab,arr)=>arr.map(t=>`<div class="rc-team"><i>${esc(lab)}</i><span class="tag">${esc(t.tag)}</span>${esc(t.rep)} (${t.pax})</div>`).join('');
+  const base=r.gStay[0]||r.gIn[0]||r.gOut[0];
+  const notes=[];
+  if(r.linen) notes.push(`<span class="note linen">${esc(tx('linen'))}</span>`);
+  if(r.status==='turn'||r.status==='in'){ const n=r.gIn.reduce((s,t)=>s+t.pax,0);
+    if(n) notes.push(`<span class="note next">${esc(tx('nextIn')(n))}</span>`); }
+  if(r.lastNight) notes.push(`<span class="note">${esc(tx('lastNight'))}</span>`);
+  if(r.clo) notes.push(`<span class="note clo">${esc(tx('closed')(md(r.clo.from_date),md(r.clo.to_date),r.clo.reason||''))}</span>`);
+  if(r.inv.note) notes.push(`<span class="note">${esc(r.inv.note)}</span>`);
+  const teams=line(tx('arOut'),r.gOut)+line(tx('arStay'),r.gStay)+line(tx('arIn'),r.gIn);
+  const nth=(r.status==='stay'||r.status==='in')&&r.total?` · ${tx('nthOf')(r.nth,r.total)}`:'';
+  const tee=r.tee?` · <span class="rc-tee">${r.tee.time}${r.tee.course?' '+esc(courseL(r.tee.course)):''}</span>`:'';
+  return `<div class="rc s-${r.status}">
+    <div class="rc-h">
+      <span class="no">${esc(String(r.inv.room_no).replace(/호$/,''))}</span>
+      <span class="rc-ty">${esc(r.inv.room_type||'')}</span>
+      <span class="st2">${esc(stLabel(r.status))}</span>
+    </div>
+    <div class="rc-b">
+      ${teams||`<div class="rc-team" style="color:var(--muted)">—</div>`}
+      ${base?`<div class="rc-meta">${md(base.ci)}~${md(base.co)}${nth}${tee}</div>`:''}
+      ${notes.length?`<div class="rc-notes">${notes.join('')}</div>`:''}
+    </div>
   </div>`;
 }
 
