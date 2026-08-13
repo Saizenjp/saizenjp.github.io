@@ -3309,7 +3309,7 @@ function openHoldsModal(){
     const hay=[gc,g.rep,g.event_no,...c.items.map(h=>h.t),
       ...teamRoster(g.event_seq).map(m=>m.name_kr+' '+(m.name_en||''))].join(' ').toLowerCase();
     return `<button type="button" class="hd-card hd-team" data-seq="${g.event_seq}"
-      data-cats="${esc(catsOf(c).join(' '))}" data-hay="${esc(hay)}"
+      data-cats="${esc(catsOf(c).join(' '))}" data-acc="${esc(teamPlaceKeys(g)[0]||g.accom||'')}" data-hay="${esc(hay)}"
       style="border-left:4px solid var(--${g.pfx==='K'?'k':g.pfx==='G'?'g':g.pfx==='S'?'s':'y'})">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <b style="font-family:var(--mono);color:var(--accent);font-size:14px">${esc(gc)}</b>
@@ -3328,9 +3328,23 @@ function openHoldsModal(){
   const m=document.createElement('div'); m.className='modal'; m.style.maxWidth='760px';
   const chips=`<button type="button" class="ffbtn active" data-hdf="all">${tx('wzAll')} ${cards.length}</button>`
     +RULES.filter(([k])=>cnt[k]).map(([k,label])=>`<button type="button" class="ffbtn" data-hdf="${k}">${esc(label)} ${cnt[k]}</button>`).join('');
+  // 숙소별 토글 — 어느 숙소가 밀려 있는지 바로 보이게(Min 2026-08)
+  const accCnt={};
+  cards.forEach(c=>{
+    const g=c.seq!=null?state.guests.find(x=>x.event_seq===c.seq):null; if(!g) return;
+    const k=teamPlaceKeys(g)[0]||g.accom||''; if(!k) return;
+    accCnt[k]=(accCnt[k]||0)+1;
+  });
+  const accKeys=PLACE_ITEMS.filter(k=>accCnt[k]).concat(Object.keys(accCnt).filter(k=>PLACE_ITEMS.indexOf(k)<0));
+  let accF='all';
+  const accChips=accKeys.length>1
+    ? `<button type="button" class="ffbtn active" data-hdp="all">${tx('dcAll')}</button>`
+      +accKeys.map(k=>`<button type="button" class="ffbtn" data-hdp="${esc(k)}"><span class="fdot" style="background:var(--${PLACE_COLOR[k]||'accent'})"></span>${esc(accomL(k))} ${accCnt[k]}</button>`).join('')
+    : '';
   const optCats=RULES.filter(([k,,,opt])=>opt&&cnt[k]);
   m.innerHTML=`<h2>${tx('holdsTitle',holds.length)}</h2>
     <div class="fac-filter" id="hd-chips" style="padding:8px 16px 0;display:flex">${chips}</div>
+    ${accChips?`<div class="fac-filter" id="hd-acc" style="padding:4px 16px 0;display:flex">${accChips}</div>`:''}
     <div style="padding:9px 16px 0"><input class="inp" id="hd-q" type="search" autocomplete="off" placeholder="${esc(tx('wzSearchTeam'))}" style="width:100%"></div>
     <div class="mbody" id="hd-body" style="max-height:58vh;overflow:auto;padding:9px 16px 4px">
       ${cards.map(cardHtml).join('')}
@@ -3359,14 +3373,20 @@ function openHoldsModal(){
     let hit=0;
     m.querySelectorAll('.hd-card').forEach(el=>{
       const okC = filter==='all' || (el.dataset.cats||'').split(' ').includes(filter);
+      const okP = accF==='all'  || (el.dataset.acc||'')===accF;
       const okQ = !kw || (el.dataset.hay||'').includes(kw);
-      const on = okC && okQ; el.style.display = on?'':'none'; if(on) hit++;
+      const on = okC && okP && okQ; el.style.display = on?'':'none'; if(on) hit++;
     });
     m.querySelector('#hd-nohit').style.display = hit?'none':'';
   };
   m.querySelectorAll('[data-hdf]').forEach(b=>b.addEventListener('click',()=>{
     filter=b.dataset.hdf;
     m.querySelectorAll('[data-hdf]').forEach(x=>x.classList.toggle('active',x===b));
+    apply();
+  }));
+  m.querySelectorAll('[data-hdp]').forEach(b=>b.addEventListener('click',()=>{
+    accF=b.dataset.hdp;
+    m.querySelectorAll('[data-hdp]').forEach(x=>x.classList.toggle('active',x===b));
     apply();
   }));
   q.addEventListener('input',apply);
