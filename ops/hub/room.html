@@ -1557,9 +1557,13 @@ function renderDayStrip(){
   if(dates.length<=1){ box.innerHTML=''; return; }
   if(!state.days) state.days=new Set();
   const WD=[0,1,2,3,4,5,6].map(i=>SZCore.weekday('2026-02-0'+(i+1),lang()));   // 요일 표기 = SZCore(화면 언어 연동)
-  const inByDate={}; state.guests.forEach(g=>{ if(g.dep) inByDate[g.dep]=(inByDate[g.dep]||0)+1; });
+  // ⚠ 날짜 칩의 +N(도착)·미N(미배정)은 **숙소 토글(미배정 팀 필터)** 범위만 센다(Min 2026-08).
+  //   숙소를 좁혀 작업할 때 다른 숙소 미배정까지 세면 "이 날짜 끝났나?"를 판단할 수 없다.
+  const inScope=g=>teamMatch(g);
+  const inByDate={}; state.guests.forEach(g=>{ if(g.dep && inScope(g)) inByDate[g.dep]=(inByDate[g.dep]||0)+1; });
   // 그 날 현지도착인데 아직 미배정인 팀 수(=0 되도록 맞추면 그 날짜 완료)
-  const unByDate={}; state.guests.forEach(g=>{ if(g.dep && unassignedMembers(g.event_seq).length>0) unByDate[g.dep]=(unByDate[g.dep]||0)+1; });
+  const unByDate={}; state.guests.forEach(g=>{ if(g.dep && inScope(g) && unassignedMembers(g.event_seq).length>0) unByDate[g.dep]=(unByDate[g.dep]||0)+1; });
+  const scopeTxt = teamSel.size ? [...teamSel].map(k=>accomL(k)).join('·') : tx('dcAll');
   const chip=(d,active)=>{
     const wd=WD[new Date(d+'T00:00:00').getDay()]; const we=(wd==='토'||wd==='일'); const cin=inByDate[d]||0; const un=unByDate[d]||0;
     // 도착이 있는 날 미배정 남으면 「미N」(빨강), 전원 배정 완료면 ✓(초록) — 시즈 예약표와 동일 양식
@@ -1569,11 +1573,11 @@ function renderDayStrip(){
   if(viewMode==='timeline'){
     const all=state.days.size===0;
     // data-d="전체" 는 클릭 핸들러의 비교 키 — 절대 번역하지 않음(표시 라벨만 번역)
-    box.innerHTML=`<span class="ds-lbl">${tx('tlDays')} <small>${tx('tlMulti')}</small></span>`
+    box.innerHTML=`<span class="ds-lbl">${tx('tlDays')} <small>${tx('tlMulti')} · ${esc(scopeTxt)}</small></span>`
       +`<button class="day-chip ds-all${all?' active':''}" data-d="전체" title="${tx('tlAllDates')}">${all?'✓ ':''}${tx('dcAll')}</button>`
       + dates.map(d=>chip(d, all || state.days.has(d))).join('');   // 전체면 전부 하이라이트
   } else {
-    box.innerHTML=`<span class="ds-lbl">${tx('dateOne')} <small>${tx('dayOne')}</small></span>`
+    box.innerHTML=`<span class="ds-lbl">${tx('dateOne')} <small>${tx('dayOne')} · ${esc(scopeTxt)}</small></span>`
       + dates.map(d=>chip(d, d===(state.focus||state.from))).join('');
   }
 }
