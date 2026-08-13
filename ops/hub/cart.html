@@ -142,12 +142,12 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=22"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
-<script src="../assets/saizen-ops.js?v=15.75"></script>
+<script src="../assets/saizen-ops.js?v=15.76"></script>
 <script>
 const $=s=>document.querySelector(s);
 
 const L={
-  ja:{ step:'カート管理表', home:'← ホーム',
+  ja:{ step:'電動カート 有料事前申請', home:'← ホーム',
     connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
     notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
     connHint:'日付ごとのカート保有・使用・残数と、チーム別の割当(コース・ティ時刻を含む)を1画面で管理します。',
@@ -158,7 +158,7 @@ const L={
     sqlRetry:'↻ 実行後 再読込', saveOk:n=>`${n}件 保存`, saveFail:'保存失敗',
     noRound:'この日にラウンドするチームはありません。', save:'💾 変更を保存', print:'🖨 印刷', reload:'↻ 再読込',
     stockTitle:'保有・使用・残数', own:'保有', use:'使用', left:'残', unit:'台', feeEach:n=>`1台1日 ¥${n.toLocaleString()}`,
-    tblTitle:'チーム別 カート割当', dirty:n=>`未保存 ${n}件`,
+    tblTitle:'チーム別 申請', dirty:n=>`未保存 ${n}件`,
     thTeam:'チーム', thRep:'代表', thAccom:'宿泊', thPax:'人数', thElig:'事前申請', thCourse:'コース', thTee:'ティ',
     thSrc:'申請区分', thNos:'カート番号', thMemo:'メモ', thFee:'料金', thTotal:'計',
     srcPre:'事前', srcOnsite:'現場',
@@ -185,12 +185,14 @@ const L={
     elecMaybe:'要確認', elecMaybeT:'備考に「電気」だけあり「カート」の記載なし — 集計に入れず再確認',
     chkTitle:'⚠ 再確認が必要な備考', chkDesc:'「電動カート申請」のように明確な場合だけ集計します。「電気」とだけ書かれた予約は<b>集計に入れず</b>ここに出します — メリットツアーに確認して確定してください。',
     chkNone:'この日は再確認が必要な備考はありません。', chkCnt:n=>`${n}件`,
-    mSumTitle:'日別 使用状況', mTeamTitle:'チーム別 割当明細', mNone:'この月はラウンドするチームがありません。',
+    mSumTitle:'日別 申請状況', mTeamTitle:'チーム別 申請明細', mNone:'この月はラウンドするチームがありません。',
     thDate:'日付', thTeams:'チーム', thTotalCarts:'計', thDays:'ラウンド日', thKind:'区分', thAlloc:'割当', thCartDays:'台·日',
-    kindElec:'電動(事前)', kindGas:'ガソリン', unassigned:'未割当',
+    kindElec:'電動(事前)', kindGas:'ガソリン', unassigned:'未確定',
+    unassignedT:'まだ保存していないチーム — 備考から計算した予定値です。現場でキャンセルされることがあるので、確認して保存すると確定します。',
+    noteStay:'※ 連泊でご案内していますが、実際には<b>1泊だけの利用</b>もできます。日ごとに申請を入れてください。',
     mNote:'月をまたいで続けて見られます。<b>登録データ(step1)が更新されると自動で反映</b>されます。行をクリックするとその日の管理表に移動します。',
     mLoading:'集計中…' },
-  ko:{ step:'카트 관리표', home:'← 홈',
+  ko:{ step:'전기카트 유료 사전 신청', home:'← 홈',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결·재시도',
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
     connHint:'날짜별 카트 보유·사용·잔여와 팀별 배정(코스·티오프 포함)을 한 화면에서 관리합니다.',
@@ -201,7 +203,7 @@ const L={
     sqlRetry:'↻ 실행했습니다 · 다시 불러오기', saveOk:n=>`${n}건 저장`, saveFail:'저장 실패',
     noRound:'이 날 라운딩하는 팀이 없습니다.', save:'💾 변경 저장', print:'🖨 인쇄', reload:'↻ 새로고침',
     stockTitle:'보유 · 사용 · 잔여', own:'보유', use:'사용', left:'잔여', unit:'대', feeEach:n=>`1대 1일 ¥${n.toLocaleString()}`,
-    tblTitle:'팀별 카트 배정', dirty:n=>`미저장 ${n}건`,
+    tblTitle:'팀별 신청', dirty:n=>`미저장 ${n}건`,
     thTeam:'팀', thRep:'대표', thAccom:'숙소', thPax:'인원', thElig:'사전신청', thCourse:'코스', thTee:'티오프',
     thSrc:'신청구분', thNos:'카트번호', thMemo:'메모', thFee:'요금', thTotal:'계',
     srcPre:'사전', srcOnsite:'현장',
@@ -228,12 +230,14 @@ const L={
     elecMaybe:'재확인', elecMaybeT:'비고에 「전기」만 있고 「카트」 표기가 없습니다 — 집계에서 빼고 재확인',
     chkTitle:'⚠ 재확인 필요 비고', chkDesc:'「전기카트 신청」처럼 명확한 경우만 집계합니다. 「전기」라고만 적힌 예약은 <b>집계에 넣지 않고</b> 여기 모읍니다 — 메리트투어에 확인해 확정해 주세요.',
     chkNone:'이 날짜에 재확인이 필요한 비고는 없습니다.', chkCnt:n=>`${n}건`,
-    mSumTitle:'일자별 사용현황', mTeamTitle:'팀별 배정 명세', mNone:'이 달에 라운딩하는 팀이 없습니다.',
+    mSumTitle:'일자별 신청 현황', mTeamTitle:'팀별 신청 명세', mNone:'이 달에 라운딩하는 팀이 없습니다.',
     thDate:'날짜', thTeams:'팀', thTotalCarts:'계', thDays:'라운딩일', thKind:'구분', thAlloc:'배정', thCartDays:'대·일',
-    kindElec:'전기(사전)', kindGas:'가솔린', unassigned:'미배정',
+    kindElec:'전기(사전)', kindGas:'가솔린', unassigned:'미확정',
+    unassignedT:'아직 저장하지 않은 팀 — 비고로 계산한 예상값입니다. 현장에서 취소되는 경우가 있어, 확인해 저장하면 확정됩니다.',
+    noteStay:'※ 연박으로 안내드리지만 실제로는 <b>단박 사용</b>도 가능합니다. 날짜별로 신청을 넣어 주세요.',
     mNote:'월을 넘겨 이어서 볼 수 있습니다. <b>등록 데이터(step1)가 갱신되면 자동으로 반영</b>됩니다. 행을 클릭하면 그 날짜 관리표로 이동합니다.',
     mLoading:'집계 중…' },
-  en:{ step:'Cart control sheet', home:'← Home',
+  en:{ step:'Electric cart — paid pre-booking', home:'← Home',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
     connHint:'Daily cart stock, usage and remaining, plus per-team assignment (course and tee time) on one screen.',
@@ -244,7 +248,7 @@ const L={
     sqlRetry:'↻ I ran it · reload', saveOk:n=>`Saved ${n}`, saveFail:'Save failed',
     noRound:'No team plays golf on this date.', save:'💾 Save changes', print:'🖨 Print', reload:'↻ Reload',
     stockTitle:'Stock · in use · remaining', own:'Stock', use:'In use', left:'Left', unit:'', feeEach:n=>`¥${n.toLocaleString()} per cart/day`,
-    tblTitle:'Cart assignment by team', dirty:n=>`${n} unsaved`,
+    tblTitle:'Requests by team', dirty:n=>`${n} unsaved`,
     thTeam:'Team', thRep:'Rep', thAccom:'Lodging', thPax:'Pax', thElig:'Pre-booking', thCourse:'Course', thTee:'Tee',
     thSrc:'Type', thNos:'Cart no.', thMemo:'Note', thFee:'Fee', thTotal:'Total',
     srcPre:'Pre', srcOnsite:'On-site',
@@ -271,9 +275,11 @@ const L={
     elecMaybe:'check', elecMaybeT:'Remarks say "electric" but never "cart" — excluded from the count, needs confirming',
     chkTitle:'⚠ Remarks needing confirmation', chkDesc:'Only explicit wording ("electric cart requested") is counted. Bookings that just say "electric" are <b>left out of the count</b> and listed here — confirm with Merit Tour.',
     chkNone:'Nothing to confirm on this date.', chkCnt:n=>`${n} items`,
-    mSumTitle:'Usage by date', mTeamTitle:'Assignment detail by team', mNone:'No team plays golf in this month.',
+    mSumTitle:'Requests by date', mTeamTitle:'Request detail by team', mNone:'No team plays golf in this month.',
     thDate:'Date', thTeams:'Teams', thTotalCarts:'Total', thDays:'Round days', thKind:'Kind', thAlloc:'Assigned', thCartDays:'cart-days',
-    kindElec:'Electric (pre)', kindGas:'Gasoline', unassigned:'unassigned',
+    kindElec:'Electric (pre)', kindGas:'Gasoline', unassigned:'unconfirmed',
+    unassignedT:'Not saved yet — an estimate from the remarks. On-site cancellations happen, so check and save to confirm.',
+    noteStay:'※ We advise consecutive nights, but <b>single-night use</b> is allowed. Enter a request per date.',
     mNote:'Move across months freely. <b>Updates automatically as registered data (step1) changes.</b> Click a row to open that day.',
     mLoading:'Aggregating…' }
 };
@@ -369,7 +375,7 @@ function renderUI(){
       <div id="recheck" class="noprint"></div>
       <h3 style="margin-top:14px">${tx('tblTitle')} <span class="cnt" id="tbl-cnt"></span></h3>
       <div style="overflow:auto"><div id="tbl"></div></div>
-      <div class="desc noprint" style="margin-top:11px">${tx('deskNote')}</div>
+      <div class="desc noprint" style="margin-top:11px">${tx('deskNote')}<br>${tx('noteStay')}</div>
     </div>
 
     <details class="panel noprint">
@@ -802,7 +808,7 @@ function renderMonth(){
       <div class="d${dc}">${d}</div>
       <div class="tm">${x.teams}${lang()==='en'?' teams':(lang()==='ja'?'チーム':'팀')}</div>
       ${lines}
-      ${x.unassigned?`<div class="un">${esc(tx('unassigned'))} ${x.unassigned}</div>`:''}
+      ${x.unassigned?`<div class="un" title="${esc(tx('unassignedT'))}">${esc(tx('unassigned'))} ${x.unassigned}</div>`:''}
     </div>`);
   }
   const gTot={}; MDAYS.forEach(d=>TYPES.forEach(t=>{ gTot[t.code]=(gTot[t.code]||0)+(+d.qty[t.code]||0); }));

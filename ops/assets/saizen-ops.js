@@ -1878,6 +1878,37 @@
     b.addEventListener('click', function () { location.reload(); });
     box.insertBefore(b, box.firstChild);
   }
+  // ── 팝업은 ESC 로 닫는다 (Min 2026-08) ─────────────────────────────────
+  //  각 페이지가 만드는 오버레이(모달)를 공통으로 닫아준다. 페이지가 자체 ESC 처리를
+  //  갖고 있으면 그쪽이 먼저 동작하고(캡처 아님), 남은 것만 여기서 정리한다.
+  //  ⚠ 화면 chrome(로그인 카드·권한 차단·토스트·상단바·서랍)은 절대 닫지 않는다.
+  var ESC_KEEP = ['so-guard', 'so-login', 'so-bar', 'so-footer', 'so-totop', 'ua-drawer'];
+  function _escKeep(el) {
+    if (el.id === 'toast') return true;
+    for (var i = 0; i < ESC_KEEP.length; i++) {
+      if (el.id === ESC_KEEP[i] || el.className && String(el.className).indexOf(ESC_KEEP[i]) >= 0) return true;
+    }
+    return false;
+  }
+  function mountEscClose() {
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      var nodes = document.body ? document.body.children : [];
+      var top = null;
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        if (el.nodeType !== 1 || _escKeep(el)) continue;
+        var cs = window.getComputedStyle(el);
+        if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden') continue;
+        // 화면을 덮는 오버레이만(작은 고정 배지·버튼 제외)
+        var r = el.getBoundingClientRect();
+        if (r.width < window.innerWidth * 0.5 || r.height < window.innerHeight * 0.5) continue;
+        top = el;   // 문서상 마지막 = 가장 위
+      }
+      if (top) { top.remove(); }
+    });
+  }
+
   function mountUpdateCheck() {
     if (!/^https?:$/.test(location.protocol)) return;         // file:// 등 제외
     if (!window.fetch || !document.querySelector('.so-controls')) return;
@@ -1926,7 +1957,7 @@
   function boot() {
     mountHead();
     if (handleAuthRedirect()) { applyLang(); return; }   // 초대/재설정 모드면 비번 설정만
-    mountAuth(); mountFooter(); applyLang(); guardPage(); mountConnToggle(); mountHelp(); mountToTop(); mountAudit(); mountUpdateCheck();
+    mountAuth(); mountFooter(); applyLang(); guardPage(); mountConnToggle(); mountHelp(); mountToTop(); mountAudit(); mountUpdateCheck(); mountEscClose();
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
