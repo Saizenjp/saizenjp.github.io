@@ -11,7 +11,7 @@
    · 방 상태 5종: 턴오버(퇴실+당일입실) · 퇴실 · 연박 · 입실 · 공실 (+ 폐쇄)
    · 정렬 = 우선순위: 턴오버 → 퇴실 → 연박 → 입실 → 공실
      (당일 입실이 걸린 방을 먼저 비워야 체크인 시각을 못 지키는 사고가 없다)
-   · 작업량(분) 합계 → 필요 인원 환산. 층 머리에 층별 요약.
+   · 층 머리에 층별 요약(청소 실수). ※소요시간·필요 인원 추정은 두지 않는다(Min 2026-08).
    · 시트 교체 = 연박 N박째마다(LINEN_EVERY).
   여기에 우리만 가능한 것 하나:
    · 그날 라운딩 티오프 시각을 같이 띄운다. 연박 방은 팀이 나간 뒤라야 들어가므로
@@ -166,7 +166,7 @@
     .flr+.flr{page-break-before:always}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.27">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.28">
 </head>
 <body data-so-area="hk">
 <div class="topbar so-bar">
@@ -202,11 +202,6 @@
 <script>
 const $=s=>document.querySelector(s);
 
-// ── 작업량 기준(분) — 실제 운영에 맞춰 여기만 고치면 요약이 따라간다 ──
-const MIN_OUT=30;      // 퇴실 청소(턴오버 포함)
-const MIN_STAY=15;     // 연박 정비
-const MIN_VACANT=5;    // 공실 점검
-const SHIFT_MIN=360;   // 1인 실작업 6시간 → 필요 인원 환산
 const LINEN_EVERY=3;   // 연박 N박째마다 시트 교체
 
 const L={
@@ -221,14 +216,14 @@ const L={
     sortPrio:'優先順', sortNo:'部屋番号順', sortT:'並び替え',
     title:'客室清掃 割当表', readonly:'閲覧のみ（変更はフロント事務所）',
     kTurn:'ターンオーバー', kOut:'退室', kStay:'連泊', kIn:'入室', kVacant:'空室', kOoo:'閉鎖',
-    kWork:'見込み作業量', kStaff:'必要人数', roomsU:'室', minU:'分', hourU:'時間', personU:'名',
+    roomsU:'室',
     sTurn:'退室→入室', sOut:'退室', sStay:'連泊', sIn:'入室', sVacant:'空室', sOoo:'閉鎖',
     thState:'状態', thRoom:'部屋', thType:'タイプ', thPax:'人数', thTeam:'チーム', thStay:'滞在',
     thNth:'泊目', thTee:'ティオフ', thNote:'備考',
     arOut:'退室', arStay:'滞在', arIn:'入室',
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'最終夜', linen:'シーツ交換', nextIn:n=>`入室 ${n}名`,
     closed:(f,t,r)=>`閉鎖 ${f}~${t}${r?' · '+r:''}`,
-    noRooms:'該当する客室がありません。', floorStat:(c,m)=>`清掃 ${c}室 · 約${m}分`,
+    noRooms:'該当する客室がありません。', floorStat:(c)=>`清掃 ${c}室`,
     lgd:'左の色帯＝状態 / 上から優先順に並んでいます',
     teeHint:'連泊はティオフが早い部屋から（チームが出た後に入れる）',
     statN:(d,n)=>`${d} · ${n}室` },
@@ -243,14 +238,14 @@ const L={
     sortPrio:'우선순', sortNo:'호수순', sortT:'정렬',
     title:'객실 청소 배정표', readonly:'보기 전용 (변경은 프론트 사무실)',
     kTurn:'턴오버', kOut:'퇴실', kStay:'연박', kIn:'입실', kVacant:'공실', kOoo:'폐쇄',
-    kWork:'예상 작업량', kStaff:'필요 인원', roomsU:'실', minU:'분', hourU:'시간', personU:'명',
+    roomsU:'실',
     sTurn:'퇴실→입실', sOut:'퇴실', sStay:'연박', sIn:'입실', sVacant:'공실', sOoo:'폐쇄',
     thState:'상태', thRoom:'호수', thType:'타입', thPax:'인원', thTeam:'팀', thStay:'체류',
     thNth:'박째', thTee:'티오프', thNote:'비고',
     arOut:'퇴실', arStay:'재실', arIn:'입실',
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'마지막밤', linen:'시트 교체', nextIn:n=>`입실 ${n}명`,
     closed:(f,t,r)=>`폐쇄 ${f}~${t}${r?' · '+r:''}`,
-    noRooms:'해당하는 객실이 없습니다.', floorStat:(c,m)=>`청소 ${c}실 · 약 ${m}분`,
+    noRooms:'해당하는 객실이 없습니다.', floorStat:(c)=>`청소 ${c}실`,
     lgd:'왼쪽 색띠 = 상태 / 위에서부터 우선순위 순서',
     teeHint:'연박은 티오프 빠른 방부터(팀이 나간 뒤 들어갈 수 있음)',
     statN:(d,n)=>`${d} · ${n}실` },
@@ -265,14 +260,14 @@ const L={
     sortPrio:'Priority', sortNo:'Room no.', sortT:'Sort',
     title:'Housekeeping worksheet', readonly:'Read-only (changes at the front office)',
     kTurn:'Turnover', kOut:'Departure', kStay:'Stayover', kIn:'Arrival', kVacant:'Vacant', kOoo:'Out of order',
-    kWork:'Estimated work', kStaff:'Staff needed', roomsU:' rooms', minU:' min', hourU:' h', personU:'',
+    roomsU:' rooms',
     sTurn:'Out → In', sOut:'Departure', sStay:'Stayover', sIn:'Arrival', sVacant:'Vacant', sOoo:'Closed',
     thState:'Status', thRoom:'Room', thType:'Type', thPax:'Pax', thTeam:'Team', thStay:'Stay',
     thNth:'Night', thTee:'Tee off', thNote:'Notes',
     arOut:'Out', arStay:'Stay', arIn:'In',
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'Last night', linen:'Linen change', nextIn:n=>`${n} arriving`,
     closed:(f,t,r)=>`Closed ${f}~${t}${r?' · '+r:''}`,
-    noRooms:'No matching rooms.', floorStat:(c,m)=>`${c} rooms · ~${m} min`,
+    noRooms:'No matching rooms.', floorStat:(c)=>`${c} rooms`,
     lgd:'Left colour bar = status / listed in priority order',
     teeHint:'Stayovers are ordered by tee-off — clean once the team has left',
     statN:(d,n)=>`${d} · ${n} rooms` }
@@ -529,10 +524,9 @@ function roomRecord(inv){
   const tee=teeSeq!=null?TEE[teeSeq]:null;
 
   const paxNight=night.length, paxOut=outs.length;
-  const minutes = status==='ooo'?0 : (status==='turn'||status==='out')?MIN_OUT : status==='stay'?MIN_STAY : status==='in'?MIN_VACANT : MIN_VACANT;
   const linen = status==='stay' && nth>0 && nth%LINEN_EVERY===0;
 
-  return {inv, status, gOut, gStay, gIn, paxNight, paxOut, nth, total, lastNight, tee, clo, minutes, linen};
+  return {inv, status, gOut, gStay, gIn, paxNight, paxOut, nth, total, lastNight, tee, clo, linen};
 }
 
 function stLabel(s){ return {turn:tx('sTurn'),out:tx('sOut'),stay:tx('sStay'),in:tx('sIn'),vacant:tx('sVacant'),ooo:tx('sOoo')}[s]; }
@@ -566,10 +560,7 @@ function render(){
 function renderKpis(recs){
   const box=$('#kpis'); if(!box) return;
   const c={turn:0,out:0,stay:0,in:0,vacant:0,ooo:0};
-  let min=0;
-  recs.forEach(r=>{ c[r.status]++; min+=r.minutes; });
-  const staff=Math.max(1,Math.ceil(min/SHIFT_MIN));
-  const hh=(min/60).toFixed(1);
+  recs.forEach(r=>{ c[r.status]++; });
   const kpi=(cls,k,v,u)=>`<div class="kpi ${cls}"><div class="k">${esc(k)}</div><div class="v">${v}<span class="u">${esc(u||'')}</span></div></div>`;
   box.innerHTML=
      kpi('turn',tx('kTurn'),c.turn,tx('roomsU'))
@@ -577,14 +568,11 @@ function renderKpis(recs){
     +kpi('stay',tx('kStay'),c.stay,tx('roomsU'))
     +kpi('inn', tx('kIn'),  c.in,  tx('roomsU'))
     +kpi('',    tx('kVacant'),c.vacant,tx('roomsU'))
-    +(c.ooo?kpi('',tx('kOoo'),c.ooo,tx('roomsU')):'')
-    +kpi('work',tx('kWork'),hh,tx('hourU'))
-    +kpi('work',tx('kStaff'),staff,tx('personU'));
+    +(c.ooo?kpi('',tx('kOoo'),c.ooo,tx('roomsU')):'');
 }
 
 function floorHtml(g,key){
   const clean=g.list.filter(r=>r.status!=='ooo'&&r.status!=='vacant').length;
-  const mins=g.list.reduce((s,r)=>s+r.minutes,0);
   const c={turn:0,out:0,stay:0,in:0};
   g.list.forEach(r=>{ if(c[r.status]!==undefined) c[r.status]++; });
   const list=g.list.slice().sort((a,b)=>{
@@ -604,7 +592,7 @@ function floorHtml(g,key){
       <span class="fst">
         ${badge('turn',tx('sTurn'),c.turn)}${badge('out',tx('sOut'),c.out)}
         ${badge('stay',tx('sStay'),c.stay)}${badge('in',tx('sIn'),c.in)}
-        <span class="cnt">${esc(tx('floorStat')(clean,mins))}</span>
+        <span class="cnt">${esc(tx('floorStat')(clean))}</span>
       </span>
     </div>
     ${VIEW==='card'?`<div class="rcards" style="padding:11px">${list.map(cardHtml).join('')}</div>`:`<table class="hkt">
