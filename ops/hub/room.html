@@ -2284,7 +2284,9 @@ function renderRoom(inv){
   const usedPax=roomUsedPax(inv);   // span-aware (선택 시 그 기간 최대점유)
   const cap=inv.max_capacity||inv.capacity;
   // 상태색: 초과=빨강(위험) · 정원 꽉참=초록(깔끔) · 정원 미달=앰버(주의)
-  const stCls = usedPax>inv.capacity ? ' warn' : (usedPax>0 && usedPax>=inv.capacity ? ' full' : (usedPax>0 ? ' partial' : ''));
+  // ⚠ 초과 판정은 **최대 정원(max_capacity)** 기준이다. 간지호텔처럼 정원2·최대3인 방은
+  //    3명이 들어가도 정상이며, capacity(2) 기준으로 보면 멀쩡한 방이 전부 「초과」로 찍힌다(Min 2026-08).
+  const stCls = usedPax>cap ? ' warn' : (usedPax>0 && usedPax>=inv.capacity ? ' full' : (usedPax>0 ? ' partial' : ''));
   const clo=roomClosedFocus(inv.id);   // 기준일 폐쇄 여부
   div.className='room'+((inv.active&&!clo)?'':' inactive')+(assigned.length?' filled':'')+stCls;
   div.dataset.invId=inv.id;
@@ -2300,7 +2302,7 @@ function renderRoom(inv){
     ${inv.note?`<div class="note">${inv.note}</div>`:''}
     ${clo?`<div class="note" style="color:#b13b2c;font-weight:700">${tx('closedNote',fmtMD(clo.from_date),fmtMD(clo.to_date),clo.reason)}</div>`:''}
     <div class="assigned">${chips}</div>
-    ${usedPax>inv.capacity?`<span class="badge">${tx('over')}</span>`:''}`;
+    ${usedPax>cap?`<span class="badge">${tx('over')}</span>`:''}`;
   wireRoomEl(div,inv);
   return div;
 }
@@ -2338,7 +2340,10 @@ function renderRoomRow(inv){
   const assigned = _span ? roomOccOver(inv.id,_span.dep,_span.arr).rows
                          : roomOccAt(inv.id, state.focus||state.from);
   const usedPax=roomUsedPax(inv);
-  const stCls = usedPax>inv.capacity ? ' warn' : (usedPax>0 && usedPax>=inv.capacity ? ' full' : (usedPax>0 ? ' partial' : ''));
+  const cap=inv.max_capacity||inv.capacity;
+  // ⚠ 초과 판정은 **최대 정원(max_capacity)** 기준이다. 간지호텔처럼 정원2·최대3인 방은
+  //    3명이 들어가도 정상이며, capacity(2) 기준으로 보면 멀쩡한 방이 전부 「초과」로 찍힌다(Min 2026-08).
+  const stCls = usedPax>cap ? ' warn' : (usedPax>0 && usedPax>=inv.capacity ? ' full' : (usedPax>0 ? ' partial' : ''));
   const clo=roomClosedFocus(inv.id);
   tr.className='rrow'+((inv.active&&!clo)?'':' inactive')+stCls;
   tr.dataset.invId=inv.id;
@@ -2347,7 +2352,7 @@ function renderRoomRow(inv){
   tr.innerHTML=`
     <td class="c-no">${inv.room_no}${zonePin(inv)}<span class="lock" data-inv-id="${inv.id}" title="${inv.active?tx('lockOnT'):tx('lockOffT')}">${inv.active?'🔓':'🔒'}</span></td>
     <td class="c-ty">${typeLabel(inv.room_type,inv.facility)}</td>
-    <td class="c-cap">${usedPax}/${inv.capacity}${usedPax>inv.capacity?` <span class="badge">${tx('over')}</span>`:''}</td>
+    <td class="c-cap">${usedPax}/${inv.capacity}${cap>inv.capacity&&usedPax>inv.capacity?`<small style="color:var(--muted)">(max ${cap})</small>`:''}${usedPax>cap?` <span class="badge">${tx('over')}</span>`:''}</td>
     <td class="c-gu">${chips}${clo?`<span class="c-clo">${tx('closedNote',fmtMD(clo.from_date),fmtMD(clo.to_date),clo.reason)}</span>`:''}${inv.note?`<span class="c-clo" style="color:var(--muted);font-weight:600">${esc(inv.note)}</span>`:''}</td>`;
   wireRoomEl(tr,inv);
   return tr;
@@ -2775,8 +2780,12 @@ function openHoldsModal(){
       </div>
     </div>`).join('');
   const hasOpt=RULES.some(([k,,,opt])=>opt&&by[k]&&by[k].length);
+  // 사유별 집계 — 어느 규칙이 미배정을 만드는지 한 줄로(검수용)
+  const sum=RULES.filter(([k])=>by[k]&&by[k].length)
+    .map(([k,label])=>`<span style="display:inline-block;background:var(--surface3);border:1px solid var(--border2);border-radius:99px;padding:3px 11px;margin:0 6px 6px 0;font-size:12px;font-weight:700">${esc(label)} <b style="color:var(--err)">${by[k].length}</b></span>`).join('');
   m.innerHTML=`<h2>${tx('holdsTitle',holds.length)}</h2>
     <div class="mbody" style="padding:12px 16px 4px;max-height:60vh;overflow:auto">
+      <div style="margin-bottom:10px">${sum}</div>
       <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${tx('holdsDesc')}</div>${body}
       ${hasOpt?`<div style="font-size:11.5px;color:var(--text2);background:#fdf6e7;border:1px solid #e6d3a3;border-radius:7px;padding:8px 11px;margin-bottom:8px">${tx('holdsApplyNote')}</div>`:''}</div>
     <div class="mfoot">
@@ -2827,7 +2836,7 @@ function renderFloorRing(zoneRooms){
     const node=document.createElement('div');
     const assigned=roomOccAt(inv.id, state.focus||state.from);   // 평면도도 기준일 하룻밤만
     const usedPax=assigned.reduce((s,r)=>s+(r.assigned_pax||0),0);
-    node.className='ring-room t-'+inv.room_type+(inv.active?'':' inactive')+(assigned.length?' filled':'')+(usedPax>inv.capacity?' warn':'');
+    node.className='ring-room t-'+inv.room_type+(inv.active?'':' inactive')+(assigned.length?' filled':'')+(usedPax>(inv.max_capacity||inv.capacity)?' warn':'');
     if(xy){ node.style.left=xy.x+'%'; node.style.top=xy.y+'%'; }
     else { node.style.position='relative'; node.style.display='inline-block'; } // 좌표 없으면 흐름배치
     const chips=assigned.map(r=>{
