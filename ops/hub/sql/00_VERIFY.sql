@@ -165,6 +165,7 @@ from (
   union all select 95,'95 카트 현장취소','cart_bookings.cancelled', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='cart_bookings' and column_name='cancelled') then '✅ 있음' else '❌ 없음 (95)' end
   union all select 96,'96 간지 실제 호수','room_inventory 201~310호', case when exists(select 1 from room_inventory where facility='간지호텔' and room_no='201호') then '✅ 적용' else '❌ 미적용 (96)' end
   union all select 97,'97 간지 정원 2·최대 3','트리플 요청 허용+초과 표시', case when not exists(select 1 from room_inventory where facility='간지호텔' and (capacity is distinct from 2 or max_capacity is distinct from 3)) and exists(select 1 from room_inventory where facility='간지호텔') then '✅ 적용' else '❌ 미적용 (97)' end
+  union all select 98,'98 명단 중복 정리','guest_members 동일인 중복', case when not exists(select 1 from (select event_seq,name_kr,name_en from guest_members where coalesce(name_kr,'')<>'' group by 1,2,3 having count(*)>1) t) then '✅ 없음' else '❌ 중복 있음 (98 실행)' end
 ) t
 order by ord, 항목;
 
