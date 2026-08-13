@@ -47,6 +47,14 @@
   - `/app/` localStorage: `manualData`(월별 수기입력 — `saveManual()`/`loadManual()`), `memberMasterMap`·`memberMasterMeta`·`memberMasterFile`·`memberMasterCount`, `learnedMasterMap`·`learnedMasterMeta`, `tagCodeManualMap`, `saizen_dispatch_mask`(송영 마스킹), `saizen_lang`(화면 언어 ja/ko/en — `/ops/`와 공유).
   - `/ops/` Supabase 접속정보 localStorage: `saizen_sb_url` / `saizen_sb_key`.
 
+## 3-1. UI 검수 상시 항목 (Min 2026-08)
+- **긴 목록·팝업엔 검색을 넣는다.** 팀·인원·객실·회원처럼 수십~수백 행이 되는 목록은
+  담당자가 눈으로 찾게 두지 않는다(배정 피커·옮길 방 피커·미배정 서랍 등).
+  새 화면·새 팝업을 만들 때마다 **검색이 필요한 목록인지 판단**하고, 필요하면 넣은 뒤 보고한다.
+- **필요 없는 기능은 없앤다.** 자동으로 도는 일에 버튼을 남기지 않고(자동배정),
+  시스템이 애초에 막는 일에 점검 버튼을 두지 않는다(정원 초과=DB 트리거).
+- **표기는 실제 동작과 같아야 한다.** 화면 라벨이 자동배정에서 빠지는 것처럼 읽히면 안 된다.
+
 ## 4. 검증 (납품 전 필수)
 1. **JS 문법 검사** — src 없는 인라인 `<script>`만 추출 → `node --check`.
    ```bash

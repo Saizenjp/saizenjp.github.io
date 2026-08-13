@@ -602,6 +602,7 @@ const L={
     autoNote:'月を開くと自動で割り当てます。手動で置いた部屋は📌固定。',
     pinList:'📌 手動割当', pinListT:'手動で固定した割当だけを表示', pinNone:'手動割当はありません',
     pinOnly:'📌 手動のみ',
+    pickSearch:'名前・タグコード・行事番号で検索', pickNoHit:'該当なし',
     viewCard:'カード', viewTimeline:'タイムライン', viewTimelineT:'客室×日付の占有を一覧',
     viewTable:'一覧', viewTableT:'表形式 — 一画面で多くの客室(大量割当向け)',
     thRoom:'部屋', thType:'タイプ', thCap:'定員', thGuests:'宿泊者',
@@ -810,6 +811,7 @@ const L={
     autoNote:'월을 열면 자동으로 배정합니다. 수기로 놓은 방은 📌 고정됩니다.',
     pinList:'📌 수기 배정', pinListT:'수기로 고정한 배정만 보기', pinNone:'수기 배정이 없습니다',
     pinOnly:'📌 수기만',
+    pickSearch:'이름·태그코드·행사번호 검색', pickNoHit:'검색 결과 없음',
     viewCard:'카드', viewTimeline:'타임라인', viewTimelineT:'객실×날짜 점유 한눈에',
     viewTable:'표', viewTableT:'표 형식 — 한 화면에 더 많은 객실(대량 배정용)',
     thRoom:'호수', thType:'타입', thCap:'정원', thGuests:'점유자',
@@ -1011,6 +1013,7 @@ const L={
     autoNote:'Opens and assigns automatically. Rooms you place by hand are pinned.',
     pinList:'📌 Manual', pinListT:'Show only manually pinned assignments', pinNone:'No manual assignments',
     pinOnly:'📌 Manual only',
+    pickSearch:'Search name · tag code · booking no.', pickNoHit:'No match',
     viewCard:'Card', viewTimeline:'Timeline', viewTimelineT:'Room × date occupancy at a glance',
     viewTable:'Table', viewTableT:'Table view — more rooms per screen (bulk assignment)',
     thRoom:'Room', thType:'Type', thCap:'Cap.', thGuests:'Guests',
@@ -1874,13 +1877,13 @@ function openAssignPicker(inv){
     const fit=roomFitsTeam(inv,g);
     const gcode=teamGroupCode(g.event_seq)||tx('codeUndecided');
     const mem=unassignedMembers(g.event_seq);
-    const rows=mem.map(m=>`<label style="display:flex;align-items:center;gap:7px;padding:5px 9px;cursor:pointer;border-top:1px solid var(--border)">
+    const rows=mem.map(m=>`<label class="ap-m" data-hay="${esc([m.name_kr,m.name_en,m.tag,m.num,gcode,g.event_no,g.rep].filter(Boolean).join(' ').toLowerCase())}" style="display:flex;align-items:center;gap:7px;padding:5px 9px;cursor:pointer;border-top:1px solid var(--border)">
         <input type="checkbox" class="ap-chk" data-mid="${m.id}" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer">
         <span style="font-family:var(--mono);font-size:11px;color:var(--text2);min-width:30px">${m.tag||m.num||''}</span>
         <span style="font-size:13px;font-weight:600">${m.name_kr||'-'}${m.is_rep?` <i style="font-size:8px;font-weight:800;color:var(--accent2)">${tx('repBadge')}</i>`:''}${gbadge(m)}</span>
         <span style="margin-left:auto;font-size:11px;color:var(--muted)">${m.name_en||''}</span>
       </label>`).join('');
-    return `<div style="border:1px solid ${fit?'var(--accent)':'var(--border)'};border-radius:9px;margin-bottom:8px;overflow:hidden;${fit?'box-shadow:0 0 0 1px var(--accent) inset':''}">
+    return `<div class="ap-team" data-hay="${esc([gcode,g.rep,g.event_no,g.accom].filter(Boolean).join(' ').toLowerCase())}" style="border:1px solid ${fit?'var(--accent)':'var(--border)'};border-radius:9px;margin-bottom:8px;overflow:hidden;${fit?'box-shadow:0 0 0 1px var(--accent) inset':''}">
       <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2)">
         <span style="font-family:var(--mono);font-weight:800;color:var(--accent)">${gcode}</span>
         ${fit?`<span style="font-size:9.5px;font-weight:800;color:#fff;background:var(--accent);border-radius:99px;padding:1px 8px">${tx('thisLodging')}</span>`:''}
@@ -1896,7 +1899,8 @@ function openAssignPicker(inv){
       <span>${inv.facility||''} ${inv.room_no} <span style="font-size:12px;font-weight:600;color:var(--muted)">${tx('pickerScope',dayScopeLabel())}</span></span>
       <span style="font-size:12px;font-weight:700;color:${remain?'var(--accent2)':'var(--err)'}">${tx('pickerCap',usedNow,cap,remain)}</span>
     </h2>
-    <div class="mbody" style="max-height:58vh;overflow:auto">${body}</div>
+    <div style="padding:9px 18px 0"><input class="inp" id="ap-q" type="search" autocomplete="off" placeholder="${tx('pickSearch')}" style="width:100%"></div>
+    <div class="mbody" style="max-height:54vh;overflow:auto">${body}<div id="ap-nohit" style="display:none;padding:22px;text-align:center;color:var(--muted)">${tx('pickNoHit')}</div></div>
     <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center">
       <span id="ap-cnt" style="margin-right:auto;font-size:12px;color:var(--text2)">${tx('selN',0,0,false)}</span>
       <button class="btn ghost sm" type="button" id="ap-close">${tx('close')}</button>
@@ -1909,6 +1913,22 @@ function openAssignPicker(inv){
     $('#ap-cnt').textContent=tx('selN',n,remain,(n>remain&&remain));
     $('#ap-go').disabled=!n; };
   bg.querySelectorAll('.ap-chk').forEach(c=>c.addEventListener('change',upd));
+  // 목록이 길면 사람을 찾는 게 일이다 — 검색으로 좁힌다(Min 2026-08)
+  const apq=$('#ap-q');
+  if(apq) apq.addEventListener('input',()=>{
+    const q=(apq.value||'').trim().toLowerCase(); let hit=0;
+    bg.querySelectorAll('.ap-team').forEach(t=>{
+      const tHit=!q || (t.dataset.hay||'').includes(q);
+      let mHit=0;
+      t.querySelectorAll('.ap-m').forEach(r=>{
+        const ok=!q || tHit || (r.dataset.hay||'').includes(q);
+        r.style.display=ok?'':'none'; if(ok) mHit++;
+      });
+      const show=!q || tHit || mHit>0;
+      t.style.display=show?'':'none'; if(show) hit++;
+    });
+    const nh=$('#ap-nohit'); if(nh) nh.style.display=hit?'none':'';
+  });
   $('#ap-close').addEventListener('click',closeAssignPicker);
   $('#ap-go').addEventListener('click',async()=>{
     const ids=[...bg.querySelectorAll('.ap-chk:checked')].map(c=>c.dataset.mid);
@@ -2580,7 +2600,8 @@ function openSplitPicker(srcRow){
   const bg=document.createElement('div'); bg.className='modal-bg'; bg.id='split-picker';
   bg.innerHTML=`<div class="modal" style="max-width:640px">
     <h2>${esc(tx('spTitle',sp.name||'',fmtMD(sp.from),fmtMD(sp.to)))}</h2>
-    <div class="mbody" style="max-height:58vh;overflow:auto">${body}</div>
+    <div style="padding:9px 18px 0"><input class="inp" id="sp-q" type="search" autocomplete="off" placeholder="${esc(tx('thRoom'))}" style="width:100%"></div>
+    <div class="mbody" style="max-height:54vh;overflow:auto">${body}</div>
     <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center">
       <span style="margin-right:auto;font-size:11.5px;color:var(--muted)">${esc(tx('spHint'))}</span>
       <button class="btn ghost sm" type="button" id="sp-close">${tx('close')}</button>
@@ -2589,6 +2610,13 @@ function openSplitPicker(srcRow){
   bg.addEventListener('click',e=>{ if(e.target===bg) closeSplitPicker(); });
   document.body.appendChild(bg);
   $('#sp-close').addEventListener('click',closeSplitPicker);
+  const spq=$('#sp-q');
+  if(spq) spq.addEventListener('input',()=>{
+    const q=(spq.value||'').trim().toLowerCase();
+    bg.querySelectorAll('.sp-room').forEach(b=>{
+      b.style.display=(!q || b.textContent.toLowerCase().includes(q))?'':'none';
+    });
+  });
   bg.querySelectorAll('.sp-room').forEach(b=>b.addEventListener('click',async()=>{
     const inv=state.inventory.find(x=>String(x.id)===b.dataset.invId); if(!inv) return;
     closeSplitPicker();
@@ -3329,10 +3357,16 @@ async function autoAssign(){
       if(!roster.length) continue;
       const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq));
 
-      // 싱글 지정 팀(현지비고/비고에 '싱글')은 자동배정 제외 → 미배정으로 두고 수기 배정.
-      //  (누가 싱글인지 팀단위 비고로는 특정 불가 + 트리플 등 변형 혼재 가능 → 짝짓기 강행 금지. Min 결정)
-      if(!AUTO_OPTS.singleRemark && /싱글|single|シングル/i.test((g.remark_local||'')+' '+(g.remark||''))){
-        holds.push(tx('holdSingle',gc)); continue;
+      // 싱글 지정 팀(현지비고/비고에 '싱글')
+      //  · 야마나미 호텔동: 누가 싱글인지 팀 단위 비고로는 특정 불가 + 룸타입이 여러 개라
+      //    강행하면 싱글 요청자를 둘씩 묶어버린다 → 보류 후 수기(기존 Min 결정 유지).
+      //  · 그 외 시설(간지호텔·쿠주힐즈·돔하우스): 룸타입이 트윈 한 종류뿐이고 1인 사용 요금이
+      //    이미 붙는다 → **1인 1실로 배정**한다. 방이 비어 있는데 미배정으로 남기지 않는다(Min 2026-08).
+      const _wantSingle=/싱글|single|シングル/i.test((g.remark_local||'')+' '+(g.remark||''));
+      let _singleEach=false;
+      if(_wantSingle && !AUTO_OPTS.singleRemark){
+        if(route.floorOnly){ holds.push(tx('holdSingle',gc)); continue; }   // 야마나미 호텔동만 보류
+        _singleEach=true;                                                   // 나머지는 1인 1실
       }
       // ── 청소 효율 박수→층 규칙: 야마나미 호텔동(floorOnly) 팀만 허용 층으로 제한 ──
       //   허용 층이 없거나(규칙 외 박수+유동층 만석) 만석이면 hold(객실부족) → 수기 배정으로.
@@ -3341,12 +3375,19 @@ async function autoAssign(){
         floorOrder=nightFloors(teamNights(g), occ, pending);
         if(!floorOrder.length) floorOrder=null;   // 규칙 층이 없으면 층 우선순위 없이(전층) 진행 — 보류하지 않음
       }
-      plans.push({g,route,roster,floorOrder,gc});
+      plans.push({g,route,roster,floorOrder,gc,singleEach:_singleEach});
     }
     // 한 팀의 짝 배정. phase='member'|'general'. 회원/일반 짝은 disjoint → 이중배정 없음.
     const placePlan=(plan,phase)=>{
-      const {g,route,roster,floorOrder,gc}=plan;
+      const {g,route,roster,floorOrder,gc,singleEach}=plan;
       const flr = floorOrder ? (p=>poolByFloorOrder(p,floorOrder)) : (p=>p); // 호텔동만 허용 층으로 필터·정렬
+      // 싱글 지정(비호텔) — 짝을 짓지 않고 1인 1실. 남는 방이 없으면 아래 일반 배정으로 넘어간다.
+      if(singleEach){
+        if(phase!=='general') return;                    // 한 번만 처리
+        const gp=flr(roomPool(route,'general'));
+        placeSingles(g,roster,gp,gp,'single',pending,holds,occ,floorOrder);
+        return;
+      }
       if(route.deluxe){
         // A 규칙: 명단 순서대로 짝(1-2,3-4) → 짝에 회원이 1명이라도 있으면 디럭스, 없으면 예약종류.
         const dlx=flr(roomPool(route,'deluxe')), gp=flr(roomPool(route,'general'));
