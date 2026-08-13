@@ -71,6 +71,7 @@
   .row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
   .cnt{font-size:12px;color:var(--text2);font-weight:700}
   .lbl{font-size:12px;font-weight:800;color:var(--text2);margin-right:2px}
+  .chip.off{background:var(--surface3);border:1px dashed var(--border2);color:var(--muted);cursor:default;font-weight:600}
   .chip{font-size:13px;font-weight:700;padding:6px 13px;border-radius:99px;background:var(--surface3);
     color:var(--text2);border:1px solid var(--border);cursor:pointer;user-select:none}
   .chip:hover{border-color:var(--accent)}
@@ -166,7 +167,7 @@
     .flr+.flr{page-break-before:always}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.28">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.29">
 </head>
 <body data-so-area="hk">
 <div class="topbar so-bar">
@@ -216,7 +217,7 @@ const L={
     sortPrio:'優先順', sortNo:'部屋番号順', sortT:'並び替え',
     title:'客室清掃 割当表', readonly:'閲覧のみ（変更はフロント事務所）',
     kTurn:'ターンオーバー', kOut:'退室', kStay:'連泊', kIn:'入室', kVacant:'空室', kOoo:'閉鎖',
-    roomsU:'室',
+    roomsU:'室', hkOff:'清掃対象外', hkOffT:'ガンジーホテル・志津の宿は外部委託のため、この画面では扱いません。',
     sTurn:'退室→入室', sOut:'退室', sStay:'連泊', sIn:'入室', sVacant:'空室', sOoo:'閉鎖',
     thState:'状態', thRoom:'部屋', thType:'タイプ', thPax:'人数', thTeam:'チーム', thStay:'滞在',
     thNth:'泊目', thTee:'ティオフ', thNote:'備考',
@@ -238,7 +239,7 @@ const L={
     sortPrio:'우선순', sortNo:'호수순', sortT:'정렬',
     title:'객실 청소 배정표', readonly:'보기 전용 (변경은 프론트 사무실)',
     kTurn:'턴오버', kOut:'퇴실', kStay:'연박', kIn:'입실', kVacant:'공실', kOoo:'폐쇄',
-    roomsU:'실',
+    roomsU:'실', hkOff:'청소 제외', hkOffT:'간지호텔·시즈노야도는 외부 위탁이라 이 화면에서 다루지 않습니다.',
     sTurn:'퇴실→입실', sOut:'퇴실', sStay:'연박', sIn:'입실', sVacant:'공실', sOoo:'폐쇄',
     thState:'상태', thRoom:'호수', thType:'타입', thPax:'인원', thTeam:'팀', thStay:'체류',
     thNth:'박째', thTee:'티오프', thNote:'비고',
@@ -260,7 +261,7 @@ const L={
     sortPrio:'Priority', sortNo:'Room no.', sortT:'Sort',
     title:'Housekeeping worksheet', readonly:'Read-only (changes at the front office)',
     kTurn:'Turnover', kOut:'Departure', kStay:'Stayover', kIn:'Arrival', kVacant:'Vacant', kOoo:'Out of order',
-    roomsU:' rooms',
+    roomsU:' rooms', hkOff:'not cleaned here', hkOffT:'The Guernsey Hotel and Shizu-no-Yado are outsourced and are not handled on this screen.',
     sTurn:'Out → In', sOut:'Departure', sStay:'Stayover', sIn:'Arrival', sVacant:'Vacant', sOoo:'Closed',
     thState:'Status', thRoom:'Room', thType:'Type', thPax:'Pax', thTeam:'Team', thStay:'Stay',
     thNth:'Night', thTee:'Tee off', thNote:'Notes',
@@ -297,7 +298,14 @@ let PLACESEL=new Set();          // 비면 「전체」 = 야마나미 복합 + 
 let ZONE=null;                   // 선택한 층/동 (null = 전체)
 let VIEW=(function(){ try{ const v=localStorage.getItem('saizen_hk_view'); return (v==='table'||v==='card')?v:'card'; }catch(e){ return 'card'; } })();
 function placeKeys(inv){ return SZCore.roomPlaceKeys(inv); }
-function invInScope(inv){ return SZCore.placeInScope(placeKeys(inv), PLACESEL); }
+// 간지호텔·시즈노야도는 우리 청소팀 담당이 아니다(외부 위탁) → 이 화면에서 제외한다(Min 2026-08).
+//   칩으로도 켤 수 없고, 대신 칩 줄 끝에 「제외」 표시만 남겨 왜 안 보이는지 알 수 있게 한다.
+const HK_EXCLUDE=['간지호텔','시즈노야도'];
+function hkExcluded(inv){ return placeKeys(inv).some(k=>HK_EXCLUDE.includes(k)); }
+function invInScope(inv){
+  if(hkExcluded(inv)) return false;
+  return SZCore.placeInScope(placeKeys(inv), PLACESEL);
+}
 function zoneKey(inv){ return (inv.facility||'')+'|'+(inv.zone||inv.facility||''); }
 function zoneRank(z){ const m=String(z).match(/^(\d+)층$/); return m?(+m[1]):999; }
 
@@ -397,9 +405,11 @@ function renderAccomChips(){
   const box=$('#achips'); if(!box) return;
   // 방배정 화면과 같은 항목 — 「전체」는 야마나미 복합+쿠주힐즈(간지·시즈는 칩을 눌러야 나온다)
   const have=new Set(); INV.forEach(i=>placeKeys(i).forEach(k=>have.add(k)));
-  const list=SZCore.PLACE_ITEMS.filter(k=>have.has(k));
+  const list=SZCore.PLACE_ITEMS.filter(k=>have.has(k) && !HK_EXCLUDE.includes(k));
+  const off=SZCore.PLACE_ITEMS.filter(k=>have.has(k) && HK_EXCLUDE.includes(k));
   box.innerHTML=`<button type="button" class="chip${PLACESEL.size?'':' on'}" data-a="">${esc(tx('all'))}</button>`
-    +list.map(a=>`<button type="button" class="chip${PLACESEL.has(a)?' on':''}" data-a="${esc(a)}">${esc(accomL(a))}</button>`).join('');
+    +list.map(a=>`<button type="button" class="chip${PLACESEL.has(a)?' on':''}" data-a="${esc(a)}">${esc(accomL(a))}</button>`).join('')
+    +(off.length?`<span class="chip off" title="${esc(tx('hkOffT'))}">${esc(off.map(accomL).join('·'))} · ${esc(tx('hkOff'))}</span>`:'');
   box.querySelectorAll('[data-a]').forEach(b=>b.addEventListener('click',()=>{
     const a=b.dataset.a;
     if(!a) PLACESEL.clear();
