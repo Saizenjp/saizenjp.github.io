@@ -187,8 +187,7 @@ const ACCOM_DEFAULT=['야마나미리조트','쿠주힐즈'];
 const WD_JA=['日','月','火','水','木','金','土'];
 
 let supa=null, YM=null, LABELS=[], UNASSIGNED=[],
-    SELCATS=new Set(), SELDATES=new Set(), SELACCOMS=new Set(), ORIGINSEL='all',
-    START=1;
+    SELCATS=new Set(), SELDATES=new Set(), SELACCOMS=new Set(), ORIGINSEL='all';
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
@@ -271,15 +270,9 @@ function renderUI(){
         <span class="cnt" style="min-width:62px">${tx('date')}</span>
         <div id="daychips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
-      <div class="row" style="margin-top:10px;align-items:flex-start">
+      <div class="row" style="margin-top:10px">
         <span class="cnt" style="min-width:62px">${tx('slotMap')}</span>
-        <div id="slot-map" class="slot-map"></div>
-        <div class="slot-legend">
-          <span>${esc(tx('sizeFixed'))}</span>
-          <span id="slot-hint"></span>
-          <span><i style="background:var(--accent)"></i>${tx('slotStart')} &nbsp; <i style="background:var(--accentSoft);border:1px solid #b4cda0"></i>${tx('slotPrint')} &nbsp; <i style="background:var(--surface3)"></i>${tx('slotUsed')}</span>
-        </div>
-        <input class="inp" id="start-slot" type="number" min="1" value="${START}" style="width:64px;text-align:center" title="${esc(tx('startSlotT'))}">
+        <span class="hint">${esc(tx('sizeFixed'))} · ${esc(tx('slotMapHint')(perSheet()))}</span>
       </div>
       <div class="desc" style="margin-top:10px">${tx('deskNote')}</div>
       <div id="unassigned-box"></div>
@@ -291,31 +284,9 @@ function renderUI(){
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
   $('#btn-print').addEventListener('click',printLabels);
-  $('#start-slot').addEventListener('input',e=>{ const per=perSheet();
-    START=Math.max(1,Math.min(per,parseInt(e.target.value,10)||1)); renderSlotMap(); });
-  renderSlotMap();
 }
 
 function perSheet(){ const s=SIZES[SIZE]; return s.cols*s.rows; }
-
-// 용지 칸 미니 지도 — 클릭=시작칸 지정
-function renderSlotMap(){
-  const box=$('#slot-map'); if(!box) return;
-  const s=SIZES[SIZE], per=s.cols*s.rows;
-  if(START>per){ START=1; const i=$('#start-slot'); if(i) i.value=1; }
-  const inp=$('#start-slot'); if(inp) inp.max=per;
-  const hint=$('#slot-hint'); if(hint) hint.textContent=tx('slotMapHint')(per);
-  box.style.gridTemplateColumns=`repeat(${s.cols},32px)`;
-  let h='';
-  for(let i=1;i<=per;i++){
-    const cls = i<START ? 'used' : (i===START ? 'start' : 'use');
-    h+=`<div class="sm-cell ${cls}" data-slot="${i}" title="${i}">${i}</div>`;
-  }
-  box.innerHTML=h;
-  box.querySelectorAll('[data-slot]').forEach(c=>c.addEventListener('click',()=>{
-    START=parseInt(c.dataset.slot,10)||1; const i=$('#start-slot'); if(i) i.value=START; renderSlotMap();
-  }));
-}
 
 function renderCatChips(){
   const box=$('#catchips'); if(!box) return;
@@ -430,12 +401,10 @@ async function load(){
       return dep && dep>=from && dep<=to && !assigned.has(g.event_seq);
     }).map(g=>`${g.group_code||g.team_tag||g.event_seq}${g.bookings&&g.bookings.rep_name?' '+g.bookings.rep_name:''}`);
 
-    SELCATS.clear(); SELDATES.clear(); SELACCOMS.clear(); ORIGINSEL='all'; START=1;
+    SELCATS.clear(); SELDATES.clear(); SELACCOMS.clear(); ORIGINSEL='all';
     // 숙소 기본값 = 야마나미·쿠주(그 달에 실제로 있는 것만). 둘 다 없으면 전체.
     { const have=new Set(LABELS.map(l=>l.accom));
       ACCOM_DEFAULT.forEach(a=>{ if(have.has(a)) SELACCOMS.add(a); }); }
-    const inp=$('#start-slot'); if(inp) inp.value=1;
-    renderSlotMap();
     if(!LABELS.length){ $('#stat').textContent=tx('noMonthData'); }
     else $('#stat').textContent=tx('cntRooms')(LABELS.length,new Set(LABELS.map(l=>l.eventSeq)).size);
     renderCatChips(); renderOriginChips(); renderDayChips(); renderAccomChips(); renderUnassigned(); renderPreview();
@@ -515,7 +484,7 @@ function printLabels(){
   if(!list.length){ toast(tx('noPrintList'),'err'); return; }
   const s=SIZES[SIZE], PER=s.cols*s.rows;
   const mx=(210-s.w*s.cols)/2, my=(297-s.h*s.rows)/2;
-  const slots=[...Array(Math.max(0,START-1)).fill(null), ...list];
+  const slots=[...list];   // A4 라벨지는 항상 1번 칸부터(Min 2026-08 — 시작칸 설정 폐지)
   const pages=[]; for(let i=0;i<slots.length;i+=PER){ const pg=slots.slice(i,i+PER); while(pg.length<PER) pg.push(null); pages.push(pg); }
   const cell=l=> l? `<div class="ks-cell"><div class="ks-body">
       <div class="ks-top"><span class="ks-code" style="color:${catColor(l.cat)}">${esc(l.code)}</span><span class="ks-names" style="font-size:calc(var(--fn) * ${nameSize(l.names)})">${esc(l.names.join(' '))}</span></div>
@@ -540,7 +509,7 @@ function printLabels(){
   .ks-page:last-child{page-break-after:auto}
   .ks-cell{width:${s.w}mm;height:${s.h}mm;overflow:hidden;border:.3pt dashed #ddd;display:flex;align-items:center;justify-content:center;padding:${s.h>=50?'2.5mm 3mm':'1.2mm 2.5mm'}}
   .ks-empty{background:repeating-linear-gradient(45deg,#fafafa,#fafafa 6px,#f0f0f0 6px,#f0f0f0 12px)}
-  .ks-body{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:${s.h>=50?'1.2mm':'.4mm'}}
+  .ks-body{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:${s.h>=50?'2mm':'1.2mm'}}
   .ks-top{display:flex;align-items:baseline;justify-content:center;gap:1.6mm;width:100%;white-space:nowrap;overflow:hidden}
   .ks-code{font-family:'Arial','Meiryo',sans-serif;font-weight:800;letter-spacing:.3px;line-height:1;font-size:1em}
   .ks-names{font-weight:700;line-height:1}
@@ -582,13 +551,29 @@ function printLabels(){
   // 줄별 자동 축소 — 태그코드+이름(3명)·긴 방이름·긴 날짜가 칸을 넘지 않게 실제로 재서 줄인다.
   //  (글자수 계산식만으론 한글·가나·영문 혼합 폭을 못 맞춘다)
   function ksFit(){
+    var LINES=['.ks-top','.ks-room','.ks-stay','.ks-meta'];
     document.querySelectorAll('.ks-cell').forEach(function(cell){
-      ['.ks-top','.ks-room','.ks-stay','.ks-meta'].forEach(function(sel){
+      // 1) 가로 — 줄마다 폭에 맞을 때까지 축소
+      LINES.forEach(function(sel){
         var box=cell.querySelector(sel); if(!box) return;
         box.style.fontSize='';
         var pt=parseFloat(getComputedStyle(box).fontSize)/(96/72);
         for(var i=0;i<60 && box.scrollWidth>box.clientWidth+0.5; i++){ pt-=0.4; box.style.fontSize=pt+'pt'; }
       });
+      // 2) 세로 — 줄 간격을 먼저 좁히고, 그래도 넘치면 전 줄을 조금씩 줄인다.
+      //    (라벨은 overflow:hidden 이라 넘치면 잘린다 — 날짜가 잘리던 문제 재발 방지)
+      var body=cell.querySelector('.ks-body'); if(!body) return;
+      var gap=parseFloat(getComputedStyle(body).rowGap||getComputedStyle(body).gap)||0;
+      for(var g=0; g<40 && body.scrollHeight>body.clientHeight+0.5 && gap>0.5; g++){
+        gap-=1; body.style.gap=Math.max(0,gap)+'px';
+      }
+      for(var k=0; k<40 && body.scrollHeight>body.clientHeight+0.5; k++){
+        LINES.forEach(function(sel){
+          var box=cell.querySelector(sel); if(!box) return;
+          var pt=parseFloat(getComputedStyle(box).fontSize)/(96/72);
+          box.style.fontSize=(pt-0.3)+'pt';
+        });
+      }
     });
   }
   window.addEventListener('load',ksFit);

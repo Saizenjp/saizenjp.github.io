@@ -37,6 +37,34 @@
     '돔하우스':       { ja: 'ドームハウス',     ko: '돔하우스',       en: 'Dome House' }
   };
   // 미등록 이름은 원문 그대로 반환(신규 숙소가 들어와도 화면이 비지 않게).
+  // ── 숙소(장소) 구분 — room.html 필터와 객실 청소 화면이 같은 기준을 쓴다 ─────
+  //   야마나미리조트 안을 호텔(층)·소보별장·소보5동(4인 1동)·아소별장·돔하우스로 나눈다.
+  //   「전체」는 오프사이트(간지·시즈)를 뺀 야마나미 복합 + 쿠주힐즈를 뜻한다.
+  var PLACE_ITEMS = ['호텔', '소보별장', '소보5동', '아소별장', '돔하우스', '쿠주힐즈', '간지호텔', '시즈노야도'];
+  var OFFSITE_PLACES = ['간지호텔', '시즈노야도'];
+  function roomPlaceKeys(inv) {
+    if (!inv) return [];
+    var fac = inv.facility || '', z = inv.zone || '';
+    if (fac === '야마나미리조트') {
+      if (/^\d+층$/.test(z)) return ['호텔'];
+      if (z === '돔하우스') return ['돔하우스'];
+      if (z === '소보별장') return [/5\s*호/.test(inv.room_no || '') ? '소보5동' : '소보별장'];
+      if (z === '아소별장') return ['아소별장'];
+      return ['호텔'];
+    }
+    if (fac === '쿠주힐즈') return ['쿠주힐즈'];
+    if (fac === '간지호텔') return ['간지호텔'];
+    if (fac === '시즈노야도 료칸') return ['시즈노야도'];
+    return [];
+  }
+  // sel 이 비면 「전체」 = 오프사이트 제외
+  function placeInScope(keys, sel) {
+    var has = function (k) { return sel && (sel.has ? sel.has(k) : sel.indexOf(k) >= 0); };
+    var size = sel ? (sel.size !== undefined ? sel.size : sel.length) : 0;
+    if (!size) return keys.some(function (k) { return OFFSITE_PLACES.indexOf(k) < 0; });
+    return keys.some(has);
+  }
+
   function accomLabel(name, lang) {
     var m = ACCOM_LABEL[name];
     if (!m) return name == null ? '' : String(name);
@@ -634,6 +662,10 @@
     isNonWorkday: isNonWorkday,
     golfRows: golfRows,
     usesYamanamiCC: usesYamanamiCC,
+    PLACE_ITEMS: PLACE_ITEMS,
+    OFFSITE_PLACES: OFFSITE_PLACES,
+    roomPlaceKeys: roomPlaceKeys,
+    placeInScope: placeInScope,
     TEE_FIRST: TEE_FIRST,
     TEE_STEP: TEE_STEP,
     TEE_LAST: TEE_LAST,
