@@ -147,7 +147,7 @@
 const $=s=>document.querySelector(s);
 
 const L={
-  ja:{ step:'電動カート 有料事前申請', home:'← ホーム',
+  ja:{ step:'電動カート 管理表', home:'← ホーム',
     connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
     notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
     connHint:'日付ごとのカート保有・使用・残数と、チーム別の割当(コース・ティ時刻を含む)を1画面で管理します。',
@@ -187,12 +187,16 @@ const L={
     chkNone:'この日は再確認が必要な備考はありません。', chkCnt:n=>`${n}件`,
     mSumTitle:'日別 申請状況', mTeamTitle:'チーム別 申請明細', mNone:'この月はラウンドするチームがありません。',
     thDate:'日付', thTeams:'チーム', thTotalCarts:'計', thDays:'ラウンド日', thKind:'区分', thAlloc:'割当', thCartDays:'台·日',
-    kindElec:'電動(事前)', kindGas:'ガソリン', unassigned:'未確定',
-    unassignedT:'まだ保存していないチーム — 備考から計算した予定値です。現場でキャンセルされることがあるので、確認して保存すると確定します。',
-    noteStay:'※ 連泊でご案内していますが、実際には<b>1泊だけの利用</b>もできます。日ごとに申請を入れてください。',
+    kindElec:'電動(事前)', kindGas:'ガソリン',
+    cxBtn:'キャンセル', cxT:'現地でキャンセルされた台数を申請から差し引き、キャンセルとして記録します',
+    cxAsk:m=>`キャンセルする台数（申請 ${m}台）`, cxBad:'台数を確認してください',
+    cxDone:(n)=>`${n}台をキャンセルにしました（保存を押してください）`, cxNone:'この行に申請がありません',
+    cxUndo:'キャンセル取消', cxUndoT:'キャンセル分を申請に戻します', thCx:'キャンセル', sumReq:'申請', sumCx:'キャンセル',
+    sqlCx:'⚠ この画面は cart_bookings.cancelled 列を使います — ops/hub/sql/95_cart_cancel.sql を1回実行してください。',
+    noteStay:'※ 事前申請は<b>確定した状態</b>で届きます。現地でキャンセルされたら<b>現場キャンセル</b>で記録してください。連泊でご案内していますが<b>1泊だけの利用</b>も可能です。',
     mNote:'月をまたいで続けて見られます。<b>登録データ(step1)が更新されると自動で反映</b>されます。行をクリックするとその日の管理表に移動します。',
     mLoading:'集計中…' },
-  ko:{ step:'전기카트 유료 사전 신청', home:'← 홈',
+  ko:{ step:'전기 카트 관리표', home:'← 홈',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결·재시도',
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
     connHint:'날짜별 카트 보유·사용·잔여와 팀별 배정(코스·티오프 포함)을 한 화면에서 관리합니다.',
@@ -225,19 +229,23 @@ const L={
     autoNone:'새로 배정할 팀이 없습니다(모두 등록됨).',
     autoDone:n=>`${n}팀 자동 분배했습니다. 내용 확인 후 [변경 저장]을 누르세요.`,
     autoMDone:(t,d)=>`${t}건 자동 분배·저장했습니다(${d}일치).`,
-    autoMConfirm:(ym,n)=>`${ym} 미배정 ${n}건을 자동 분배해 저장합니다.\n\n· 현지전달비고에 전기카트 신청이 있는 팀 → 전기카트(야마나미CC일만)\n· 그 외 팀 → 가솔린(2인 예약=2인승 / 3인 이상=4인승)\n· 이미 등록된 팀은 건드리지 않습니다.`,
+    autoMConfirm:(ym,n)=>`${ym} 미저장 ${n}건을 비고 기준으로 채워 저장합니다.\n\n· 현지전달비고에 전기카트 신청이 있는 팀 → 전기카트(야마나미CC일만)\n· 그 외 팀 → 가솔린(2인 예약=2인승 / 3인 이상=4인승)\n· 이미 등록된 팀은 건드리지 않습니다.`,
     elecReq:'전기신청', elecReqT:'현지전달비고에 전기카트 사전신청 표기가 있습니다',
     elecMaybe:'재확인', elecMaybeT:'비고에 「전기」만 있고 「카트」 표기가 없습니다 — 집계에서 빼고 재확인',
     chkTitle:'⚠ 재확인 필요 비고', chkDesc:'「전기카트 신청」처럼 명확한 경우만 집계합니다. 「전기」라고만 적힌 예약은 <b>집계에 넣지 않고</b> 여기 모읍니다 — 메리트투어에 확인해 확정해 주세요.',
     chkNone:'이 날짜에 재확인이 필요한 비고는 없습니다.', chkCnt:n=>`${n}건`,
     mSumTitle:'일자별 신청 현황', mTeamTitle:'팀별 신청 명세', mNone:'이 달에 라운딩하는 팀이 없습니다.',
     thDate:'날짜', thTeams:'팀', thTotalCarts:'계', thDays:'라운딩일', thKind:'구분', thAlloc:'배정', thCartDays:'대·일',
-    kindElec:'전기(사전)', kindGas:'가솔린', unassigned:'미확정',
-    unassignedT:'아직 저장하지 않은 팀 — 비고로 계산한 예상값입니다. 현장에서 취소되는 경우가 있어, 확인해 저장하면 확정됩니다.',
-    noteStay:'※ 연박으로 안내드리지만 실제로는 <b>단박 사용</b>도 가능합니다. 날짜별로 신청을 넣어 주세요.',
+    kindElec:'전기(사전)', kindGas:'가솔린',
+    cxBtn:'취소', cxT:'현장에서 취소된 대수를 사전신청에서 빼고 취소로 기록합니다',
+    cxAsk:m=>`취소할 대수 (사전신청 ${m}대)`, cxBad:'대수를 확인해 주세요',
+    cxDone:(n)=>`${n}대를 취소로 옮겼습니다(저장을 눌러 주세요)`, cxNone:'이 행에는 신청이 없습니다',
+    cxUndo:'취소 되돌리기', cxUndoT:'취소분을 사전신청으로 되돌립니다', thCx:'취소', sumReq:'사전신청', sumCx:'취소',
+    sqlCx:'⚠ 이 화면은 cart_bookings.cancelled 컬럼을 씁니다 — ops/hub/sql/95_cart_cancel.sql 을 한 번 실행해 주세요.',
+    noteStay:'※ 사전 신청은 <b>확정된 상태</b>로 옵니다. 현장에서 취소되면 <b>현장 취소</b>로 기록해 주세요. 연박으로 안내드리지만 <b>단박 사용</b>도 가능합니다.',
     mNote:'월을 넘겨 이어서 볼 수 있습니다. <b>등록 데이터(step1)가 갱신되면 자동으로 반영</b>됩니다. 행을 클릭하면 그 날짜 관리표로 이동합니다.',
     mLoading:'집계 중…' },
-  en:{ step:'Electric cart — paid pre-booking', home:'← Home',
+  en:{ step:'Electric cart control sheet', home:'← Home',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
     connHint:'Daily cart stock, usage and remaining, plus per-team assignment (course and tee time) on one screen.',
@@ -270,16 +278,20 @@ const L={
     autoNone:'Nothing new to assign (all teams already have carts).',
     autoDone:n=>`Auto-assigned ${n} teams. Review, then press [Save changes].`,
     autoMDone:(t,d)=>`Auto-assigned and saved ${t} entries across ${d} days.`,
-    autoMConfirm:(ym,n)=>`Auto-assign and save ${n} unassigned entries in ${ym}.\n\n· Teams whose local remarks request an electric cart → electric (Yamanami CC days only)\n· Everyone else → gasoline (2-pax booking = 2-seater, 3+ = 4-seater)\n· Teams already assigned are left untouched.`,
+    autoMConfirm:(ym,n)=>`Fill and save ${n} unsaved entries in ${ym} from the remarks.\n\n· Teams whose local remarks request an electric cart → electric (Yamanami CC days only)\n· Everyone else → gasoline (2-pax booking = 2-seater, 3+ = 4-seater)\n· Teams already assigned are left untouched.`,
     elecReq:'electric', elecReqT:'Local remarks request an electric cart pre-booking',
     elecMaybe:'check', elecMaybeT:'Remarks say "electric" but never "cart" — excluded from the count, needs confirming',
     chkTitle:'⚠ Remarks needing confirmation', chkDesc:'Only explicit wording ("electric cart requested") is counted. Bookings that just say "electric" are <b>left out of the count</b> and listed here — confirm with Merit Tour.',
     chkNone:'Nothing to confirm on this date.', chkCnt:n=>`${n} items`,
     mSumTitle:'Requests by date', mTeamTitle:'Request detail by team', mNone:'No team plays golf in this month.',
     thDate:'Date', thTeams:'Teams', thTotalCarts:'Total', thDays:'Round days', thKind:'Kind', thAlloc:'Assigned', thCartDays:'cart-days',
-    kindElec:'Electric (pre)', kindGas:'Gasoline', unassigned:'unconfirmed',
-    unassignedT:'Not saved yet — an estimate from the remarks. On-site cancellations happen, so check and save to confirm.',
-    noteStay:'※ We advise consecutive nights, but <b>single-night use</b> is allowed. Enter a request per date.',
+    kindElec:'Electric (pre)', kindGas:'Gasoline',
+    cxBtn:'Cancel', cxT:'Move carts cancelled at the resort out of the request and record them as cancelled',
+    cxAsk:m=>`How many to cancel (requested ${m})`, cxBad:'Check the number',
+    cxDone:(n)=>`${n} moved to cancelled (press save)`, cxNone:'No request on this row',
+    cxUndo:'Undo cancel', cxUndoT:'Move cancelled carts back into the request', thCx:'Cancelled', sumReq:'Requested', sumCx:'Cancelled',
+    sqlCx:'⚠ This screen uses cart_bookings.cancelled — run ops/hub/sql/95_cart_cancel.sql once.',
+    noteStay:'※ Pre-bookings arrive <b>already confirmed</b>. If cancelled at the resort, record it with <b>Cancel on site</b>. Single-night use is allowed as well.',
     mNote:'Move across months freely. <b>Updates automatically as registered data (step1) changes.</b> Click a row to open that day.',
     mLoading:'Aggregating…' }
 };
@@ -460,8 +472,9 @@ async function load(){
       const row=SZCore.golfRows(team,isPus).find(x=>x.date===DATE);
       if(!row) return;                                   // 그날 라운딩 없음(인천팀 귀국일 등)
       const grp=GG[b.event_seq]||{}; const bk=CB[b.event_seq]||{};
-      const qty={}, src={}; let memo='';
-      TYPES.forEach(t=>{ const r=bk[t.code]; qty[t.code]=r?r.qty:0; if(r){ src[t.code]=r.source; memo=memo||r.note||''; } });
+      const qty={}, src={}; let memo='', cx=0;
+      TYPES.forEach(t=>{ const r=bk[t.code]; qty[t.code]=r?r.qty:0;
+        if(r){ src[t.code]=r.source; memo=memo||r.note||''; cx+=(+r.cancelled||0); } });
       let srcOne=Object.values(src)[0]||'pre';
       // 저장된 배정이 없으면 규칙(SZCore)으로 자동 채운다 — 화면은 클릭 없이 바로 정답.
       // 비고 표기 판정: sure=집계 · maybe=재확인(집계 제외) · none=없음 (Min 2026-08)
@@ -479,7 +492,7 @@ async function load(){
         elec:_elecKind==='sure', elecKind:_elecKind, remarkLocal:b.remark_local||'',
         ruleCourse:row.course, holes:row.holes, note:row.note,
         grpCourse:grp.course_code||'', tee:grp.tee_time||'', cartNo:grp.cart_no||'',
-        qty, src:srcOne, memo, auto, orig:JSON.stringify({qty,src:srcOne,memo})
+        qty, cx, src:srcOne, memo, auto, orig:JSON.stringify({qty,src:srcOne,memo,cx})
       });
     });
     ROWS.sort((a,b)=>String(a.tee||'zz').localeCompare(String(b.tee||'zz'))||String(a.tag).localeCompare(String(b.tag)));
@@ -620,7 +633,10 @@ function renderTable(){
     const fee=TYPES.reduce((s,t)=>s+(+r.qty[t.code]||0)*(+t.fee_yen||0),0);
     const gc=r.grpCourse?`${COURSE_NAME[r.grpCourse]||r.grpCourse}`:'';
     return `<tr data-i="${i}" class="${DIRTY.has(r.seq)?'dirty':''}">
-      <td class="l"><span class="tag">${esc(r.tag)}</span>${r.auto?` <span class="bdg" style="opacity:.65">${esc(tx('autoMark'))}</span>`:''}<button class="btn xs ghost noprint" type="button" data-disp="${r.seq}" title="${esc(tx('dispT'))}" style="margin-left:6px">${esc(tx('dispBtn'))}</button></td>
+      <td class="l"><span class="tag">${esc(r.tag)}</span>${r.auto?` <span class="bdg" style="opacity:.65">${esc(tx('autoMark'))}</span>`:''}<button class="btn xs ghost noprint" type="button" data-disp="${r.seq}" title="${esc(tx('dispT'))}" style="margin-left:6px">${esc(tx('dispBtn'))}</button>`
+      +`<button class="btn xs ghost noprint" type="button" data-cx="${i}" title="${esc(tx('cxT'))}" style="margin-left:4px;color:var(--err);border-color:#e3bdb4">${esc(tx('cxBtn'))}</button>`
+      +(r.cx?`<span class="bdg no" title="${esc(tx('thCx'))}" style="margin-left:5px">${esc(tx('thCx'))} ${r.cx}</span>`
+            +`<button class="btn xs ghost noprint" type="button" data-cxu="${i}" title="${esc(tx('cxUndoT'))}" style="margin-left:3px">↩</button>`:'')+`</td>
       <td class="l">${esc(r.rep)}</td>
       <td class="l">${esc(accomL(r.accom))}</td>
       <td>${r.pax}</td>
@@ -645,7 +661,7 @@ function renderTable(){
       <th>${tx('thElig')}</th><th>${tx('thCourse')}</th><th>${tx('thTee')}</th>${th}
       <th>${tx('thSrc')}</th><th>${tx('thNos')}</th><th>${tx('thMemo')}</th><th>${tx('thFee')}</th>
     </tr></thead><tbody>${rows}
-    <tr class="sum"><td class="l" colspan="7">${tx('thTotal')}</td>
+    <tr class="sum"><td class="l" colspan="7">${tx('thTotal')} <span style="font-weight:600">· ${esc(tx('sumReq'))} ${LIST.reduce((n,r)=>n+TYPES.reduce((m,t)=>m+(+r.qty[t.code]||0),0),0)}${LIST.some(r=>r.cx)?` · ${esc(tx('sumCx'))} ${LIST.reduce((n,r)=>n+(+r.cx||0),0)}`:''}</span></td>
       ${TYPES.map(t=>`<td>${usedOf(t.code)}</td>`).join('')}
       <td colspan="3"></td><td>¥${totFee.toLocaleString()}</td></tr>
     </tbody></table>`;
@@ -655,6 +671,28 @@ function renderTable(){
     tr.querySelectorAll('[data-q]').forEach(el=>el.addEventListener('input',()=>{ r.qty[el.dataset.q]=Math.max(0,+el.value||0); mark(r); renderStock(); }));
     tr.querySelectorAll('[data-f]').forEach(el=>el.addEventListener('input',()=>{ r[el.dataset.f]=el.value; mark(r); }));
   });
+  // 현장 취소 — 사전 신청은 확정으로 오므로 「미확정」은 없다. 빠진 대수를 신청에서 취소로 옮긴다.
+  //   예) 사전신청 9 · 취소 2 → 사전신청 7 · 취소 2. 요금은 남은 신청 기준. 날짜별로 관리된다.(Min 2026-08)
+  box.querySelectorAll('[data-cx]').forEach(b=>b.addEventListener('click',e=>{
+    e.stopPropagation();
+    const r=ROWS[+b.dataset.cx]; if(!r) return;
+    const code=TYPES.find(t=>(+r.qty[t.code]||0)>0);
+    const had=code?(+r.qty[code.code]||0):0;
+    if(!had){ toast(tx('cxNone'),'warn'); return; }
+    const ans=prompt(tx('cxAsk')(had), '1');
+    if(ans===null) return;
+    const n=Math.floor(+ans||0);
+    if(!(n>0 && n<=had)){ toast(tx('cxBad'),'warn'); return; }
+    r.qty[code.code]=had-n; r.cx=(+r.cx||0)+n;
+    mark(r); renderStock(); renderTable(); toast(tx('cxDone')(n),'ok');
+  }));
+  box.querySelectorAll('[data-cxu]').forEach(b=>b.addEventListener('click',e=>{
+    e.stopPropagation();
+    const r=ROWS[+b.dataset.cxu]; if(!r||!r.cx) return;
+    const code=TYPES[0]; if(!code) return;
+    r.qty[code.code]=(+r.qty[code.code]||0)+r.cx; r.cx=0;
+    mark(r); renderStock(); renderTable();
+  }));
 }
 // 現地手配書를 팝업으로 — dispatch.html 딥링크(?ym=&seq=)가 그 팀 인쇄 미리보기까지 열어준다.
 function openDispatch(seq){
@@ -680,13 +718,20 @@ async function save(){
   ROWS.filter(r=>DIRTY.has(r.seq)).forEach(r=>{
     TYPES.forEach(t=>{
       const q=+r.qty[t.code]||0;
-      if(q>0) ups.push({play_date:DATE,event_seq:r.seq,cart_code:t.code,qty:q,source:r.src||'pre',note:r.memo||null,created_by:by});
+      const cxq=(t===TYPES[0])?(+r.cx||0):0;   // 취소 수량은 대표 코드(전기) 행에 싣는다
+      if(q>0||cxq>0) ups.push({play_date:DATE,event_seq:r.seq,cart_code:t.code,qty:q,cancelled:cxq,source:r.src||'pre',note:r.memo||null,created_by:by});
       else dels.push({seq:r.seq,code:t.code});
     });
   });
   try{
     if(ups.length){
-      const {error}=await supa.from('cart_bookings').upsert(ups,{onConflict:'play_date,event_seq,cart_code,source'});
+      let {error}=await supa.from('cart_bookings').upsert(ups,{onConflict:'play_date,event_seq,cart_code,source'});
+      // 95_cart_cancel.sql 미적용 환경 — cancelled 컬럼 없이 한 번 더 시도하고 안내한다
+      if(error && /cancelled/i.test(error.message||'')){
+        toast(tx('sqlCx'),'warn');
+        const plain=ups.map(u=>{ const o={...u}; delete o.cancelled; return o; });
+        ({error}=await supa.from('cart_bookings').upsert(plain,{onConflict:'play_date,event_seq,cart_code,source'}));
+      }
       if(error) throw error;
     }
     for(const d of dels){
@@ -758,11 +803,11 @@ async function loadMonth(){
         if(!got) t.missing.push({date:r.date, plan});
         Object.keys(eff).forEach(c=>{
           t[got?'saved':'planned'][c]=(t[got?'saved':'planned'][c]||0)+eff[c];
-          const d=(byDate[r.date]=byDate[r.date]||{teams:0,qty:{},unassigned:0});
+          const d=(byDate[r.date]=byDate[r.date]||{teams:0,qty:{}});
           d.qty[c]=(d.qty[c]||0)+eff[c];
         });
-        const d=(byDate[r.date]=byDate[r.date]||{teams:0,qty:{},unassigned:0});
-        d.teams++; if(!got) d.unassigned++;
+        const d=(byDate[r.date]=byDate[r.date]||{teams:0,qty:{}});
+        d.teams++;
       });
       if(Object.keys(t.saved).length||Object.keys(t.planned).length) MTEAMS.push(t);
     });
@@ -808,7 +853,6 @@ function renderMonth(){
       <div class="d${dc}">${d}</div>
       <div class="tm">${x.teams}${lang()==='en'?' teams':(lang()==='ja'?'チーム':'팀')}</div>
       ${lines}
-      ${x.unassigned?`<div class="un" title="${esc(tx('unassignedT'))}">${esc(tx('unassigned'))} ${x.unassigned}</div>`:''}
     </div>`);
   }
   const gTot={}; MDAYS.forEach(d=>TYPES.forEach(t=>{ gTot[t.code]=(gTot[t.code]||0)+(+d.qty[t.code]||0); }));
@@ -834,7 +878,7 @@ function renderMonth(){
       <td>${t.pax}</td>
       <td>${t.elec?`<span class="bdg ok">${esc(tx('kindElec'))}</span>`:`<span class="bdg">${esc(tx('kindGas'))}</span>`}</td>
       <td>${t.days.length}</td>
-      <td class="l">${alloc}${t.missing.length?` <span class="bdg no">${esc(tx('unassigned'))} ${t.missing.length}</span>`:''}</td>
+      <td class="l">${alloc}</td>
       <td>${cd}</td>
       <td class="tee">${feeOf(all)?('¥'+feeOf(all).toLocaleString()):'-'}</td>
     </tr>`;
