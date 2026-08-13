@@ -586,7 +586,7 @@ async function loadUnassigned(){
         const ps=PT[r.member_key]||[];
         const cells=ps.length? ps.map(pp=>`<button class="btn sm" data-same data-code="${esc(pp.code)}" data-pname="${esc(pp.name_kr||'')}"
               style="margin:2px 4px 2px 0;background:var(--accent2);border-color:var(--accent2)">
-              ${esc(tx('unSame',pp.name_kr||'',pp.code))} <span style="font-weight:600;opacity:.85">· ${esc(tx('unTimes',pp.n))}</span>
+              ${esc(tx('unSame')(pp.name_kr||'',pp.code))} <span style="font-weight:600;opacity:.85">· ${esc(tx('unTimes')(pp.n))}</span>
               ${pp.spouse?`<span style="margin-left:5px;font-size:9.5px;font-weight:800;background:#fff;color:var(--accent2);border-radius:99px;padding:1px 6px">${esc(tx('spouseBadge'))}</span>`:''}</button>`).join('')
           : `<span style="color:var(--muted)">${esc(tx('unNoPartner'))}</span>`;
         return `<tr data-key="${esc(r.member_key)}" data-grade="${esc(r.mem_class||'')}" data-name="${esc(r.name_kr||'')}">
@@ -611,7 +611,7 @@ async function loadUnassigned(){
     // 동행 회원과 같은 코드로 잇기(부부·같은 회원권)
     box.querySelectorAll('[data-same]').forEach(b=>b.addEventListener('click',e=>{
       const tr=e.target.closest('tr'), code=b.dataset.code, pn=b.dataset.pname;
-      if(!confirm(tx('unSameConfirm',tr.dataset.name||'',pn||'',code))) return;
+      if(!confirm(tx('unSameConfirm')(tr.dataset.name||'',pn||'',code))) return;
       assignMissingCode(tr.dataset.key, tr.dataset.name, tr.dataset.grade||null, code);
     }));
   }catch(e){ box.innerHTML=`<div class="cnt" style="color:var(--err)">${esc(tx('loadFail'))+(e.message||e)}</div>`; }
@@ -619,19 +619,24 @@ async function loadUnassigned(){
 // ── 같은 코드 검색 — 동행 이력이 없어도(첫 동반 등) 이름으로 찾아 같은 코드를 잇는다 ──
 function openSameCodeFinder(memberKey, name, grade){
   const old=document.getElementById('same-finder'); if(old) old.remove();
-  const bg=document.createElement('div'); bg.className='modal-bg'; bg.id='same-finder';
-  bg.innerHTML=`<div class="modal" style="max-width:520px">
-    <h2>${esc(tx('unFind'))} <span style="font-size:13px;font-weight:700;color:var(--text2)">· ${esc(name||'')}</span></h2>
-    <div class="mbody" style="padding:12px 16px">
+  const bg=document.createElement('div'); bg.id='same-finder';
+  bg.style.cssText='position:fixed;inset:0;z-index:320;background:rgba(31,42,24,.5);display:flex;align-items:center;justify-content:center;padding:18px';
+  bg.innerHTML=`<div style="background:#fff;border-radius:12px;max-width:560px;width:100%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(15,23,42,.24)">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border)">
+      <b style="font-size:15px;color:var(--accent)">${esc(tx('unFind'))}</b>
+      <span style="font-size:13px;font-weight:700;color:var(--text2)">· ${esc(name||'')}</span>
+    </div>
+    <div style="padding:12px 16px;overflow:auto">
       <div style="display:flex;gap:8px;margin-bottom:10px">
         <input class="inp" id="sf-q" placeholder="${esc(tx('unFindPh'))}" style="flex:1" autocomplete="off">
         <button class="btn sm" id="sf-go" type="button">${esc(tx('search'))}</button>
       </div>
-      <div id="sf-list" style="max-height:46vh;overflow:auto"></div>
+      <div id="sf-list"></div>
     </div>
     <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;justify-content:flex-end">
       <button class="btn ghost sm" id="sf-close" type="button">${esc(tx('close'))}</button>
-    </div>`;
+    </div>
+  </div>`;
   bg.addEventListener('click',e=>{ if(e.target===bg) bg.remove(); });
   document.body.appendChild(bg);
   document.getElementById('sf-close').addEventListener('click',()=>bg.remove());
@@ -652,10 +657,10 @@ function openSameCodeFinder(memberKey, name, grade){
           <td><b>${esc(r.name_kr||'')}</b></td>
           <td style="color:var(--text2)">${esc(gradeLabel(r.member_class||''))}</td>
           <td class="mono" style="font-size:11px;color:var(--muted)">${esc(r.member_key)}</td>
-          <td style="text-align:right"><button class="btn sm" data-pick="${esc(r.code)}" data-pn="${esc(r.name_kr||'')}">${esc(tx('unSame',r.name_kr||'',r.code))}</button></td>
+          <td style="text-align:right"><button class="btn sm" data-pick="${esc(r.code)}" data-pn="${esc(r.name_kr||'')}">${esc(tx('unSame')(r.name_kr||'',r.code))}</button></td>
         </tr>`).join('')+'</tbody></table>';
       box.querySelectorAll('[data-pick]').forEach(b=>b.addEventListener('click',()=>{
-        if(!confirm(tx('unSameConfirm',name||'',b.dataset.pn||'',b.dataset.pick))) return;
+        if(!confirm(tx('unSameConfirm')(name||'',b.dataset.pn||'',b.dataset.pick))) return;
         bg.remove();
         assignMissingCode(memberKey, name, grade, b.dataset.pick);
       }));
