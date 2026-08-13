@@ -624,6 +624,8 @@ const L={
     wzTitle:'未割当チームの割当', wzPickTeam:'① チームを選ぶ', wzPickRoom:(t)=>`② ${t} の部屋を選ぶ`,
     wzBack:'← チーム一覧', wzNoTeam:'この日付に未割当チームはありません。', wzNoRoom:'この期間に空いている部屋がありません。',
     wzFree:n=>`空き${n}`, wzSearchTeam:'チーム・氏名で検索', wzSearchRoom:'部屋番号で検索', wzSel:n=>`${n}名を割り当て`,
+    waitBadge:'待機', waitBadgeT:'予約リストの区分が「待機」— 確定後に割り当てます',
+    holdWait:gc=>`${gc} 待機予約 — 確定後に割当`, holdCatWait:'待機予約(確定前)', holdFixWait:'エムクリックの区分が「待機」です。確定に変わってから割り当てます — 部屋がなくても正常です。',
     viewCard:'カード', viewTimeline:'タイムライン', viewTimelineT:'客室×日付の占有を一覧',
     viewTable:'一覧', viewTableT:'表形式 — 一画面で多くの客室(大量割当向け)',
     thRoom:'部屋', thType:'タイプ', thCap:'定員', thGuests:'宿泊者',
@@ -849,6 +851,8 @@ const L={
     wzTitle:'미배정 팀 배정', wzPickTeam:'① 팀 고르기', wzPickRoom:(t)=>`② ${t} 방 고르기`,
     wzBack:'← 팀 목록', wzNoTeam:'이 날짜에 미배정 팀이 없습니다.', wzNoRoom:'이 기간에 빈자리가 있는 방이 없습니다.',
     wzFree:n=>`빈자리 ${n}`, wzSearchTeam:'팀·이름 검색', wzSearchRoom:'방번호 검색', wzSel:n=>`${n}명 배정`,
+    waitBadge:'대기', waitBadgeT:'예약리스트 구분이 「대기」 — 확정된 뒤 배정합니다',
+    holdWait:gc=>`${gc} 대기예약 — 확정 후 배정`, holdCatWait:'대기예약(확정 전)', holdFixWait:'엠클릭 구분이 「대기」입니다. 확정으로 바뀐 뒤 배정합니다 — 방이 없어도 정상입니다.',
     viewCard:'카드', viewTimeline:'타임라인', viewTimelineT:'객실×날짜 점유 한눈에',
     viewTable:'표', viewTableT:'표 형식 — 한 화면에 더 많은 객실(대량 배정용)',
     thRoom:'호수', thType:'타입', thCap:'정원', thGuests:'점유자',
@@ -1067,6 +1071,8 @@ const L={
     wzTitle:'Assign unassigned teams', wzPickTeam:'① Pick a team', wzPickRoom:(t)=>`② Pick a room for ${t}`,
     wzBack:'← Team list', wzNoTeam:'No unassigned team on this date.', wzNoRoom:'No room has space for this period.',
     wzFree:n=>`${n} free`, wzSearchTeam:'Search team or name', wzSearchRoom:'Search room no.', wzSel:n=>`Assign ${n}`,
+    waitBadge:'Waitlist', waitBadgeT:'Booking list marks this as waitlisted — assign after it is confirmed',
+    holdWait:gc=>`${gc} waitlisted — assign after confirmation`, holdCatWait:'Waitlisted (not confirmed)', holdFixWait:'M-Click marks this booking as waitlisted. Assign once it becomes confirmed — having no room is normal.',
     viewCard:'Card', viewTimeline:'Timeline', viewTimelineT:'Room × date occupancy at a glance',
     viewTable:'Table', viewTableT:'Table view — more rooms per screen (bulk assignment)',
     thRoom:'Room', thType:'Type', thCap:'Cap.', thGuests:'Guests',
@@ -1544,7 +1550,7 @@ async function loadDay(){
   //   → 그 기간에 체크인~체크아웃이 한 번이라도 걸치는 팀
   const gres=await pagedQuery(()=>supa
     .from('guests')
-    .select('event_seq,team_tag,group_code,accom,accom_prefix,pax,check_status,bookings!inner(event_no,rep_name,dep_date,arr_date,product_name,member_type,remark,remark_local)')
+    .select('event_seq,team_tag,group_code,accom,accom_prefix,pax,check_status,bookings!inner(event_no,rep_name,dep_date,arr_date,product_name,member_type,remark,remark_local,status)')
     .lte('bookings.dep_date',to)
     .gt('bookings.arr_date',from)
     .order('event_seq'));
@@ -1556,6 +1562,7 @@ async function loadDay(){
     rep:x.bookings?.rep_name||'', dep:x.bookings?.dep_date, arr:x.bookings?.arr_date,
     event_no:x.bookings?.event_no||'',   // 행사번호(예약순 표시·우선순위)
     member_type:x.bookings?.member_type||'',
+    status:x.bookings?.status||'',            // 구분: 견적/대기/확정/정산 (대기=대기예약)
     remark:x.bookings?.remark||'',
     remark_local:x.bookings?.remark_local||'',   // 현지비고(싱글 지정 탐지용)
     isNewCheckin: x.bookings?.dep_date===from,   // 이 범위 시작일에 신규 체크인
@@ -1844,6 +1851,7 @@ function wzBody(){
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <b style="font-family:var(--mono);color:var(--accent);font-size:14px">${esc(gc)}</b>
           <span class="mbadge ${isNon?'mb-non':'mb-mem'}">${isNon?t('rm_nonmember'):t('rm_member')}</span>
+          ${String(g.status||'').includes('대기')?`<span class="sgb" style="background:#7a5aa8" title="${esc(tx('waitBadgeT'))}">${tx('waitBadge')}</span>`:''}
           ${note?`<span class="sgb">${tx('sgBadge')}</span>`:''}
           <span style="margin-left:auto;font-weight:800;color:var(--err)">${tx('leftOf',left,g.pax)}</span>
         </div>
@@ -2014,6 +2022,7 @@ function renderUnassigned(){
         <input type="checkbox" class="tchk" data-seq="${g.event_seq}" title="${tx('selTeamT')}">
         <span class="tag">${gcode}</span>
         <span class="mbadge ${isNonMem?'mb-non':'mb-mem'}">${isNonMem?t('rm_nonmember'):t('rm_member')}</span>
+        ${String(g.status||'').includes('대기')?`<span class="sgb" style="background:#7a5aa8" title="${esc(tx('waitBadgeT'))}">${tx('waitBadge')}</span>`:''}
         ${g.event_no?`<span class="evno" title="${tx('evnoT')}">${g.event_no}</span>`:''}
         <span class="left${leftN?'':' ok'}">${leftN?tx('leftOf',leftN,roster.length||g.pax):tx('allDone')}</span>
       </div>
@@ -3055,6 +3064,7 @@ function openHoldsModal(){
     ['oddTeam',  tx('holdCatOddTeam'),  tx('holdFixOddTeam'),  'splitOdd'],
     ['single',   tx('holdCatSingle'),   tx('holdFixSingle'),   'singleRemark'],
     ['noRoster', tx('holdCatNoRoster'), tx('holdFixNoRoster'), null],
+    ['wait',     tx('holdCatWait'),     tx('holdFixWait'),     null],
     ['noFloor',  tx('holdCatNoFloor'),  tx('holdFixNoFloor'),  null],
     ['noRoom',   tx('holdCatNoRoom'),   tx('holdFixNoRoom'),   null],
     ['oddLeft',  tx('holdCatOddLeft'),  tx('holdFixOddLeft'),  null],
@@ -3062,6 +3072,7 @@ function openHoldsModal(){
   ];
   const OPT_LABEL={ splitOdd:tx('optSplitOdd'), allowSingle:tx('optAllowSingle'), singleRemark:tx('optSingleRemark') };
   const cat=t=>{
+    if(/대기예약|待機予約|waitlisted/i.test(t)) return 'wait';
     if(/명단 없음|名簿なし|no roster/i.test(t)) return 'noRoster';
     if(/3名|3명|3-person/.test(t)) return 'oddTeam';
     if(/シングル|싱글|single/i.test(t)) return 'single';
@@ -3653,6 +3664,8 @@ async function autoAssign(){
       //    강행하면 싱글 요청자를 둘씩 묶어버린다 → 보류 후 수기(기존 Min 결정 유지).
       //  · 그 외 시설(간지호텔·쿠주힐즈·돔하우스): 룸타입이 트윈 한 종류뿐이고 1인 사용 요금이
       //    이미 붙는다 → **1인 1실로 배정**한다. 방이 비어 있는데 미배정으로 남기지 않는다(Min 2026-08).
+      // 대기예약(구분=대기)은 확정 전이라 방을 잡지 않는다 — 방이 없어도 정상(Min 2026-08)
+      if(String(g.status||'').includes('대기')){ holds.push(tx('holdWait',gc)+holdTag(g)); continue; }
       const _wantSingle=/싱글|single|シングル/i.test((g.remark_local||'')+' '+(g.remark||''));
       let _singleEach=false;
       if(_wantSingle && !AUTO_OPTS.singleRemark){
