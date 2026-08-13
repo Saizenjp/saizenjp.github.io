@@ -626,6 +626,7 @@ const L={
     wzFree:n=>`空き${n}`, wzSearchTeam:'チーム・氏名で検索', wzSearchRoom:'部屋番号で検索', wzSel:n=>`${n}名を割り当て`,
     waitBadge:'待機', waitBadgeT:'予約リストの区分が「待機」— 確定後に割り当てます',
     holdWait:gc=>`${gc} 待機予約 — 確定後に割当`, holdCatWait:'待機予約(確定前)', holdFixWait:'エムクリックの区分が「待機」です。確定に変わってから割り当てます — 部屋がなくても正常です。',
+    wzAll:'すべて', wzOnlySingle:n=>`シングル指定 ${n}`, wzOnlyWait:n=>`待機 ${n}`,
     viewCard:'カード', viewTimeline:'タイムライン', viewTimelineT:'客室×日付の占有を一覧',
     viewTable:'一覧', viewTableT:'表形式 — 一画面で多くの客室(大量割当向け)',
     thRoom:'部屋', thType:'タイプ', thCap:'定員', thGuests:'宿泊者',
@@ -853,6 +854,7 @@ const L={
     wzFree:n=>`빈자리 ${n}`, wzSearchTeam:'팀·이름 검색', wzSearchRoom:'방번호 검색', wzSel:n=>`${n}명 배정`,
     waitBadge:'대기', waitBadgeT:'예약리스트 구분이 「대기」 — 확정된 뒤 배정합니다',
     holdWait:gc=>`${gc} 대기예약 — 확정 후 배정`, holdCatWait:'대기예약(확정 전)', holdFixWait:'엠클릭 구분이 「대기」입니다. 확정으로 바뀐 뒤 배정합니다 — 방이 없어도 정상입니다.',
+    wzAll:'전체', wzOnlySingle:n=>`싱글 지정 ${n}`, wzOnlyWait:n=>`대기 ${n}`,
     viewCard:'카드', viewTimeline:'타임라인', viewTimelineT:'객실×날짜 점유 한눈에',
     viewTable:'표', viewTableT:'표 형식 — 한 화면에 더 많은 객실(대량 배정용)',
     thRoom:'호수', thType:'타입', thCap:'정원', thGuests:'점유자',
@@ -1073,6 +1075,7 @@ const L={
     wzFree:n=>`${n} free`, wzSearchTeam:'Search team or name', wzSearchRoom:'Search room no.', wzSel:n=>`Assign ${n}`,
     waitBadge:'Waitlist', waitBadgeT:'Booking list marks this as waitlisted — assign after it is confirmed',
     holdWait:gc=>`${gc} waitlisted — assign after confirmation`, holdCatWait:'Waitlisted (not confirmed)', holdFixWait:'M-Click marks this booking as waitlisted. Assign once it becomes confirmed — having no room is normal.',
+    wzAll:'All', wzOnlySingle:n=>`Single requested ${n}`, wzOnlyWait:n=>`Waitlist ${n}`,
     viewCard:'Card', viewTimeline:'Timeline', viewTimelineT:'Room × date occupancy at a glance',
     viewTable:'Table', viewTableT:'Table view — more rooms per screen (bulk assignment)',
     thRoom:'Room', thType:'Type', thCap:'Cap.', thGuests:'Guests',
@@ -1822,7 +1825,7 @@ function wireSingleDoc(root){
 
 // ── 미배정 팀 배정 팝업 (Min 2026-08) ─────────────────────────────────
 //   ① 미배정 팀 목록 → ② 그 팀에 넣을 방 목록 → 배정. 한 팝업 안에서 끝난다.
-let _wzSeq=null;
+let _wzSeq=null, _wzFilter='all';   // all | single | wait
 function closeWizard(){ const el=$('#assign-wz'); if(el) el.remove(); _wzSeq=null; }
 function wzTeams(){
   return state.guests.filter(g=>!teamFullyAssigned(g.event_seq) && teamMatch(g) && teamInDayScope(g))
@@ -1838,7 +1841,10 @@ function wzRooms(g,need){
 }
 function wzBody(){
   if(!_wzSeq){
-    const list=wzTeams();
+    const all=wzTeams();
+    const list=_wzFilter==='single' ? all.filter(g=>singleNote(g))
+             : _wzFilter==='wait'   ? all.filter(g=>String(g.status||'').includes('대기'))
+             : all;
     if(!list.length) return `<div style="padding:28px;text-align:center;color:var(--muted)">${tx('wzNoTeam')}</div>`;
     return `<div style="padding:9px 0 0">`+list.map(g=>{
       const left=unassignedMembers(g.event_seq).length;
@@ -1894,6 +1900,19 @@ function renderWizard(){
   bg.querySelector('#wz-back').style.display=_wzSeq?'':'none';
   bg.querySelector('#wz-q').placeholder=_wzSeq?tx('wzSearchRoom'):tx('wzSearchTeam');
   bg.querySelector('#wz-q').value='';
+  const chips=bg.querySelector('#wz-chips');
+  if(chips){
+    if(_wzSeq){ chips.style.display='none'; }
+    else{
+      const all=wzTeams();
+      const nS=all.filter(g=>singleNote(g)).length, nW=all.filter(g=>String(g.status||'').includes('대기')).length;
+      chips.style.display='flex';
+      chips.innerHTML=`<button type="button" class="ffbtn${_wzFilter==='all'?' active':''}" data-wzf="all">${tx('wzAll')} ${all.length}</button>`
+        +(nS?`<button type="button" class="ffbtn${_wzFilter==='single'?' active':''}" data-wzf="single">${tx('wzOnlySingle',nS)}</button>`:'')
+        +(nW?`<button type="button" class="ffbtn${_wzFilter==='wait'?' active':''}" data-wzf="wait">${tx('wzOnlyWait',nW)}</button>`:'');
+      chips.querySelectorAll('[data-wzf]').forEach(b=>b.addEventListener('click',()=>{ _wzFilter=b.dataset.wzf; renderWizard(); }));
+    }
+  }
   bg.querySelector('#wz-body').innerHTML=wzBody();
   bg.querySelectorAll('.wz-team').forEach(b=>b.addEventListener('click',()=>{ _wzSeq=+b.dataset.seq; renderWizard(); }));
   bg.querySelectorAll('.wz-room').forEach(b=>b.addEventListener('click',async()=>{
@@ -1908,7 +1927,7 @@ function renderWizard(){
   }));
 }
 function openWizard(){
-  closeWizard(); _wzSeq=null;
+  closeWizard(); _wzSeq=null; _wzFilter='all';
   const bg=document.createElement('div'); bg.className='modal-bg'; bg.id='assign-wz';
   bg.innerHTML=`<div class="modal" style="max-width:720px">
     <h2 style="display:flex;align-items:center;gap:9px">
@@ -1916,6 +1935,7 @@ function openWizard(){
       <span id="wz-h">${tx('wzPickTeam')}</span>
       <span style="margin-left:auto;font-size:12px;font-weight:600;color:var(--text2)">${dayScopeLabel()}</span>
     </h2>
+    <div id="wz-chips" class="fac-filter" style="padding:8px 16px 0;display:flex"></div>
     <div style="padding:9px 16px 0"><input class="inp" id="wz-q" type="search" autocomplete="off" style="width:100%"></div>
     <div class="mbody" id="wz-body" style="max-height:60vh;overflow:auto;padding:0 16px"></div>
     <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;justify-content:flex-end">
