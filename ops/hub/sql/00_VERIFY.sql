@@ -162,6 +162,9 @@ from (
   union all select 92,'92 QR만료=체크아웃','guest_bill check_status 반영', case when exists(select 1 from pg_proc where proname='guest_bill' and prosrc like '%check_status%') then '✅ 적용' else '❌ 미적용 (92)' end
   union all select 93,'93 카트 관리표','cart_types·cart_bookings', case when exists(select 1 from information_schema.tables where table_schema='public' and table_name='cart_types') and exists(select 1 from information_schema.tables where table_schema='public' and table_name='cart_bookings') then '✅ 있음' else '❌ 없음 (93)' end
   union all select 94,'94 카트 개별번호','cart_units(정비중 제외)', case when exists(select 1 from information_schema.tables where table_schema='public' and table_name='cart_units') then '✅ 있음' else '❌ 없음 (94)' end
+  union all select 95,'95 카트 현장취소','cart_bookings.cancelled', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='cart_bookings' and column_name='cancelled') then '✅ 있음' else '❌ 없음 (95)' end
+  union all select 96,'96 간지 실제 호수','room_inventory 201~310호', case when exists(select 1 from room_inventory where facility='간지호텔' and room_no='201호') then '✅ 적용' else '❌ 미적용 (96)' end
+  union all select 97,'97 간지 정원 2·최대 3','트리플 요청 허용+초과 표시', case when not exists(select 1 from room_inventory where facility='간지호텔' and (capacity is distinct from 2 or max_capacity is distinct from 3)) and exists(select 1 from room_inventory where facility='간지호텔') then '✅ 적용' else '❌ 미적용 (97)' end
 ) t
 order by ord, 항목;
 
