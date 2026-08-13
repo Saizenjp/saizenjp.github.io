@@ -141,7 +141,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=21"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
+<script src="../assets/saizen-core.js?v=22"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
 <script src="../assets/saizen-ops.js?v=15.75"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -182,6 +182,9 @@ const L={
     autoMDone:(t,d)=>`${t}件を自動割当して保存しました(${d}日分)。`,
     autoMConfirm:(ym,n)=>`${ym} の未割当 ${n}件を自動割当して保存します。\n\n・現地伝達備考に電動カート申請があるチーム → 電動(やまなみCC日のみ)\n・それ以外 → ガソリン(2名予約=2人乗り / 3名以上=4人乗り)\n・すでに登録済みのチームは変更しません。`,
     elecReq:'電動申請', elecReqT:'現地伝達備考に電動カートの事前申請あり',
+    elecMaybe:'要確認', elecMaybeT:'備考に「電気」だけあり「カート」の記載なし — 集計に入れず再確認',
+    chkTitle:'⚠ 再確認が必要な備考', chkDesc:'「電動カート申請」のように明確な場合だけ集計します。「電気」とだけ書かれた予約は<b>集計に入れず</b>ここに出します — メリットツアーに確認して確定してください。',
+    chkNone:'この日は再確認が必要な備考はありません。', chkCnt:n=>`${n}件`,
     mSumTitle:'日別 使用状況', mTeamTitle:'チーム別 割当明細', mNone:'この月はラウンドするチームがありません。',
     thDate:'日付', thTeams:'チーム', thTotalCarts:'計', thDays:'ラウンド日', thKind:'区分', thAlloc:'割当', thCartDays:'台·日',
     kindElec:'電動(事前)', kindGas:'ガソリン', unassigned:'未割当',
@@ -222,6 +225,9 @@ const L={
     autoMDone:(t,d)=>`${t}건 자동 분배·저장했습니다(${d}일치).`,
     autoMConfirm:(ym,n)=>`${ym} 미배정 ${n}건을 자동 분배해 저장합니다.\n\n· 현지전달비고에 전기카트 신청이 있는 팀 → 전기카트(야마나미CC일만)\n· 그 외 팀 → 가솔린(2인 예약=2인승 / 3인 이상=4인승)\n· 이미 등록된 팀은 건드리지 않습니다.`,
     elecReq:'전기신청', elecReqT:'현지전달비고에 전기카트 사전신청 표기가 있습니다',
+    elecMaybe:'재확인', elecMaybeT:'비고에 「전기」만 있고 「카트」 표기가 없습니다 — 집계에서 빼고 재확인',
+    chkTitle:'⚠ 재확인 필요 비고', chkDesc:'「전기카트 신청」처럼 명확한 경우만 집계합니다. 「전기」라고만 적힌 예약은 <b>집계에 넣지 않고</b> 여기 모읍니다 — 메리트투어에 확인해 확정해 주세요.',
+    chkNone:'이 날짜에 재확인이 필요한 비고는 없습니다.', chkCnt:n=>`${n}건`,
     mSumTitle:'일자별 사용현황', mTeamTitle:'팀별 배정 명세', mNone:'이 달에 라운딩하는 팀이 없습니다.',
     thDate:'날짜', thTeams:'팀', thTotalCarts:'계', thDays:'라운딩일', thKind:'구분', thAlloc:'배정', thCartDays:'대·일',
     kindElec:'전기(사전)', kindGas:'가솔린', unassigned:'미배정',
@@ -262,6 +268,9 @@ const L={
     autoMDone:(t,d)=>`Auto-assigned and saved ${t} entries across ${d} days.`,
     autoMConfirm:(ym,n)=>`Auto-assign and save ${n} unassigned entries in ${ym}.\n\n· Teams whose local remarks request an electric cart → electric (Yamanami CC days only)\n· Everyone else → gasoline (2-pax booking = 2-seater, 3+ = 4-seater)\n· Teams already assigned are left untouched.`,
     elecReq:'electric', elecReqT:'Local remarks request an electric cart pre-booking',
+    elecMaybe:'check', elecMaybeT:'Remarks say "electric" but never "cart" — excluded from the count, needs confirming',
+    chkTitle:'⚠ Remarks needing confirmation', chkDesc:'Only explicit wording ("electric cart requested") is counted. Bookings that just say "electric" are <b>left out of the count</b> and listed here — confirm with Merit Tour.',
+    chkNone:'Nothing to confirm on this date.', chkCnt:n=>`${n} items`,
     mSumTitle:'Usage by date', mTeamTitle:'Assignment detail by team', mNone:'No team plays golf in this month.',
     thDate:'Date', thTeams:'Teams', thTotalCarts:'Total', thDays:'Round days', thKind:'Kind', thAlloc:'Assigned', thCartDays:'cart-days',
     kindElec:'Electric (pre)', kindGas:'Gasoline', unassigned:'unassigned',
@@ -357,6 +366,7 @@ function renderUI(){
       <h3 style="margin-top:12px">${tx('stockTitle')} <span class="cnt" id="d-label"></span></h3>
       <div class="stock" id="stock"></div>
       <div id="warn"></div>
+      <div id="recheck" class="noprint"></div>
       <h3 style="margin-top:14px">${tx('tblTitle')} <span class="cnt" id="tbl-cnt"></span></h3>
       <div style="overflow:auto"><div id="tbl"></div></div>
       <div class="desc noprint" style="margin-top:11px">${tx('deskNote')}</div>
@@ -448,17 +458,19 @@ async function load(){
       TYPES.forEach(t=>{ const r=bk[t.code]; qty[t.code]=r?r.qty:0; if(r){ src[t.code]=r.source; memo=memo||r.note||''; } });
       let srcOne=Object.values(src)[0]||'pre';
       // 저장된 배정이 없으면 규칙(SZCore)으로 자동 채운다 — 화면은 클릭 없이 바로 정답.
+      // 비고 표기 판정: sure=집계 · maybe=재확인(집계 제외) · none=없음 (Min 2026-08)
+      const _elecKind=SZCore.cartRemarkKind(b.remark_local||'');
       const saved=TYPES.some(t=>(+qty[t.code]||0)>0);
       let auto=false;
       if(!saved){
         const courseOk=(row.course==='やまなみCC');
-        const p=SZCore.cartPlan(g.pax||b.pax||0, SZCore.wantsElectricCart(b.remark_local||'')&&courseOk);
+        const p=SZCore.cartPlan(g.pax||b.pax||0, _elecKind==='sure'&&courseOk);
         if(p && TYPES.some(t=>t.code===p.code)){ qty[p.code]=p.qty; srcOne=(p.code==='electric'?'pre':'onsite'); auto=true; }
       }
       ROWS.push({
         seq:b.event_seq, tag:g.team_tag||g.group_code||'', rep:b.rep_name||'', accom,
         pax:g.pax||b.pax||0, dep:b.dep_date, arr:b.arr_date, isPus,
-        elec:SZCore.wantsElectricCart(b.remark_local||''), remarkLocal:b.remark_local||'',
+        elec:_elecKind==='sure', elecKind:_elecKind, remarkLocal:b.remark_local||'',
         ruleCourse:row.course, holes:row.holes, note:row.note,
         grpCourse:grp.course_code||'', tee:grp.tee_time||'', cartNo:grp.cart_no||'',
         qty, src:srcOne, memo, auto, orig:JSON.stringify({qty,src:srcOne,memo})
@@ -571,7 +583,26 @@ function shownRows(){
   if(!ONLY_ELEC) return ROWS;
   return ROWS.filter(r=>r.elec || TYPES.some(t=>(+r.qty[t.code]||0)>0));
 }
+// 「전기」라고만 적힌 예약 — 집계에 넣지 않고 여기 모아 확인시킨다(Min 2026-08).
+function renderRecheck(){
+  const box=$('#recheck'); if(!box) return;
+  const list=ROWS.filter(r=>r.elecKind==='maybe');
+  if(!list.length){ box.innerHTML=''; return; }
+  box.innerHTML=`<div style="background:#fdf6e7;border:1px solid #e6d3a3;border-radius:10px;padding:11px 13px;margin-top:14px">
+    <div style="font-size:13px;font-weight:800;color:#7a5a16;margin-bottom:3px">${tx('chkTitle')} <span class="cnt" style="color:#8a6410">${esc(tx('chkCnt')(list.length))}</span></div>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px;line-height:1.55">${tx('chkDesc')}</div>
+    ${list.map(r=>`<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 10px;margin-bottom:5px;font-size:12.5px">
+      <span class="tag">${esc(r.tag)}</span><b>${esc(r.rep)}</b>
+      <span class="cnt">${r.pax}${lang()==='en'?'':'명'} · ${esc(accomL(r.accom))}</span>
+      <span style="color:#8a2a1c;background:#fbeeeb;border:1px solid #e3bdb4;border-radius:6px;padding:2px 8px">${esc(r.remarkLocal||'')}</span>
+      <button class="btn xs ghost" type="button" data-disp="${r.seq}" style="margin-left:auto">${esc(tx('dispBtn'))}</button>
+    </div>`).join('')}
+  </div>`;
+  box.querySelectorAll('[data-disp]').forEach(b=>b.addEventListener('click',()=>openDispatch(b.dataset.disp)));
+}
+
 function renderTable(){
+  renderRecheck();
   const box=$('#tbl'); if(!box) return;
   $('#tbl-cnt').textContent = DIRTY.size?tx('dirty')(DIRTY.size):'';
   $('#btn-save').disabled = !DIRTY.size;
@@ -587,7 +618,7 @@ function renderTable(){
       <td class="l">${esc(r.rep)}</td>
       <td class="l">${esc(accomL(r.accom))}</td>
       <td>${r.pax}</td>
-      <td>${eligBadge(r)}${r.elec?` <span class="bdg ok" title="${esc(tx('elecReqT'))+(r.remarkLocal?' — '+r.remarkLocal:'')}">${esc(tx('elecReq'))}</span>`:''}</td>
+      <td>${eligBadge(r)}${r.elec?` <span class="bdg ok" title="${esc(tx('elecReqT'))+(r.remarkLocal?' — '+r.remarkLocal:'')}">${esc(tx('elecReq'))}</span>`:''}${r.elecKind==='maybe'?` <span class="bdg warn" title="${esc(tx('elecMaybeT'))+(r.remarkLocal?' — '+r.remarkLocal:'')}">${esc(tx('elecMaybe'))}</span>`:''}</td>
       <td><span class="course ${r.ruleCourse==='九重高原CC'?'kuju':''}">${esc(r.ruleCourse)}</span>
           <small style="color:var(--muted)"> ${r.holes}H</small>
           ${gc?`<div class="cnt" style="font-weight:600">${esc(tx('courseGrp'))}: ${esc(gc)}</div>`:''}</td>

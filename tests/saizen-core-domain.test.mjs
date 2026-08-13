@@ -226,3 +226,20 @@ test('accomLabel: 3개국어 라벨 · 키 패리티 · 미등록 폴백', () =>
   assert.equal(SZCore.accomLabel('신규숙소', 'en'), '신규숙소');
   assert.equal(SZCore.accomLabel(null, 'ko'), '');
 });
+
+// ── 카트 비고 표기 3단계 (Min 2026-08) ─────────────────────────────────────
+//   「전기카트 신청」처럼 명확할 때만 집계하고, 「전기」만 적힌 건은 재확인으로 뺀다.
+test('cartRemarkKind — 명확/애매/없음', () => {
+  assert.equal(SZCore.cartRemarkKind('전기카트 신청'), 'sure');
+  assert.equal(SZCore.cartRemarkKind('전동카트 2대 요청'), 'sure');
+  assert.equal(SZCore.cartRemarkKind('EV 카트'), 'sure');
+  assert.equal(SZCore.cartRemarkKind('전기'), 'maybe');
+  assert.equal(SZCore.cartRemarkKind('전기 신청'), 'maybe');
+  assert.equal(SZCore.cartRemarkKind('EV 요청'), 'maybe');
+  assert.equal(SZCore.cartRemarkKind('조식 추가'), 'none');
+  assert.equal(SZCore.cartRemarkKind(''), 'none');
+  assert.equal(SZCore.cartRemarkKind(null), 'none');
+  // 집계용 판정은 sure 일 때만 true
+  assert.equal(SZCore.wantsElectricCart('전기'), false);
+  assert.equal(SZCore.wantsElectricCart('전기카트'), true);
+});

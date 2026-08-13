@@ -318,6 +318,19 @@
   function wantsElectricCart(remark) {
     return CART_ELECTRIC.test(String(remark == null ? '' : remark));
   }
+  //  비고 표기 판정 3단계(Min 2026-08) — 메리트투어가 현지전달비고에 적어 보내는 문구가
+  //  「전기카트 신청」처럼 명확할 때도 있고 「전기」 한 단어만 올 때도 있다.
+  //   'sure'  = 전기/전동/EV + 카트 → 그대로 집계
+  //   'maybe' = 전기·電気·EV 는 있는데 '카트'가 없다 → **재확인 필요**(집계에서 뺀다)
+  //   'none'  = 언급 없음
+  var CART_ELEC_HINT = /전기|전동|電動|電気|\bEV\b/i;
+  function cartRemarkKind(remark) {
+    var t = String(remark == null ? '' : remark);
+    if (!t.trim()) return 'none';
+    if (CART_ELECTRIC.test(t)) return 'sure';
+    if (CART_ELEC_HINT.test(t)) return 'maybe';
+    return 'none';
+  }
   //  pax → {code, qty}. electric=true 면 전기카트, 아니면 가솔린(2인승/4인승).
   //  code 는 cart_types.code 와 동일: 'electric' | 'gas2' | 'gas4'
   function cartPlan(pax, electric) {
@@ -672,6 +685,7 @@
     teeSlots: teeSlots,
     splitTeam: splitTeam,
     wantsElectricCart: wantsElectricCart,
+    cartRemarkKind: cartRemarkKind,
     cartPlan: cartPlan,
     parseCartNos: parseCartNos,
     allocCartNos: allocCartNos,
