@@ -730,7 +730,7 @@ const L={
     inactiveRoomT:'非活性(ロック)客室 — 🔓で解除してください', inactiveRoom:'非活性客室',
     closedRange:(rno,from,to,reason)=>`${rno}: 閉鎖期間(${from}~${to}${reason?' · '+reason:''})`,
     pickerTitle:(fac,rno)=>`${fac} ${rno}`, pickerScope:scope=>`· ${scope} 割当`,
-    pickerCap:(now,cap,remain)=>`現在 ${now}/${cap} · 空き ${remain}`,
+    pickerCap:(now,cap,remain)=>`現在 ${now}/${cap}`+(remain?` · 空き ${remain}`:` · 定員いっぱい`),
     thisLodging:'この施設', remainN:n=>'残り '+n,
     pickerNoCandidates:'この日付に割当可能な未割当人員がいません。',
     selN:(n,remain,over)=>`選択 ${n}名`+(remain?` · 空き ${remain}`:'')+(over?` · ⚠ 定員超過分は保留されます`:''),
@@ -963,7 +963,7 @@ const L={
     inactiveRoomT:'비활성(잠금) 객실 — 🔓로 풀어주세요', inactiveRoom:'비활성 객실',
     closedRange:(rno,from,to,reason)=>`${rno}: 폐쇄 기간(${from}~${to}${reason?' · '+reason:''})`,
     pickerTitle:(fac,rno)=>`${fac} ${rno}`, pickerScope:scope=>`· ${scope} 배정`,
-    pickerCap:(now,cap,remain)=>`현재 ${now}/${cap} · 남은자리 ${remain}`,
+    pickerCap:(now,cap,remain)=>`현재 ${now}/${cap}`+(remain?` · 남은자리 ${remain}`:` · 정원 참`),
     thisLodging:'이 숙소', remainN:n=>'잔여 '+n,
     pickerNoCandidates:'이 날짜에 배정 가능한 미배정 인원이 없습니다.',
     selN:(n,remain,over)=>`선택 ${n}명`+(remain?` · 남은자리 ${remain}`:'')+(over?` · ⚠ 정원 초과분은 보류됨`:''),
@@ -1191,7 +1191,7 @@ const L={
     inactiveRoomT:'Inactive (locked) room — unlock with 🔓', inactiveRoom:'Inactive room',
     closedRange:(rno,from,to,reason)=>`${rno}: closed period (${from}~${to}${reason?' · '+reason:''})`,
     pickerTitle:(fac,rno)=>`${fac} ${rno}`, pickerScope:scope=>`· ${scope} assignment`,
-    pickerCap:(now,cap,remain)=>`Now ${now}/${cap} · free ${remain}`,
+    pickerCap:(now,cap,remain)=>`Now ${now}/${cap}`+(remain?` · free ${remain}`:` · at capacity`),
     thisLodging:'This lodging', remainN:n=>'left '+n,
     pickerNoCandidates:'No unassigned guests available for this date.',
     selN:(n,remain,over)=>`Selected ${n}`+(remain?` · free ${remain}`:'')+(over?` · ⚠ over-capacity will be held`:''),
@@ -1900,7 +1900,7 @@ function wzRooms(g,need){
     //   그건 빈자리가 아니라 트리플 요청 때만 쓰는 **초과 배정**이라 정상 빈방과 섞으면 안 된다.
     const peak=roomOccOver(inv.id,g.dep,g.arr).peak;
     const free=(inv.capacity||0)-peak, freeMax=(inv.max_capacity||inv.capacity||0)-peak;
-    return {inv, own:wzOwnRoom(g,inv), free, freeMax, over:free<Math.max(1,need)};
+    return {inv, own:wzOwnRoom(g,inv), used:peak, free, freeMax, over:free<Math.max(1,need)};
   });
 }
 // 같은 팀이 이미 배정된 방 — 「방 고르기」에서 나머지 인원을 같은 방·같은 층으로 붙이기 쉽게(Min 2026-08)
@@ -1965,7 +1965,7 @@ function wzBody(){
           style="text-align:left;font-family:inherit;background:${_wzMine.has(c.inv.id)?'var(--accentSoft,#eef1e8)':'var(--surface)'};border:${_wzMine.has(c.inv.id)?'2px solid var(--accent)':'1px solid var(--border2)'};border-radius:8px;padding:7px 10px;cursor:pointer">
           <b style="font-family:var(--mono);font-size:14px">${esc(c.inv.room_no)}</b>
           <span style="display:block;font-size:10.5px;color:var(--text2)">${esc(wzTypeLabel(c.inv))}</span>
-          <span style="display:block;font-size:10.5px;font-weight:800;color:${c.over?'var(--err)':'var(--ok)'}">${c.over?tx('over'):esc(tx('wzFree',c.free))}</span>
+          <span style="display:block;font-size:10.5px;font-weight:800;color:${c.over?'var(--err)':'var(--ok)'}">${c.used}/${c.inv.capacity}${c.over?' '+tx('over'):''}</span>
           ${_wzMine.has(c.inv.id)?`<span style="display:block;margin-top:3px;font-size:10px;font-weight:800;color:#fff;background:var(--accent);border-radius:4px;padding:1px 5px">${tx('wzHere')} ${esc(_wzMine.get(c.inv.id).join('·'))}</span>`:''}
         </button>`).join('')}
       </div></div>`).join('');
@@ -2267,9 +2267,11 @@ function openAssignPicker(inv){
   if(!inv.active){ toast(inv.room_no+': '+tx('inactiveRoomT'),'warn'); return; }
   const _cloF=roomClosedFocus(inv.id);
   if(_cloF){ toast(tx('closedRange',inv.room_no,_cloF.from_date,_cloF.to_date,_cloF.reason),'warn'); return; }
-  const cap=inv.max_capacity||inv.capacity;
+  // 표기는 **정원(capacity)** 기준 — 「현재 2/2」. 초과 배정 허용치(max_capacity)는 판정에만 쓴다(Min 2026-08).
+  const cap=inv.capacity||0, capMax=inv.max_capacity||inv.capacity||0;
   const usedNow=roomUsedPax(inv);
-  const remain=Math.max(0, cap-usedNow);
+  const remain=Math.max(0, cap-usedNow);          // 정원 여유(표시용)
+  const remainMax=Math.max(0, capMax-usedNow);    // 실제로 더 넣을 수 있는 수(초과 포함)
   // 후보: 선택 날짜 점유 + 미배정 인원 남은 팀. 같은 숙소 팀 먼저.
   const teams=state.guests.filter(g=>teamInDayScope(g) && unassignedMembers(g.event_seq).length>0);
   teams.sort((a,b)=>{
@@ -2316,7 +2318,7 @@ function openAssignPicker(inv){
   bg.addEventListener('click',e=>{ if(e.target===bg) closeAssignPicker(); });
   document.body.appendChild(bg);
   const upd=()=>{ const n=bg.querySelectorAll('.ap-chk:checked').length;
-    $('#ap-cnt').textContent=tx('selN',n,remain,(n>remain&&remain));
+    $('#ap-cnt').textContent=tx('selN',n,remain,(n>remainMax&&remainMax));
     $('#ap-go').disabled=!n; };
   bg.querySelectorAll('.ap-chk').forEach(c=>c.addEventListener('change',upd));
   wireSingleDoc(bg);   // 싱글 지정 팀 → 현지수배서 팝업
