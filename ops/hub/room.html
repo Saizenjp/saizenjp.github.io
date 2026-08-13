@@ -618,6 +618,9 @@ const L={
     assignAsk:(r,n)=>`${r} に ${n}名 を割り当てますか？`,
     badInv:(n,ids)=>`⚠ 部屋番号のない客室 ${n}件を除外しました(room_inventory id: ${ids}) — 客室マスターを確認してください`,
     dupHidden:n=>`⚠ 名簿の重複 ${n}名を隠しました — データ登録(step1)で該当月の再取込が必要です`,
+    asoFree:d=>`${d} 阿蘇別荘は空きです — 押すと割当可能チームが出ます`, asoBusy:(d,t)=>`${d} 阿蘇別荘 使用中 — ${t}`,
+    asoVilla:'館内別荘の予約(8名)', asoHotel:'ホテル予約で8名 — 阿蘇別荘へ移せます',
+    dupAssign:n=>`⚠ 重複した人の割当 ${n}件 — [整理] を押すと同一人物の二重割当を解消します`, dupFix:'整理', dupFixed:n=>`重複割当 ${n}件を整理しました`,
     viewCard:'カード', viewTimeline:'タイムライン', viewTimelineT:'客室×日付の占有を一覧',
     viewTable:'一覧', viewTableT:'表形式 — 一画面で多くの客室(大量割当向け)',
     thRoom:'部屋', thType:'タイプ', thCap:'定員', thGuests:'宿泊者',
@@ -837,6 +840,9 @@ const L={
     assignAsk:(r,n)=>`${r} 에 ${n}명 배정할까요?`,
     badInv:(n,ids)=>`⚠ 호수가 비어 있는 객실 ${n}건을 제외했습니다(room_inventory id: ${ids}) — 객실 마스터를 확인해 주세요`,
     dupHidden:n=>`⚠ 명단 중복 ${n}명을 숨겼습니다 — 데이터 등록에서 그 달 재임포트가 필요합니다`,
+    asoFree:d=>`${d} 아소별장 비어 있음 — 누르면 배정 가능 팀이 나옵니다`, asoBusy:(d,t)=>`${d} 아소별장 사용 중 — ${t}`,
+    asoVilla:'관내별장 예약(8명)', asoHotel:'호텔 예약 8명 — 아소별장으로 옮길 수 있음',
+    dupAssign:n=>`⚠ 중복된 사람의 배정 ${n}건 — [정리]를 누르면 같은 사람 이중배정을 해소합니다`, dupFix:'정리', dupFixed:n=>`중복 배정 ${n}건을 정리했습니다`,
     viewCard:'카드', viewTimeline:'타임라인', viewTimelineT:'객실×날짜 점유 한눈에',
     viewTable:'표', viewTableT:'표 형식 — 한 화면에 더 많은 객실(대량 배정용)',
     thRoom:'호수', thType:'타입', thCap:'정원', thGuests:'점유자',
@@ -1049,6 +1055,9 @@ const L={
     assignAsk:(r,n)=>`Assign ${n} guest(s) to ${r}?`,
     badInv:(n,ids)=>`⚠ Skipped ${n} rooms with no room number (room_inventory id: ${ids}) — check the room master`,
     dupHidden:n=>`⚠ Hid ${n} duplicate roster entries — re-import that month in data registration`,
+    asoFree:d=>`${d} Aso Villa is free — tap to see teams that can move in`, asoBusy:(d,t)=>`${d} Aso Villa in use — ${t}`,
+    asoVilla:'On-site villa booking (8)', asoHotel:'Hotel booking of 8 — can move to the Aso Villa',
+    dupAssign:n=>`⚠ ${n} assignments belong to duplicated people — press [Fix] to resolve double assignment`, dupFix:'Fix', dupFixed:n=>`Resolved ${n} duplicate assignments`,
     viewCard:'Card', viewTimeline:'Timeline', viewTimelineT:'Room × date occupancy at a glance',
     viewTable:'Table', viewTableT:'Table view — more rooms per screen (bulk assignment)',
     thRoom:'Room', thType:'Type', thCap:'Cap.', thGuests:'Guests',
@@ -1307,9 +1316,9 @@ function toast(msg,cls){
   setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);
 }
 // 되돌리기 버튼이 달린 토스트(6초) — 배정 해제 직후 같은 방으로 즉시 복구. 취소 알림이라 빨강.
-function toastUndo(msg,onUndo){
+function toastUndo(msg,onUndo,label){
   const t=document.createElement('div'); t.className='toast err';
-  t.innerHTML=`<span></span> <button type="button" class="tu-btn" style="margin-left:10px;border:1px solid currentColor;background:transparent;color:inherit;border-radius:6px;padding:2px 9px;font-weight:800;cursor:pointer;font-family:inherit">${tx('undoBtn')}</button>`;
+  t.innerHTML=`<span></span> <button type="button" class="tu-btn" style="margin-left:10px;border:1px solid currentColor;background:transparent;color:inherit;border-radius:6px;padding:2px 9px;font-weight:800;cursor:pointer;font-family:inherit">${label||tx('undoBtn')}</button>`;
   t.querySelector('span').textContent=msg;
   t.querySelector('.tu-btn').addEventListener('click',()=>{ t.remove(); onUndo(); });
   $('#toast').appendChild(t);
@@ -1585,6 +1594,13 @@ async function loadDay(){
         state.members[seq]=list;
       });
       if(dup>0){ toast(tx('dupHidden',dup),'warn'); console.warn('명단 중복 숨김:',dup); }
+      // 숨긴 중복 인원에 이미 붙어 있던 배정 정리 — 같은 방·같은 기간이면 삭제, 아니면 남은 사람으로 옮김
+      const keptIds=new Set(); Object.values(state.members).forEach(a=>a.forEach(m=>keptIds.add(m.id)));
+      const dupRows=state.rooms.filter(r=>r.member_id!=null && !keptIds.has(r.member_id));
+      if(dupRows.length){
+        window._dupRows=dupRows;
+        toastUndo(tx('dupAssign',dupRows.length), fixDupAssign, tx('dupFix'));
+      }
     }
   }
   // 기간 폐쇄(잠금) 로드 — 범위에 겹치는 폐쇄(from_date<=to AND to_date>=from)
@@ -1801,6 +1817,29 @@ function updateUaBtn(){
   b.textContent = list.length ? tx('uaBtn',list.length,ppl) : tx('uaBtnNone');
   b.title=tx('uaOpenT');
   b.style.opacity = list.length ? '' : '.55';
+}
+
+// 중복 인원 배정 정리 — 같은 사람이 두 번 배정된 것을 해소한다(Min 2026-08)
+async function fixDupAssign(){
+  const rows=window._dupRows||[]; if(!rows.length) return;
+  const keptOf=id=>{ // 숨겨진 중복 → 남은 사람(같은 팀·같은 이름)
+    const r=state.rooms.find(x=>x.id===id); return null;
+  };
+  let del=0, mov=0;
+  for(const r of rows){
+    const same=state.rooms.find(x=>x.id!==r.id && x.inventory_id===r.inventory_id
+      && x.check_in===r.check_in && x.check_out===r.check_out && x.event_seq===r.event_seq
+      && (state.members[x.event_seq]||[]).some(m=>m.id===x.member_id));
+    if(same){ const {error}=await supa.from('rooms').delete().eq('id',r.id); if(!error){ del++; state.rooms=state.rooms.filter(x=>x.id!==r.id); } }
+    else {
+      const free=(state.members[r.event_seq]||[]).find(m=>!state.rooms.some(x=>x.member_id===m.id));
+      if(free){ const {error}=await supa.from('rooms').update({member_id:free.id}).eq('id',r.id); if(!error){ r.member_id=free.id; mov++; } }
+      else { const {error}=await supa.from('rooms').delete().eq('id',r.id); if(!error){ del++; state.rooms=state.rooms.filter(x=>x.id!==r.id); } }
+    }
+  }
+  window._dupRows=null;
+  rebuildAssignMap(); render();
+  toast(tx('dupFixed',del+mov),'ok');
 }
 
 // 팀별 「배정됨 N명」 펼침 상태(미배정 목록)
@@ -2113,12 +2152,30 @@ function asoRowHtml(g){
     <button class="btn sm go" type="button" data-aso="${g.event_seq}">${tx('asoGo')}</button>
   </div>`;
 }
+// 그날 아소별장이 비었는지 — 비었으면 눌러서 배정 가능 팀을 연다
+let asoOpen=false;
+function asoStatus(){
+  const d=state.focus||state.from;
+  const inv=asoInventory()[0]; if(!inv) return null;
+  const rows=state.rooms.filter(r=>r.inventory_id===inv.id && r.check_in<=d && d<r.check_out);
+  if(!rows.length) return {free:true, d};
+  const seqs=[...new Set(rows.map(r=>r.event_seq))];
+  const who=seqs.map(sq=>teamGroupCode(sq)||evNo(sq)).join(', ');
+  return {free:false, d, who};
+}
 function asoPanelHtml(){
+  const st=asoStatus();
+  if(!st) return '';
+  if(!st.free) return `<div class="aso-panel"><h4>${esc(tx('asoBusy',fmtMD(st.d),st.who))}</h4></div>`;
   const list=asoCandidates();
+  // 관내별장 예약(8명)을 먼저, 그다음 호텔 예약 8명
+  const villa=list.filter(g=>g.sale_type==='관내별장'), hotel=list.filter(g=>g.sale_type!=='관내별장');
+  const sec=(ttl,arr)=>arr.length?`<div style="font-size:11.5px;font-weight:800;color:#5e3a86;margin:6px 0 4px">${esc(ttl)} ${arr.length}</div>`+arr.map(asoRowHtml).join(''):'';
   return `<div class="aso-panel">
-    <h4>${tx('asoTitle')} <span style="font-weight:700;color:var(--text2);font-size:11.5px">· ${dayScopeLabel()}</span></h4>
-    <div class="d">${tx('asoDesc')}</div>
-    ${list.length?list.map(asoRowHtml).join(''):`<div style="font-size:12px;color:var(--muted);padding:6px 2px">${tx('asoNone')}</div>`}
+    <h4 style="cursor:pointer" id="aso-toggle">${asoOpen?'▾':'▸'} ${esc(tx('asoFree',fmtMD(st.d)))}</h4>
+    ${asoOpen?`<div class="d">${tx('asoDesc')}</div>`
+      +(list.length?(sec(tx('asoVilla'),villa)+sec(tx('asoHotel'),hotel))
+        :`<div style="font-size:12px;color:var(--muted);padding:6px 2px">${tx('asoNone')}</div>`):''}
   </div>`;
 }
 function wireAsoButtons(root){
@@ -2167,6 +2224,8 @@ function renderFacilities(){
   if(placeSel.has('아소별장')){
     const ap=document.createElement('div'); ap.innerHTML=asoPanelHtml();
     box.appendChild(ap); wireAsoButtons(ap);
+    const at=ap.querySelector('#aso-toggle');
+    if(at) at.addEventListener('click',()=>{ asoOpen=!asoOpen; renderFacilities(); });
   }
   if(state.splitPending){
     const b=document.createElement('div');
@@ -2355,8 +2414,7 @@ function roomChipsHtml(assigned, refDay, compact){
     const gcode=teamGroupCode(seq)||(tx('teamPrefix')+evNo(seq));
     // 아소별장(8인 1동)으로 옮길 수 있는 팀이면 현재 배정 옆에 표기(Min 2026-08)
     const _g=state.guests.find(x=>String(x.event_seq)===String(seq));
-    const asoB=(_g&&asoEligible(_g)&&!isAsoRoom(r0.inventory_id))
-      ? `<span class="asob" title="${esc(tx('asoBadgeT',asoPax(_g)))}">${tx('asoBadge')}</span>` : '';
+    const asoB='';   // 아소 후보 표기는 「아소별장」 토글 패널에서만(Min 2026-08)
     // 수기(분할 포함) 배정 = 고정. 자동배정이 다시 돌아도 이 방은 그대로다.
     const pinned = rows.some(r=>r.assign_source==='manual');
     const pin = pinned ? `<span class="cpin" title="${tx('pinT')}">${tx('pinMark')}</span>` : '';
@@ -3513,7 +3571,9 @@ async function autoAssign(){
         }
         if(left>0){
           // 소보로 다 못 담으면 아소별장 한 동에 통째로 시도(8인 1동)
-          const aso=asoPool.find(inv=>((inv.max_capacity||inv.capacity)-dbUsedFor(inv,g.dep,g.arr,occ,pending))>=roster.length);
+          // 아소별장은 관내별장 예약이 **딱 8명**일 때만 자동 배정한다(Min 2026-08).
+          const aso=(roster.length===8)
+            ? asoPool.find(inv=>((inv.max_capacity||inv.capacity)-dbUsedFor(inv,g.dep,g.arr,occ,pending))>=8) : null;
           if(!aso) return;                                          // 둘 다 안 되면 호텔로
           roster.forEach(m=>pending.push(mkRow(g,m,aso)));
           pl.done=true; console.info(tx('soboNote',gc,roster.length));
