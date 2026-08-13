@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="ja">
+<!-- ============================================================================
+  객실 청소 배정표 (housekeeping.html)
+  ----------------------------------------------------------------------------
+  Min 2026-08: 방배정은 프론트 사무실이 하고, 객실 청소팀은 *수정 권한 없이*
+  배정된 결과 + 체크인·체크아웃·체류 기간을 태블릿으로 본다. 읽기 전용.
+
+  실제 호텔 하우스키핑 시스템의 표준을 그대로 따랐다.
+   · 하루 단위 · 층(섹션) 단위 워크시트 — 청소팀은 층을 맡아 움직인다.
+   · 방 상태 5종: 턴오버(퇴실+당일입실) · 퇴실 · 연박 · 입실 · 공실 (+ 폐쇄)
+   · 정렬 = 우선순위: 턴오버 → 퇴실 → 연박 → 입실 → 공실
+     (당일 입실이 걸린 방을 먼저 비워야 체크인 시각을 못 지키는 사고가 없다)
+   · 작업량(분) 합계 → 필요 인원 환산. 층 머리에 층별 요약.
+   · 시트 교체 = 연박 N박째마다(LINEN_EVERY).
+  여기에 우리만 가능한 것 하나:
+   · 그날 라운딩 티오프 시각을 같이 띄운다. 연박 방은 팀이 나간 뒤라야 들어가므로
+     티오프가 이른 방부터 청소하면 대기가 없다. (연박은 티오프 빠른 순 정렬)
+============================================================================ -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 객실 청소</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  /* ── 공통 chrome (전 ops 페이지 공유 정본) ── */
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
+    --border:#e3e6ea; --border2:#cdd2d8;
+    --text:#1f2937; --text2:#525b66; --muted:#8b919b;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);
+    padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none}
+  .navhome:hover{text-decoration:underline}
+  .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .btn.xs{font-size:12px;padding:3px 9px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .hint{font-size:11px;color:var(--muted)}
+  #toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);min-width:200px;text-align:center}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+
+  /* ── 페이지 전용 — 태블릿 기준으로 글자·터치 여백을 키운다 ── */
+  main{padding:16px 20px 70px;max-width:1500px;margin:0 auto}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:4px}
+  .row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  .lbl{font-size:12px;font-weight:800;color:var(--text2);margin-right:2px}
+  .chip{font-size:13px;font-weight:700;padding:6px 13px;border-radius:99px;background:var(--surface3);
+    color:var(--text2);border:1px solid var(--border);cursor:pointer;user-select:none}
+  .chip:hover{border-color:var(--accent)}
+  .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .deny{padding:38px 20px;text-align:center;color:var(--muted);font-size:14px;font-weight:700}
+  .dnav{display:flex;align-items:center;gap:7px}
+  .dnav .inp{font-size:15px;font-weight:800;padding:8px 12px}
+  .dwd{font-size:13px;font-weight:800;color:var(--text2)}
+  .dwd.sat{color:#2b5f9e} .dwd.sun{color:var(--err)}
+
+  /* KPI */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(122px,1fr));gap:9px}
+  .kpi{border:1px solid var(--border2);border-radius:10px;padding:9px 12px;background:var(--surface2)}
+  .kpi .k{font-size:11px;font-weight:800;color:var(--text2)}
+  .kpi .v{font-size:26px;font-weight:800;font-family:var(--mono);line-height:1.15}
+  .kpi .u{font-size:11px;font-weight:700;color:var(--muted);margin-left:3px}
+  .kpi.turn{background:#fbeeeb;border-color:#e3bdb4} .kpi.turn .v{color:var(--err)}
+  .kpi.out{background:#fdf3e3;border-color:#e6cf9e} .kpi.out .v{color:#8a6410}
+  .kpi.stay{background:#eef3fa;border-color:#c2d3ea} .kpi.stay .v{color:#2b5f9e}
+  .kpi.inn{background:var(--accentSoft);border-color:#b4cda0} .kpi.inn .v{color:var(--ok)}
+  .kpi.work{background:var(--surface);border-color:var(--accent);border-width:2px}
+
+  /* 층 섹션 */
+  .flr{margin-bottom:16px;border:1px solid var(--border2);border-radius:11px;overflow:hidden;background:var(--surface)}
+  .flr-h{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--surface3);
+    padding:9px 14px;font-size:15px;font-weight:800;cursor:pointer;user-select:none}
+  .flr-h .fac{font-size:11.5px;font-weight:700;color:var(--text2)}
+  .flr-h .fst{margin-left:auto;display:flex;gap:9px;flex-wrap:wrap;font-size:12px;font-weight:700}
+  .flr-h .fst b{font-family:var(--mono)}
+  .flr-h .car{color:var(--muted);width:14px;display:inline-block}
+  .hkt{width:100%;border-collapse:collapse}
+  .hkt th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:6px 10px;text-align:left;
+    font-size:10.5px;font-weight:800;letter-spacing:.03em;color:var(--text2);white-space:nowrap}
+  .hkt td{border-bottom:1px solid var(--border);padding:7px 10px;font-size:13.5px;vertical-align:middle}
+  .hkt tr:last-child td{border-bottom:none}
+  .hkt tr.r-turn td{background:#fdf1ee} .hkt tr.r-out td{background:#fdf8ee}
+  .hkt tr.r-vacant td{color:var(--muted)} .hkt tr.r-ooo td{background:#f1f2f4;color:var(--muted)}
+  .hkt td.c-no{font-weight:800;font-size:16px;font-family:var(--mono);white-space:nowrap;border-left:5px solid transparent}
+  .hkt tr.r-turn td.c-no{border-left-color:var(--err)}
+  .hkt tr.r-out  td.c-no{border-left-color:#d99a2b}
+  .hkt tr.r-stay td.c-no{border-left-color:#2b5f9e}
+  .hkt tr.r-in   td.c-no{border-left-color:var(--ok)}
+  .hkt td.c-ty{font-size:11.5px;color:var(--text2);white-space:nowrap}
+  .hkt td.c-pax,.hkt td.c-nth{font-family:var(--mono);white-space:nowrap;text-align:center}
+  .hkt td.c-stay{font-family:var(--mono);font-size:12px;white-space:nowrap}
+  .hkt td.c-tee{font-family:var(--mono);font-weight:800;white-space:nowrap}
+  .st{display:inline-block;font-size:11.5px;font-weight:800;border-radius:6px;padding:3px 9px;white-space:nowrap;color:#fff}
+  .st.turn{background:var(--err)} .st.out{background:#c8891f} .st.stay{background:#2b5f9e}
+  .st.in{background:var(--ok)} .st.vacant{background:#aeb4bd} .st.ooo{background:#4b5563}
+  .tline{display:block;font-size:12.5px;white-space:nowrap}
+  .tline .ar{font-size:10.5px;font-weight:800;color:var(--muted);margin-right:4px}
+  .tag{font-family:var(--mono);font-weight:800;color:var(--accent2);margin-right:5px}
+  .note{display:inline-block;font-size:11px;font-weight:800;border-radius:5px;padding:2px 7px;margin:1px 4px 1px 0;
+    background:var(--surface3);color:var(--text2);border:1px solid var(--border2)}
+  .note.linen{background:#efeaf7;color:#5e3a86;border-color:#cfc0e4}
+  .note.next{background:var(--accentSoft);color:#2f5d3a;border-color:#b4cda0}
+  .note.clo{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  .lgd{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);font-weight:700;margin-top:9px;align-items:center}
+
+  @media print{
+    @page{size:A4 portrait;margin:9mm}
+    .topbar,.conn,.noprint,#toast,.so-footer,.so-totop{display:none!important}
+    body{background:#fff}
+    main{max-width:none;padding:0}
+    .panel{border:none;box-shadow:none;padding:0;margin:0 0 6mm}
+    .flr{page-break-inside:auto;break-inside:auto;border:1px solid #999}
+    .flr-h{background:#ececec!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .hkt td,.hkt th{font-size:11pt}
+    .st,.note,.kpi{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .flr+.flr{page-break-before:always}
+  }
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.73">
+</head>
+<body data-so-area="hk">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">객실 청소</span>
+  <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connhint">연결 정보는 이 브라우저에만 저장됩니다.</span>
+</div>
+
+<main id="content">
+  <div class="panel"><div class="deny" id="t-preconn">연결 후 표시됩니다.</div></div>
+</main>
+
+<div id="toast"></div>
+
+<script src="../assets/saizen-core.js?v=19"></script>
+<script src="../assets/saizen-ops.js?v=15.73"></script>
+<script>
+const $=s=>document.querySelector(s);
+
+// ── 작업량 기준(분) — 실제 운영에 맞춰 여기만 고치면 요약이 따라간다 ──
+const MIN_OUT=30;      // 퇴실 청소(턴오버 포함)
+const MIN_STAY=15;     // 연박 정비
+const MIN_VACANT=5;    // 공실 점검
+const SHIFT_MIN=360;   // 1인 실작업 6시간 → 필요 인원 환산
+const LINEN_EVERY=3;   // 연박 N박째마다 시트 교체
+
+const L={
+  ja:{ step:'客室清掃', connHint:'接続情報はこのブラウザにのみ保存されます。', preConn:'接続すると表示されます。',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
+    loginTitle:'ログインが必要です。', loginSub:'中央のログインカードでログイン後、再接続してください。',
+    loading:'集計中…', loadFail:'読み込み失敗', reload:'↻ 再読込', print:'🖨 印刷',
+    prev:'◀ 前日', next:'翌日 ▶', today:'今日', date:'日付', accom:'宿泊施設', all:'全体',
+    sortPrio:'優先順', sortNo:'部屋番号順', sortT:'並び替え',
+    title:'客室清掃 割当表', readonly:'閲覧のみ（変更はフロント事務所）',
+    kTurn:'ターンオーバー', kOut:'退室', kStay:'連泊', kIn:'入室', kVacant:'空室', kOoo:'閉鎖',
+    kWork:'見込み作業量', kStaff:'必要人数', roomsU:'室', minU:'分', hourU:'時間', personU:'名',
+    sTurn:'退室→入室', sOut:'退室', sStay:'連泊', sIn:'入室', sVacant:'空室', sOoo:'閉鎖',
+    thState:'状態', thRoom:'部屋', thType:'タイプ', thPax:'人数', thTeam:'チーム', thStay:'滞在',
+    thNth:'泊目', thTee:'ティオフ', thNote:'備考',
+    arOut:'退室', arStay:'滞在', arIn:'入室',
+    nthOf:(n,t)=>`${n}/${t}`, lastNight:'最終夜', linen:'シーツ交換', nextIn:n=>`入室 ${n}名`,
+    closed:(f,t,r)=>`閉鎖 ${f}~${t}${r?' · '+r:''}`,
+    noRooms:'該当する客室がありません。', floorStat:(c,m)=>`清掃 ${c}室 · 約${m}分`,
+    lgd:'左の色帯＝状態 / 上から優先順に並んでいます',
+    teeHint:'連泊はティオフが早い部屋から（チームが出た後に入れる）',
+    statN:(d,n)=>`${d} · ${n}室` },
+  ko:{ step:'객실 청소', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', preConn:'연결 후 표시됩니다.',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패·재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
+    loginTitle:'로그인이 필요합니다.', loginSub:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
+    loading:'집계 중…', loadFail:'로드 실패', reload:'↻ 새로고침', print:'🖨 인쇄',
+    prev:'◀ 전날', next:'다음날 ▶', today:'오늘', date:'날짜', accom:'숙소', all:'전체',
+    sortPrio:'우선순', sortNo:'호수순', sortT:'정렬',
+    title:'객실 청소 배정표', readonly:'보기 전용 (변경은 프론트 사무실)',
+    kTurn:'턴오버', kOut:'퇴실', kStay:'연박', kIn:'입실', kVacant:'공실', kOoo:'폐쇄',
+    kWork:'예상 작업량', kStaff:'필요 인원', roomsU:'실', minU:'분', hourU:'시간', personU:'명',
+    sTurn:'퇴실→입실', sOut:'퇴실', sStay:'연박', sIn:'입실', sVacant:'공실', sOoo:'폐쇄',
+    thState:'상태', thRoom:'호수', thType:'타입', thPax:'인원', thTeam:'팀', thStay:'체류',
+    thNth:'박째', thTee:'티오프', thNote:'비고',
+    arOut:'퇴실', arStay:'재실', arIn:'입실',
+    nthOf:(n,t)=>`${n}/${t}`, lastNight:'마지막밤', linen:'시트 교체', nextIn:n=>`입실 ${n}명`,
+    closed:(f,t,r)=>`폐쇄 ${f}~${t}${r?' · '+r:''}`,
+    noRooms:'해당하는 객실이 없습니다.', floorStat:(c,m)=>`청소 ${c}실 · 약 ${m}분`,
+    lgd:'왼쪽 색띠 = 상태 / 위에서부터 우선순위 순서',
+    teeHint:'연박은 티오프 빠른 방부터(팀이 나간 뒤 들어갈 수 있음)',
+    statN:(d,n)=>`${d} · ${n}실` },
+  en:{ step:'Housekeeping', connHint:'Connection details are stored in this browser only.', preConn:'Shown after connecting.',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
+    loginTitle:'Login required.', loginSub:'Log in via the central login card, then reconnect.',
+    loading:'Loading…', loadFail:'Load failed', reload:'↻ Reload', print:'🖨 Print',
+    prev:'◀ Prev', next:'Next ▶', today:'Today', date:'Date', accom:'Lodging', all:'All',
+    sortPrio:'Priority', sortNo:'Room no.', sortT:'Sort',
+    title:'Housekeeping worksheet', readonly:'Read-only (changes at the front office)',
+    kTurn:'Turnover', kOut:'Departure', kStay:'Stayover', kIn:'Arrival', kVacant:'Vacant', kOoo:'Out of order',
+    kWork:'Estimated work', kStaff:'Staff needed', roomsU:' rooms', minU:' min', hourU:' h', personU:'',
+    sTurn:'Out → In', sOut:'Departure', sStay:'Stayover', sIn:'Arrival', sVacant:'Vacant', sOoo:'Closed',
+    thState:'Status', thRoom:'Room', thType:'Type', thPax:'Pax', thTeam:'Team', thStay:'Stay',
+    thNth:'Night', thTee:'Tee off', thNote:'Notes',
+    arOut:'Out', arStay:'Stay', arIn:'In',
+    nthOf:(n,t)=>`${n}/${t}`, lastNight:'Last night', linen:'Linen change', nextIn:n=>`${n} arriving`,
+    closed:(f,t,r)=>`Closed ${f}~${t}${r?' · '+r:''}`,
+    noRooms:'No matching rooms.', floorStat:(c,m)=>`${c} rooms · ~${m} min`,
+    lgd:'Left colour bar = status / listed in priority order',
+    teeHint:'Stayovers are ordered by tee-off — clean once the team has left',
+    statN:(d,n)=>`${d} · ${n} rooms` }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,lang()):(a||''); }
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');if(e){e.textContent=t;e.className='pill'+(c?' '+c:'');}}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+function todayISO(){ return SZCore.fmtDate(new Date()); }
+function shiftDate(iso,n){ const d=SZCore.parseLocalDate(iso); d.setDate(d.getDate()+n); return SZCore.fmtDate(d); }
+function md(iso){ return iso?iso.slice(5).replace('-','/'):''; }
+function dayDiff(a,b){ return Math.round((SZCore.parseLocalDate(b)-SZCore.parseLocalDate(a))/86400000); }
+
+const ACCOM_ORDER=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
+function accomIdx(a){ const i=ACCOM_ORDER.indexOf(a); return i<0?99:i; }
+
+// 상태 우선순위 — 당일 입실이 걸린 방이 맨 위
+const PRIO={turn:0, out:1, stay:2, in:3, vacant:4, ooo:5};
+
+let supa=null, INV=[], ROWS=[], TEAM={}, CLO=[], TEE={}, COURSE={};
+let DATE=todayISO(), ACCOMSEL=new Set(), SORT='prio', FOLD=new Set();
+
+async function connect(){
+  const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
+  if(!url||!key){ setConn(tx('needUrlKey'),'err'); return; }
+  localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.disabled=true; btn.textContent=tx('connecting');
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect'); btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">'+esc(tx('loginTitle'))+'<br><small>'+esc(tx('loginSub'))+'</small></div></div>'; return; }
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
+    renderUI(); load();
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn'); btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
+}
+
+async function paged(qf){
+  const out=[]; let from=0;
+  for(;;){ const {data,error}=await qf(from,from+999); if(error) return {error};
+    out.push(...(data||[])); if(!data||data.length<1000) break; from+=1000; }
+  return {data:out};
+}
+async function pagedIn(table,cols,col,vals){
+  const out=[];
+  for(let i=0;i<vals.length;i+=200){
+    const ch=vals.slice(i,i+200);
+    const r=await paged((a,b)=>supa.from(table).select(cols).in(col,ch).order(col).range(a,b));
+    if(r.error) return r; out.push(...r.data);
+  }
+  return {data:out};
+}
+
+function renderUI(){
+  $('#content').innerHTML=`
+    <div class="panel noprint">
+      <div class="row">
+        <span class="lbl">${tx('date')}</span>
+        <span class="dnav">
+          <button class="btn sm ghost" id="d-prev" type="button">${tx('prev')}</button>
+          <input class="inp" id="d-pick" type="date" value="${DATE}">
+          <button class="btn sm ghost" id="d-next" type="button">${tx('next')}</button>
+          <button class="btn sm ghost" id="d-today" type="button">${tx('today')}</button>
+          <span class="dwd" id="d-wd"></span>
+        </span>
+        <span style="flex:1"></span>
+        <span class="cnt" id="stat"></span>
+        <button class="btn sm ghost" id="btn-reload" type="button">${tx('reload')}</button>
+        <button class="btn sm ghost" id="btn-print" type="button">${tx('print')}</button>
+      </div>
+      <div class="row" style="margin-top:9px">
+        <span class="lbl">${tx('accom')}</span><span id="achips" class="row" style="gap:6px"></span>
+        <span style="flex:1"></span>
+        <span class="lbl">${tx('sortT')}</span>
+        <button type="button" class="chip${SORT==='prio'?' on':''}" data-sort="prio">${tx('sortPrio')}</button>
+        <button type="button" class="chip${SORT==='no'?' on':''}" data-sort="no">${tx('sortNo')}</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>${tx('title')} <span class="cnt" style="font-weight:700;color:var(--muted)">· ${tx('readonly')}</span></h3>
+      <div class="kpis" id="kpis" style="margin-top:9px"></div>
+      <div class="lgd noprint"><span>${tx('lgd')}</span><span style="color:var(--muted)">${tx('teeHint')}</span></div>
+    </div>
+    <div id="floors"></div>`;
+  $('#d-prev').addEventListener('click',()=>{ DATE=shiftDate(DATE,-1); $('#d-pick').value=DATE; load(); });
+  $('#d-next').addEventListener('click',()=>{ DATE=shiftDate(DATE,1); $('#d-pick').value=DATE; load(); });
+  $('#d-today').addEventListener('click',()=>{ DATE=todayISO(); $('#d-pick').value=DATE; load(); });
+  $('#d-pick').addEventListener('change',e=>{ if(e.target.value){ DATE=e.target.value; load(); } });
+  $('#btn-reload').addEventListener('click',load);
+  $('#btn-print').addEventListener('click',()=>window.print());
+  document.querySelectorAll('[data-sort]').forEach(b=>b.addEventListener('click',()=>{
+    SORT=b.dataset.sort;
+    document.querySelectorAll('[data-sort]').forEach(x=>x.classList.toggle('on',x.dataset.sort===SORT));
+    render();
+  }));
+  renderWd();
+}
+function renderWd(){
+  const el=$('#d-wd'); if(!el) return;
+  const w=SZCore.parseLocalDate(DATE).getDay();
+  el.textContent=SZCore.weekday(DATE,lang());
+  el.className='dwd'+(w===0?' sun':(w===6?' sat':''));
+}
+function renderAccomChips(){
+  const box=$('#achips'); if(!box) return;
+  const list=[...new Set(INV.map(i=>i.facility).filter(Boolean))].sort((a,b)=>accomIdx(a)-accomIdx(b));
+  box.innerHTML=`<button type="button" class="chip${ACCOMSEL.size?'':' on'}" data-a="">${esc(tx('all'))}</button>`
+    +list.map(a=>`<button type="button" class="chip${ACCOMSEL.has(a)?' on':''}" data-a="${esc(a)}">${esc(accomL(a))}</button>`).join('');
+  box.querySelectorAll('[data-a]').forEach(b=>b.addEventListener('click',()=>{
+    const a=b.dataset.a;
+    if(!a) ACCOMSEL.clear();
+    else { if(ACCOMSEL.has(a)) ACCOMSEL.delete(a); else ACCOMSEL.add(a); }
+    renderAccomChips(); render();
+  }));
+}
+
+async function load(){
+  if(!supa) return;
+  const st=$('#stat'); if(st) st.textContent=tx('loading');
+  renderWd();
+  try{
+    const D=DATE, Dn=shiftDate(D,1);
+    // 1) 객실 마스터
+    const iv=await paged((a,b)=>supa.from('room_inventory')
+      .select('id,facility,zone,room_no,room_type,capacity,max_capacity,active,note').order('id').range(a,b));
+    if(iv.error) throw iv.error;
+    INV=iv.data||[];
+    const invMap={}; INV.forEach(i=>{ invMap[i.id]=i; });
+
+    // 2) 그날에 걸치는 배정 — 그날 밤 체류(check_in<=D<check_out) + 그날 퇴실(check_out=D)
+    const rm=await paged((a,b)=>supa.from('rooms')
+      .select('event_seq,member_id,inventory_id,room_no,check_in,check_out')
+      .lte('check_in',D).gte('check_out',D).order('event_seq').range(a,b));
+    if(rm.error) throw rm.error;
+    ROWS=(rm.data||[]).filter(r=>invMap[r.inventory_id]);
+
+    // 3) 팀 정보(그룹코드·대표·전체 체류)
+    const seqs=[...new Set(ROWS.map(r=>r.event_seq))];
+    TEAM={};
+    if(seqs.length){
+      const gs=await pagedIn('guests','event_seq,group_code,team_tag,accom','event_seq',seqs);
+      if(gs.error) throw gs.error;
+      (gs.data||[]).forEach(g=>{ TEAM[g.event_seq]={tag:g.team_tag||g.group_code||'', accom:g.accom||'', rep:'', dep:'', arr:''}; });
+      const bs=await pagedIn('bookings','event_seq,rep_name,dep_date,arr_date','event_seq',seqs);
+      if(bs.error) throw bs.error;
+      (bs.data||[]).forEach(b=>{ const t=(TEAM[b.event_seq]=TEAM[b.event_seq]||{tag:'',accom:''});
+        t.rep=b.rep_name||''; t.dep=b.dep_date||''; t.arr=b.arr_date||''; });
+    }
+
+    // 4) 그날 폐쇄된 방
+    const cl=await supa.from('room_closures').select('inventory_id,from_date,to_date,reason')
+      .lte('from_date',D).gte('to_date',D);
+    CLO=cl.error?[]:(cl.data||[]);
+
+    // 5) 그날 라운딩 티오프 — 연박 방은 팀이 나간 뒤라야 청소할 수 있다
+    TEE={};
+    const gg=await supa.from('golf_groups').select('event_seq,tee_time,course_code').eq('play_date',D);
+    if(!gg.error){
+      (gg.data||[]).forEach(g=>{
+        if(g.event_seq==null||!g.tee_time) return;
+        const cur=TEE[g.event_seq];
+        if(!cur||String(g.tee_time)<cur.time) TEE[g.event_seq]={time:String(g.tee_time).slice(0,5), course:g.course_code||''};
+      });
+    }
+    if(!Object.keys(COURSE).length){
+      const gc=await supa.from('golf_courses').select('code,name_ja,name_ko');
+      if(!gc.error) (gc.data||[]).forEach(c=>{ COURSE[c.code]=c; });
+    }
+    render();
+  }catch(e){ if(st) st.textContent=tx('loadFail'); toast(tx('loadFail')+': '+String(e&&e.message||e),'err'); }
+}
+
+function courseL(code){ const c=COURSE[code]; if(!c) return ''; return lang()==='ko'?(c.name_ko||''):(c.name_ja||''); }
+
+// ── 방 1개 → 그날의 상태 레코드 ──
+function roomRecord(inv){
+  const D=DATE;
+  const mine=ROWS.filter(r=>r.inventory_id===inv.id);
+  const night=mine.filter(r=>r.check_in<=D && D<r.check_out);        // 그날 밤 묵는 사람
+  const outs =mine.filter(r=>r.check_out===D);                        // 그날 퇴실
+  const ins  =night.filter(r=>r.check_in===D);                        // 그날 입실
+  const stays=night.filter(r=>r.check_in<D);                          // 연박
+  const clo=CLO.find(c=>c.inventory_id===inv.id);
+  let status;
+  if(clo || inv.active===false) status='ooo';
+  else if(outs.length && ins.length) status='turn';
+  else if(outs.length) status='out';
+  else if(stays.length) status='stay';
+  else if(ins.length) status='in';
+  else status='vacant';
+
+  const grp=list=>{
+    const g={};
+    list.forEach(r=>{ const t=TEAM[r.event_seq]||{};
+      const k=r.event_seq;
+      if(!g[k]) g[k]={seq:k, tag:t.tag||'', rep:t.rep||'', pax:0, ci:r.check_in, co:r.check_out};
+      g[k].pax++;
+      if(r.check_in<g[k].ci) g[k].ci=r.check_in;
+      if(r.check_out>g[k].co) g[k].co=r.check_out;
+    });
+    return Object.values(g);
+  };
+  const gOut=grp(outs), gStay=grp(stays), gIn=grp(ins);
+
+  // 연박 = 몇 박째인지(그날 아침 기준 = 이미 묵은 밤 수) · 마지막 밤이면 표시
+  let nth=0, total=0, lastNight=false;
+  const base=gStay[0]||gIn[0]||gOut[0];
+  if(base){
+    total=Math.max(1,dayDiff(base.ci,base.co));
+    nth=Math.max(0,dayDiff(base.ci,D));
+    lastNight=(status==='stay'||status==='in') && shiftDate(D,1)===base.co;
+  }
+  // 티오프 = 그날 이 방에 남아 있는 팀(연박) 기준 — 나간 뒤 청소
+  const teeSeq=(gStay[0]||gIn[0]||{}).seq;
+  const tee=teeSeq!=null?TEE[teeSeq]:null;
+
+  const paxNight=night.length, paxOut=outs.length;
+  const minutes = status==='ooo'?0 : (status==='turn'||status==='out')?MIN_OUT : status==='stay'?MIN_STAY : status==='in'?MIN_VACANT : MIN_VACANT;
+  const linen = status==='stay' && nth>0 && nth%LINEN_EVERY===0;
+
+  return {inv, status, gOut, gStay, gIn, paxNight, paxOut, nth, total, lastNight, tee, clo, minutes, linen};
+}
+
+function stLabel(s){ return {turn:tx('sTurn'),out:tx('sOut'),stay:tx('sStay'),in:tx('sIn'),vacant:tx('sVacant'),ooo:tx('sOoo')}[s]; }
+
+function render(){
+  const box=$('#floors'); if(!box) return;
+  const invs=INV.filter(i=>!ACCOMSEL.size||ACCOMSEL.has(i.facility));
+  const recs=invs.map(roomRecord);
+  renderKpis(recs);
+  const st=$('#stat'); if(st) st.textContent=tx('statN')(md(DATE),recs.length);
+  if(!recs.length){ box.innerHTML=`<div class="panel"><div class="deny">${esc(tx('noRooms'))}</div></div>`; return; }
+
+  // 층(zone) 단위 — 청소팀은 층을 맡아 움직인다
+  const groups={};
+  recs.forEach(r=>{ const k=(r.inv.facility||'')+'|'+(r.inv.zone||r.inv.facility||'');
+    (groups[k]=groups[k]||{fac:r.inv.facility||'', zone:r.inv.zone||r.inv.facility||'', list:[]}).list.push(r); });
+  const keys=Object.keys(groups).sort((a,b)=>{
+    const A=groups[a], B=groups[b];
+    const fi=accomIdx(A.fac)-accomIdx(B.fac); if(fi) return fi;
+    const fa=String(A.zone).match(/^(\d+)층$/), fb=String(B.zone).match(/^(\d+)층$/);
+    if(fa&&fb) return (+fa[1])-(+fb[1]);
+    if(fa) return -1; if(fb) return 1;
+    return String(A.zone).localeCompare(String(B.zone));
+  });
+  box.innerHTML=keys.map(k=>floorHtml(groups[k],k)).join('');
+  box.querySelectorAll('[data-fold]').forEach(h=>h.addEventListener('click',()=>{
+    const key=h.dataset.fold; FOLD.has(key)?FOLD.delete(key):FOLD.add(key); render();
+  }));
+}
+
+function renderKpis(recs){
+  const box=$('#kpis'); if(!box) return;
+  const c={turn:0,out:0,stay:0,in:0,vacant:0,ooo:0};
+  let min=0;
+  recs.forEach(r=>{ c[r.status]++; min+=r.minutes; });
+  const staff=Math.max(1,Math.ceil(min/SHIFT_MIN));
+  const hh=(min/60).toFixed(1);
+  const kpi=(cls,k,v,u)=>`<div class="kpi ${cls}"><div class="k">${esc(k)}</div><div class="v">${v}<span class="u">${esc(u||'')}</span></div></div>`;
+  box.innerHTML=
+     kpi('turn',tx('kTurn'),c.turn,tx('roomsU'))
+    +kpi('out', tx('kOut'), c.out, tx('roomsU'))
+    +kpi('stay',tx('kStay'),c.stay,tx('roomsU'))
+    +kpi('inn', tx('kIn'),  c.in,  tx('roomsU'))
+    +kpi('',    tx('kVacant'),c.vacant,tx('roomsU'))
+    +(c.ooo?kpi('',tx('kOoo'),c.ooo,tx('roomsU')):'')
+    +kpi('work',tx('kWork'),hh,tx('hourU'))
+    +kpi('work',tx('kStaff'),staff,tx('personU'));
+}
+
+function floorHtml(g,key){
+  const folded=FOLD.has(key);
+  const clean=g.list.filter(r=>r.status!=='ooo'&&r.status!=='vacant').length;
+  const mins=g.list.reduce((s,r)=>s+r.minutes,0);
+  const c={turn:0,out:0,stay:0,in:0};
+  g.list.forEach(r=>{ if(c[r.status]!==undefined) c[r.status]++; });
+  const list=g.list.slice().sort((a,b)=>{
+    if(SORT==='no') return String(a.inv.room_no).localeCompare(String(b.inv.room_no),undefined,{numeric:true});
+    const p=PRIO[a.status]-PRIO[b.status]; if(p) return p;
+    // 연박은 티오프 빠른 순 — 팀이 먼저 나가는 방부터 들어간다
+    if(a.status==='stay'){
+      const ta=(a.tee&&a.tee.time)||'99:99', tb=(b.tee&&b.tee.time)||'99:99';
+      if(ta!==tb) return ta<tb?-1:1;
+    }
+    return String(a.inv.room_no).localeCompare(String(b.inv.room_no),undefined,{numeric:true});
+  });
+  const badge=(cls,lab,n)=>n?`<span class="st ${cls}" style="font-size:10.5px;padding:2px 7px">${esc(lab)} ${n}</span>`:'';
+  return `<div class="flr">
+    <div class="flr-h" data-fold="${esc(key)}">
+      <span class="car">${folded?'▸':'▾'}</span>
+      <span>${esc(g.zone)}</span><span class="fac">${esc(accomL(g.fac))}</span>
+      <span class="fst">
+        ${badge('turn',tx('sTurn'),c.turn)}${badge('out',tx('sOut'),c.out)}
+        ${badge('stay',tx('sStay'),c.stay)}${badge('in',tx('sIn'),c.in)}
+        <span class="cnt">${esc(tx('floorStat')(clean,mins))}</span>
+      </span>
+    </div>
+    ${folded?'':`<table class="hkt">
+      <thead><tr>
+        <th>${tx('thState')}</th><th>${tx('thRoom')}</th><th>${tx('thType')}</th>
+        <th style="text-align:center">${tx('thPax')}</th><th>${tx('thTeam')}</th>
+        <th>${tx('thStay')}</th><th style="text-align:center">${tx('thNth')}</th>
+        <th>${tx('thTee')}</th><th>${tx('thNote')}</th>
+      </tr></thead>
+      <tbody>${list.map(rowHtml).join('')}</tbody></table>`}
+  </div>`;
+}
+
+function rowHtml(r){
+  const tl=(cls,lab,arr)=>arr.map(t=>`<span class="tline"><i class="ar">${esc(lab)}</i><span class="tag">${esc(t.tag)}</span>${esc(t.rep)}<span class="cnt"> (${t.pax})</span></span>`).join('');
+  const teams = tl('out',tx('arOut'),r.gOut) + tl('stay',tx('arStay'),r.gStay) + tl('in',tx('arIn'),r.gIn);
+  const base=r.gStay[0]||r.gIn[0]||r.gOut[0];
+  const stayTxt=base?`${md(base.ci)}~${md(base.co)}`:'';
+  const nthTxt=(r.status==='stay'||r.status==='in')&&r.total?tx('nthOf')(r.nth,r.total):'';
+  const tee=r.tee?`${r.tee.time}${r.tee.course?` <span class="cnt">${esc(courseL(r.tee.course))}</span>`:''}`:'';
+  const notes=[];
+  if(r.linen) notes.push(`<span class="note linen">${esc(tx('linen'))}</span>`);
+  if(r.status==='turn'||r.status==='in'){
+    const n=r.gIn.reduce((s,t)=>s+t.pax,0);
+    if(n) notes.push(`<span class="note next">${esc(tx('nextIn')(n))}</span>`);
+  }
+  if(r.lastNight) notes.push(`<span class="note">${esc(tx('lastNight'))}</span>`);
+  if(r.clo) notes.push(`<span class="note clo">${esc(tx('closed')(md(r.clo.from_date),md(r.clo.to_date),r.clo.reason||''))}</span>`);
+  if(r.inv.note) notes.push(`<span class="note">${esc(r.inv.note)}</span>`);
+  const pax=r.status==='out'?r.paxOut:r.paxNight;
+  return `<tr class="r-${r.status}">
+    <td><span class="st ${r.status==='in'?'in':r.status}">${esc(stLabel(r.status))}</span></td>
+    <td class="c-no">${esc(r.inv.room_no)}</td>
+    <td class="c-ty">${esc(r.inv.room_type||'')}</td>
+    <td class="c-pax">${pax||''}</td>
+    <td>${teams}</td>
+    <td class="c-stay">${esc(stayTxt)}</td>
+    <td class="c-nth">${esc(nthTxt)}</td>
+    <td class="c-tee">${tee}</td>
+    <td>${notes.join('')}</td>
+  </tr>`;
+}
+
+function applyStatic(){
+  const st=$('#t-step'); if(st) st.textContent=tx('step');
+  const ch=$('#t-connhint'); if(ch) ch.textContent=tx('connHint');
+  const pc=$('#t-preconn'); if(pc) pc.textContent=tx('preConn');
+  const btn=$('#btn-connect');
+  if(supa){ setConn(tx('connOk'),'ok'); if(btn) btn.textContent=tx('connectedBtn'); }
+  else { setConn(tx('notConn'),''); if(btn) btn.textContent=tx('connect'); }
+}
+window.onSaizenLangChange=function(){
+  applyStatic();
+  if(supa && $('#floors')){ renderUI(); renderAccomChips(); render(); }
+};
+
+$('#btn-connect').addEventListener('click',connect);
+applyStatic(); loadCreds();
+if($('#sb-url').value && $('#sb-key').value) connect();
+</script>
+</body>
+</html>
