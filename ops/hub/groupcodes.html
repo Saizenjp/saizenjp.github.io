@@ -139,6 +139,7 @@ const L={
     lgEmpty:'空きコード', lgJoin:'1〜3名(合流可)', lgFull:'4名(満)',
     gtTitle:'グループコード配置表', gtDesc:'等級を選ぶと 18×33 の空き/配置が一目で分かります(セルにカーソルで氏名)。下に配置済みコード一覧。', gtColN:'人数', gtColNames:'配置者', gtNone:'配置済みコードなし', gtHover:'セルにカーソルを合わせると氏名表示', gtCnt:(u,t)=>`使用 ${u} / ${t}`, resyncDone:(n)=>`${n}チームのタグを更新`,
     unInherit:c=>`同一コード ${c} 付与`, unPick:'空きコード割当',
+    spouseBadge:'指定会員↔正会員', spouseHint:'指定会員(配偶者)は正会員と<b>同じコード</b>です — 最優先候補。',
     close:'閉じる', unFind:'同一コード検索', unFindT:'コード保有会員を名前で探して同じコードを付与', unFindPh:'会員名で検索', unFindNone:'該当なし',
     thPartner:'同行の会員(同一コード候補)', unSame:(n,c)=>`${n} と同じ ${c}`,
     unSameConfirm:(a,b,c)=>`${a} に ${b} と同じタグコード ${c} を付与します。よろしいですか？`,
@@ -189,6 +190,7 @@ const L={
     lgEmpty:'빈 코드', lgJoin:'1~3명(합류 가능)', lgFull:'4명(꽉 참)',
     gtTitle:'그룹코드 배정표', gtDesc:'등급을 고르면 18×33 빈칸/배정이 한눈에(칸에 마우스=성명). 아래에 배정된 코드 목록.', gtColN:'인원', gtColNames:'배정자', gtNone:'배정된 코드 없음', gtHover:'칸에 마우스를 올리면 성명 표시', gtCnt:(u,t)=>`사용 ${u} / ${t}`, resyncDone:(n)=>`${n}팀 태그 갱신됨`,
     unInherit:c=>`동일코드 ${c} 부여`, unPick:'빈코드 배정',
+    spouseBadge:'지정회원↔정회원', spouseHint:'지정회원(배우자)은 정회원과 <b>같은 코드</b>입니다 — 최우선 후보로 올립니다.',
     close:'닫기', unFind:'같은 코드 검색', unFindT:'코드 보유 회원을 이름으로 찾아 같은 코드 부여', unFindPh:'회원 이름 검색', unFindNone:'검색 결과 없음',
     thPartner:'동행 회원(같은 코드 후보)', unSame:(n,c)=>`${n} 과 같은 ${c}`,
     unSameConfirm:(a,b,c)=>`${a} 님에게 ${b} 님과 같은 태그코드 ${c} 를 부여합니다. 진행할까요?`,
@@ -239,6 +241,7 @@ const L={
     lgEmpty:'Empty', lgJoin:'1–3 (can join)', lgFull:'4 (full)',
     gtTitle:'Group code assignment grid', gtDesc:'Pick a grade to see 18×33 empty/assigned at a glance (hover a cell for names). Used codes listed below.', gtColN:'Count', gtColNames:'Assignees', gtNone:'No assigned codes', gtHover:'Hover a cell to see names', gtCnt:(u,t)=>`Used ${u} / ${t}`, resyncDone:(n)=>`${n} teams' tags updated`,
     unInherit:c=>`Assign same code ${c}`, unPick:'Assign empty code',
+    spouseBadge:'Designated ↔ primary', spouseHint:'A designated member (spouse) shares the primary member code — shown first.',
     close:'Close', unFind:'Find same code', unFindT:'Search a member who has a code and copy it', unFindPh:'Search member name', unFindNone:'No match',
     thPartner:'Travelled with (same-code candidates)', unSame:(n,c)=>`Same as ${n}: ${c}`,
     unSameConfirm:(a,b,c)=>`Give ${a} the same tag code ${c} as ${b}?`,
@@ -506,22 +509,24 @@ async function partnersFor(keys){
   try{
     const births=[...new Set(keys.map(k=>parse(k).birth))];
     const {data:mine,error:e1}=await supa.from('passengers')
-      .select('event_seq,name_kr,birth_yymmdd').in('birth_yymmdd',births).limit(5000);
+      .select('event_seq,name_kr,birth_yymmdd,member_div').in('birth_yymmdd',births).limit(5000);
     if(e1) throw e1;
     const keySet=new Set(keys);
     const seqOf={};                       // member_key → event_seq[]
     const allSeqs=new Set();
+    const myDiv={};                       // member_key → 회원구분(정회원/지정회원)
     (mine||[]).forEach(r=>{
       const k=String(r.name_kr||'').trim()+String(r.birth_yymmdd||'');
       if(!keySet.has(k)) return;
       (seqOf[k]=seqOf[k]||[]).push(r.event_seq); allSeqs.add(r.event_seq);
+      if(r.member_div && !myDiv[k]) myDiv[k]=String(r.member_div);
     });
     if(!allSeqs.size) return out;
     const seqs=[...allSeqs];
     const mates=[];
     for(let i=0;i<seqs.length;i+=200){
       const {data,error}=await supa.from('passengers')
-        .select('event_seq,name_kr,birth_yymmdd').in('event_seq',seqs.slice(i,i+200)).limit(5000);
+        .select('event_seq,name_kr,birth_yymmdd,member_div').in('event_seq',seqs.slice(i,i+200)).limit(5000);
       if(error) throw error; mates.push(...(data||[]));
     }
     const bySeq={}; mates.forEach(m=>{ (bySeq[m.event_seq]=bySeq[m.event_seq]||[]).push(m); });
@@ -539,15 +544,24 @@ async function partnersFor(keys){
       if(error) throw error;
       (data||[]).forEach(c=>{ if(c.code) codes[c.member_key]=c; });
     }
+    // 엠클릭 회원구분(U): 지정회원(배우자)은 정회원과 **같은 코드**를 쓴다 → 최우선 후보(Min 2026-08)
+    const isDesignated=v=>/지정|배우자/.test(String(v||''));
+    const isPrimary   =v=>/정회원/.test(String(v||'')) && !/지정/.test(String(v||''));
     keys.forEach(k=>{
-      const cnt={};
+      const cnt={}, div={};
       (seqOf[k]||[]).forEach(sq=>{ (bySeq[sq]||[]).forEach(m=>{
         const mk=String(m.name_kr||'').trim()+String(m.birth_yymmdd||'');
         if(mk===k || !codes[mk]) return;
         cnt[mk]=(cnt[mk]||0)+1;
+        if(m.member_div && !div[mk]) div[mk]=String(m.member_div);
       }); });
-      out[k]=Object.keys(cnt).map(mk=>({...codes[mk], n:cnt[mk]}))
-        .sort((a,b)=>b.n-a.n || String(a.name_kr||'').localeCompare(String(b.name_kr||'')))
+      const meDesig=isDesignated(myDiv[k]);
+      out[k]=Object.keys(cnt).map(mk=>({
+          ...codes[mk], n:cnt[mk], div:div[mk]||'',
+          spouse: meDesig && isPrimary(div[mk])          // 나=지정회원 · 상대=정회원 → 배우자 관계
+        }))
+        .sort((a,b)=>(b.spouse?1:0)-(a.spouse?1:0) || b.n-a.n
+          || String(a.name_kr||'').localeCompare(String(b.name_kr||'')))
         .slice(0,3);
     });
   }catch(e){ console.warn('동행 회원 조회 실패:',e&&e.message); }
@@ -564,7 +578,7 @@ async function loadUnassigned(){
     if(cnt) cnt.textContent=list.length?`(${list.length}${tx('cntUnit')})`:'';
     if(!list.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:8px 0">${esc(tx('unNone'))}</div>`; return; }
     const PT=await partnersFor(list.map(r=>r.member_key));
-    box.innerHTML=`<div class="cnt" style="color:var(--text2);margin-bottom:7px">${tx('unPartnerHint')}</div>`
+    box.innerHTML=`<div class="cnt" style="color:var(--text2);margin-bottom:7px">${tx('unPartnerHint')} ${tx('spouseHint')}</div>`
       +'<table class="gc"><thead><tr>'
       +`<th>${esc(tx('thName'))}</th><th>${esc(tx('thGrade'))}</th><th>${esc(tx('thKey'))}</th>`
       +`<th>${esc(tx('thPartner'))}</th><th></th></tr></thead><tbody>`
@@ -572,7 +586,8 @@ async function loadUnassigned(){
         const ps=PT[r.member_key]||[];
         const cells=ps.length? ps.map(pp=>`<button class="btn sm" data-same data-code="${esc(pp.code)}" data-pname="${esc(pp.name_kr||'')}"
               style="margin:2px 4px 2px 0;background:var(--accent2);border-color:var(--accent2)">
-              ${esc(tx('unSame',pp.name_kr||'',pp.code))} <span style="font-weight:600;opacity:.85">· ${esc(tx('unTimes',pp.n))}</span></button>`).join('')
+              ${esc(tx('unSame',pp.name_kr||'',pp.code))} <span style="font-weight:600;opacity:.85">· ${esc(tx('unTimes',pp.n))}</span>
+              ${pp.spouse?`<span style="margin-left:5px;font-size:9.5px;font-weight:800;background:#fff;color:var(--accent2);border-radius:99px;padding:1px 6px">${esc(tx('spouseBadge'))}</span>`:''}</button>`).join('')
           : `<span style="color:var(--muted)">${esc(tx('unNoPartner'))}</span>`;
         return `<tr data-key="${esc(r.member_key)}" data-grade="${esc(r.mem_class||'')}" data-name="${esc(r.name_kr||'')}">
           <td><b>${esc(r.name_kr||'')}</b></td>
