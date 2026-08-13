@@ -2695,6 +2695,7 @@ function renderFacilities(){
     h.innerHTML=tx('rangeNote',state.focus||state.from);
     box.appendChild(h);
   }
+  box.appendChild(roomViewBar());   // 빈 방만 · 📌 직접 배정만 — 카드·표 공통(보기를 바꿔도 그대로 있다)
   if(viewMode==='table'){ renderRoomTables(box); return; }
   const FACS=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
   FACS.forEach(fac=>{
@@ -2716,7 +2717,7 @@ function renderFacilities(){
       return 0;
     });
     zones.forEach(zone=>{
-      const zr=rooms.filter(r=>(r.zone||fac)===zone);
+      const zr=viewFilter(rooms.filter(r=>(r.zone||fac)===zone));   // 빈 방만·직접 배정만 토글 적용
       const isHotelFloor=/^\d+층$/.test(zone);
       if(zones.length>1){
         const zl=document.createElement('div'); zl.className='zone-label';
@@ -3001,15 +3002,22 @@ function renderRoomRow(inv){
 // 표 보기 상태 — 빈 방만 보기 / 접은 층
 let tblOnlyEmpty=false, tblOnlyPin=false;   // 📌 수기 배정만 보기(Min 2026-08)
 const tblFold=new Set();
-function renderRoomTables(box){
+function roomViewBar(){
   const bar=document.createElement('div'); bar.className='tbl-bar';
   bar.innerHTML=`<label><input type="checkbox" id="tbl-empty"${tblOnlyEmpty?' checked':''}><span id="tbl-empty-lbl">${tx('onlyEmpty')}</span></label>`
     +`<label><input type="checkbox" id="tbl-pin"${tblOnlyPin?' checked':''}><span>${tx('pinOnly')}</span></label>`
     +`<span style="color:var(--muted);font-size:11.5px">${tx('onlyEmptyT')} · ${tx('pinListT')}</span>`;
-  box.appendChild(bar);
   bar.querySelector('#tbl-empty').addEventListener('change',e=>{ tblOnlyEmpty=e.target.checked; renderFacilities(); });
   bar.querySelector('#tbl-pin').addEventListener('change',e=>{ tblOnlyPin=e.target.checked; renderFacilities(); });
-
+  return bar;
+}
+// 두 토글은 카드·표 공통으로 쓴다
+function viewFilter(list){
+  let out=tblOnlyEmpty?list.filter(inv=>roomUsedPax(inv)===0):list;
+  if(tblOnlyPin) out=out.filter(inv=>state.rooms.some(r=>r.inventory_id===inv.id && r.assign_source==='manual'));
+  return out;
+}
+function renderRoomTables(box){
   const FACS=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
   let shown=0;
   FACS.forEach(fac=>{
@@ -3033,8 +3041,7 @@ function renderRoomTables(box){
     let facRows=0;
     zones.forEach(zone=>{
       const zrAll=rooms.filter(r=>(r.zone||fac)===zone);
-      let zr=tblOnlyEmpty?zrAll.filter(inv=>roomUsedPax(inv)===0):zrAll;
-      if(tblOnlyPin) zr=zr.filter(inv=>state.rooms.some(r=>r.inventory_id===inv.id && r.assign_source==='manual'));
+      let zr=viewFilter(zrAll);
       if(!zr.length) return;
       const isHotelFloor=/^\d+층$/.test(zone);
       const key=fac+'|'+zone, folded=tblFold.has(key);
