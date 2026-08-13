@@ -608,6 +608,10 @@ const L={
     pickSearch:'名前・タグコード・行事番号で検索', pickNoHit:'該当なし',
     sgBadge:'シングル指定', sgBadgeT:'備考にシングル指定 — 誰が単独か特定できないため手動割当',
     sgDoc:'手配書', sgDocT:'現地手配書をポップアップで開く(備考を確認して割り当て)',
+    holdNoRoster:gc=>`${gc} 名簿なし(guest_members 未登録) — データ登録の再取込が必要`,
+    holdCatNoRoster:'名簿なし — 再取込が必要', holdFixNoRoster:'その予約の同行者名簿が入っていません。データ登録(step1)でその月を再取込してください。',
+    soboNote:(gc,n)=>`${gc} → 祖母別荘 ${n}名`,
+    selSpan:(dep,arr)=>` · 占有基準 ${dep}~${arr}`,
     viewCard:'カード', viewTimeline:'タイムライン', viewTimelineT:'客室×日付の占有を一覧',
     viewTable:'一覧', viewTableT:'表形式 — 一画面で多くの客室(大量割当向け)',
     thRoom:'部屋', thType:'タイプ', thCap:'定員', thGuests:'宿泊者',
@@ -819,6 +823,10 @@ const L={
     pickSearch:'이름·태그코드·행사번호 검색', pickNoHit:'검색 결과 없음',
     sgBadge:'싱글 지정', sgBadgeT:'비고에 싱글 지정 — 누가 단독인지 특정할 수 없어 수기 배정',
     sgDoc:'수배서', sgDocT:'현지수배서를 팝업으로 열기(비고 확인 후 바로 배정)',
+    holdNoRoster:gc=>`${gc} 명단 없음(guest_members 미등록) — 데이터 등록 재임포트 필요`,
+    holdCatNoRoster:'명단 없음 — 재임포트 필요', holdFixNoRoster:'그 예약의 동행자 명단이 들어와 있지 않습니다. 데이터 등록(step1)에서 그 달을 다시 임포트해 주세요.',
+    soboNote:(gc,n)=>`${gc} → 소보별장 ${n}명`,
+    selSpan:(dep,arr)=>` · 점유 기준 ${dep}~${arr}`,
     viewCard:'카드', viewTimeline:'타임라인', viewTimelineT:'객실×날짜 점유 한눈에',
     viewTable:'표', viewTableT:'표 형식 — 한 화면에 더 많은 객실(대량 배정용)',
     thRoom:'호수', thType:'타입', thCap:'정원', thGuests:'점유자',
@@ -1023,6 +1031,10 @@ const L={
     pickSearch:'Search name · tag code · booking no.', pickNoHit:'No match',
     sgBadge:'Single requested', sgBadgeT:'Remarks mention a single room — we cannot tell who, so assign manually',
     sgDoc:'Dispatch', sgDocT:'Open the local dispatch sheet in a popup',
+    holdNoRoster:gc=>`${gc} no roster (guest_members missing) — re-import needed`,
+    holdCatNoRoster:'No roster — re-import needed', holdFixNoRoster:'The companion roster for that booking is missing. Re-import that month in data registration (step1).',
+    soboNote:(gc,n)=>`${gc} → Sobo Villa ${n}`,
+    selSpan:(dep,arr)=>` · basis ${dep}–${arr}`,
     viewCard:'Card', viewTimeline:'Timeline', viewTimelineT:'Room × date occupancy at a glance',
     viewTable:'Table', viewTableT:'Table view — more rooms per screen (bulk assignment)',
     thRoom:'Room', thType:'Type', thCap:'Cap.', thGuests:'Guests',
@@ -2127,7 +2139,7 @@ function renderFacilities(){
   const _span=selAssignSpan();
   if(_span){
     const h=document.createElement('div');
-    h.style.cssText='font-size:12px;color:#fff;background:var(--accent2);border-radius:7px;padding:7px 12px;margin-bottom:10px;font-weight:700';
+    h.style.cssText='position:sticky;top:0;z-index:6;font-size:12px;color:#fff;background:var(--accent2);border-radius:7px;padding:7px 12px;margin-bottom:10px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.18)';
     h.innerHTML=tx('spanNote',fmtMD(_span.dep),fmtMD(_span.arr));
     box.appendChild(h);
   } else if(state.from && state.to && state.from!==state.to){
@@ -2242,7 +2254,10 @@ function renderSelBar(){
   const bar=$('#sel-bar'); if(!bar) return;
   const n=selCount();
   bar.style.display=n? 'flex':'none';
-  if(n) $('#sel-cnt').innerHTML=n+t('rm_selectedSuffix');
+  if(n){
+    const sp=selAssignSpan();
+    $('#sel-cnt').innerHTML=n+t('rm_selectedSuffix')+(sp?`<small style="font-weight:700;opacity:.85">${tx('selSpan',fmtMD(sp.dep),fmtMD(sp.arr))}</small>`:'');
+  }
 }
 
 function buildTagMap(){
@@ -2815,6 +2830,7 @@ function openHoldsModal(){
   const RULES=[
     ['oddTeam',  tx('holdCatOddTeam'),  tx('holdFixOddTeam'),  'splitOdd'],
     ['single',   tx('holdCatSingle'),   tx('holdFixSingle'),   'singleRemark'],
+    ['noRoster', tx('holdCatNoRoster'), tx('holdFixNoRoster'), null],
     ['noFloor',  tx('holdCatNoFloor'),  tx('holdFixNoFloor'),  null],
     ['noRoom',   tx('holdCatNoRoom'),   tx('holdFixNoRoom'),   null],
     ['oddLeft',  tx('holdCatOddLeft'),  tx('holdFixOddLeft'),  null],
@@ -2822,6 +2838,7 @@ function openHoldsModal(){
   ];
   const OPT_LABEL={ splitOdd:tx('optSplitOdd'), allowSingle:tx('optAllowSingle'), singleRemark:tx('optSingleRemark') };
   const cat=t=>{
+    if(/명단 없음|名簿なし|no roster/i.test(t)) return 'noRoster';
     if(/3名|3명|3-person/.test(t)) return 'oddTeam';
     if(/シングル|싱글|single/i.test(t)) return 'single';
     if(/階なし|층 없음|no floor/i.test(t)) return 'noFloor';
@@ -3391,9 +3408,14 @@ async function autoAssign(){
     for(const g of teams){
       const route=autoRoute(g);
       if(!route) continue;
-      const roster=teamRoster(g.event_seq).filter(m=>!manual.has(m.id));
-      if(!roster.length) continue;
       const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq));
+      const roster=teamRoster(g.event_seq).filter(m=>!manual.has(m.id));
+      if(!roster.length){
+        // 동행자 명단(guest_members)이 없으면 배정할 대상이 없다. 예전에는 조용히 건너뛰어
+        // 미배정 목록에 영원히 남았다(간지호텔 등에서 관측). 이제 사유로 남긴다.(Min 2026-08)
+        if((state.members[g.event_seq]||[]).length===0) holds.push(tx('holdNoRoster',gc));
+        continue;
+      }
 
       // 싱글 지정 팀(현지비고/비고에 '싱글')
       //  · 야마나미 호텔동: 누가 싱글인지 팀 단위 비고로는 특정 불가 + 룸타입이 여러 개라
@@ -3415,8 +3437,50 @@ async function autoAssign(){
       }
       plans.push({g,route,roster,floorOrder,gc,singleEach:_singleEach});
     }
+    // ── 관내별장 예약 → 소보별장 우선 (Min 2026-08, 올해 한정) ─────────────
+    //   소보별장 가용 = 2호·3호 트윈(2인) + 5호 4인 1동 → 하룻밤 최대 8명.
+    //   ① 일반고객으로만 구성된 관내별장 팀 먼저  ② 없으면 회원 포함 관내별장 팀
+    //   팀을 쪼개지 않는다 — 팀 전원이 들어갈 때만 소보로 보낸다(남으면 호텔로).
+    //   ※ 디럭스가 남아 있으면 일반고객도 디럭스로 채운다 — 그건 일반 패스의 폴백이 처리한다.
+    const soboPool=state.inventory.filter(r=>r.facility==='야마나미리조트' && (r.zone||'')==='소보별장' && r.active)
+      .slice().sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+    function placeSobo(){
+      if(!soboPool.length) return;
+      const cand=plans.filter(pl=>pl.g.sale_type==='관내별장' && !pl.done && pl.roster.length);
+      const pure=cand.filter(pl=>!pl.roster.some(isMember));       // ① 일반만
+      const rest=cand.filter(pl=>pl.roster.some(isMember));        // ② 회원 포함
+      [...pure,...rest].forEach(pl=>{
+        const {g,roster,gc}=pl;
+        const rooms=[], used=[];
+        let left=roster.length;
+        // 큰 방(4인 1동)부터 채워 팀을 최소 방수로 담는다
+        const pool=soboPool.slice().sort((a,b)=>(b.max_capacity||b.capacity)-(a.max_capacity||a.capacity));
+        for(const inv of pool){
+          if(left<=0) break;
+          if(used.includes(inv.id)) continue;
+          const cap=inv.max_capacity||inv.capacity;
+          const free=cap-dbUsedFor(inv,g.dep,g.arr,occ,pending);
+          if(free<=0) continue;
+          const take=Math.min(free,left);
+          rooms.push({inv,take}); used.push(inv.id); left-=take;
+        }
+        if(left>0) return;                                          // 팀 전원이 안 들어가면 소보 배정 안 함
+        let i=0;
+        rooms.forEach(({inv,take})=>{ for(let k=0;k<take;k++){ pending.push(mkRow(g,roster[i++],inv)); } });
+        pl.done=true;                                               // 이후 호텔 패스에서 제외
+        console.info(tx('soboNote',gc,roster.length));
+      });
+    }
+    // 방별 기간 점유(자동배정 내부용) — pending 반영
+    function dbUsedFor(inv,dep,arr,occAll,pend){
+      const rows=(occAll||[]).concat(pend||[]);
+      return rows.filter(r=>r.inventory_id===inv.id && overlaps(dep,arr,r.check_in,r.check_out))
+                 .reduce((n,r)=>n+(r.assigned_pax||1),0);
+    }
+
     // 한 팀의 짝 배정. phase='member'|'general'. 회원/일반 짝은 disjoint → 이중배정 없음.
     const placePlan=(plan,phase)=>{
+      if(plan.done) return;                     // 소보별장으로 이미 보낸 팀
       const {g,route,roster,floorOrder,gc,singleEach}=plan;
       const flr = floorOrder ? (p=>poolByFloorOrder(p,floorOrder)) : (p=>p); // 호텔동만 허용 층으로 필터·정렬
       // 싱글 지정(비호텔) — 짝을 짓지 않고 1인 1실. 남는 방이 없으면 아래 일반 배정으로 넘어간다.
@@ -3468,6 +3532,7 @@ async function autoAssign(){
           placePairs(g, roster, flr(roomPool(route,'general')), null, route.fac, pending, holds, occ, floorOrder);
       }
     };
+    placeSobo();                                          // ⓞ 관내별장 예약 → 소보별장 우선(올해 한정)
     for(const plan of plans) placePlan(plan,'member');    // ① 회원 짝 먼저(전 팀, 예약순)
     for(const plan of plans) placePlan(plan,'general');   // ② 일반 짝(전 팀, 예약순)
 
