@@ -478,6 +478,8 @@
   <button class="btn sm" id="btn-load" type="button" disabled data-i18n="rm_btnLoad"></button>
   <input type="date" id="date-pick" hidden><input type="date" id="date-to" hidden>
   <button class="btn sm" id="btn-unassigned" type="button" title="미배정 팀 열기(선택 후 객실 클릭)" style="background:var(--accent2);border-color:var(--accent2)">미배정</button>
+  <label class="hint" id="t-autorun" style="display:flex;align-items:center;gap:5px;font-weight:700;cursor:pointer;white-space:nowrap">
+    <input type="checkbox" id="ck-autorun"><span id="t-autorun-lbl">열 때 자동배정</span></label>
   <button class="btn ghost sm" id="btn-closure" type="button" disabled title="특정 객실을 기간 지정해 폐쇄(잠금) — 대표님 사용 중·점검 등. 폐쇄 기간엔 배정 불가" style="color:var(--err);border-color:#e3bdb4">🔒 객실 폐쇄</button>
   <button class="btn sm" id="btn-holds" type="button" style="display:none;background:#fdf6e7;color:#6b5312;border-color:#e6d3a3;font-weight:800"></button>
   <!-- 위 버튼 라벨/타이틀은 applyStaticRoom()이 언어별로 채움(월/오늘/자동배정/전체 비우기/충돌 점검/객실 폐쇄) -->
@@ -612,6 +614,8 @@ const L={
     holdCatNoRoster:'名簿なし — 再取込が必要', holdFixNoRoster:'その予約の同行者名簿が入っていません。データ登録(step1)でその月を再取込してください。',
     soboNote:(gc,n)=>`${gc} → 祖母別荘 ${n}名`,
     selSpan:(dep,arr)=>` · 占有基準 ${dep}~${arr}`,
+    autoRunLbl:'月を開いたら自動割当', autoRunT:'月を読み込んだ時に自動割当を1回走らせます。切ると手動のみ。',
+    assignAsk:(r,n)=>`${r} に ${n}名 を割り当てますか？`,
     viewCard:'カード', viewTimeline:'タイムライン', viewTimelineT:'客室×日付の占有を一覧',
     viewTable:'一覧', viewTableT:'表形式 — 一画面で多くの客室(大量割当向け)',
     thRoom:'部屋', thType:'タイプ', thCap:'定員', thGuests:'宿泊者',
@@ -827,6 +831,8 @@ const L={
     holdCatNoRoster:'명단 없음 — 재임포트 필요', holdFixNoRoster:'그 예약의 동행자 명단이 들어와 있지 않습니다. 데이터 등록(step1)에서 그 달을 다시 임포트해 주세요.',
     soboNote:(gc,n)=>`${gc} → 소보별장 ${n}명`,
     selSpan:(dep,arr)=>` · 점유 기준 ${dep}~${arr}`,
+    autoRunLbl:'열 때 자동배정', autoRunT:'월을 불러올 때 자동배정을 한 번 실행합니다. 끄면 수기로만 배정합니다.',
+    assignAsk:(r,n)=>`${r} 에 ${n}명 배정할까요?`,
     viewCard:'카드', viewTimeline:'타임라인', viewTimelineT:'객실×날짜 점유 한눈에',
     viewTable:'표', viewTableT:'표 형식 — 한 화면에 더 많은 객실(대량 배정용)',
     thRoom:'호수', thType:'타입', thCap:'정원', thGuests:'점유자',
@@ -1035,6 +1041,8 @@ const L={
     holdCatNoRoster:'No roster — re-import needed', holdFixNoRoster:'The companion roster for that booking is missing. Re-import that month in data registration (step1).',
     soboNote:(gc,n)=>`${gc} → Sobo Villa ${n}`,
     selSpan:(dep,arr)=>` · basis ${dep}–${arr}`,
+    autoRunLbl:'Auto-assign on load', autoRunT:'Runs auto-assign once when a month is loaded. Turn off for manual only.',
+    assignAsk:(r,n)=>`Assign ${n} guest(s) to ${r}?`,
     viewCard:'Card', viewTimeline:'Timeline', viewTimelineT:'Room × date occupancy at a glance',
     viewTable:'Table', viewTableT:'Table view — more rooms per screen (bulk assignment)',
     thRoom:'Room', thType:'Type', thCap:'Cap.', thGuests:'Guests',
@@ -1220,6 +1228,7 @@ function applyStaticRoom(){
   set('#view-card','textContent','viewCard'); set('#view-timeline','textContent','viewTimeline'); set('#view-timeline','title','viewTimelineT');
   set('#view-table','textContent','viewTable'); set('#view-table','title','viewTableT');
   set('#t-uaTitle','textContent','uaDrawerT'); set('#ua-close','textContent','uaClose');
+  set('#t-autorun-lbl','textContent','autoRunLbl'); set('#t-autorun','title','autoRunT');
   try{ updateUaBtn(); }catch(e){}
   const _oe=$('#tbl-empty-lbl'); if(_oe) _oe.textContent=tx('onlyEmpty');
   set('#hist-q','placeholder','histQph'); set('#hist-search','textContent','histSearch');
@@ -1564,7 +1573,7 @@ async function loadDay(){
   //  · [되돌리기] 로 직전 상태 복원 가능. 사용자가 이미 무언가 하고 있으면 건너뛴다.
   try{
     const left=state.guests.reduce((n,g)=>n+unassignedMembers(g.event_seq).length,0);
-    if(left>0 && !_autoRunning && !state.splitPending){
+    if(left>0 && autoRunOn() && !_autoRunning && !state.splitPending){
       toast(tx('autoRunNote',left),'ok');
       await autoAssign();
     }
@@ -1881,12 +1890,12 @@ function renderUnassigned(){
     box.appendChild(secHead(tx('arrSec',fmtMD(focusDay),arrivals.length,arrivals.reduce((s,g)=>s+leftOf(g),0))));
     if(arrivals.length) arrivals.forEach(g=>box.appendChild(mkCard(g)));
     else { const e=document.createElement('div'); e.className='empty-hint'; e.style.cssText='padding:14px 10px;font-size:13px;color:var(--ok)'; e.textContent=tx('noArrUnassigned'); box.appendChild(e); }
-    // 이전 도착·미배정 잔류는 카드로 안 띄움(헷갈림 방지) — 한 줄 안내 + 날짜 칩 「미N」으로 유도
+    // 이전 도착·미배정 잔류도 **카드로 띄운다**(Min 2026-08).
+    //   예전엔 한 줄 안내만 뒀는데, 미배정 목록이 서랍으로 바뀐 뒤로는 그 팀을 열 방법이 없어져
+    //   「버튼은 미배정 2팀인데 목록은 비어 있다」가 됐다. 머리글로 구분만 하고 전부 보여준다.
     if(carry.length){
-      const note=document.createElement('div');
-      note.className='ua-sec'; note.style.cssText='background:transparent;border:1px dashed var(--border2);color:var(--text2);margin-top:8px';
-      note.innerHTML=tx('carrySec',carry.length,carry.reduce((s,g)=>s+leftOf(g),0));
-      box.appendChild(note);
+      box.appendChild(secHead(tx('carrySec',carry.length,carry.reduce((s,g)=>s+leftOf(g),0))));
+      carry.forEach(g=>box.appendChild(mkCard(g)));
     }
   } else {
     list.forEach(g=>box.appendChild(mkCard(g)));
@@ -2395,6 +2404,10 @@ function wireRoomEl(div,inv){
     if(window.getSelection) window.getSelection().removeAllRanges(); // 텍스트 파란선택 해제
     if(!inv.active){toast(inv.room_no+': '+tx('inactiveRoomShort'),'warn');return;}
     if(state.splitPending){ commitSplit(inv); return; }
+    // 선택 인원이 있으면 곧바로 배정하던 것을 **확인 후 배정**으로. 표가 전폭이라
+    // 빈 곳을 눌렀다가 사람이 들어가는 사고가 있었다(Min 2026-08).
+    const _n=selCount();
+    if(_n>0 && !confirm(tx('assignAsk',inv.room_no,_n))) return;
     assignSelectedTo(inv);
   });
   // 드롭
@@ -3363,6 +3376,8 @@ function placeLeftovers(g, route, leftovers, flr, pending, holds, occ, floorOrde
   }
 }
 
+// 월을 열 때 자동배정을 돌릴지 — 끄면 수기 전용(Min 2026-08)
+function autoRunOn(){ try{ return localStorage.getItem('saizen_room_autorun')!=='0'; }catch(e){ return true; } }
 let _autoRunning=false;
 async function autoAssign(){
   if(!supa){toast(tx('connectFirst'),'warn');return;}
@@ -4190,6 +4205,8 @@ $('#view-table')&&$('#view-table').classList.toggle('active',viewMode==='table')
 $('#view-timeline').classList.toggle('active',viewMode==='timeline');
 $('#facilities').style.display=(viewMode==='timeline')?'none':'';
 $('#timeline').style.display  =(viewMode==='timeline')?'':'none';
+(function(){ const c=$('#ck-autorun'); if(!c) return; c.checked=autoRunOn();
+  c.addEventListener('change',()=>{ try{ localStorage.setItem('saizen_room_autorun', c.checked?'1':'0'); }catch(e){} }); })();
 $('#btn-unassigned')&&$('#btn-unassigned').addEventListener('click',()=>uaOpen());
 $('#ua-close')&&$('#ua-close').addEventListener('click',()=>uaOpen(false));
 try{ if(localStorage.getItem('saizen_room_ua')==='1') uaOpen(true); }catch(e){}
