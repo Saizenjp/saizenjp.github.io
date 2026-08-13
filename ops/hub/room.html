@@ -2270,7 +2270,7 @@ async function assignSelectedTo(inv){
 //   점유자 목록에서 사람을 골라 [옮기기](방 이동·분할) 또는 [해제].
 //   트리플 요청처럼 그래도 더 넣어야 하면 아래 [인원 추가]로 기존 배정 피커를 연다.
 function closeRoomOccupants(){ const el=$('#room-occ'); if(el) el.remove(); }
-function openRoomOccupants(inv){
+function openRoomOccupants(inv, focusRowId){
   closeRoomOccupants();
   const span=selAssignSpan();
   const rows = span ? roomOccOver(inv.id,span.dep,span.arr).rows : roomOccAt(inv.id, state.focus||state.from);
@@ -2281,7 +2281,7 @@ function openRoomOccupants(inv){
     const nm=m?(m.name_kr||''):'', en=m?(m.name_en||''):'';
     const tag=m?personTag(r.event_seq,m.seq_in_team||1):(teamGroupCode(r.event_seq)||'');
     return `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-top:1px solid var(--border);cursor:pointer">
-      <input type="checkbox" class="ro-chk" data-rid="${r.id}" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer">
+      <input type="checkbox" class="ro-chk" data-rid="${r.id}"${focusRowId&&r.id===focusRowId?' checked':''} style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer">
       <span style="font-family:var(--mono);font-size:11px;color:var(--text2);min-width:64px">${esc(tag)}</span>
       <span style="font-size:13px;font-weight:700">${esc(nm)}</span>
       <span style="font-size:11px;color:var(--muted)">${esc(en)}</span>
@@ -2922,7 +2922,14 @@ function wireRoomEl(div,inv){
   // 칩 삭제
   div.querySelectorAll('.cx').forEach(x=>x.addEventListener('click',ev=>{ev.stopPropagation();unassign(x.dataset.roomId);}));
   // 이름 클릭 → 「투숙객 작업」 패널(방 이동·조기 퇴실·해제를 날짜와 함께 한 곳에서)
-  div.querySelectorAll('.mm-name').forEach(x=>x.addEventListener('click',ev=>{ev.stopPropagation();openMemberModal(x.dataset.mmRoom);}));
+  div.querySelectorAll('.mm-name').forEach(x=>x.addEventListener('click',ev=>{
+    ev.stopPropagation();
+    const rid=x.dataset.mmRoom;
+    const row=state.rooms.find(r=>r.id===rid);
+    const rinv=row?invById(row.inventory_id):null;
+    if(rinv) openRoomOccupants(rinv,rid);        // 방 칸을 눌렀을 때와 같은 패널(누른 사람 체크됨)
+    else openMemberModal(rid);
+  }));
   // 활성/비활성 토글
   const lk=div.querySelector('.lock');
   if(lk) lk.addEventListener('click',ev=>{ev.stopPropagation();toggleActive(inv);});
@@ -3155,7 +3162,9 @@ function openSplitPicker(srcRow){
     if(!inv.active) return false;
     if(srcRow && inv.id===srcRow.inventory_id) return false;
     if(roomClosure(inv.id, sp.from, sp.to)) return false;
-    const cap=inv.max_capacity||inv.capacity;
+    // ⚠ 후보 판정도 **정원(capacity)** 기준(Min 2026-08) — 이미 정원이 찬 방은 옮길 곳으로 내지 않는다.
+    //   (트리플처럼 초과로 넣어야 하면 그 방을 직접 눌러 배정한다)
+    const cap=inv.capacity||0;
     return (cap - roomOccOver(inv.id, sp.from, sp.to).peak) >= (sp.srcIds?sp.srcIds.length:1);
   }).map(inv=>{
     const peak=roomOccOver(inv.id, sp.from, sp.to).peak;
