@@ -3361,6 +3361,11 @@ function pickRoom(pool,dep,arr,need,pending,occ){
   }
   return null;
 }
+// 미배정 사유 꼬리표: 날짜 · 대표 · 인원 (사유만 보고는 어느 팀인지 알 수 없다)
+function holdTag(g){
+  if(!g) return '';
+  return ` · ${fmtMD(g.dep)}~${fmtMD(g.arr)} · ${g.rep||''} ${g.pax||''}${tx('nameUnit')}`;
+}
 function mkRow(g,m,inv){
   return { event_seq:g.event_seq, member_id:m.id, inventory_id:inv.id,
     facility:inv.facility, room_type:inv.room_type, room_no:inv.room_no,
@@ -3398,7 +3403,7 @@ function placePairs(g,list,primaryPool,fallbackPool,label,pending,holds,occ,floo
   placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,occ,floorOrder);
   if(i<list.length){
     if(AUTO_OPTS.allowSingle) placeSingles(g,[list[i]],primaryPool,fallbackPool,label,pending,holds,occ,floorOrder);
-    else { const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq)); holds.push(tx('holdOddLeft',gc,list[i].name_kr||'')); }
+    else { const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq)); holds.push(tx('holdOddLeft',gc,list[i].name_kr||'')+holdTag(g)); }
   }
 }
 // 미리 구성된 짝 배열을 받아 같은 층 묶기 + 방 배정(부족 시 fallbackPool로 강등).
@@ -3420,7 +3425,7 @@ function placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,oc
     if(!inv && widePool && widePool!==primaryPool) inv=pickRoom(widePool,g.dep,g.arr,2,pending,occ); // 허용 층에 디럭스 없음 → 층 이동(전층 디럭스 = 룸레벨 우선)
     if(!inv && fallbackPool && fallbackPool!==primaryPool)
       inv=pickRoom(fallbackPool,g.dep,g.arr,2,pending,occ);          // 전층에도 디럭스 없음 → 다음 룸레벨로 강등
-    if(!inv){ holds.push(tx('holdNoRoom',gc,pair[0].name_kr||'',pair[1].name_kr||'',label)); continue; }
+    if(!inv){ holds.push(tx('holdNoRoom',gc,pair[0].name_kr||'',pair[1].name_kr||'',label)+holdTag(g)); continue; }
     pending.push(mkRow(g,pair[0],inv));
     pending.push(mkRow(g,pair[1],inv));
   }
@@ -3444,7 +3449,7 @@ function placeSingles(g,list,primaryPool,fallbackPool,label,pending,holds,occ,fl
   for(const m of list){
     let inv=pickRoom(primaryPool,g.dep,g.arr,1,pending,occ);
     if(!inv && fallbackPool && fallbackPool!==primaryPool) inv=pickRoom(fallbackPool,g.dep,g.arr,1,pending,occ);
-    if(!inv){ holds.push(tx('holdNoRoom',gc,m.name_kr||'','',label)); continue; }
+    if(!inv){ holds.push(tx('holdNoRoom',gc,m.name_kr||'','',label)+holdTag(g)); continue; }
     pending.push(mkRow(g,m,inv));
   }
 }
@@ -3460,7 +3465,7 @@ function placeLeftovers(g, route, leftovers, flr, pending, holds, occ, floorOrde
     let inv=pickRoom(sg,g.dep,g.arr,1,pending,occ);                       // 허용 층 싱글
     if(!inv) inv=pickRoom(sgAll,g.dep,g.arr,1,pending,occ);               // 전층 싱글(층 넘기 허용)
     if(!inv && AUTO_OPTS.allowSingle && genPool) inv=pickRoom(genPool,g.dep,g.arr,1,pending,occ); // 2인실 단독(옵션)
-    if(!inv){ holds.push(tx('holdOddLeft',gc,m.name_kr||'')); continue; }
+    if(!inv){ holds.push(tx('holdOddLeft',gc,m.name_kr||'')+holdTag(g)); continue; }
     pending.push(mkRow(g,m,inv));
   }
 }
@@ -3517,7 +3522,7 @@ async function autoAssign(){
       if(!roster.length){
         // 동행자 명단(guest_members)이 없으면 배정할 대상이 없다. 예전에는 조용히 건너뛰어
         // 미배정 목록에 영원히 남았다(간지호텔 등에서 관측). 이제 사유로 남긴다.(Min 2026-08)
-        if((state.members[g.event_seq]||[]).length===0) holds.push(tx('holdNoRoster',gc));
+        if((state.members[g.event_seq]||[]).length===0) holds.push(tx('holdNoRoster',gc)+holdTag(g));
         continue;
       }
 
@@ -3529,7 +3534,7 @@ async function autoAssign(){
       const _wantSingle=/싱글|single|シングル/i.test((g.remark_local||'')+' '+(g.remark||''));
       let _singleEach=false;
       if(_wantSingle && !AUTO_OPTS.singleRemark){
-        if(route.floorOnly){ holds.push(tx('holdSingle',gc)); continue; }   // 야마나미 호텔동만 보류
+        if(route.floorOnly){ holds.push(tx('holdSingle',gc)+holdTag(g)); continue; }   // 야마나미 호텔동만 보류
         _singleEach=true;                                                   // 나머지는 1인 1실
       }
       // ── 청소 효율 박수→층 규칙: 야마나미 호텔동(floorOnly) 팀만 허용 층으로 제한 ──
