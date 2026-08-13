@@ -617,6 +617,7 @@ const L={
     autoRunLbl:'月を開いたら自動割当', autoRunT:'月を読み込んだ時に自動割当を1回走らせます。切ると手動のみ。',
     assignAsk:(r,n)=>`${r} に ${n}名 を割り当てますか？`,
     badInv:(n,ids)=>`⚠ 部屋番号のない客室 ${n}件を除外しました(room_inventory id: ${ids}) — 客室マスターを確認してください`,
+    dupHidden:n=>`⚠ 名簿の重複 ${n}名を隠しました — データ登録(step1)で該当月の再取込が必要です`,
     viewCard:'カード', viewTimeline:'タイムライン', viewTimelineT:'客室×日付の占有を一覧',
     viewTable:'一覧', viewTableT:'表形式 — 一画面で多くの客室(大量割当向け)',
     thRoom:'部屋', thType:'タイプ', thCap:'定員', thGuests:'宿泊者',
@@ -835,6 +836,7 @@ const L={
     autoRunLbl:'열 때 자동배정', autoRunT:'월을 불러올 때 자동배정을 한 번 실행합니다. 끄면 수기로만 배정합니다.',
     assignAsk:(r,n)=>`${r} 에 ${n}명 배정할까요?`,
     badInv:(n,ids)=>`⚠ 호수가 비어 있는 객실 ${n}건을 제외했습니다(room_inventory id: ${ids}) — 객실 마스터를 확인해 주세요`,
+    dupHidden:n=>`⚠ 명단 중복 ${n}명을 숨겼습니다 — 데이터 등록에서 그 달 재임포트가 필요합니다`,
     viewCard:'카드', viewTimeline:'타임라인', viewTimelineT:'객실×날짜 점유 한눈에',
     viewTable:'표', viewTableT:'표 형식 — 한 화면에 더 많은 객실(대량 배정용)',
     thRoom:'호수', thType:'타입', thCap:'정원', thGuests:'점유자',
@@ -1046,6 +1048,7 @@ const L={
     autoRunLbl:'Auto-assign on load', autoRunT:'Runs auto-assign once when a month is loaded. Turn off for manual only.',
     assignAsk:(r,n)=>`Assign ${n} guest(s) to ${r}?`,
     badInv:(n,ids)=>`⚠ Skipped ${n} rooms with no room number (room_inventory id: ${ids}) — check the room master`,
+    dupHidden:n=>`⚠ Hid ${n} duplicate roster entries — re-import that month in data registration`,
     viewCard:'Card', viewTimeline:'Timeline', viewTimelineT:'Room × date occupancy at a glance',
     viewTable:'Table', viewTableT:'Table view — more rooms per screen (bulk assignment)',
     thRoom:'Room', thType:'Type', thCap:'Cap.', thGuests:'Guests',
@@ -1559,6 +1562,30 @@ async function loadDay(){
     const mm=await pagedInSeq('guest_members','id,event_seq,seq_in_team,name_kr,name_en,is_rep,member_grade,member_class,member_div,actual_dep,actual_dep_reason',seqs);
     if(mm.error){toast(tx('rosterLoadFail',mm.error.message),'warn');}
     else (mm.data||[]).forEach(x=>{(state.members[x.event_seq]=state.members[x.event_seq]||[]).push(x);});
+    // ── 명단 중복 방어 (Min 2026-08) ──────────────────────────────────────
+    //  guest_members 에 같은 사람이 두 번 들어온 데이터가 관측됐다(예: -1Y/-2Y 김명환).
+    //  그대로 두면 미배정 인원이 2배로 부풀고 같은 사람이 두 방에 배정된다.
+    //  화면에서는 한 명으로 합쳐 보여주고(이미 배정된 행을 우선 보존), 재임포트를 안내한다.
+    {
+      const done=new Set(state.rooms.map(r=>r.member_id));
+      let dup=0;
+      Object.keys(state.members).forEach(seq=>{
+        const rows=state.members[seq]||[]; const keep=new Map();
+        rows.forEach(m=>{
+          const k=(m.name_kr||'').trim()+'|'+(m.name_en||'').trim();
+          const cur=keep.get(k);
+          if(!cur){ keep.set(k,m); return; }
+          const better = done.has(m.id)&&!done.has(cur.id) ? m
+                       : (!done.has(m.id)&&done.has(cur.id) ? cur
+                       : ((m.seq_in_team||0)<(cur.seq_in_team||0) ? m : cur));
+          keep.set(k,better);
+        });
+        const list=[...keep.values()].sort((a,b)=>(a.seq_in_team||0)-(b.seq_in_team||0));
+        dup+=rows.length-list.length;
+        state.members[seq]=list;
+      });
+      if(dup>0){ toast(tx('dupHidden',dup),'warn'); console.warn('명단 중복 숨김:',dup); }
+    }
   }
   // 기간 폐쇄(잠금) 로드 — 범위에 겹치는 폐쇄(from_date<=to AND to_date>=from)
   state.closures=[];
