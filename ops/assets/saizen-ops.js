@@ -37,6 +37,8 @@
       brandSub: 'Yamanami '+r('運営','うんえい')+r('管理','かんり')+'システム',
       so_update: '🔄 '+r('更新','こうしん')+'あり',
       so_updateT: 'この'+r('画面','がめん')+'の'+r('新','あたら')+'しいバージョンがあります。クリックで'+r('再','さい')+r('読','よ')+'み'+r('込','こ')+'み('+r('入力','にゅうりょく')+r('中','ちゅう')+'の'+r('内容','ないよう')+'は'+r('先','さき')+'に'+r('保存','ほぞん')+'してください)。',
+      so_sb_n: '未保存 {n}件', so_sb_save: '保存', so_sb_undo: '元に戻す',
+      so_sb_undo_ask: '未保存の変更を破棄して読み込み直しますか？',
       so_footer: r('本','ほん')+'サイトはメリットツアーが'+r('制作','せいさく')+'・'+r('提供','ていきょう')+'しています',
       so_privacy: r('個人情報','こじんじょうほう')+'の'+r('取扱','とりあつか')+'い',
       reset: r('初期化','しょきか'),
@@ -380,6 +382,8 @@
       brandSub: 'Yamanami 운영 관리 시스템',
       so_update: '🔄 업데이트 있음',
       so_updateT: '이 화면의 새 버전이 있습니다. 클릭하면 새로고침됩니다(입력 중인 내용은 먼저 저장해 주세요).',
+      so_sb_n: '미저장 {n}건', so_sb_save: '저장', so_sb_undo: '되돌리기',
+      so_sb_undo_ask: '저장하지 않은 변경을 버리고 다시 불러올까요?',
       so_footer: '본 사이트는 메리트투어가 제작·제공합니다',
       so_privacy: '개인정보처리방침',
       reset: '초기화',
@@ -719,6 +723,8 @@
       brandSub: 'Yamanami Operations Management System',
       so_update: '🔄 Update available',
       so_updateT: 'A newer version of this screen is available. Click to reload (save any in-progress input first).',
+      so_sb_n: '{n} unsaved', so_sb_save: 'Save', so_sb_undo: 'Discard',
+      so_sb_undo_ask: 'Discard unsaved changes and reload?',
       so_footer: 'This site is built &amp; provided by Merit Tour',
       so_privacy: 'Privacy Policy',
       reset: 'Reset',
@@ -1928,6 +1934,61 @@
       document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
     });
   }
+
+  // ── 공통 [저장] 바 (Min 2026-08) ─────────────────────────────────────────
+  //  입력 즉시 DB에 쓰던 화면들을 「고치고 → 저장」 방식으로 통일한다.
+  //  · 변경이 하나라도 생기면 화면 하단 중앙에 「미저장 N건 · 저장 · 되돌리기」 바가 뜬다.
+  //  · 저장하지 않고 페이지를 떠나려 하면 브라우저가 경고한다.
+  //  사용:  var SB = __so_saveBar({ save: async()=>{...}, reload: ()=>{...} });
+  //         SB.mark('키')  변경 표시 · SB.clear()  저장/취소 후 · SB.n()  건수
+  window.__so_saveBar = function (opts) {
+    opts = opts || {};
+    var keys = {}, el = null, busy = false;
+    function n() { return Object.keys(keys).length; }
+    function ensure() {
+      if (el) return el;
+      el = document.createElement('div');
+      el.className = 'so-savebar';
+      el.innerHTML = '<span class="so-sb-n"></span>' +
+        '<button type="button" class="so-sb-go"></button>' +
+        '<button type="button" class="so-sb-undo"></button>';
+      document.body.appendChild(el);
+      el.querySelector('.so-sb-go').addEventListener('click', async function () {
+        if (busy || !n()) return;
+        busy = true; el.classList.add('busy');
+        try { await opts.save(); keys = {}; }
+        catch (e) { try { window.__so_toast && window.__so_toast(String(e && e.message || e), 'err'); } catch (_) {} }
+        busy = false; el.classList.remove('busy'); render();
+      });
+      el.querySelector('.so-sb-undo').addEventListener('click', function () {
+        if (busy) return;
+        if (!confirm(t('so_sb_undo_ask'))) return;
+        keys = {}; render();
+        if (opts.reload) opts.reload();
+      });
+      return el;
+    }
+    function render() {
+      var box = ensure(), c = n();
+      box.style.display = c ? 'flex' : 'none';
+      box.querySelector('.so-sb-n').textContent = t('so_sb_n').replace('{n}', c);
+      box.querySelector('.so-sb-go').textContent = t('so_sb_save');
+      box.querySelector('.so-sb-undo').textContent = t('so_sb_undo');
+    }
+    window.addEventListener('beforeunload', function (e) {
+      if (!n()) return;
+      e.preventDefault(); e.returnValue = '';
+    });
+    var api = {
+      mark: function (k) { keys[k == null ? '_' : String(k)] = 1; render(); },
+      clear: function () { keys = {}; render(); },
+      n: n
+    };
+    render();
+    if (!window.__so_saveBars) window.__so_saveBars = [];
+    window.__so_saveBars.push(render);   // 언어 토글 시 라벨 갱신
+    return api;
+  };
 
   function mountToTop() {
     if (document.getElementById('so-totop')) return;   // 페이지 자체 버튼이 있으면 중복 방지

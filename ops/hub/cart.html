@@ -111,7 +111,7 @@
     @page{size:A4 landscape;margin:10mm}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.31">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.32">
 </head>
 <body data-so-area="golf">
 <div class="topbar so-bar">
@@ -488,6 +488,15 @@ async function load(){
       .select('event_seq,rep_name,dep_date,arr_date,origin,airline,pax,remark,remark_local')
       .lte('dep_date',DATE).gte('arr_date',DATE).order('event_seq').range(a,b));
     if(bs.error) throw bs.error;
+    // ⚠ 위 조회는 arr_date 가 null 이면 걸리지 않는다(귀국일 인식 실패 등) → 통째로 사라진다.
+    //   그런 팀도 따로 찾아 진단 줄에 올린다(Min 2026-08: "같이 들어온 팀인데 왜 안 나오냐").
+    let NODATE=[];
+    try{
+      const {data:nd}=await supa.from('bookings')
+        .select('event_seq,rep_name,dep_date,arr_date')
+        .lte('dep_date',DATE).is('arr_date',null);
+      NODATE=nd||[];
+    }catch(e){}
     const seqs=(bs.data||[]).map(b=>b.event_seq);
     if(!seqs.length){ ROWS=[]; DIRTY.clear(); $('#stat').textContent=''; renderStock(); renderTable(); return; }
     // 3) 팀 정보(숙소·그룹코드) · 대표 항공편 · 조편성 · 카트 배정
@@ -551,6 +560,7 @@ async function load(){
         qty, cx, src:srcOne, memo, nos, auto, orig:JSON.stringify({qty,src:srcOne,memo,cx,nos})
       });
     });
+    NODATE.forEach(b=>SKIP.push({tag:'', rep:b.rep_name||('#'+b.event_seq), why:'nodate'}));
     ROWS.sort((a,b)=>String(a.tee||'zz').localeCompare(String(b.tee||'zz'))||String(a.tag).localeCompare(String(b.tag)));
     DIRTY.clear();
     $('#stat').textContent=`${ROWS.length}${lang()==='en'?' teams':'팀'}`;

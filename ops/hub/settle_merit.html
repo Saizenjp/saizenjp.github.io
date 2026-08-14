@@ -90,7 +90,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.31">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.32">
 </head>
 <body data-so-area="settle">
 <div class="topbar so-bar">
@@ -470,10 +470,36 @@ function renderAll(){
   tbody.querySelectorAll('input.rem').forEach(inp=>inp.addEventListener('change',()=>saveRemark(Number(inp.dataset.seq),inp.value)));
 }
 
-async function saveRemark(seq,val){
+// ⚠ 금액이 걸린 화면이라 **입력 즉시 저장하지 않는다**(Min 2026-08).
+//   고친 값은 대기열에 모아 두고 하단 [저장] 바에서 한 번에 반영한다.
+const PEND={ rem:{}, ded:{}, ext:{} };
+let SB=null;
+function pendMark(k){ if(!SB && window.__so_saveBar) SB=window.__so_saveBar({save:flushPending, reload:()=>load()}); if(SB) SB.mark(k); }
+async function flushPending(){
+  const by=curUser();
+  const rem=Object.keys(PEND.rem);
+  if(rem.length){
+    const {error}=await supa.from('settle_remarks')
+      .upsert(rem.map(seq=>({event_seq:+seq, remark:PEND.rem[seq], updated_by:by})),{onConflict:'event_seq'});
+    if(error) throw error;
+    PEND.rem={};
+  }
+  for(const id of Object.keys(PEND.ded)){
+    const {error}=await supa.from('settle_deductions').update({...PEND.ded[id],updated_by:by}).eq('id',id);
+    if(error) throw error;
+  }
+  PEND.ded={};
+  for(const id of Object.keys(PEND.ext)){
+    const {error}=await supa.from('settle_extras').update({...PEND.ext[id],updated_by:by}).eq('id',id);
+    if(error) throw error;
+  }
+  PEND.ext={};
+  toast(tx('remarkSaved'),'ok');
+  await load();
+}
+function saveRemark(seq,val){
   const r=ROWS.find(x=>x.seq===seq); if(r) r.remark=val;
-  try{ const {error}=await supa.from('settle_remarks').upsert({event_seq:seq,remark:val,updated_by:curUser()},{onConflict:'event_seq'}); if(error)throw error; toast(tx('remarkSaved'),'ok'); }
-  catch(e){ toast(tx('remarkFail')+': '+e.message,'err'); }
+  PEND.rem[seq]=val; pendMark('rem:'+seq);
 }
 
 // ── 차감 항목 CRUD (settle_deductions) ──
@@ -498,12 +524,11 @@ async function addDed(){
     if(error)throw error; DEDS.push(data); renderDeds(); renderAll(); }
   catch(e){ toast(tx('addFail')+': '+e.message,'err'); }
 }
-async function updateDed(id,field,val){
+function updateDed(id,field,val){
   const d=DEDS.find(x=>String(x.id)===String(id)); if(!d)return;
   d[field]=field==='amount'?(parseInt(String(val).replace(/[^0-9-]/g,''),10)||0):val;
-  try{ const {error}=await supa.from('settle_deductions').update({[field]:d[field],updated_by:curUser()}).eq('id',id); if(error)throw error;
-    if(field==='amount') renderAll(); else renderDeds(); }
-  catch(e){ toast(tx('editFail')+': '+e.message,'err'); }
+  (PEND.ded[id]=PEND.ded[id]||{})[field]=d[field]; pendMark('ded:'+id);
+  if(field==='amount') renderAll(); else renderDeds();
 }
 async function removeDed(id){
   try{ const {error}=await supa.from('settle_deductions').delete().eq('id',id); if(error)throw error;
@@ -549,14 +574,13 @@ async function addExtra(seq){
     if(error)throw error; EXLIST.push(data); recomputeExtras(); renderAll(); }
   catch(e){ toast(tx('addFail')+': '+e.message,'err'); }
 }
-async function updateExtra(id,field,val){
+function updateExtra(id,field,val){
   const x=EXLIST.find(e=>String(e.id)===String(id)); if(!x)return;
   if(field==='amount') x.amount=parseInt(String(val).replace(/[^0-9]/g,''),10)||0;
   else if(field==='is_add') x.is_add=(String(val)==='1');
   else x[field]=val;
-  try{ const {error}=await supa.from('settle_extras').update({[field]:x[field],updated_by:curUser()}).eq('id',id); if(error)throw error;
-    recomputeExtras(); renderAll(); }
-  catch(e){ toast(tx('editFail')+': '+e.message,'err'); }
+  (PEND.ext[id]=PEND.ext[id]||{})[field]=x[field]; pendMark('ext:'+id);
+  recomputeExtras(); renderAll();
 }
 async function removeExtra(id){
   try{ const {error}=await supa.from('settle_extras').delete().eq('id',id); if(error)throw error;
