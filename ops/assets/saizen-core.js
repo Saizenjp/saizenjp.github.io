@@ -326,10 +326,17 @@
     var courses = opts.courses || GOLF_COURSES;
     var slots = opts.slots || teeSlots();
     var cap = opts.cap || 4;
-    var used = {};                                  // course → 다음 슬롯 index
-    courses.forEach(function (c) { used[c] = 0; });
+    var used = {}, tail = {};                       // course → 앞에서 채울 index / 뒤에서 채울 index
+    courses.forEach(function (c) { used[c] = 0; tail[c] = slots.length - 1; });
+    function free(c, late) { return late ? (tail[c] >= used[c]) : (used[c] <= tail[c]); }
+    function take(c, late) { return late ? tail[c]-- : used[c]++; }
+    //  ⚠ 쿠주힐즈 숙박 팀은 **늦은 티오프**로(Min 2026-08).
+    //    라운딩이 16:30~17:00에 끝나야 샤워 → 18시 식사 → 송영이 한 번에 이어진다.
+    //    슬롯은 이른 것부터 채우므로, late 팀을 뒤로 돌리면 자연히 늦은 조를 받는다.
+    var ordered = (teams || []).filter(function (t) { return !t.late; })
+      .concat((teams || []).filter(function (t) { return !!t.late; }));
     var out = [];
-    (teams || []).forEach(function (t, ti) {
+    ordered.forEach(function (t, ti) {
       var parts = splitTeam(t.pax, cap);
       var start = ((+t.dayIdx || 0) + ti) % courses.length;   // 로테이션 시작 코스
       parts.forEach(function (n, gi) {
@@ -337,10 +344,10 @@
         var picked = null;
         for (var k = 0; k < courses.length; k++) {
           var c = courses[(start + gi + k) % courses.length];
-          if (used[c] < slots.length) { picked = c; break; }
+          if (free(c, t.late)) { picked = c; break; }
         }
         if (!picked) { out.push({ seq: t.seq, course: null, tee: null, slot: null, pax: n }); return; }
-        var idx = used[picked]++;
+        var idx = take(picked, t.late);
         out.push({ seq: t.seq, course: picked, tee: slots[idx], slot: idx + 1, pax: n });
       });
     });

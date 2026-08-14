@@ -176,3 +176,15 @@ test('buildRounding — 슬롯이 모자라면 코스를 넘기고, 다 차면 �
   assert.equal(rows.filter(r => r.course).length, 51);   // 17 × 3
   assert.equal(rows.filter(r => !r.course).length, 1);
 });
+
+test('buildRounding — 쿠주힐즈(late) 팀은 늦은 티오프를 받는다', () => {
+  const teams = [
+    {seq:1, pax:4, dayIdx:0, late:true},     // 쿠주힐즈
+    {seq:2, pax:4, dayIdx:0},
+    {seq:3, pax:4, dayIdx:0},
+  ];
+  const rows = SZ.buildRounding(teams);
+  const tee = seq => rows.find(r => r.seq === seq).tee;
+  assert.ok(tee(1) > tee(2), `쿠주 ${tee(1)} > 일반 ${tee(2)}`);
+  assert.ok(tee(1) > tee(3), `쿠주 ${tee(1)} > 일반 ${tee(3)}`);
+});
