@@ -419,9 +419,6 @@ function renderUI(){
         </div>
         <span style="flex:1"></span>
         <span class="cnt" id="m-stat"></span>
-        <button class="btn sm ghost" id="btn-mauto" type="button">${tx('autoMonth')}</button>
-        <button class="btn sm ghost" id="btn-mreload" type="button">${tx('reload')}</button>
-        <button class="btn sm ghost" id="btn-print" type="button">${tx('print')}</button>
       </div>
       <h3 style="margin-top:12px">${tx('mSumTitle')} <span class="cnt" id="m-label"></span></h3>
       <div id="m-sum"></div>
@@ -445,11 +442,8 @@ function renderUI(){
         <span class="cnt" id="list-skip" style="color:var(--muted);margin-left:10px"></span>
       </label>
       <div id="pickbar" class="pickbar noprint" style="display:none"></div>
-      <label style="display:none">
-        <button class="btn sm ghost" id="btn-auto" type="button">${tx('autoDay')}</button>
-        <button class="btn sm ghost" id="btn-reload" type="button">${tx('reload')}</button>
-        <button class="btn" id="btn-save" type="button" disabled>${tx('save')}</button>
-      </div>
+      <span style="flex:1"></span>
+      <button class="btn" id="btn-save" type="button" disabled>${tx('save')}</button>
       <h3 style="margin-top:12px">${tx('stockTitle')} <span class="cnt" id="d-label"></span></h3>
       <div class="stock" id="stock"></div>
       <div id="warn"></div>
@@ -466,10 +460,6 @@ function renderUI(){
   $('#m-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);$('#m-pick').value=YM;loadMonth();});
   $('#m-next').addEventListener('click',()=>{YM=shiftYM(YM,1);$('#m-pick').value=YM;loadMonth();});
   $('#m-pick').addEventListener('change',e=>{YM=e.target.value||YM;loadMonth();});
-  $('#btn-mreload').addEventListener('click',()=>{ loadMonth(); load(); });
-  $('#btn-mauto').addEventListener('click',autoAssignMonth);
-  $('#btn-print').addEventListener('click',()=>window.print());
-  $('#btn-auto').addEventListener('click',autoAssignDay);
   $('#ck-all').addEventListener('change',e=>{
     ONLY_ELEC=!!e.target.checked;
     try{ localStorage.setItem('saizen_cart_only_elec', ONLY_ELEC?'1':'0'); }catch(err){}
@@ -479,7 +469,6 @@ function renderUI(){
   $('#d-next').addEventListener('click',()=>{DATE=shiftDay(DATE,1);syncDate();});
   $('#d-today').addEventListener('click',()=>{DATE=todayISO();syncDate();});
   $('#d-pick').addEventListener('change',e=>{DATE=e.target.value||todayISO();syncDate();});
-  $('#btn-reload').addEventListener('click',load);
   $('#btn-save').addEventListener('click',save);
 }
 // 날짜가 바뀌면 캘린더도 그 달로 따라간다.
@@ -617,26 +606,6 @@ async function load(){
 }
 
 function usedOf(code){ return ROWS.reduce((n,r)=>n+(+r.qty[code]||0),0); }
-
-// ── 자동 분배 규칙(Min 2026-08) ────────────────────────────────────────────
-//  · 현지전달비고(remark_local)에 전기카트 신청 표기 → 전기카트.
-//    단 전기카트는 야마나미CC 이용일만 가능하므로(간지호텔 평일=구주고원CC)
-//    그 조건이 안 되는 날은 가솔린으로 내린다.
-//  · 그 외 팀 → 가솔린. 2인 예약팀=2인승, 3인 이상=4인승(4명당 1대).
-//  규칙 자체는 SZCore.cartPlan / wantsElectricCart (단일 진실원·단위테스트 있음).
-function planFor(team, courseOk){
-  const wantElec = team.elec && courseOk;
-  return SZCore.cartPlan(team.pax, wantElec);
-}
-//  화면은 이미 규칙대로 자동으로 채워져 있다. 이 버튼은 그 자동분을 '확정(저장)' 한다.
-function autoAssignDay(){
-  if(!ROWS.length) return;
-  let n=0;
-  ROWS.forEach(r=>{ if(!r.auto) return; if(!TYPES.some(t=>(+r.qty[t.code]||0)>0)) return; DIRTY.add(r.seq); n++; });
-  if(!n){ toast(tx('autoNone')); return; }
-  renderTable();
-  toast(tx('autoDone')(n),'ok');
-}
 
 // 보유 대수만 관리(Min 2026-08: "칩 관리 없이 총 블럭 수만"). 못 쓰는 카트는 보유 수를 줄인다.
 //  ⚠ cart_units 테이블(94)은 그대로 두되 화면에서는 쓰지 않는다(추후 개별 관리가 필요해지면 복구).
@@ -1145,30 +1114,6 @@ function shortType(code){
   const ja={electric:'電動',gas2:'2人',gas4:'4人'}, ko={electric:'전기',gas2:'2인',gas4:'4인'}, en={electric:'EV',gas2:'2s',gas4:'4s'};
   const m=lang()==='ja'?ja:(lang()==='en'?en:ko);
   return m[code]||typeName(code);
-}
-
-async function autoAssignMonth(){
-  if(!MTEAMS.length) return;
-  const ups=[]; const dates=new Set();
-  MTEAMS.forEach(t=>t.missing.forEach(m=>{
-    if(!m.plan) return;
-    if(!TYPES.some(x=>x.code===m.plan.code)) return;
-    ups.push({play_date:m.date, event_seq:t.seq, cart_code:m.plan.code, qty:m.plan.qty,
-      source:(m.plan.code==='electric'?'pre':'onsite'), created_by:curUser()||null});
-    dates.add(m.date);
-  }));
-  if(!ups.length){ toast(tx('autoNone')); return; }
-  if(!confirm(tx('autoMConfirm')(YM,ups.length))) return;
-  const btn=$('#btn-mauto'); btn.disabled=true;
-  try{
-    for(let i=0;i<ups.length;i+=500){
-      const {error}=await supa.from('cart_bookings').upsert(ups.slice(i,i+500),{onConflict:'play_date,event_seq,cart_code,source'});
-      if(error) throw error;
-    }
-    toast(tx('autoMDone')(ups.length,dates.size),'ok');
-    await loadMonth();
-  }catch(e){ toast(tx('saveFail')+': '+String(e&&e.message||e),'err'); }
-  finally{ btn.disabled=false; }
 }
 
 function applyStatic(){
