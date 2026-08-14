@@ -236,7 +236,8 @@ test('cartRemarkKind — 명확/애매/없음', () => {
   assert.equal(SZCore.cartRemarkKind('전기'), 'maybe');
   assert.equal(SZCore.cartRemarkKind('전기 신청'), 'maybe');
   assert.equal(SZCore.cartRemarkKind('EV 요청'), 'maybe');
-  assert.equal(SZCore.cartRemarkKind('■전기카드 1개 신청'), 'maybe');   // 오타=애매 → 재확인 필요
+  assert.equal(SZCore.cartRemarkKind('■전기카드 1개 신청'), 'sure');    // 카트→카드 오타는 확정
+  assert.equal(SZCore.cartRemarkKind('전기'), 'maybe');                  // 한 단어만 = 재확인
   assert.equal(SZCore.cartRemarkKind('조식 추가'), 'none');
   assert.equal(SZCore.cartRemarkKind(''), 'none');
   assert.equal(SZCore.cartRemarkKind(null), 'none');
