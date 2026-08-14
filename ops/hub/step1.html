@@ -256,6 +256,7 @@ const L = {
     clearFileTitle:'このファイルを初期化',
     clearFileConfirm:'このファイルをアップロードフォームから消します。\n(すでに登録済みのDBデータは削除されません)\n\n進めますか?',
     sessionWord:'セッション',
+    partialRange:(a,b)=>`⚠ このファイルは ${a} 〜 ${b} のみです — その前後の出発日のチームは更新されません(削除もされません)。備考の修正が反映されない場合があるので、月全体(1日〜末日)で取り直して登録してください。`,
     badDate:n=>`⚠ 出発日を認識できなかったチーム ${n}個 → セッション月で推定処理されました。該当月が抜けたり別の月に混ざる恐れがあるので、予約リスト「出発日」欄の形式を確認してください。`,
     badDateSess:ym=>`(セッション月: ${ym||'?'})`,
     snapFail:'· 修正履歴スナップショット失敗(無視): ',
@@ -297,6 +298,7 @@ const L = {
     clearFileTitle:'이 파일 초기화',
     clearFileConfirm:'이 파일을 업로드 폼에서 비웁니다.\n(이미 등록된 DB 데이터는 삭제되지 않습니다)\n\n진행할까요?',
     sessionWord:'세션',
+    partialRange:(a,b)=>`⚠ 이 파일은 ${a} ~ ${b} 만 담고 있습니다 — 그 앞·뒤 날짜 출발 팀은 갱신되지 않습니다(삭제도 안 됩니다). 비고 수정이 반영되지 않을 수 있으니, 달 전체(1일~말일)로 받아 다시 등록하세요.`,
     badDate:n=>`⚠ 출발일자를 인식하지 못한 팀 ${n}개 → 세션월로 추정 처리됨. 해당 월이 누락되거나 다른 달에 섞일 수 있으니 예약리스트 「출발일자」 칸 형식을 확인하세요.`,
     badDateSess:ym=>`(세션월: ${ym||'?'})`,
     snapFail:'· 수정이력 스냅샷 실패(무시): ',
@@ -338,6 +340,7 @@ const L = {
     clearFileTitle:'Reset this file',
     clearFileConfirm:'This clears the file from the upload form.\n(DB data already registered is not deleted)\n\nProceed?',
     sessionWord:'Session',
+    partialRange:(a,b)=>`⚠ This file only covers ${a} – ${b}. Teams departing outside that range are not updated (nor deleted). Remark edits may be missed — export the whole month (1st–last) and register again.`,
     badDate:n=>`⚠ ${n} team(s) had an unreadable departure date → estimated using the session month. The month may be missing or mixed into another; please check the "Departure date" column format in the reservation list.`,
     badDateSess:ym=>`(session month: ${ym||'?'})`,
     snapFail:'· Change-history snapshot failed (ignored): ',
@@ -663,6 +666,20 @@ async function run(){
     // 이 업로드에 포함된 월(여러 달일 수 있음) — 동기화·스냅샷·이력 범위
     const fileMonths = [...new Set(Object.values(ymBySeq))].filter(Boolean).sort();
     if(fileMonths.length){ $('#session-label').innerHTML = tx('sessionWord')+' <b>'+fileMonths.join(', ')+'</b>'; }
+    // ⚠ 부분 기간 파일 경고(Min 2026-08) — 엠클릭에서 8/14~ 처럼 잘라 받으면 그 앞 날짜 팀은
+    //   **파일에 없어 갱신되지 않는다**(삭제되지도 않는다). 비고가 뒤늦게 바뀐 팀이 반영 안 돼
+    //   카트·수배서에서 누락처럼 보인다. 파일이 달 전체를 덮지 않으면 알려 준다.
+    try{
+      const deps=[]; res.forEach(r=>{ const d=birthISO(r['출발일자']); if(d) deps.push(String(d).slice(0,10)); });
+      if(deps.length){
+        deps.sort();
+        const first=deps[0], last=deps[deps.length-1];
+        const ymFirst=first.slice(0,7), ymLast=last.slice(0,7);
+        const lastDay=(ym)=>{ const [y,m]=ym.split('-').map(Number); return `${ym}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`; };
+        const partial = (first!==ymFirst+'-01') || (last!==lastDay(ymLast));
+        if(partial) log(tx('partialRange')(first,last), 'warn');
+      }
+    }catch(e){}
 
     // ── 수정이력용: 업로드 전 그 달 기존 상태 스냅샷 (upsert 전에 떠야 추가/삭제 구분 가능) ──
     const _oldBk = {};   // event_seq -> rep_name
