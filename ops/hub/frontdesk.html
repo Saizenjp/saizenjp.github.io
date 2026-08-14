@@ -135,7 +135,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.33">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.34">
 </head>
 <body data-so-area="front">
 <div class="topbar so-bar">
@@ -596,18 +596,32 @@ async function pushCustomerDisplay(seq){
 
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 // 프론트에서 바로 비고/메모 저장 → event_note_set RPC(front 영역 허용, 변경이력 자동기록). 별도 메모 페이지 불요.
-async function saveNote(seq, field, val){
-  const t=state.byId[seq]; if(!t||!supa) return;
+// ⚠ 메모는 **[저장] 바에서 한 번에** 반영한다(Min 2026-08) — 포커스만 옮겨도 확정되던 것 정리.
+const PENDN={};   // `${seq}|${field}` → value
+let SB=null;
+function noteMark(k){
+  if(!SB && window.__so_saveBar) SB=window.__so_saveBar({ save:flushNotes, reload:()=>load() });
+  if(SB) SB.mark(k);
+}
+function saveNote(seq, field, val){
+  const t=state.byId[seq]; if(!t) return;
   const cur=(field==='remarks'?t.remarks:t.noteMemo)||'';
-  if(String(val).trim()===String(cur).trim()) return;   // 변경 없으면 저장 안 함
-  try{
+  if(String(val).trim()===String(cur).trim()) return;   // 변경 없으면 대기열에도 넣지 않는다
+  PENDN[seq+'|'+field]=String(val);
+  noteMark(seq+'|'+field);
+}
+async function flushNotes(){
+  for(const k of Object.keys(PENDN)){
+    const [seq,field]=k.split('|'); const val=PENDN[k];
+    const t=state.byId[seq]; if(!t){ delete PENDN[k]; continue; }
     const {error}=await supa.rpc('event_note_set',{p_event_seq:Number(seq),p_session_ym:ymOf(t.dep),p_field:field,p_value:val,p_user:curUser()});
     if(error) throw error;
     if(field==='remarks') t.remarks=String(val).trim(); else t.noteMemo=String(val).trim();
     t.memo=[t.remarks,t.noteMemo].filter(Boolean).join(' / ');
     t.search=[t.tag,t.rep,t.accom,t.memo,t.teamLabel,...(t.members||[]),...(t.rooms||[])].filter(Boolean).join(' ').toLowerCase();
-    toast(tx('noteSaved'),'ok');
-  }catch(e){ toast(tx('noteSaveFail')+e.message,'err'); }
+    delete PENDN[k];
+  }
+  toast(tx('noteSaved'),'ok');
 }
 
 // 언어 토글 시 정적 라벨 + 동적 목록 재렌더

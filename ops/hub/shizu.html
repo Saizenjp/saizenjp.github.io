@@ -237,7 +237,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.33">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.34">
 </head>
 <body data-so-area="shizu">
 <div class="topbar so-bar">
@@ -1053,37 +1053,56 @@ async function swapOrMove(srcRoom,tgtRoom,date){
 }
 
 // 到着/メモ = 담당자 메모(영속). onblur 저장.
-async function saveShizuMemo(date, text){
-  const val=String(text||'').replace(/ /g,' ').trim();
-  MEMOS[date]=val;
-  if(!supa) return;
-  try{
-    const {error}=await supa.from('shizu_memo').upsert({memo_date:date,note:val,updated_by:curUser(),updated_at:new Date().toISOString()},{onConflict:'memo_date'});
-    if(error)throw error;
-  }catch(e){ toast(tx('memoFail')+(e.message||e),'err'); }
+// ⚠ 예약표 메모는 인쇄물에 그대로 나가는 값이라 **[저장] 바에서 한 번에** 반영한다(Min 2026-08).
+//   포커스만 옮겨도 확정되던 것을 정리. 화면 표시는 즉시 바뀌고 DB 반영만 저장 때.
+const PENDM={ day:{}, memo:{}, ref:{} };
+let SB=null;
+function memoMark(k){
+  if(!SB && window.__so_saveBar) SB=window.__so_saveBar({ save:flushMemos, reload:()=>load() });
+  if(SB) SB.mark(k);
+}
+async function flushMemos(){
+  const by=curUser(), now=new Date().toISOString();
+  const day=Object.keys(PENDM.day);
+  if(day.length){
+    const {error}=await supa.from('shizu_memo')
+      .upsert(day.map(d=>({memo_date:d,note:PENDM.day[d],updated_by:by,updated_at:now})),{onConflict:'memo_date'});
+    if(error) throw error;
+    PENDM.day={};
+  }
+  const seqs=new Set([...Object.keys(PENDM.memo),...Object.keys(PENDM.ref)]);
+  if(seqs.size){
+    const rows=[...seqs].map(seq=>{
+      const o={event_seq:Number(seq),updated_by:by,updated_at:now};
+      if(PENDM.memo[seq]!==undefined) o.note=PENDM.memo[seq];
+      if(PENDM.ref[seq]!==undefined)  o.ref_note=PENDM.ref[seq];
+      return o;
+    });
+    const {error}=await supa.from('shizu_team_memo').upsert(rows,{onConflict:'event_seq'});
+    if(error) throw error;
+    PENDM.memo={}; PENDM.ref={};
+  }
+  toast('저장했습니다','ok');
+}
+function saveShizuMemo(date, text){
+  const val=String(text==null?'':text).replace(/\u00a0/g,' ').trim();
+  if(MEMOS[date]===val) return;
+  MEMOS[date]=val; PENDM.day[date]=val; memoMark('day:'+date);
 }
 
 // 現地메모 = 팀 단위 현장 수기(영속). onblur 저장. 같은 팀은 여러 날짜에 같은 메모 표시(다음 렌더 반영).
-async function saveTeamMemo(seq, text){
+function saveTeamMemo(seq, text){
   seq=Number(seq); if(!seq) return;
-  const val=String(text||'').replace(/ /g,' ').trim();
-  TMEMO[seq]=val;
-  if(!supa) return;
-  try{
-    const {error}=await supa.from('shizu_team_memo').upsert({event_seq:seq,note:val,updated_by:curUser(),updated_at:new Date().toISOString()},{onConflict:'event_seq'});
-    if(error)throw error;
-  }catch(e){ toast(tx('tmemoFail')+(e.message||e),'warn'); }
+  const val=String(text==null?'':text).replace(/\u00a0/g,' ').trim();
+  if(TMEMO[seq]===val) return;
+  TMEMO[seq]=val; PENDM.memo[seq]=val; memoMark('memo:'+seq);
 }
 // 参考事項 = 팀 단위 현장 수기(일본어: 트리플룸·합팀 등). onblur 저장. shizu_team_memo.ref_note.
-async function saveTeamRef(seq, text){
+function saveTeamRef(seq, text){
   seq=Number(seq); if(!seq) return;
-  const val=String(text||'').replace(/ /g,' ').trim();
-  TREF[seq]=val;
-  if(!supa) return;
-  try{
-    const {error}=await supa.from('shizu_team_memo').upsert({event_seq:seq,ref_note:val,updated_by:curUser(),updated_at:new Date().toISOString()},{onConflict:'event_seq'});
-    if(error)throw error;
-  }catch(e){ toast(tx('tmemoFail')+(e.message||e),'warn'); }
+  const val=String(text==null?'':text).replace(/\u00a0/g,' ').trim();
+  if(TREF[seq]===val) return;
+  TREF[seq]=val; PENDM.ref[seq]=val; memoMark('ref:'+seq);
 }
 
 // ── 객실 폐쇄 판정 ──

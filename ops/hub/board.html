@@ -73,7 +73,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.33">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.34">
 </head>
 <body data-so-area="board">
 <div class="topbar so-bar">
@@ -325,11 +325,25 @@ async function reorderAnns(fromId,toId){
     toast(tx('reordered'),'ok');
   }catch(e){ toast(tx('reorderFail')+': '+e.message,'err'); loadAnns(); }
 }
-async function setPinUntil(id,val){
-  const until = val ? new Date(val+'T23:59:59').toISOString() : null;
-  const {error}=await supa.from('announcements').update({pin_until:until,updated_at:new Date().toISOString()}).eq('id',id);
-  if(error){ toast(tx('pinUntilFail')+': '+error.message,'err'); return; }
-  toast(until?tx('pinUntilSet'):tx('pinUntilOff'),'ok'); loadAnns();
+// ⚠ 고정 기한은 공지 노출 기간을 바꾸므로 **[저장] 바에서** 반영한다(Min 2026-08).
+const PENDP={};   // 공지 id → 고정 기한(yyyy-mm-dd | '')
+let SB=null;
+function setPinUntil(id,val){
+  PENDP[id]=val||'';
+  if(!SB && window.__so_saveBar) SB=window.__so_saveBar({ save:flushPins, reload:()=>loadAnns() });
+  if(SB) SB.mark('pin:'+id);
+}
+async function flushPins(){
+  for(const id of Object.keys(PENDP)){
+    const v=PENDP[id];
+    const until = v ? new Date(v+'T23:59:59').toISOString() : null;
+    const {error}=await supa.from('announcements')
+      .update({pin_until:until,updated_at:new Date().toISOString()}).eq('id',id);
+    if(error) throw error;
+    delete PENDP[id];
+  }
+  toast(tx('pinUntilSet'),'ok');
+  loadAnns();
 }
 
 async function postAnn(){
