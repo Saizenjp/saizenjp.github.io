@@ -108,6 +108,11 @@
   .mchip.oth{border-style:dashed}
   .mg{font-size:11px;margin-right:3px}
   .mg.m{color:#2f6f8f}.mg.f{color:#b1567a}
+  .rcart{padding:3px 9px;font-size:12px;width:110px}
+  .chkb{display:inline-block;font-size:10px;font-weight:800;color:#fff;background:var(--err);border-radius:99px;padding:0 6px;margin-left:5px}
+  .cartb{display:inline-block;font-size:10.5px;font-weight:700;color:var(--text2);margin-left:5px}
+  .un.chk{border-color:#e3bdb4;background:#fdf2f0}
+  .un.chk:hover{border-color:var(--err)}
 </style>
 <link rel="stylesheet" href="../assets/saizen-ops.css?v=15.40">
 </head>
@@ -138,7 +143,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.80"></script>
+<script src="../assets/saizen-ops.js?v=15.81"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -160,10 +165,19 @@ const L={
     exclDone:'この日から除外しました', inclDone:'戻しました', exclNone:'除外なし',
     dragHint:'≡ をつかんでドラッグ — 空きマスへ移動、埋まったマスへ落とすと その位置に割り込み(以下は1つずつ下へ)',
     noShift:'下に空きがありません — 入れ替えました',
-    rosH:'組の編成(この組に入る人)', rosPick:'組を選ぶと編成できます', rosIn:'この組', rosAdd:'追加できる人',
+    autoFirst:'この日はまだ割当がなかったので自動で割り当てて保存しました', rosH:'組の編成(この組に入る人)', rosPick:'組を選ぶと編成できます', rosIn:'この組', rosAdd:'追加できる人',
     rosSearch:'名前で検索', rosFull:'この組は満員です(最大4名)', rosNone:'まだ誰も入っていません',
     rosOther:'他チーム', rosAll:'全員この組へ', rosClr:'この組を空に', male:'男', female:'女',
-    memCnt:(a,b)=>`${a}/${b}`,
+    memCnt:(a,b)=>`${a}/${b}`, cartLbl:'Cart no', cartPh:'e.g. 12,13',
+    chkH:'Grouping needs a check (teams of 5+)', chkN:n=>`${n} groups`, chkNone:'Nothing waiting',
+    chkMark:'check', chkT:'Teams of 5 or more are split by a person — tap the group to set its roster',
+    autoFilled:n=>`Filled rosters automatically for ${n} teams of 4 or fewer`, cartLbl:'카트번호', cartPh:'예 12,13',
+    chkH:'조편성 확인 필요(5명 이상 팀)', chkN:n=>`${n}조`, chkNone:'확인 대기 없음',
+    chkMark:'확인', chkT:'5명 이상 팀은 조를 어떻게 나눌지 사람이 정합니다 — 조를 눌러 편성하세요',
+    autoFilled:n=>`4명 이하 ${n}팀은 조원까지 자동으로 넣었습니다`, cartLbl:'カート番号', cartPh:'例 12,13',
+    chkH:'組編成の確認が必要(5名以上のチーム)', chkN:n=>`${n}組`, chkNone:'確認待ちなし',
+    chkMark:'要確認', chkT:'5名以上のチームは組の分け方を人が決めます — 組を押して編成してください',
+    autoFilled:n=>`4名以下の${n}チームは組員まで自動で入れました`,
     connOk:'接続済', notConn:'未接続', connBtn:'接続', connecting:'接続中…', connFail:'接続失敗',
     needUrlKey:'URL·keyが必要', loginNeed:'先にログインしてください',
     pvTitle:'コース割当表', pvPrint:'印刷', pvClose:'閉じる', popupBlocked:'ポップアップがブロックされました',
@@ -182,7 +196,7 @@ const L={
     exclDone:'이 날에서 제외했습니다', inclDone:'되돌렸습니다', exclNone:'제외 없음',
     dragHint:'≡ 를 잡고 드래그 — 빈 칸으로 옮기고, 찬 칸에 놓으면 그 자리에 끼워넣습니다(아래는 한 칸씩 밀림)',
     noShift:'아래에 빈 자리가 없어 서로 바꿨습니다',
-    rosH:'조 편성(이 조에 들어갈 사람)', rosPick:'조를 클릭하면 편성할 수 있습니다', rosIn:'이 조', rosAdd:'넣을 수 있는 인원',
+    autoFirst:'이 날은 배정이 없어 자동으로 배정하고 저장했습니다', rosH:'조 편성(이 조에 들어갈 사람)', rosPick:'조를 클릭하면 편성할 수 있습니다', rosIn:'이 조', rosAdd:'넣을 수 있는 인원',
     rosSearch:'이름 검색', rosFull:'이 조는 만원입니다(최대 4명)', rosNone:'아직 아무도 없습니다',
     rosOther:'다른 팀', rosAll:'전원 이 조로', rosClr:'이 조 비우기', male:'남', female:'여',
     memCnt:(a,b)=>`${a}/${b}`,
@@ -204,7 +218,7 @@ const L={
     exclDone:'Skipped for this day', inclDone:'Restored', exclNone:'None skipped',
     dragHint:'Grab ≡ and drag — drop on an empty cell to move, or on a filled cell to insert there (the rest shift down)',
     noShift:'No free slot below — swapped instead',
-    rosH:'Group roster (who plays in this group)', rosPick:'Select a group to edit its roster', rosIn:'In this group', rosAdd:'Available',
+    autoFirst:'No assignment existed for this day — auto-assigned and saved', rosH:'Group roster (who plays in this group)', rosPick:'Select a group to edit its roster', rosIn:'In this group', rosAdd:'Available',
     rosSearch:'Search by name', rosFull:'This group is full (max 4)', rosNone:'Nobody yet',
     rosOther:'Other team', rosAll:'All into this group', rosClr:'Empty this group', male:'M', female:'F',
     memCnt:(a,b)=>`${a}/${b}`,
@@ -281,7 +295,7 @@ function renderUI(){
     <div id="board"></div>`;
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);DATESEL=null;load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);DATESEL=null;load();});
-  $('#btn-auto').addEventListener('click',autoAssign);
+  $('#btn-auto').addEventListener('click',()=>autoAssign());
   $('#btn-clear').addEventListener('click',()=>{ BOARD=[]; SELG=null; render(); });
   $('#btn-save').addEventListener('click',save);
   $('#btn-print').addEventListener('click',printBoard);
@@ -364,7 +378,7 @@ async function loadBoard(date){
   }catch(e){ /* 표가 없으면 제외 없음으로 */ }
   try{
     const {data:grps,error}=await supa.from('golf_groups')
-      .select('id,event_seq,course_code,tee_time,slot_no,label,capacity,note')
+      .select('id,event_seq,course_code,tee_time,slot_no,label,capacity,cart_no,note')
       .eq('play_date',date).order('slot_no',{nullsFirst:false});
     if(error) throw error;
     const teams=teamsOnDate(date);
@@ -374,7 +388,7 @@ async function loadBoard(date){
       BOARD.push({ id:g.id, seq:g.event_seq, course:g.course_code||'', slot:g.slot_no||null,
         tee:g.tee_time||(g.slot_no?SLOTS[g.slot_no-1]:''), pax:g.capacity||0,
         tag:(t?t.tag:'')||g.label||'', rep:t?t.rep:'', holes:t?holesOn(t,date):0,
-        late:t?isLate(t):false, note:g.note||'', members:[] });
+        late:t?isLate(t):false, cart:g.cart_no||'', note:g.note||'', members:[] });
     });
     // 조원(사람 배치) — 조편성을 이 화면에서 같이 한다
     const gids=BOARD.map(g=>g.id).filter(Boolean);
@@ -393,6 +407,10 @@ async function loadBoard(date){
 }
 
 function isSkip(seq){ return SKIP.has(String(seq)); }
+// 2~4명 팀은 그대로 한 조 = 나눌 여지가 없다 → 조원까지 자동으로 채운다.
+// 5명 이상은 「누구와 누구를 한 조로」를 사람이 정해야 한다 → 조만 잡아두고 조원은 비워 확인 대기로 둔다.
+function teamPax(seq){ const t=TEAMS.find(x=>String(x.seq)===String(seq)); return t?t.pax:0; }
+function needsCheck(g){ return teamPax(g.seq)>=5 && (g.members||[]).length<(g.pax||0); }
 // 그날 라운딩하지 않는 팀 — 규칙(상품명)으로는 라운딩일이지만 실제로는 안 나가는 경우.
 //  제외하면 자동 배정에서 빠지고, 이미 잡힌 조도 표에서 내린다(성수기 티오프 자리 확보).
 async function toggleSkip(seq){
@@ -414,6 +432,12 @@ async function toggleSkip(seq){
     }
   }catch(e){ toast(tx('saveFail')+e.message,'err'); return; }
   render();
+  // 저장된 배정이 하나도 없는 날이면 자동으로 배정해 둔다(현장이 버튼을 안 눌러도 표가 채워져 있게).
+  //  이미 저장된 배정이 있으면 손대지 않는다 — 수기 조정이 지워지면 안 되기 때문.
+  if(!DBIDS.length && teamsOnDate(date).some(t=>!isSkip(t.seq))){
+    autoAssign(true);
+    if(BOARD.length){ await save(); toast(tx('autoFirst'),'ok'); }
+  }
 }
 
 function cellKey(course,slot){ return course+'|'+slot; }
@@ -438,6 +462,12 @@ function render(){
       +`${isLate(t)?`<span class="lateb" title="${esc(tx('lateT'))}">${tx('late')}</span>`:''}`
       +`<button type="button" class="skipb" data-skip="${t.seq}">${tx('excl')}</button></span>`;
   }).join('') : `<span class="cnt" style="color:var(--muted)">${tx('allSet')}</span>`;
+  // 5명 이상 팀 = 조 나누기를 사람이 확인해야 하는 조
+  const chk=BOARD.map((g,i)=>({g,i})).filter(x=>needsCheck(x.g));
+  const chkHTML = chk.length? chk.map(({g,i})=>
+    `<button type="button" class="un chk" data-goto="${i}"><b>${esc(g.tag||('#'+g.seq))}</b>`
+    +`<small>${esc(courseL(g.course))} ${esc(g.tee||'')} · ${tx('memCnt',(g.members||[]).length,g.pax)}</small></button>`).join('')
+    : `<span class="cnt" style="color:var(--muted)">${tx('chkNone')}</span>`;
   const skHTML = skipped.length? skipped.map(t=>
     `<span class="un off"><b>${esc(t.tag||('#'+t.seq))}</b><small>${esc(t.rep||'')} · ${t.pax}${tx('person')}</small>`
     +`<button type="button" class="skipb on" data-skip="${t.seq}">${tx('incl')}</button></span>`).join('')
@@ -457,6 +487,8 @@ function render(){
         +`<span class="g-pax">${(g.members&&g.members.length)?tx('memCnt',g.members.length,g.pax):g.pax+tx('person')}</span>`
         +`<span class="g-holes">${g.holes?g.holes+tx('holesU'):''}</span>`
         +`${g.late?`<span class="lateb" title="${esc(tx('lateT'))}">${tx('late')}</span>`:''}`
+        +`${needsCheck(g)?`<span class="chkb" title="${esc(tx('chkT'))}">${tx('chkMark')}</span>`:''}`
+        +`${g.cart?`<span class="cartb">🛺${esc(g.cart)}</span>`:''}`
         +`</div></td>`;
     }).join('');
     return `<tr><td class="tee">${esc(tee)}</td>${tds}</tr>`;
@@ -471,6 +503,10 @@ function render(){
     <div class="panel">
       <h3>${tx('exclH')} <span class="cnt">${tx('exclN',skipped.length)}</span></h3>
       <div class="un-list">${skHTML}</div>
+    </div>
+    <div class="panel">
+      <h3>${tx('chkH')} <span class="cnt">${tx('chkN',chk.length)}</span></h3>
+      <div class="un-list">${chkHTML}</div>
     </div>
     <div class="panel" id="roster-panel">${rosterHTML()}</div>
     <div class="panel">
@@ -511,6 +547,8 @@ function rosterHTML(){
   return `<h3>${tx('rosH')} <span class="cnt">${esc(g.tag||('#'+g.seq))} · ${esc(courseL(g.course))} ${esc(g.tee||'')} · ${tx('memCnt',(g.members||[]).length,g.pax)}</span>
       <span style="flex:1"></span>
       <button class="btn xs ghost" id="r-all" type="button">${tx('rosAll')}</button>
+      <span class="cnt">${tx('cartLbl')}</span>
+      <input class="inp rcart" id="r-cart" type="text" placeholder="${esc(tx('cartPh'))}" value="${esc(g.cart||'')}">
       <button class="btn xs ghost" id="r-clr" type="button" style="color:var(--err)">${tx('rosClr')}</button>
     </h3>
     <div class="rlbl">${tx('rosIn')}</div><div class="mlist">${inHTML}</div>
@@ -546,6 +584,7 @@ function bindRoster(){
   const byGender=gd=>{ const g=BOARD[SELG]; if(!g) return; const used=usedMemberIds();
     (ROSTER[g.seq]||[]).forEach(m=>{ if(m.gender===gd && !used.has(String(m.id)) && (g.members||[]).length<(g.pax||4)) (g.members=g.members||[]).push(m); });
     render(); };
+  const rc=$('#r-cart'); if(rc) rc.addEventListener('change',()=>{ const g=BOARD[SELG]; if(g){ g.cart=rc.value.trim(); render(); } });
   const bm=$('#r-m'); if(bm) bm.addEventListener('click',()=>byGender('男'));
   const bf=$('#r-f'); if(bf) bf.addEventListener('click',()=>byGender('女'));
 }
@@ -580,6 +619,10 @@ function bind(){
   document.querySelectorAll('#board .un[data-seq]').forEach(b=>b.addEventListener('click',e=>{
     if(e.target&&e.target.classList&&e.target.classList.contains('skipb')) return;
     placeTeam(+b.getAttribute('data-seq'));
+  }));
+  document.querySelectorAll('#board [data-goto]').forEach(b=>b.addEventListener('click',()=>{
+    SELG=+b.getAttribute('data-goto'); render();
+    const p=$('#roster-panel'); if(p) p.scrollIntoView({behavior:'smooth',block:'center'});
   }));
   document.querySelectorAll('#board .skipb').forEach(b=>b.addEventListener('click',e=>{
     e.stopPropagation(); toggleSkip(+b.getAttribute('data-skip'));
@@ -627,14 +670,15 @@ function placeTeam(seq){
   let added=0;
   parts.forEach(n=>{
     const f=firstFree(isLate(t)); if(!f){ toast(tx('noSlot'),'warn'); return; }
+    const auto = (t.pax<=4) ? (ROSTER[t.seq]||[]).slice(0,n) : [];
     BOARD.push({ seq:t.seq, course:f.course, slot:f.slot, tee:SLOTS[f.slot-1]||'', pax:n,
-      tag:t.tag, rep:t.rep, holes:holesOn(t,DATESEL), late:isLate(t), note:'', members:[] });
+      tag:t.tag, rep:t.rep, holes:holesOn(t,DATESEL), late:isLate(t), cart:'', note:'', members:auto });
     added++;
   });
   if(added) render();
 }
 
-function autoAssign(){
+function autoAssign(quiet){
   if(!DATESEL) return;
   const teams=teamsOnDate(DATESEL).filter(t=>!isSkip(t.seq)).slice().sort((a,b)=>a.seq-b.seq);
   const input=teams.map(t=>({ seq:t.seq, pax:t.pax, dayIdx:dayIdxOf(t,DATESEL), late:isLate(t) }));
@@ -645,10 +689,19 @@ function autoAssign(){
     const t=teams.find(x=>String(x.seq)===String(g.seq)); if(!t) return;
     if(!g.course||!g.slot){ over++; return; }
     BOARD.push({ seq:t.seq, course:g.course, slot:g.slot, tee:g.tee||SLOTS[g.slot-1]||'', pax:g.pax,
-      tag:t.tag, rep:t.rep, holes:holesOn(t,DATESEL), late:isLate(t), note:'', members:[] });
+      tag:t.tag, rep:t.rep, holes:holesOn(t,DATESEL), late:isLate(t), cart:'', note:'', members:[] });
+  });
+  // 4명 이하 팀 = 조가 하나뿐이라 조원이 자명하다 → 그대로 채운다
+  let filled=0;
+  BOARD.forEach(g=>{
+    if(teamPax(g.seq)>4) return;
+    const ms=(ROSTER[g.seq]||[]).slice(0,g.pax||4);
+    if(ms.length){ g.members=ms; filled++; }
   });
   render();
+  if(quiet) return;
   toast(tx('autoDone',BOARD.length), over?'warn':'ok');
+  if(filled) toast(tx('autoFilled',filled),'ok');
   if(over) toast(tx('noSlot'),'warn');
 }
 
@@ -662,7 +715,7 @@ async function save(){
     if(gone.length){ const {error}=await supa.from('golf_groups').delete().in('id',gone); if(error) throw error; }
     for(const g of BOARD){
       const row={ play_date:DATESEL, event_seq:g.seq, course_code:g.course||null, tee_time:g.tee||null,
-        slot_no:g.slot||null, label:g.tag||null, capacity:g.pax||4, note:g.note||null };
+        slot_no:g.slot||null, label:g.tag||null, capacity:g.pax||4, cart_no:g.cart||null, note:g.note||null };
       if(g.id){ const {error}=await supa.from('golf_groups').update(row).eq('id',g.id); if(error) throw error; }
       else{ const {data,error}=await supa.from('golf_groups').insert({...row, assign_source:'manual', created_by:by}).select('id').single();
         if(error) throw error; g.id=data.id; }
