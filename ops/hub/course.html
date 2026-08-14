@@ -96,6 +96,18 @@
   .skipb:hover{border-color:var(--err);color:var(--err)}
   .skipb.on{border-color:var(--accent);color:var(--accent)}
   .skipb.on:hover{background:var(--accentSoft)}
+  /* 조 편성(사람 배치) — 코스 배정표 안에서 바로 */
+  .rlbl{font-size:11.5px;font-weight:700;color:var(--text2);margin-bottom:5px;display:flex;align-items:center;gap:8px}
+  .rsrch{padding:3px 9px;font-size:12px;max-width:200px}
+  .mlist{display:flex;flex-wrap:wrap;gap:6px}
+  .mchip{font-family:inherit;font-size:12.5px;font-weight:700;border:1px solid var(--border2);background:var(--surface);
+    color:var(--text);border-radius:8px;padding:4px 10px;cursor:pointer}
+  .mchip:hover{border-color:var(--accent);background:var(--accentSoft)}
+  .mchip.in{background:var(--accent);border-color:var(--accent);color:#fff}
+  .mchip.in:hover{background:var(--err);border-color:var(--err)}
+  .mchip.oth{border-style:dashed}
+  .mg{font-size:11px;margin-right:3px}
+  .mg.m{color:#2f6f8f}.mg.f{color:#b1567a}
 </style>
 <link rel="stylesheet" href="../assets/saizen-ops.css?v=15.40">
 </head>
@@ -126,7 +138,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.79"></script>
+<script src="../assets/saizen-ops.js?v=15.80"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -148,6 +160,10 @@ const L={
     exclDone:'この日から除外しました', inclDone:'戻しました', exclNone:'除外なし',
     dragHint:'≡ をつかんでドラッグ — 空きマスへ移動、埋まったマスへ落とすと その位置に割り込み(以下は1つずつ下へ)',
     noShift:'下に空きがありません — 入れ替えました',
+    rosH:'組の編成(この組に入る人)', rosPick:'組を選ぶと編成できます', rosIn:'この組', rosAdd:'追加できる人',
+    rosSearch:'名前で検索', rosFull:'この組は満員です(最大4名)', rosNone:'まだ誰も入っていません',
+    rosOther:'他チーム', rosAll:'全員この組へ', rosClr:'この組を空に', male:'男', female:'女',
+    memCnt:(a,b)=>`${a}/${b}`,
     connOk:'接続済', notConn:'未接続', connBtn:'接続', connecting:'接続中…', connFail:'接続失敗',
     needUrlKey:'URL·keyが必要', loginNeed:'先にログインしてください',
     pvTitle:'コース割当表', pvPrint:'印刷', pvClose:'閉じる', popupBlocked:'ポップアップがブロックされました',
@@ -166,6 +182,10 @@ const L={
     exclDone:'이 날에서 제외했습니다', inclDone:'되돌렸습니다', exclNone:'제외 없음',
     dragHint:'≡ 를 잡고 드래그 — 빈 칸으로 옮기고, 찬 칸에 놓으면 그 자리에 끼워넣습니다(아래는 한 칸씩 밀림)',
     noShift:'아래에 빈 자리가 없어 서로 바꿨습니다',
+    rosH:'조 편성(이 조에 들어갈 사람)', rosPick:'조를 클릭하면 편성할 수 있습니다', rosIn:'이 조', rosAdd:'넣을 수 있는 인원',
+    rosSearch:'이름 검색', rosFull:'이 조는 만원입니다(최대 4명)', rosNone:'아직 아무도 없습니다',
+    rosOther:'다른 팀', rosAll:'전원 이 조로', rosClr:'이 조 비우기', male:'남', female:'여',
+    memCnt:(a,b)=>`${a}/${b}`,
     connOk:'연결됨', notConn:'미연결', connBtn:'연결', connecting:'연결 중…', connFail:'연결 실패',
     needUrlKey:'URL·key 필요', loginNeed:'먼저 로그인하세요',
     pvTitle:'코스 배정표', pvPrint:'인쇄', pvClose:'닫기', popupBlocked:'팝업이 차단되었습니다',
@@ -184,6 +204,10 @@ const L={
     exclDone:'Skipped for this day', inclDone:'Restored', exclNone:'None skipped',
     dragHint:'Grab ≡ and drag — drop on an empty cell to move, or on a filled cell to insert there (the rest shift down)',
     noShift:'No free slot below — swapped instead',
+    rosH:'Group roster (who plays in this group)', rosPick:'Select a group to edit its roster', rosIn:'In this group', rosAdd:'Available',
+    rosSearch:'Search by name', rosFull:'This group is full (max 4)', rosNone:'Nobody yet',
+    rosOther:'Other team', rosAll:'All into this group', rosClr:'Empty this group', male:'M', female:'F',
+    memCnt:(a,b)=>`${a}/${b}`,
     connOk:'Connected', notConn:'Not connected', connBtn:'Connect', connecting:'Connecting…', connFail:'Connection failed',
     needUrlKey:'URL·key required', loginNeed:'Please log in first',
     pvTitle:'Course assignment', pvPrint:'Print', pvClose:'Close', popupBlocked:'Pop-up was blocked',
@@ -209,10 +233,14 @@ let DBIDS=[];        // 로드 시점 DB에 있던 조 id (저장 때 삭제 대
 let SELG=null;       // 선택한 조 index
 let SKIP=new Set();  // 그날 라운딩 제외한 팀(event_seq)
 let DRAG=null;       // 드래그 중인 조 index
+let ROSTER={};       // event_seq → [{id,name,eng,gender}]  그날 라운딩 인원
+let RQ='';           // 조원 검색어
 
 const SLOTS=(window.SZCore&&SZCore.teeSlots)?SZCore.teeSlots():[];
 // ⚠ SZCore.fmtDate 는 Date 전용(문자열을 주면 '')이라 DB의 date 문자열엔 이걸 쓴다.
 function dstr(d){ if(!d) return ''; if(d instanceof Date) return SZCore.fmtDate(d); return String(d).slice(0,10); }
+function normGender(g){ g=String(g||'').trim(); if(/여|女/.test(g)||/^f/i.test(g))return '女'; if(/남|男/.test(g)||/^m/i.test(g))return '男'; return ''; }
+function titleCase(s){ return String(s||'').toLowerCase().replace(/\b[a-z]/g,c=>c.toUpperCase()); }
 
 function thisYM(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
 function shiftYM(ym,delta){const [y,m]=ym.split('-').map(Number);const d=new Date(y,m-1+delta,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
@@ -277,11 +305,18 @@ async function load(){
     const gs = seqs.length? await pagedIn('guests','event_seq,accom,group_code,team_tag','event_seq',seqs):[];
     const gmap={}; gs.forEach(g=>gmap[g.event_seq]=g);
     // 인원 = 명단 실제 행수(예약 pax보다 우선 — 방배정·정산과 같은 기준)
-    const gms = seqs.length? await pagedIn('guest_members','id,event_seq','event_seq',seqs):[];
+    const gms = seqs.length? await pagedIn('guest_members','id,event_seq,seq_in_team,name_kr,name_en','event_seq',seqs):[];
     const cnt={}; gms.forEach(m=>{ cnt[m.event_seq]=(cnt[m.event_seq]||0)+1; });
-    // 대표 출발지(귀국 부산편 판정)
-    const pxs = seqs.length? await pagedIn('passengers','event_seq,origin,dep_flight','event_seq',seqs):[];
+    // 대표 출발지(귀국 부산편 판정) + 성별(이름 매칭)
+    const pxs = seqs.length? await pagedIn('passengers','event_seq,name_kr,gender,origin,dep_flight','event_seq',seqs):[];
     const oriMap={}; pxs.forEach(p=>{ if(oriMap[p.event_seq]==null) oriMap[p.event_seq]=SZCore.isPus(p.origin,p.dep_flight); });
+    const genMap={}; pxs.forEach(p=>{ const k=p.event_seq+'|'+String(p.name_kr||'').trim(); if(!genMap[k]) genMap[k]=normGender(p.gender); });
+    ROSTER={};
+    gms.slice().sort((a,b)=>(a.seq_in_team||0)-(b.seq_in_team||0)).forEach(m=>{
+      const nm=String(m.name_kr||'').trim();
+      (ROSTER[m.event_seq]=ROSTER[m.event_seq]||[]).push({ id:m.id, seq:m.event_seq, name:nm||(m.name_en||'-'),
+        eng:titleCase(m.name_en), gender:genMap[m.event_seq+'|'+nm]||'' });
+    });
     TEAMS=(bs||[]).map(b=>{ const g=gmap[b.event_seq]||{};
       return { seq:b.event_seq, dep:dstr(b.dep_date), arr:dstr(b.arr_date), accom:g.accom||'',
         tag:(SZCore.tagStripSeq?SZCore.tagStripSeq(g.team_tag||g.group_code||''):(g.team_tag||g.group_code||'')),
@@ -339,8 +374,20 @@ async function loadBoard(date){
       BOARD.push({ id:g.id, seq:g.event_seq, course:g.course_code||'', slot:g.slot_no||null,
         tee:g.tee_time||(g.slot_no?SLOTS[g.slot_no-1]:''), pax:g.capacity||0,
         tag:(t?t.tag:'')||g.label||'', rep:t?t.rep:'', holes:t?holesOn(t,date):0,
-        late:t?isLate(t):false, note:g.note||'' });
+        late:t?isLate(t):false, note:g.note||'', members:[] });
     });
+    // 조원(사람 배치) — 조편성을 이 화면에서 같이 한다
+    const gids=BOARD.map(g=>g.id).filter(Boolean);
+    if(gids.length){
+      const gm=await pagedIn('golf_group_members','group_id,member_id,event_seq,seq','group_id',gids);
+      const byG={}; (gm||[]).forEach(x=>{ (byG[x.group_id]=byG[x.group_id]||[]).push(x); });
+      BOARD.forEach(g=>{
+        g.members=(byG[g.id]||[]).sort((a,b)=>(a.seq||0)-(b.seq||0)).map(x=>{
+          const r=(ROSTER[x.event_seq]||[]).find(m=>m.id===x.member_id);
+          return r||{ id:x.member_id, seq:x.event_seq, name:'?', eng:'', gender:'' };
+        });
+      });
+    }
   }catch(e){ /* 없으면 빈 표 */ }
   render();
 }
@@ -407,7 +454,7 @@ function render(){
         +`<span class="g-x" data-del="${gi}">✕</span>`
         +`<span class="g-tag">${esc(g.tag||('#'+g.seq))}</span>`
         +`<span class="g-rep">${esc(g.rep||'')}</span>`
-        +`<span class="g-pax">${g.pax}${tx('person')}</span>`
+        +`<span class="g-pax">${(g.members&&g.members.length)?tx('memCnt',g.members.length,g.pax):g.pax+tx('person')}</span>`
         +`<span class="g-holes">${g.holes?g.holes+tx('holesU'):''}</span>`
         +`${g.late?`<span class="lateb" title="${esc(tx('lateT'))}">${tx('late')}</span>`:''}`
         +`</div></td>`;
@@ -425,6 +472,7 @@ function render(){
       <h3>${tx('exclH')} <span class="cnt">${tx('exclN',skipped.length)}</span></h3>
       <div class="un-list">${skHTML}</div>
     </div>
+    <div class="panel" id="roster-panel">${rosterHTML()}</div>
     <div class="panel">
       <h3>${tx('boardH')} <span class="cnt">${tx('totalG',BOARD.length)}</span></h3>
       <div class="cbwrap"><table class="cb">
@@ -433,6 +481,73 @@ function render(){
       </table></div>
     </div>`;
   bind();
+}
+
+// 이미 어느 조엔가 들어간 사람(그날 기준)
+function usedMemberIds(){ const s=new Set(); BOARD.forEach(g=>(g.members||[]).forEach(m=>s.add(String(m.id)))); return s; }
+function memChip(m,cls,act){
+  const g=m.gender==='男'?'<span class="mg m">♂</span>':m.gender==='女'?'<span class="mg f">♀</span>':'';
+  return `<button type="button" class="mchip${cls?' '+cls:''}" data-${act}="${m.id}">${g}${esc(m.name)}</button>`;
+}
+function rosterHTML(){
+  if(SELG==null||!BOARD[SELG]) return `<h3>${tx('rosH')}</h3><div class="cnt" style="color:var(--muted)">${tx('rosPick')}</div>`;
+  const g=BOARD[SELG];
+  const used=usedMemberIds();
+  const inHTML=(g.members&&g.members.length)? g.members.map(m=>memChip(m,'in','out')).join('')
+    : `<span class="cnt" style="color:var(--muted)">${tx('rosNone')}</span>`;
+  const q=RQ.trim().toLowerCase();
+  const own=(ROSTER[g.seq]||[]).filter(m=>!used.has(String(m.id)));
+  let others=[];
+  if(q){
+    teamsOnDate(DATESEL).filter(t=>!isSkip(t.seq)&&String(t.seq)!==String(g.seq)).forEach(t=>{
+      (ROSTER[t.seq]||[]).forEach(m=>{ if(!used.has(String(m.id)) && (m.name+' '+(m.eng||'')).toLowerCase().includes(q)) others.push({...m,_tag:t.tag}); });
+    });
+  }
+  const ownF=q? own.filter(m=>(m.name+' '+(m.eng||'')).toLowerCase().includes(q)) : own;
+  const addHTML=(ownF.length||others.length)
+    ? ownF.map(m=>memChip(m,'','add')).join('')
+      + others.map(m=>memChip({...m,name:m.name+' ('+(m._tag||tx('rosOther'))+')'},'oth','add')).join('')
+    : `<span class="cnt" style="color:var(--muted)">-</span>`;
+  return `<h3>${tx('rosH')} <span class="cnt">${esc(g.tag||('#'+g.seq))} · ${esc(courseL(g.course))} ${esc(g.tee||'')} · ${tx('memCnt',(g.members||[]).length,g.pax)}</span>
+      <span style="flex:1"></span>
+      <button class="btn xs ghost" id="r-all" type="button">${tx('rosAll')}</button>
+      <button class="btn xs ghost" id="r-clr" type="button" style="color:var(--err)">${tx('rosClr')}</button>
+    </h3>
+    <div class="rlbl">${tx('rosIn')}</div><div class="mlist">${inHTML}</div>
+    <div class="rlbl" style="margin-top:9px">${tx('rosAdd')}
+      <button class="btn xs ghost" id="r-m" type="button">${tx('male')}</button>
+      <button class="btn xs ghost" id="r-f" type="button">${tx('female')}</button>
+      <input class="inp rsrch" id="r-q" type="search" placeholder="${esc(tx('rosSearch'))}" value="${esc(RQ)}"></div>
+    <div class="mlist">${addHTML}</div>`;
+}
+function memberById(id){
+  for(const k in ROSTER){ const m=(ROSTER[k]||[]).find(x=>String(x.id)===String(id)); if(m) return m; }
+  return null;
+}
+function bindRoster(){
+  const q=$('#r-q'); if(q){ q.addEventListener('input',()=>{ RQ=q.value; const p=$('#roster-panel'); if(p){ p.innerHTML=rosterHTML(); bindRoster(); const e=$('#r-q'); if(e){ e.focus(); e.setSelectionRange(e.value.length,e.value.length); } } }); }
+  document.querySelectorAll('#roster-panel [data-add]').forEach(b=>b.addEventListener('click',()=>{
+    const g=BOARD[SELG]; if(!g) return;
+    if((g.members||[]).length>=(g.pax||4)){ toast(tx('rosFull'),'warn'); return; }
+    const m=memberById(b.getAttribute('data-add')); if(!m) return;
+    (g.members=g.members||[]).push(m); render();
+  }));
+  document.querySelectorAll('#roster-panel [data-out]').forEach(b=>b.addEventListener('click',()=>{
+    const g=BOARD[SELG]; if(!g) return;
+    g.members=(g.members||[]).filter(m=>String(m.id)!==String(b.getAttribute('data-out'))); render();
+  }));
+  const all=$('#r-all'); if(all) all.addEventListener('click',()=>{
+    const g=BOARD[SELG]; if(!g) return; const used=usedMemberIds();
+    (ROSTER[g.seq]||[]).forEach(m=>{ if(!used.has(String(m.id)) && (g.members||[]).length<(g.pax||4)) (g.members=g.members||[]).push(m); });
+    render();
+  });
+  const clr=$('#r-clr'); if(clr) clr.addEventListener('click',()=>{ const g=BOARD[SELG]; if(!g) return; g.members=[]; render(); });
+  // 성별로 몰아 넣기(남자끼리·여자끼리 편성) — 같은 팀 미배정 인원에서 정원까지
+  const byGender=gd=>{ const g=BOARD[SELG]; if(!g) return; const used=usedMemberIds();
+    (ROSTER[g.seq]||[]).forEach(m=>{ if(m.gender===gd && !used.has(String(m.id)) && (g.members||[]).length<(g.pax||4)) (g.members=g.members||[]).push(m); });
+    render(); };
+  const bm=$('#r-m'); if(bm) bm.addEventListener('click',()=>byGender('男'));
+  const bf=$('#r-f'); if(bf) bf.addEventListener('click',()=>byGender('女'));
 }
 
 function bind(){
@@ -469,6 +584,7 @@ function bind(){
   document.querySelectorAll('#board .skipb').forEach(b=>b.addEventListener('click',e=>{
     e.stopPropagation(); toggleSkip(+b.getAttribute('data-skip'));
   }));
+  bindRoster();
 }
 
 // 조를 (코스, 슬롯)으로 옮긴다.
@@ -512,7 +628,7 @@ function placeTeam(seq){
   parts.forEach(n=>{
     const f=firstFree(isLate(t)); if(!f){ toast(tx('noSlot'),'warn'); return; }
     BOARD.push({ seq:t.seq, course:f.course, slot:f.slot, tee:SLOTS[f.slot-1]||'', pax:n,
-      tag:t.tag, rep:t.rep, holes:holesOn(t,DATESEL), late:isLate(t), note:'' });
+      tag:t.tag, rep:t.rep, holes:holesOn(t,DATESEL), late:isLate(t), note:'', members:[] });
     added++;
   });
   if(added) render();
@@ -529,7 +645,7 @@ function autoAssign(){
     const t=teams.find(x=>String(x.seq)===String(g.seq)); if(!t) return;
     if(!g.course||!g.slot){ over++; return; }
     BOARD.push({ seq:t.seq, course:g.course, slot:g.slot, tee:g.tee||SLOTS[g.slot-1]||'', pax:g.pax,
-      tag:t.tag, rep:t.rep, holes:holesOn(t,DATESEL), late:isLate(t), note:'' });
+      tag:t.tag, rep:t.rep, holes:holesOn(t,DATESEL), late:isLate(t), note:'', members:[] });
   });
   render();
   toast(tx('autoDone',BOARD.length), over?'warn':'ok');
@@ -551,6 +667,18 @@ async function save(){
       else{ const {data,error}=await supa.from('golf_groups').insert({...row, assign_source:'manual', created_by:by}).select('id').single();
         if(error) throw error; g.id=data.id; }
     }
+    // 조원(사람 배치)도 같이 저장 — 그날 조의 조원을 통째 교체
+    const ids=BOARD.map(g=>g.id).filter(Boolean);
+    if(ids.length){
+      const {error:de}=await supa.from('golf_group_members').delete().in('group_id',ids);
+      if(de) throw de;
+      const rows=[];
+      BOARD.forEach(g=>{ (g.members||[]).forEach((m,i)=>rows.push({ group_id:g.id, member_id:m.id, event_seq:m.seq||g.seq, seq:i+1 })); });
+      for(let i=0;i<rows.length;i+=500){
+        const {error:ie}=await supa.from('golf_group_members').insert(rows.slice(i,i+500));
+        if(ie) throw ie;
+      }
+    }
     DBIDS=BOARD.map(g=>g.id).filter(Boolean);
     toast(tx('savedN',BOARD.length),'ok');
   }catch(e){ toast(tx('saveFail')+e.message,'err'); }
@@ -566,7 +694,8 @@ function printBoard(){
       const gi=groupAt(c.code,slot);
       if(gi<0) return '<td></td>';
       const g=BOARD[gi];
-      return `<td><b>${esc(g.tag||('#'+g.seq))}</b> ${esc(g.rep||'')} <span class="p">${g.pax}名</span>`
+      const names=(g.members&&g.members.length)? g.members.map(m=>esc(m.name)).join(' · ') : esc(g.rep||'');
+      return `<td><b>${esc(g.tag||('#'+g.seq))}</b> ${names} <span class="p">${(g.members&&g.members.length)||g.pax}名</span>`
         +`${g.holes?` <span class="h">${g.holes}H</span>`:''}</td>`;
     }).join('');
     return `<tr><td class="tee">${esc(tee)}</td>${tds}</tr>`;
