@@ -12,11 +12,11 @@ test('전기카트 사전신청 = 현지전달비고 표기로 판정', () => {
     '電動カート 事前申請',
     'EV카트 요청',
     '특식 / 전기 카트 사전신청',
-    '■전기카드 1개 신청 / 2인용으로 사용예정',   // 메리트 비고 실측 오타(카트→카드, Min 2026-08)
   ];
   yes.forEach(s => assert.equal(SZ.wantsElectricCart(s), true, s));
 
-  const no = ['', null, undefined, '온천 사전신청', '별관 욕조 준비', '카트 없음', '가솔린 카트'];
+  // 오타·애매 표기는 확정으로 보지 않는다 → 화면의 「재확인 필요」로 빠진다(Min 2026-08)
+  const no = ['', null, undefined, '온천 사전신청', '별관 욕조 준비', '카트 없음', '가솔린 카트', '■전기카드 1개 신청'];
   no.forEach(s => assert.equal(SZ.wantsElectricCart(s), false, String(s)));
 });
 

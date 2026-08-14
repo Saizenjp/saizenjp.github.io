@@ -141,7 +141,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=24"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
+<script src="../assets/saizen-core.js?v=25"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
 <script src="../assets/saizen-ops.js?v=15.77"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -171,7 +171,7 @@ const L={
       +'<b>電動カートの有料事前申請</b>は<b>やまなみリゾートゴルフクラブ利用時のみ</b> — やまなみ/久住ヒルズ/志津の宿は常に可、'
       +'<b>ガンジーホテルは平日が九重高原CCなので、やまなみCCの日(週末・祝日・入国日)のみ</b>可です。<b>現場申請</b>はいつでも可。'
       +'コース・ティ時刻は<b>ゴルフ組編成</b>で保存された値を読み込みます(未編成なら空欄)。',
-    showAllTeams:'この日の全チーム', noElecTeam:'この日 電動カートの申請チームはありません。',
+    showAllTeams:'この日の全チーム', scopeElec:(n,t)=>`表示 ${n}チーム / この日ラウンド ${t}チーム（申請のあるチームのみ）`, scopeAll:t=>`この日ラウンド ${t}チーム すべて表示`, noElecTeam:'この日 電動カートの申請チームはありません。',
     autoMark:'自動', dispBtn:'手配書', dispT:'現地手配書をポップアップで開きます',
     wd:['日','月','火','水','木','金','土'], calNone:'ラウンドなし',
     courseRule:'規則', courseGrp:'組編成',
@@ -220,7 +220,7 @@ const L={
       +'<b>전기카트 유료 사전신청</b>은 <b>야마나미 리조트 골프클럽 이용 시에만</b> 가능합니다 — 야마나미·쿠주힐즈·시즈노야도는 항상 가능, '
       +'<b>간지호텔은 평일이 구주고원CC라 야마나미CC를 쓰는 날(주말·공휴일·입국일)만</b> 가능합니다. <b>현장 신청</b>은 언제나 가능합니다. '
       +'코스·티오프는 <b>골프 조편성</b>에서 저장한 값을 읽어옵니다(미편성이면 빈칸).',
-    showAllTeams:'그날 전체 팀', noElecTeam:'이 날 전기카트 신청 팀이 없습니다.',
+    showAllTeams:'그날 전체 팀', scopeElec:(n,t)=>`표시 ${n}팀 / 그날 라운딩 ${t}팀 (신청 있는 팀만)`, scopeAll:t=>`그날 라운딩 ${t}팀 전부 표시`, noElecTeam:'이 날 전기카트 신청 팀이 없습니다.',
     autoMark:'자동', dispBtn:'수배서', dispT:'現地手配書를 팝업으로 엽니다',
     wd:['일','월','화','수','목','금','토'], calNone:'라운딩 없음',
     courseRule:'규칙', courseGrp:'조편성',
@@ -269,7 +269,7 @@ const L={
       +'<b>Paid pre-booking of electric carts</b> requires playing <b>Yamanami Resort Golf Club</b> — Yamanami, Kuju Hills and Shizu-no-Yado always qualify; '
       +'<b>The Guernsey Hotel plays Kuju Kogen CC on weekdays</b>, so only Yamanami CC days (weekends, holidays, arrival day) qualify. On-site requests are always fine. '
       +'Course and tee time are read from the <b>golf grouping</b> screen (blank if not yet grouped).',
-    showAllTeams:'all teams that day', noElecTeam:'No electric-cart request on this date.',
+    showAllTeams:'all teams that day', scopeElec:(n,t)=>`showing ${n} of ${t} teams rounding (requests only)`, scopeAll:t=>`all ${t} teams rounding`, noElecTeam:'No electric-cart request on this date.',
     autoMark:'auto', dispBtn:'Sheet', dispT:'Opens the local arrangement sheet in a popup',
     wd:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], calNone:'no rounds',
     courseRule:'rule', courseGrp:'grouping',
@@ -377,6 +377,7 @@ function renderUI(){
         <span class="cnt" id="stat"></span>
         <label class="cnt noprint" style="display:flex;align-items:center;gap:4px;cursor:pointer">
           <input type="checkbox" id="ck-all"${ONLY_ELEC?'':' checked'}> ${tx('showAllTeams')}</label>
+        <span class="cnt" id="list-scope" style="color:var(--muted);margin-left:8px"></span>
         <button class="btn sm ghost" id="btn-auto" type="button">${tx('autoDay')}</button>
         <button class="btn sm ghost" id="btn-reload" type="button">${tx('reload')}</button>
         <button class="btn" id="btn-save" type="button" disabled>${tx('save')}</button>
@@ -626,6 +627,10 @@ function renderTable(){
   $('#tbl-cnt').textContent = DIRTY.size?tx('dirty')(DIRTY.size):'';
   $('#btn-save').disabled = !DIRTY.size;
   const LIST=shownRows();
+  // 기본 목록은 「전기카트 신청·배정 팀」만이라, 그날 라운딩하는 다른 팀이 안 보인다.
+  //   몇 팀 중 몇 팀을 보고 있는지 적어 둔다 — 없는 팀을 찾아 헤매지 않게(Min 2026-08).
+  const scopeEl=$('#list-scope');
+  if(scopeEl) scopeEl.textContent = ONLY_ELEC ? tx('scopeElec')(LIST.length, ROWS.length) : tx('scopeAll')(ROWS.length);
   if(!LIST.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:10px 0">${ONLY_ELEC?tx('noElecTeam'):tx('noRound')}</div>`; return; }
   const th=TYPES.map(t=>`<th>${esc(lang()==='ja'?t.name_ja:t.name_ko)}</th>`).join('');
   const NOS=allocForDay();
