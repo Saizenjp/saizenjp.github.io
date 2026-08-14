@@ -373,7 +373,9 @@ const SHOW_CODES=['electric'];
 function visibleTypes(list){ return (list||[]).filter(t=>SHOW_CODES.includes(t.code)); }
 
 let supa=null, DATE=todayISO(), TYPES=[], ROWS=[], DIRTY=new Set();
-let YM=todayISO().slice(0,7), MDAYS=[], MTEAMS=[], ONLY_ELEC=false;
+// 「신청 팀만 보기」는 **마지막에 고른 상태를 기억**한다(Min 2026-08) — 담당자마다 보는 방식이 다르다.
+let YM=todayISO().slice(0,7), MDAYS=[], MTEAMS=[],
+    ONLY_ELEC=(function(){ try{ return localStorage.getItem('saizen_cart_only_elec')==='1'; }catch(e){ return false; } })();
 // ⚠ 기본은 **그날 라운딩 전 팀**을 보여준다(Min 2026-08). 예전 기본(신청 팀만)은 비고가 아직
 //   안 들어온 팀이 목록에서 통째로 사라져, 누락을 현장에서 알아챌 수 없었다(송영욱 8/14 건).
 function ymBounds(ym){ const [y,m]=ym.split('-').map(Number); const last=new Date(y,m,0).getDate();
@@ -468,7 +470,11 @@ function renderUI(){
   $('#btn-mauto').addEventListener('click',autoAssignMonth);
   $('#btn-print').addEventListener('click',()=>window.print());
   $('#btn-auto').addEventListener('click',autoAssignDay);
-  $('#ck-all').addEventListener('change',e=>{ ONLY_ELEC=!!e.target.checked; renderStock(); renderTable(); });
+  $('#ck-all').addEventListener('change',e=>{
+    ONLY_ELEC=!!e.target.checked;
+    try{ localStorage.setItem('saizen_cart_only_elec', ONLY_ELEC?'1':'0'); }catch(err){}
+    renderStock(); renderTable();
+  });
   $('#d-prev').addEventListener('click',()=>{DATE=shiftDay(DATE,-1);syncDate();});
   $('#d-next').addEventListener('click',()=>{DATE=shiftDay(DATE,1);syncDate();});
   $('#d-today').addEventListener('click',()=>{DATE=todayISO();syncDate();});
