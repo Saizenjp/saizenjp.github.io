@@ -84,6 +84,18 @@
   .un b{font-family:var(--mono);color:var(--accent)}
   .un small{color:var(--text2);margin-left:5px}
   .legend{font-size:11.5px;color:var(--muted);margin-top:7px}
+  .cell{position:relative}
+  .cell .grip{display:inline-block;color:var(--muted);font-weight:800;cursor:grab;margin-right:5px;user-select:none}
+  .cell .grip:active{cursor:grabbing}
+  .cell.dragging{opacity:.45}
+  .cell.over{outline:2px dashed var(--accent);outline-offset:-2px;background:var(--accentSoft)}
+  .un{display:inline-flex;align-items:center;gap:4px}
+  .un.off{opacity:.6;border-style:dashed;cursor:default}
+  .skipb{font-family:inherit;font-size:11px;font-weight:700;border:1px solid var(--border2);background:var(--surface);
+    color:var(--text2);border-radius:99px;padding:1px 8px;margin-left:6px;cursor:pointer}
+  .skipb:hover{border-color:var(--err);color:var(--err)}
+  .skipb.on{border-color:var(--accent);color:var(--accent)}
+  .skipb.on:hover{background:var(--accentSoft)}
 </style>
 <link rel="stylesheet" href="../assets/saizen-ops.css?v=15.40">
 </head>
@@ -132,6 +144,10 @@ const L={
     noSlot:'ティ枠が足りません — 手動で調整してください', autoDone:n=>`${n}組を割り当てました`,
     late:'遅め', lateT:'久住ヒルズ宿泊 — 16:30〜17:00終了→シャワー→18時食事に合わせ遅い組',
     grp:'組', person:'名', teamUnit:'チーム', unassignedN:n=>`未割当 ${n}チーム`,
+    excl:'除外', incl:'↩ 戻す', exclH:'除外したチーム(この日はラウンドなし)', exclN:n=>`${n}チーム`,
+    exclDone:'この日から除外しました', inclDone:'戻しました', exclNone:'除外なし',
+    dragHint:'≡ をつかんでドラッグ — 空きマスへ移動、埋まったマスへ落とすと その位置に割り込み(以下は1つずつ下へ)',
+    noShift:'下に空きがありません — 入れ替えました',
     connOk:'接続済', notConn:'未接続', connBtn:'接続', connecting:'接続中…', connFail:'接続失敗',
     needUrlKey:'URL·keyが必要', loginNeed:'先にログインしてください',
     pvTitle:'コース割当表', pvPrint:'印刷', pvClose:'閉じる', popupBlocked:'ポップアップがブロックされました',
@@ -146,6 +162,10 @@ const L={
     noSlot:'티오프 자리가 모자랍니다 — 수기로 조정하세요', autoDone:n=>`${n}개 조를 배정했습니다`,
     late:'늦게', lateT:'쿠주힐즈 숙박 — 16:30~17:00 종료→샤워→18시 식사에 맞춰 늦은 조',
     grp:'조', person:'명', teamUnit:'팀', unassignedN:n=>`미배정 ${n}팀`,
+    excl:'제외', incl:'↩ 복귀', exclH:'제외한 팀(이 날 라운딩 안 함)', exclN:n=>`${n}팀`,
+    exclDone:'이 날에서 제외했습니다', inclDone:'되돌렸습니다', exclNone:'제외 없음',
+    dragHint:'≡ 를 잡고 드래그 — 빈 칸으로 옮기고, 찬 칸에 놓으면 그 자리에 끼워넣습니다(아래는 한 칸씩 밀림)',
+    noShift:'아래에 빈 자리가 없어 서로 바꿨습니다',
     connOk:'연결됨', notConn:'미연결', connBtn:'연결', connecting:'연결 중…', connFail:'연결 실패',
     needUrlKey:'URL·key 필요', loginNeed:'먼저 로그인하세요',
     pvTitle:'코스 배정표', pvPrint:'인쇄', pvClose:'닫기', popupBlocked:'팝업이 차단되었습니다',
@@ -160,6 +180,10 @@ const L={
     noSlot:'Not enough tee slots — adjust manually', autoDone:n=>`Assigned ${n} groups`,
     late:'Late', lateT:'Kuju Hills stay — finish 16:30–17:00 → shower → 18:00 dinner, so a later tee',
     grp:'G', person:'', teamUnit:' teams', unassignedN:n=>`${n} unassigned`,
+    excl:'Skip', incl:'↩ Restore', exclH:'Skipped teams (not playing this day)', exclN:n=>`${n} teams`,
+    exclDone:'Skipped for this day', inclDone:'Restored', exclNone:'None skipped',
+    dragHint:'Grab ≡ and drag — drop on an empty cell to move, or on a filled cell to insert there (the rest shift down)',
+    noShift:'No free slot below — swapped instead',
     connOk:'Connected', notConn:'Not connected', connBtn:'Connect', connecting:'Connecting…', connFail:'Connection failed',
     needUrlKey:'URL·key required', loginNeed:'Please log in first',
     pvTitle:'Course assignment', pvPrint:'Print', pvClose:'Close', popupBlocked:'Pop-up was blocked',
@@ -183,8 +207,12 @@ let TEAMS=[];        // {seq,dep,arr,accom,tag,rep,isPus,pax}
 let BOARD=[];        // 조 [{id?,seq,course,slot,tee,pax,holes,note,late}]
 let DBIDS=[];        // 로드 시점 DB에 있던 조 id (저장 때 삭제 대상 판정)
 let SELG=null;       // 선택한 조 index
+let SKIP=new Set();  // 그날 라운딩 제외한 팀(event_seq)
+let DRAG=null;       // 드래그 중인 조 index
 
 const SLOTS=(window.SZCore&&SZCore.teeSlots)?SZCore.teeSlots():[];
+// ⚠ SZCore.fmtDate 는 Date 전용(문자열을 주면 '')이라 DB의 date 문자열엔 이걸 쓴다.
+function dstr(d){ if(!d) return ''; if(d instanceof Date) return SZCore.fmtDate(d); return String(d).slice(0,10); }
 
 function thisYM(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
 function shiftYM(ym,delta){const [y,m]=ym.split('-').map(Number);const d=new Date(y,m-1+delta,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
@@ -255,7 +283,7 @@ async function load(){
     const pxs = seqs.length? await pagedIn('passengers','event_seq,origin,dep_flight','event_seq',seqs):[];
     const oriMap={}; pxs.forEach(p=>{ if(oriMap[p.event_seq]==null) oriMap[p.event_seq]=SZCore.isPus(p.origin,p.dep_flight); });
     TEAMS=(bs||[]).map(b=>{ const g=gmap[b.event_seq]||{};
-      return { seq:b.event_seq, dep:SZCore.fmtDate(b.dep_date), arr:SZCore.fmtDate(b.arr_date), accom:g.accom||'',
+      return { seq:b.event_seq, dep:dstr(b.dep_date), arr:dstr(b.arr_date), accom:g.accom||'',
         tag:(SZCore.tagStripSeq?SZCore.tagStripSeq(g.team_tag||g.group_code||''):(g.team_tag||g.group_code||'')),
         rep:b.rep_name||'', isPus: oriMap[b.event_seq]!=null?oriMap[b.event_seq]:SZCore.isPus(b.origin,''),
         pax: cnt[b.event_seq]||0 };
@@ -294,7 +322,11 @@ function renderDateChips(){
 }
 
 async function loadBoard(date){
-  BOARD=[]; DBIDS=[]; SELG=null;
+  BOARD=[]; DBIDS=[]; SELG=null; SKIP=new Set(); DRAG=null;
+  try{
+    const {data:sk}=await supa.from('golf_skips').select('event_seq').eq('play_date',date);
+    (sk||[]).forEach(x=>SKIP.add(String(x.event_seq)));
+  }catch(e){ /* 표가 없으면 제외 없음으로 */ }
   try{
     const {data:grps,error}=await supa.from('golf_groups')
       .select('id,event_seq,course_code,tee_time,slot_no,label,capacity,note')
@@ -313,6 +345,30 @@ async function loadBoard(date){
   render();
 }
 
+function isSkip(seq){ return SKIP.has(String(seq)); }
+// 그날 라운딩하지 않는 팀 — 규칙(상품명)으로는 라운딩일이지만 실제로는 안 나가는 경우.
+//  제외하면 자동 배정에서 빠지고, 이미 잡힌 조도 표에서 내린다(성수기 티오프 자리 확보).
+async function toggleSkip(seq){
+  if(!supa||!DATESEL) return;
+  const on=isSkip(seq);
+  try{
+    if(on){
+      const {error}=await supa.from('golf_skips').delete().eq('play_date',DATESEL).eq('event_seq',seq);
+      if(error) throw error;
+      SKIP.delete(String(seq)); toast(tx('inclDone'),'ok');
+    }else{
+      const by=(window.__so_getUser&&__so_getUser())||null;
+      const {error}=await supa.from('golf_skips').insert({play_date:DATESEL, event_seq:seq, created_by:by});
+      if(error) throw error;
+      SKIP.add(String(seq));
+      // 이미 배정된 조가 있으면 함께 내린다(저장 때 DB에서도 삭제된다)
+      BOARD=BOARD.filter(g=>String(g.seq)!==String(seq));
+      SELG=null; toast(tx('exclDone'),'ok');
+    }
+  }catch(e){ toast(tx('saveFail')+e.message,'err'); return; }
+  render();
+}
+
 function cellKey(course,slot){ return course+'|'+slot; }
 function groupAt(course,slot){ return BOARD.findIndex(g=>g.course===course && g.slot===slot); }
 
@@ -324,30 +380,37 @@ function render(){
   const teams=teamsOnDate(DATESEL);
   if(!teams.length){ box.innerHTML=`<div class="panel"><div class="deny">${tx('noData')}</div></div>`; return; }
 
-  // 미배정 = 그날 라운딩인데 조가 하나도 없는 팀
+  // 미배정 = 그날 라운딩인데 조가 모자란 팀(제외한 팀은 뺀다)
   const placed={}; BOARD.forEach(g=>{ placed[g.seq]=(placed[g.seq]||0)+(g.pax||0); });
-  const un=teams.filter(t=>(placed[t.seq]||0)<t.pax);
+  const un=teams.filter(t=>!isSkip(t.seq) && (placed[t.seq]||0)<t.pax);
+  const skipped=teams.filter(t=>isSkip(t.seq));
   const unHTML = un.length? un.map(t=>{
     const rest=t.pax-(placed[t.seq]||0);
-    return `<button type="button" class="un" data-seq="${t.seq}"><b>${esc(t.tag||('#'+t.seq))}</b>`
+    return `<span class="un" data-seq="${t.seq}"><b>${esc(t.tag||('#'+t.seq))}</b>`
       +`<small>${esc(t.rep||'')} · ${rest}${tx('person')} · ${holesOn(t,DATESEL)}${tx('holesU')}</small>`
-      +`${isLate(t)?`<span class="lateb" title="${esc(tx('lateT'))}">${tx('late')}</span>`:''}</button>`;
+      +`${isLate(t)?`<span class="lateb" title="${esc(tx('lateT'))}">${tx('late')}</span>`:''}`
+      +`<button type="button" class="skipb" data-skip="${t.seq}">${tx('excl')}</button></span>`;
   }).join('') : `<span class="cnt" style="color:var(--muted)">${tx('allSet')}</span>`;
+  const skHTML = skipped.length? skipped.map(t=>
+    `<span class="un off"><b>${esc(t.tag||('#'+t.seq))}</b><small>${esc(t.rep||'')} · ${t.pax}${tx('person')}</small>`
+    +`<button type="button" class="skipb on" data-skip="${t.seq}">${tx('incl')}</button></span>`).join('')
+    : `<span class="cnt" style="color:var(--muted)">${tx('exclNone')}</span>`;
 
   const rows=SLOTS.map((tee,i)=>{
     const slot=i+1;
     const tds=COURSES.map(c=>{
       const gi=groupAt(c.code,slot);
-      if(gi<0) return `<td><button type="button" class="cell" data-c="${c.code}" data-s="${slot}"></button></td>`;
+      if(gi<0) return `<td><div class="cell" data-c="${c.code}" data-s="${slot}"></div></td>`;
       const g=BOARD[gi];
-      return `<td><button type="button" class="cell has${SELG===gi?' sel':''}" data-c="${c.code}" data-s="${slot}" data-i="${gi}">`
+      return `<td><div class="cell has${SELG===gi?' sel':''}" data-c="${c.code}" data-s="${slot}" data-i="${gi}" draggable="true">`
+        +`<span class="grip" title="${esc(tx('dragHint'))}">≡</span>`
         +`<span class="g-x" data-del="${gi}">✕</span>`
         +`<span class="g-tag">${esc(g.tag||('#'+g.seq))}</span>`
         +`<span class="g-rep">${esc(g.rep||'')}</span>`
         +`<span class="g-pax">${g.pax}${tx('person')}</span>`
         +`<span class="g-holes">${g.holes?g.holes+tx('holesU'):''}</span>`
         +`${g.late?`<span class="lateb" title="${esc(tx('lateT'))}">${tx('late')}</span>`:''}`
-        +`</button></td>`;
+        +`</div></td>`;
     }).join('');
     return `<tr><td class="tee">${esc(tee)}</td>${tds}</tr>`;
   }).join('');
@@ -356,7 +419,11 @@ function render(){
     <div class="panel">
       <h3>${tx('unH')} <span class="cnt">${tx('unassignedN',un.length)}</span></h3>
       <div class="un-list">${unHTML}</div>
-      <div class="legend">${tx('pickCell')}</div>
+      <div class="legend">${tx('pickCell')} · ${tx('dragHint')}</div>
+    </div>
+    <div class="panel">
+      <h3>${tx('exclH')} <span class="cnt">${tx('exclN',skipped.length)}</span></h3>
+      <div class="un-list">${skHTML}</div>
     </div>
     <div class="panel">
       <h3>${tx('boardH')} <span class="cnt">${tx('totalG',BOARD.length)}</span></h3>
@@ -369,20 +436,65 @@ function render(){
 }
 
 function bind(){
-  document.querySelectorAll('#board .cell').forEach(b=>b.addEventListener('click',e=>{
-    const del=e.target&&e.target.getAttribute&&e.target.getAttribute('data-del');
-    if(del!=null&&del!==''){ e.stopPropagation(); BOARD.splice(+del,1); SELG=null; render(); return; }
-    const c=b.getAttribute('data-c'), slot=+b.getAttribute('data-s');
-    const gi=b.getAttribute('data-i');
-    if(gi!=null&&gi!==''){ SELG = (SELG===+gi)?null:+gi; render(); return; }
-    // 빈 칸 — 선택한 조가 있으면 그 자리로 이동
-    if(SELG==null) return;
-    if(groupAt(c,slot)>=0){ toast(tx('full'),'warn'); return; }
-    BOARD[SELG].course=c; BOARD[SELG].slot=slot; BOARD[SELG].tee=SLOTS[slot-1]||'';
-    SELG=null; render(); toast(tx('moveDone'),'ok');
+  document.querySelectorAll('#board .cell').forEach(b=>{
+    b.addEventListener('click',e=>{
+      const del=e.target&&e.target.getAttribute&&e.target.getAttribute('data-del');
+      if(del!=null&&del!==''){ e.stopPropagation(); BOARD.splice(+del,1); SELG=null; render(); return; }
+      const c=b.getAttribute('data-c'), slot=+b.getAttribute('data-s');
+      const gi=b.getAttribute('data-i');
+      if(gi!=null&&gi!==''){ SELG=(SELG===+gi)?null:+gi; render(); return; }
+      if(SELG==null) return;                       // 빈 칸 — 선택한 조가 있으면 그 자리로
+      moveGroup(SELG, c, slot); SELG=null; render();
+    });
+    // ≡ 를 잡고 자유 이동. 찬 칸에 놓으면 그 자리에 끼워넣고 아래를 한 칸씩 민다.
+    b.addEventListener('dragstart',e=>{
+      const gi=b.getAttribute('data-i'); if(gi==null||gi===''){ e.preventDefault(); return; }
+      DRAG=+gi; b.classList.add('dragging');
+      try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',String(gi)); }catch(_){}
+    });
+    b.addEventListener('dragend',()=>{ DRAG=null; document.querySelectorAll('#board .cell').forEach(x=>x.classList.remove('dragging','over')); });
+    b.addEventListener('dragover',e=>{ if(DRAG==null) return; e.preventDefault(); b.classList.add('over'); });
+    b.addEventListener('dragleave',()=>b.classList.remove('over'));
+    b.addEventListener('drop',e=>{
+      e.preventDefault(); b.classList.remove('over');
+      if(DRAG==null) return;
+      const c=b.getAttribute('data-c'), slot=+b.getAttribute('data-s');
+      moveGroup(DRAG, c, slot); DRAG=null; SELG=null; render();
+    });
+  });
+  document.querySelectorAll('#board .un[data-seq]').forEach(b=>b.addEventListener('click',e=>{
+    if(e.target&&e.target.classList&&e.target.classList.contains('skipb')) return;
+    placeTeam(+b.getAttribute('data-seq'));
   }));
-  document.querySelectorAll('#board .un').forEach(b=>b.addEventListener('click',()=>placeTeam(+b.getAttribute('data-seq'))));
+  document.querySelectorAll('#board .skipb').forEach(b=>b.addEventListener('click',e=>{
+    e.stopPropagation(); toggleSkip(+b.getAttribute('data-skip'));
+  }));
 }
+
+// 조를 (코스, 슬롯)으로 옮긴다.
+//  · 빈 칸  → 그대로 이동
+//  · 찬 칸  → 그 자리에 끼워넣고, 그 아래 연속된 조를 한 칸씩 아래로 민다
+//  · 아래에 빈 자리가 없으면 → 두 조를 맞바꾼다
+function moveGroup(gi, course, slot){
+  const g=BOARD[gi]; if(!g) return;
+  if(g.course===course && g.slot===slot) return;
+  const col=BOARD.filter((x,i)=>i!==gi && x.course===course);
+  const taken=new Set(col.map(x=>x.slot));
+  if(!taken.has(slot)){ setPos(g,course,slot); return; }
+  let free=-1;
+  for(let sN=slot+1; sN<=SLOTS.length; sN++){ if(!taken.has(sN)){ free=sN; break; } }
+  if(free<0){                                   // 아래가 끝까지 찼다 → 맞바꾸기
+    const other=col.find(x=>x.slot===slot);
+    const oc=g.course, os=g.slot;
+    setPos(g,course,slot); if(other) setPos(other,oc,os);
+    toast(tx('noShift'),'warn'); return;
+  }
+  col.filter(x=>x.slot>=slot && x.slot<free).sort((a,b)=>b.slot-a.slot)
+     .forEach(x=>setPos(x,course,x.slot+1));
+  setPos(g,course,slot);
+  toast(tx('moveDone'),'ok');
+}
+function setPos(g,course,slot){ g.course=course; g.slot=slot; g.tee=SLOTS[slot-1]||''; }
 
 // 빈 슬롯 찾기 — 늦은 조(쿠주힐즈)는 뒤에서부터 채운다
 function firstFree(late){
@@ -391,6 +503,7 @@ function firstFree(late){
   return null;
 }
 function placeTeam(seq){
+  if(isSkip(seq)) return;
   const t=teamsOnDate(DATESEL).find(x=>String(x.seq)===String(seq)); if(!t) return;
   const placed=BOARD.filter(g=>String(g.seq)===String(seq)).reduce((s,g)=>s+(g.pax||0),0);
   const rest=t.pax-placed; if(rest<=0) return;
@@ -407,7 +520,7 @@ function placeTeam(seq){
 
 function autoAssign(){
   if(!DATESEL) return;
-  const teams=teamsOnDate(DATESEL).slice().sort((a,b)=>a.seq-b.seq);
+  const teams=teamsOnDate(DATESEL).filter(t=>!isSkip(t.seq)).slice().sort((a,b)=>a.seq-b.seq);
   const input=teams.map(t=>({ seq:t.seq, pax:t.pax, dayIdx:dayIdxOf(t,DATESEL), late:isLate(t) }));
   const out=SZCore.buildRounding(input,{ courses:COURSES.map(c=>c.code), slots:SLOTS, cap:4 });
   BOARD=[]; SELG=null;
