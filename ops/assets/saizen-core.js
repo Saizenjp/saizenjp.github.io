@@ -314,7 +314,9 @@
   //    → 그 팀의 라운딩 일수(golfRows) 전부에 자동 분배.
   //  · 그 외 팀 = 가솔린. 2인 예약팀은 2인승, 3인 이상은 4인승.
   //  카트 1대 정원 = 4명(2인승은 2명).
-  var CART_ELECTRIC = /전기\s*카트|전동\s*카트|電動\s*カ[ーー]?ト|EV\s*카트|EV\s*カ[ーー]?ト|E\s*카트/i;
+  //  ⚠ 「전기카드」는 메리트투어 비고에서 실제로 관측되는 **오타**다(카트→카드). 이 도메인에서
+  //    「전기카드」가 다른 뜻일 수 없으므로 확정(sure)으로 인정한다(Min 2026-08, 함영업 8/14 건).
+  var CART_ELECTRIC = /전기\s*카[트드]|전동\s*카[트드]|電動\s*カ[ーー]?ト|EV\s*카[트드]|EV\s*カ[ーー]?ト|E\s*카[트드]/i;
   function wantsElectricCart(remark) {
     return CART_ELECTRIC.test(String(remark == null ? '' : remark));
   }
