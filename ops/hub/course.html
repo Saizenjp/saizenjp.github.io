@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 코스 배정표</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  /* ── 공통 chrome (전 ops 페이지 공유 정본) ── */
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
+    --border:#e3e6ea; --border2:#cdd2d8;
+    --text:#1f2937; --text2:#525b66; --muted:#8b919b;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none}
+  .navhome:hover{text-decoration:underline}
+  .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .btn.xs{font-size:11.5px;padding:4px 10px}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .hint{font-size:11px;color:var(--muted)}
+  #toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);min-width:200px;text-align:center}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+
+  /* ── 페이지 전용 ── */
+  main{padding:16px 20px 80px;max-width:1280px;margin:0 auto}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+  .ymctrl{display:flex;align-items:center;gap:6px}
+  .ymctrl b{font-size:15px;font-family:var(--mono);min-width:78px;text-align:center}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  .daychip{font-size:12px;font-weight:700;padding:5px 11px;border-radius:99px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer}
+  .daychip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .deny{padding:36px 20px;text-align:center;color:var(--muted);font-size:14px}
+
+  /* 코스 배정표 = 세로 티오프 × 가로 3코스 */
+  .cbwrap{overflow-x:auto}
+  table.cb{width:100%;border-collapse:collapse;font-size:12.5px;min-width:760px}
+  table.cb th{background:var(--surface2);border:1px solid var(--border2);padding:7px 8px;font-size:12px;color:var(--text2)}
+  table.cb th.chd{font-size:13px;font-weight:800;color:#fff}
+  th.chd.aso{background:#5a7a52;border-color:#4b6a45}
+  th.chd.sobo{background:#2f6f8f;border-color:#28607c}
+  th.chd.kuju{background:#9a7322;border-color:#84621d}
+  table.cb td{border:1px solid var(--border);padding:0;height:36px;vertical-align:middle}
+  table.cb td.tee{background:var(--surface2);font-family:var(--mono);font-weight:800;text-align:center;width:74px;white-space:nowrap}
+  .cell{display:block;width:100%;height:100%;min-height:34px;padding:4px 7px;cursor:pointer;text-align:left;background:transparent;border:0;font-family:inherit;font-size:12.5px}
+  .cell:hover{background:var(--accentSoft)}
+  .cell.has{background:var(--surface)}
+  .cell.sel{outline:2px solid var(--accent2);outline-offset:-2px;background:#fdf6e6}
+  .cell .g-tag{font-family:var(--mono);font-weight:800;color:var(--accent)}
+  .cell .g-rep{color:var(--text);margin-left:5px}
+  .cell .g-pax{color:var(--text2);margin-left:5px;font-size:11.5px}
+  .cell .g-holes{color:var(--muted);font-size:11px;margin-left:5px}
+  .cell .g-x{float:right;color:var(--muted);font-weight:800;padding:0 3px}
+  .cell .g-x:hover{color:var(--err)}
+  .lateb{display:inline-block;font-size:10px;font-weight:800;color:#fff;background:#9a7322;border-radius:99px;padding:0 6px;margin-left:5px}
+  /* 미배정 팀 */
+  .un-list{display:flex;flex-wrap:wrap;gap:7px}
+  .un{border:1px solid var(--border2);border-radius:9px;padding:6px 10px;font-size:12.5px;background:var(--surface);cursor:pointer}
+  .un:hover{border-color:var(--accent);background:var(--accentSoft)}
+  .un b{font-family:var(--mono);color:var(--accent)}
+  .un small{color:var(--text2);margin-left:5px}
+  .legend{font-size:11.5px;color:var(--muted);margin-top:7px}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.40">
+</head>
+<body data-so-area="golf">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">コース割当表</span>
+  <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connhint">연결 정보는 이 브라우저에만 저장됩니다.</span>
+</div>
+
+<main id="content"></main>
+<div id="toast"></div>
+
+<script src="../assets/saizen-core.js?v=30"></script>
+<script src="../assets/saizen-ops.js?v=15.79"></script>
+<script>
+const $=s=>document.querySelector(s);
+// 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
+const COURSES=[ {code:'aso',ko:'아소',ja:'阿蘇',en:'Aso'}, {code:'sobo',ko:'소보',ja:'祖母',en:'Sobo'}, {code:'kuju',ko:'쿠주',ja:'久住',en:'Kuju'} ];
+const CMAP={}; COURSES.forEach(c=>CMAP[c.code]=c);
+
+const L={
+  ja:{ step:'コース割当表', connHint:'接続情報はこのブラウザにのみ保存されます。',
+    daySel:'ラウンド日', dayNote:'※ 商品名からラウンド日を自動抽出(入国ICN・滞在中・帰国PUS)。ホール数も自動(平日27H=18+9・週末/祝日18H・帰国PUS 9H)。',
+    boardH:'コース割当(組単位)', unH:'未割当チーム',
+    auto:'🪄 자동 배정', clear:'🧹 全消去', save:'💾 保存', print:'🖨 プレビュー',
+    noDay:'ラウンド日を選択してください。', noData:'この日にラウンドはありません。',
+    allSet:'全チーム割当済', pickCell:'空きマスを押すと移動します', moveDone:'移動しました', full:'そのマスは埋まっています',
+    savedN:n=>`${n}組を保存しました`, saveFail:'保存失敗: ', loadFail:'読み込み失敗',
+    noSlot:'ティ枠が足りません — 手動で調整してください', autoDone:n=>`${n}組を割り当てました`,
+    late:'遅め', lateT:'久住ヒルズ宿泊 — 16:30〜17:00終了→シャワー→18時食事に合わせ遅い組',
+    grp:'組', person:'名', teamUnit:'チーム', unassignedN:n=>`未割当 ${n}チーム`,
+    connOk:'接続済', notConn:'未接続', connBtn:'接続', connecting:'接続中…', connFail:'接続失敗',
+    needUrlKey:'URL·keyが必要', loginNeed:'先にログインしてください',
+    pvTitle:'コース割当表', pvPrint:'印刷', pvClose:'閉じる', popupBlocked:'ポップアップがブロックされました',
+    thTee:'ティ', totalG:n=>`計 ${n}組`, holesU:'H' },
+  ko:{ step:'코스 배정표', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
+    daySel:'라운딩 날짜', dayNote:'※ 상품명으로 라운딩 날짜 자동 추출(입국ICN·체류중·귀국PUS). 홀수도 자동(평일 27H=18+9·주말/공휴일 18H·귀국PUS 9H).',
+    boardH:'코스 배정(조 단위)', unH:'미배정 팀',
+    auto:'🪄 자동 배정', clear:'🧹 전체 비우기', save:'💾 저장', print:'🖨 미리보기',
+    noDay:'라운딩 날짜를 선택하세요.', noData:'이 날 라운딩이 없습니다.',
+    allSet:'전 팀 배정됨', pickCell:'빈 칸을 누르면 그 자리로 옮깁니다', moveDone:'옮겼습니다', full:'그 칸은 이미 찼습니다',
+    savedN:n=>`${n}개 조 저장했습니다`, saveFail:'저장 실패: ', loadFail:'불러오기 실패',
+    noSlot:'티오프 자리가 모자랍니다 — 수기로 조정하세요', autoDone:n=>`${n}개 조를 배정했습니다`,
+    late:'늦게', lateT:'쿠주힐즈 숙박 — 16:30~17:00 종료→샤워→18시 식사에 맞춰 늦은 조',
+    grp:'조', person:'명', teamUnit:'팀', unassignedN:n=>`미배정 ${n}팀`,
+    connOk:'연결됨', notConn:'미연결', connBtn:'연결', connecting:'연결 중…', connFail:'연결 실패',
+    needUrlKey:'URL·key 필요', loginNeed:'먼저 로그인하세요',
+    pvTitle:'코스 배정표', pvPrint:'인쇄', pvClose:'닫기', popupBlocked:'팝업이 차단되었습니다',
+    thTee:'티오프', totalG:n=>`합계 ${n}조`, holesU:'H' },
+  en:{ step:'Course assignment', connHint:'Connection info is stored only in this browser.',
+    daySel:'Round date', dayNote:'※ Round days auto-derived from the product name (arrival ICN · during stay · departure PUS). Holes auto too (weekday 27H=18+9 · weekend/holiday 18H · departure PUS 9H).',
+    boardH:'Course assignment (by group)', unH:'Unassigned teams',
+    auto:'🪄 Auto assign', clear:'🧹 Clear all', save:'💾 Save', print:'🖨 Preview',
+    noDay:'Pick a round date.', noData:'No rounds on this day.',
+    allSet:'All teams assigned', pickCell:'Tap an empty cell to move it there', moveDone:'Moved', full:'That cell is taken',
+    savedN:n=>`Saved ${n} groups`, saveFail:'Save failed: ', loadFail:'Load failed',
+    noSlot:'Not enough tee slots — adjust manually', autoDone:n=>`Assigned ${n} groups`,
+    late:'Late', lateT:'Kuju Hills stay — finish 16:30–17:00 → shower → 18:00 dinner, so a later tee',
+    grp:'G', person:'', teamUnit:' teams', unassignedN:n=>`${n} unassigned`,
+    connOk:'Connected', notConn:'Not connected', connBtn:'Connect', connecting:'Connecting…', connFail:'Connection failed',
+    needUrlKey:'URL·key required', loginNeed:'Please log in first',
+    pvTitle:'Course assignment', pvPrint:'Print', pvClose:'Close', popupBlocked:'Pop-up was blocked',
+    thTee:'Tee', totalG:n=>`${n} groups`, holesU:'H' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k,...a){ const d=L[lang()]||L.ja; let v=d[k]; if(v===undefined) v=L.ja[k]; if(v===undefined) return k; return (typeof v==='function')?v(...a):v; }
+function courseL(code){ const c=CMAP[code]; if(!c) return code||''; return lang()==='ja'?c.ja:lang()==='en'?c.en:c.ko; }
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2500);}
+function setConn(t,c){const e=$('#conn-state');if(e){e.textContent=t;e.className='pill'+(c?' '+c:'');}}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+function applyStatic(){
+  const st=$('#t-step'); if(st) st.textContent=tx('step');
+  const ch=$('#t-connhint'); if(ch) ch.textContent=tx('connHint');
+  if(!supa){ const cb=$('#btn-connect'); if(cb) cb.textContent=tx('connBtn'); setConn(tx('notConn')); }
+}
+
+let supa=null, YM=null, DATESEL=null;
+let TEAMS=[];        // {seq,dep,arr,accom,tag,rep,isPus,pax}
+let BOARD=[];        // 조 [{id?,seq,course,slot,tee,pax,holes,note,late}]
+let DBIDS=[];        // 로드 시점 DB에 있던 조 id (저장 때 삭제 대상 판정)
+let SELG=null;       // 선택한 조 index
+
+const SLOTS=(window.SZCore&&SZCore.teeSlots)?SZCore.teeSlots():[];
+
+function thisYM(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function shiftYM(ym,delta){const [y,m]=ym.split('-').map(Number);const d=new Date(y,m-1+delta,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function monthBounds(ym){const [y,m]=ym.split('-').map(Number);const start=`${y}-${String(m).padStart(2,'0')}-01`;const endD=new Date(y,m,0).getDate();const end=`${y}-${String(m).padStart(2,'0')}-${String(endD).padStart(2,'0')}`;return {start,end};}
+
+async function connect(){
+  const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
+  if(!url||!key){ setConn(tx('needUrlKey'),'err'); return; }
+  localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.disabled=true; btn.textContent=tx('connecting');
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn(tx('loginNeed'),'err'); btn.textContent=tx('connBtn'); btn.disabled=false; return; }
+    setConn(tx('connOk'),'ok'); btn.textContent='✓'; btn.disabled=false;
+    YM=YM||thisYM(); renderUI(); load();
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFail'); btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
+}
+
+function renderUI(){
+  $('#content').innerHTML=`
+    <div class="panel">
+      <div class="row">
+        <div class="ymctrl"><button class="btn sm ghost" id="ym-prev" type="button">◀</button><b id="ym-label"></b><button class="btn sm ghost" id="ym-next" type="button">▶</button></div>
+        <span style="flex:1"></span>
+        <span class="cnt" id="stat"></span>
+        <button class="btn sm ghost" id="btn-auto" type="button" disabled>${tx('auto')}</button>
+        <button class="btn sm ghost" id="btn-clear" type="button" disabled style="color:var(--err)">${tx('clear')}</button>
+        <button class="btn sm" id="btn-save" type="button" disabled>${tx('save')}</button>
+        <button class="btn sm ghost" id="btn-print" type="button" disabled>${tx('print')}</button>
+      </div>
+      <div class="row" style="margin-top:9px">
+        <span class="cnt">${tx('daySel')}</span>
+        <span id="daychips" style="display:flex;flex-wrap:wrap;gap:5px"></span>
+      </div>
+      <div class="legend">${tx('dayNote')}</div>
+    </div>
+    <div id="board"></div>`;
+  $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);DATESEL=null;load();});
+  $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);DATESEL=null;load();});
+  $('#btn-auto').addEventListener('click',autoAssign);
+  $('#btn-clear').addEventListener('click',()=>{ BOARD=[]; SELG=null; render(); });
+  $('#btn-save').addEventListener('click',save);
+  $('#btn-print').addEventListener('click',printBoard);
+}
+
+async function pagedIn(table, cols, key, vals){
+  const out=[]; const uniq=[...new Set(vals)];
+  for(let i=0;i<uniq.length;i+=80){ const chunk=uniq.slice(i,i+80); let from=0;
+    for(;;){ const {data,error}=await supa.from(table).select(cols).in(key,chunk).range(from,from+999); if(error)throw error; out.push(...(data||[])); if(!data||data.length<1000)break; from+=1000; } }
+  return out;
+}
+
+async function load(){
+  if(!supa)return;
+  $('#ym-label').textContent=YM; $('#stat').textContent='…';
+  try{
+    const {start,end}=monthBounds(YM);
+    const {data:bs,error}=await supa.from('bookings').select('event_seq,dep_date,arr_date,rep_name,origin').lte('dep_date',end).gt('arr_date',start);
+    if(error)throw error;
+    const seqs=(bs||[]).map(b=>b.event_seq);
+    const gs = seqs.length? await pagedIn('guests','event_seq,accom,group_code,team_tag','event_seq',seqs):[];
+    const gmap={}; gs.forEach(g=>gmap[g.event_seq]=g);
+    // 인원 = 명단 실제 행수(예약 pax보다 우선 — 방배정·정산과 같은 기준)
+    const gms = seqs.length? await pagedIn('guest_members','id,event_seq','event_seq',seqs):[];
+    const cnt={}; gms.forEach(m=>{ cnt[m.event_seq]=(cnt[m.event_seq]||0)+1; });
+    // 대표 출발지(귀국 부산편 판정)
+    const pxs = seqs.length? await pagedIn('passengers','event_seq,origin,dep_flight','event_seq',seqs):[];
+    const oriMap={}; pxs.forEach(p=>{ if(oriMap[p.event_seq]==null) oriMap[p.event_seq]=SZCore.isPus(p.origin,p.dep_flight); });
+    TEAMS=(bs||[]).map(b=>{ const g=gmap[b.event_seq]||{};
+      return { seq:b.event_seq, dep:SZCore.fmtDate(b.dep_date), arr:SZCore.fmtDate(b.arr_date), accom:g.accom||'',
+        tag:(SZCore.tagStripSeq?SZCore.tagStripSeq(g.team_tag||g.group_code||''):(g.team_tag||g.group_code||'')),
+        rep:b.rep_name||'', isPus: oriMap[b.event_seq]!=null?oriMap[b.event_seq]:SZCore.isPus(b.origin,''),
+        pax: cnt[b.event_seq]||0 };
+    }).filter(t=>t.pax>0);
+    const ax=golfDates();
+    if(DATESEL && !ax.includes(DATESEL)) DATESEL=null;
+    if(!DATESEL && ax.length){
+      const today=SZCore.fmtDate(new Date());
+      DATESEL = ax.includes(today) ? today : (ax.find(d=>d>=today) || ax[0]);
+    }
+    renderDateChips();
+    $('#stat').textContent=`${TEAMS.length}${tx('teamUnit')}`;
+    if(DATESEL) await loadBoard(DATESEL); else render();
+  }catch(e){ toast(tx('loadFail')+': '+e.message,'err'); $('#stat').textContent=''; }
+}
+
+// 그 팀이 그날 라운딩하는가 + 홀수 — 규칙은 SZCore.golfRows 단일 진실원
+function rowFor(t,date){ return SZCore.golfRows({dep:t.dep,arr:t.arr,accom:t.accom}, t.isPus).find(r=>r.date===date)||null; }
+function holesOn(t,date){ const r=rowFor(t,date); if(!r) return 0;
+  // 평일 체류일은 18H + 9H 서비스 = 27H
+  return /\+9H/.test(r.note||'') ? 27 : r.holes; }
+function golfDates(){ const s=new Set();
+  TEAMS.forEach(t=>SZCore.golfRows({dep:t.dep,arr:t.arr,accom:t.accom},t.isPus).forEach(r=>{ if(r.date.slice(0,7)===YM) s.add(r.date); }));
+  return [...s].sort(); }
+function teamsOnDate(date){ return TEAMS.filter(t=>!!rowFor(t,date)); }
+// 그 팀이 그날 몇 번째 라운딩인지(코스 로테이션 기준)
+function dayIdxOf(t,date){ const rs=SZCore.golfRows({dep:t.dep,arr:t.arr,accom:t.accom},t.isPus); return Math.max(0, rs.findIndex(r=>r.date===date)); }
+function isLate(t){ return String(t.accom||'').indexOf('쿠주')>=0; }
+
+function renderDateChips(){
+  const box=$('#daychips'); if(!box)return;
+  const ax=golfDates();
+  box.innerHTML=ax.map(d=>`<button type="button" class="daychip${DATESEL===d?' on':''}" data-d="${d}">${esc(SZCore.mdWd(d,lang()))}</button>`).join('')
+    || `<span class="cnt" style="color:var(--muted)">${tx('noData')}</span>`;
+  box.querySelectorAll('.daychip').forEach(b=>b.addEventListener('click',async()=>{ DATESEL=b.getAttribute('data-d'); SELG=null; renderDateChips(); await loadBoard(DATESEL); }));
+}
+
+async function loadBoard(date){
+  BOARD=[]; DBIDS=[]; SELG=null;
+  try{
+    const {data:grps,error}=await supa.from('golf_groups')
+      .select('id,event_seq,course_code,tee_time,slot_no,label,capacity,note')
+      .eq('play_date',date).order('slot_no',{nullsFirst:false});
+    if(error) throw error;
+    const teams=teamsOnDate(date);
+    (grps||[]).forEach(g=>{
+      DBIDS.push(g.id);
+      const t=teams.find(x=>String(x.seq)===String(g.event_seq));
+      BOARD.push({ id:g.id, seq:g.event_seq, course:g.course_code||'', slot:g.slot_no||null,
+        tee:g.tee_time||(g.slot_no?SLOTS[g.slot_no-1]:''), pax:g.capacity||0,
+        tag:(t?t.tag:'')||g.label||'', rep:t?t.rep:'', holes:t?holesOn(t,date):0,
+        late:t?isLate(t):false, note:g.note||'' });
+    });
+  }catch(e){ /* 없으면 빈 표 */ }
+  render();
+}
+
+function cellKey(course,slot){ return course+'|'+slot; }
+function groupAt(course,slot){ return BOARD.findIndex(g=>g.course===course && g.slot===slot); }
+
+function render(){
+  const box=$('#board'); if(!box) return;
+  const on=!!DATESEL;
+  ['#btn-auto','#btn-clear','#btn-save','#btn-print'].forEach(s=>{ const b=$(s); if(b) b.disabled=!on; });
+  if(!on){ box.innerHTML=`<div class="panel"><div class="deny">${tx('noDay')}</div></div>`; return; }
+  const teams=teamsOnDate(DATESEL);
+  if(!teams.length){ box.innerHTML=`<div class="panel"><div class="deny">${tx('noData')}</div></div>`; return; }
+
+  // 미배정 = 그날 라운딩인데 조가 하나도 없는 팀
+  const placed={}; BOARD.forEach(g=>{ placed[g.seq]=(placed[g.seq]||0)+(g.pax||0); });
+  const un=teams.filter(t=>(placed[t.seq]||0)<t.pax);
+  const unHTML = un.length? un.map(t=>{
+    const rest=t.pax-(placed[t.seq]||0);
+    return `<button type="button" class="un" data-seq="${t.seq}"><b>${esc(t.tag||('#'+t.seq))}</b>`
+      +`<small>${esc(t.rep||'')} · ${rest}${tx('person')} · ${holesOn(t,DATESEL)}${tx('holesU')}</small>`
+      +`${isLate(t)?`<span class="lateb" title="${esc(tx('lateT'))}">${tx('late')}</span>`:''}</button>`;
+  }).join('') : `<span class="cnt" style="color:var(--muted)">${tx('allSet')}</span>`;
+
+  const rows=SLOTS.map((tee,i)=>{
+    const slot=i+1;
+    const tds=COURSES.map(c=>{
+      const gi=groupAt(c.code,slot);
+      if(gi<0) return `<td><button type="button" class="cell" data-c="${c.code}" data-s="${slot}"></button></td>`;
+      const g=BOARD[gi];
+      return `<td><button type="button" class="cell has${SELG===gi?' sel':''}" data-c="${c.code}" data-s="${slot}" data-i="${gi}">`
+        +`<span class="g-x" data-del="${gi}">✕</span>`
+        +`<span class="g-tag">${esc(g.tag||('#'+g.seq))}</span>`
+        +`<span class="g-rep">${esc(g.rep||'')}</span>`
+        +`<span class="g-pax">${g.pax}${tx('person')}</span>`
+        +`<span class="g-holes">${g.holes?g.holes+tx('holesU'):''}</span>`
+        +`${g.late?`<span class="lateb" title="${esc(tx('lateT'))}">${tx('late')}</span>`:''}`
+        +`</button></td>`;
+    }).join('');
+    return `<tr><td class="tee">${esc(tee)}</td>${tds}</tr>`;
+  }).join('');
+
+  box.innerHTML=`
+    <div class="panel">
+      <h3>${tx('unH')} <span class="cnt">${tx('unassignedN',un.length)}</span></h3>
+      <div class="un-list">${unHTML}</div>
+      <div class="legend">${tx('pickCell')}</div>
+    </div>
+    <div class="panel">
+      <h3>${tx('boardH')} <span class="cnt">${tx('totalG',BOARD.length)}</span></h3>
+      <div class="cbwrap"><table class="cb">
+        <thead><tr><th>${tx('thTee')}</th>${COURSES.map(c=>`<th class="chd ${c.code}">${esc(courseL(c.code))}</th>`).join('')}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>`;
+  bind();
+}
+
+function bind(){
+  document.querySelectorAll('#board .cell').forEach(b=>b.addEventListener('click',e=>{
+    const del=e.target&&e.target.getAttribute&&e.target.getAttribute('data-del');
+    if(del!=null&&del!==''){ e.stopPropagation(); BOARD.splice(+del,1); SELG=null; render(); return; }
+    const c=b.getAttribute('data-c'), slot=+b.getAttribute('data-s');
+    const gi=b.getAttribute('data-i');
+    if(gi!=null&&gi!==''){ SELG = (SELG===+gi)?null:+gi; render(); return; }
+    // 빈 칸 — 선택한 조가 있으면 그 자리로 이동
+    if(SELG==null) return;
+    if(groupAt(c,slot)>=0){ toast(tx('full'),'warn'); return; }
+    BOARD[SELG].course=c; BOARD[SELG].slot=slot; BOARD[SELG].tee=SLOTS[slot-1]||'';
+    SELG=null; render(); toast(tx('moveDone'),'ok');
+  }));
+  document.querySelectorAll('#board .un').forEach(b=>b.addEventListener('click',()=>placeTeam(+b.getAttribute('data-seq'))));
+}
+
+// 빈 슬롯 찾기 — 늦은 조(쿠주힐즈)는 뒤에서부터 채운다
+function firstFree(late){
+  const order=late?[...SLOTS.keys()].reverse():[...SLOTS.keys()];
+  for(const i of order){ for(const c of COURSES){ if(groupAt(c.code,i+1)<0) return {course:c.code, slot:i+1}; } }
+  return null;
+}
+function placeTeam(seq){
+  const t=teamsOnDate(DATESEL).find(x=>String(x.seq)===String(seq)); if(!t) return;
+  const placed=BOARD.filter(g=>String(g.seq)===String(seq)).reduce((s,g)=>s+(g.pax||0),0);
+  const rest=t.pax-placed; if(rest<=0) return;
+  const parts=SZCore.splitTeam(rest,4);
+  let added=0;
+  parts.forEach(n=>{
+    const f=firstFree(isLate(t)); if(!f){ toast(tx('noSlot'),'warn'); return; }
+    BOARD.push({ seq:t.seq, course:f.course, slot:f.slot, tee:SLOTS[f.slot-1]||'', pax:n,
+      tag:t.tag, rep:t.rep, holes:holesOn(t,DATESEL), late:isLate(t), note:'' });
+    added++;
+  });
+  if(added) render();
+}
+
+function autoAssign(){
+  if(!DATESEL) return;
+  const teams=teamsOnDate(DATESEL).slice().sort((a,b)=>a.seq-b.seq);
+  const input=teams.map(t=>({ seq:t.seq, pax:t.pax, dayIdx:dayIdxOf(t,DATESEL), late:isLate(t) }));
+  const out=SZCore.buildRounding(input,{ courses:COURSES.map(c=>c.code), slots:SLOTS, cap:4 });
+  BOARD=[]; SELG=null;
+  let over=0;
+  out.forEach(g=>{
+    const t=teams.find(x=>String(x.seq)===String(g.seq)); if(!t) return;
+    if(!g.course||!g.slot){ over++; return; }
+    BOARD.push({ seq:t.seq, course:g.course, slot:g.slot, tee:g.tee||SLOTS[g.slot-1]||'', pax:g.pax,
+      tag:t.tag, rep:t.rep, holes:holesOn(t,DATESEL), late:isLate(t), note:'' });
+  });
+  render();
+  toast(tx('autoDone',BOARD.length), over?'warn':'ok');
+  if(over) toast(tx('noSlot'),'warn');
+}
+
+async function save(){
+  if(!DATESEL||!supa) return;
+  const by=(window.__so_getUser&&__so_getUser())||null;
+  try{
+    // 화면에서 사라진 조만 삭제(남은 조는 id 유지 → golf.html 이 넣은 조원 배정이 보존된다)
+    const keep=new Set(BOARD.map(g=>g.id).filter(Boolean));
+    const gone=DBIDS.filter(id=>!keep.has(id));
+    if(gone.length){ const {error}=await supa.from('golf_groups').delete().in('id',gone); if(error) throw error; }
+    for(const g of BOARD){
+      const row={ play_date:DATESEL, event_seq:g.seq, course_code:g.course||null, tee_time:g.tee||null,
+        slot_no:g.slot||null, label:g.tag||null, capacity:g.pax||4, note:g.note||null };
+      if(g.id){ const {error}=await supa.from('golf_groups').update(row).eq('id',g.id); if(error) throw error; }
+      else{ const {data,error}=await supa.from('golf_groups').insert({...row, assign_source:'manual', created_by:by}).select('id').single();
+        if(error) throw error; g.id=data.id; }
+    }
+    DBIDS=BOARD.map(g=>g.id).filter(Boolean);
+    toast(tx('savedN',BOARD.length),'ok');
+  }catch(e){ toast(tx('saveFail')+e.message,'err'); }
+}
+
+// A4 가로 — 화면 표와 같은 배열(WYSIWYG)
+function printBoard(){
+  if(!DATESEL) return;
+  const w=window.open('','_blank','width=1100,height=900'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
+  const rows=SLOTS.map((tee,i)=>{
+    const slot=i+1;
+    const tds=COURSES.map(c=>{
+      const gi=groupAt(c.code,slot);
+      if(gi<0) return '<td></td>';
+      const g=BOARD[gi];
+      return `<td><b>${esc(g.tag||('#'+g.seq))}</b> ${esc(g.rep||'')} <span class="p">${g.pax}名</span>`
+        +`${g.holes?` <span class="h">${g.holes}H</span>`:''}</td>`;
+    }).join('');
+    return `<tr><td class="tee">${esc(tee)}</td>${tds}</tr>`;
+  }).join('');
+  const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>${esc(tx('pvTitle'))}_${DATESEL}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Yu Gothic','Meiryo','Malgun Gothic',sans-serif;color:#111;background:#eef0f2;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .bar{position:sticky;top:0;display:flex;gap:12px;align-items:center;background:#3b4a2f;color:#fff;padding:9px 14px}
+  .bar h1{font-size:14px}.bar button{background:#fff;color:#3b4a2f;border:0;border-radius:5px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer}
+  .bar .x{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
+  .page{width:297mm;min-height:210mm;background:#fff;margin:8mm auto;padding:9mm 10mm}
+  h2{font-size:15pt;font-weight:800;margin-bottom:2mm}
+  .sub{font-size:9.5pt;color:#555;margin-bottom:3mm}
+  table{width:100%;border-collapse:collapse;table-layout:fixed}
+  th,td{border:.4mm solid #333;padding:1.4mm 2mm;font-size:10.5pt;height:9mm;vertical-align:middle}
+  th{background:#eee;font-size:10.5pt}
+  td.tee{width:20mm;text-align:center;font-weight:800;font-family:Consolas,monospace;background:#f6f6f6}
+  td b{font-family:Consolas,'Meiryo',monospace}
+  .p{color:#444;font-size:9.5pt}.h{color:#666;font-size:9pt}
+  @media print{ @page{size:A4 landscape;margin:0} body{background:#fff} .bar{display:none} .page{margin:0;width:auto;min-height:auto} }
+</style></head><body>
+  <div class="bar"><h1>${esc(tx('pvTitle'))} ${esc(DATESEL)}</h1><div style="flex:1"></div>
+    <button onclick="window.print()">🖨 ${esc(tx('pvPrint'))}</button>
+    <button class="x" onclick="window.close()">✕ ${esc(tx('pvClose'))}</button></div>
+  <div class="page">
+    <h2>${esc(tx('pvTitle'))} — ${esc(DATESEL)} ${esc(SZCore.mdWd(DATESEL,lang()))}</h2>
+    <div class="sub">${esc(tx('totalG',BOARD.length))}</div>
+    <table><thead><tr><th>${esc(tx('thTee'))}</th>${COURSES.map(c=>`<th>${esc(courseL(c.code))}</th>`).join('')}</tr></thead>
+    <tbody>${rows}</tbody></table>
+  </div>
+</body></html>`;
+  try{ w.document.open(); w.document.write(html); w.document.close(); }catch(_){}
+}
+
+$('#btn-connect').addEventListener('click',connect);
+window.onSaizenLangChange=function(){ try{ applyStatic(); }catch(e){} try{ if(supa){ renderUI(); $('#ym-label').textContent=YM||''; renderDateChips(); render(); } }catch(e){} };
+applyStatic();
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value) connect();
+</script>
+</body>
+</html>

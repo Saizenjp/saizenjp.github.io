@@ -117,7 +117,7 @@
 <main id="content"></main>
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=15.78"></script>
+<script src="../assets/saizen-ops.js?v=15.79"></script>
 <script>
 const $=s=>document.querySelector(s);
 const COURSES=[ {code:'aso',ko:'아소',ja:'阿蘇',pop:1}, {code:'sobo',ko:'소보',ja:'祖母',pop:2}, {code:'kuju',ko:'쿠주',ja:'久住',pop:3} ];
@@ -293,7 +293,7 @@ async function loadBoard(date){
   ROSTER=[]; teams.forEach(t=>t.members.forEach(m=>ROSTER.push({...m, tag:t.tag})));
   GROUPS=[];
   try{
-    const {data:grps}=await supa.from('golf_groups').select('id,course_code,tee_time,cart_no,slot_no,note').eq('play_date',date).order('slot_no',{nullsFirst:false});
+    const {data:grps}=await supa.from('golf_groups').select('id,event_seq,label,course_code,tee_time,cart_no,slot_no,capacity,note').eq('play_date',date).order('slot_no',{nullsFirst:false});
     const gids=(grps||[]).map(g=>g.id);
     const gmembers = gids.length? await pagedIn('golf_group_members','id,group_id,member_id,event_seq,seq','group_id',gids):[];
     const byG={}; gmembers.forEach(m=>{ (byG[m.group_id]=byG[m.group_id]||[]).push(m); });
@@ -301,7 +301,8 @@ async function loadBoard(date){
       const mems=(byG[g.id]||[]).sort((a,b)=>(a.seq||0)-(b.seq||0)).map(gm=>{
         const r=ROSTER.find(x=>x.id===gm.member_id); return r|| {id:gm.member_id,name:'?',eng:'',gender:'',seq:gm.event_seq,tag:''};
       });
-      GROUPS.push({ id:g.id, course:g.course_code||'', tee:g.tee_time||'', cart:g.cart_no||'', slot:g.slot_no||null, note:g.note||'', members:mems });
+      GROUPS.push({ id:g.id, seq:g.event_seq||null, label:g.label||'', cap:g.capacity||4,
+        course:g.course_code||'', tee:g.tee_time||'', cart:g.cart_no||'', slot:g.slot_no||null, note:g.note||'', members:mems });
     });
   }catch(e){ /* 없으면 빈 편성 */ }
   renderBoard();
@@ -441,7 +442,10 @@ async function saveBoard(){
     await supa.from('golf_groups').delete().eq('play_date',DATESEL);
     let n=0;
     for(let i=0;i<GROUPS.length;i++){ const g=GROUPS[i]; if(!g.members.length && !g.course && !g.tee) continue;
-      const {data:ins,error}=await supa.from('golf_groups').insert({ play_date:DATESEL, course_code:g.course||null, tee_time:g.tee||null, cart_no:g.cart||null, slot_no:i+1, assign_source:'manual', capacity:4, note:g.note||null, created_by:by }).select('id').single();
+      // 코스 배정표(course.html)가 정한 팀 연결·코스·티오프·자리를 조편성 저장이 지우지 않게 그대로 되돌려 넣는다
+      const {data:ins,error}=await supa.from('golf_groups').insert({ play_date:DATESEL, event_seq:g.seq||(g.members[0]&&g.members[0].seq)||null,
+        label:g.label||null, course_code:g.course||null, tee_time:g.tee||null, cart_no:g.cart||null,
+        slot_no:g.slot||i+1, assign_source:'manual', capacity:g.cap||4, note:g.note||null, created_by:by }).select('id').single();
       if(error)throw error;
       const rows=g.members.map((m,mi)=>({ group_id:ins.id, member_id:m.id, event_seq:m.seq, seq:mi+1 }));
       if(rows.length){ const {error:e2}=await supa.from('golf_group_members').insert(rows); if(e2)throw e2; }
