@@ -111,7 +111,7 @@
     @page{size:A4 landscape;margin:10mm}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.30">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.31">
 </head>
 <body data-so-area="golf">
 <div class="topbar so-bar">
@@ -141,7 +141,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=27"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
+<script src="../assets/saizen-core.js?v=28"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
 <script src="../assets/saizen-ops.js?v=15.77"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -193,6 +193,11 @@ const L={
     mSumTitle:'日別 申請状況', mTeamTitle:'チーム別 申請明細', mNone:'この月はラウンドするチームがありません。',
     thDate:'日付', thTeams:'チーム', thTotalCarts:'計', thDays:'ラウンド日', thKind:'区分', thAlloc:'割当', thCartDays:'台·日',
     kindElec:'電動(事前)', kindGas:'ガソリン',
+    cxTitle:'カートのキャンセル', cxQty:'台数', cxQtyBulk:'（チームごとに この台数まで）',
+    cxScope:'範囲', cxDay:'この日だけ', cxAll:'全期間（残りのラウンド全部）', cxAllHint:n=>`この日を含む ${n} 日分`,
+    cxDoneAll:(a,b)=>`この日 ${a}台・他の日 ${b}台をキャンセルにしました`,
+    cxSect:(t,n)=>`この日のキャンセル ${t}チーム · ${n}台`, cxUndoDone:'キャンセルを戻しました',
+    pickT:'一括キャンセルの対象に選ぶ', pickN:n=>`選択 ${n}チーム`, pickClear:'選択解除', cxBulk:'選択をキャンセル',
     cxBtn:'キャンセル', cxT:'現地でキャンセルされた台数を申請から差し引き、キャンセルとして記録します',
     cxAsk:m=>`キャンセルする台数（申請 ${m}台）`, cxBad:'台数を確認してください',
     cxDone:(n)=>`${n}台をキャンセルにしました（保存を押してください）`, cxNone:'この行に申請がありません',
@@ -247,6 +252,11 @@ const L={
     mSumTitle:'일자별 신청 현황', mTeamTitle:'팀별 신청 명세', mNone:'이 달에 라운딩하는 팀이 없습니다.',
     thDate:'날짜', thTeams:'팀', thTotalCarts:'계', thDays:'라운딩일', thKind:'구분', thAlloc:'배정', thCartDays:'대·일',
     kindElec:'전기(사전)', kindGas:'가솔린',
+    cxTitle:'카트 취소', cxQty:'대수', cxQtyBulk:'(팀마다 이 대수까지)',
+    cxScope:'범위', cxDay:'이 날짜만', cxAll:'전 기간(남은 라운딩 전부)', cxAllHint:n=>`이 날짜 포함 ${n}일치`,
+    cxDoneAll:(a,b)=>`이 날짜 ${a}대 · 다른 날짜 ${b}대를 취소했습니다`,
+    cxSect:(t,n)=>`이 날짜 취소 ${t}팀 · ${n}대`, cxUndoDone:'취소를 되돌렸습니다',
+    pickT:'일괄 취소 대상으로 선택', pickN:n=>`선택 ${n}팀`, pickClear:'선택 해제', cxBulk:'선택 팀 취소',
     cxBtn:'취소', cxT:'현장에서 취소된 대수를 사전신청에서 빼고 취소로 기록합니다',
     cxAsk:m=>`취소할 대수 (사전신청 ${m}대)`, cxBad:'대수를 확인해 주세요',
     cxDone:(n)=>`${n}대를 취소로 옮겼습니다(저장을 눌러 주세요)`, cxNone:'이 행에는 신청이 없습니다',
@@ -301,6 +311,11 @@ const L={
     mSumTitle:'Requests by date', mTeamTitle:'Request detail by team', mNone:'No team plays golf in this month.',
     thDate:'Date', thTeams:'Teams', thTotalCarts:'Total', thDays:'Round days', thKind:'Kind', thAlloc:'Assigned', thCartDays:'cart-days',
     kindElec:'Electric (pre)', kindGas:'Gasoline',
+    cxTitle:'Cancel carts', cxQty:'Qty', cxQtyBulk:'(up to this per team)',
+    cxScope:'Scope', cxDay:'This date only', cxAll:'Whole stay (all remaining rounds)', cxAllHint:n=>`${n} day(s) incl. today`,
+    cxDoneAll:(a,b)=>`Cancelled ${a} today and ${b} on other days`,
+    cxSect:(t,n)=>`Cancelled today — ${t} team(s) · ${n}`, cxUndoDone:'Cancellation undone',
+    pickT:'select for bulk cancel', pickN:n=>`${n} selected`, pickClear:'Clear', cxBulk:'Cancel selected',
     cxBtn:'Cancel', cxT:'Move carts cancelled at the resort out of the request and record them as cancelled',
     cxAsk:m=>`How many to cancel (requested ${m})`, cxBad:'Check the number',
     cxDone:(n)=>`${n} moved to cancelled (press save)`, cxNone:'No request on this row',
@@ -396,6 +411,9 @@ function renderUI(){
           <input type="checkbox" id="ck-all"${ONLY_ELEC?'':' checked'}> ${tx('showAllTeams')}</label>
         <span class="cnt" id="list-scope" style="color:var(--muted);margin-left:8px"></span>
         <span class="cnt" id="list-skip" style="color:var(--muted);margin-left:10px"></span>
+      </label>
+      <div id="pickbar" class="pickbar noprint" style="display:none"></div>
+      <label style="display:none">
         <button class="btn sm ghost" id="btn-auto" type="button">${tx('autoDay')}</button>
         <button class="btn sm ghost" id="btn-reload" type="button">${tx('reload')}</button>
         <button class="btn" id="btn-save" type="button" disabled>${tx('save')}</button>
@@ -512,7 +530,12 @@ async function load(){
       if(!saved){
         const courseOk=((PC[b.event_seq]||row.course)==='やまなみCC');   // 수기 지정 코스 우선
         const p=SZCore.cartPlan(g.pax||b.pax||0, _elecKind==='sure'&&courseOk);
-        if(p && TYPES.some(t=>t.code===p.code)){ qty[p.code]=p.qty; srcOne=(p.code==='electric'?'pre':'onsite'); auto=true; }
+        // 비고에 「1개 신청」·「2대」처럼 대수가 적혀 있으면 그 숫자가 정답(4명당 1대 추정보다 우선)
+        const qFromRemark=(_elecKind==='sure'&&courseOk)?SZCore.cartQtyFromRemark(_remarkAll):null;
+        if(p && TYPES.some(t=>t.code===p.code)){
+          qty[p.code]=(qFromRemark && p.code==='electric')?qFromRemark:p.qty;
+          srcOne=(p.code==='electric'?'pre':'onsite'); auto=true;
+        }
       }
       ROWS.push({
         seq:b.event_seq, tag:g.team_tag||g.group_code||'', rep:b.rep_name||'', accom,
@@ -634,6 +657,100 @@ async function saveCourse(r, course){
     toast((/play_course/i.test(String(e&&e.message||e))?tx('courseSql'):tx('saveFail'))+': '+String(e&&e.message||e),'err');
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════
+//  취소 — 「이 날짜만」 / 「전 기간(남은 라운딩 전부)」 · 여러 팀 일괄(Min 2026-08)
+// ════════════════════════════════════════════════════════════════════════
+let PICK=new Set();                    // 일괄 취소로 고른 팀(event_seq)
+function renderPickBar(){
+  const el=$('#pickbar'); if(!el) return;
+  if(!PICK.size){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='flex';
+  el.innerHTML=`<span>${esc(tx('pickN')(PICK.size))}</span>`
+    +`<button class="btn sm" type="button" id="pick-cx">${esc(tx('cxBulk'))}</button>`
+    +`<button class="btn ghost sm" type="button" id="pick-clear">${esc(tx('pickClear'))}</button>`;
+  $('#pick-cx').addEventListener('click',()=>{
+    const rows=ROWS.filter(r=>PICK.has(r.seq)); if(rows.length) openCancelModal(rows);
+  });
+  $('#pick-clear').addEventListener('click',()=>{ PICK.clear(); renderTable(); });
+}
+// 그 팀이 라운딩하는 날짜들(오늘 이후만) — 전 기간 취소 대상
+function teamRoundDates(r){
+  return SZCore.golfRows({dep:r.dep,arr:r.arr,accom:r.accom}, r.isPus)
+    .map(x=>x.date).filter(d=>d>=DATE);
+}
+function openCancelModal(rows){
+  const one=rows.length===1;
+  const maxN=one?Math.max(...TYPES.map(t=>+rows[0].qty[t.code]||0)):0;
+  if(one && !maxN){ toast(tx('cxNone'),'warn'); return; }
+  const dates=teamRoundDates(rows[0]);
+  const bg=document.createElement('div'); bg.className='modal-bg'; bg.id='cx-modal';
+  bg.innerHTML=`<div class="modal" style="max-width:460px">
+    <h2>${esc(tx('cxTitle'))}</h2>
+    <div style="padding:10px 18px 0;font-size:12.5px">
+      <div style="margin-bottom:8px">${rows.map(r=>`<b>${esc(r.tag)}</b> ${esc(r.rep)}`).join(' · ')}</div>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
+        <span style="min-width:64px;font-weight:700">${esc(tx('cxQty'))}</span>
+        <input class="inp" id="cx-n" type="number" min="1" ${one?`max="${maxN}"`:''} value="1" style="width:90px">
+        ${one?`<span style="color:var(--muted)">/ ${maxN}</span>`:`<span style="color:var(--muted)">${esc(tx('cxQtyBulk'))}</span>`}
+      </label>
+      <div style="font-weight:700;margin-bottom:5px">${esc(tx('cxScope'))}</div>
+      <label style="display:flex;align-items:flex-start;gap:8px;padding:7px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:6px;cursor:pointer">
+        <input type="radio" name="cxs" value="day" checked>
+        <span><b>${esc(tx('cxDay'))}</b><span style="display:block;color:var(--muted)">${esc(SZCore.mdWd(DATE,lang()))}</span></span></label>
+      <label style="display:flex;align-items:flex-start;gap:8px;padding:7px 10px;border:1px solid var(--border2);border-radius:8px;cursor:pointer">
+        <input type="radio" name="cxs" value="all">
+        <span><b>${esc(tx('cxAll'))}</b><span style="display:block;color:var(--muted)">${esc(tx('cxAllHint')(dates.length))}</span></span></label>
+    </div>
+    <div style="padding:12px 18px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn ghost sm" type="button" id="cx-close">${esc(tx('close'))}</button>
+      <button class="btn sm" type="button" id="cx-go" style="background:var(--err);border-color:var(--err)">${esc(tx('cxBtn'))}</button>
+    </div></div>`;
+  document.body.appendChild(bg);
+  const close=()=>bg.remove();
+  bg.addEventListener('click',e=>{ if(e.target===bg) close(); });
+  $('#cx-close').addEventListener('click',close);
+  $('#cx-go').addEventListener('click',async()=>{
+    const n=Math.floor(+$('#cx-n').value||0);
+    if(!(n>0) || (one && n>maxN)){ toast(tx('cxBad'),'warn'); return; }
+    const scope=bg.querySelector('input[name=cxs]:checked').value;
+    close();
+    await applyCancel(rows, n, scope);
+  });
+}
+// 취소 적용. 이 날짜분은 화면에서 바로 반영(저장 대상), 다른 날짜는 DB에 즉시 기록한다.
+async function applyCancel(rows, n, scope){
+  let dayN=0, farN=0;
+  for(const r of rows){
+    const code=TYPES.find(t=>(+r.qty[t.code]||0)>0) || TYPES[0];
+    const had=+r.qty[code.code]||0;
+    const take=Math.min(n, had);
+    if(take>0){ r.qty[code.code]=had-take; r.cx=(+r.cx||0)+take; mark(r); dayN+=take; }
+    if(scope!=='all') continue;
+    // 다른 날짜 — 규칙 예상치에서 빼고 취소로 기록(저장된 값이 있으면 그 값 기준)
+    const others=teamRoundDates(r).filter(d=>d!==DATE);
+    for(const d of others){
+      try{
+        const {data:ex}=await supa.from('cart_bookings').select('*')
+          .eq('play_date',d).eq('event_seq',r.seq);
+        const cur=(ex||[])[0];
+        const plan=SZCore.cartPlan(r.pax, r.elec);
+        const base=cur?(+cur.qty||0):(plan?plan.qty:0);
+        const cut=Math.min(n, base);
+        if(cut<=0) continue;
+        await supa.from('cart_bookings').upsert({
+          play_date:d, event_seq:r.seq, cart_code:(cur?cur.cart_code:(plan?plan.code:code.code)),
+          qty:base-cut, cancelled:(cur?(+cur.cancelled||0):0)+cut,
+          source:(cur?cur.source:'pre'), created_by:curUser()||null
+        },{onConflict:'play_date,event_seq,cart_code,source'});
+        farN+=cut;
+      }catch(e){}
+    }
+  }
+  renderStock(); renderTable();
+  toast(scope==='all'?tx('cxDoneAll')(dayN,farN):tx('cxDone')(dayN),'ok');
+}
+
 function eligBadge(r){
   const e=eligOf(r);
   const k=e==='ok'?'eligOk':e==='cond'?'eligCond':'eligNo';
@@ -687,7 +804,7 @@ function renderTable(){
     const fee=TYPES.reduce((s,t)=>s+(+r.qty[t.code]||0)*(+t.fee_yen||0),0);
     const gc=r.grpCourse?`${COURSE_NAME[r.grpCourse]||r.grpCourse}`:'';
     return `<tr data-i="${i}" class="${DIRTY.has(r.seq)?'dirty':''}">
-      <td class="l"><div class="tcell"><span class="tag">${esc(r.tag)}</span>`
+      <td class="l"><div class="tcell"><input type="checkbox" class="pick noprint" data-pick="${i}"${PICK.has(r.seq)?' checked':''} title="${esc(tx('pickT'))}"><span class="tag">${esc(r.tag)}</span>`
       +`<span class="amark">${r.auto?`<span class="bdg" style="opacity:.65">${esc(tx('autoMark'))}</span>`:''}</span>`
       +`<button class="btn xs ghost noprint" type="button" data-disp="${r.seq}" title="${esc(tx('dispT'))}">${esc(tx('dispBtn'))}</button>`
       +`<button class="btn xs ghost noprint" type="button" data-cx="${i}" title="${esc(tx('cxT'))}" style="color:var(--err);border-color:#e3bdb4">${esc(tx('cxBtn'))}</button>`
@@ -715,6 +832,7 @@ function renderTable(){
       <td class="tee">${fee?('¥'+fee.toLocaleString()):'-'}</td>
     </tr>`;
   }).join('');
+  const CXL=ROWS.filter(r=>+r.cx>0);
   const totFee=LIST.reduce((s,r)=>s+TYPES.reduce((n,t)=>n+(+r.qty[t.code]||0)*(+t.fee_yen||0),0),0);
   box.innerHTML=`<table class="t"><thead><tr>
       <th>${tx('thTeam')}</th><th>${tx('thRep')}</th><th>${tx('thAccom')}</th><th>${tx('thPax')}</th>
@@ -724,7 +842,13 @@ function renderTable(){
     <tr class="sum"><td class="l" colspan="7">${tx('thTotal')} <span style="font-weight:600">· ${esc(tx('sumReq'))} ${LIST.reduce((n,r)=>n+TYPES.reduce((m,t)=>m+(+r.qty[t.code]||0),0),0)}${LIST.some(r=>r.cx)?` · ${esc(tx('sumCx'))} ${LIST.reduce((n,r)=>n+(+r.cx||0),0)}`:''}</span></td>
       ${TYPES.map(t=>`<td>${usedOf(t.code)}</td>`).join('')}
       <td colspan="3"></td><td>¥${totFee.toLocaleString()}</td></tr>
-    </tbody></table>`;
+    </tbody></table>`
+    + (CXL.length?`<div class="cxbox"><h4>${esc(tx('cxSect')(CXL.length, CXL.reduce((n,r)=>n+(+r.cx||0),0)))}</h4>`
+        + CXL.map(r=>`<div class="row"><b class="tag">${esc(r.tag)}</b><span>${esc(r.rep)}</span>
+            <span style="color:var(--muted)">${esc(accomL(r.accom))}</span>
+            <span style="margin-left:auto;font-weight:800;color:var(--err)">${esc(tx('thCx'))} ${r.cx}</span>
+            <button class="btn xs ghost noprint" type="button" data-cxu2="${ROWS.indexOf(r)}" title="${esc(tx('cxUndoT'))}">${esc(tx('cxUndo'))}</button>
+          </div>`).join('') + `</div>`:'');
   box.querySelectorAll('[data-disp]').forEach(el=>el.addEventListener('click',e=>{ e.stopPropagation(); openDispatch(el.dataset.disp); }));
   box.querySelectorAll('tr[data-i]').forEach(tr=>{
     const r=ROWS[+tr.dataset.i];
@@ -738,15 +862,18 @@ function renderTable(){
   box.querySelectorAll('[data-cx]').forEach(b=>b.addEventListener('click',e=>{
     e.stopPropagation();
     const r=ROWS[+b.dataset.cx]; if(!r) return;
-    const code=TYPES.find(t=>(+r.qty[t.code]||0)>0);
-    const had=code?(+r.qty[code.code]||0):0;
-    if(!had){ toast(tx('cxNone'),'warn'); return; }
-    const ans=prompt(tx('cxAsk')(had), '1');
-    if(ans===null) return;
-    const n=Math.floor(+ans||0);
-    if(!(n>0 && n<=had)){ toast(tx('cxBad'),'warn'); return; }
-    r.qty[code.code]=had-n; r.cx=(+r.cx||0)+n;
-    mark(r); renderStock(); renderTable(); toast(tx('cxDone')(n),'ok');
+    openCancelModal([r]);
+  }));
+  box.querySelectorAll('[data-cxu2]').forEach(b=>b.addEventListener('click',()=>{
+    const r=ROWS[+b.dataset.cxu2]; if(!r||!(+r.cx>0)) return;
+    const code=TYPES.find(t=>(+r.qty[t.code]||0)>0)||TYPES[0];
+    r.qty[code.code]=(+r.qty[code.code]||0)+(+r.cx||0); r.cx=0;
+    mark(r); renderStock(); renderTable(); toast(tx('cxUndoDone'),'ok');
+  }));
+  box.querySelectorAll('[data-pick]').forEach(b=>b.addEventListener('change',()=>{
+    const r=ROWS[+b.dataset.pick]; if(!r) return;
+    b.checked?PICK.add(r.seq):PICK.delete(r.seq);
+    renderPickBar();
   }));
   box.querySelectorAll('[data-cxu]').forEach(b=>b.addEventListener('click',e=>{
     e.stopPropagation();

@@ -125,3 +125,16 @@ test('묶음 분리 — 대표가 둘이면 같은 달이어도 정확히 갈라
   assert.equal(SZ.splitByReps(one).length, 1);
   assert.equal(SZ.clusterOf(one, '3').length, 3);
 });
+
+// ── 비고에 적힌 신청 대수 우선 (Min 2026-08) ───────────────────────────────
+//   「4명당 1대」 추정보다 비고의 실제 대수가 정답이다(함영업 5명·1대 / 이미애 2대).
+test('cartQtyFromRemark — 비고의 대수를 읽는다', () => {
+  assert.equal(SZ.cartQtyFromRemark('■전기카드 1개 신청 / 2인용으로 사용예정'), 1);
+  assert.equal(SZ.cartQtyFromRemark('전기카트 2대 신청'), 2);
+  assert.equal(SZ.cartQtyFromRemark('電動カート 3台 事前申請'), 3);
+  assert.equal(SZ.cartQtyFromRemark('EV카트 1대'), 1);
+  assert.equal(SZ.cartQtyFromRemark('2대 전기카트 요청'), 2);
+  assert.equal(SZ.cartQtyFromRemark('전기카트 사전신청'), null);       // 대수 표기 없음
+  assert.equal(SZ.cartQtyFromRemark('온천 2인 사전신청'), null);        // 전기와 무관한 숫자
+  assert.equal(SZ.cartQtyFromRemark(''), null);
+});

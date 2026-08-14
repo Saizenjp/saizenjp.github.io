@@ -336,6 +336,19 @@
   }
   //  pax → {code, qty}. electric=true 면 전기카트, 아니면 가솔린(2인승/4인승).
   //  code 는 cart_types.code 와 동일: 'electric' | 'gas2' | 'gas4'
+  //  비고에 적힌 **신청 대수**를 읽는다(있으면 4명당 1대 추정보다 우선).
+  //   실측 문구: 「■전기카드 1개 신청 / 2인용으로 사용예정」 · 「전기카트 2대 신청」
+  //   전기 키워드 근처의 숫자만 본다(다른 숫자에 오염되지 않게).
+  var CART_QTY_AFTER  = /(?:전기|전동|EV|電動|電気)\s*(?:카[트드]|カ[ーー]?ト)?[^0-9]{0,8}(\d{1,2})\s*(?:대|개|台)/i;
+  var CART_QTY_BEFORE = /(\d{1,2})\s*(?:대|개|台)[^0-9]{0,8}(?:전기|전동|EV|電動|電気)\s*(?:카[트드]|カ[ーー]?ト)?/i;
+  function cartQtyFromRemark(remark) {
+    var t = String(remark == null ? '' : remark);
+    var m = t.match(CART_QTY_AFTER) || t.match(CART_QTY_BEFORE);
+    if (!m) return null;
+    var n = parseInt(m[1], 10);
+    return (n > 0 && n <= 20) ? n : null;
+  }
+
   function cartPlan(pax, electric) {
     var p = Math.max(0, Math.floor(+pax || 0));
     if (!p) return null;
@@ -690,6 +703,7 @@
     wantsElectricCart: wantsElectricCart,
     cartRemarkKind: cartRemarkKind,
     cartPlan: cartPlan,
+    cartQtyFromRemark: cartQtyFromRemark,
     parseCartNos: parseCartNos,
     allocCartNos: allocCartNos,
     NM_PREFIX: NM_PREFIX,
