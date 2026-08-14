@@ -88,6 +88,14 @@
   .mhit .mh-team{font-family:var(--mono);font-size:12px;color:var(--text2)}
 
   /* 주문 뷰 */
+  .runlist{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+  .runlist table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .runlist th{text-align:left;font-size:11px;color:var(--text2);border-bottom:1px solid var(--border2);padding:5px 7px;white-space:nowrap}
+  .runlist td{border-bottom:1px solid var(--border);padding:5px 7px}
+  .runlist td.num{text-align:right;font-family:var(--mono)}
+  .runlist tfoot td{font-weight:800;border-bottom:none}
+  .runlist .who{color:var(--muted);font-size:11.5px}
+  .runlist .empty{color:var(--muted);font-size:12.5px;padding:6px 2px}
   .order-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:14px}
   .order-head .ot{font-size:20px;font-weight:800}
   .order-head .ot .otag{font-family:var(--mono);color:var(--accent)}
@@ -221,8 +229,11 @@
     <div class="order-head">
       <div class="ot"><span class="otag" id="oh-tag"></span> <span id="oh-rep"></span></div>
       <div class="orun"><span data-i18n="po_runningTotal"></span> <b id="oh-run">¥0</b></div>
+      <button class="btn ghost sm" id="btn-run-list" type="button" style="margin-left:8px"></button>
       <button class="btn ghost sm" id="btn-cust-display" type="button" style="margin-left:10px"></button>
     </div>
+    <!-- 누적 내역 — 금액만 있고 목록이 없어 「뭘로 6,000엔인지」 확인이 안 되던 것(Min 2026-08) -->
+    <div id="run-list" class="runlist" style="display:none"></div>
     <div class="order-stage">
       <div>
         <div class="venue-tabs" id="venue-tabs"></div>
@@ -298,7 +309,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.77"></script>
+<script src="../assets/saizen-ops.js?v=15.78"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -320,6 +331,8 @@ const L={
     custOnTitle:'このチームの請求を客先確認画面に表示/解除', custShow:'🖥 お客様画面表示', custHide:'🖥 表示を消す',
     custShown:'お客様画面に表示しました', custCleared:'お客様画面を消しました', custFail:e=>'お客様画面表示失敗: '+e,
     teamFallback:s=>'チーム'+s, member:'会', unassigned:'未配室',
+    runShow:'📋 累計の明細', runHide:'✕ 明細を閉じる', runLoading:'読込中…', runEmpty:'まだ注文がありません。',
+    runTh:['日付','内容','数量','金額','担当'], runTeamCol:'チーム共通', runTotal:'累計',
     payTeam:'チーム共通', paySplit:'個人指定 / N分の1',
     noRoster:'個人名簿がありません — step1で同行者名簿を登録してください。',
     pickPayer:'支払う人を選択してください', payerOne:'選択1名が全額負担', payerN:k=>k+'名でN分の1に分割',
@@ -341,6 +354,8 @@ const L={
     custOnTitle:'이 팀 계산서를 손님 확인 화면에 표시/해제', custShow:'🖥 손님 화면 표시', custHide:'🖥 표시 끄기',
     custShown:'손님 화면에 표시했습니다', custCleared:'손님 화면을 비웠습니다', custFail:e=>'손님 화면 표시 실패: '+e,
     teamFallback:s=>'팀'+s, member:'회', unassigned:'미배정',
+    runShow:'📋 누적 내역', runHide:'✕ 내역 닫기', runLoading:'불러오는 중…', runEmpty:'아직 주문이 없습니다.',
+    runTh:['날짜','내역','수량','금액','담당'], runTeamCol:'팀 공통', runTotal:'누적',
     payTeam:'팀 공통', paySplit:'개인 지정 / N분의1',
     noRoster:'개인 명단이 없습니다 — step1에서 일행별 명단을 등록하세요.',
     pickPayer:'결제할 인원을 선택하세요', payerOne:'선택 1명이 전액 부담', payerN:k=>k+'명이 N분의 1로 분할',
@@ -362,6 +377,8 @@ const L={
     custOnTitle:'Show/clear this team’s bill on the customer display', custShow:'🖥 Show customer display', custHide:'🖥 Turn off',
     custShown:'Shown on customer display', custCleared:'Customer display cleared', custFail:e=>'Customer display failed: '+e,
     teamFallback:s=>'Team'+s, member:'M', unassigned:'No room',
+    runShow:'📋 Charges', runHide:'✕ Close', runLoading:'Loading…', runEmpty:'No orders yet.',
+    runTh:['Date','Item','Qty','Amount','By'], runTeamCol:'Team', runTotal:'Total',
     payTeam:'Team-wide', paySplit:'One person / Split evenly',
     noRoster:'No roster — register companions in step1.',
     pickPayer:'Select who pays', payerOne:'1 selected pays in full', payerN:k=>'Split evenly among '+k,
@@ -664,11 +681,12 @@ async function selectTeam(tm){
   state.team=tm; state.cart=[]; state.venue='__all__';
   state.folioId=null; state.memberFolio={}; state.payerMode='split'; state.payerSel=new Set();   // 기본=개인 지정 모드(Min)
   // 이 팀의 모든 folio(팀+개인) 누적 = 러닝 합계. 팀/개인 열린 folio id 캐시.
-  state.runningGross=0;
+  state.runningGross=0; state.folioIds=[]; state.folioOwner={};
   const {data}=await supa.from('v_folio_balance').select('folio_id,gross_total,status,subject,member_id')
     .eq('event_seq',tm.event_seq);
   (data||[]).forEach(f=>{
     state.runningGross+=Number(f.gross_total||0);
+    state.folioIds.push(f.folio_id); state.folioOwner[f.folio_id]=f.member_id||null;
     if(f.status==='open' && f.subject==='team' && !state.folioId) state.folioId=f.folio_id;
     if(f.status==='open' && f.subject==='member' && f.member_id) state.memberFolio[f.member_id]=f.folio_id;
   });
@@ -683,6 +701,8 @@ async function selectTeam(tm){
   $('#oh-tag').textContent=teamTag(tm);
   $('#oh-rep').textContent=(tm.rep||'')+'  ·  #'+teamNo(tm);
   $('#oh-run').textContent=yen(state.runningGross);
+  const rl=$('#run-list'); if(rl){ rl.style.display='none'; rl.innerHTML=''; }
+  const rb=$('#btn-run-list'); if(rb) rb.textContent=tx('runShow');
   renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); updateCustBtn();
 }
 
@@ -917,6 +937,7 @@ async function sendCart(){
     const who=state.payerMode==='split'?tx('splitN')(state.payerSel.size):tx('payTeam');
     toast(tx('sendToast')(teamTag(state.team),who,state.cart.length,yen(total),tickets.length),'ok');
     state.runningGross+=total; $('#oh-run').textContent=yen(state.runningGross);
+    { const box=$('#run-list'); if(box && box.style.display!=='none'){ box.style.display='none'; toggleRunList(); } }
     state.cart=[]; renderCart();
     if(tickets.length) koRefresh();   // 방금 보낸 주문이 현황에 바로 뜨도록
   }catch(e){
@@ -1097,6 +1118,36 @@ $('#btn-day-next').addEventListener('click',()=>shiftPosDay(1));
 $('#btn-today').addEventListener('click',()=>{ $('#date-pick').value=isoToday(); if(supa) loadTeams(); });
 $('#date-pick').addEventListener('change',()=>{ if(supa) loadTeams(); });
 $('#btn-back').addEventListener('click',backToTeams);
+// ── 누적 내역 ─────────────────────────────────────────────────────────
+//  헤더엔 「이 팀 누적 ¥6,000」 금액만 있어 무엇으로 그 금액이 됐는지 확인할 수 없었다.
+//  버튼 한 번으로 그 팀의 전체 청구(팀공통+개인)를 시간순으로 펼친다.
+async function toggleRunList(){
+  const box=$('#run-list'), btn=$('#btn-run-list');
+  if(!box||!state.team) return;
+  if(box.style.display!=='none'){ box.style.display='none'; box.innerHTML=''; btn.textContent=tx('runShow'); return; }
+  box.style.display=''; btn.textContent=tx('runHide');
+  box.innerHTML=`<div class="empty">${escP(tx('runLoading'))}</div>`;
+  const {data,error}=await supa.from('charges')
+    .select('id,created_at,description,qty,unit_price,amount,tax,member_id,created_by')
+    .eq('event_seq',state.team.event_seq).order('created_at',{ascending:true});
+  if(error){ box.innerHTML=`<div class="empty">${escP(error.message)}</div>`; return; }
+  const rows=data||[];
+  if(!rows.length){ box.innerHTML=`<div class="empty">${escP(tx('runEmpty'))}</div>`; return; }
+  const nameOf=mid=>{ const m=(state.roster||[]).find(x=>String(x.id)===String(mid)); return m?(m.name_kr||m.name_en||'-'):tx('runTeamCol'); };
+  const th=tx('runTh');
+  let sum=0;
+  const body=rows.map(c=>{
+    const gross=Number(c.amount||0)+Number(c.tax||0); sum+=gross;
+    const d=String(c.created_at||'').slice(5,10).replace('-','/');
+    return `<tr><td class="who">${escP(d)}</td><td>${escP(c.description||'')}</td>`
+      +`<td class="num">${c.qty||1}</td><td class="num">${yen(gross)}</td>`
+      +`<td class="who">${escP(c.member_id?nameOf(c.member_id):tx('runTeamCol'))}${c.created_by?' · '+escP(c.created_by):''}</td></tr>`;
+  }).join('');
+  box.innerHTML=`<table><thead><tr>${th.map(t=>`<th>${escP(t)}</th>`).join('')}</tr></thead>`
+    +`<tbody>${body}</tbody>`
+    +`<tfoot><tr><td colspan="3">${escP(tx('runTotal'))}</td><td class="num">${yen(sum)}</td><td></td></tr></tfoot></table>`;
+}
+$('#btn-run-list').addEventListener('click',toggleRunList);
 $('#btn-cust-display').addEventListener('click',()=>{
   if(!state.team) return;
   const on=custShownSeq===state.team.event_seq;

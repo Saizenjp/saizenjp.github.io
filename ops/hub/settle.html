@@ -41,6 +41,20 @@
   .btn:hover:not(:disabled){background:var(--accentDeep)}
   .btn:disabled{opacity:.4;cursor:not-allowed}
   .btn.ghost{background:transparent;color:var(--accent)}
+  /* 자주 안 쓰는 수기 입력은 접어 둔다 — 평소엔 명세·결제수단·마감만 보이게(Min 2026-08) */
+  details.fold{background:var(--surface);border:1px solid var(--border);border-radius:10px;margin:8px 0;padding:0 12px}
+  details.fold>summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--text2);padding:9px 0;list-style:none}
+  details.fold>summary::-webkit-details-marker{display:none}
+  details.fold>summary:hover{color:var(--accent)}
+  details.fold[open]{padding-bottom:11px}
+  /* 결제수단 = 버튼 2개(현금/카드) — 손님 앞 1동작 선택. 미정이면 앰버 테두리로 눈에 띈다. */
+  .pmbtns{display:inline-flex;gap:4px}
+  .pmbtn{font-family:inherit;font-size:12px;font-weight:700;padding:4px 11px;border-radius:6px;cursor:pointer;
+    border:1px solid var(--border2);background:var(--surface);color:var(--text2)}
+  .pmbtn:hover{border-color:var(--accent);color:var(--accent)}
+  .pmbtn.on.cash{background:var(--accent);border-color:var(--accent);color:#fff}
+  .pmbtn.on.card{background:#2f6f8f;border-color:#2f6f8f;color:#fff}
+  .pmbtns.unset .pmbtn{border-color:var(--warn);color:var(--warn)}
   .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
   .btn.sm{font-size:12px;padding:5px 12px}
   .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
@@ -208,7 +222,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.77"></script>
+<script src="../assets/saizen-ops.js?v=15.78"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -254,6 +268,7 @@ const L={
     stOpen:'開設中', stClosed:'締め', stSettled:'決済完了',
     catRound:'ラウンド', catFood:'飲食', catStay:'宿泊', catShop:'ゴルフショップ', catEtc:'その他',
     mCash:'現金', mCard:'カード',
+    foldAdd:'＋ 手入力で請求を追加(ラウンド追加・ルームチャージ・返金調整)', foldPay:'＋ 手入力で入金を記録',
     thPayMethod:'決済', pmUnset:'未定', pmBulkHint:'各件を現金/カードで選択 →', allCash:'全部現金', allCard:'全部カード',
     settleAutoBtn:'💰 精算締め(自動決済)', needAllMethod:'未定の請求あり — 全件に現金/カードを指定してください', settledDone:'締めました(精算完了)',
     settleConfirm:'この内容で締めますか?(現金/カード決済を自動作成)', saveFail:'保存失敗',
@@ -286,6 +301,7 @@ const L={
     stOpen:'열림', stClosed:'마감', stSettled:'결제완료',
     catRound:'라운딩', catFood:'식음', catStay:'숙박', catShop:'골프샵', catEtc:'기타',
     mCash:'현금', mCard:'카드',
+    foldAdd:'＋ 수기로 청구 추가(라운딩 추가·룸차지·환불 조정)', foldPay:'＋ 수기로 결제 기록',
     thPayMethod:'결제', pmUnset:'미정', pmBulkHint:'각 건을 현금/카드로 선택 →', allCash:'전부 현금', allCard:'전부 카드',
     settleAutoBtn:'💰 정산 마감(자동결제)', needAllMethod:'미정 청구가 있습니다 — 전 건에 현금/카드를 지정하세요', settledDone:'마감했습니다(결제완료)',
     settleConfirm:'이대로 마감할까요?(현금/카드 결제 자동 생성)', saveFail:'저장 실패',
@@ -318,6 +334,7 @@ const L={
     stOpen:'Open', stClosed:'Closed', stSettled:'Settled',
     catRound:'Round', catFood:'F&B', catStay:'Lodging', catShop:'Pro shop', catEtc:'Other',
     mCash:'Cash', mCard:'Card',
+    foldAdd:'＋ Add a charge manually (extra round, room charge, refund)', foldPay:'＋ Record a payment manually',
     thPayMethod:'Pay', pmUnset:'Unset', pmBulkHint:'Tag each charge cash/card →', allCash:'All cash', allCard:'All card',
     settleAutoBtn:'💰 Settle (auto-pay)', needAllMethod:'Some charges have no method — set cash/card on all', settledDone:'Settled',
     settleConfirm:'Settle now? (auto-creates cash/card payments)', saveFail:'Save failed',
@@ -669,8 +686,8 @@ function renderDetail(){
     </div>`:''}
 
     ${editable?`
-    <div class="panel">
-      <h3 data-i18n="st_addCharge"></h3>
+    <details class="fold">
+      <summary>${tx('foldAdd')}</summary>
       <div class="form-row">
         <select class="inp" id="ch-cat">${catOpts}</select>
         <input class="inp desc" id="ch-desc" type="text" data-i18n-ph="st_phDesc">
@@ -680,7 +697,7 @@ function renderDetail(){
         <button class="btn sm" id="btn-add-charge" type="button" data-i18n="st_add"></button>
       </div>
       <div class="hint" style="margin-top:5px">${tx('refundHint')}</div>
-    </div>`:''}
+    </details>`:''}
 
     <div class="panel">
       <h3 data-i18n="st_payments"></h3>
@@ -689,12 +706,13 @@ function renderDetail(){
         <tbody>${payRows}</tbody>
       </table>
       ${editable?`
-      <div class="form-row" style="margin-top:10px">
+      <details class="fold" style="margin-top:8px"><summary>${tx('foldPay')}</summary>
+      <div class="form-row">
         <select class="inp" id="pay-method">${methOpts}</select>
         <input class="inp" id="pay-amount" type="number" min="0" step="100" value="${bal>0?bal:0}" style="width:120px">
         <input class="inp" id="pay-by" type="text" data-i18n-ph="st_phReceiver" style="width:120px">
         <button class="btn sm" id="btn-add-pay" type="button" data-i18n="st_add"></button>
-      </div>`:''}
+      </div></details>`:''}
     </div>
 
     <div class="totals">
@@ -724,7 +742,14 @@ function renderDetail(){
     $('#ch-qty').addEventListener('input',recalc); $('#ch-unit').addEventListener('input',recalc); recalc();
     $('#btn-add-charge').addEventListener('click',addCharge);
     $('#btn-add-pay').addEventListener('click',addPayment);
-    box.querySelectorAll('.pm-sel').forEach(s=>s.addEventListener('change',()=>updatePayMethod(s.dataset.pm,s.value)));
+    box.querySelectorAll('.pmbtn').forEach(b=>b.addEventListener('click',()=>{
+      const on=b.classList.contains('on');
+      const wrap=b.parentElement;
+      wrap.querySelectorAll('.pmbtn').forEach(x=>x.classList.remove('on','cash','card'));
+      if(!on){ b.classList.add('on', b.dataset.v==='현금'?'cash':'card'); }
+      wrap.classList.toggle('unset', on);
+      updatePayMethod(b.dataset.pm, on?'':b.dataset.v);
+    }));
     const ac=$('#btn-all-cash'); if(ac) ac.addEventListener('click',()=>bulkPay('현금'));
     const ar=$('#btn-all-card'); if(ar) ar.addEventListener('click',()=>bulkPay('카드'));
     const sa=$('#btn-settle-auto'); if(sa) sa.addEventListener('click',()=>settleClose(f));
@@ -788,13 +813,14 @@ async function setStatus(id,status){
 }
 
 // ── 청구건별 현금/카드 + 마감 자동결제 ──
+// 손님 앞에서 누르는 화면이라 드롭다운(열기→고르기 2동작) 대신 버튼 2개(1동작).
+//  같은 버튼을 다시 누르면 미정으로 되돌린다.
 function paySel(c){
   const v=c.pay_method||'';
-  return `<select class="inp pm-sel" data-pm="${c.id}" style="padding:3px 6px;font-size:12px;${v?'':'border-color:var(--warn)'}">
-    <option value=""${v===''?' selected':''}>${tx('pmUnset')}</option>
-    <option value="현금"${v==='현금'?' selected':''}>${tx('mCash')}</option>
-    <option value="카드"${v==='카드'?' selected':''}>${tx('mCard')}</option>
-  </select>`;
+  return `<span class="pmbtns${v?'':' unset'}">`
+    +`<button type="button" class="pmbtn${v==='현금'?' on cash':''}" data-pm="${c.id}" data-v="현금">${tx('mCash')}</button>`
+    +`<button type="button" class="pmbtn${v==='카드'?' on card':''}" data-pm="${c.id}" data-v="카드">${tx('mCard')}</button>`
+    +`</span>`;
 }
 async function updatePayMethod(id,val){
   const {error}=await supa.from('charges').update({pay_method:val||null}).eq('id',id);

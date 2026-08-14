@@ -64,6 +64,21 @@
   .pv-rep{font-weight:700;font-size:15px;margin-top:2px}
   .pv-sub{font-size:11.5px;color:var(--text2);margin-top:3px}
   .pv-no{font-size:10.5px;color:#b45; font-weight:700}
+  /* 표 보기 — 실무자는 카드보다 표에서 훨씬 빨리 찾는다(숙소·층으로 묶고 검색으로 좁힌다) */
+  .tblwrap{overflow-x:auto}
+  table.qt{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.qt th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:7px 9px;text-align:left;font-size:11.5px;color:var(--text2);white-space:nowrap}
+  table.qt td{border-bottom:1px solid var(--border);padding:6px 9px;vertical-align:middle}
+  table.qt tr.gh td{background:var(--accentSoft);font-weight:800;color:var(--accentDeep);font-size:12px;padding:5px 9px}
+  table.qt tr:hover td{background:var(--surface2)}
+  .qt .tag{font-family:var(--mono);font-weight:800;color:var(--accent)}
+  .qt .rno{font-family:var(--mono);font-weight:700}
+  .qt .fl{font-weight:800;color:var(--text2)}
+  .qt .nt{color:var(--muted)}
+  .qt .warn{color:var(--err);font-weight:700}
+  /* 팀 묶음 배지 — 手配書·전기카트와 같은 표기(「팀」 + 묶음별 색) */
+  .gbadge{display:inline-block;font-size:10.5px;font-weight:800;color:#fff;border-radius:99px;padding:1px 7px;margin-left:5px;vertical-align:middle}
+  .srch{flex:1;min-width:220px}
 </style>
 <link rel="stylesheet" href="../assets/saizen-ops.css?v=15.40">
 </head>
@@ -97,10 +112,26 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.77"></script>
+<script src="../assets/saizen-ops.js?v=15.78"></script>
 <script>
 const $=s=>document.querySelector(s);
-let supa=null, YM=null, ROWS=[], TOKMAP={}, DATESEL=new Set(), ACCOMSEL=new Set();
+let supa=null, YM=null, ROWS=[], TOKMAP={}, DATESEL=new Set(), ACCOMSEL=new Set(), Q='', TG={};
+// 묶음 색 — 手配書·전기카트 배정표와 같은 팔레트(어느 화면에서 봐도 같은 묶음=같은 색)
+const GRP_COLORS=['#647548','#9a7322','#2f6f8f','#8a4b6b','#4f6f4f','#7a5a16','#3f5d8a','#8a5a3a'];
+function grpColor(g){ let h=0; const s=String(g||''); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return GRP_COLORS[h%GRP_COLORS.length]; }
+function grpBadge(r){
+  if(!r.grp) return '';
+  const mates=ROWS.filter(x=>x.grp===r.grp).map(x=>x.tag);
+  return `<span class="gbadge" style="background:${grpColor(r.grp)}" title="${esc(tx('grpT',mates.join(' · ')))}">${tx('grpMark')}</span>`;
+}
+// 방호수 → 층. zone('9층')이 정본이고, 없으면 간지호텔처럼 3자리 호수(201호=2층)에서 뽑는다.
+//  야마나미 호텔동은 호수(13xx~22xx)와 실제 층(3~12층)이 달라 손님이 헷갈린다 → 층을 반드시 같이 적는다.
+function floorNo(zone, roomNo){
+  const m=/^(\d+)\s*층$/.exec(String(zone||'').trim()); if(m) return +m[1];
+  const r=/^(\d)\d{2}\s*호$/.exec(String(roomNo||'').trim()); if(r) return +r[1];
+  return 0;
+}
+function floorLabel(zone, roomNo){ const f=floorNo(zone,roomNo); return f?tx('floorU',f):''; }
 const ACCOM_ORDER=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸','시즈노야도','소보별장','아소별장','돔하우스'];
 
 function setConn(t,c){ const e=$('#conn-state'); if(e){ e.textContent=t; e.className='pill'+(c?' '+c:''); } }
@@ -127,7 +158,10 @@ const L={
     loading:'読込中…', noMonth:'今月のデータなし', loadFail:'読込失敗', loadFailToast:msg=>`読込失敗: ${msg}`,
     statCount:(v,t,nt)=>`${v} / ${t}チーム${nt?` · ⚠ トークンなし ${nt}`:''}`,
     noData:'今月のデータがありません。', noMatch:'選択条件に合うチームがありません。',
-    pvNoTok:'⚠ QRトークンなし(発行権限が必要)', paxUnit:'名', roomLbl:'部屋', roomEach:' ※部屋ごとに1枚',
+    pvNoTok:'⚠ QRトークンなし', paxUnit:'名', roomLbl:'部屋', roomEach:' ※部屋ごとに1枚',
+    searchPh:'代表者・タグコード・部屋番号で検索', searchClr:'✕ クリア', srchHit:n=>`検索 ${n}件`,
+    thTag:'タグコード', thRep:'代表者', thAccom:'宿泊', thFloor:'階', thRoom:'部屋番号', thStay:'滞在', thPax:'人数', thTok:'QR',
+    grpMark:'チーム', grpT:tags=>`まとめ: ${tags}`, floorU:n=>`${n}階`, noRoom:'未配置', unassigned:'未配置',
     noCards:'印刷するカードがありません(トークンなし)。', qrLibFail:'QRライブラリ読込失敗 — 再読み込み後に再度お試しください。', popupBlocked:'ポップアップがブロックされました。',
     teamUnit:'チーム' },
   ko:{ pageStep:'주문 QR카드', connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connRetry:'연결 실패 · 재시도',
@@ -140,7 +174,10 @@ const L={
     loading:'로딩…', noMonth:'이 달 데이터 없음', loadFail:'로드 실패', loadFailToast:msg=>`로드 실패: ${msg}`,
     statCount:(v,t,nt)=>`${v} / ${t}팀${nt?` · ⚠ 토큰없음 ${nt}`:''}`,
     noData:'이 달 데이터가 없습니다.', noMatch:'선택 조건에 맞는 팀이 없습니다.',
-    pvNoTok:'⚠ QR 토큰 없음(발급 권한 필요)', paxUnit:'名', roomLbl:'방', roomEach:' ※방마다 1장',
+    pvNoTok:'⚠ QR 토큰 없음', paxUnit:'名', roomLbl:'방', roomEach:' ※방마다 1장',
+    searchPh:'대표자·태그코드·방호수로 검색', searchClr:'✕ 지움', srchHit:n=>`검색 ${n}건`,
+    thTag:'태그코드', thRep:'대표자', thAccom:'숙소', thFloor:'층', thRoom:'방호수', thStay:'체류', thPax:'인원', thTok:'QR',
+    grpMark:'팀', grpT:tags=>`묶음: ${tags}`, floorU:n=>`${n}층`, noRoom:'미배정', unassigned:'미배정',
     noCards:'인쇄할 카드가 없습니다(토큰 없음).', qrLibFail:'QR 라이브러리 로드 실패 — 새로고침 후 다시 시도하세요.', popupBlocked:'팝업이 차단되었습니다.',
     teamUnit:'팀' },
   en:{ pageStep:'Order QR cards', connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connRetry:'Failed · retry',
@@ -153,7 +190,10 @@ const L={
     loading:'Loading…', noMonth:'No data this month', loadFail:'Load failed', loadFailToast:msg=>`Load failed: ${msg}`,
     statCount:(v,t,nt)=>`${v} / ${t} teams${nt?` · ⚠ no token ${nt}`:''}`,
     noData:'No data this month.', noMatch:'No teams match the selection.',
-    pvNoTok:'⚠ No QR token (issue permission required)', paxUnit:'', roomLbl:'Room', roomEach:' ※1 card per room',
+    pvNoTok:'⚠ No QR token', paxUnit:'', roomLbl:'Room', roomEach:' ※1 card per room',
+    searchPh:'Search by name, tag code or room no', searchClr:'✕ Clear', srchHit:n=>`${n} found`,
+    thTag:'Tag code', thRep:'Rep', thAccom:'Stay', thFloor:'Floor', thRoom:'Room', thStay:'Dates', thPax:'Pax', thTok:'QR',
+    grpMark:'Grp', grpT:tags=>`Grouped: ${tags}`, floorU:n=>`${n}F`, noRoom:'unassigned', unassigned:'Unassigned',
     noCards:'No cards to print (no token).', qrLibFail:'QR library failed to load — refresh and try again.', popupBlocked:'Pop-up was blocked.',
     teamUnit:' teams' }
 };
@@ -197,11 +237,17 @@ function renderUI(){
       </div>
       <div class="row" style="margin-top:10px"><span class="lbl">${tx('arrLbl')}</span><div id="datechips" class="row"></div></div>
       <div class="row" style="margin-top:8px"><span class="lbl">${tx('accomLbl')}</span><div id="accomchips" class="row"></div></div>
+      <div class="row" style="margin-top:10px">
+        <input class="inp srch" id="q" type="search" placeholder="${esc(tx('searchPh'))}" autocomplete="off">
+        <button class="btn sm ghost" id="q-clr" type="button">${tx('searchClr')}</button>
+      </div>
     </div>
     <div class="panel"><div id="preview"></div></div>`;
   $('#ym-prev').addEventListener('click',()=>{ YM=shiftYM(YM,-1); load(); });
   $('#ym-next').addEventListener('click',()=>{ YM=shiftYM(YM,1); load(); });
   $('#btn-print').addEventListener('click',printCards);
+  const q=$('#q'); if(q){ q.value=Q; q.addEventListener('input',()=>{ Q=q.value.trim(); renderPreview(); }); }
+  const qc=$('#q-clr'); if(qc) qc.addEventListener('click',()=>{ Q=''; const e=$('#q'); if(e) e.value=''; renderPreview(); });
 }
 
 // 토큰 확보 — 없으면 즉시 발급(팀 고유 랜덤). 권한(print/room) 없으면 조용히 스킵.
@@ -237,16 +283,26 @@ async function load(){
     }
     await ensureTokens(seqs);
     // 방배정 로드 — event_seq → 배정된 방호수 목록(중복 제거·정렬). room_inventory로 호수 해석.
-    const INVN={}; { const {data:inv}=await supa.from('room_inventory').select('id,room_no'); (inv||[]).forEach(r=>INVN[r.id]=r.room_no); }
+    const INVN={}; { const {data:inv}=await supa.from('room_inventory').select('id,room_no,zone'); (inv||[]).forEach(r=>INVN[r.id]=r); }
     const RM={};
     for(let i=0;i<seqs.length;i+=300){ const chunk=seqs.slice(i,i+300);
       const {data:rr}=await supa.from('rooms').select('event_seq,inventory_id').in('event_seq',chunk);
-      (rr||[]).forEach(r=>{ const rn=INVN[r.inventory_id]; if(rn){ (RM[r.event_seq]=RM[r.event_seq]||new Set()).add(rn); } });
+      (rr||[]).forEach(r=>{ const iv=INVN[r.inventory_id]; if(iv&&iv.room_no){
+        const m=(RM[r.event_seq]=RM[r.event_seq]||new Map());
+        if(!m.has(iv.room_no)) m.set(iv.room_no,{no:iv.room_no, zone:iv.zone||''});
+      }});
+    }
+    // 팀 묶음(手配書에서 묶은 그룹) — 배지 표기를 다른 화면과 똑같이 맞춘다
+    TG={};
+    for(let i=0;i<seqs.length;i+=300){ const chunk=seqs.slice(i,i+300);
+      const {data:po}=await supa.from('print_overrides').select('event_seq,team_group').in('event_seq',chunk);
+      (po||[]).forEach(x=>{ if(x.team_group) TG[x.event_seq]=x.team_group; });
     }
     ROWS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{};
       return { seq:b.event_seq, eventNo:b.event_no||'', rep:b.rep_name||'', dep:(b.dep_date||'').slice(0,10), arr:(b.arr_date||'').slice(0,10),
         tag:g.team_tag||g.group_code||('#'+(b.event_no||b.event_seq)), accom:g.accom||'', pax:g.pax||0, token:TOKMAP[b.event_seq]||'',
-        rooms:[...(RM[b.event_seq]||[])].sort() };
+        grp:TG[b.event_seq]||'',
+        rooms:[...(RM[b.event_seq]||new Map()).values()].sort((x,y)=>String(x.no).localeCompare(String(y.no),'ko',{numeric:true})) };
     }).sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||accomOrd(a.accom)-accomOrd(b.accom)||(a.rep||'').localeCompare(b.rep||''));
     DATESEL.clear();
     // 숙소 기본선택 = 야마나미·쿠주힐즈(그 달에 있는 것만). 다른 페이지와 동일.
@@ -274,26 +330,52 @@ function renderChips(){
 function pass(r){
   if(DATESEL.size && !DATESEL.has(r.dep)) return false;
   if(ACCOMSEL.size && !ACCOMSEL.has(r.accom)) return false;
+  // 검색은 날짜·숙소 필터보다 우선한다 — 「인쇄물 잃어버린 그 팀만 다시」 쓰는 용도라
+  // 무슨 칩이 켜져 있든 이름만 치면 찾아진다.
   return true;
 }
-function visibleRows(){ return ROWS.filter(pass); }
+function hit(r){
+  const q=Q.trim().toLowerCase(); if(!q) return true;
+  const hay=[r.rep, r.tag, r.eventNo, r.seq, accomL(r.accom), ...(r.rooms||[]).map(x=>x.no)].join(' ').toLowerCase();
+  return q.split(/\s+/).every(w=>hay.includes(w));
+}
+function visibleRows(){ const q=Q.trim(); return q ? ROWS.filter(hit) : ROWS.filter(pass); }
 
 function renderPreview(){
   const vis=visibleRows();
   const noTok=vis.filter(r=>!r.token).length;
-  $('#stat').textContent = ROWS.length?tx('statCount',vis.length,ROWS.length,noTok):'';
+  $('#stat').textContent = ROWS.length?(Q.trim()?tx('srchHit',vis.length)+' · ':'')+tx('statCount',vis.length,ROWS.length,noTok):'';
   $('#btn-print').disabled = !vis.some(r=>r.token);
   if(!ROWS.length){ $('#preview').innerHTML=`<div class="deny">${tx('noData')}</div>`; return; }
   if(!vis.length){ $('#preview').innerHTML=`<div class="deny">${tx('noMatch')}</div>`; return; }
-  const g=document.createElement('div'); g.className='pv-grid';
-  g.innerHTML=vis.map(r=>`<div class="pv-card">
-    <div class="pv-tag">${esc(r.tag)}</div>
-    <div class="pv-rep">${esc(r.rep||'-')} 様</div>
-    <div class="pv-sub">${esc(accomL(r.accom))} · ${r.pax}${tx('paxUnit')} · ${fmtMD(r.dep)}~${fmtMD(r.arr)}</div>
-    ${r.rooms&&r.rooms.length?`<div class="pv-room" style="font-weight:800;color:var(--accent);font-size:12.5px;margin-top:3px">${tx('roomLbl')} ${r.rooms.map(esc).join(' · ')}${r.rooms.length>1?tx('roomEach'):''}</div>`:''}
-    ${r.token?'':`<div class="pv-no">${tx('pvNoTok')}</div>`}
-  </div>`).join('');
-  $('#preview').innerHTML=''; $('#preview').appendChild(g);
+  // 표 보기 — 숙소로 묶고, 그 안은 층 → 방호수 순. 방배정 화면과 같은 순서로 눈이 따라간다.
+  const key=r=>accomL(r.accom)||tx('unassigned');
+  const minFloor=r=>{ const fs=(r.rooms||[]).map(x=>floorNo(x.zone,x.no)).filter(Boolean); return fs.length?Math.min(...fs):99; };
+  const firstRoom=r=>(r.rooms&&r.rooms[0])?String(r.rooms[0].no):'~';
+  const sorted=vis.slice().sort((a,b)=>
+    accomOrd(a.accom)-accomOrd(b.accom) || minFloor(a)-minFloor(b) ||
+    firstRoom(a).localeCompare(firstRoom(b),'ko',{numeric:true}) || (a.dep||'').localeCompare(b.dep||''));
+  let cur=null; const body=[];
+  sorted.forEach(r=>{
+    const k=key(r);
+    if(k!==cur){ cur=k; body.push(`<tr class="gh"><td colspan="8">${esc(k)}</td></tr>`); }
+    const fl=[...new Set((r.rooms||[]).map(x=>floorLabel(x.zone,x.no)).filter(Boolean))].join(' · ');
+    const rooms=(r.rooms||[]).map(x=>esc(x.no)).join(' · ');
+    body.push(`<tr>
+      <td class="tag">${esc(r.tag)}${grpBadge(r)}</td>
+      <td>${esc(r.rep||'-')}</td>
+      <td class="nt">${esc(accomL(r.accom))}</td>
+      <td class="fl">${esc(fl)}</td>
+      <td class="rno">${rooms||`<span class="nt">${tx('noRoom')}</span>`}</td>
+      <td class="nt">${fmtMD(r.dep)}~${fmtMD(r.arr)}</td>
+      <td>${r.pax}</td>
+      <td>${r.token?'✓':`<span class="warn">${tx('pvNoTok')}</span>`}</td>
+    </tr>`);
+  });
+  $('#preview').innerHTML=`<div class="tblwrap"><table class="qt">
+    <thead><tr><th>${tx('thTag')}</th><th>${tx('thRep')}</th><th>${tx('thAccom')}</th><th>${tx('thFloor')}</th>
+      <th>${tx('thRoom')}</th><th>${tx('thStay')}</th><th>${tx('thPax')}</th><th>${tx('thTok')}</th></tr></thead>
+    <tbody>${body.join('')}</tbody></table></div>`;
 }
 
 // QR 데이터URL 생성 — 자체 호스팅 qrcode-generator(동기, 전역 window.qrcode). CDN 의존 없음.
@@ -317,7 +399,7 @@ async function printCards(){
   const units=[];
   cards.filter(r=>qmap[r.seq]).forEach(r=>{ const rooms=(r.rooms&&r.rooms.length)?r.rooms:[null]; rooms.forEach(rm=>units.push({r,rm})); });
   const cardHTML=units.map(({r,rm})=>`<div class="qc">
-      ${rm?`<div class="qc-room">${esc(rm)}</div>`:''}
+      ${rm?`<div class="qc-room">${esc(rm.no)}${floorLabel(rm.zone,rm.no)?`<b>${esc(floorLabel(rm.zone,rm.no))}</b>`:''}</div>`:''}
       <div class="qc-h">
         <div class="qc-name">${esc(r.rep||'-')} <span>様</span></div>
         <div class="qc-sub">${esc(r.tag||'')} ・ ${esc(accomL(r.accom))}</div>
@@ -345,7 +427,9 @@ async function printCards(){
   .qc-inst{font-size:8.5pt;font-weight:800;color:#111;text-align:center;line-height:1.3}
   .qc-inst span{font-weight:700;color:#1e3a5f}
   .qc-brand{position:absolute;bottom:2.2mm;font-size:6.5pt;color:#9aa;letter-spacing:.5px}
-  .qc-room{position:absolute;top:3mm;right:3.5mm;font-size:12pt;font-weight:800;color:#1e3a5f;background:#eaf0f8;border:0.35mm solid #1e3a5f;border-radius:2mm;padding:0.6mm 2.4mm;line-height:1.1}
+  .qc-room{position:absolute;top:3mm;right:3.5mm;font-size:12pt;font-weight:800;color:#1e3a5f;background:#eaf0f8;border:0.35mm solid #1e3a5f;border-radius:2mm;padding:1mm 2.4mm;line-height:1.15;text-align:center}
+  /* 호수와 층이 다른 번호체계(1902호=9층)라 손님이 헷갈린다 → 층을 호수 아래 함께 인쇄 */
+  .qc-room b{display:block;font-size:8.5pt;font-weight:800;color:#345;letter-spacing:.3px;margin-top:.3mm}
   @media print{ @page{size:A4 portrait;margin:0} body{background:#fff} .bar{display:none} .grid{padding:8mm;gap:5mm} .qc{page-break-inside:avoid} }
 </style></head><body>
   <div class="bar"><h1>注文QRカード / 주문 QR카드</h1><div class="meta">${today} ・ ${units.length}${tx('teamUnit')}</div>
