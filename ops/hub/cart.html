@@ -119,6 +119,13 @@
   .tcell .btns{margin-left:auto;padding-left:12px;display:flex;align-items:center;gap:5px;flex:none}
   .tcell .btn{flex:none}
   /* 사전신청 ○/× */
+  .lsec{margin:2px 0 8px;font-size:13.5px;font-weight:800;color:var(--accent)}
+  .lsec .cnt{font-weight:700;color:var(--text2);margin-left:5px}
+  .noreq{margin-top:16px;border-top:1px dashed var(--border2);padding-top:10px}
+  .noreq>summary{cursor:pointer;font-size:13px;font-weight:800;color:var(--text2);list-style:none}
+  .noreq>summary::-webkit-details-marker{display:none}
+  .noreq>summary::before{content:'▸ ';color:var(--muted)}
+  .noreq[open]>summary::before{content:'▾ '}
   /* 취소 팝업 — 이 페이지에는 공통 모달 CSS가 없어 전용으로 둔다 */
   .cx-bg{position:fixed;inset:0;z-index:9500;background:rgba(20,24,18,.42);
     display:flex;align-items:center;justify-content:center;padding:20px}
@@ -154,7 +161,7 @@
   .cxbox .row{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #f0d8d2;font-size:12.5px}
   .cxbox .row:first-of-type{border-top:0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.35">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.36">
 </head>
 <body data-so-area="golf">
 <div class="topbar so-bar">
@@ -214,7 +221,7 @@ const L={
       +'<b>電動カートの有料事前申請</b>は<b>やまなみリゾートゴルフクラブ利用時のみ</b> — やまなみ/久住ヒルズ/志津の宿は常に可、'
       +'<b>ガンジーホテルは平日が九重高原CCなので、やまなみCCの日(週末・祝日・入国日)のみ</b>可です。<b>現場申請</b>はいつでも可。'
       +'コース・ティ時刻は<b>ゴルフ組編成</b>で保存された値を読み込みます(未編成なら空欄)。',
-    onlyElecTeams:'申請チームだけ', showAllTeams:'この日の全チーム', oxNoT:'事前申請の記載なし',
+    secReq:'申請チーム', secNoReq:'未申請チーム', secNoReqHint:'この日ラウンドするが申請なし — 申請漏れの確認用', scopeSplit:(a,b)=>`申請 ${a} / 未申請 ${b}`, showAllTeams:'この日の全チーム', oxNoT:'事前申請の記載なし',
     courseT:'コースを直接指定できます（規則より優先）', courseFix:'手動', courseFixT:'手動で指定したコースです',
     courseMark:c=>`コースを ${c} に変更（保存を押してください）`, courseSql:'99_play_course.sql の実行が必要です',
     nosT:'自動割当の番号が既定です。直接入力すると保存されます（保存ボタン）',
@@ -273,7 +280,7 @@ const L={
       +'<b>전기카트 유료 사전신청</b>은 <b>야마나미 리조트 골프클럽 이용 시에만</b> 가능합니다 — 야마나미·쿠주힐즈·시즈노야도는 항상 가능, '
       +'<b>간지호텔은 평일이 구주고원CC라 야마나미CC를 쓰는 날(주말·공휴일·입국일)만</b> 가능합니다. <b>현장 신청</b>은 언제나 가능합니다. '
       +'코스·티오프는 <b>골프 조편성</b>에서 저장한 값을 읽어옵니다(미편성이면 빈칸).',
-    onlyElecTeams:'신청 팀만 보기', showAllTeams:'그날 전체 팀', oxNoT:'사전신청 표기 없음',
+    secReq:'신청 팀', secNoReq:'미신청 팀', secNoReqHint:'그날 라운딩하지만 신청 없음 — 누락 확인용', scopeSplit:(a,b)=>`신청 ${a} / 미신청 ${b}`, showAllTeams:'그날 전체 팀', oxNoT:'사전신청 표기 없음',
     courseT:'코스를 직접 지정할 수 있습니다(규칙보다 우선)', courseFix:'수기', courseFixT:'수기로 지정한 코스입니다',
     courseMark:c=>`코스를 ${c} 로 바꿨습니다(저장을 눌러 주세요)`, courseSql:'99_play_course.sql 실행이 필요합니다',
     nosT:'자동 배분 번호가 기본값입니다. 직접 입력하면 저장됩니다(저장 버튼)',
@@ -332,7 +339,7 @@ const L={
       +'<b>Paid pre-booking of electric carts</b> requires playing <b>Yamanami Resort Golf Club</b> — Yamanami, Kuju Hills and Shizu-no-Yado always qualify; '
       +'<b>The Guernsey Hotel plays Kuju Kogen CC on weekdays</b>, so only Yamanami CC days (weekends, holidays, arrival day) qualify. On-site requests are always fine. '
       +'Course and tee time are read from the <b>golf grouping</b> screen (blank if not yet grouped).',
-    onlyElecTeams:'requests only', showAllTeams:'all teams that day', oxNoT:'No pre-request noted',
+    secReq:'Requested', secNoReq:'No request', secNoReqHint:'Rounding today but no request — check for missed entries', scopeSplit:(a,b)=>`requested ${a} / none ${b}`, showAllTeams:'all teams that day', oxNoT:'No pre-request noted',
     courseT:'Pick the course directly (overrides the rule)', courseFix:'manual', courseFixT:'Course set manually',
     courseMark:c=>`Course set to ${c} (press Save)`, courseSql:'Run 99_play_course.sql first',
     nosT:'Auto-allocated numbers are the default. Type to override (then Save)',
@@ -457,8 +464,6 @@ function renderUI(){
         </div>
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
-        <label class="cnt noprint" style="display:flex;align-items:center;gap:4px;cursor:pointer">
-          <input type="checkbox" id="ck-all"${ONLY_ELEC?' checked':''}> ${tx('onlyElecTeams')}</label>
         <span class="cnt" id="list-scope" style="color:var(--muted);margin-left:8px"></span>
         <span class="cnt" id="list-skip" style="color:var(--muted);margin-left:10px"></span>
         <div id="pickbar" class="pickbar noprint" style="display:none"></div>
@@ -480,11 +485,6 @@ function renderUI(){
   $('#m-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);$('#m-pick').value=YM;loadMonth();});
   $('#m-next').addEventListener('click',()=>{YM=shiftYM(YM,1);$('#m-pick').value=YM;loadMonth();});
   $('#m-pick').addEventListener('change',e=>{YM=e.target.value||YM;loadMonth();});
-  $('#ck-all').addEventListener('change',e=>{
-    ONLY_ELEC=!!e.target.checked;
-    try{ localStorage.setItem('saizen_cart_only_elec', ONLY_ELEC?'1':'0'); }catch(err){}
-    renderStock(); renderTable();
-  });
   $('#d-prev').addEventListener('click',()=>{DATE=shiftDay(DATE,-1);syncDate();});
   $('#d-next').addEventListener('click',()=>{DATE=shiftDay(DATE,1);syncDate();});
   $('#d-today').addEventListener('click',()=>{DATE=todayISO();syncDate();});
@@ -801,10 +801,9 @@ function eligBadge(r){
 }
 
 // 목록 = 그날 전기카트 신청·배정 팀(기본). 체크박스로 그날 라운딩 전 팀까지.
-function shownRows(){
-  if(!ONLY_ELEC) return ROWS;
-  return ROWS.filter(r=>r.elec || TYPES.some(t=>(+r.qty[t.code]||0)>0));
-}
+// 신청 팀 = 비고에 사전신청이 있거나 실제 대수가 잡힌 팀. 나머지는 미신청 팀.
+function isReqRow(r){ return !!r.elec || TYPES.some(t=>(+r.qty[t.code]||0)>0); }
+function shownRows(){ return ROWS.filter(isReqRow); }
 // 「전기」라고만 적힌 예약 — 집계에 넣지 않고 여기 모아 확인시킨다(Min 2026-08).
 function renderRecheck(){
   const box=$('#recheck'); if(!box) return;
@@ -828,21 +827,20 @@ function renderTable(){
   const box=$('#tbl'); if(!box) return;
   $('#tbl-cnt').textContent = DIRTY.size?tx('dirty')(DIRTY.size):'';
   $('#btn-save').disabled = !DIRTY.size;
-  const LIST=shownRows();
-  // 기본 목록은 「전기카트 신청·배정 팀」만이라, 그날 라운딩하는 다른 팀이 안 보인다.
-  //   몇 팀 중 몇 팀을 보고 있는지 적어 둔다 — 없는 팀을 찾아 헤매지 않게(Min 2026-08).
+  const LIST=ROWS.filter(isReqRow);          // 신청 팀
+  const NOREQ=ROWS.filter(r=>!isReqRow(r));   // 미신청 팀(그날 라운딩은 하지만 신청 없음)
   const scopeEl=$('#list-scope');
-  if(scopeEl) scopeEl.textContent = ONLY_ELEC ? tx('scopeElec')(LIST.length, ROWS.length) : tx('scopeAll')(ROWS.length);
+  if(scopeEl) scopeEl.textContent = tx('scopeSplit')(LIST.length, NOREQ.length);
   // 그날 체류하지만 라운딩이 없어 빠진 팀 — 왜 안 보이는지 바로 알 수 있게(Min 2026-08)
   const skipEl=$('#list-skip');
   if(skipEl) skipEl.innerHTML = SKIP.length
     ? `<details><summary>${esc(tx('skipTitle')(SKIP.length))}</summary><div class="cnt" style="padding:4px 0 0">`
       + SKIP.map(x=>`<div>${esc(x.tag||'-')} ${esc(x.rep||'')} <span style="color:var(--muted)">— ${esc(tx('skipWhy')[x.why]||tx('skipWhy').none)}</span></div>`).join('')
       + `</div></details>` : '';
-  if(!LIST.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:10px 0">${ONLY_ELEC?tx('noElecTeam'):tx('noRound')}</div>`; return; }
+  if(!ROWS.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:10px 0">${tx('noRound')}</div>`; return; }
   const th=TYPES.map(t=>`<th>${esc(lang()==='ja'?t.name_ja:t.name_ko)}</th>`).join('');
   const NOS=allocForDay();
-  const rows=LIST.map(r=>{ const i=ROWS.indexOf(r);
+  const rowHtml=r=>{ const i=ROWS.indexOf(r);
     const fee=TYPES.reduce((s,t)=>s+(+r.qty[t.code]||0)*(+t.fee_yen||0),0);
     const gc=r.grpCourse?`${COURSE_NAME[r.grpCourse]||r.grpCourse}`:'';
     return `<tr data-i="${i}" class="${DIRTY.has(r.seq)?'dirty':''}">
@@ -869,18 +867,24 @@ function renderTable(){
       <td><input class="inp memo" type="text" data-f="memo" value="${esc(r.memo)}"></td>
       <td class="tee">${fee?('¥'+fee.toLocaleString()):'-'}</td>
     </tr>`;
-  }).join('');
+  };
+  const rows=LIST.map(rowHtml).join('');
+  const rows2=NOREQ.map(rowHtml).join('');
   const CXL=ROWS.filter(r=>+r.cx>0);
   const totFee=LIST.reduce((s,r)=>s+TYPES.reduce((n,t)=>n+(+r.qty[t.code]||0)*(+t.fee_yen||0),0),0);
-  box.innerHTML=`<table class="t"><thead><tr>
+  const head=`<thead><tr>
       <th>${tx('thTeam')}</th><th>${tx('thRep')}</th><th>${tx('thAccom')}</th><th>${tx('thPax')}</th>
       <th>${tx('thElig')}</th><th>${tx('thCourse')}</th><th>${tx('thTee')}</th>${th}
       <th>${tx('thSrc')}</th><th>${tx('thMemo')}</th><th>${tx('thFee')}</th>
-    </tr></thead><tbody>${rows}
+    </tr></thead>`;
+  box.innerHTML=`<h4 class="lsec">${esc(tx('secReq'))} <span class="cnt">${LIST.length}${esc(tx('teamUnit'))}</span></h4>`
+    +(LIST.length?`<table class="t">${head}<tbody>${rows}
     <tr class="sum"><td class="l" colspan="7">${tx('thTotal')} <span style="font-weight:600">· ${esc(tx('sumReq'))} ${LIST.reduce((n,r)=>n+TYPES.reduce((m,t)=>m+(+r.qty[t.code]||0),0),0)}${LIST.some(r=>r.cx)?` · ${esc(tx('sumCx'))} ${LIST.reduce((n,r)=>n+(+r.cx||0),0)}`:''}</span></td>
       ${TYPES.map(t=>`<td>${usedOf(t.code)}</td>`).join('')}
       <td colspan="2"></td><td>¥${totFee.toLocaleString()}</td></tr>
-    </tbody></table>`
+    </tbody></table>`:`<div class="cnt" style="color:var(--muted);padding:8px 0">${esc(tx('noElecTeam'))}</div>`)
+    + (NOREQ.length?`<details class="noreq"><summary>${esc(tx('secNoReq'))} <b>${NOREQ.length}</b>${esc(tx('teamUnit'))} — ${esc(tx('secNoReqHint'))}</summary>
+        <table class="t" style="margin-top:8px">${head}<tbody>${rows2}</tbody></table></details>`:'')
     + (CXL.length?`<div class="cxbox"><h4>${esc(tx('cxSect')(CXL.length, CXL.reduce((n,r)=>n+(+r.cx||0),0)))}</h4>`
         + CXL.map(r=>`<div class="row"><b class="tag">${esc(r.tag)}</b><span>${esc(r.rep)}</span>
             <span style="color:var(--muted)">${esc(accomL(r.accom))}</span>
