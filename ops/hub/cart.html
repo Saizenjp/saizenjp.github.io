@@ -135,7 +135,7 @@
   .cxbox .row{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #f0d8d2;font-size:12.5px}
   .cxbox .row:first-of-type{border-top:0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.32">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.33">
 </head>
 <body data-so-area="golf">
 <div class="topbar so-bar">
@@ -195,7 +195,7 @@ const L={
       +'<b>電動カートの有料事前申請</b>は<b>やまなみリゾートゴルフクラブ利用時のみ</b> — やまなみ/久住ヒルズ/志津の宿は常に可、'
       +'<b>ガンジーホテルは平日が九重高原CCなので、やまなみCCの日(週末・祝日・入国日)のみ</b>可です。<b>現場申請</b>はいつでも可。'
       +'コース・ティ時刻は<b>ゴルフ組編成</b>で保存された値を読み込みます(未編成なら空欄)。',
-    showAllTeams:'この日の全チーム', oxNoT:'事前申請の記載なし',
+    onlyElecTeams:'申請チームだけ', showAllTeams:'この日の全チーム', oxNoT:'事前申請の記載なし',
     courseT:'コースを直接指定できます（規則より優先）', courseFix:'手動', courseFixT:'手動で指定したコースです',
     courseMark:c=>`コースを ${c} に変更（保存を押してください）`, courseSql:'99_play_course.sql の実行が必要です',
     nosT:'自動割当の番号が既定です。直接入力すると保存されます（保存ボタン）',
@@ -254,7 +254,7 @@ const L={
       +'<b>전기카트 유료 사전신청</b>은 <b>야마나미 리조트 골프클럽 이용 시에만</b> 가능합니다 — 야마나미·쿠주힐즈·시즈노야도는 항상 가능, '
       +'<b>간지호텔은 평일이 구주고원CC라 야마나미CC를 쓰는 날(주말·공휴일·입국일)만</b> 가능합니다. <b>현장 신청</b>은 언제나 가능합니다. '
       +'코스·티오프는 <b>골프 조편성</b>에서 저장한 값을 읽어옵니다(미편성이면 빈칸).',
-    showAllTeams:'그날 전체 팀', oxNoT:'사전신청 표기 없음',
+    onlyElecTeams:'신청 팀만 보기', showAllTeams:'그날 전체 팀', oxNoT:'사전신청 표기 없음',
     courseT:'코스를 직접 지정할 수 있습니다(규칙보다 우선)', courseFix:'수기', courseFixT:'수기로 지정한 코스입니다',
     courseMark:c=>`코스를 ${c} 로 바꿨습니다(저장을 눌러 주세요)`, courseSql:'99_play_course.sql 실행이 필요합니다',
     nosT:'자동 배분 번호가 기본값입니다. 직접 입력하면 저장됩니다(저장 버튼)',
@@ -313,7 +313,7 @@ const L={
       +'<b>Paid pre-booking of electric carts</b> requires playing <b>Yamanami Resort Golf Club</b> — Yamanami, Kuju Hills and Shizu-no-Yado always qualify; '
       +'<b>The Guernsey Hotel plays Kuju Kogen CC on weekdays</b>, so only Yamanami CC days (weekends, holidays, arrival day) qualify. On-site requests are always fine. '
       +'Course and tee time are read from the <b>golf grouping</b> screen (blank if not yet grouped).',
-    showAllTeams:'all teams that day', oxNoT:'No pre-request noted',
+    onlyElecTeams:'requests only', showAllTeams:'all teams that day', oxNoT:'No pre-request noted',
     courseT:'Pick the course directly (overrides the rule)', courseFix:'manual', courseFixT:'Course set manually',
     courseMark:c=>`Course set to ${c} (press Save)`, courseSql:'Run 99_play_course.sql first',
     nosT:'Auto-allocated numbers are the default. Type to override (then Save)',
@@ -373,7 +373,9 @@ const SHOW_CODES=['electric'];
 function visibleTypes(list){ return (list||[]).filter(t=>SHOW_CODES.includes(t.code)); }
 
 let supa=null, DATE=todayISO(), TYPES=[], ROWS=[], DIRTY=new Set();
-let YM=todayISO().slice(0,7), MDAYS=[], MTEAMS=[], ONLY_ELEC=true;
+let YM=todayISO().slice(0,7), MDAYS=[], MTEAMS=[], ONLY_ELEC=false;
+// ⚠ 기본은 **그날 라운딩 전 팀**을 보여준다(Min 2026-08). 예전 기본(신청 팀만)은 비고가 아직
+//   안 들어온 팀이 목록에서 통째로 사라져, 누락을 현장에서 알아챌 수 없었다(송영욱 8/14 건).
 function ymBounds(ym){ const [y,m]=ym.split('-').map(Number); const last=new Date(y,m,0).getDate();
   return {from:`${ym}-01`, to:`${ym}-${String(last).padStart(2,'0')}`}; }
 function shiftYM(ym,n){ const [y,m]=ym.split('-').map(Number); const d=new Date(y,m-1+n,1);
@@ -436,7 +438,7 @@ function renderUI(){
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
         <label class="cnt noprint" style="display:flex;align-items:center;gap:4px;cursor:pointer">
-          <input type="checkbox" id="ck-all"${ONLY_ELEC?'':' checked'}> ${tx('showAllTeams')}</label>
+          <input type="checkbox" id="ck-all"${ONLY_ELEC?' checked':''}> ${tx('onlyElecTeams')}</label>
         <span class="cnt" id="list-scope" style="color:var(--muted);margin-left:8px"></span>
         <span class="cnt" id="list-skip" style="color:var(--muted);margin-left:10px"></span>
       </label>
@@ -466,7 +468,7 @@ function renderUI(){
   $('#btn-mauto').addEventListener('click',autoAssignMonth);
   $('#btn-print').addEventListener('click',()=>window.print());
   $('#btn-auto').addEventListener('click',autoAssignDay);
-  $('#ck-all').addEventListener('change',e=>{ ONLY_ELEC=!e.target.checked; renderStock(); renderTable(); });
+  $('#ck-all').addEventListener('change',e=>{ ONLY_ELEC=!!e.target.checked; renderStock(); renderTable(); });
   $('#d-prev').addEventListener('click',()=>{DATE=shiftDay(DATE,-1);syncDate();});
   $('#d-next').addEventListener('click',()=>{DATE=shiftDay(DATE,1);syncDate();});
   $('#d-today').addEventListener('click',()=>{DATE=todayISO();syncDate();});
