@@ -141,7 +141,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=25"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
+<script src="../assets/saizen-core.js?v=26"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
 <script src="../assets/saizen-ops.js?v=15.77"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -445,7 +445,7 @@ async function load(){
     TYPES=visibleTypes(ct.data);
     // 2) 그 날짜에 체류 중인 팀(입국<=날짜<=귀국) — 라운딩 여부는 규칙으로 거른다
     const bs=await paged((a,b)=>supa.from('bookings')
-      .select('event_seq,rep_name,dep_date,arr_date,origin,airline,pax,remark_local')
+      .select('event_seq,rep_name,dep_date,arr_date,origin,airline,pax,remark,remark_local')
       .lte('dep_date',DATE).gte('arr_date',DATE).order('event_seq').range(a,b));
     if(bs.error) throw bs.error;
     const seqs=(bs.data||[]).map(b=>b.event_seq);
@@ -479,7 +479,10 @@ async function load(){
       let srcOne=Object.values(src)[0]||'pre';
       // 저장된 배정이 없으면 규칙(SZCore)으로 자동 채운다 — 화면은 클릭 없이 바로 정답.
       // 비고 표기 판정: sure=집계 · maybe=재확인(집계 제외) · none=없음 (Min 2026-08)
-      const _elecKind=SZCore.cartRemarkKind(b.remark_local||'');
+      // ⚠ 카트 신청 메모는 「현지비고」에만 있는 게 아니다 — 「비고」에 적혀 오는 예약도 있다.
+      //   현지수배서(dispatch)는 이미 둘 다 읽는다. 카트만 현지비고만 봐서 누락되던 팀이 있었다(Min 2026-08).
+      const _remarkAll=[b.remark_local,b.remark].filter(Boolean).join(' / ');
+      const _elecKind=SZCore.cartRemarkKind(_remarkAll);
       const saved=TYPES.some(t=>(+qty[t.code]||0)>0);
       let auto=false;
       if(!saved){
@@ -490,7 +493,7 @@ async function load(){
       ROWS.push({
         seq:b.event_seq, tag:g.team_tag||g.group_code||'', rep:b.rep_name||'', accom,
         pax:g.pax||b.pax||0, dep:b.dep_date, arr:b.arr_date, isPus,
-        elec:_elecKind==='sure', elecKind:_elecKind, remarkLocal:b.remark_local||'',
+        elec:_elecKind==='sure', elecKind:_elecKind, remarkLocal:_remarkAll,
         ruleCourse:row.course, holes:row.holes, note:row.note,
         grpCourse:grp.course_code||'', tee:grp.tee_time||'', cartNo:grp.cart_no||'',
         qty, cx, src:srcOne, memo, auto, orig:JSON.stringify({qty,src:srcOne,memo,cx})
