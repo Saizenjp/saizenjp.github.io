@@ -616,7 +616,9 @@ async function run(){
       //   이전엔 이 필터가 '현지예약-무accom'만 막아 타 리조트가 bookings에 적재됐음(guests엔 없지만 手配書 오염).
       //   이제 guests(procMap)뿐 아니라 bookings도 accom 없으면 적재 안 함(v13.4 '미해당 제외' 규칙을 bookings에도 적용).
       if(!accom) return;
-      const remark = String(r['비고']||'').trim();
+      // ⚠ 헤더 표기 흔들림 대비(공백 유무·표현 차이) — 한 칸이라도 놓치면 카트·수배서에서 통째로 빠진다
+      const pick = (...ks)=>{ for(const k of ks){ const v=r[k]; if(v!=null && String(v).trim()) return String(v).trim(); } return ''; };
+      const remark = pick('비고','비 고','비고사항');
       const _depYm = (birthISO(r['출발일자'])||'').slice(0,7);
       if(!_depYm) badDate++;                                          // 출발일자 인식 실패
       const rowYm = _depYm || ym;   // 팀별 출발월(인식 실패 시 세션월로 추정 — 경고 표시)
@@ -637,8 +639,8 @@ async function run(){
         sales_amount:Number(r['판매금액']||0),
         unpaid_amount:Number(r['미수금액']||0),
         remark:remark||null,
-        remark_local:String(r['현지 비고']||'').trim()||null,
-        remark_etc:String(r['기타 비고']||'').trim()||null,
+        remark_local:pick('현지 비고','현지비고','현지전달비고','현지 전달비고')||null,
+        remark_etc:pick('기타 비고','기타비고')||null,
         team_label:parseTeam(remark),
         session_ym:rowYm
       });
