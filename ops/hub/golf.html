@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · ゴルフ組編成 / 골프 조편성</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=28"></script>
+<script src="../assets/saizen-core.js?v=29"></script>
 <style>
   :root{
     --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
@@ -402,24 +402,28 @@ function autoAssign(){
   const teams=teamsOnDate(DATESEL);
   if(!teams.length){ toast(tx('noData'),'warn'); return; }
   GROUPS=[];                                   // 자동 편성은 그날 전체를 다시 짠다
+  // 규칙(Min 2026-08): 아소·소보·쿠주 **3코스 동시 출발** · 같은 팀은 체류 일차마다 코스를 **로테이션**.
+  //   슬롯·로테이션 계산은 SZCore.buildRounding(단일 진실원·단위테스트) 에 위임한다.
   const order=teams.slice().sort((a,b)=>(holesOfTeam(a)-holesOfTeam(b))||String(a.tag).localeCompare(String(b.tag)));
-  const cnt={}; COURSES.forEach(c=>cnt[c.code]=0);
-  order.forEach(t=>{
-    const sizes=SZCore.splitTeam(t.members.length);
-    if(!sizes.length) return;
-    // 코스 = 조 수 적은 곳(인기순 타이브레이크) — 한 팀은 한 코스에 몰아서
-    const c=COURSES.slice().sort((a,b)=>(cnt[a.code]-cnt[b.code])||(a.pop-b.pop))[0].code;
-    let i=0;
-    sizes.forEach(sz=>{
-      const ms=t.members.slice(i,i+sz).map(m=>({...m,tag:t.tag})); i+=sz;
-      GROUPS.push({course:c,tee:'',cart:'',slot:0,note:'',members:ms});
-      cnt[c]++;
-    });
+  const plan=SZCore.buildRounding(
+    order.map(t=>({ seq:t.seq, pax:t.members.length,
+                    dayIdx:Math.max(0,(t.golfDays||[]).indexOf(DATESEL)) })),
+    { courses:COURSES.map(c=>c.code) });
+  const taken={}, cnt={}; COURSES.forEach(c=>cnt[c.code]=0);
+  let unplaced=0;
+  plan.forEach(p=>{
+    const t=order.find(x=>x.seq===p.seq); if(!t) return;
+    const i=taken[p.seq]||0;
+    const ms=t.members.slice(i,i+p.pax).map(m=>({...m,tag:t.tag}));
+    taken[p.seq]=i+p.pax;
+    if(!ms.length) return;
+    if(!p.course){ unplaced++; GROUPS.push({course:'',tee:'',cart:'',slot:0,note:'',members:ms}); return; }
+    GROUPS.push({course:p.course,tee:p.tee||'',cart:'',slot:p.slot||0,note:'',members:ms});
+    cnt[p.course]++;
   });
-  const cap=applyTeeTimes();
   renderBoard();
-  const over=COURSES.filter(c=>cnt[c.code]>cap);
-  if(over.length) toast(tx('teeOver')(over.map(c=>lang()==='ja'?c.ja:c.ko).join('·'),cap),'warn');
+  const cap=SZCore.teeSlots().length;
+  if(unplaced) toast(tx('teeOver')(COURSES.map(c=>lang()==='ja'?c.ja:c.ko).join('·'),cap),'warn');
 }
 
 async function saveBoard(){

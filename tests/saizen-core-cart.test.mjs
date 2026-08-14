@@ -138,3 +138,41 @@ test('cartQtyFromRemark — 비고의 대수를 읽는다', () => {
   assert.equal(SZ.cartQtyFromRemark('온천 2인 사전신청'), null);        // 전기와 무관한 숫자
   assert.equal(SZ.cartQtyFromRemark(''), null);
 });
+
+// ── 라운딩 편성 (Min 2026-08: 3코스 동시 출발 · 로테이션) ────────────────────
+test('teeSlots — 6:50 시작 7분 간격 8:42 마지막 = 17조', () => {
+  const s = SZ.teeSlots();
+  assert.equal(s.length, 17);
+  assert.equal(s[0], '06:50');
+  assert.equal(s[1], '06:57');
+  assert.equal(s[16], '08:42');
+});
+
+test('buildRounding — 3코스에 나눠 담고 티오프를 순서대로 준다', () => {
+  const teams = [{seq:1,pax:8,dayIdx:0},{seq:2,pax:4,dayIdx:0},{seq:3,pax:4,dayIdx:0}];
+  const rows = SZ.buildRounding(teams);
+  assert.equal(rows.length, 4);                       // 8명=2조 + 4명 + 4명
+  rows.forEach(r => { assert.ok(SZ.GOLF_COURSES.includes(r.course)); assert.ok(/^\d{2}:\d{2}$/.test(r.tee)); });
+  // 같은 코스에서는 첫 조가 6:50, 그다음이 6:57
+  const byCourse = {};
+  rows.forEach(r => { (byCourse[r.course] = byCourse[r.course] || []).push(r.tee); });
+  Object.values(byCourse).forEach(list => {
+    assert.equal(list[0], '06:50');
+    if (list[1]) assert.equal(list[1], '06:57');
+  });
+});
+
+test('buildRounding — 체류 일차가 바뀌면 코스가 로테이션된다', () => {
+  const d0 = SZ.buildRounding([{seq:1,pax:4,dayIdx:0}])[0].course;
+  const d1 = SZ.buildRounding([{seq:1,pax:4,dayIdx:1}])[0].course;
+  const d2 = SZ.buildRounding([{seq:1,pax:4,dayIdx:2}])[0].course;
+  assert.equal(new Set([d0,d1,d2]).size, 3);          // 3일이면 세 코스를 한 번씩
+});
+
+test('buildRounding — 슬롯이 모자라면 코스를 넘기고, 다 차면 미배정(null)', () => {
+  const many = Array.from({length: 52}, (_, i) => ({seq: i+1, pax: 4, dayIdx: 0}));
+  const rows = SZ.buildRounding(many);
+  assert.equal(rows.length, 52);
+  assert.equal(rows.filter(r => r.course).length, 51);   // 17 × 3
+  assert.equal(rows.filter(r => !r.course).length, 1);
+});

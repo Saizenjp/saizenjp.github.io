@@ -309,6 +309,44 @@
     return out;
   }
 
+  // ── 라운딩 편성(코스 로테이션 + 티오프 배정) ────────────────────────────────
+  //  현장 규칙(Min 2026-08):
+  //   · 아소·소보·쿠주 **3코스가 같은 시간대에 동시 출발**. 슬롯은 6:50부터 7분 간격, 마지막 8:42(17조).
+  //     → 하루 최대 17×3 = 51조.
+  //   · 홀수는 golfRows 가 이미 판정한다 — 평일 27홀(18+9 서비스) · 주말/일본 공휴일 18홀 ·
+  //     부산편 귀국일 9홀.
+  //   · **로테이션** = 같은 팀이 여러 날 라운딩하면 코스를 아소→소보→쿠주로 돌린다.
+  //     체류 며칠째인지(dayIdx)로 시작 코스를 정하고, 팀마다 시작점을 어긋나게 해 한 코스에 몰리지 않게 한다.
+  var GOLF_COURSES = ['aso', 'sobo', 'kuju'];
+  //  teams: [{ seq, pax, dayIdx }]  (dayIdx = 그 팀의 체류 중 그날이 몇 번째 라운딩일인지, 0부터)
+  //  opts : { courses, slots, cap }
+  //  반환 : [{ seq, course, tee, slot, pax }]  — 조 단위(팀 하나가 여러 조가 될 수 있다)
+  function buildRounding(teams, opts) {
+    opts = opts || {};
+    var courses = opts.courses || GOLF_COURSES;
+    var slots = opts.slots || teeSlots();
+    var cap = opts.cap || 4;
+    var used = {};                                  // course → 다음 슬롯 index
+    courses.forEach(function (c) { used[c] = 0; });
+    var out = [];
+    (teams || []).forEach(function (t, ti) {
+      var parts = splitTeam(t.pax, cap);
+      var start = ((+t.dayIdx || 0) + ti) % courses.length;   // 로테이션 시작 코스
+      parts.forEach(function (n, gi) {
+        // 시작 코스부터 빈 슬롯이 있는 코스를 찾는다(한 코스가 차면 다음 코스로)
+        var picked = null;
+        for (var k = 0; k < courses.length; k++) {
+          var c = courses[(start + gi + k) % courses.length];
+          if (used[c] < slots.length) { picked = c; break; }
+        }
+        if (!picked) { out.push({ seq: t.seq, course: null, tee: null, slot: null, pax: n }); return; }
+        var idx = used[picked]++;
+        out.push({ seq: t.seq, course: picked, tee: slots[idx], slot: idx + 1, pax: n });
+      });
+    });
+    return out;
+  }
+
   // ── 카트 배정 규칙 (카트 관리표) ────────────────────────────────────────────
   //  · 전기(전동)카트 = 유료 사전신청. 현지전달비고(remark_local)에 신청 표기가 있는 팀만.
   //    → 그 팀의 라운딩 일수(golfRows) 전부에 자동 분배.
@@ -702,6 +740,8 @@
     splitTeam: splitTeam,
     wantsElectricCart: wantsElectricCart,
     cartRemarkKind: cartRemarkKind,
+    GOLF_COURSES: GOLF_COURSES,
+    buildRounding: buildRounding,
     cartPlan: cartPlan,
     cartQtyFromRemark: cartQtyFromRemark,
     parseCartNos: parseCartNos,
