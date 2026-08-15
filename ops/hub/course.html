@@ -154,7 +154,12 @@
   .ck-hd .ckok{margin-left:8px}
   .ck-gs{display:flex;flex-direction:column;gap:5px;margin-top:7px}
   .ck-g{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-  .ck-nm{font-size:13px;font-weight:700;color:var(--text)}
+  .ck-nm{display:flex;flex-wrap:wrap;gap:4px}
+  .ckm{font-family:inherit;font-size:13px;font-weight:700;color:var(--text);background:#fff;
+    border:1px solid var(--border2);border-radius:7px;padding:2px 9px;cursor:pointer}
+  .ckm:hover{border-color:var(--accent);background:var(--accentSoft)}
+  .ckm.pick{background:var(--accent2);border-color:var(--accent2);color:#fff}
+  .ck-none{color:var(--muted);font-style:normal}
   .ckg{font-family:inherit;font-size:12.5px;font-weight:700;border:1px solid var(--border2);background:var(--surface);
     color:var(--text2);border-radius:8px;padding:4px 10px;cursor:pointer}
   .ckg:hover{border-color:var(--err);color:var(--err);background:#fff}
@@ -239,7 +244,7 @@ const L={
     chkH:'組編成の確認が必要(5名以上のチーム)', chkN:n=>`${n}組`, chkTeamN:(t,g)=>`${t}チーム · ${g}組`, chkNone:'確認待ちなし',
     chkOk:'✓ この編成でOK', chkOkDone:'確認しました', undoBtn:'↩ 元に戻す', undoNone:'戻せる操作がありません', undoDone:'元に戻しました',
     rosHow:'① 上の表かこの一覧で<b>組を選ぶ</b> → ② 下の名前を<b>押して入れる</b>(入った名前をもう一度押すと外れます)。',
-    chkMark:'要確認', chkT:'5名以上のチームは<b>名簿順に1組・2組へ仮に分けて</b>あります。そのままなら<b>✓ この編成でOK</b>、変えるなら組を押して入れ替えます。',
+    chkMark:'要確認', chkT:'5名以上のチームは<b>名簿順に1組・2組へ仮に分けて</b>あります。そのままなら<b>✓ この編成でOK</b>。入れ替えるときは<b>名前を押して、相手の名前を押す</b>と2人が入れ替わります。',
     autoFilled:n=>`4名以下の${n}チームは組員まで自動で入れました`,
     connOk:'接続済', notConn:'未接続', connBtn:'接続', connecting:'接続中…', connFail:'接続失敗',
     needUrlKey:'URL·keyが必要', loginNeed:'先にログインしてください',
@@ -273,7 +278,7 @@ const L={
     chkH:'조편성 확인 필요(5명 이상 팀)', chkN:n=>`${n}조`, chkTeamN:(t,g)=>`${t}팀 · ${g}조`, chkNone:'확인 대기 없음',
     chkOk:'✓ 이대로 확정', chkOkDone:'확인했습니다', undoBtn:'↩ 되돌리기', undoNone:'되돌릴 작업이 없습니다', undoDone:'되돌렸습니다',
     rosHow:'① 위 표나 이 목록에서 <b>조를 고르고</b> → ② 아래 이름을 <b>눌러 넣습니다</b>(넣은 이름을 다시 누르면 빠집니다).',
-    chkMark:'확인', chkT:'5명 이상 팀은 <b>명단 순서대로 1조·2조로 미리 나눠</b> 뒀습니다. 그대로면 <b>✓ 이대로 확정</b>, 바꿀 사람이 있으면 조를 눌러 이름을 옮기세요.',
+    chkMark:'확인', chkT:'5명 이상 팀은 <b>명단 순서대로 1조·2조로 미리 나눠</b> 뒀습니다. 그대로면 <b>✓ 이대로 확정</b>. 바꿀 사람이 있으면 <b>이름을 누르고 바꿀 상대 이름을 누르면</b> 두 사람 자리가 바뀝니다.',
     autoFilled:n=>`4명 이하 ${n}팀은 조원까지 자동으로 넣었습니다`,
     connOk:'연결됨', notConn:'미연결', connBtn:'연결', connecting:'연결 중…', connFail:'연결 실패',
     needUrlKey:'URL·key 필요', loginNeed:'먼저 로그인하세요',
@@ -307,7 +312,7 @@ const L={
     chkH:'Grouping needs a check (teams of 5+)', chkN:n=>`${n} groups`, chkTeamN:(t,g)=>`${t} teams · ${g} groups`, chkNone:'Nothing waiting',
     chkOk:'✓ Confirm', chkOkDone:'Confirmed', undoBtn:'↩ Undo', undoNone:'Nothing to undo', undoDone:'Undone',
     rosHow:'① Pick a group (in the table or this list) → ② tap a name below to add it (tap an added name to remove).',
-    chkMark:'check', chkT:'Teams of 5+ are <b>pre-split in roster order</b> (group 1, group 2 …). Confirm as-is, or tap a group to move people.',
+    chkMark:'check', chkT:'Teams of 5+ are <b>pre-split in roster order</b>. Confirm as-is, or <b>tap one name then another</b> to swap the two.',
     autoFilled:n=>`Filled rosters automatically for ${n} teams of 4 or fewer`,
     connOk:'Connected', notConn:'Not connected', connBtn:'Connect', connecting:'Connecting…', connFail:'Connection failed',
     needUrlKey:'URL·key required', loginNeed:'Please log in first',
@@ -336,6 +341,7 @@ let SKIP=new Set();  // 그날 라운딩 제외한 팀(event_seq)
 let DRAG=null;       // 드래그 중인 조 index
 let ROSTER={};       // event_seq → [{id,name,eng,gender}]  그날 라운딩 인원
 let RQ='';           // 조원 검색어
+let PICK=null;       // 조편성 목록에서 집어든 사람 {gi, mid}
 // 코스 입구 모니터 화면(?tv=1) — 읽기 전용 전체화면. 자동 배정·저장은 하지 않는다.
 const TVQ=new URLSearchParams(location.search);
 const TV=TVQ.get('tv')==='1';
@@ -732,8 +738,11 @@ function render(){
   // 조편성이 남은 팀 = 5명 이상이라 「누구와 누구를 한 조로」를 사람이 정해야 하는 팀.
   //  조를 흩어 놓으면 무슨 일을 해야 하는지 안 보인다 → 팀으로 묶어 크게 보여준다.
   const chk=BOARD.map((g,i)=>({g,i})).filter(x=>needsCheck(x.g));
-  const chkBy={}; chk.forEach(o=>{ (chkBy[o.g.seq]=chkBy[o.g.seq]||[]).push(o); });
-  const chkTeams=Object.keys(chkBy);
+  const chkTeams=[...new Set(chk.map(x=>String(x.g.seq)))];
+  // 그 팀의 조는 확정 여부와 관계없이 전부 펼쳐 보여준다(비교하며 바로 옮기기 위해)
+  const chkBy={}; chkTeams.forEach(seq=>{
+    chkBy[seq]=BOARD.map((g,i)=>({g,i})).filter(o=>String(o.g.seq)===seq);
+  });
   const chkHTML = chkTeams.length? chkTeams.map(seq=>{
     const list=chkBy[seq].sort((a,b)=>(a.g.slot||0)-(b.g.slot||0));
     const g0=list[0].g;
@@ -747,7 +756,9 @@ function render(){
       <div class="ck-gs">${list.map(({g,i})=>
         `<div class="ck-g">
            <button type="button" class="ckg${SELG===i?' on':''}" data-goto="${i}">${esc(courseL(g.course))} ${esc(g.tee||'')}<b>${tx('memCnt',(g.members||[]).length,g.pax)}</b></button>
-           <span class="ck-nm">${(g.members&&g.members.length)? g.members.map(m=>esc(m.name)).join(' · ') : '-'}</span>
+           <span class="ck-nm">${(g.members&&g.members.length)? g.members.map(m=>
+             `<button type="button" class="ckm${(PICK&&PICK.mid===String(m.id))?' pick':''}" data-gi="${i}" data-mid="${m.id}">${esc(m.name)}</button>`
+           ).join('') : '<i class="ck-none">-</i>'}</span>
          </div>`).join('')}</div>
     </div>`;
   }).join('') : `<span class="cnt" style="color:var(--muted)">${tx('chkNone')}</span>`;
@@ -918,6 +929,25 @@ function bind(){
   document.querySelectorAll('#board .un[data-seq]').forEach(b=>b.addEventListener('click',e=>{
     if(e.target&&e.target.classList&&e.target.classList.contains('skipb')) return;
     placeTeam(+b.getAttribute('data-seq'));
+  }));
+  // 이름을 누르면 집고, 다른 이름을 누르면 두 사람 자리를 바꾼다(같은 조 안에서는 순서 교체)
+  document.querySelectorAll('#board .ckm').forEach(b=>b.addEventListener('click',e=>{
+    e.stopPropagation();
+    const gi=+b.getAttribute('data-gi'), mid=String(b.getAttribute('data-mid'));
+    if(!PICK){ PICK={gi,mid}; render(); return; }
+    if(PICK.mid===mid){ PICK=null; render(); return; }
+    const A=BOARD[PICK.gi], B=BOARD[gi];
+    if(A&&B){
+      const ai=(A.members||[]).findIndex(m=>String(m.id)===PICK.mid);
+      const bi=(B.members||[]).findIndex(m=>String(m.id)===mid);
+      if(ai>=0&&bi>=0){
+        snap();
+        const tmp=A.members[ai]; A.members[ai]=B.members[bi]; B.members[bi]=tmp;
+        markManual(A); markManual(B);
+        PICK=null; render(); touch(); return;
+      }
+    }
+    PICK=null; render();
   }));
   document.querySelectorAll('#board [data-okseq]').forEach(b=>b.addEventListener('click',e=>{
     e.stopPropagation(); const seq=b.getAttribute('data-okseq');
