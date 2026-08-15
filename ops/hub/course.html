@@ -201,7 +201,7 @@ const L={
     late:'遅め', lateT:'久住ヒルズ宿泊 — 16:30〜17:00終了→シャワー→18時食事に合わせ遅い組',
     grp:'組', person:'名', teamUnit:'チーム', unassignedN:n=>`未割当 ${n}チーム`,
     excl:'除外', incl:'↩ 戻す', exclH:'除外したチーム(この日はラウンドなし)', exclN:n=>`${n}チーム`,
-    exclDone:'この日から除外しました', inclDone:'戻しました', exclNone:'除外なし',
+    exclDone:'この日から除外しました', exclAuto:'組をすべて外したので、このチームは本日「除外」にしました(↩ で戻せます)', inclDone:'戻しました', exclNone:'除外なし',
     dragHint:'≡ をつかんでドラッグ — 空きマスへ移動、埋まったマスへ落とすと その位置に割り込み(以下は1つずつ下へ)',
     noShift:'下に空きがありません — 入れ替えました',
     autoFirst:'この日はまだ割当がなかったので自動で割り当てて保存しました',
@@ -233,7 +233,7 @@ const L={
     late:'늦게', lateT:'쿠주힐즈 숙박 — 16:30~17:00 종료→샤워→18시 식사에 맞춰 늦은 조',
     grp:'조', person:'명', teamUnit:'팀', unassignedN:n=>`미배정 ${n}팀`,
     excl:'제외', incl:'↩ 복귀', exclH:'제외한 팀(이 날 라운딩 안 함)', exclN:n=>`${n}팀`,
-    exclDone:'이 날에서 제외했습니다', inclDone:'되돌렸습니다', exclNone:'제외 없음',
+    exclDone:'이 날에서 제외했습니다', exclAuto:'조를 모두 빼서 이 팀을 오늘 「제외」로 넘겼습니다(↩ 복귀 가능)', inclDone:'되돌렸습니다', exclNone:'제외 없음',
     dragHint:'≡ 를 잡고 드래그 — 빈 칸으로 옮기고, 찬 칸에 놓으면 그 자리에 끼워넣습니다(아래는 한 칸씩 밀림)',
     noShift:'아래에 빈 자리가 없어 서로 바꿨습니다',
     autoFirst:'이 날은 배정이 없어 자동으로 배정하고 저장했습니다',
@@ -265,7 +265,7 @@ const L={
     late:'Late', lateT:'Kuju Hills stay — finish 16:30–17:00 → shower → 18:00 dinner, so a later tee',
     grp:'G', person:'', teamUnit:' teams', unassignedN:n=>`${n} unassigned`,
     excl:'Skip', incl:'↩ Restore', exclH:'Skipped teams (not playing this day)', exclN:n=>`${n} teams`,
-    exclDone:'Skipped for this day', inclDone:'Restored', exclNone:'None skipped',
+    exclDone:'Skipped for this day', exclAuto:'All groups removed — this team is now skipped for today (↩ to restore)', inclDone:'Restored', exclNone:'None skipped',
     dragHint:'Grab ≡ and drag — drop on an empty cell to move, or on a filled cell to insert there (the rest shift down)',
     noShift:'No free slot below — swapped instead',
     autoFirst:'No assignment existed for this day — auto-assigned and saved',
@@ -488,12 +488,16 @@ async function loadMonthState(){
   }catch(e){}
 }
 function skipOn(date,seq){ const s=SKIPM[date]; return !!(s&&s.has(String(seq))); }
-// 그 날짜에 아직 조가 없는 팀 수 — 날짜 칩 배지·이달 배정 판단에 함께 쓴다
-function missOn(date){
-  const rows=(DATESEL===date)?BOARD.map(g=>({event_seq:g.seq,capacity:g.pax})):(MONTHG[date]||[]);
+// 그 날짜에 아직 출발 자리가 없는 팀 — 날짜 칩 배지와 화면 목록이 **같은 함수**를 쓴다.
+//  (예전엔 칩은 MONTHG·SKIPM, 목록은 BOARD·SKIP 을 봐서 「✓ 인데 미배정이 있다」가 나왔다)
+function unassignedTeams(date){
+  const cur = (DATESEL===date);
+  const rows = cur ? BOARD.map(g=>({event_seq:g.seq, capacity:g.pax})) : (MONTHG[date]||[]);
+  const skip = cur ? SKIP : (SKIPM[date]||new Set());
   const placed={}; rows.forEach(g=>{ placed[g.event_seq]=(placed[g.event_seq]||0)+(g.capacity||0); });
-  return teamsOnDate(date).filter(t=>!skipOn(date,t.seq) && (placed[t.seq]||0)<t.pax).length;
+  return teamsOnDate(date).filter(t=>!skip.has(String(t.seq)) && (placed[t.seq]||0)<t.pax);
 }
+function missOn(date){ return unassignedTeams(date).length; }
 
 function renderDateChips(){
   const box=$('#daychips'); if(!box)return;
@@ -551,6 +555,17 @@ function teamPax(seq){ const t=TEAMS.find(x=>String(x.seq)===String(seq)); retur
 function needsCheck(g){ return teamPax(g.seq)>=5 && (g.members||[]).length<(g.pax||0); }
 // 그날 라운딩하지 않는 팀 — 규칙(상품명)으로는 라운딩일이지만 실제로는 안 나가는 경우.
 //  제외하면 자동 배정에서 빠지고, 이미 잡힌 조도 표에서 내린다(성수기 티오프 자리 확보).
+// 제외로 넘기기(조를 다 뺐을 때 자동 호출)
+async function markSkip(seq){
+  if(!supa||!DATESEL||isSkip(seq)) return;
+  SKIP.add(String(seq)); (SKIPM[DATESEL]=SKIPM[DATESEL]||new Set()).add(String(seq));
+  renderDateChips();
+  try{
+    const by=(window.__so_getUser&&__so_getUser())||null;
+    await supa.from('golf_skips').insert({play_date:DATESEL, event_seq:seq, created_by:by});
+    toast(tx('exclAuto'),'ok');
+  }catch(e){}
+}
 async function toggleSkip(seq){
   if(!supa||!DATESEL) return;
   const on=isSkip(seq);
@@ -558,12 +573,15 @@ async function toggleSkip(seq){
     if(on){
       const {error}=await supa.from('golf_skips').delete().eq('play_date',DATESEL).eq('event_seq',seq);
       if(error) throw error;
-      SKIP.delete(String(seq)); toast(tx('inclDone'),'ok');
+      SKIP.delete(String(seq));
+      if(SKIPM[DATESEL]) SKIPM[DATESEL].delete(String(seq));
+      toast(tx('inclDone'),'ok');
     }else{
       const by=(window.__so_getUser&&__so_getUser())||null;
       const {error}=await supa.from('golf_skips').insert({play_date:DATESEL, event_seq:seq, created_by:by});
       if(error) throw error;
       SKIP.add(String(seq));
+      (SKIPM[DATESEL]=SKIPM[DATESEL]||new Set()).add(String(seq));
       // 이미 배정된 조가 있으면 함께 내린다(저장 때 DB에서도 삭제된다)
       BOARD=BOARD.filter(g=>String(g.seq)!==String(seq));
       SELG=null; touch(); toast(tx('exclDone'),'ok');
@@ -605,7 +623,7 @@ function render(){
 
   // 미배정 = 그날 라운딩인데 조가 모자란 팀(제외한 팀은 뺀다)
   const placed={}; BOARD.forEach(g=>{ placed[g.seq]=(placed[g.seq]||0)+(g.pax||0); });
-  const un=teams.filter(t=>!isSkip(t.seq) && (placed[t.seq]||0)<t.pax);
+  const un=unassignedTeams(DATESEL);
   const skipped=teams.filter(t=>isSkip(t.seq));
   const unHTML = un.length? un.map(t=>{
     const rest=t.pax-(placed[t.seq]||0);
@@ -750,7 +768,15 @@ function bind(){
   document.querySelectorAll('#board .cell').forEach(b=>{
     b.addEventListener('click',e=>{
       const del=e.target&&e.target.getAttribute&&e.target.getAttribute('data-del');
-      if(del!=null&&del!==''){ e.stopPropagation(); BOARD.splice(+del,1); SELG=null; render(); touch(); return; }
+      if(del!=null&&del!==''){
+        e.stopPropagation();
+        const gone=BOARD[+del], seq=gone&&gone.seq;
+        BOARD.splice(+del,1); SELG=null;
+        // 그 팀의 조가 하나도 안 남았다면 = 오늘 안 나간다는 뜻 → 제외로 넘긴다.
+        //  이렇게 하지 않으면 자동 배정이 다시 채워 「지웠는데 또 있다」가 된다.
+        if(seq!=null && !BOARD.some(g=>String(g.seq)===String(seq))){ markSkip(seq); }
+        render(); touch(); return;
+      }
       const c=b.getAttribute('data-c'), slot=+b.getAttribute('data-s');
       const gi=b.getAttribute('data-i');
       if(gi!=null&&gi!==''){ SELG=(SELG===+gi)?null:+gi; render(); return; }
