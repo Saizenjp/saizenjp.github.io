@@ -191,7 +191,8 @@ function rotLabel(start, holes){ return rotOf(start,holes).map(courseL).join('�
 const L={
   ja:{ step:'コース割当表', connHint:'接続情報はこのブラウザにのみ保存されます。',
     daySel:'ラウンド日', dayNote:'※ 商品名からラウンド日を自動抽出(入国ICN・滞在中・帰国PUS)。ホール数も自動(平日27H=18+9・週末/祝日18H・帰国PUS 9H)。',
-    boardH:'コース割当(組単位)', unH:'未割当チーム',
+    boardH:'コース割当(組単位)', unH:'スタート枠のないチーム(未割当)',
+    unWhy:'その日ラウンドするのに<b>まだスタート枠がない</b>チームです。通常は自動で埋まるので0になります — 残るのは<b>除外したチーム</b>か<b>枠が足りない</b>ときだけ。チームを押すと空き枠に入ります。',
     auto:'🪄 자동 배정', clear:'🧹 全消去', save:'💾 保存', print:'🖨 プレビュー',
     noDay:'ラウンド日を選択してください。', noData:'この日にラウンドはありません。',
     allSet:'全チーム割当済', pickCell:'空きマスを押すと移動します', moveDone:'移動しました', full:'そのマスは埋まっています',
@@ -222,7 +223,8 @@ const L={
     thTee:'ティ', totalG:n=>`計 ${n}組`, holesU:'H' },
   ko:{ step:'코스 배정표', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
     daySel:'라운딩 날짜', dayNote:'※ 상품명으로 라운딩 날짜 자동 추출(입국ICN·체류중·귀국PUS). 홀수도 자동(평일 27H=18+9·주말/공휴일 18H·귀국PUS 9H).',
-    boardH:'코스 배정(조 단위)', unH:'미배정 팀',
+    boardH:'코스 배정(조 단위)', unH:'출발 자리 없는 팀(미배정)',
+    unWhy:'그날 라운딩하는데 <b>아직 출발 자리가 없는</b> 팀입니다. 보통은 자동으로 채워져 0이 됩니다 — 남는다면 <b>제외한 팀</b>이거나 <b>자리가 모자란</b> 경우뿐입니다. 팀을 누르면 빈 자리에 들어갑니다.',
     auto:'🪄 자동 배정', clear:'🧹 전체 비우기', save:'💾 저장', print:'🖨 미리보기',
     noDay:'라운딩 날짜를 선택하세요.', noData:'이 날 라운딩이 없습니다.',
     allSet:'전 팀 배정됨', pickCell:'빈 칸을 누르면 그 자리로 옮깁니다', moveDone:'옮겼습니다', full:'그 칸은 이미 찼습니다',
@@ -253,7 +255,8 @@ const L={
     thTee:'티오프', totalG:n=>`합계 ${n}조`, holesU:'H' },
   en:{ step:'Course assignment', connHint:'Connection info is stored only in this browser.',
     daySel:'Round date', dayNote:'※ Round days auto-derived from the product name (arrival ICN · during stay · departure PUS). Holes auto too (weekday 27H=18+9 · weekend/holiday 18H · departure PUS 9H).',
-    boardH:'Course assignment (by group)', unH:'Unassigned teams',
+    boardH:'Course assignment (by group)', unH:'Teams without a start slot',
+    unWhy:'Teams playing that day that <b>have no start slot yet</b>. Normally 0 because assignment runs automatically — anything left is a <b>skipped team</b> or a day where <b>slots ran out</b>. Tap a team to drop it into a free slot.',
     auto:'🪄 Auto assign', clear:'🧹 Clear all', save:'💾 Save', print:'🖨 Preview',
     noDay:'Pick a round date.', noData:'No rounds on this day.',
     allSet:'All teams assigned', pickCell:'Tap an empty cell to move it there', moveDone:'Moved', full:'That cell is taken',
@@ -429,6 +432,7 @@ async function load(){
         rep:b.rep_name||'', isPus: oriMap[b.event_seq]!=null?oriMap[b.event_seq]:SZCore.isPus(b.origin,''),
         pax: cnt[b.event_seq]||0 };
     }).filter(t=>t.pax>0);
+    _todCache={};
     await loadMonthState();
     const ax=golfDates();
     if(DATESEL && !ax.includes(DATESEL)) DATESEL=null;
@@ -455,7 +459,11 @@ function holesOn(t,date){ const r=rowFor(t,date); if(!r) return 0;
 function golfDates(){ const s=new Set();
   TEAMS.forEach(t=>SZCore.golfRows({dep:t.dep,arr:t.arr,accom:t.accom},t.isPus).forEach(r=>{ if(r.date.slice(0,7)===YM) s.add(r.date); }));
   return [...s].sort(); }
-function teamsOnDate(date){ return TEAMS.filter(t=>!!rowFor(t,date)); }
+let _todCache={};
+function teamsOnDate(date){
+  if(_todCache[date]) return _todCache[date];
+  return (_todCache[date]=TEAMS.filter(t=>!!rowFor(t,date)));
+}
 // 그 팀이 그날 몇 번째 라운딩인지(코스 로테이션 기준)
 function dayIdxOf(t,date){ const rs=SZCore.golfRows({dep:t.dep,arr:t.arr,accom:t.accom},t.isPus); return Math.max(0, rs.findIndex(r=>r.date===date)); }
 function isLate(t){ return String(t.accom||'').indexOf('쿠주')>=0; }
@@ -642,6 +650,7 @@ function render(){
   box.innerHTML=`
     <div class="panel">
       <h3>${tx('unH')} <span class="cnt">${tx('unassignedN',un.length)}</span></h3>
+      <div class="legend" style="margin:0 0 8px">${tx('unWhy')}</div>
       <div class="un-list">${unHTML}</div>
       <div class="legend">${tx('pickCell')} · ${tx('dragHint')}</div>
     </div>
