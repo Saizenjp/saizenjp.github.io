@@ -152,6 +152,9 @@
   .zchip:hover{border-color:var(--accent)}
   .zchip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   .zchip .zn{font-size:10.5px;font-weight:700;opacity:.8;margin-left:6px}
+  .noroom{margin:10px 0 0;padding:10px 13px;border-radius:9px;background:#fbf3e2;border:1px solid #e3d3a8;
+    color:#7a5a16;font-size:13px;font-weight:700;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .noroom a{color:var(--accent);font-weight:800}
   .lgd{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);font-weight:700;margin-top:9px;align-items:center}
 
   @media print{
@@ -226,6 +229,7 @@ const L={
     closed:(f,t,r)=>`閉鎖 ${f}~${t}${r?' · '+r:''}`,
     noRooms:'該当する客室がありません。', floorStat:(c)=>`清掃 ${c}室`,
     lgd:'左の色帯＝状態 / 上から優先順に並んでいます',
+    noRoomWarn:n=>`この日 泊まるのに<b>客室が割り当てられていないチームが ${n}件</b>あります — 空室数はその分 実際より多く見えます。`, noRoomGo:'客室割当を開く →',
     teeHint:'連泊はティオフが早い部屋から（チームが出た後に入れる）',
     statN:(d,n)=>`${d} · ${n}室` },
   ko:{ step:'객실 청소', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', preConn:'연결 후 표시됩니다.',
@@ -248,6 +252,7 @@ const L={
     closed:(f,t,r)=>`폐쇄 ${f}~${t}${r?' · '+r:''}`,
     noRooms:'해당하는 객실이 없습니다.', floorStat:(c)=>`청소 ${c}실`,
     lgd:'왼쪽 색띠 = 상태 / 위에서부터 우선순위 순서',
+    noRoomWarn:n=>`이 날 묵는데 <b>방배정이 안 된 팀이 ${n}건</b> 있습니다 — 그만큼 공실이 실제보다 많아 보입니다.`, noRoomGo:'방배정 열기 →',
     teeHint:'연박은 티오프 빠른 방부터(팀이 나간 뒤 들어갈 수 있음)',
     statN:(d,n)=>`${d} · ${n}실` },
   en:{ step:'Housekeeping', connHint:'Connection details are stored in this browser only.', preConn:'Shown after connecting.',
@@ -270,6 +275,7 @@ const L={
     closed:(f,t,r)=>`Closed ${f}~${t}${r?' · '+r:''}`,
     noRooms:'No matching rooms.', floorStat:(c)=>`${c} rooms`,
     lgd:'Left colour bar = status / listed in priority order',
+    noRoomWarn:n=>`<b>${n} team(s) staying this night have no room assigned</b> — the vacant count looks higher than it really is.`, noRoomGo:'Open room assignment →',
     teeHint:'Stayovers are ordered by tee-off — clean once the team has left',
     statN:(d,n)=>`${d} · ${n} rooms` }
 };
@@ -292,6 +298,7 @@ function accomIdx(a){ const i=ACCOM_ORDER.indexOf(a); return i<0?99:i; }
 const PRIO={turn:0, out:1, stay:2, in:3, vacant:4, ooo:5};
 
 let supa=null, INV=[], ROWS=[], TEAM={}, CLO=[], TEE={}, COURSE={};
+let NOROOM=0;   // 그날 묵는데 방배정이 없는 팀 수(배정 자체가 비어 있으면 「공실 N」으로 오해한다)
 let DATE=todayISO(), SORT='prio';
 // 숙소 구분은 방배정 화면과 같은 기준(SZCore) — 소보별장·아소별장·돔하우스 배정도 그대로 보인다
 let PLACESEL=new Set();          // 비면 「전체」 = 야마나미 복합 + 쿠주힐즈(간지·시즈 제외)
@@ -375,6 +382,7 @@ function renderUI(){
       <h3>${tx('title')} <span class="cnt" style="font-weight:700;color:var(--muted)">· ${tx('readonly')}</span></h3>
       <div class="kpis" id="kpis" style="margin-top:9px"></div>
       <div class="lgd noprint"><span>${tx('lgd')}</span><span style="color:var(--muted)">${tx('teeHint')}</span></div>
+      ${NOROOM?`<div class="noprint noroom">⚠ ${tx('noRoomWarn',NOROOM)} <a href="room.html?ym=${esc(DATE.slice(0,7))}&date=${esc(DATE)}">${tx('noRoomGo')}</a></div>`:''}
     </div>
     <div id="floors"></div>`;
   $('#d-prev').addEventListener('click',()=>{ DATE=shiftDate(DATE,-1); $('#d-pick').value=DATE; load(); });
@@ -484,6 +492,17 @@ async function load(){
       const gc=await supa.from('golf_courses').select('code,name_ja,name_ko');
       if(!gc.error) (gc.data||[]).forEach(c=>{ COURSE[c.code]=c; });
     }
+    // 6) 그날 묵는 팀 vs 방배정된 팀 — 배정이 비어 있으면 「공실 126」으로 오해하게 된다
+    NOROOM=0;
+    try{
+      const bk=await paged((a,b)=>supa.from('bookings').select('event_seq')
+        .lte('dep_date',D).gt('arr_date',D).order('event_seq').range(a,b));
+      if(!bk.error){
+        const staying=new Set((bk.data||[]).map(x=>x.event_seq));
+        const placed=new Set(ROWS.map(r=>r.event_seq));
+        NOROOM=[...staying].filter(sq=>!placed.has(sq)).length;
+      }
+    }catch(_){ NOROOM=0; }
     renderAccomChips();
     render();
   }catch(e){ if(st) st.textContent=tx('loadFail'); toast(tx('loadFail')+': '+String(e&&e.message||e),'err'); }
