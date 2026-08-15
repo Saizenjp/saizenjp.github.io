@@ -74,6 +74,8 @@
   .cell .g-rep{color:var(--text);margin-left:5px}
   .cell .g-pax{color:var(--text2);margin-left:5px;font-size:11.5px}
   .cell .g-holes{color:var(--muted);font-size:11px;margin-left:5px}
+  .cell .gno{font-style:normal;font-size:10px;font-weight:800;color:#fff;background:var(--text2);border-radius:99px;padding:0 5px;margin-left:4px}
+  table.cb th.chd small{display:block;font-size:10px;font-weight:600;opacity:.85}
   .cell .g-x{float:right;color:var(--muted);font-weight:800;padding:0 3px}
   .cell .g-x:hover{color:var(--err)}
   .lateb{display:inline-block;font-size:10px;font-weight:800;color:#fff;background:#9a7322;border-radius:99px;padding:0 6px;margin-left:5px}
@@ -149,12 +151,22 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.82"></script>
+<script src="../assets/saizen-ops.js?v=15.83"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
 const COURSES=[ {code:'aso',ko:'아소',ja:'阿蘇',en:'Aso'}, {code:'sobo',ko:'소보',ja:'祖母',en:'Sobo'}, {code:'kuju',ko:'쿠주',ja:'久住',en:'Kuju'} ];
 const CMAP={}; COURSES.forEach(c=>CMAP[c.code]=c);
+// 27홀 = 9홀 3개(아소·소보·쿠주)를 이어서 돈다. 이 표는 **출발 코스·출발 시각**만 정한다.
+//  아소 출발 → 소보 → 쿠주 / 소보 출발 → 쿠주 → 아소 / 쿠주 출발 → 아소 → 소보.
+//  그래서 한 사람은 하루에 한 번만(출발 자리 하나만) 표에 나온다.
+const ROT={ aso:['aso','sobo','kuju'], sobo:['sobo','kuju','aso'], kuju:['kuju','aso','sobo'] };
+function rotOf(start, holes){
+  const r=ROT[start]||ROT.aso;
+  const n = holes>=27 ? 3 : holes>=18 ? 2 : 1;   // 27H=3바퀴 · 18H=2바퀴 · 9H=1바퀴
+  return r.slice(0,n);
+}
+function rotLabel(start, holes){ return rotOf(start,holes).map(courseL).join('→'); }
 
 const L={
   ja:{ step:'コース割当表', connHint:'接続情報はこのブラウザにのみ保存されます。',
@@ -174,16 +186,12 @@ const L={
     autoFirst:'この日はまだ割当がなかったので自動で割り当てて保存しました',
     autoMonth:'📅 今月まとめて自動割当', monthRun:'今月分を割り当て中…', monthDone:(d,g)=>`${d}日分 ${g}組を自動割当しました`,
     monthNone:'割り当てるチームがありません', extRow:'延長', extT:'6:50〜8:42(コース17組)を超えた分 — チーム数が多い日は7分間隔でそのまま延長します',
-    dcMiss:n=>`未${n}`, dcDone:'✓', rosH:'組の編成(この組に入る人)', rosPick:'組を選ぶと編成できます', rosIn:'この組', rosAdd:'追加できる人',
+    dcMiss:n=>`未${n}`, dcDone:'✓',
+    startHd:'スタート', rotNote:'27H=9H×3コース。阿蘇スタート→祖母→久住 / 祖母→久住→阿蘇 / 久住→阿蘇→祖母。表は<b>スタート枠</b>のみ — 同じ人が1日に2回出ることはありません。',
+    grpNo:n=>`${n}組目`, rosH:'組の編成(この組に入る人)', rosPick:'組を選ぶと編成できます', rosIn:'この組', rosAdd:'追加できる人',
     rosSearch:'名前で検索', rosFull:'この組は満員です(最大4名)', rosNone:'まだ誰も入っていません',
     rosOther:'他チーム', rosAll:'全員この組へ', rosClr:'この組を空に', male:'男', female:'女',
-    memCnt:(a,b)=>`${a}/${b}`, cartLbl:'Cart no', cartPh:'e.g. 12,13',
-    chkH:'Grouping needs a check (teams of 5+)', chkN:n=>`${n} groups`, chkNone:'Nothing waiting',
-    chkMark:'check', chkT:'Teams of 5 or more are split by a person — tap the group to set its roster',
-    autoFilled:n=>`Filled rosters automatically for ${n} teams of 4 or fewer`, cartLbl:'카트번호', cartPh:'예 12,13',
-    chkH:'조편성 확인 필요(5명 이상 팀)', chkN:n=>`${n}조`, chkNone:'확인 대기 없음',
-    chkMark:'확인', chkT:'5명 이상 팀은 조를 어떻게 나눌지 사람이 정합니다 — 조를 눌러 편성하세요',
-    autoFilled:n=>`4명 이하 ${n}팀은 조원까지 자동으로 넣었습니다`, cartLbl:'カート番号', cartPh:'例 12,13',
+    memCnt:(a,b)=>`${a}/${b}`, cartLbl:'カート番号', cartPh:'例 12,13',
     chkH:'組編成の確認が必要(5名以上のチーム)', chkN:n=>`${n}組`, chkNone:'確認待ちなし',
     chkMark:'要確認', chkT:'5名以上のチームは組の分け方を人が決めます — 組を押して編成してください',
     autoFilled:n=>`4名以下の${n}チームは組員まで自動で入れました`,
@@ -208,10 +216,15 @@ const L={
     autoFirst:'이 날은 배정이 없어 자동으로 배정하고 저장했습니다',
     autoMonth:'📅 이달 전체 자동 배정', monthRun:'이달 분을 배정하는 중…', monthDone:(d,g)=>`${d}일치 ${g}개 조를 자동 배정했습니다`,
     monthNone:'배정할 팀이 없습니다', extRow:'연장', extT:'6:50~8:42(코스당 17조)를 넘은 자리 — 팀이 많은 날은 7분 간격으로 그대로 이어 붙입니다',
-    dcMiss:n=>`미${n}`, dcDone:'✓', rosH:'조 편성(이 조에 들어갈 사람)', rosPick:'조를 클릭하면 편성할 수 있습니다', rosIn:'이 조', rosAdd:'넣을 수 있는 인원',
+    dcMiss:n=>`미${n}`, dcDone:'✓',
+    startHd:'출발', rotNote:'27홀=9홀 3개 코스. 아소 출발→소보→쿠주 / 소보 출발→쿠주→아소 / 쿠주 출발→아소→소보. 이 표는 <b>출발 자리</b>만 정합니다 — 같은 사람이 하루에 두 번 나오지 않습니다.',
+    grpNo:n=>`${n}조`, rosH:'조 편성(이 조에 들어갈 사람)', rosPick:'조를 클릭하면 편성할 수 있습니다', rosIn:'이 조', rosAdd:'넣을 수 있는 인원',
     rosSearch:'이름 검색', rosFull:'이 조는 만원입니다(최대 4명)', rosNone:'아직 아무도 없습니다',
     rosOther:'다른 팀', rosAll:'전원 이 조로', rosClr:'이 조 비우기', male:'남', female:'여',
-    memCnt:(a,b)=>`${a}/${b}`,
+    memCnt:(a,b)=>`${a}/${b}`, cartLbl:'카트번호', cartPh:'예 12,13',
+    chkH:'조편성 확인 필요(5명 이상 팀)', chkN:n=>`${n}조`, chkNone:'확인 대기 없음',
+    chkMark:'확인', chkT:'5명 이상 팀은 조를 어떻게 나눌지 사람이 정합니다 — 조를 눌러 편성하세요',
+    autoFilled:n=>`4명 이하 ${n}팀은 조원까지 자동으로 넣었습니다`,
     connOk:'연결됨', notConn:'미연결', connBtn:'연결', connecting:'연결 중…', connFail:'연결 실패',
     needUrlKey:'URL·key 필요', loginNeed:'먼저 로그인하세요',
     pvTitle:'코스 배정표', pvPrint:'인쇄', pvClose:'닫기', popupBlocked:'팝업이 차단되었습니다',
@@ -233,10 +246,15 @@ const L={
     autoFirst:'No assignment existed for this day — auto-assigned and saved',
     autoMonth:'📅 Auto-assign whole month', monthRun:'Assigning this month…', monthDone:(d,g)=>`Auto-assigned ${g} groups across ${d} days`,
     monthNone:'No teams to assign', extRow:'ext', extT:'Beyond 6:50–8:42 (17 per course) — busy days simply continue at 7-minute intervals',
-    dcMiss:n=>`${n}`, dcDone:'✓', rosH:'Group roster (who plays in this group)', rosPick:'Select a group to edit its roster', rosIn:'In this group', rosAdd:'Available',
+    dcMiss:n=>`${n}`, dcDone:'✓',
+    startHd:'Start', rotNote:'27 holes = three 9-hole loops. Aso start→Sobo→Kuju / Sobo→Kuju→Aso / Kuju→Aso→Sobo. This sheet sets the <b>start slot</b> only — nobody appears twice in a day.',
+    grpNo:n=>`G${n}`, rosH:'Group roster (who plays in this group)', rosPick:'Select a group to edit its roster', rosIn:'In this group', rosAdd:'Available',
     rosSearch:'Search by name', rosFull:'This group is full (max 4)', rosNone:'Nobody yet',
     rosOther:'Other team', rosAll:'All into this group', rosClr:'Empty this group', male:'M', female:'F',
-    memCnt:(a,b)=>`${a}/${b}`,
+    memCnt:(a,b)=>`${a}/${b}`, cartLbl:'Cart no', cartPh:'e.g. 12,13',
+    chkH:'Grouping needs a check (teams of 5+)', chkN:n=>`${n} groups`, chkNone:'Nothing waiting',
+    chkMark:'check', chkT:'Teams of 5 or more are split by a person — tap the group to set its roster',
+    autoFilled:n=>`Filled rosters automatically for ${n} teams of 4 or fewer`,
     connOk:'Connected', notConn:'Not connected', connBtn:'Connect', connecting:'Connecting…', connFail:'Connection failed',
     needUrlKey:'URL·key required', loginNeed:'Please log in first',
     pvTitle:'Course assignment', pvPrint:'Print', pvClose:'Close', popupBlocked:'Pop-up was blocked',
@@ -514,6 +532,14 @@ async function toggleSkip(seq){
   }
 }
 
+// 같은 팀이 두 조 이상이면 몇 조인지 — 같은 이름이 두 번 보이는 혼동을 막는다
+function gnoOf(i){
+  const g=BOARD[i]; if(!g) return 0;
+  const mine=BOARD.map((x,k)=>({x,k})).filter(o=>String(o.x.seq)===String(g.seq))
+    .sort((a,b)=>(a.x.slot||0)-(b.x.slot||0));
+  if(mine.length<2) return 0;
+  return mine.findIndex(o=>o.k===i)+1;
+}
 function cellKey(course,slot){ return course+'|'+slot; }
 function groupAt(course,slot){ return BOARD.findIndex(g=>g.course===course && g.slot===slot); }
 
@@ -557,7 +583,7 @@ function render(){
         +`<span class="grip" title="${esc(tx('dragHint'))}">≡</span>`
         +`<span class="g-x" data-del="${gi}">✕</span>`
         +`<span class="g-tag">${esc(g.tag||('#'+g.seq))}</span>`
-        +`<span class="g-rep">${esc(g.rep||'')}</span>`
+        +`<span class="g-rep">${esc(g.rep||'')}${gnoOf(gi)?`<i class="gno">${tx('grpNo',gnoOf(gi))}</i>`:''}</span>`
         +`<span class="g-pax">${(g.members&&g.members.length)?tx('memCnt',g.members.length,g.pax):g.pax+tx('person')}</span>`
         +`<span class="g-holes">${g.holes?g.holes+tx('holesU'):''}</span>`
         +`${g.late?`<span class="lateb" title="${esc(tx('lateT'))}">${tx('late')}</span>`:''}`
@@ -587,9 +613,11 @@ function render(){
     <div class="panel">
       <h3>${tx('boardH')} <span class="cnt">${tx('totalG',BOARD.length)}</span></h3>
       <div class="cbwrap"><table class="cb">
-        <thead><tr><th>${tx('thTee')}</th>${COURSES.map(c=>`<th class="chd ${c.code}">${esc(courseL(c.code))}</th>`).join('')}</tr></thead>
+        <thead><tr><th>${tx('thTee')}</th>${COURSES.map(c=>
+          `<th class="chd ${c.code}">${esc(courseL(c.code))} ${tx('startHd')}<small>${esc(rotLabel(c.code,27))}</small></th>`).join('')}</tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
+      <div class="legend">${tx('rotNote')}</div>
     </div>`;
   bind();
 }
@@ -761,27 +789,56 @@ function planDate(date, existing, dateIdx){
   const teams=teamsOnDate(date).filter(t=>!skipOn(date,t.seq));
   if(!teams.length) return {rows:[], slots:SLOTS};
   const placed={}; (existing||[]).forEach(e=>{ placed[e.event_seq]=(placed[e.event_seq]||0)+(e.capacity||0); });
+  // 팀 단위로 필요한 조를 만든다 — 한 팀은 한 코스에 연속으로 붙인다.
   const need=[];
   teams.slice().sort((a,b)=>a.seq-b.seq).forEach(t=>{
     const rest=t.pax-(placed[t.seq]||0);
-    if(rest>0) SZCore.splitTeam(rest,4).forEach(n=>need.push({t, n, late:isLate(t)}));
+    if(rest>0) need.push({ t, parts:SZCore.splitTeam(rest,4), late:isLate(t) });
   });
   if(!need.length) return {rows:[], slots:SLOTS};
-  const nc=COURSES.length;
-  const total=(existing||[]).length+need.length;
-  const slots=makeSlots(Math.max(STD_N, Math.ceil(total/nc)+1));
+  const cs=COURSES.map(c=>c.code);
   const occ=new Set((existing||[]).map(e=>e.course_code+'|'+e.slot_no));
-  const posAt=i=>({ slot:Math.floor(i/nc)+1, course:COURSES[((i%nc)+(dateIdx||0))%nc].code });
-  const last=slots.length*nc-1;
-  let fi=0, bi=last;
-  const takeF=()=>{ while(fi<=last){ const p=posAt(fi++); if(!occ.has(p.course+'|'+p.slot)) return p; } return null; };
-  const takeB=()=>{ while(bi>=0){ const p=posAt(bi--); if(!occ.has(p.course+'|'+p.slot)) return p; } return null; };
+  const load={}; cs.forEach(c=>load[c]=0);
+  (existing||[]).forEach(e=>{ if(load[e.course_code]!=null) load[e.course_code]++; });
+  const totalG=(existing||[]).length + need.reduce((n,x)=>n+x.parts.length,0);
+  let slots=makeSlots(Math.max(STD_N, Math.ceil(totalG/cs.length)+2));
+  // 그 코스에서 연속 k칸이 비어 있는 첫 자리(늦은 조는 뒤에서부터)
+  const freeRun=(c,k,fromEnd)=>{
+    const fits=st=>{ for(let j=0;j<k;j++) if(occ.has(c+'|'+(st+j))) return false; return true; };
+    if(fromEnd){ for(let st=slots.length-k+1; st>=1; st--) if(fits(st)) return st; }
+    else { for(let st=1; st+k-1<=slots.length; st++) if(fits(st)) return st; }
+    return -1;
+  };
   const rows=[];
-  const mk=(x,p)=>{ occ.add(p.course+'|'+p.slot);
-    rows.push({ seq:x.t.seq, tag:x.t.tag, rep:x.t.rep, pax:x.n, course:p.course, slot:p.slot,
-      tee:slots[p.slot-1]||'', late:x.late, holes:holesOn(x.t,date) }); };
-  need.filter(x=>!x.late).forEach(x=>{ const p=takeF(); if(p) mk(x,p); });
-  need.filter(x=>x.late).forEach(x=>{ const p=takeB(); if(p) mk(x,p); });   // 쿠주힐즈=늦은 조(뒤에서부터)
+  const place=(x,ti)=>{
+    const k=x.parts.length;
+    // 코스 선택 = 가장 덜 찬 코스 우선(공평), 같으면 날짜·순번으로 로테이션
+    const order=cs.slice().sort((a,b)=>{
+      if(load[a]!==load[b]) return load[a]-load[b];
+      const ra=(cs.indexOf(a)-((ti+(dateIdx||0))%cs.length)+cs.length)%cs.length;
+      const rb=(cs.indexOf(b)-((ti+(dateIdx||0))%cs.length)+cs.length)%cs.length;
+      return ra-rb;
+    });
+    for(let pass=0; pass<2; pass++){
+      for(const c of order){
+        const st=freeRun(c,k,x.late);
+        if(st<0) continue;
+        x.parts.forEach((n,j)=>{
+          const slot=st+j; occ.add(c+'|'+slot); load[c]++;
+          rows.push({ seq:x.t.seq, tag:x.t.tag, rep:x.t.rep, pax:n, course:c, slot,
+            tee:slots[slot-1]||'', late:x.late, holes:holesOn(x.t,date) });
+        });
+        return true;
+      }
+      slots=makeSlots(slots.length+Math.max(k,3));   // 연속 자리가 없으면 뒤로 늘린다
+    }
+    return false;
+  };
+  let ti=0;
+  need.filter(x=>!x.late).forEach(x=>place(x,ti++));
+  need.filter(x=>x.late).forEach(x=>place(x,ti++));   // 쿠주힐즈 숙박 = 늦은 조(뒤에서부터)
+  // 슬롯을 늘린 뒤 앞서 배정된 조의 티오프 문자열을 맞춘다
+  rows.forEach(r=>{ r.tee=slots[r.slot-1]||r.tee; });
   return {rows, slots};
 }
 
@@ -904,6 +961,7 @@ function printBoard(){
   td.tee{width:20mm;text-align:center;font-weight:800;font-family:Consolas,monospace;background:#f6f6f6}
   td b{font-family:Consolas,'Meiryo',monospace}
   .p{color:#444;font-size:9.5pt}.h{color:#666;font-size:9pt}
+  .rt{font-size:8.5pt;color:#555;font-weight:400}
   @media print{ @page{size:A4 landscape;margin:0} body{background:#fff} .bar{display:none} .page{margin:0;width:auto;min-height:auto} }
 </style></head><body>
   <div class="bar"><h1>${esc(tx('pvTitle'))} ${esc(DATESEL)}</h1><div style="flex:1"></div>
@@ -912,7 +970,8 @@ function printBoard(){
   <div class="page">
     <h2>${esc(tx('pvTitle'))} — ${esc(DATESEL)} ${esc(SZCore.mdWd(DATESEL,lang()))}</h2>
     <div class="sub">${esc(tx('totalG',BOARD.length))}</div>
-    <table><thead><tr><th>${esc(tx('thTee'))}</th>${COURSES.map(c=>`<th>${esc(courseL(c.code))}</th>`).join('')}</tr></thead>
+    <table><thead><tr><th>${esc(tx('thTee'))}</th>${COURSES.map(c=>
+      `<th>${esc(courseL(c.code))} ${esc(tx('startHd'))}<br><span class="rt">${esc(rotLabel(c.code,27))}</span></th>`).join('')}</tr></thead>
     <tbody>${rows}</tbody></table>
   </div>
 </body></html>`;
