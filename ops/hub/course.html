@@ -137,7 +137,6 @@
   .tv-tb td b{font-family:var(--mono);color:#f0d99a;font-size:2.2vh}
   .tv-tb td i{font-style:normal;font-size:1.7vh;font-weight:800;color:#9fb98a;margin-left:.4vw}
   .tv-tb td .nm{font-weight:700}
-  .tv-tb tr.past td{opacity:.32}
   .tv-tb tr:not(.past):first-of-type td{background:#2b3a22}
   .tv-none{text-align:center;color:#9fb98a;padding:6vh 0}
   .un.chk{border-color:#e3bdb4;background:#fdf2f0}
@@ -172,7 +171,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.84"></script>
+<script src="../assets/saizen-ops.js?v=15.85"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -350,7 +349,17 @@ async function connect(){
       DATESEL=TVQ.get('date')||SZCore.fmtDate(new Date());
       YM=DATESEL.slice(0,7);
       renderUI(); await load();
-      setInterval(async()=>{ try{ await loadBoard(DATESEL,true); }catch(e){} }, 60000);
+      setInterval(async()=>{
+        try{
+          // 모니터를 밤새 켜 둬도 날이 바뀌면 저절로 오늘로 넘어간다
+          const today=SZCore.fmtDate(new Date());
+          if(!TVQ.get('date') && today!==DATESEL){
+            DATESEL=today;
+            if(today.slice(0,7)!==YM){ YM=today.slice(0,7); await load(); return; }
+          }
+          await loadBoard(DATESEL,true);
+        }catch(e){}
+      }, 60000);
       setInterval(renderTV, 20000);          // 시계·진행 표시 갱신
       return;
     }
@@ -378,8 +387,8 @@ function renderUI(){
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);DATESEL=null;load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);DATESEL=null;load();});
   $('#btn-tv').addEventListener('click',()=>{
-    const u=new URL(location.href); u.searchParams.set('tv','1'); if(DATESEL) u.searchParams.set('date',DATESEL);
-    window.open(u.href,'_blank');
+    const u=new URL(location.href); u.searchParams.delete('date'); u.searchParams.set('tv','1');
+    window.open(u.href,'_blank');   // 날짜를 넣지 않는다 → 모니터는 항상 그날(오늘)을 띄운다
   });
   $('#btn-print').addEventListener('click',printBoard);
 }
