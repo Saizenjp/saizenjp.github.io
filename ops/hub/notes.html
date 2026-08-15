@@ -83,7 +83,7 @@
   .hist .old{color:var(--err)}
   .hist .new{color:var(--ok);font-weight:700}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.40">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.41">
 </head>
 <body data-so-area="notes">
 <div class="topbar so-bar">
@@ -133,7 +133,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=15.83"></script>
+<script src="../assets/saizen-ops.js?v=15.84"></script>
 <script>
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
@@ -333,44 +333,24 @@ function render(){
 }
 
 /* ── 저장(포커스 아웃 시) + 이력 기록 ── */
-// ⚠ 입력 즉시 저장하지 않는다(Min 2026-08) — 여러 칸을 이어서 고치는 화면이라
-//   칸마다 저장되면 이력이 중간 상태로 쌓이고 오타도 그대로 확정된다.
-//   고친 값은 PEND 에 모아 두고 하단 [저장] 바에서 한 번에 반영한다.
-const PEND={};   // seq → { field: {old,val} }
-let SB=null;
-function pendMark(k){
-  if(!SB && window.__so_saveBar) SB=window.__so_saveBar({ save:flushNotes, reload:()=>loadData() });
-  if(SB) SB.mark(k);
-}
-async function flushNotes(){
-  const user=getUser()||'미상';
-  for(const seq of Object.keys(PEND)){
-    const cur=state.notes[seq]||{ event_seq:Number(seq) };
-    const row=Object.assign({}, cur, { event_seq:Number(seq), session_ym:state.ym, updated_by:user });
-    delete row.updated_at; delete row.created_at;
-    Object.keys(PEND[seq]).forEach(f=>{ row[f]=PEND[seq][f].val; });
-    const { data, error }=await supa.from('event_notes').upsert(row,{ onConflict:'event_seq' }).select().single();
-    if(error) throw error;
-    state.notes[seq]=data;
-    for(const f of Object.keys(PEND[seq])){
-      const { error:le }=await supa.from('event_note_log')
-        .insert({ event_seq:Number(seq), field:f, old_value:PEND[seq][f].old||null, new_value:PEND[seq][f].val||null, changed_by:user });
-      if(le) console.warn('log insert', le.message);
-    }
-    delete PEND[seq];
-  }
-  toast(tx('saved'),'ok');
-}
-function onEdit(e){
+async function onEdit(e){
   const inp=e.target, seq=Number(inp.dataset.seq), field=inp.dataset.f, val=inp.value.trim();
   const cur=state.notes[seq]||{ event_seq:seq };
   const old=cur[field]!=null?String(cur[field]):'';
   if(old===val) return;
+  // DB에는 담당자명(실데이터)을 그대로 기록. 미설정 시 sentinel '미상' 저장(언어 무관 — 표시만 번역).
   const user=getUser()||'미상';
   if(user==='미상'){ toast(tx('userUnset'),'warn'); }
-  (PEND[seq]=PEND[seq]||{})[field]={ old, val };
+  const row=Object.assign({}, cur, { event_seq:seq, session_ym:state.ym, [field]:val, updated_by:user });
+  delete row.updated_at; delete row.created_at;
+  const { data, error }=await supa.from('event_notes').upsert(row,{ onConflict:'event_seq' }).select().single();
+  if(error){ toast(tx('saveFail')+': '+error.message,'err'); return; }
+  state.notes[seq]=data;
+  const { error:le }=await supa.from('event_note_log')
+    .insert({ event_seq:seq, field, old_value:old||null, new_value:val||null, changed_by:user });
+  if(le) console.warn('log insert', le.message);
   inp.classList.add('saved'); setTimeout(()=>inp.classList.remove('saved'),900);
-  pendMark(seq+':'+field);
+  toast(`${tx('saved')} · ${fieldLabel(field)}`,'ok');
 }
 // 저장된 담당자 sentinel '미상'을 화면 표시용으로만 번역(저장값은 한국어 유지).
 function userLabel(u){ return u==='미상'?tx('userUnknown'):(u||''); }
