@@ -524,14 +524,21 @@ async function loadBoard(date, skipAuto){
       .eq('play_date',date).order('slot_no',{nullsFirst:false});
     if(error) throw error;
     const teams=teamsOnDate(date);
+    const ghost=[];
     (grps||[]).forEach(g=>{
-      DBIDS.push(g.id);
       const t=teams.find(x=>String(x.seq)===String(g.event_seq));
+      // 예약이 지워졌거나 그날 라운딩 팀이 아니면 유령 조 → 화면에 올리지 않고 DB에서도 정리한다
+      if(!t){ ghost.push(g.id); return; }
+      DBIDS.push(g.id);
       BOARD.push({ id:g.id, seq:g.event_seq, course:g.course_code||'', slot:g.slot_no||null,
         tee:g.tee_time||(g.slot_no?SLOTS[g.slot_no-1]:''), pax:g.capacity||0,
         tag:(t?t.tag:'')||g.label||'', rep:t?t.rep:'', holes:t?holesOn(t,date):0,
         late:t?isLate(t):false, cart:g.cart_no||'', note:g.note||'', members:[] });
     });
+    if(ghost.length && !TV){
+      try{ await supa.from('golf_group_members').delete().in('group_id',ghost);
+           await supa.from('golf_groups').delete().in('id',ghost); }catch(e){}
+    }
     // 조원(사람 배치) — 조편성을 이 화면에서 같이 한다
     const gids=BOARD.map(g=>g.id).filter(Boolean);
     if(gids.length){

@@ -170,6 +170,8 @@ from (
   union all select 99,'99 코스 수기 지정','play_course', case when exists(select 1 from information_schema.tables where table_schema='public' and table_name='play_course') then '✅ 있음' else '❌ 없음 (99)' end
   union all select 100,'100 전기카트 자동청구','trg_cart_charge', case when exists(select 1 from pg_trigger where tgname='trg_cart_charge' and not tgisinternal) then '✅ 있음' else '❌ 없음 (100)' end
   union all select 101,'101 코스 배정표','golf_groups.cart_no', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='golf_groups' and column_name='cart_no') then '✅ 있음' else '❌ 없음 (101)' end
+  union all select 102,'102 라운딩 제외','golf_skips', case when exists(select 1 from information_schema.tables where table_schema='public' and table_name='golf_skips') then '✅ 있음' else '❌ 없음 (102)' end
+  union all select 103,'103 조 유령 방지','golf_groups FK cascade + 고아 0', case when exists(select 1 from pg_constraint where conname='golf_groups_event_seq_fkey' and confdeltype='c') and not exists(select 1 from golf_groups where event_seq is null) then '✅ 적용' else '❌ 미적용 (103)' end
 ) t
 order by ord, 항목;
 
