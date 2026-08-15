@@ -871,20 +871,20 @@ function bindRoster(){
     const g=BOARD[SELG]; if(!g) return;
     if((g.members||[]).length>=(g.pax||4)){ toast(tx('rosFull'),'warn'); return; }
     const m=memberById(b.getAttribute('data-add')); if(!m) return;
-    snap(); (g.members=g.members||[]).push(m); markManual(g); render(); touch();
+    snap(); (g.members=g.members||[]).push(m); render(); touch();
   }));
   document.querySelectorAll('#roster-panel [data-out]').forEach(b=>b.addEventListener('click',()=>{
     const g=BOARD[SELG]; if(!g) return;
-    snap(); g.members=(g.members||[]).filter(m=>String(m.id)!==String(b.getAttribute('data-out'))); markManual(g); render(); touch();
+    snap(); g.members=(g.members||[]).filter(m=>String(m.id)!==String(b.getAttribute('data-out'))); render(); touch();
   }));
   const all=$('#r-all'); if(all) all.addEventListener('click',()=>{
-    const g=BOARD[SELG]; if(!g) return; snap(); markManual(g); const used=usedMemberIds();
+    const g=BOARD[SELG]; if(!g) return; snap(); const used=usedMemberIds();
     (ROSTER[g.seq]||[]).forEach(m=>{ if(!used.has(String(m.id)) && (g.members||[]).length<(g.pax||4)) (g.members=g.members||[]).push(m); });
     render(); touch();
   });
-  const clr=$('#r-clr'); if(clr) clr.addEventListener('click',()=>{ const g=BOARD[SELG]; if(!g) return; snap(); g.members=[]; markManual(g); render(); touch(); });
+  const clr=$('#r-clr'); if(clr) clr.addEventListener('click',()=>{ const g=BOARD[SELG]; if(!g) return; snap(); g.members=[]; render(); touch(); });
   // 성별로 몰아 넣기(남자끼리·여자끼리 편성) — 같은 팀 미배정 인원에서 정원까지
-  const byGender=gd=>{ const g=BOARD[SELG]; if(!g) return; snap(); markManual(g); const used=usedMemberIds();
+  const byGender=gd=>{ const g=BOARD[SELG]; if(!g) return; snap(); const used=usedMemberIds();
     (ROSTER[g.seq]||[]).forEach(m=>{ if(m.gender===gd && !used.has(String(m.id)) && (g.members||[]).length<(g.pax||4)) (g.members=g.members||[]).push(m); });
     render(); touch(); };
   const rc=$('#r-cart'); if(rc) rc.addEventListener('change',()=>{ const g=BOARD[SELG]; if(g){ g.cart=rc.value.trim(); render(); touch(); } });
@@ -945,7 +945,6 @@ function bind(){
       if(ai>=0&&bi>=0){
         snap();
         const tmp=A.members[ai]; A.members[ai]=B.members[bi]; B.members[bi]=tmp;
-        markManual(A); markManual(B);
         PICK=null; render(); touch(); return;
       }
     }
@@ -991,7 +990,8 @@ function moveGroup(gi, course, slot){
   toast(tx('moveDone'),'ok');
 }
 function setPos(g,course,slot){ g.course=course; g.slot=slot; g.tee=SLOTS[slot-1]||''; }
-// 사람이 직접 손댄 조 = 확인된 것으로 본다(자동 재배정이 덮지 않고, 확인 목록에서도 빠진다)
+// 확인 완료 표시 — [✓ 이대로 확정] 과 조를 다른 자리로 옮겼을 때만 쓴다.
+//  ⚠ 조원을 바꾸는 것은 「고치는 중」이지 확인 완료가 아니다 → 목록에서 사라지면 안 된다.
 function markManual(g){ if(g) g.src='manual'; }
 
 // 빈 슬롯 찾기 — 늦은 조(쿠주힐즈)는 뒤에서부터 채운다
