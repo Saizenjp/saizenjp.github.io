@@ -222,7 +222,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.88"></script>
+<script src="../assets/saizen-ops.js?v=15.89"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -867,47 +867,6 @@ async function refreshAfterChange(folioId){
   if(folioId) await selectFolio(folioId); else renderDetail();
 }
 
-// ── 정산계정 열기(팀/개인) ──
-async function openFolioModal(){
-  if(!supa){toast(tx('needConnect'),'warn');return;}
-  if(!state.bookings.length){toast(tx('noBookings'),'warn');return;}
-  const opened=new Set(state.folios.filter(f=>f.subject==='team').map(f=>f.event_seq));
-  const bg=document.createElement('div'); bg.className='modal-bg';
-  const m=document.createElement('div'); m.className='modal';
-  const items=state.bookings.map(b=>{
-    const already=opened.has(b.event_seq);
-    return `<div class="pickitem" data-seq="${b.event_seq}" data-rep="${(b.rep_name||'').replace(/"/g,'')}">
-      <span class="pi-tag">#${b.event_no||b.event_seq}</span> ${b.rep_name||''} · ${b.product_name||''}
-      <span style="color:var(--muted);font-size:11px"> ${(b.dep_date||'')}~${(b.arr_date||'')}${already?' · '+tx('alreadyOpen'):''}</span>
-    </div>`;
-  }).join('');
-  m.innerHTML=`<h2>${tx('openModalTitle')}</h2>
-    <div class="mbody">
-      <label>${tx('openModalLabel')}</label>
-      <input class="inp" id="open-filter" type="text" placeholder="${tx('openFilterPh')}">
-      <div id="open-list" style="display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto">${items}</div>
-    </div>
-    <div class="mfoot">
-      <button class="btn ghost sm" id="open-cancel" type="button">${tx('closeBtn')}</button>
-    </div>`;
-  bg.appendChild(m); document.body.appendChild(bg);
-  const close=()=>bg.remove();
-  m.querySelector('#open-cancel').addEventListener('click',close);
-  bg.addEventListener('click',e=>{if(e.target===bg)close();});
-  m.querySelector('#open-filter').addEventListener('input',e=>{
-    const q=e.target.value.toLowerCase();
-    m.querySelectorAll('.pickitem').forEach(it=>{
-      it.style.display=it.textContent.toLowerCase().includes(q)?'':'none';
-    });
-  });
-  m.querySelectorAll('.pickitem').forEach(it=>{
-    it.addEventListener('click',async()=>{
-      const seq=Number(it.dataset.seq);
-      close();
-      await openFolio(seq);
-    });
-  });
-}
 async function openFolio(event_seq){
   const row={ event_seq, subject:'team', status:'open', session_ym:state.ym,
     created_by:(window.__so_getUser&&__so_getUser())||null };

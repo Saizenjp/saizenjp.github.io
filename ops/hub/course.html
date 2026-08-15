@@ -207,7 +207,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.88"></script>
+<script src="../assets/saizen-ops.js?v=15.89"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -539,8 +539,6 @@ function teamsOnDate(date){
   if(_todCache[date]) return _todCache[date];
   return (_todCache[date]=TEAMS.filter(t=>!!rowFor(t,date)));
 }
-// 그 팀이 그날 몇 번째 라운딩인지(코스 로테이션 기준)
-function dayIdxOf(t,date){ const rs=SZCore.golfRows({dep:t.dep,arr:t.arr,accom:t.accom},t.isPus); return Math.max(0, rs.findIndex(r=>r.date===date)); }
 function isLate(t){ return String(t.accom||'').indexOf('쿠주')>=0; }
 
 // 그 달의 저장된 조·제외를 한 번에 읽어 날짜 칩 배지(미배정 N)를 만든다.
@@ -727,7 +725,6 @@ function gnoOf(i){
   if(mine.length<2) return 0;
   return mine.findIndex(o=>o.k===i)+1;
 }
-function cellKey(course,slot){ return course+'|'+slot; }
 function groupAt(course,slot){ return BOARD.findIndex(g=>g.course===course && g.slot===slot); }
 
 function render(){
@@ -1148,23 +1145,6 @@ async function autoAssignMonth(){
   finally{ if(btn){ btn.disabled=false; btn.textContent=tx('autoMonth'); } }
 }
 
-function autoAssign(quiet){
-  if(!DATESEL) return;
-  BOARD=[]; SELG=null; SLOTS=STD_SLOTS.slice();
-  const {rows,slots}=planDate(DATESEL, [], 0);
-  SLOTS=slots;
-  let filled=0;
-  rows.forEach(r=>{
-    const ms = teamPax(r.seq)<=4 ? (ROSTER[r.seq]||[]).slice(0,r.pax) : [];
-    if(ms.length) filled++;
-    BOARD.push({ seq:r.seq, course:r.course, slot:r.slot, tee:r.tee, pax:r.pax,
-      tag:r.tag, rep:r.rep, holes:r.holes, late:r.late, cart:'', note:'', members:ms });
-  });
-  render();
-  if(quiet) return;
-  toast(tx('autoDone',BOARD.length),'ok');
-  if(filled) toast(tx('autoFilled',filled),'ok');
-}
 
 // 그 날짜를 처음부터 다시 짠다 — 확정(manual)한 조는 그대로 두고 나머지만 새로 배분한다.
 //  자동 채움은 빠진 팀만 메우므로, 한 번 치우친 배치(예: 쿠주만 비어 있음)는 이걸로 고친다.

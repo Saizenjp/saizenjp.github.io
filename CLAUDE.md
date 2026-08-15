@@ -13,16 +13,13 @@
 - **GitHub 계정 / 저장소**: `Saizenjp` / `saizenjp.github.io` (public)
 - **기본 브랜치**: `main`  ·  **배포**: GitHub Pages (`main` 루트 자동 배포 → `https://saizenjp.github.io/`)
 - **진입점**: 루트 `index.html` 이 0.5초 뒤 `./ops/` 로 리다이렉트(meta refresh). **접근 게이트 없음.**
-- **두 개의 독립 축** (절대 혼동 금지):
-  - **`/app/index.html`** — **단일 HTML**(약 9,950줄, 화면 배지 v14.6). **localStorage** 기반 **인쇄·출력** 시스템.
-    엠클릭 엑셀 업로드 → 9개 탭 산출. 외부 라이브러리는 CDN(ExcelJS 4.3.0, SheetJS).
+- **축은 `/ops/` 하나뿐**(레거시 `/app/` 단발 출력 도구는 **2026-08 삭제** — 인쇄물 4종·現地精算表는 ops에 같은 양식으로 이관 완료):
   - **`/ops/`** — **Supabase** 기반 **다중 페이지 운영 Hub**.
     `ops/index.html`(카드 랜딩) · `ops/hub/{step1,room}.html` · 공유 `ops/assets/saizen-ops.{js,css}` · `ops/hub/sql/01~08_*.sql`.
 - **디렉토리 구조**:
   ```
   /index.html              루트 → /ops/ 리다이렉트(게이트 아님)
   /assets/                 로고 3종(svg): horizontal, horizontal-dark, vertical
-  /app/index.html          출력 시스템(단일 HTML, localStorage)
   /ops/index.html          Hub 카드 랜딩
   /ops/assets/             saizen-ops.js (i18n·공유 로직), saizen-ops.css
   /ops/hub/step1.html      STEP1 데이터 등록 (월 단위 동기화)
@@ -39,13 +36,12 @@
 ## 3. 핵심 작업 원칙
 - **📌 ops 섹션 추가·수정 시 `/saizen-ops-change` 스킬을 따른다**(`.claude/skills/saizen-ops-change/SKILL.md`) — i18n(id="t-"·3개국어)·권한영역·RLS/00_VERIFY·SO_HELP·캐시버전 범프·검증·배포의 **고정 체크리스트**(빠뜨리면 깨지는 항목 모음). 새 페이지·새 권한영역·공유 asset 변경 때 특히.
 - **코드가 문서보다 우선.** 작업 전 **실제 파일 상태**(줄 수·버전 배지·탭/섹션 id·실제 색값)를 먼저 확인한다.
-- **`/app/`는 단일 HTML 바이브 코딩** — 한 파일 안에서 작업, 외부 라이브러리는 CDN.
-  **`/ops/`는 다중 페이지 + 공유 asset** — 공통 변경은 `saizen-ops.js/css`에서.
+- **`/ops/`는 다중 페이지 + 공유 asset** — 공통 변경은 `saizen-ops.js/css`에서(변경 시 전 페이지 `?v=` 범프).
 - **설계 먼저 제안 → 확인 → 구현.** Min은 짧고 직접적인 한국어로 결정하며, 제안을 중간에 멈추기도 한다("그냥 진행하지말아주세요"). 긴 설명보다 간결한 결정을 선호.
 - **상시 자동 배포 (Min 결정 2026-06).** 작업·검증이 끝나면 **확인 없이 바로 `main`에 머지·푸시해 배포**한다(GitHub Pages가 `main` 루트 자동 배포 → 라이브 즉시 반영). Min이 라이브에서 바로 확인하길 원함. 실사용자 소수(2~3명). ⚠ 단, 푸시 전 §4 검증(문법검사 `node scripts/check-syntax.mjs`)은 반드시 통과시키고, **되돌리기 어려운 파괴적 변경**(DB 마이그레이션 실행·대량 삭제 등)은 여전히 먼저 확인한다.
 - **데이터 저장 (네임스페이스)**:
-  - `/app/` localStorage: `manualData`(월별 수기입력 — `saveManual()`/`loadManual()`), `memberMasterMap`·`memberMasterMeta`·`memberMasterFile`·`memberMasterCount`, `learnedMasterMap`·`learnedMasterMeta`, `tagCodeManualMap`, `saizen_dispatch_mask`(송영 마스킹), `saizen_lang`(화면 언어 ja/ko/en — `/ops/`와 공유).
-  - `/ops/` Supabase 접속정보 localStorage: `saizen_sb_url` / `saizen_sb_key`.
+  - `/ops/` localStorage: `saizen_sb_url`/`saizen_sb_key`(Supabase 접속정보) · `saizen_lang`(화면 언어 ja/ko/en) · `saizen_dispatch_mask`(手配書 마스킹) · `saizen_last_email`.
+  - ⚠ 옛 `/app/` localStorage 키(`manualData`·`memberMasterMap`·`tagCodeManualMap` 등)는 **더 이상 쓰지 않는다**(도구 삭제). 그 수기 입력(테이블No·끼니제외 등)은 ops로 이관되지 않았다.
 
 ## 3-1. UI 검수 상시 항목 (Min 2026-08)
 - **긴 목록·팝업엔 검색을 넣는다.** 팀·인원·객실·회원처럼 수십~수백 행이 되는 목록은
@@ -56,12 +52,7 @@
 - **표기는 실제 동작과 같아야 한다.** 화면 라벨이 자동배정에서 빠지는 것처럼 읽히면 안 된다.
 
 ## 4. 검증 (납품 전 필수)
-1. **JS 문법 검사** — src 없는 인라인 `<script>`만 추출 → `node --check`.
-   ```bash
-   node -e 'const fs=require("fs");const h=fs.readFileSync("app/index.html","utf8");
-   const ms=[...h.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)];
-   fs.writeFileSync("/tmp/a.js",ms.map(m=>m[1]).join("\n;\n"));' && node --check /tmp/a.js
-   ```
+1. **JS 문법 검사 + 단위테스트** — `npm run verify`(= `node scripts/check-syntax.mjs` + `node --test`). 전 HTML 인라인 스크립트를 파싱검사한다.
 2. **jsdom 스모크 테스트** — 실제/모의 데이터로 핵심 함수를 실행해 결과를 검증한다.
    - 필요 라이브러리: `jsdom` (npm). 페이지 자체는 ExcelJS 4.3.0 · SheetJS · supabase-js@2 를 CDN으로 로드.
    - **jsdom 함정**:
@@ -92,9 +83,7 @@
 - **Supabase 스키마(요약)**: `bookings`(팀)·`passengers`(개인+항공)·`guests`(팀 태그/숙소)·`guest_members`(개인 태그, rooms FK 대상)·`member_codes`(회원 마스터)·`room_inventory`(객실)·`rooms`(배정 **1행=1명**, `member_id`=guest_members.id uuid)·`import_log`·`event_notes`(팀 운영 주석, event_seq PK·bookings cascade)·`event_note_log`(주석 수정이력). 마이그레이션 `01~16`.
 
 ## 7. 화면·섹션 구조 (코드 기준이 유일한 정답)
-- **`/app/` 탭** (`id="nav-*"` / `id="sec-*"`, ①~⑥ 활성 · ⑦~⑨ 준비중):
-  - 입력: `upload` — ファイルアップロード
-  - ① `nametag` ネームタグ · ② `aircover` 航空カバー置き場 · ③ `dispatch` 現地手配書 · ④ `dinner` 夕食名前版 · ⑤ `settle` 現地精算表 · ⑥ `shizu` 志津の宿 予約表
+- **인쇄물 4종 + 現地精算表는 모두 `/ops/hub/`**: `nametag`(ネームタグ) · `aircover`(航空カバー) · `dispatch`(現地手配書) · `dinner`(夕食オーダー·レストラン名札) · `settle_merit`(現地精算表 B2B).
   - ~~⑦ `transfer` 送迎配車表 · ⑧ `accom` 宿泊配置表 · ⑨ `golf` ゴルフ組合せ表~~ — **준비중 탭 전면 제거(Min 결정 2026-07)**: 골프 조편성·카트 배정·송영 배차는 **ops로 일원화**(골프=`ops/hub/golf.html` Phase 1 라이브 / 카트=골프 Phase 2 / 송영 배차=ops 백로그). `/app/`엔 orphan JS(`buildTransfer`/`renderGolf` 등)만 잔존하나 내비 미노출. (⑧⑨ 탭은 이전에 이미 제거됨.)
 - **`/ops/` Hub 카드**: 데이터등록(`step1`) · 방배정(`room`) · 인쇄 시스템 링크(`/app/`). *(네임택·항공커버 `nametag.html` 카드는 문서상 예정 — 현재 저장소 미반영.)*
 - 각 표 구조의 정답은 `HDRS.*` 헤더 배열. ⑤ 정산의 **區分 목록(① ラウンド追加 … ⑥)** 은 탭 번호와 무관하니 혼동 금지.
@@ -220,4 +209,5 @@
 / **네임택 개인번호 결번(1,3,5,7) 정상화(Min 2026-07)**. 증상: 네임택 개인번호가 1→3→5→7로 홀수만·뒤섞임(EGあ-1G/3G/5G/7G). 원인: `passengers.seq_in_team`이 팀 순번이 아니라 **엠클릭 「No」 전역 행번호**(예 753~756) + **과거 버전 step1**이 남긴 결번(현재 step1은 idx+1로 1..N 정상). 재임포트 안 된 **266/1,645팀**이 결번 보유. nametag는 저장 person_tag를 그대로 인쇄 → 결번 노출. **수정(nametag.html)**: 로드 후 팀별로 seq 순서대로 **개인번호 1..N 재부여**(코드·시설접미 Y/K/G/S 유지, 묶음팀은 기존 대표기준 블록이 덮어씀) → 데이터 결번과 무관하게 항상 정상 출력. ※다른 인쇄물(航空カバー·夕食·手配書)은 대표(team) 태그만 써 영향 없음(개인번호=nametag 전용). DB 결번 데이터 자체는 재임포트 시 자동 교정(현 step1). nametag page-level.
 / **데이터 검수 페이지(정합성 사전 점검, Min 2026-07)**. Min 질문 "이런 문제(네임택 결번)를 실사용 전 미리 검수로 잡을 수 있나?" → 정합성類는 가능 → 상시 검수 도구 신설. **`ops/hub/audit.html`**(data-so-area=admin, 마스터 전용): [재검수]→ RPC `data_audit()` 호출→ 항목별 건수·표본(event_seq) 카드. **SQL `82_data_audit.sql`**=`data_audit()` jsonb 반환(security definer·is_admin 가드), 5종 점검: ① 개인번호 결번(seq_in_team≠1..N) ② 명단수 불일치(guest_members≠passengers) ③ 팀내 태그중복(정확 정의=non-null 태그 count≠distinct, null 오탐 배제) ④ 고아 방배정(FK끊김) ⑤ 방 정원초과(더블부킹). 실측=①266 ②7 ③0 ④0 ⑤0(고아·정원=FK/트리거로 0정상). **admin 영역 재사용**(신규 영역 등록 불요)+랜딩 admin-group 카드(ix_cAudit 3개국어)+SO_HELP(audit.html ko+ja/en). saizen-ops `?v=15.20`(25페이지). MCP 적용 완료·00_VERIFY 82 추가. jsdom 스모크(i18n 패리티·render·언어토글). ⚠ 읽기 전용(데이터 변경 없음) — 검출만, 교정은 재임포트.
 / **안내문 제작기 ops 섹션 추가(Min 2026-07)**. 현장 안내문(자리정리·카트·정숙·분리수거 등)을 웹에서 입력→미리보기→인쇄하는 단일 HTML 도구(메리트투어 BUILD_SPEC 기반). **`ops/hub/notice.html`**: 흑백 미니멀 한·일 병기 양식(A4/B5 전환·`**강조**` XSS안전 파서·프리셋 4종·localStorage 자동복원·`window.print()`), 하단에 **실제 SaiZen 로고**(가로형 SVG data URI) + on/off 토글. 폰트=CDN(Noto Serif KR/JP·Pretendard). **Supabase 불필요=순수 클라이언트 도구** → `/app/` 선례대로 saizen-ops 미로드·페이지가드 없이 **랜딩 카드만 `data-area="print"` 게이트**(← 홈 링크만 추가). 랜딩 인쇄물 그룹에 카드(ix_cNotice 3개국어) + admin ac_print 라벨에 「안내문 제작」 추가. saizen-ops `?v=15.22`. ※원본 B5 산출물(`테이블_정리안내_B5.html`) CSS 픽셀 정합(kicker=muted·자간 text-indent 보정·오너먼트). 별도로 메리트투어 배포용 자립 파일도 제공.
+/ **안 쓰는 기능·죽은 코드 정리(Min 2026-08)**. ① **레거시 `/app/` 완전 삭제**(10,869줄) — 인쇄물 4종·現地精算表가 ops에 같은 양식으로 있고 랜딩 카드는 이미 내려가 있어 입구가 없던 상태. ⚠ `/app/` localStorage 수기항목(테이블No·끼니제외·태그 오버라이드 등)은 함께 사라짐(ops 미이관). ② **`keytag.html`(키홀더/FOB 연결) 삭제** — 랜딩 카드·링크가 없어 열 수 없던 페이지. 프론트데스크의 🗝키택 배지·`key_bindings` 읽기도 제거(테이블은 휴면으로 잔존). ③ **`notes.html`(팀 메모) 삭제 → 프론트데스크로 통합** — 비고·메모는 이미 프론트데스크 팀 상세에서 인라인 편집(`event_note_set` RPC) 중이라 중복. 유일하게 없던 **「팀 라벨」 입력칸을 프론트데스크 상세에 추가**(같은 RPC, 手配書가 읽는 값). 아무 데서도 안 쓰이던 `yama_course`는 폐기. admin에서 `notes` 권한영역 제거(여는 화면 없음). ④ **죽은 함수 632줄 제거**(호출처 0 — room 8종(충돌점검·전체비우기·호실설정·배정 엑셀 입출력)·shizu 8종(옛 予約表 편집·xlsx)·settle folio 모달·step1 2종·course 3종·cart 3종·dispatch/golf/dinner/keyslip/aircover 잔챙이·saizen-ops mountUser/authForm/authSetName/authLogin). 사라진 버튼에 딸린 **inert 코드**(#btn-auto·#btn-undo-bulk 가드, 되돌리기 스냅샷 저장)도 제거. ⑤ **설명서(SO_HELP) 정정** — 없어진 기능 설명 삭제(room 「↩ 직전 작업 되돌리기」·course 「↩ 되돌리기 30단계」(원래 없던 기능)·shizu 「予約表 xlsx」·frontdesk 「🗝키택발급」). ※**i18n 사전의 미사용 키(164개)는 손대지 않음** — 자동 삭제 시 영어 블록이 과다 삭제되는 것을 확인하고 되돌림(화면 영향 없는 항목이라 위험만 큼). jsdom 스모크(14페이지 무에러·사전 3개국어 일치)·`npm run verify` 58테스트 그린. saizen-ops `?v=15.89`(31페이지).
 이 문서가 코드와 어긋나면 코드가 정답이다.*
