@@ -174,6 +174,7 @@ from (
   union all select 105,'105 이력 슬림','audit_row 자동배정 제외', case when exists(select 1 from pg_proc where proname='audit_row' and prosrc like '%assign_source%') then '✅ 적용' else '❌ 미적용 (105)' end
   union all select 105,'105 이력 정리','audit_prune()', case when exists(select 1 from pg_proc where proname='audit_prune') then '✅ 있음' else '❌ 없음 (105)' end
   union all select 106,'106 라운딩 예외','golf_holes·golf_absentees', case when (select count(*) from information_schema.tables where table_schema='public' and table_name in ('golf_holes','golf_absentees'))=2 then '✅ 있음' else '❌ 없음 (106)' end
+  union all select 107,'107 청소 진행','hk_done', case when exists(select 1 from information_schema.tables where table_schema='public' and table_name='hk_done') then '✅ 있음' else '❌ 없음 (107)' end
   union all select 102,'102 라운딩 제외','golf_skips', case when exists(select 1 from information_schema.tables where table_schema='public' and table_name='golf_skips') then '✅ 있음' else '❌ 없음 (102)' end
   union all select 103,'103 조 유령 방지','golf_groups FK cascade + 고아 0', case when exists(select 1 from pg_constraint where conname='golf_groups_event_seq_fkey' and confdeltype='c') and not exists(select 1 from golf_groups where event_seq is null) then '✅ 적용' else '❌ 미적용 (103)' end
 ) t

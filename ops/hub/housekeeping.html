@@ -126,6 +126,12 @@
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2);margin-right:5px}
   .note{display:inline-block;font-size:11px;font-weight:800;border-radius:5px;padding:2px 7px;margin:1px 4px 1px 0;
     background:var(--surface3);color:var(--text2);border:1px solid var(--border2)}
+  .rc-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .dbtn{font-size:11.5px;font-weight:800;border:1px solid var(--border2);background:var(--surface);color:var(--text2);border-radius:99px;padding:4px 11px;cursor:pointer}
+  .dbtn:hover{border-color:var(--accent);color:var(--accent)}
+  .dbtn.on{background:var(--ok,#2f7d4f);border-color:var(--ok,#2f7d4f);color:#fff}
+  .dbtn.tw.on{background:#2c5078;border-color:#2c5078}
+  .note.dl{background:#fdf3e3;color:#8a5a12;border-color:#e8cf9a;font-weight:800}
   .note.linen{background:#efeaf7;color:#5e3a86;border-color:#cfc0e4}
   .note.next{background:var(--accentSoft);color:#2f5d3a;border-color:#b4cda0}
   .note.clo{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
@@ -202,11 +208,21 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.90"></script>
+<script src="../assets/saizen-ops.js?v=15.91"></script>
 <script>
 const $=s=>document.querySelector(s);
 
-const LINEN_EVERY=3;   // 연박 N박째마다 시트 교체
+// ── 청소 기준(Min 2026-08 확정) ────────────────────────────────────────
+//  체류 청소 = **3일차마다**(3·6·9…일차, 체크인=1일차). 3박 이하는 청소 없음.
+//    실제 운영과 같다: 7박(수 체크인)=금(3일차)·월(6일차) · 4박(일 체크인)=화(3일차) · 3박=없음.
+//    요일로 박지 않고 일차로 세므로 예외 입국(수요일이 아닌 7박 등)에도 어긋나지 않는다.
+//  타월 = 매일 전 객실 교체. 사용한 타월은 각 층 복도(밖)에서 수거.
+//  목표 시각 = 그 방에 **오늘 들어올 팀의 도착 시간** 기준.
+//    인천(TW287) 09:25 착 → 11:00까지 / 부산(ZE967) 13:25 착 → 15:00까지.
+//    입실이 없는 방(체류 청소·타월)은 오후 마감.
+const CLEAN_EVERY=3;         // 체류 청소 간격(일차)
+const NO_CLEAN_NIGHTS=3;     // 이 박수 이하 = 체류 청소 없음
+const DEADLINE={ICN:'11:00', PUS:'15:00', none:'15:00'};
 
 const L={
   ja:{ step:'客室清掃', connHint:'接続情報はこのブラウザにのみ保存されます。', preConn:'接続すると表示されます。',
@@ -225,6 +241,12 @@ const L={
     thState:'状態', thRoom:'部屋', thType:'タイプ', thPax:'人数', thTeam:'チーム', thStay:'滞在',
     thNth:'泊目', thTee:'ティオフ', thNote:'備考',
     arOut:'退室', arStay:'滞在', arIn:'入室',
+    hkClean:'清掃日', hkTowel:'タオル交換', hkDone:'✓ 完了', hkUndo:'取消', hkBy:n=>`${n}`,
+    hkDeadline:t=>`${t}まで`, hkPortICN:'ソウル着 09:25', hkPortPUS:'釜山着 13:25',
+    hkProg:(d,t)=>`清掃 ${d}/${t}`, hkTowelProg:(d,t)=>`タオル ${d}/${t}`,
+    hkTowelAll:'タオルは毎日全室交換 — 使用済みは各階の廊下で回収',
+    hkRule:'清掃 = 3日目ごと(3・6・9…日目)。3泊以下は清掃なし。',
+    hkSaveFail:e=>'保存失敗: '+e,
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'最終夜', linen:'シーツ交換', nextIn:n=>`入室 ${n}名`,
     closed:(f,t,r)=>`閉鎖 ${f}~${t}${r?' · '+r:''}`,
     noRooms:'該当する客室がありません。', floorStat:(c)=>`清掃 ${c}室`,
@@ -248,6 +270,12 @@ const L={
     thState:'상태', thRoom:'호수', thType:'타입', thPax:'인원', thTeam:'팀', thStay:'체류',
     thNth:'박째', thTee:'티오프', thNote:'비고',
     arOut:'퇴실', arStay:'재실', arIn:'입실',
+    hkClean:'청소일', hkTowel:'타월 교체', hkDone:'✓ 완료', hkUndo:'취소', hkBy:n=>`${n}`,
+    hkDeadline:t=>`${t}까지`, hkPortICN:'인천 09:25 착', hkPortPUS:'부산 13:25 착',
+    hkProg:(d,t)=>`청소 ${d}/${t}`, hkTowelProg:(d,t)=>`타월 ${d}/${t}`,
+    hkTowelAll:'타월은 매일 전 객실 교체 — 사용한 타월은 각 층 복도에서 수거',
+    hkRule:'청소 = 3일차마다(3·6·9…일차). 3박 이하는 청소 없음.',
+    hkSaveFail:e=>'저장 실패: '+e,
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'마지막밤', linen:'시트 교체', nextIn:n=>`입실 ${n}명`,
     closed:(f,t,r)=>`폐쇄 ${f}~${t}${r?' · '+r:''}`,
     noRooms:'해당하는 객실이 없습니다.', floorStat:(c)=>`청소 ${c}실`,
@@ -271,6 +299,12 @@ const L={
     thState:'Status', thRoom:'Room', thType:'Type', thPax:'Pax', thTeam:'Team', thStay:'Stay',
     thNth:'Night', thTee:'Tee off', thNote:'Notes',
     arOut:'Out', arStay:'Stay', arIn:'In',
+    hkClean:'Clean day', hkTowel:'Towels', hkDone:'✓ Done', hkUndo:'Undo', hkBy:n=>`${n}`,
+    hkDeadline:t=>`by ${t}`, hkPortICN:'ICN arr 09:25', hkPortPUS:'PUS arr 13:25',
+    hkProg:(d,t)=>`Clean ${d}/${t}`, hkTowelProg:(d,t)=>`Towels ${d}/${t}`,
+    hkTowelAll:'Towels changed daily in every room — used towels collected in each floor corridor',
+    hkRule:'Cleaning = every 3rd day (3·6·9…). No cleaning for stays of 3 nights or less.',
+    hkSaveFail:e=>'Save failed: '+e,
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'Last night', linen:'Linen change', nextIn:n=>`${n} arriving`,
     closed:(f,t,r)=>`Closed ${f}~${t}${r?' · '+r:''}`,
     noRooms:'No matching rooms.', floorStat:(c)=>`${c} rooms`,
@@ -299,6 +333,8 @@ const PRIO={turn:0, out:1, stay:2, in:3, vacant:4, ooo:5};
 
 let supa=null, INV=[], ROWS=[], TEAM={}, CLO=[], TEE={}, COURSE={};
 let NOROOM=0;   // 그날 묵는데 방배정이 없는 팀 수(배정 자체가 비어 있으면 「공실 N」으로 오해한다)
+let DONE={};    // 완료 상태 {inventory_id|kind:{by}}
+let ORIGIN={};  // event_seq → 'ICN'|'PUS'
 let DATE=todayISO(), SORT='prio';
 // 숙소 구분은 방배정 화면과 같은 기준(SZCore) — 소보별장·아소별장·돔하우스 배정도 그대로 보인다
 let PLACESEL=new Set();          // 비면 「전체」 = 야마나미 복합 + 쿠주힐즈(간지·시즈 제외)
@@ -380,6 +416,7 @@ function renderUI(){
       <h3>${tx('title')} <span class="cnt" style="font-weight:700;color:var(--muted)">· ${tx('readonly')}</span></h3>
       <div class="kpis" id="kpis" style="margin-top:9px"></div>
       <div class="lgd noprint"><span>${tx('lgd')}</span><span style="color:var(--muted)">${tx('teeHint')}</span></div>
+    <div class="lgd" style="color:var(--text2)"><b>${tx('hkRule')}</b> · ${tx('hkTowelAll')}</div>
       ${NOROOM?`<div class="noprint noroom">⚠ ${tx('noRoomWarn',NOROOM)} <a href="room.html?ym=${esc(DATE.slice(0,7))}&date=${esc(DATE)}">${tx('noRoomGo')}</a></div>`:''}
     </div>
     <div id="floors"></div>`;
@@ -493,6 +530,21 @@ async function load(){
     // 6) 그날 묵는 팀 vs 방배정된 팀 — 배정이 비어 있으면 「공실 126」으로 오해하게 된다
     NOROOM=0;
     try{
+      // 오늘 입실 팀의 출발지 — 인천(09:25 착)·부산(13:25 착)에 따라 청소 마감이 다르다
+      try{
+        const inSeqs=[...new Set(ROWS.filter(r=>r.check_in===D).map(r=>r.event_seq))];
+        ORIGIN={};
+        if(inSeqs.length){
+          const og=await pagedIn('bookings','event_seq,origin,airline','event_seq',inSeqs);
+          (og.data||[]).forEach(x=>{ ORIGIN[x.event_seq]=SZCore.originPort(x.origin,x.airline)||''; });
+        }
+      }catch(e){ ORIGIN={}; }
+      // 청소·타월 완료 상태(hk_done, SQL 107)
+      try{
+        DONE={};
+        const dn=await supa.from('hk_done').select('inventory_id,kind,done_by').eq('work_date',D);
+        (dn.data||[]).forEach(x=>{ DONE[x.inventory_id+'|'+x.kind]={by:x.done_by||''}; });
+      }catch(e){ DONE={}; }
       const bk=await paged((a,b)=>supa.from('bookings').select('event_seq')
         .lte('dep_date',D).gt('arr_date',D).order('event_seq').range(a,b));
       if(!bk.error){
@@ -551,11 +603,38 @@ function roomRecord(inv){
   const tee=teeSeq!=null?TEE[teeSeq]:null;
 
   const paxNight=night.length, paxOut=outs.length;
-  const linen = status==='stay' && nth>0 && nth%LINEN_EVERY===0;
+  // 체류 청소 = 3일차마다(3박 이하 제외·퇴실일 제외). nth=이미 묵은 밤 수 → 일차=nth+1
+  const day=nth+1;
+  const linen = status==='stay' && total>NO_CLEAN_NIGHTS && day>1 && day%CLEAN_EVERY===0 && day<=total;
+  // 오늘 들어올 팀의 출발지(인천/부산) → 도착 시간이 달라 청소 순서가 갈린다
+  const inSeq=(gIn[0]||{}).seq;
+  const port=inSeq!=null?(ORIGIN[inSeq]||''):'';
+  const deadline=(status==='turn'||status==='in')?(DEADLINE[port]||DEADLINE.none):DEADLINE.none;
 
-  return {inv, status, gOut, gStay, gIn, paxNight, paxOut, nth, total, lastNight, tee, clo, linen};
+  return {inv, status, gOut, gStay, gIn, paxNight, paxOut, nth, total, lastNight, tee, clo, linen,
+          day, port, deadline, cleanDone:isDone(inv.id,'clean'), towelDone:isDone(inv.id,'towel')};
 }
 
+// 완료 상태(hk_done) — 있으면 완료, 지우면 미완료
+function isDone(invId, kind){ return !!DONE[invId+'|'+kind]; }
+async function toggleDone(invId, kind){
+  const key=invId+'|'+kind;
+  const by=(window.__so_getUser&&__so_getUser())||null;
+  try{
+    if(DONE[key]){
+      const {error}=await supa.from('hk_done').delete().eq('work_date',DATE).eq('inventory_id',invId).eq('kind',kind);
+      if(error) throw error; delete DONE[key];
+    } else {
+      const {error}=await supa.from('hk_done')
+        .upsert({work_date:DATE, inventory_id:invId, kind, done_by:by, done_at:new Date().toISOString()},
+                {onConflict:'work_date,inventory_id,kind'});
+      if(error) throw error; DONE[key]={by:by||''};
+    }
+    render();
+  }catch(e){ toast(tx('hkSaveFail')(e.message),'err'); }
+}
+// 그 방이 오늘 '청소 대상'인가 — 퇴실/턴오버(무조건) + 체류 청소일
+function needsClean(r){ return r.status==='turn'||r.status==='out'||r.linen; }
 function stLabel(s){ return {turn:tx('sTurn'),out:tx('sOut'),stay:tx('sStay'),in:tx('sIn'),vacant:tx('sVacant'),ooo:tx('sOoo')}[s]; }
 
 function render(){
@@ -565,6 +644,7 @@ function render(){
   renderKpis(recs);
   const st=$('#stat'); if(st) st.textContent=tx('statN')(md(DATE),recs.length);
   if(!recs.length){ box.innerHTML=`<div class="panel"><div class="deny">${esc(tx('noRooms'))}</div></div>`; return; }
+  // (버튼 결선은 아래 목록 그린 뒤 bindDone() 에서)
 
   // 층(zone) 단위 — 청소팀은 층을 맡아 움직인다
   const groups={};
@@ -582,6 +662,10 @@ function render(){
   renderZoneChips(groups,keys);
   const show = ZONE ? [ZONE] : keys;
   box.innerHTML=show.map(k=>floorHtml(groups[k],k)).join('');
+  // 완료 버튼(청소·타월) — 누르면 바로 저장되고 진행률이 올라간다
+  box.querySelectorAll('[data-done]').forEach(b=>b.addEventListener('click',ev=>{
+    ev.stopPropagation(); toggleDone(b.dataset.done, b.dataset.kind);
+  }));
 }
 
 function renderKpis(recs){
@@ -595,7 +679,13 @@ function renderKpis(recs){
     +kpi('stay',tx('kStay'),c.stay,tx('roomsU'))
     +kpi('inn', tx('kIn'),  c.in,  tx('roomsU'))
     +kpi('',    tx('kVacant'),c.vacant,tx('roomsU'))
-    +(c.ooo?kpi('',tx('kOoo'),c.ooo,tx('roomsU')):'');
+    +(c.ooo?kpi('',tx('kOoo'),c.ooo,tx('roomsU')):'')
+    // 진행 상태 — 오늘 할 청소·타월 중 몇 개가 끝났는지(현장이 어디까지 했는지 한눈에)
+    + (()=>{ const need=recs.filter(needsClean);
+             const tw=recs.filter(r=>r.status!=='vacant'&&r.status!=='ooo');
+             const cd=need.filter(r=>r.cleanDone).length, td=tw.filter(r=>r.towelDone).length;
+             return kpi(cd===need.length&&need.length?'done':'', tx('hkProg')(cd,need.length), cd+'/'+need.length, '')
+                  + kpi(td===tw.length&&tw.length?'done':'', tx('hkTowelProg')(td,tw.length), td+'/'+tw.length, ''); })();
 }
 
 function floorHtml(g,key){
@@ -638,7 +728,11 @@ function cardHtml(r){
   const line=(lab,arr)=>arr.map(t=>`<div class="rc-team"><i>${esc(lab)}</i><span class="tag">${esc(t.tag)}</span>${esc(t.rep)} (${t.pax})</div>`).join('');
   const base=r.gStay[0]||r.gIn[0]||r.gOut[0];
   const notes=[];
-  if(r.linen) notes.push(`<span class="note linen">${esc(tx('linen'))}</span>`);
+  if(r.linen) notes.push(`<span class="note linen">${esc(tx('hkClean'))} ${r.day}</span>`);
+  // 입실이 있는 방은 그 팀 도착 시간에 맞춘 마감 시각(인천 09:25착 / 부산 13:25착)
+  if(r.status==='turn'||r.status==='in'){
+    notes.push(`<span class="note dl">${esc(tx('hkDeadline')(r.deadline))}${r.port?` · ${esc(r.port==='ICN'?tx('hkPortICN'):tx('hkPortPUS'))}`:''}</span>`);
+  }
   if(r.status==='turn'||r.status==='in'){ const n=r.gIn.reduce((s,t)=>s+t.pax,0);
     if(n) notes.push(`<span class="note next">${esc(tx('nextIn')(n))}</span>`); }
   if(r.lastNight) notes.push(`<span class="note">${esc(tx('lastNight'))}</span>`);
@@ -657,6 +751,10 @@ function cardHtml(r){
       ${teams||`<div class="rc-team" style="color:var(--muted)">—</div>`}
       ${base?`<div class="rc-meta">${md(base.ci)}~${md(base.co)}${nth}${tee}</div>`:''}
       ${notes.length?`<div class="rc-notes">${notes.join('')}</div>`:''}
+      <div class="rc-acts">
+        ${needsClean(r)?`<button type="button" class="dbtn${r.cleanDone?' on':''}" data-done="${r.inv.id}" data-kind="clean">${r.cleanDone?esc(tx('hkDone')):esc(tx('hkClean'))}</button>`:''}
+        ${(r.status!=='vacant'&&r.status!=='ooo')?`<button type="button" class="dbtn tw${r.towelDone?' on':''}" data-done="${r.inv.id}" data-kind="towel">${r.towelDone?esc(tx('hkDone')):esc(tx('hkTowel'))}</button>`:''}
+      </div>
     </div>
   </div>`;
 }
