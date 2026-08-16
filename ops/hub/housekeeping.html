@@ -152,7 +152,11 @@
   .rc-tee{font-weight:800;color:var(--text)}
   .rc-notes{margin-top:5px}
   .rc.s-vacant .rc-b{min-height:34px;color:var(--muted);font-size:12px}
-  .zchips{display:flex;gap:6px;flex-wrap:wrap}
+  /* 층 칩 줄 = 화면 위에 고정(스크롤해도 따라옴). 지금 보는 층이 켜지고, 누르면 그 층으로 이동 */
+  .zbar{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--border);
+        margin:0 -16px;padding:8px 16px !important;box-shadow:0 2px 6px rgba(15,23,42,.06)}
+  .zchips{display:flex;gap:6px;flex-wrap:wrap;overflow-x:auto;scrollbar-width:thin}
+  @media print{ .zbar{position:static;box-shadow:none} }
   .zchip{font-size:14px;font-weight:800;padding:7px 15px;border-radius:9px;border:1px solid var(--border2);
     background:var(--surface);color:var(--text2);cursor:pointer;user-select:none}
   .zchip:hover{border-color:var(--accent)}
@@ -208,7 +212,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.92"></script>
+<script src="../assets/saizen-ops.js?v=15.93"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -408,7 +412,7 @@ function renderUI(){
         <button type="button" class="chip${SORT==='prio'?' on':''}" data-sort="prio">${tx('sortPrio')}</button>
         <button type="button" class="chip${SORT==='no'?' on':''}" data-sort="no">${tx('sortNo')}</button>
       </div>
-      <div class="row" style="margin-top:10px">
+      <div class="row zbar" style="margin-top:10px">
         <span class="lbl">${tx('floorSel')}</span><span id="zchips" class="zchips"></span>
       </div>
     </div>
@@ -470,9 +474,40 @@ function renderZoneChips(groups,keys){
       const g=groups[k], n=cleanN(k);
       return `<button type="button" class="zchip${ZONE===k?' on':''}" data-z="${esc(k)}">${esc(g.zone)}${n?`<span class="zn">${n}</span>`:''}</button>`;
     }).join('');
+  // 칩을 누르면 그 층으로 **이동**한다(필터가 아니라 목차 — Min 2026-08).
+  //  「전체」는 맨 위로. 스크롤을 내리면 지금 보고 있는 층 칩이 저절로 켜진다(아래 spy).
   box.querySelectorAll('[data-z]').forEach(b=>b.addEventListener('click',()=>{
-    ZONE=b.dataset.z||null; render();
+    const z=b.dataset.z||'';
+    if(!z){ window.scrollTo({top:0,behavior:'smooth'}); setZoneChip(''); return; }
+    const el=document.getElementById('fl-'+cssId(z));
+    if(el){ const bar=document.querySelector('.zbar'); const off=(bar?bar.getBoundingClientRect().bottom:0)+8;
+      window.scrollTo({top:window.scrollY+el.getBoundingClientRect().top-off, behavior:'smooth'}); }
+    setZoneChip(z);
   }));
+}
+// 층 이름 → 안전한 id (한글·공백 그대로 쓰면 querySelector 가 깨진다)
+function cssId(z){ return 'z'+String(z||'').replace(/[^\w가-힣]/g,'_'); }
+function setZoneChip(z){
+  document.querySelectorAll('#zchips [data-z]').forEach(b=>b.classList.toggle('on',(b.dataset.z||'')===(z||'')));
+  // 켜진 칩이 가려져 있으면 칩 줄 안에서 가로로 끌어와 보여준다
+  const on=document.querySelector('#zchips [data-z].on'); const box=$('#zchips');
+  if(on&&box&&box.scrollWidth>box.clientWidth){
+    const l=on.offsetLeft-box.offsetLeft;
+    if(l<box.scrollLeft || l+on.offsetWidth>box.scrollLeft+box.clientWidth) box.scrollTo({left:Math.max(0,l-12),behavior:'smooth'});
+  }
+}
+// 스크롤에 따라 '지금 보고 있는 층'을 칩에 표시
+let _zSpy=null;
+function wireZoneSpy(){
+  if(_zSpy) _zSpy.disconnect();
+  if(!('IntersectionObserver' in window)) return;
+  const bar=document.querySelector('.zbar');
+  const top=(bar?bar.getBoundingClientRect().height:0)+70;
+  _zSpy=new IntersectionObserver(es=>{
+    const vis=es.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];
+    if(vis) setZoneChip(vis.target.dataset.zone||'');
+  },{rootMargin:`-${top}px 0px -55% 0px`, threshold:0});
+  document.querySelectorAll('#floors .flr').forEach(el=>_zSpy.observe(el));
 }
 
 async function load(){
@@ -660,12 +695,13 @@ function render(){
   });
   if(ZONE && !groups[ZONE]) ZONE=null;              // 필터가 바뀌어 사라진 층 → 전체로
   renderZoneChips(groups,keys);
-  const show = ZONE ? [ZONE] : keys;
+  const show = keys;   // 층 칩은 필터가 아니라 이동(목차)이므로 전 층을 다 그린다
   box.innerHTML=show.map(k=>floorHtml(groups[k],k)).join('');
   // 완료 버튼(청소·타월) — 누르면 바로 저장되고 진행률이 올라간다
   box.querySelectorAll('[data-done]').forEach(b=>b.addEventListener('click',ev=>{
     ev.stopPropagation(); toggleDone(b.dataset.done, b.dataset.kind);
   }));
+  wireZoneSpy();
 }
 
 function renderKpis(recs){
@@ -704,7 +740,7 @@ function floorHtml(g,key){
     return String(a.inv.room_no).localeCompare(String(b.inv.room_no),undefined,{numeric:true});
   });
   const badge=(cls,lab,n)=>n?`<span class="st ${cls}" style="font-size:10.5px;padding:2px 7px">${esc(lab)} ${n}</span>`:'';
-  return `<div class="flr">
+  return `<div class="flr" id="fl-${cssId(g.zone)}" data-zone="${esc(g.zone)}">
     <div class="flr-h">
       <span>${esc(g.zone)}</span><span class="fac">${esc(accomL(g.fac))}</span>
       <span class="fst">
