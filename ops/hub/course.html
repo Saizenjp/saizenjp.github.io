@@ -73,6 +73,9 @@
   .cell .g-tag{font-family:var(--mono);font-weight:800;color:var(--accent)}
   .cell .g-rep{color:var(--text);margin-left:5px}
   .cell .g-pax{color:var(--text2);margin-left:5px;font-size:11.5px}
+  /* 검색 강조 — 찾은 조는 또렷하게, 나머지는 흐리게 */
+  .cell.qhit{outline:2px solid var(--accent2);outline-offset:-2px}
+  .cell.qdim{opacity:.33}
   /* 라운딩 예외 패널 */
   .exrow{border:1px solid var(--border);border-radius:9px;padding:8px 10px;margin-bottom:7px;background:var(--surface)}
   .exrow.skip{background:var(--surface3);opacity:.75}
@@ -223,7 +226,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.89"></script>
+<script src="../assets/saizen-ops.js?v=15.90"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -242,6 +245,7 @@ function rotLabel(start, holes){ return rotOf(start,holes).map(courseL).join('�
 
 const L={
   ja:{ step:'コース割当表', connHint:'接続情報はこのブラウザにのみ保存されます。',
+    qPh:'🔎 タグコード・代表者・同行者名・イベント番号で検索', qHit:(n)=>`該当 ${n}組`, qNone:'該当なし',
     exH:'ラウンド例外(ホール数・不参加)', exT:'この日だけの例外です。ホール数を選ぶと自動計算より優先し、名前を押すとその人は不参加になります。印刷物にも出ます。',
     exHoleSet:'ホール数指定', exRule:'ルール', exNoPlay:'ラウンドなし', exHoles:h=>`${h}H`, exAbsent:'不参加', exAbsN:n=>`不参加 ${n}名`,
     exSaved:'保存しました', exFail:e=>'保存失敗: '+e, exNone:'この日は例外なし',
@@ -279,6 +283,7 @@ const L={
     pvTitle:'コース割当表', pvPrint:'印刷', pvClose:'閉じる', popupBlocked:'ポップアップがブロックされました',
     thTee:'ティ', totalG:n=>`計 ${n}組`, holesU:'H' },
   ko:{ step:'코스 배정표', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
+    qPh:'🔎 태그코드·대표자·팀원 이름·행사번호로 검색', qHit:(n)=>`검색 ${n}조`, qNone:'검색 결과 없음',
     exH:'라운딩 예외(홀수·불참)', exT:'이 날짜에만 적용되는 예외입니다. 홀수를 고르면 자동 계산보다 우선하고, 이름을 누르면 그 사람은 불참으로 표시됩니다. 인쇄물에도 나옵니다.',
     exHoleSet:'홀수 지정', exRule:'규칙대로', exNoPlay:'라운딩 안 함', exHoles:h=>`${h}H`, exAbsent:'불참', exAbsN:n=>`불참 ${n}명`,
     exSaved:'저장했습니다', exFail:e=>'저장 실패: '+e, exNone:'이 날짜는 예외 없음',
@@ -316,6 +321,7 @@ const L={
     pvTitle:'코스 배정표', pvPrint:'인쇄', pvClose:'닫기', popupBlocked:'팝업이 차단되었습니다',
     thTee:'티오프', totalG:n=>`합계 ${n}조`, holesU:'H' },
   en:{ step:'Course assignment', connHint:'Connection info is stored only in this browser.',
+    qPh:'🔎 Search tag code, rep, member name, event no.', qHit:(n)=>`${n} groups`, qNone:'No match',
     exH:'Round exceptions (holes · absentees)', exT:'Applies to this date only. Picking holes overrides the automatic rule; tapping a name marks that person absent. Both appear on the printout.',
     exHoleSet:'Holes set', exRule:'By rule', exNoPlay:'No round', exHoles:h=>`${h}H`, exAbsent:'Absent', exAbsN:n=>`${n} absent`,
     exSaved:'Saved', exFail:e=>'Save failed: '+e, exNone:'No exceptions on this date',
@@ -406,6 +412,7 @@ async function undo(){
 }
 function touch(){ clearTimeout(SAVET); SAVET=setTimeout(()=>{ save(true); },900); }
 let MONTHG={};       // 날짜 → [{event_seq,course_code,slot_no,capacity}]  그 달 저장된 조
+let CQ='';   // 검색어(태그코드·대표자·팀원 이름·행사번호) — 목록·조를 좁힌다
 let HOLESM={}, ABSM={};   // 라운딩 예외(홀수 수기지정 · 개인 불참) — SQL 106
 let SKIPM={};        // 날짜 → Set(event_seq)  그 달 제외 팀
 let MONTHRUN=new Set();  // 이번 세션에 이달 자동배정을 이미 돌린 달(중복 실행 방지)
@@ -481,8 +488,13 @@ function renderUI(){
         <span id="daychips" style="display:flex;flex-wrap:wrap;gap:5px"></span>
       </div>
       <div class="legend">${tx('dayNote')}</div>
+      <div class="row" style="margin-top:9px">
+        <input class="inp" id="course-q" type="search" autocomplete="off" placeholder="${esc(tx('qPh'))}" style="flex:1;min-width:220px">
+        <span class="cnt" id="course-qc"></span>
+      </div>
     </div>
     <div id="board"></div>`;
+  { const q=$('#course-q'); if(q){ q.value=CQ; q.addEventListener('input',e=>{ CQ=e.target.value||''; render(); const el=$('#course-q'); if(el){ el.focus(); } }); } }
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);DATESEL=null;load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);DATESEL=null;load();});
   $('#btn-undo').addEventListener('click',undo);
@@ -595,6 +607,15 @@ async function loadMonthState(){
     const {data}=await supa.from('golf_absentees').select('play_date,member_id,event_seq,reason').gte('play_date',start).lte('play_date',end);
     (data||[]).forEach(x=>{ const d=dstr(x.play_date); (ABSM[d]=ABSM[d]||new Map()).set(String(x.member_id),{seq:String(x.event_seq),reason:x.reason||''}); });
   }catch(e){}
+}
+// 검색 — 팀(태그·대표·행사번호) + 그 팀 팀원 이름/영문명까지 훑는다
+function qOn(){ return (CQ||'').trim().toLowerCase(); }
+function teamHit(seq){
+  const q=qOn(); if(!q) return true;
+  const t=TEAMS.find(x=>String(x.seq)===String(seq)); if(!t) return false;
+  const base=[t.tag,t.rep,t.seq,t.accom].filter(Boolean).join(' ').toLowerCase();
+  if(base.includes(q)) return true;
+  return (ROSTER[String(seq)]||[]).some(m=>((m.name||'')+' '+(m.eng||'')).toLowerCase().includes(q));
 }
 // 그 날짜 예외 조회 헬퍼
 function holesOv(date,seq){ const m=HOLESM[date]; const v=m&&m[String(seq)]; return v?v.holes:0; }
@@ -782,8 +803,8 @@ function render(){
 
   // 미배정 = 그날 라운딩인데 조가 모자란 팀(제외한 팀은 뺀다)
   const placed={}; BOARD.forEach(g=>{ placed[g.seq]=(placed[g.seq]||0)+(g.pax||0); });
-  const un=unassignedTeams(DATESEL);
-  const skipped=teams.filter(t=>isSkip(t.seq));
+  const un=unassignedTeams(DATESEL).filter(t=>teamHit(t.seq));
+  const skipped=teams.filter(t=>isSkip(t.seq) && teamHit(t.seq));
   const unHTML = un.length? un.map(t=>{
     const rest=paxOn(DATESEL,t)-(placed[t.seq]||0);   // 불참자는 빼고 센다(Min 2026-08)
     return `<span class="un" data-seq="${t.seq}"><b>${esc(t.tag||('#'+t.seq))}</b>`
@@ -793,7 +814,7 @@ function render(){
   }).join('') : `<span class="cnt" style="color:var(--muted)">${tx('allSet')}</span>`;
   // 조편성이 남은 팀 = 5명 이상이라 「누구와 누구를 한 조로」를 사람이 정해야 하는 팀.
   //  조를 흩어 놓으면 무슨 일을 해야 하는지 안 보인다 → 팀으로 묶어 크게 보여준다.
-  const chk=BOARD.map((g,i)=>({g,i})).filter(x=>needsCheck(x.g));
+  const chk=BOARD.map((g,i)=>({g,i})).filter(x=>needsCheck(x.g) && teamHit(x.g.seq));
   const chkTeams=[...new Set(chk.map(x=>String(x.g.seq)))];
   // 그 팀의 조는 확정 여부와 관계없이 전부 펼쳐 보여준다(비교하며 바로 옮기기 위해)
   const chkBy={}; chkTeams.forEach(seq=>{
@@ -830,7 +851,8 @@ function render(){
       const gi=groupAt(c.code,slot);
       if(gi<0) return `<td><div class="cell" data-c="${c.code}" data-s="${slot}"></div></td>`;
       const g=BOARD[gi];
-      return `<td><div class="cell has${SELG===gi?' sel':''}" data-c="${c.code}" data-s="${slot}" data-i="${gi}" draggable="true">`
+      const _hit=qOn()?(teamHit(g.seq)?' qhit':' qdim'):'';
+      return `<td><div class="cell has${SELG===gi?' sel':''}${_hit}" data-c="${c.code}" data-s="${slot}" data-i="${gi}" draggable="true">`
         +`<span class="grip" title="${esc(tx('dragHint'))}">≡</span>`
         +`<span class="g-x" data-del="${gi}">✕</span>`
         +`<span class="g-tag">${esc(g.tag||('#'+g.seq))}</span>`
@@ -875,6 +897,8 @@ function render(){
       <div class="legend">${tx('rotNote')}</div>
     </div>`;
   bind();
+  { const c=$('#course-qc');
+    if(c) c.textContent = qOn()? tx('qHit', BOARD.filter(g=>teamHit(g.seq)).length) : ''; }
   if(TV) renderTV();
 }
 
@@ -882,8 +906,8 @@ function render(){
 // ── 라운딩 예외 패널(Min 2026-08) — 홀수 수기 지정 · 개인 불참 · 그날 라운딩 안 함 ──
 //   담당자가 여기서 정리해 두면 화면·인쇄물이 그대로 따라간다.
 function exceptionsHTML(){
-  const teams=teamsOnDate(DATESEL);
-  if(!teams.length) return `<h3>${tx('exH')}</h3><div class="legend">${tx('exNone')}</div>`;
+  const teams=teamsOnDate(DATESEL).filter(t=>teamHit(t.seq));   // 검색으로 좁힌다
+  if(!teams.length) return `<h3>${tx('exH')}</h3><div class="legend">${qOn()?tx('qNone'):tx('exNone')}</div>`;
   const abs=absMap(DATESEL);
   const rows=teams.map(t=>{
     const seq=String(t.seq);

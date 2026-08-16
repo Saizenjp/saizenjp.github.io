@@ -1256,6 +1256,37 @@
     var c = authClient(); if (!c) return;
     c.auth.signOut().then(function () { location.reload(); }).catch(function () { location.reload(); });
   }
+
+  // ── 목록 검색(공용) ──────────────────────────────────────────────────
+  //  긴 목록은 눈으로 찾게 두지 않는다(§3-1). 컨테이너 안의 '행'을 글자로 걸러낸다.
+  //  화면이 다시 그려져도 자동으로 다시 걸러지도록 MutationObserver 를 건다.
+  //    __so_rowSearch('#menu-q', '#menu-body', 'tr', {count:'#menu-qc', label:n=>n+'건'})
+  global.__so_rowSearch = function (inputSel, containerSel, rowSel, opts) {
+    opts = opts || {};
+    var inp = document.querySelector(inputSel);
+    var box = document.querySelector(containerSel);
+    if (!inp || !box) return null;
+    function apply() {
+      var q = String(inp.value || '').trim().toLowerCase();
+      var rows = box.querySelectorAll(rowSel), hit = 0;
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        if (opts.skip && r.matches && r.matches(opts.skip)) continue;
+        var on = !q || (r.textContent || '').toLowerCase().indexOf(q) >= 0;
+        r.style.display = on ? '' : 'none';
+        if (on) hit++;
+      }
+      if (opts.count) {
+        var c = document.querySelector(opts.count);
+        if (c) c.textContent = q ? (opts.label ? opts.label(hit) : String(hit)) : '';
+      }
+      if (typeof opts.onFilter === 'function') opts.onFilter(q, hit);
+    }
+    inp.addEventListener('input', apply);
+    try { new MutationObserver(function(){ apply(); }).observe(box, {childList:true, subtree:true}); } catch (e) {}
+    apply();
+    return apply;
+  };
   global.__so_logout = authLogout;
 
   // ── 가운데 정식 로그인 카드 — 게이트(랜딩·페이지 가드) 공용. 이메일·비번 칸을 처음부터 노출. ──
