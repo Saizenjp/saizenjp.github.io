@@ -322,7 +322,9 @@ const TAX_RATE=0.10;   // 内税: 메뉴가=최종가(税込). 단가에서 소�
 
 // ── i18n (한·일 직원 공용. ja 기본) — saizen-ops.js 의 data-i18n/t() 와 병행, 동적 JS 문자열용 ──
 const L={
-  ja:{ today:'今日', prevDay:'前日', nextDay:'翌日', backToday:'今日へ',
+  ja:{ noTeamHead:'チーム未選択 — 会計時に選びます', pickTeamFirst:'先にメニューを選び、会計で「チーム選択」を押してください',
+    teamPicked:t=>`${t} 選択 — 支払い方法を確認して[注文を送信]`, btnPickTeam:'👥 チーム選択(会計)', changeTeam:'👥 チーム変更',
+    today:'今日', prevDay:'前日', nextDay:'翌日', backToday:'今日へ',
     needUrlKey:'URL・key必要', connecting:'接続中…', connectedBtn:'✓ 接続済', connOk:'接続済', connectedToast:'Supabaseに接続しました',
     connFail:'接続失敗', connFailBtn:'接続失敗・再試行', connFailToast:e=>'接続失敗: '+e+' (精算SQL 09・11・12 実行・key確認)',
     menuLoadFail:e=>'メニュー読み込み失敗: '+e, needConn:'先に接続してください', teamLoadFail:e=>'チーム読み込み失敗: '+e,
@@ -345,7 +347,9 @@ const L={
     koTitle:'注文状況', allVenues:'全体',
     vRestaurant:'レストラン', vBanquet:'宴会場', vProshop:'ゴルフショップ', vFront:'フロント売店', vEtc:'その他',
     oFront:'フロント売店', oRestaurant:'レストラン·宴会', oGolf:'ゴルフショップ' },
-  ko:{ today:'오늘', prevDay:'전날', nextDay:'다음날', backToday:'오늘로',
+  ko:{ noTeamHead:'팀 미선택 — 계산할 때 고릅니다', pickTeamFirst:'메뉴를 먼저 담고, 계산에서 [팀 선택]을 누르세요',
+    teamPicked:t=>`${t} 선택 — 지불 방식 확인 후 [주문 전송]`, btnPickTeam:'👥 팀 선택(계산)', changeTeam:'👥 팀 변경',
+    today:'오늘', prevDay:'전날', nextDay:'다음날', backToday:'오늘로',
     needUrlKey:'URL·key 필요', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connOk:'연결됨', connectedToast:'Supabase 연결됨',
     connFail:'연결 실패', connFailBtn:'연결 실패 · 재시도', connFailToast:e=>'연결 실패: '+e+' (정산 SQL 09·11·12 실행·키 확인)',
     menuLoadFail:e=>'메뉴 로드 실패: '+e, needConn:'먼저 연결하세요', teamLoadFail:e=>'팀 로드 실패: '+e,
@@ -368,7 +372,9 @@ const L={
     koTitle:'주문 현황', allVenues:'전체',
     vRestaurant:'레스토랑', vBanquet:'연회장', vProshop:'골프샵', vFront:'프론트 매점', vEtc:'기타',
     oFront:'프론트 매점', oRestaurant:'레스토랑·연회', oGolf:'골프샵' },
-  en:{ today:'Today', prevDay:'Prev', nextDay:'Next', backToday:'Go to today',
+  en:{ noTeamHead:'No team yet — pick it at checkout', pickTeamFirst:'Add items first, then press [Pick team] at checkout',
+    teamPicked:t=>`${t} selected — check payer, then [Send order]`, btnPickTeam:'👥 Pick team (checkout)', changeTeam:'👥 Change team',
+    today:'Today', prevDay:'Prev', nextDay:'Next', backToday:'Go to today',
     needUrlKey:'URL·key required', connecting:'Connecting…', connectedBtn:'✓ Connected', connOk:'Connected', connectedToast:'Connected to Supabase',
     connFail:'Connection failed', connFailBtn:'Failed · retry', connFailToast:e=>'Connection failed: '+e+' (run settlement SQL 09·11·12 / check key)',
     menuLoadFail:e=>'Menu load failed: '+e, needConn:'Connect first', teamLoadFail:e=>'Team load failed: '+e,
@@ -537,7 +543,7 @@ function renderAccomPos(){
     const k=b.dataset.k;
     if(k==='__all'){ state.accomSel = allOn ? new Set() : new Set(ACCOM_ALL); }
     else { if(sel.has(k)) sel.delete(k); else sel.add(k); state.accomSel=sel; }
-    renderAccomPos(); renderTeams();
+    renderAccomPos(); renderTeams(); showOrderView();
   }));
 }
 
@@ -569,13 +575,35 @@ async function loadActive(){
   }catch(e){}
 }
 
+// 팀 선택 화면을 연다(계산 단계). 장바구니는 그대로 둔다 — 메뉴 먼저 담고 팀은 나중(Min 2026-08).
 function backToTeams(){
   if(custShownSeq!=null) pushCustomerDisplay(null);   // 팀에서 나가면 손님 화면 비움(대기)
-  state.team=null; state.folioId=null; state.cart=[];
+  state.team=null; state.folioId=null;
   $('#order-view').style.display='none';
   $('#team-view').style.display='';
   $('#btn-back').style.display='none';
   renderTeams();
+}
+// 팀 없이 주문 화면(메뉴+장바구니)을 연다 = 기본 화면
+function showOrderView(){
+  state.team=null; state.folioId=null; state.roster=[]; state.payerSel=new Set(); state.payerMode='team';
+  state.runningGross=0; state.folioIds=[]; state.folioOwner={}; state.memberFolio={};
+  $('#team-view').style.display='none';
+  $('#order-view').style.display='';
+  $('#btn-back').style.display='none';
+  $('#oh-tag').textContent='';
+  $('#oh-rep').textContent=tx('noTeamHead');
+  $('#oh-run').textContent=yen(0);
+  const rl=$('#run-list'); if(rl){ rl.style.display='none'; rl.innerHTML=''; }
+  renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); updateSendBtn();
+  if(state.cart.length) toast(tx('teamPicked',teamTag(tm)),'ok');   // 계산 단계에서 고른 경우 updateSendBtn();
+}
+// [주문 전송] 버튼 = 팀이 없으면 「팀 선택(계산)」으로 바뀐다
+function updateSendBtn(){
+  const b=$('#btn-send'); if(!b) return;
+  if(!state.team){ b.textContent=tx('btnPickTeam'); b.disabled=!state.cart.length; }
+  else { b.textContent=t('po_send'); b.disabled=!state.cart.length; }
+  const bk=$('#btn-back'); if(bk){ bk.style.display=state.team?'':'none'; bk.textContent=tx('changeTeam'); }
 }
 
 // ── 손님 확인 화면(pos_customer.html) 연동 — 이 팀 계산서를 손님 태블릿에 표시 ──
@@ -678,7 +706,7 @@ function escP(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;'
 
 // ── 팀 선택 → 주문 뷰 ──
 async function selectTeam(tm){
-  state.team=tm; state.cart=[]; state.venue='__all__';
+  state.team=tm; state.venue='__all__';   // 장바구니는 유지(메뉴 먼저 담고 계산에서 팀 선택)
   state.folioId=null; state.memberFolio={}; state.payerMode='split'; state.payerSel=new Set();   // 기본=개인 지정 모드(Min)
   // 이 팀의 모든 folio(팀+개인) 누적 = 러닝 합계. 팀/개인 열린 folio id 캐시.
   state.runningGross=0; state.folioIds=[]; state.folioOwner={};
@@ -851,7 +879,7 @@ function renderCart(){
   $('#cart-sub').textContent=yen(gross-tax);   // 세전 소계
   $('#cart-tax').textContent=yen(tax);
   $('#cart-total').textContent=yen(gross);     // 합계 = 메뉴가 그대로
-  $('#btn-send').disabled=!state.cart.length;
+  updateSendBtn();
 }
 
 // ── 전송: folio 확보 후 charges 적재 ──
@@ -884,7 +912,8 @@ async function ensureMemberFolio(memberId){
   state.memberFolio[memberId]=data.id; return data.id;
 }
 async function sendCart(){
-  if(!state.cart.length||!state.team) return;
+  if(!state.cart.length) return;
+  if(!state.team){ backToTeams(); return; }   // 계산 단계에서 팀 고르기(메뉴 먼저 흐름)
   $('#btn-send').disabled=true;
   try{
     const by=opBy();

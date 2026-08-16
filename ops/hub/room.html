@@ -624,7 +624,7 @@ const L={
     asoBadge:'阿蘇可', asoBadgeT:n=>`阿蘇別荘へ移動可能（結合計 ${n}名）`,
     asoGroup:n=>`結合 ${n}チーム`, asoFail:m=>`移動失敗: ${m}`,
     extStay:n=>`他月の予約 ${n}名`, extStayT:'この月に読み込んでいないチームが、この期間この部屋に泊まっています（ここでは編集できません）', roMove:'移動', roUn:'解除', roSel:n=>`選択 ${n}名`, roMoveSel:'選択を移動', roUnSel:'選択を解除', roUnDone:n=>`${n}名の割当を解除しました`, mmMovedN:(n,room)=>`${n}名を ${room} へ移動しました`, roAdd:'＋ 人員を追加（超過配置）', roHint:'定員が埋まっています。人を選んで別の部屋へ移すか、割当を解除してください。',
-    autoBusyBar:'🪄 自動割当の実行中…', autoBusyWait:'自動割当の実行中です — 終わってからもう一度どうぞ',
+    autoBusyBar:'🪄 自動割当の実行中…', autoBusyPct:(p,d,t)=>`🪄 自動割当 ${p}% (${d}/${t}名)`, autoBusyWait:'自動割当の実行中です — 終わってからもう一度どうぞ',
     swBtn:'🔁 入れ替え', swTitle:room=>`🔁 ${room} と入れ替える相手`,
     swSameTeam:'同じチームが使っている客室', swOther:'同じ期間の他の客室',
     swNone:'同じ期間に入れ替えられる客室がありません(期間が同じ客室どうしのみ)',
@@ -868,7 +868,7 @@ const L={
     asoBadge:'아소 가능', asoBadgeT:n=>`아소별장으로 이동 가능(묶음 합계 ${n}명)`,
     asoGroup:n=>`묶음 ${n}팀`, asoFail:m=>`이동 실패: ${m}`,
     extStay:n=>`다른 달 예약 ${n}명`, extStayT:'이 달에 불러오지 않은 팀이 이 기간 이 방에 묵고 있습니다(여기서는 수정 불가). 그 달을 열어 수정하세요.', roMove:'옮기기', roUn:'해제', roSel:n=>`선택 ${n}명`, roMoveSel:'선택 옮기기', roUnSel:'선택 해제', roUnDone:n=>`${n}명 배정을 해제했습니다`, mmMovedN:(n,room)=>`${n}명을 ${room} 로 옮겼습니다`, roAdd:'＋ 인원 추가(초과 배정)', roHint:'정원이 찼습니다. 사람을 골라 다른 방으로 옮기거나 배정을 해제하세요.',
-    autoBusyBar:'🪄 자동배정 중…', autoBusyWait:'자동배정 중입니다 — 끝나면 다시 눌러주세요',
+    autoBusyBar:'🪄 자동배정 중…', autoBusyPct:(p,d,t)=>`🪄 자동배정 ${p}% (${d}/${t}명)`, autoBusyWait:'자동배정 중입니다 — 끝나면 다시 눌러주세요',
     swBtn:'🔁 맞바꾸기', swTitle:room=>`🔁 ${room} 과 맞바꿀 상대`,
     swSameTeam:'같은 팀이 쓰는 객실', swOther:'같은 기간 다른 객실',
     swNone:'같은 기간에 맞바꿀 객실이 없습니다(체류 기간이 같은 객실끼리만 됩니다)',
@@ -1105,7 +1105,7 @@ const L={
     asoBadge:'Aso ok', asoBadgeT:n=>`Can move to the Aso Villa (group total ${n})`,
     asoGroup:n=>`${n} teams grouped`, asoFail:m=>`Move failed: ${m}`,
     extStay:n=>`Other month: ${n}`, extStayT:'A team from another month occupies this room during this period (not editable here).', roMove:'Move', roUn:'Unassign', roSel:n=>`Selected ${n}`, roMoveSel:'Move selected', roUnSel:'Unassign selected', roUnDone:n=>`Unassigned ${n}`, mmMovedN:(n,room)=>`Moved ${n} to ${room}`, roAdd:'＋ Add person (over capacity)', roHint:'This room is at capacity. Pick someone to move to another room, or unassign.',
-    autoBusyBar:'🪄 Auto-assigning…', autoBusyWait:'Auto-assign is running — try again when it finishes',
+    autoBusyBar:'🪄 Auto-assigning…', autoBusyPct:(p,d,t)=>`🪄 Auto-assign ${p}% (${d}/${t})`, autoBusyWait:'Auto-assign is running — try again when it finishes',
     swBtn:'🔁 Swap', swTitle:room=>`🔁 Swap ${room} with`,
     swSameTeam:'Rooms used by the same team', swOther:'Other rooms, same period',
     swNone:'No room with the same stay period to swap with',
@@ -4192,14 +4192,14 @@ function placeLeftovers(g, route, leftovers, flr, pending, holds, occ, floorOrde
 function autoRunOn(){ try{ return localStorage.getItem('saizen_room_autorun')!=='0'; }catch(e){ return true; } }
 let _autoRunning=false;
 // 자동배정이 도는 동안 하단에 「자동배정 중…」 — 끝나기 전에 방을 누르면 아직 빈 방으로 보인다.
-function autoBusyBar(on){
+function autoBusyBar(on, pct, done, total){
   const old=document.getElementById('auto-busy'); if(old) old.remove();
   if(!on) return;
   const b=document.createElement('div'); b.id='auto-busy';
   b.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:110;'
     +'font-size:12.5px;font-weight:700;color:#fff;background:var(--accent);border-radius:10px;'
     +'padding:9px 16px;box-shadow:0 6px 20px rgba(0,0,0,.25)';
-  b.textContent=tx('autoBusyBar');
+  b.textContent=(pct==null)?tx('autoBusyBar'):tx('autoBusyPct',pct,done,total);
   document.body.appendChild(b);
 }
 async function autoAssign(){
@@ -4400,7 +4400,7 @@ async function autoAssign(){
       }
     }
     if(!pending.length){ toast(tx('autoNoTarget',holds.length),'warn'); return; }
-    const {data,error}=await insertRoomsChunked(pending);
+    const {data,error}=await insertRoomsChunked(pending,(done,total)=>autoBusyBar(true,Math.round(done/total*100),done,total));
     if(error){toast(tx('autoSaveFail',error.message),'err');return;}
     (data||[]).forEach(r=>pushRoomRow(r));
     rebuildAssignMap(); render();
@@ -4437,12 +4437,13 @@ async function deleteRoomsByIds(ids){
   }
   return null;
 }
-async function insertRoomsChunked(rows){
+async function insertRoomsChunked(rows, onProg){
   const out=[];
   for(let i=0;i<rows.length;i+=200){
     const {data,error}=await supa.from('rooms').insert(rows.slice(i,i+200)).select();
     if(error) return {error};
     if(data) out.push(...data);
+    if(onProg) onProg(Math.min(i+200,rows.length), rows.length);   // 진행률(Min 2026-08)
   }
   return {data:out};
 }
