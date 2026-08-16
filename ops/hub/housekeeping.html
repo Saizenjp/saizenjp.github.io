@@ -208,7 +208,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.91"></script>
+<script src="../assets/saizen-ops.js?v=15.92"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -241,10 +241,10 @@ const L={
     thState:'状態', thRoom:'部屋', thType:'タイプ', thPax:'人数', thTeam:'チーム', thStay:'滞在',
     thNth:'泊目', thTee:'ティオフ', thNote:'備考',
     arOut:'退室', arStay:'滞在', arIn:'入室',
-    hkClean:'清掃日', hkTowel:'タオル交換', hkDone:'✓ 完了', hkUndo:'取消', hkBy:n=>`${n}`,
+    hkClean:'清掃', hkCleanT:'清掃(タオル交換を含む)', hkTowel:'タオル交換', hkDone:'✓ 完了', hkUndo:'取消', hkBy:n=>`${n}`,
     hkDeadline:t=>`${t}まで`, hkPortICN:'ソウル着 09:25', hkPortPUS:'釜山着 13:25',
     hkProg:(d,t)=>`清掃 ${d}/${t}`, hkTowelProg:(d,t)=>`タオル ${d}/${t}`,
-    hkTowelAll:'タオルは毎日全室交換 — 使用済みは各階の廊下で回収',
+    hkTowelAll:'タオルは毎日全室交換(清掃日は清掃に含む) — 使用済みは各階の廊下で回収',
     hkRule:'清掃 = 3日目ごと(3・6・9…日目)。3泊以下は清掃なし。',
     hkSaveFail:e=>'保存失敗: '+e,
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'最終夜', linen:'シーツ交換', nextIn:n=>`入室 ${n}名`,
@@ -270,10 +270,10 @@ const L={
     thState:'상태', thRoom:'호수', thType:'타입', thPax:'인원', thTeam:'팀', thStay:'체류',
     thNth:'박째', thTee:'티오프', thNote:'비고',
     arOut:'퇴실', arStay:'재실', arIn:'입실',
-    hkClean:'청소일', hkTowel:'타월 교체', hkDone:'✓ 완료', hkUndo:'취소', hkBy:n=>`${n}`,
+    hkClean:'청소', hkCleanT:'청소(타월 교체 포함)', hkTowel:'타월 교체', hkDone:'✓ 완료', hkUndo:'취소', hkBy:n=>`${n}`,
     hkDeadline:t=>`${t}까지`, hkPortICN:'인천 09:25 착', hkPortPUS:'부산 13:25 착',
     hkProg:(d,t)=>`청소 ${d}/${t}`, hkTowelProg:(d,t)=>`타월 ${d}/${t}`,
-    hkTowelAll:'타월은 매일 전 객실 교체 — 사용한 타월은 각 층 복도에서 수거',
+    hkTowelAll:'타월은 매일 전 객실 교체(청소하는 날은 청소에 포함) — 사용한 타월은 각 층 복도에서 수거',
     hkRule:'청소 = 3일차마다(3·6·9…일차). 3박 이하는 청소 없음.',
     hkSaveFail:e=>'저장 실패: '+e,
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'마지막밤', linen:'시트 교체', nextIn:n=>`입실 ${n}명`,
@@ -299,10 +299,10 @@ const L={
     thState:'Status', thRoom:'Room', thType:'Type', thPax:'Pax', thTeam:'Team', thStay:'Stay',
     thNth:'Night', thTee:'Tee off', thNote:'Notes',
     arOut:'Out', arStay:'Stay', arIn:'In',
-    hkClean:'Clean day', hkTowel:'Towels', hkDone:'✓ Done', hkUndo:'Undo', hkBy:n=>`${n}`,
+    hkClean:'Clean', hkCleanT:'Cleaning (includes towel change)', hkTowel:'Towels', hkDone:'✓ Done', hkUndo:'Undo', hkBy:n=>`${n}`,
     hkDeadline:t=>`by ${t}`, hkPortICN:'ICN arr 09:25', hkPortPUS:'PUS arr 13:25',
     hkProg:(d,t)=>`Clean ${d}/${t}`, hkTowelProg:(d,t)=>`Towels ${d}/${t}`,
-    hkTowelAll:'Towels changed daily in every room — used towels collected in each floor corridor',
+    hkTowelAll:'Towels changed daily in every room (included in cleaning on cleaning days) — used towels collected in each floor corridor',
     hkRule:'Cleaning = every 3rd day (3·6·9…). No cleaning for stays of 3 nights or less.',
     hkSaveFail:e=>'Save failed: '+e,
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'Last night', linen:'Linen change', nextIn:n=>`${n} arriving`,
@@ -682,7 +682,8 @@ function renderKpis(recs){
     +(c.ooo?kpi('',tx('kOoo'),c.ooo,tx('roomsU')):'')
     // 진행 상태 — 오늘 할 청소·타월 중 몇 개가 끝났는지(현장이 어디까지 했는지 한눈에)
     + (()=>{ const need=recs.filter(needsClean);
-             const tw=recs.filter(r=>r.status!=='vacant'&&r.status!=='ooo');
+             // 청소하는 방은 타월도 함께 바꾸므로 타월 진행률에서는 뺀다(중복 집계 방지)
+             const tw=recs.filter(r=>!needsClean(r) && r.status!=='vacant' && r.status!=='ooo');
              const cd=need.filter(r=>r.cleanDone).length, td=tw.filter(r=>r.towelDone).length;
              return kpi(cd===need.length&&need.length?'done':'', tx('hkProg')(cd,need.length), cd+'/'+need.length, '')
                   + kpi(td===tw.length&&tw.length?'done':'', tx('hkTowelProg')(td,tw.length), td+'/'+tw.length, ''); })();
@@ -752,8 +753,12 @@ function cardHtml(r){
       ${base?`<div class="rc-meta">${md(base.ci)}~${md(base.co)}${nth}${tee}</div>`:''}
       ${notes.length?`<div class="rc-notes">${notes.join('')}</div>`:''}
       <div class="rc-acts">
-        ${needsClean(r)?`<button type="button" class="dbtn${r.cleanDone?' on':''}" data-done="${r.inv.id}" data-kind="clean">${r.cleanDone?esc(tx('hkDone')):esc(tx('hkClean'))}</button>`:''}
-        ${(r.status!=='vacant'&&r.status!=='ooo')?`<button type="button" class="dbtn tw${r.towelDone?' on':''}" data-done="${r.inv.id}" data-kind="towel">${r.towelDone?esc(tx('hkDone')):esc(tx('hkTowel'))}</button>`:''}
+        ${needsClean(r)
+          /* 청소하는 날엔 타월도 같이 바꾸므로 버튼은 [청소] 하나만(Min 2026-08) */
+          ? `<button type="button" class="dbtn${r.cleanDone?' on':''}" data-done="${r.inv.id}" data-kind="clean" title="${esc(tx('hkCleanT'))}">${r.cleanDone?esc(tx('hkDone')):esc(tx('hkClean'))}</button>`
+          : ((r.status!=='vacant'&&r.status!=='ooo')
+              ? `<button type="button" class="dbtn tw${r.towelDone?' on':''}" data-done="${r.inv.id}" data-kind="towel">${r.towelDone?esc(tx('hkDone')):esc(tx('hkTowel'))}</button>`
+              : '')}
       </div>
     </div>
   </div>`;
