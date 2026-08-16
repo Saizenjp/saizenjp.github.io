@@ -2291,7 +2291,7 @@ async function assignSelectedTo(inv){
 // ── 이 방 인원 패널 — 정원이 찬 방을 눌렀을 때 ────────────────────────────
 //   점유자 목록에서 사람을 골라 [옮기기](방 이동·분할) 또는 [해제].
 //   트리플 요청처럼 그래도 더 넣어야 하면 아래 [인원 추가]로 기존 배정 피커를 연다.
-function closeRoomOccupants(){ const el=$('#room-occ'); if(el) el.remove(); }
+function closeRoomOccupants(){ const el=$('#room-occ'); if(el) el.remove(); renderSplitBar(); }
 function openRoomOccupants(inv, focusRowId){
   closeRoomOccupants();
   const span=selAssignSpan();
@@ -2374,7 +2374,7 @@ function openRoomOccupants(inv, focusRowId){
 //   서로 바꾸는 작업. 순서대로 옮기면 중간에 한 방이 정원을 넘어 DB 가드가 막으므로
 //   서버 RPC(room_swap, SQL 100)가 한 트랜잭션 안에서 원자적으로 처리한다.
 //   제약(Min 2026-08): **같은 숙소 · 같은 체류기간**끼리만.
-function closeSwapPicker(){ const el=$('#swap-picker'); if(el) el.remove(); }
+function closeSwapPicker(){ const el=$('#swap-picker'); if(el) el.remove(); renderSplitBar(); }
 function openSwapPicker(srcIds){
   const src=srcIds.map(id=>state.rooms.find(r=>r.id===id)).filter(Boolean);
   if(!src.length) return;
@@ -2473,7 +2473,7 @@ function startMoveRows(rowIds){
 
 // 그 방 숙소가 팀 예약 숙소와 맞는가(같은 숙소 우선정렬용)
 function roomFitsTeam(inv,g){ const rk=roomPlaceKeys(inv)||[]; const tk=teamPlaceKeys(g)||[]; return rk.some(k=>tk.includes(k)); }
-function closeAssignPicker(){ const m=$('#assign-picker'); if(m) m.remove(); }
+function closeAssignPicker(){ const m=$('#assign-picker'); if(m) m.remove(); renderSplitBar(); }
 // ── 빈 방 클릭 → "이 방·이 날짜에 배정 가능한 미배정 인원" 팝업 ──
 function openAssignPicker(inv){
   closeAssignPicker();
@@ -3187,7 +3187,7 @@ function startSplit(roomId, atDate){
 //   Min 2026-08 판단: 방 이동·조기 퇴실은 *날짜*가 필요하고 부수효과(정산 확인 항목)가
 //   있어 표 행에 아이콘으로 두면 틀리기 쉽다. 사람 하나에 패널 하나로 모은다.
 //   표·카드 행에는 ✕(해제)만 남긴다.
-function closeMemberModal(){ const el=$('#member-modal'); if(el) el.remove(); }
+function closeMemberModal(){ const el=$('#member-modal'); if(el) el.remove(); renderSplitBar(); }
 function openMemberModal(roomId){
   closeMemberModal();
   const row=state.rooms.find(r=>String(r.id)===String(roomId));
@@ -3268,7 +3268,7 @@ function openMemberModal(roomId){
 }
 
 // ── ✂ 분할: 옮길 방 고르기 팝업 (층 단위 목록) ──
-function closeSplitPicker(){ const el=$('#split-picker'); if(el) el.remove(); }
+function closeSplitPicker(){ const el=$('#split-picker'); if(el) el.remove(); renderSplitBar(); }
 function openSplitPicker(srcRow){
   const sp=state.splitPending; if(!sp) return;
   closeSplitPicker();
@@ -3324,13 +3324,14 @@ function openSplitPicker(srcRow){
     <div style="padding:9px 18px 0"><input class="inp" id="sp-q" type="search" autocomplete="off" placeholder="${esc(tx('thRoom'))}" style="width:100%"></div>
     <div class="mbody" style="max-height:54vh;overflow:auto">${body}</div>
     <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center">
-      <span style="margin-right:auto;font-size:11.5px;color:var(--muted)">${esc(tx('spHint'))}</span>
-      <button class="btn ghost sm" type="button" id="sp-keep">${tx('spKeep')}</button>
-      <button class="btn ghost sm" type="button" id="sp-close">${tx('cancel')}</button>
+      <span style="margin-right:auto;flex:1;min-width:0;font-size:11.5px;color:var(--muted)">${esc(tx('spHint'))}</span>
+      <button class="btn ghost sm" type="button" id="sp-keep" style="white-space:nowrap">${tx('spKeep')}</button>
+      <button class="btn ghost sm" type="button" id="sp-close" style="white-space:nowrap">${tx('cancel')}</button>
     </div>
   </div>`;
   bg.addEventListener('click',e=>{ if(e.target===bg) cancelSplit(); });   // 바깥 클릭=이동 취소
   document.body.appendChild(bg);
+  renderSplitBar();   // 팝업이 뜨면 하단 바는 감춘다(버튼 가림 방지)
   $('#sp-close').addEventListener('click',cancelSplit);            // 닫기=이동 취소
   $('#sp-keep').addEventListener('click',closeSplitPicker);        // 팝업만 닫고 객실 카드에서 직접 고르기
   const spq=$('#sp-q');
@@ -3407,6 +3408,7 @@ async function commitSplit(inv){
 function renderSplitBar(){
   const old=document.getElementById('split-bar'); if(old) old.remove();
   const sp=state.splitPending; if(!sp) return;
+  if(document.querySelector('.modal-bg')) return;   // 팝업이 떠 있으면 그 버튼을 가리므로 숨긴다
   const b=document.createElement('div'); b.id='split-bar';
   b.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:120;'
     +'display:flex;align-items:center;gap:12px;font-size:12.5px;font-weight:700;color:#fff;'
