@@ -603,7 +603,7 @@ const L={
     selTeamT:'チーム全員を選択', leftOf:(l,t)=>`残り ${l}/${t}`, allDone:'✓ 完了', doneToggle:(n,open)=>`${open?'▾':'▸'} 割当済 ${n}名`,
     spTitle:(n,f,t)=>`✂ ${n} · ${f}〜${t} 移動先の部屋`,
     spNone:'この期間に空いている部屋がありません。日付・施設を確認してください。',
-    spFree:n=>`空き${n}`, spSame:'同じ施設', spHint:'部屋を押すと、その日から後半がその部屋に移ります。閉じてから客室を直接押しても同じです。',
+    spKeep:'閉じて客室から選ぶ', spFree:n=>`空き${n}`, spSame:'同じ施設', spHint:'部屋を押すと、その日から後半がその部屋に移ります。閉じてから客室を直接押しても同じです。',
     asoBtn:n=>`阿蘇別荘 候補 ${n}`, asoTitle:'阿蘇別荘（8人1棟）へ移せるチーム',
     asoDesc:'まずホテルに全員割り当ててから、<b>チーム結合</b>または<b>1チーム8名</b>の予約を阿蘇別荘へ移します。自動では動かしません。',
     asoNone:'この日付に阿蘇別荘へ移せるチームはありません。',
@@ -840,7 +840,7 @@ const L={
     selTeamT:'팀 전체 선택', leftOf:(l,t)=>`남은 ${l}/${t}`, allDone:'✓ 완료', doneToggle:(n,open)=>`${open?'▾':'▸'} 배정됨 ${n}명`,
     spTitle:(n,f,t)=>`✂ ${n} · ${f}~${t} 옮길 방`,
     spNone:'이 기간에 빈자리가 있는 방이 없습니다. 날짜·숙소를 확인해 주세요.',
-    spFree:n=>`빈자리 ${n}`, spSame:'같은 숙소', spHint:'방을 누르면 그 날짜부터 뒷부분이 그 방으로 옮겨집니다. 닫고 객실을 직접 눌러도 같습니다.',
+    spKeep:'닫고 객실에서 고르기', spFree:n=>`빈자리 ${n}`, spSame:'같은 숙소', spHint:'방을 누르면 그 날짜부터 뒷부분이 그 방으로 옮겨집니다. 닫고 객실을 직접 눌러도 같습니다.',
     asoBtn:n=>`아소별장 후보 ${n}`, asoTitle:'아소별장(8인 1동)으로 옮길 수 있는 팀',
     asoDesc:'먼저 호텔에 전원 배정한 뒤, <b>팀 묶음</b>이거나 <b>한 팀 8명</b>인 예약을 아소별장으로 옮깁니다. 자동으로 옮기지 않습니다.',
     asoNone:'이 날짜에 아소별장으로 옮길 수 있는 팀이 없습니다.',
@@ -1070,7 +1070,7 @@ const L={
     selTeamT:'Select whole team', leftOf:(l,t)=>`${l}/${t} left`, allDone:'✓ done', doneToggle:(n,open)=>`${open?'▾':'▸'} ${n} assigned`,
     spTitle:(n,f,t)=>`✂ ${n} · ${f}–${t} move to`,
     spNone:'No room has space for this period. Check the dates or lodging.',
-    spFree:n=>`${n} free`, spSame:'Same lodging', spHint:'Pick a room and the later part moves there. Closing this and clicking a room directly does the same.',
+    spKeep:'Close and pick on a card', spFree:n=>`${n} free`, spSame:'Same lodging', spHint:'Pick a room and the later part moves there. Closing this and clicking a room directly does the same.',
     asoBtn:n=>`Aso Villa candidates ${n}`, asoTitle:'Teams that can move to Aso Villa (8-person house)',
     asoDesc:'Assign everyone to the hotel first, then move <b>grouped teams</b> or a <b>single team of 8</b> to the Aso Villa. Never moved automatically.',
     asoNone:'No team can move to the Aso Villa on this date.',
@@ -1719,6 +1719,7 @@ function render(){
   renderUnassigned();
   if(viewMode==='timeline'){ renderTimeline(); } else { renderFacilities(); }
   renderSummary();
+  renderSplitBar();
 }
 
 // ── 일별 칩 ──
@@ -2648,13 +2649,6 @@ function renderFacilities(){
     const at=ap.querySelector('#aso-toggle');
     if(at) at.addEventListener('click',()=>{ asoOpen=!asoOpen; renderFacilities(); });
   }
-  if(state.splitPending){
-    const b=document.createElement('div');
-    b.style.cssText='font-size:12.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:10px';
-    b.innerHTML=`${tx('splitMode',state.splitPending.name||'',state.splitPending.from,state.splitPending.to)} <button class="btn ghost sm" id="split-cancel" type="button" style="margin-left:auto;color:#fff;border-color:#fff">${tx('cancel')}</button>`;
-    box.appendChild(b);
-    b.querySelector('#split-cancel').addEventListener('click',cancelSplit);
-  }
   const _span=selAssignSpan();
   if(_span){
     const h=document.createElement('div');
@@ -3202,12 +3196,14 @@ function openSplitPicker(srcRow){
     <div class="mbody" style="max-height:54vh;overflow:auto">${body}</div>
     <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center">
       <span style="margin-right:auto;font-size:11.5px;color:var(--muted)">${esc(tx('spHint'))}</span>
-      <button class="btn ghost sm" type="button" id="sp-close">${tx('close')}</button>
+      <button class="btn ghost sm" type="button" id="sp-keep">${tx('spKeep')}</button>
+      <button class="btn ghost sm" type="button" id="sp-close">${tx('cancel')}</button>
     </div>
   </div>`;
-  bg.addEventListener('click',e=>{ if(e.target===bg) closeSplitPicker(); });
+  bg.addEventListener('click',e=>{ if(e.target===bg) cancelSplit(); });   // 바깥 클릭=이동 취소
   document.body.appendChild(bg);
-  $('#sp-close').addEventListener('click',closeSplitPicker);
+  $('#sp-close').addEventListener('click',cancelSplit);            // 닫기=이동 취소
+  $('#sp-keep').addEventListener('click',closeSplitPicker);        // 팝업만 닫고 객실 카드에서 직접 고르기
   const spq=$('#sp-q');
   if(spq) spq.addEventListener('input',()=>{
     const q=(spq.value||'').trim().toLowerCase();
@@ -3276,6 +3272,20 @@ async function commitSplit(inv){
   rebuildAssignMap(); render();
   logAssign('분할', `${sp.name||''}(${teamGroupCode(sp.event_seq)||evNo(sp.event_seq)||''}) ${srcRow?(srcRow.facility||'')+' '+srcRow.room_no+' ':''}→ ${inv.facility||''} ${inv.room_no} (${sp.from}부터)`);
   toast(tx('splitDone',sp.from,inv.room_no),'ok');
+}
+// 이동·분할 모드 안내 = 화면 하단 고정 바(Min 2026-08 — 목록을 내리면 배너가 위로 사라져
+//  '클릭이 안 되는' 상태로 보였다. 모드가 켜져 있는 동안은 어디서든 [취소]가 보이게 한다).
+function renderSplitBar(){
+  const old=document.getElementById('split-bar'); if(old) old.remove();
+  const sp=state.splitPending; if(!sp) return;
+  const b=document.createElement('div'); b.id='split-bar';
+  b.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:120;'
+    +'display:flex;align-items:center;gap:12px;font-size:12.5px;font-weight:700;color:#fff;'
+    +'background:var(--accent2);border-radius:10px;padding:10px 14px;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:94vw';
+  b.innerHTML=`<span>${tx('splitMode',sp.name||'',sp.from,sp.to)}</span>`
+    +`<button class="btn ghost sm" id="split-cancel" type="button" style="color:#fff;border-color:#fff">${tx('cancel')}</button>`;
+  document.body.appendChild(b);
+  b.querySelector('#split-cancel').addEventListener('click',cancelSplit);
 }
 function cancelSplit(){ closeSplitPicker(); if(state.splitPending){ state.splitPending=null; render(); } }
 
