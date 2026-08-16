@@ -610,7 +610,7 @@ function unassignedTeams(date){
   const rows = cur ? BOARD.map(g=>({event_seq:g.seq, capacity:g.pax})) : (MONTHG[date]||[]);
   const skip = cur ? SKIP : (SKIPM[date]||new Set());
   const placed={}; rows.forEach(g=>{ placed[g.event_seq]=(placed[g.event_seq]||0)+(g.capacity||0); });
-  return teamsOnDate(date).filter(t=>!skip.has(String(t.seq)) && (placed[t.seq]||0)<t.pax);
+  return teamsOnDate(date).filter(t=>!skip.has(String(t.seq)) && (placed[t.seq]||0)<paxOn(date,t) && paxOn(date,t)>0);
 }
 function missOn(date){ return unassignedTeams(date).length; }
 // 그 날짜에 **조편성이 미확정인 팀 수** — 배정은 자동으로 끝나므로 현장에 남은 일은 이것뿐이다.
@@ -707,14 +707,18 @@ async function loadBoard(date, skipAuto){
 function isSkip(seq){ return SKIP.has(String(seq)); }
 // 2~4명 팀은 그대로 한 조 = 나눌 여지가 없다 → 조원까지 자동으로 채운다.
 // 5명 이상은 「누구와 누구를 한 조로」를 사람이 정해야 한다 → 조만 잡아두고 조원은 비워 확인 대기로 둔다.
-function teamPax(seq){ const t=TEAMS.find(x=>String(x.seq)===String(seq)); return t?t.pax:0; }
+// 그날 불참(golf_absentees) 인원 수 — 조 인원 계산은 모두 이 값을 뺀 '실제 나가는 인원' 기준
+function absCount(date,seq){ const m=ABSM[date]; if(!m||!m.size) return 0; let n=0;
+  m.forEach(v=>{ if(String(v.seq)===String(seq)) n++; }); return n; }
+function paxOn(date,t){ return Math.max(0,(t.pax||0)-absCount(date,t.seq)); }
+function teamPax(seq){ const t=TEAMS.find(x=>String(x.seq)===String(seq)); return t?paxOn(DATESEL,t):0; }
 // 조원은 **그 팀 안에서** 명단 순서대로 나눈다(1조=1~4번, 2조=5~8번 …).
 //  8명이면 2조, 9~12명이면 3조 — 사람이 따로 정하지 않아도 되게 기본값을 채워 둔다.
 //  5명 이상 팀은 이 기본값을 사람이 한 번 「확인」한다(그때 assign_source 가 manual 이 된다).
 function fillTeamMembers(seq){
   const gs=BOARD.filter(g=>String(g.seq)===String(seq)).sort((a,b)=>(a.slot||0)-(b.slot||0));
   if(!gs.length) return;
-  const roster=(ROSTER[seq]||[]).slice();
+  const roster=(ROSTER[seq]||[]).filter(m=>!isAbsent(DATESEL,m.id));   // 불참자는 조에 넣지 않는다
   let i=0;
   gs.forEach(g=>{ g.members=roster.slice(i, i+(g.pax||4)); i+=(g.pax||4); });
 }
@@ -781,7 +785,7 @@ function render(){
   const un=unassignedTeams(DATESEL);
   const skipped=teams.filter(t=>isSkip(t.seq));
   const unHTML = un.length? un.map(t=>{
-    const rest=t.pax-(placed[t.seq]||0);
+    const rest=paxOn(DATESEL,t)-(placed[t.seq]||0);   // 불참자는 빼고 센다(Min 2026-08)
     return `<span class="un" data-seq="${t.seq}"><b>${esc(t.tag||('#'+t.seq))}</b>`
       +`<small>${esc(t.rep||'')} · ${rest}${tx('person')} · ${holesOn(t,DATESEL)}${tx('holesU')}</small>`
       +`${isLate(t)?`<span class="lateb" title="${esc(tx('lateT'))}">${tx('late')}</span>`:''}`
@@ -919,6 +923,21 @@ async function setHoles(seq, h){
     render(); toast(tx('exSaved'),'ok');
   }catch(e){ toast(tx('exFail',e.message),'err'); }
 }
+// 불참으로 바뀐 사람을 이미 짜인 조에서 빼고 조 인원을 줄인다(빈 조는 없앤다).
+//  다시 참가로 돌리면 미배정으로 남아 조편성 패널·자동배정이 다시 넣는다.
+function applyAbsentToBoard(){
+  let changed=false;
+  BOARD.forEach(g=>{
+    if(!g.members||!g.members.length) return;
+    const keep=g.members.filter(m=>!isAbsent(DATESEL,m.id));
+    if(keep.length!==g.members.length){ g.members=keep; g.pax=Math.max(keep.length,0); changed=true; }
+  });
+  if(changed){
+    for(let i=BOARD.length-1;i>=0;i--){ const g=BOARD[i];
+      if(g.members && g.members.length===0){ BOARD.splice(i,1); if(SELG===i) SELG=null; } }
+  }
+  return changed;
+}
 async function toggleAbsent(mid, seq){
   const by=(window.__so_getUser&&__so_getUser())||null;
   const map=(ABSM[DATESEL]=ABSM[DATESEL]||new Map());
@@ -931,7 +950,8 @@ async function toggleAbsent(mid, seq){
         .upsert({play_date:DATESEL,member_id:mid,event_seq:Number(seq),created_by:by},{onConflict:'play_date,member_id'});
       if(error) throw error; map.set(String(mid),{seq:String(seq),reason:''});
     }
-    render(); toast(tx('exSaved'),'ok');
+    applyAbsentToBoard(); render(); touch();   // 이미 짜인 조에서도 빼고 저장
+    toast(tx('exSaved'),'ok');
   }catch(e){ toast(tx('exFail',e.message),'err'); }
 }
 
@@ -968,11 +988,11 @@ function rosterHTML(){
   const inHTML=(g.members&&g.members.length)? g.members.map(m=>memChip(m,'in','out')).join('')
     : `<span class="cnt" style="color:var(--muted)">${tx('rosNone')}</span>`;
   const q=RQ.trim().toLowerCase();
-  const own=(ROSTER[g.seq]||[]).filter(m=>!used.has(String(m.id)));
+  const own=(ROSTER[g.seq]||[]).filter(m=>!used.has(String(m.id)) && !isAbsent(DATESEL,m.id));   // 불참자는 후보에서 뺀다
   let others=[];
   if(q){
     teamsOnDate(DATESEL).filter(t=>!isSkip(t.seq)&&String(t.seq)!==String(g.seq)).forEach(t=>{
-      (ROSTER[t.seq]||[]).forEach(m=>{ if(!used.has(String(m.id)) && (m.name+' '+(m.eng||'')).toLowerCase().includes(q)) others.push({...m,_tag:t.tag}); });
+      (ROSTER[t.seq]||[]).forEach(m=>{ if(!used.has(String(m.id)) && !isAbsent(DATESEL,m.id) && (m.name+' '+(m.eng||'')).toLowerCase().includes(q)) others.push({...m,_tag:t.tag}); });
     });
   }
   const ownF=q? own.filter(m=>(m.name+' '+(m.eng||'')).toLowerCase().includes(q)) : own;
@@ -1179,7 +1199,7 @@ function planDate(date, existing, dateIdx){
   // 팀 단위로 필요한 조를 만든다 — 한 팀은 한 코스에 연속으로 붙인다.
   const need=[];
   teams.slice().sort((a,b)=>a.seq-b.seq).forEach(t=>{
-    const rest=t.pax-(placed[t.seq]||0);
+    const rest=paxOn(date,t)-(placed[t.seq]||0);   // 불참자는 빼고 조를 만든다(Min 2026-08)
     if(rest>0) need.push({ t, parts:SZCore.splitTeam(rest,4), late:isLate(t) });
   });
   if(!need.length) return {rows:[], slots:SLOTS};
