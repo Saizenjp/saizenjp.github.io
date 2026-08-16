@@ -4212,12 +4212,12 @@ async function autoAssign(){
     // 0) 이동 추적용 — 재배치 '전' 각 인원의 방을 스냅샷(어디서→어디로 기록)
     const _beforeRoom={}; state.rooms.forEach(r=>{ if(r.member_id!=null && _beforeRoom[r.member_id]==null) _beforeRoom[r.member_id]={f:r.facility,no:r.room_no}; });
     // 1) 기존 auto 배정 제거(재실행=재정렬, 수기 배정 보호)
-    const autoIds=state.rooms.filter(r=>r.assign_source==='auto').map(r=>r.id);
-    if(autoIds.length){
-      const error=await deleteRoomsByIds(autoIds);
-      if(error){toast(tx('autoClearFail',error.message),'err');return;}
-      state.rooms=state.rooms.filter(r=>r.assign_source!=='auto');
-    }
+    //  ⚠ 예전엔 여기서 DB의 auto 배정을 통째로 지우고 나중에 전부 다시 넣었다. 결과가 같아도
+    //    매번 1,400여 행이 지워졌다 다시 쓰여 변경이력이 하루 2만 건씩 불어났다(Min 2026-08).
+    //    → **계산은 그대로 다시 하되, DB에는 달라진 것만** 반영한다(아래 diff).
+    const autoSnap=state.rooms.filter(r=>r.assign_source==='auto');
+    const autoIdSet=new Set(autoSnap.map(r=>r.id));
+    state.rooms=state.rooms.filter(r=>r.assign_source!=='auto');   // 계산은 '비운 상태' 기준
     rebuildAssignMap();
 
     // ── DB 기준 점유원장: 배정 대상 팀들의 전체 체류 구간에 걸치는 '모든' 기존 배정(다른 달 포함) ──
@@ -4230,7 +4230,8 @@ async function autoAssign(){
         const spanFrom=deps.reduce((a,b)=>a<b?a:b), spanTo=arrs.reduce((a,b)=>a>b?a:b);
         // overlaps(span): check_in < spanTo AND check_out > spanFrom
         const occRes=await pagedQuery(()=>supa.from('rooms').select('id,inventory_id,assigned_pax,check_in,check_out,assign_source,event_seq,member_id').lt('check_in',spanTo).gt('check_out',spanFrom).order('id'));
-        if(!occRes.error) occ=occRes.data||[];
+        // 이번에 재계획할 auto 행은 아직 DB에 남아 있다 → 점유에서 빼야 '비운 상태'가 된다
+        if(!occRes.error) occ=(occRes.data||[]).filter(r=>!autoIdSet.has(r.id));
       }
     }catch(e){ console.warn('점유원장 로드 실패, state.rooms로 폴백:', e.message); }
 
@@ -4399,12 +4400,32 @@ async function autoAssign(){
         console.warn('배정 제외(호수 없음):',bad);
       }
     }
-    if(!pending.length){ toast(tx('autoNoTarget',holds.length),'warn'); return; }
-    const {data,error}=await insertRoomsChunked(pending,(done,total)=>autoBusyBar(true,Math.round(done/total*100),done,total));
-    if(error){toast(tx('autoSaveFail',error.message),'err');return;}
-    (data||[]).forEach(r=>pushRoomRow(r));
+    if(!pending.length && !autoSnap.length){ toast(tx('autoNoTarget',holds.length),'warn'); return; }
+
+    // ── 차등 적용(diff) — 계산 결과가 이전과 같은 배정은 DB를 건드리지 않는다 ──────
+    //   같은 사람·같은 방·같은 기간이면 그대로 둔다. 지울 것과 새로 넣을 것만 처리 →
+    //   재실행해도 쓰기가 거의 없고 변경이력도 안 불어난다(Min 2026-08).
+    const rkey=r=>[r.member_id,r.inventory_id,r.check_in,r.check_out].join('|');
+    const wantKeys=new Set(pending.map(rkey));
+    const keepRows=autoSnap.filter(r=>wantKeys.has(rkey(r)));
+    const keepKeys=new Set(keepRows.map(rkey));
+    const dropIds=autoSnap.filter(r=>!keepKeys.has(rkey(r))).map(r=>r.id);
+    const addRows=pending.filter(r=>!keepKeys.has(rkey(r)));
+    keepRows.forEach(r=>pushRoomRow(r));   // 유지되는 배정은 원래 id 그대로 화면에 되돌린다
+    if(dropIds.length){
+      const derr=await deleteRoomsByIds(dropIds);
+      if(derr){toast(tx('autoClearFail',derr.message),'err');return;}
+    }
+    let data=[];
+    if(addRows.length){
+      const ins=await insertRoomsChunked(addRows,(done,total)=>autoBusyBar(true,Math.round(done/total*100),done,total));
+      if(ins.error){toast(tx('autoSaveFail',ins.error.message),'err');return;}
+      data=ins.data||[];
+      data.forEach(r=>pushRoomRow(r));
+    }
     rebuildAssignMap(); render();
-    logAssign('자동배정', `${state.from||''}~${state.to||''} 자동배정 재실행 — ${pending.length}명 재배치${holds.length?` · 보류 ${holds.length}건`:''}`);
+    if(dropIds.length || addRows.length)
+      logAssign('자동배정', `${state.from||''}~${state.to||''} 자동배정 재실행 — 변경 ${addRows.length}명(해제 ${dropIds.length}·유지 ${keepRows.length})${holds.length?` · 보류 ${holds.length}건`:''}`);
     // 개인별 이동(어디서→어디로) 기록 — 이전 방과 달라진 사람만(신규 배정·미변경 제외)
     const _moves=[];
     (data||[]).forEach(r=>{
