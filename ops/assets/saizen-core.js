@@ -175,6 +175,49 @@
     var lodge = p * n * rate, transport = p * 6000;
     return { rate: rate, lodge: lodge, transport: transport, total: lodge + transport };
   }
+  // ── 손익 구간(객실 가동률 기준) ────────────────────────────────────────────
+  //  "가동률이 몇 %면 흑자인가"를 한 곳에서 계산한다(경영통계 화면이 이 값을 쓴다).
+  //  ⚠ 매출 단가는 실적에서 나온 값이지만 **비용은 업계 벤치마크 추정**이다.
+  //     실제 급여·수도광열·코스관리 지출이 확정되면 이 상수만 고치면 화면이 따라온다.
+  //     근거·산정 과정 = docs/profitability-estimate.md
+  var RESORT_PL = {
+    beds: 248,              // 자체 객실(야마나미) 침대 수 — 제휴 숙소는 우리 손익이 아니다
+    openDays: 275,          // 영업일(3~11월). 12~2월은 클로징
+    revPerBedNight: 15154,  // 인박당 매출(숙박 ¥14,000 + 송영 ¥6,000/인 배분) — 실적값
+    varPerBedNight: 3100,   // 인박당 변동비(식음 2,100 + 객실 소모품·청소 1,000)
+    fixedYear: 624000000    // 연 고정비(인건 2.68 + 코스 0.84 + 광열 0.58 + 판관 0.60 + 송영운행 0.09 + 감가 1.45억)
+  };
+  // 인박 1개가 남기는 돈(공헌이익)
+  function contribPerNight(pl) { var c = pl || RESORT_PL; return c.revPerBedNight - c.varPerBedNight; }
+  // 손익분기 가동률(%) — 고정비 ÷ (연 가능 인박 × 공헌이익)
+  function bepOccupancy(pl) {
+    var c = pl || RESORT_PL;
+    var cap = c.beds * c.openDays;
+    if (!cap) return 0;
+    return c.fixedYear / (cap * contribPerNight(c)) * 100;
+  }
+  // 가동률 → 손익. days 를 주면 그 기간분(고정비도 일수 비례 배분)으로 환산한다.
+  function plAtOccupancy(occPct, days, pl) {
+    var c = pl || RESORT_PL;
+    var d = (days == null) ? c.openDays : Number(days) || 0;
+    var o = Number(occPct) || 0;
+    var paxNights = o / 100 * c.beds * d;
+    var revenue = paxNights * c.revPerBedNight;
+    var variable = paxNights * c.varPerBedNight;
+    var fixed = c.fixedYear * (d / c.openDays);
+    return {
+      occPct: o, days: d, paxNights: paxNights,
+      revenue: revenue, variable: variable, fixed: fixed,
+      contribution: revenue - variable,
+      profit: revenue - variable - fixed
+    };
+  }
+  // 가동률 1%p 가 연간 이익에 주는 영향(엔)
+  function profitPerPoint(pl) {
+    var c = pl || RESORT_PL;
+    return c.beds * c.openDays * contribPerNight(c) * 0.01;
+  }
+
   // 상품명 → 숙박지(canonical accom). ⚠ 판정 순서 중요:
   //  "야마나미CC"는 골프장(코스)이라 거의 모든 상품명에 들어감. 숙박지는 별개이므로
   //  쿠주힐즈(장기숙박형 별장전용)·간지호텔·시즈를 먼저 보고, 야마나미는 폴백.
@@ -726,6 +769,11 @@
     nightsBetween: nightsBetween,
     accomRate: accomRate,
     b2bFees: b2bFees,
+    RESORT_PL: RESORT_PL,
+    contribPerNight: contribPerNight,
+    bepOccupancy: bepOccupancy,
+    plAtOccupancy: plAtOccupancy,
+    profitPerPoint: profitPerPoint,
     accomFromProduct: accomFromProduct,
     nmCodeConflict: nmCodeConflict,
     weekday: weekday,
