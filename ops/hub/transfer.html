@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 送迎表(송영표) 인쇄</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad; --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --mono:'SFMono-Regular',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{max-width:1060px;margin:0 auto;padding:16px 20px 90px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:10px}
+  .panel .desc{font-size:12px;color:var(--text2);margin-bottom:11px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .ymctrl{display:flex;align-items:center;gap:6px}
+  .ymctrl b{font-size:15px;font-family:var(--mono);min-width:78px;text-align:center}
+  .chip{font-size:12px;font-weight:700;padding:5px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border);cursor:pointer}
+  .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .chip .c{opacity:.7;font-weight:600;margin-left:4px}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  .sep{width:1px;height:20px;background:var(--border)}
+  /* 화면 목록 */
+  .ttbl{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  .ttbl th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:6px 8px;text-align:left;font-size:11px;color:var(--text2);font-weight:700;white-space:nowrap}
+  .ttbl td{border-bottom:1px solid var(--border);padding:5px 8px;vertical-align:middle}
+  .ttbl tr:hover td{background:var(--surface2)}
+  .ttbl .fl{font-family:var(--mono);font-weight:800}
+  .ttbl .tm{font-family:var(--mono);font-weight:800;font-size:13.5px}
+  .ttbl .gc{font-weight:800;color:var(--accent2)}
+  .ttbl .px{font-weight:800;text-align:center}
+  .ttbl tr.gh td{background:var(--accentSoft);font-weight:800;color:var(--accentDeep);font-size:12px}
+  .dirbadge{font-size:10.5px;font-weight:800;border-radius:5px;padding:2px 7px;white-space:nowrap}
+  .d-in{background:#e7efe1;color:#2f7d4f;border:1px solid #a9c39a}
+  .d-out{background:#f5ecd8;color:#8a6410;border:1px solid #dcc48d}
+  .ymctrl{display:flex;align-items:center;gap:6px}
+  .ymctrl b{font-size:15px;font-family:var(--mono);min-width:104px;text-align:center}
+  .sumline{font-size:12.5px;color:var(--text2);font-weight:700;margin-top:8px}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.98">
+</head>
+<body data-so-area="print">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">送迎表 · 송영표 인쇄</span>
+  <a class="navhome" href="../index.html" id="t-home">← 홈</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connhint">그날 공항 픽업·샌딩 팀을 항공편별로 묶어 송영표(체크표)를 인쇄합니다.</span>
+</div>
+
+<div class="wrap" id="content">
+  <div class="panel"><div class="deny" id="t-preconn" style="color:var(--muted)">연결 후 표시됩니다.</div></div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-core.js?v=30"></script>
+<script src="../assets/saizen-ops.js?v=15.98"></script>
+<script>
+const $=s=>document.querySelector(s);
+
+// ── i18n (화면 chrome. 인쇄물은 현장 양식대로 일본어+한국어 병기 고정) ──
+const L={
+  ja:{ step:'送迎表', home:'← ホーム',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
+    connHint:'その日の空港ピックアップ・送りのチームを便ごとにまとめ、送迎表(点呼表)を印刷します。',
+    preConn:'接続すると表示されます。', loginNeedTitle:'ログインが必要です。', loginNeedSub:'中央のログインカードでログインしてから再接続してください。',
+    panelH:'日付 · 絞り込み', date:'日付', prev:'◀ 前日', next:'翌日 ▶', today:'今日',
+    dir:'区分', dAll:'全体', dIn:'到着(空港→宿)', dOut:'出発(宿→空港)', accom:'宿泊施設', all:'全体',
+    desc:'その日に<b>到着</b>(空港→宿泊施設)・<b>出発</b>(宿泊施設→空港)するチームを<b>便ごと</b>にまとめます。名簿は載せず、<b>チーム・人数・行き先(宿泊施設)・便名・出発地→到着地・時刻</b>だけを印刷し、担当者が現場で<b>人数を点呼</b>できるチェック欄を付けます。',
+    printBtn:'🖨 送迎表 印刷',
+    loading:'読み込み中…', loadFail:'読み込み失敗', noData:'この日の送迎はありません。',
+    thDir:'区分', thTime:'時刻', thFlight:'便名', thRoute:'区間', thTag:'コード', thRep:'代表者', thPax:'人数', thAccom:'宿泊施設',
+    cntSum:(t,p)=>`${t}チーム · ${p}名`, sumIn:(t,p)=>`到着 ${t}チーム ${p}名`, sumOut:(t,p)=>`出発 ${t}チーム ${p}名`,
+    popupBlocked:'ポップアップブロック — 許可が必要', printTarget:'印刷対象' },
+  ko:{ step:'송영표', home:'← 홈',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패·재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
+    connHint:'그날 공항 픽업·샌딩 팀을 항공편별로 묶어 송영표(체크표)를 인쇄합니다.',
+    preConn:'연결 후 표시됩니다.', loginNeedTitle:'로그인이 필요합니다.', loginNeedSub:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
+    panelH:'날짜 · 필터', date:'날짜', prev:'◀ 전날', next:'다음날 ▶', today:'오늘',
+    dir:'구분', dAll:'전체', dIn:'도착(공항→숙소)', dOut:'출발(숙소→공항)', accom:'숙소', all:'전체',
+    desc:'그날 <b>도착</b>(공항→숙소)·<b>출발</b>(숙소→공항)하는 팀을 <b>항공편별</b>로 묶습니다. 명단은 넣지 않고 <b>팀·인원·행선지(숙소)·항공편명·출발지→도착지·시각</b>만 인쇄하며, 담당자가 현장에서 <b>인원을 점검</b>할 체크칸을 넣습니다.',
+    printBtn:'🖨 송영표 인쇄',
+    loading:'불러오는 중…', loadFail:'로드 실패', noData:'이 날짜에 송영이 없습니다.',
+    thDir:'구분', thTime:'시각', thFlight:'항공편', thRoute:'구간', thTag:'코드', thRep:'대표자', thPax:'인원', thAccom:'숙소',
+    cntSum:(t,p)=>`${t}팀 · ${p}명`, sumIn:(t,p)=>`도착 ${t}팀 ${p}명`, sumOut:(t,p)=>`출발 ${t}팀 ${p}명`,
+    popupBlocked:'팝업 차단 — 허용 필요', printTarget:'인쇄 대상' },
+  en:{ step:'Transfer sheet', home:'← Home',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
+    connHint:'Groups the day\u2019s airport pickups and drop-offs by flight and prints a transfer / head-count sheet.',
+    preConn:'Shown after connecting.', loginNeedTitle:'Login required.', loginNeedSub:'Log in via the central login card, then reconnect.',
+    panelH:'Date · Filter', date:'Date', prev:'◀ Prev', next:'Next ▶', today:'Today',
+    dir:'Direction', dAll:'All', dIn:'Arrival (airport → lodging)', dOut:'Departure (lodging → airport)', accom:'Lodging', all:'All',
+    desc:'Groups the teams <b>arriving</b> (airport → lodging) and <b>departing</b> (lodging → airport) on that date <b>by flight</b>. No name list — only <b>team, headcount, destination, flight number, origin → destination and time</b>, with a check column so the driver can count heads on site.',
+    printBtn:'🖨 Print transfer sheet',
+    loading:'Loading…', loadFail:'Load failed', noData:'No transfers on this date.',
+    thDir:'Type', thTime:'Time', thFlight:'Flight', thRoute:'Route', thTag:'Code', thRep:'Rep', thPax:'Pax', thAccom:'Lodging',
+    cntSum:(t,p)=>`${t} teams · ${p} pax`, sumIn:(t,p)=>`Arrivals ${t} teams ${p} pax`, sumOut:(t,p)=>`Departures ${t} teams ${p} pax`,
+    popupBlocked:'Popup blocked — allow it', printTarget:'Print list' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k,...a){ const d=L[lang()]||L.ja; let v=d[k]; if(v===undefined) v=L.ja[k]; if(v===undefined) return k; return (typeof v==='function')?v(...a):v; }
+function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,lang()):(a||''); }
+
+const ACCOM_ORDER=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
+const WD_JA=['日','月','火','水','木','金','土'];
+let supa=null, DATE=isoToday(), ROWS=[], DIR='all', ACCOMSEL=new Set();
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+function isoToday(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function pd(s){const m=String(s||'').match(/(\d{4})-(\d{2})-(\d{2})/);return m?new Date(+m[1],+m[2]-1,+m[3]):null;}
+function shiftDate(d,n){const t=pd(d);if(!t)return d;t.setDate(t.getDate()+n);return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');}
+function mdw(s){const d=pd(s);return d?`${d.getMonth()+1}/${d.getDate()}(${WD_JA[d.getDay()]})`:'-';}
+function accomOrd(a){const i=ACCOM_ORDER.indexOf(a);return i<0?99:i;}
+function tmv(t){const m=String(t||'').match(/(\d{1,2}):(\d{2})/);return m?(+m[1]*60+ +m[2]):9999;}
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent=tx('connecting');btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">'+tx('loginNeedTitle')+'<small>'+tx('loginNeedSub')+'</small></div></div>'; return; }
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
+    renderUI(); load();
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
+}
+
+async function pagedIn(table, cols, col, vals){
+  const out=[];
+  for(let i=0;i<vals.length;i+=200){
+    const chunk=vals.slice(i,i+200);
+    let from=0;
+    for(;;){ const {data,error}=await supa.from(table).select(cols).in(col,chunk).order(col).range(from,from+999);
+      if(error) return {error}; out.push(...(data||[])); if(!data||data.length<1000) break; from+=1000; }
+  }
+  return {data:out};
+}
+
+// ── 그날 송영 = 그날 입국(dep_date)한 팀의 도착편 + 그날 귀국(arr_date)하는 팀의 출발편 ──
+//    같은 팀이라도 출발지가 섞일 수 있어(인천·부산) 便 단위로 쪼개 인원을 센다.
+async function load(){
+  if(!supa) return;
+  const box=$('#list'); if(box) box.innerHTML=`<div class="deny" style="color:var(--muted)">${tx('loading')}</div>`;
+  try{
+    const {data:bs,error:e1}=await supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax')
+      .or(`dep_date.eq.${DATE},arr_date.eq.${DATE}`);
+    if(e1) throw e1;
+    const seqs=(bs||[]).map(b=>b.event_seq);
+    if(!seqs.length){ ROWS=[]; renderList(); return; }
+    const {data:gs}=await pagedIn('guests','event_seq,group_code,team_tag,accom','event_seq',seqs);
+    const {data:ps}=await pagedIn('passengers','event_seq,origin,dest,airline,dep_flight,ret_flight,dep_time,loc_arr_time,ret_dep_time','event_seq',seqs);
+    const gBy={}; (gs||[]).forEach(g=>{ gBy[g.event_seq]=g; });
+    const pBy={}; (ps||[]).forEach(p=>{ (pBy[p.event_seq]=pBy[p.event_seq]||[]).push(p); });
+    const rows=[];
+    (bs||[]).forEach(b=>{
+      const g=gBy[b.event_seq]||{};
+      const tag=g.group_code||g.team_tag||('#'+(b.event_no||b.event_seq));
+      const list=pBy[b.event_seq]||[];
+      const mk=(dir)=>{
+        const grp={};
+        list.forEach(p=>{
+          const flight = dir==='in' ? (p.dep_flight||'') : (p.ret_flight||'');
+          const time   = dir==='in' ? (p.loc_arr_time||'') : (p.ret_dep_time||'');
+          const from   = dir==='in' ? (p.origin||'') : (p.dest||'');
+          const to     = dir==='in' ? (p.dest||'')  : (p.origin||'');
+          const k=[flight,time,from,to].join('|');
+          (grp[k]=grp[k]||{flight,time,from,to,pax:0}).pax++;
+        });
+        const ks=Object.keys(grp);
+        // 명단이 아직 없는 팀도 빠지면 안 된다 — 예약 인원으로 한 줄
+        if(!ks.length) return [{flight:'',time:'',from:'',to:'',pax:Number(b.pax)||0}];
+        return ks.map(k=>grp[k]);
+      };
+      if(b.dep_date===DATE) mk('in').forEach(u=>rows.push({dir:'in', seq:b.event_seq, no:b.event_no||b.event_seq,
+        tag, rep:b.rep_name||'', accom:g.accom||'', ...u}));
+      if(b.arr_date===DATE) mk('out').forEach(u=>rows.push({dir:'out', seq:b.event_seq, no:b.event_no||b.event_seq,
+        tag, rep:b.rep_name||'', accom:g.accom||'', ...u}));
+    });
+    ROWS=rows;
+    renderAccomChips();
+    renderList();
+  }catch(e){ const b2=$('#list'); if(b2) b2.innerHTML=`<div class="deny">${esc(tx('loadFail')+': '+(e.message||e))}</div>`; }
+}
+
+function pass(r){
+  if(DIR!=='all' && r.dir!==DIR) return false;
+  if(ACCOMSEL.size && !ACCOMSEL.has(r.accom||'')) return false;
+  return true;
+}
+function visible(){ return ROWS.filter(pass); }
+// 便 → 그 편에 붙는 팀들. 기사·차량 배차는 편 단위로 움직인다.
+function groupByFlight(rows){
+  const g={};
+  rows.forEach(r=>{ const k=r.dir+'|'+(r.flight||'-')+'|'+(r.time||'')+'|'+r.from+'|'+r.to;
+    (g[k]=g[k]||{dir:r.dir,flight:r.flight,time:r.time,from:r.from,to:r.to,rows:[]}).rows.push(r); });
+  return Object.values(g).sort((a,b)=>
+    (a.dir===b.dir?0:(a.dir==='in'?-1:1)) || tmv(a.time)-tmv(b.time) || String(a.flight).localeCompare(String(b.flight)))
+    .map(x=>{ x.rows.sort((p,q)=>accomOrd(p.accom)-accomOrd(q.accom)||String(p.tag).localeCompare(String(q.tag)));
+      x.teams=x.rows.length; x.pax=x.rows.reduce((s,r)=>s+r.pax,0); return x; });
+}
+
+function renderUI(){
+  $('#content').innerHTML=`
+  <div class="panel">
+    <h3 id="t-panelh"></h3>
+    <div class="desc" id="t-desc"></div>
+    <div class="row" style="margin-bottom:10px">
+      <span class="cnt" id="t-datelab"></span>
+      <div class="ymctrl">
+        <button class="btn ghost sm" id="d-prev" type="button"></button>
+        <input class="inp" id="d-pick" type="date" value="${DATE}">
+        <button class="btn ghost sm" id="d-next" type="button"></button>
+        <button class="btn ghost sm" id="d-today" type="button"></button>
+      </div>
+      <span class="sep"></span>
+      <span class="cnt" id="t-dirlab"></span>
+      <div class="row" id="dir-chips" style="gap:6px"></div>
+      <button class="btn" id="btn-print" type="button" style="margin-left:auto"></button>
+    </div>
+    <div class="row" style="margin-bottom:4px">
+      <span class="cnt" id="t-accomlab"></span>
+      <div class="row" id="accom-chips" style="gap:6px"></div>
+    </div>
+  </div>
+  <div class="panel">
+    <h3 id="t-listh"></h3>
+    <div class="sumline" id="sum"></div>
+    <div id="list"></div>
+  </div>`;
+  $('#d-prev').addEventListener('click',()=>{ DATE=shiftDate(DATE,-1); $('#d-pick').value=DATE; load(); });
+  $('#d-next').addEventListener('click',()=>{ DATE=shiftDate(DATE,1); $('#d-pick').value=DATE; load(); });
+  $('#d-today').addEventListener('click',()=>{ DATE=isoToday(); $('#d-pick').value=DATE; load(); });
+  $('#d-pick').addEventListener('change',e=>{ DATE=e.target.value||isoToday(); load(); });
+  $('#btn-print').addEventListener('click',printSheet);
+  renderDirChips(); applyStatic();
+}
+function applyStatic(){
+  const set=(id,v)=>{ const e=$(id); if(e) e.textContent=v; };
+  set('#t-step',tx('step')); set('#t-home',tx('home'));
+  const ch=$('#t-connhint'); if(ch) ch.textContent=tx('connHint');
+  set('#btn-connect',supa?tx('connectedBtn'):tx('connect'));
+  set('#t-panelh',tx('panelH')); set('#t-datelab',tx('date')); set('#t-dirlab',tx('dir')); set('#t-accomlab',tx('accom'));
+  set('#d-prev',tx('prev')); set('#d-next',tx('next')); set('#d-today',tx('today'));
+  set('#btn-print',tx('printBtn')); set('#t-listh',tx('printTarget'));
+  const d=$('#t-desc'); if(d) d.innerHTML=tx('desc');
+  const pc=$('#t-preconn'); if(pc) pc.textContent=tx('preConn');
+}
+function renderDirChips(){
+  const box=$('#dir-chips'); if(!box) return;
+  const opt=[['all','dAll'],['in','dIn'],['out','dOut']];
+  box.innerHTML=opt.map(([k,l])=>`<button type="button" class="chip${DIR===k?' on':''}" data-d="${k}">${esc(tx(l))}</button>`).join('');
+  box.querySelectorAll('[data-d]').forEach(b=>b.addEventListener('click',()=>{ DIR=b.dataset.d; renderDirChips(); renderList(); }));
+}
+function renderAccomChips(){
+  const box=$('#accom-chips'); if(!box) return;
+  const have=[...new Set(ROWS.map(r=>r.accom||''))].sort((a,b)=>accomOrd(a)-accomOrd(b));
+  const allOn=ACCOMSEL.size===0;
+  box.innerHTML=`<button type="button" class="chip${allOn?' on':''}" data-a="__all">${esc(tx('all'))}</button>`
+    +have.map(a=>`<button type="button" class="chip${ACCOMSEL.has(a)?' on':''}" data-a="${esc(a)}">${esc(accomL(a)||'-')}<span class="c">${ROWS.filter(r=>r.accom===a).length}</span></button>`).join('');
+  box.querySelectorAll('[data-a]').forEach(b=>b.addEventListener('click',()=>{
+    const k=b.dataset.a;
+    if(k==='__all') ACCOMSEL.clear();
+    else { if(ACCOMSEL.has(k)) ACCOMSEL.delete(k); else ACCOMSEL.add(k); }
+    renderAccomChips(); renderList();
+  }));
+}
+function renderList(){
+  const box=$('#list'); if(!box) return;
+  const vis=visible(), groups=groupByFlight(vis);
+  const ins=vis.filter(r=>r.dir==='in'), outs=vis.filter(r=>r.dir==='out');
+  const sum=$('#sum'); if(sum) sum.textContent=
+    tx('sumIn',ins.length,ins.reduce((s,r)=>s+r.pax,0))+'  ·  '+tx('sumOut',outs.length,outs.reduce((s,r)=>s+r.pax,0));
+  const bp=$('#btn-print'); if(bp) bp.disabled=!vis.length;
+  if(!vis.length){ box.innerHTML=`<div class="deny" style="color:var(--muted)">${tx('noData')}</div>`; return; }
+  const body=groups.map(g=>{
+    const head=`<tr class="gh"><td colspan="7">${esc(dirLabel(g.dir))} · ${esc(g.flight||'-')} ${esc(g.time||'')} · ${esc(g.from||'-')} → ${esc(g.to||'-')} · ${esc(tx('cntSum',g.teams,g.pax))}</td></tr>`;
+    return head+g.rows.map(r=>`<tr>
+      <td><span class="dirbadge ${r.dir==='in'?'d-in':'d-out'}">${esc(dirShort(r.dir))}</span></td>
+      <td class="tm">${esc(r.time||'-')}</td>
+      <td class="fl">${esc(r.flight||'-')}</td>
+      <td>${esc(r.from||'-')} → ${esc(r.to||'-')}</td>
+      <td class="gc">${esc(r.tag)}</td>
+      <td>${esc(r.rep||'-')}</td>
+      <td class="px">${r.pax}</td>
+    </tr>`).join('');
+  }).join('');
+  box.innerHTML=`<table class="ttbl"><thead><tr>
+      <th>${tx('thDir')}</th><th>${tx('thTime')}</th><th>${tx('thFlight')}</th><th>${tx('thRoute')}</th>
+      <th>${tx('thTag')}</th><th>${tx('thRep')}</th><th style="text-align:center">${tx('thPax')}</th>
+    </tr></thead><tbody>${body}</tbody></table>`;
+}
+function dirLabel(d){ return d==='in'?tx('dIn'):tx('dOut'); }
+function dirShort(d){ const ja=lang()==='ja'; return d==='in'?(ja?'到着':(lang()==='en'?'IN':'도착')):(ja?'出発':(lang()==='en'?'OUT':'출발')); }
+
+// ── 인쇄: A4 세로 · 흑백. 담당자가 들고 다니며 인원을 점검하는 체크표 ──
+function printSheet(){
+  const vis=visible(); if(!vis.length){ toast(tx('noData'),'err'); return; }
+  const w=window.open('','_blank','width=980,height=1000'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
+  const groups=groupByFlight(vis);
+  const sec=(dir,title)=>{
+    const gs=groups.filter(g=>g.dir===dir); if(!gs.length) return '';
+    const teams=gs.reduce((s,g)=>s+g.teams,0), pax=gs.reduce((s,g)=>s+g.pax,0);
+    return `<div class="sec">
+      <div class="sec-h">${title}<span>${teams}チーム / ${pax}名</span></div>
+      ${gs.map(g=>`<div class="fl-h"><b>${esc(g.flight||'-')}</b>
+          <span class="t">${esc(g.time||'--:--')}</span>
+          <span class="r">${esc(g.from||'-')} → ${esc(g.to||'-')}</span>
+          <span class="n">${g.teams}チーム / ${g.pax}名</span></div>
+        <table class="pt"><thead><tr>
+          <th class="c">コード<br><i>코드</i></th><th class="c">代表者<br><i>대표자</i></th>
+          <th class="c n">人数<br><i>인원</i></th><th class="c">${dir==='in'?'行き先(宿泊施設)':'出発地(宿泊施設)'}<br><i>${dir==='in'?'행선지(숙소)':'출발지(숙소)'}</i></th>
+          <th class="c n">確認<br><i>확인</i></th><th class="c n">実人数<br><i>실인원</i></th><th class="c memo">備考 / 비고</th>
+        </tr></thead><tbody>
+        ${g.rows.map(r=>`<tr>
+          <td class="code">${esc(r.tag)}</td><td>${esc(r.rep||'-')}</td>
+          <td class="n pax">${r.pax}</td><td>${esc(r.accom||'-')}</td>
+          <td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td><td></td>
+        </tr>`).join('')}
+        <tr class="sub"><td colspan="2">小計 / 소계</td><td class="n pax">${g.pax}</td><td></td><td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td><td></td></tr>
+        </tbody></table>`).join('')}
+    </div>`;
+  };
+  const inHTML=sec('in','到着 送迎 <i>도착 · 공항 → 숙소</i>');
+  const outHTML=sec('out','出発 送迎 <i>출발 · 숙소 → 공항</i>');
+  const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>送迎表_${DATE}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Yu Gothic','Meiryo','Malgun Gothic',sans-serif;background:#e9eaec;color:#111}
+  .bar{position:sticky;top:0;display:flex;gap:12px;align-items:center;background:#333;color:#fff;padding:10px 16px;z-index:9}
+  .bar h1{font-size:14px}.bar .meta{font-size:11px;opacity:.85}
+  .bar button{background:#fff;color:#333;border:none;border-radius:5px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer}
+  .bar .x{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
+  .page{width:210mm;min-height:297mm;margin:10px auto;background:#fff;padding:12mm 11mm}
+  .hd{display:flex;align-items:flex-end;border-bottom:2.2pt solid #111;padding-bottom:2.5mm;margin-bottom:3mm}
+  .hd h2{font-size:19pt;letter-spacing:2px}
+  .hd h2 i{font-size:11pt;font-style:normal;font-weight:600;color:#444;letter-spacing:0;margin-left:6px}
+  .hd .date{margin-left:auto;font-size:15pt;font-weight:800;font-family:Consolas,monospace}
+  .staff{display:flex;gap:4mm;font-size:9.5pt;margin-bottom:4mm}
+  .staff div{flex:1;border:0.8pt solid #111;padding:2mm 3mm;min-height:11mm}
+  .staff b{font-size:8.5pt;color:#444;display:block;margin-bottom:1mm}
+  .sec{margin-bottom:6mm;break-inside:auto}
+  .sec-h{font-size:12.5pt;font-weight:800;background:#111;color:#fff;padding:1.8mm 3mm;display:flex;align-items:center}
+  .sec-h i{font-size:9pt;font-weight:600;font-style:normal;margin-left:6px;opacity:.85}
+  .sec-h span{margin-left:auto;font-size:10pt}
+  .fl-h{display:flex;align-items:baseline;gap:4mm;border:0.8pt solid #111;border-top:none;background:#efefef;padding:1.6mm 3mm;font-size:11pt}
+  .fl-h b{font-size:13pt;font-family:Consolas,monospace}
+  .fl-h .t{font-size:13pt;font-weight:800;font-family:Consolas,monospace}
+  .fl-h .r{font-size:11pt;font-weight:700}
+  .fl-h .n{margin-left:auto;font-size:10.5pt;font-weight:700}
+  table.pt{width:100%;border-collapse:collapse;font-size:11pt;margin-bottom:3mm}
+  table.pt th{background:#f6f6f6;border:0.7pt solid #111;padding:1.4mm 2mm;font-size:9.5pt;font-weight:800;line-height:1.25}
+  table.pt th i{font-size:8pt;font-weight:600;font-style:normal;color:#444}
+  table.pt td{border:0.7pt solid #111;padding:2.2mm 2mm;height:11mm}
+  table.pt td.n,table.pt th.n{text-align:center;white-space:nowrap}
+  table.pt th.memo{width:26mm}
+  table.pt td.code{font-family:Consolas,monospace;font-weight:800;font-size:12pt}
+  table.pt td.pax{font-weight:800;font-size:13pt}
+  table.pt tr.sub td{background:#f6f6f6;font-weight:800}
+  .box{display:inline-block;width:7mm;height:7mm;border:1pt solid #111}
+  .fill{display:inline-block;width:14mm;border-bottom:0.8pt solid #111;height:6mm}
+  .foot{margin-top:5mm;display:flex;gap:5mm;font-size:9.5pt}
+  .foot div{flex:1;border-top:0.8pt solid #111;padding-top:2mm}
+  .note{font-size:8.5pt;color:#444;margin-top:3mm;line-height:1.5}
+  @media print{ @page{size:A4 portrait;margin:0} body{background:#fff} .bar{display:none}
+    .page{margin:0;width:auto;min-height:auto;padding:11mm 10mm} table.pt{break-inside:auto} tr{break-inside:avoid} }
+</style></head><body>
+  <div class="bar"><h1>送迎表 / 송영표</h1><div class="meta">${DATE} · ${vis.length}チーム</div><div style="flex:1"></div>
+    <button onclick="window.print()">🖨 ${lang()==='ja'?'印刷':(lang()==='en'?'Print':'인쇄')}</button>
+    <button class="x" onclick="window.close()">✕ ${lang()==='ja'?'閉じる':(lang()==='en'?'Close':'닫기')}</button></div>
+  <div class="page">
+    <div class="hd"><h2>送迎表 <i>송영표</i></h2><div class="date">${DATE} ${mdw(DATE)}</div></div>
+    <div class="staff">
+      <div><b>担当者 / 담당자</b></div><div><b>車両 / 차량</b></div><div><b>出発時刻 / 출발 시각</b></div>
+    </div>
+    ${inHTML}${outHTML}
+    <div class="note">※ 人数は予約基準です。現場で点呼し、違う場合は「実人数」に記入してください。 / 인원은 예약 기준입니다. 현장에서 인원을 확인하고 다르면 「실인원」에 적어 주세요.</div>
+    <div class="foot"><div>確認者 / 확인자</div><div>フロント確認 / 프론트 확인</div></div>
+  </div>
+</body></html>`;
+  try{ w.document.open(); w.document.write(html); w.document.close(); }catch(_){}
+}
+
+window.onSaizenLangChange=function(){ try{ applyStatic(); renderDirChips(); renderAccomChips(); renderList(); }catch(e){} };
+$('#btn-connect').addEventListener('click',connect);
+loadCreds(); applyStatic();
+if($('#sb-url').value && $('#sb-key').value) connect();
+</script>
+</body>
+</html>
