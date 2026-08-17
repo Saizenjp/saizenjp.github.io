@@ -177,6 +177,8 @@ from (
   union all select 107,'107 청소 진행','hk_done', case when exists(select 1 from information_schema.tables where table_schema='public' and table_name='hk_done') then '✅ 있음' else '❌ 없음 (107)' end
   union all select 102,'102 라운딩 제외','golf_skips', case when exists(select 1 from information_schema.tables where table_schema='public' and table_name='golf_skips') then '✅ 있음' else '❌ 없음 (102)' end
   union all select 103,'103 조 유령 방지','golf_groups FK cascade + 고아 0', case when exists(select 1 from pg_constraint where conname='golf_groups_event_seq_fkey' and confdeltype='c') and not exists(select 1 from golf_groups where event_seq is null) then '✅ 적용' else '❌ 미적용 (103)' end
+  union all select 108,'108 QR 재발급','order_tokens.reissue_count + ot_upd 정책', case when exists(select 1 from information_schema.columns where table_name='order_tokens' and column_name='reissue_count') and exists(select 1 from pg_policies where tablename='order_tokens' and policyname='ot_upd') then '✅ 있음' else '❌ 없음 (108)' end
+  union all select 109,'109 사입 금액','inv_suppliers + inv_txns.amount + v_inv_spend', case when to_regclass('public.inv_suppliers') is not null and exists(select 1 from information_schema.columns where table_name='inv_txns' and column_name='amount') and to_regclass('public.v_inv_spend') is not null then '✅ 있음' else '❌ 없음 (109)' end
 ) t
 order by ord, 항목;
 

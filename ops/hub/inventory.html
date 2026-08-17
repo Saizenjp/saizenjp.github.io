@@ -70,6 +70,19 @@
   .actbtns .b-in{ color:#2f7d4f; border-color:#bcd9c4 } .actbtns .b-out{ color:#b3473a; border-color:#e3bdb4 }
   .actbtns .b-stk{ color:#3a6ea5; border-color:#bcd0e5 }
   .inv-empty{ padding:26px; text-align:center; color:var(--muted) }
+  .spend-panel{background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px 14px;margin:0 0 12px}
+  .spend-panel h3{font-size:13.5px;font-weight:800;color:var(--accent);margin-bottom:8px}
+  .spend-row{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:baseline;margin-bottom:8px}
+  .spend-row b{font-size:20px;font-family:var(--mono);font-weight:800}
+  .spend-row .lb{font-size:11.5px;color:var(--text2);font-weight:700}
+  .sp-t{width:100%;border-collapse:collapse;font-size:12.5px}
+  .sp-t th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:5px 8px;text-align:left;font-size:11px;color:var(--text2)}
+  .sp-t td{border-bottom:1px solid var(--border);padding:4px 8px}
+  .sp-t td.n{text-align:right;font-family:var(--mono)}
+  .sup-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px 14px;margin:0 0 12px}
+  .sup-panel > summary{cursor:pointer;font-size:13px;font-weight:800;color:var(--accent2);list-style:none}
+  .sup-row{display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--border);font-size:12.5px}
+  .sup-row b{min-width:150px}
   .txn-panel{ margin-top:22px; background:var(--surface); border:1px solid var(--border); border-radius:11px; padding:14px 16px }
   .txn-panel h3{ font-size:14px; margin:0 0 10px }
   .txn-row{ display:flex; gap:10px; align-items:center; font-size:12.5px; padding:5px 0; border-top:1px solid var(--border); color:var(--text2) }
@@ -147,8 +160,31 @@
     <input class="inp" id="add-loc" style="width:120px">
     <input class="inp" id="add-par" type="number" min="0" style="width:90px">
     <input class="inp" id="add-qty" type="number" min="0" style="width:80px">
+    <!-- 사입 관리 1단계(2026-08): 단가·거래처를 여기서 같이 받는다 → 원가율이 나온다 -->
+    <input class="inp" id="add-cost" type="number" min="0" step="1" style="width:100px">
+    <select class="inp" id="add-sup" style="width:150px"></select>
     <button class="btn sm" id="btn-add" type="button">＋ 品目追加</button>
   </div>
+
+  <!-- 이번 달 지출 — v_inv_spend(입고 금액) 집계. 금액이 안 잡히면 아무것도 안 보인다 -->
+  <div class="spend-panel" id="spend-panel" style="display:none">
+    <h3 id="t-spendh"></h3>
+    <div class="spend-row" id="spend-sum"></div>
+    <div id="spend-by"></div>
+  </div>
+
+  <!-- 거래처 -->
+  <details class="sup-panel" id="sup-panel">
+    <summary id="t-suph"></summary>
+    <div style="padding:10px 2px 4px">
+      <div class="addrow" style="margin-bottom:8px">
+        <input class="inp" id="sup-name" style="flex:1;min-width:160px">
+        <input class="inp" id="sup-contact" style="flex:1;min-width:160px">
+        <button class="btn sm" id="btn-sup-add" type="button"></button>
+      </div>
+      <div id="sup-list"></div>
+    </div>
+  </details>
 
   <div style="margin:0 0 9px;display:flex;gap:8px;align-items:center"><input class="inp" id="inv-q" type="search" autocomplete="off" placeholder="🔎 품목·구분" style="flex:1;min-width:200px;max-width:420px"><span class="cnt" id="inv-qc" style="font-weight:700;color:var(--accent2)"></span></div>
   <div id="inv-list"><div class="inv-empty" id="t-empty"></div></div>
@@ -161,7 +197,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=16.2"></script>
+<script src="../assets/saizen-ops.js?v=16.3"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -176,6 +212,13 @@ const L={
     tipPar:'この数量未満で不足アラート', tipQty:'現在の保有数量', btnAdd:'＋ 品目追加', unitDefault:'個',
     emptyConnect:'上部でSupabaseに接続し、部署(F&B / 客室)を選ぶと品目が表示されます。',
     emptyNoItems:'品目がありません。上から追加してください。',
+    thCost:'単価', thSupplier:'仕入先', thValue:'在庫金額', thAmount:'金額', thQtyIn:'入庫数', sumValue:'在庫金額',
+    phCost:'単価(円)', supNone:'(仕入先なし)', supH:'🏷 仕入先', supEmpty:'仕入先がありません。下で追加してください。',
+    supPhName:'仕入先名', supPhContact:'担当・電話・メール(任意)', supBtnAdd:'＋ 追加', supAdded:'仕入先を追加しました',
+    supNeedName:'仕入先名を入力してください', supFail:'仕入先の処理に失敗: ', supOff:'休止', supOn:'再開',
+    spendH:(ym)=>`💰 ${ym} 仕入(入庫)金額`, spendTotal:'今月合計', spendItems:'品目数',
+    promptCost:(n)=>`[単価] ${n.name} ${n.qty}${n.unit}\n1${n.unit}あたりの単価(円)を入力。空欄なら金額なしで数量のみ記録。`,
+    pEditCost:'基準単価(円) — 空欄で削除', pEditSup:(l)=>`仕入先の番号を入力(空欄=なし)\n${l}`,
     thItem:'品目', thLoc:'場所', thUnit:'単位', thQty:'現在庫', thPar:'適正', thStat:'状態', thAct:'入出庫 / 管理',
     stOk:'十分', stLow:'不足', stZero:'なし', all:'全体',
     sumTotal:'品目', sumLow:'⚠ 不足', sumLow0:'不足 0',
@@ -194,7 +237,7 @@ const L={
       +'<h4>部署(F&amp;B / 客室)トグル</h4>上の<b>🍽 F&amp;B / 🛏 客室</b>ボタンで部署を切り替えます。両部署は同じ仕組みですが品目リストは別々に表示されます。(ランディングから入った部署が初期選択。)'
       +'<h4>現在庫・適正在庫・不足アラート</h4><ul><li><b>現在庫</b> = 今の保有数量。入庫・使用・棚卸でのみ変わります。</li><li><b>適正在庫</b> = 「これを下回ったら補充する」基準線。</li><li><b>不足判定</b>: <code>現在庫 ≤ 適正在庫</code> なら赤の<b>「不足」</b>バッジ(適正在庫を0にするとアラートなし)。現在庫0なら灰色の<b>「なし」</b>。</li><li>上部要約の<b>⚠ 不足 N</b> = その部署で不足している品目数。</li></ul>'
       +'<h4>入庫 / 使用 / 棚卸 — 計算方法</h4><ul><li><b>＋入庫</b>: 入力した数量だけ現在庫を<b>足します</b> (<code>現在庫 + N</code>)。</li><li><b>－使用</b>: 入力した数量だけ<b>引きます</b> (<code>現在庫 − N</code>)。</li><li><b>棚卸</b>: 実際に数えた数量を入力するとその値に<b>合わせます</b>。差分(=実際−既存)は<code>棚卸調整</code>として自動記録。</li><li>すべての変動は<b>最近の入出庫履歴</b>に<b>誰が・いつ・±数量・理由</b>で残ります(振り返り・監査用)。</li></ul>'
-      +'<h4>権限・データ</h4>閲覧はログイン全員、<b>書き込み(追加・入出庫・修正)は厨房(F&amp;B)・客室エリア担当者</b>のみ可能です。保存先 — 品目=<code>inv_items</code>(現在庫)、変動記録=<code>inv_txns</code>(元帳)。※POS販売時の自動差引は次段階予定(現在は手動入出庫)。' },
+      +'<h4>💰 単価・仕入先(仕入管理 第1段階)</h4><b>品目に単価と仕入先</b>を持たせ、<b>入庫のたびに単価を記録</b>します(空欄なら数量のみ)。これで<b>在庫金額</b>(単価×現在庫)と<b>今月の仕入金額</b>(仕入先別・品目別)が出ます。単価が変わったら最新値が品目の基準単価になり、次回入庫の初期値になります。<b>使用・棚卸には金額を付けません</b>(仕入=入庫のみ)。仕入先は下の<b>🏷 仕入先</b>で追加・休止。<h4>権限・データ</h4>閲覧はログイン全員、<b>書き込み(追加・入出庫・修正)は厨房(F&amp;B)・客室エリア担当者</b>のみ可能です。保存先 — 品目=<code>inv_items</code>(現在庫)、変動記録=<code>inv_txns</code>(元帳)。※POS販売時の自動差引は次段階予定(現在は手動入出庫)。' },
   ko:{ step:'재고 · 내부 관리', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패 · 재시도',
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', connectedToast:'Supabase 연결됨',
@@ -203,6 +246,13 @@ const L={
     tipPar:'이 수량 미만이면 부족 알림', tipQty:'현재 보유 수량', btnAdd:'＋ 품목 추가', unitDefault:'개',
     emptyConnect:'상단에서 Supabase 연결 후, 부서(F&B / 객실)를 선택하면 품목이 표시됩니다.',
     emptyNoItems:'품목이 없습니다. 위에서 추가하세요.',
+    thCost:'단가', thSupplier:'거래처', thValue:'재고금액', thAmount:'금액', thQtyIn:'입고수', sumValue:'재고금액',
+    phCost:'단가(엔)', supNone:'(거래처 없음)', supH:'🏷 거래처', supEmpty:'거래처가 없습니다. 아래에서 추가하세요.',
+    supPhName:'거래처명', supPhContact:'담당·전화·메일(선택)', supBtnAdd:'＋ 추가', supAdded:'거래처를 추가했습니다',
+    supNeedName:'거래처명을 입력하세요', supFail:'거래처 처리 실패: ', supOff:'중지', supOn:'재개',
+    spendH:(ym)=>`💰 ${ym} 사입(입고) 금액`, spendTotal:'이번 달 합계', spendItems:'품목 수',
+    promptCost:(n)=>`[단가] ${n.name} ${n.qty}${n.unit}\n1${n.unit}당 단가(엔)를 입력하세요. 비우면 금액 없이 수량만 기록합니다.`,
+    pEditCost:'기준 단가(엔) — 비우면 삭제', pEditSup:(l)=>`거래처 번호를 입력(비우면 없음)\n${l}`,
     thItem:'품목', thLoc:'위치', thUnit:'단위', thQty:'현재고', thPar:'적정', thStat:'상태', thAct:'입출고 / 관리',
     stOk:'충분', stLow:'부족', stZero:'없음', all:'전체',
     sumTotal:'품목', sumLow:'⚠ 부족', sumLow0:'부족 0',
@@ -221,7 +271,7 @@ const L={
       +'<h4>부서(F&amp;B / 객실) 토글</h4>위쪽 <b>🍽 F&amp;B / 🛏 객실</b> 버튼으로 부서를 바꿉니다. 두 부서는 같은 시스템이지만 품목 목록은 서로 분리되어 보입니다. (랜딩에서 들어온 부서가 기본 선택됩니다.)'
       +'<h4>현재고 · 적정재고 · 부족 알림</h4><ul><li><b>현재고</b> = 지금 보유한 수량. 입고·사용·실사로만 바뀝니다.</li><li><b>적정재고</b> = "이 밑으로 떨어지면 채워야 한다"는 기준선.</li><li><b>부족 판정</b>: <code>현재고 ≤ 적정재고</code> 이면 빨강 <b>「부족」</b> 뱃지 (적정재고를 0으로 두면 알림 안 함). 현재고 0이면 회색 <b>「없음」</b>.</li><li>상단 요약의 <b>⚠ 부족 N</b> = 그 부서에서 부족한 품목 수.</li></ul>'
       +'<h4>입고 / 사용 / 실사 — 계산 방식</h4><ul><li><b>＋입고</b>: 입력한 수량만큼 현재고를 <b>더합니다</b> (<code>현재고 + N</code>).</li><li><b>－사용</b>: 입력한 수량만큼 <b>뺍니다</b> (<code>현재고 − N</code>).</li><li><b>실사</b>: 실제로 세어본 수량을 입력하면 그 값으로 <b>맞춥니다</b>. 차이(=실제−기존)는 <code>실사조정</code>으로 자동 기록됩니다.</li><li>모든 변동은 <b>최근 입출고 이력</b>에 <b>누가·언제·±수량·사유</b>로 남습니다(되돌아보기·감사용).</li></ul>'
-      +'<h4>권한 · 데이터</h4>읽기는 로그인한 전원, <b>쓰기(추가·입출고·수정)는 주방(F&amp;B)·객실 영역 담당자</b>만 가능합니다. 저장 위치 — 품목=<code>inv_items</code>(현재고), 변동 기록=<code>inv_txns</code>(원장). ※POS 판매 시 자동 차감 연결은 다음 단계 예정(현재는 수동 입출고).' },
+      +'<h4>💰 단가·거래처(사입 관리 1단계)</h4><b>품목에 단가와 거래처</b>를 두고, <b>입고할 때마다 단가를 기록</b>합니다(비우면 수량만). 그러면 <b>재고금액</b>(단가×현재고)과 <b>이번 달 사입 금액</b>(거래처별·품목별)이 나옵니다. 단가가 바뀌면 최신값이 품목 기준 단가가 되어 다음 입고의 기본값이 됩니다. <b>사용·실사에는 금액을 붙이지 않습니다</b>(사입=입고만). 거래처는 아래 <b>🏷 거래처</b>에서 추가·중지합니다.<h4>권한 · 데이터</h4>읽기는 로그인한 전원, <b>쓰기(추가·입출고·수정)는 주방(F&amp;B)·객실 영역 담당자</b>만 가능합니다. 저장 위치 — 품목=<code>inv_items</code>(현재고), 변동 기록=<code>inv_txns</code>(원장). ※POS 판매 시 자동 차감 연결은 다음 단계 예정(현재는 수동 입출고).' },
   en:{ step:'Inventory · Internal', connHint:'Connection info is stored only in this browser.',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', connectedToast:'Connected to Supabase',
@@ -230,6 +280,13 @@ const L={
     tipPar:'Alert when below this qty', tipQty:'Current quantity on hand', btnAdd:'＋ Add item', unitDefault:'pcs',
     emptyConnect:'Connect to Supabase above, then pick a department (F&B / Rooms) to see items.',
     emptyNoItems:'No items. Add one above.',
+    thCost:'Unit cost', thSupplier:'Supplier', thValue:'Stock value', thAmount:'Amount', thQtyIn:'Qty in', sumValue:'Stock value',
+    phCost:'Unit cost (JPY)', supNone:'(no supplier)', supH:'🏷 Suppliers', supEmpty:'No suppliers yet — add one below.',
+    supPhName:'Supplier name', supPhContact:'Contact / phone / mail (optional)', supBtnAdd:'＋ Add', supAdded:'Supplier added',
+    supNeedName:'Enter a supplier name', supFail:'Supplier action failed: ', supOff:'Pause', supOn:'Resume',
+    spendH:(ym)=>`💰 ${ym} purchases (stock in)`, spendTotal:'Month total', spendItems:'Items',
+    promptCost:(n)=>`[Unit cost] ${n.name} ${n.qty}${n.unit}\nEnter cost per ${n.unit} (JPY). Leave blank to record quantity only.`,
+    pEditCost:'Base unit cost (JPY) — blank to clear', pEditSup:(l)=>`Enter supplier number (blank = none)\n${l}`,
     thItem:'Item', thLoc:'Location', thUnit:'Unit', thQty:'On hand', thPar:'Par', thStat:'Status', thAct:'In/Out / Manage',
     stOk:'OK', stLow:'Low', stZero:'None', all:'All',
     sumTotal:'items', sumLow:'⚠ Low', sumLow0:'Low 0',
@@ -248,7 +305,7 @@ const L={
       +'<h4>Department (F&amp;B / Rooms) toggle</h4>Switch with the <b>🍽 F&amp;B / 🛏 Rooms</b> buttons. Same system, separate item lists. (The department you entered from is selected first.)'
       +'<h4>On hand · Par · Low alert</h4><ul><li><b>On hand</b> = current quantity. Changes only via in/use/stocktake.</li><li><b>Par level</b> = the line below which you should restock.</li><li><b>Low</b>: if <code>on hand ≤ par</code>, red <b>“Low”</b> badge (set par to 0 for no alert). On hand 0 → grey <b>“None”</b>.</li><li><b>⚠ Low N</b> in the summary = items short in that department.</li></ul>'
       +'<h4>In / Use / Stocktake — how it computes</h4><ul><li><b>＋In</b>: adds the entered qty (<code>on hand + N</code>).</li><li><b>－Use</b>: subtracts it (<code>on hand − N</code>).</li><li><b>Stocktake</b>: enter the counted qty to set it; the difference is logged as <code>stocktake adj.</code></li><li>Every change is logged in <b>recent movements</b> with who/when/±qty/reason.</li></ul>'
-      +'<h4>Permissions · data</h4>Anyone logged in can read; <b>writing (add/move/edit) is for Kitchen (F&amp;B)/Rooms area staff</b>. Stored in <code>inv_items</code> (on hand) and <code>inv_txns</code> (ledger). *Auto-deduction on POS sales is planned next (manual for now).' }
+      +'<h4>💰 Unit cost · suppliers (purchasing, stage 1)</h4>Items carry a <b>unit cost and supplier</b>, and <b>every stock-in records the cost</b> (blank = quantity only). That yields <b>stock value</b> (cost × on hand) and <b>the purchases for this month</b> by supplier and item. A changed cost becomes the base cost of that item and the default next time. <b>Use and stocktake carry no amount</b> (purchases = stock-in only). Manage suppliers under <b>🏷 Suppliers</b>.<h4>Permissions · data</h4>Anyone logged in can read; <b>writing (add/move/edit) is for Kitchen (F&amp;B)/Rooms area staff</b>. Stored in <code>inv_items</code> (on hand) and <code>inv_txns</code> (ledger). *Auto-deduction on POS sales is planned next (manual for now).' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
@@ -269,7 +326,7 @@ const DEPTS={
   room:{ label:'객실', cats:['객실비품','린넨','어메니티','청소용품','미니바','기타'] },
   golf:{ label:'골프/카트', cats:['ゴルフカート','送迎カート','기타'] }
 };
-const state={ dept:'fnb', catFilter:'__all', items:[], txns:[], conn:'none' };
+const state={ dept:'fnb', catFilter:'__all', items:[], txns:[], sups:[], spend:[], conn:'none' };
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function curUser(){ return (window.__so_getUser?(__so_getUser()||''):'')||localStorage.getItem('saizen_ops_user')||''; }
@@ -293,6 +350,11 @@ function applyStatic(){
   $('#add-par').placeholder=tx('phPar'); $('#add-par').title=tx('tipPar');
   $('#add-qty').placeholder=tx('phQty'); $('#add-qty').title=tx('tipQty');
   $('#btn-add').textContent=tx('btnAdd');
+  { const c=$('#add-cost'); if(c) c.placeholder=tx('phCost'); }
+  { const n=$('#sup-name'); if(n) n.placeholder=tx('supPhName'); }
+  { const c=$('#sup-contact'); if(c) c.placeholder=tx('supPhContact'); }
+  { const b=$('#btn-sup-add'); if(b) b.textContent=tx('supBtnAdd'); }
+  { const h=$('#t-suph'); if(h) h.textContent=tx('supH'); }
   const emp=$('#t-empty'); if(emp) emp.textContent=tx('emptyConnect');
   $('#t-helpsum').textContent=tx('helpSum');
   $('#t-helpbody').innerHTML=tx('helpBody');
@@ -302,6 +364,7 @@ function toast(msg,cls){ const t=document.createElement('div'); t.className='toa
   $('#toast').appendChild(t); setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); },2400); }
 function num(v){ const n=Number(v); return isFinite(n)?n:0; }
 function fmtQ(n){ const x=num(n); return Number.isInteger(x)?String(x):x.toFixed(2).replace(/0+$/,'').replace(/\.$/,''); }
+function yen(v){ return '¥'+Math.round(num(v)).toLocaleString('ja-JP'); }
 
 /* ── 연결 ── */
 function loadCreds(){ $('#sb-url').value=localStorage.getItem('saizen_sb_url')||''; $('#sb-key').value=localStorage.getItem('saizen_sb_key')||''; }
@@ -323,6 +386,7 @@ async function connect(){
 }
 
 /* ── 로드 ── */
+function thisYM(){ const d=new Date(Date.now()+9*3600*1000); return d.toISOString().slice(0,7); }   // JST 기준 이번 달
 async function load(){
   if(!supa) return;
   try{
@@ -335,8 +399,80 @@ async function load(){
       const { data:txns }=await supa.from('inv_txns').select('*').in('item_id',ids).order('created_at',{ascending:false}).limit(30);
       state.txns=txns||[];
     }
+    // 거래처(부서별) — 없으면 조용히 빈 목록(SQL 109 미적용 환경 대비)
+    state.sups=[];
+    try{
+      const { data:sups }=await supa.from('inv_suppliers').select('*').eq('dept',state.dept).order('active',{ascending:false}).order('name');
+      state.sups=sups||[];
+    }catch(_){}
+    // 이번 달 지출(입고 금액) — 거래처·품목별
+    state.spend=[];
+    try{
+      const { data:sp }=await supa.from('v_inv_spend').select('*').eq('dept',state.dept).eq('ym',thisYM());
+      state.spend=sp||[];
+    }catch(_){}
     render();
   }catch(e){ toast(tx('loadFail')+e.message,'err'); }
+}
+
+/* ── 거래처 ── */
+function supName(id){ const s0=(state.sups||[]).find(x=>x.id===id); return s0?s0.name:''; }
+function renderSupSelect(){
+  const sel=$('#add-sup'); if(!sel) return;
+  const cur=sel.value;
+  sel.innerHTML=`<option value="">${esc(tx('supNone'))}</option>`
+    +(state.sups||[]).filter(x=>x.active!==false).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');
+  if(cur) sel.value=cur;
+}
+function renderSups(){
+  const box=$('#sup-list'); if(!box) return;
+  const ss=state.sups||[];
+  $('#t-suph').textContent=tx('supH')+(ss.length?` (${ss.length})`:'');
+  if(!ss.length){ box.innerHTML=`<div class="inv-empty" style="padding:12px">${tx('supEmpty')}</div>`; return; }
+  box.innerHTML=ss.map(x=>`<div class="sup-row">
+    <b${x.active===false?' style="color:var(--muted);text-decoration:line-through"':''}>${esc(x.name)}</b>
+    <span style="color:var(--text2);flex:1">${esc(x.contact||'')}</span>
+    <button class="btn ghost sm" data-sup-tog="${x.id}">${x.active===false?tx('supOn'):tx('supOff')}</button>
+  </div>`).join('');
+  box.querySelectorAll('[data-sup-tog]').forEach(b=>b.addEventListener('click',()=>toggleSup(b.dataset.supTog)));
+}
+async function addSup(){
+  if(!supa){ toast(tx('needConn'),'err'); return; }
+  const name=$('#sup-name').value.trim();
+  if(!name){ toast(tx('supNeedName'),'err'); return; }
+  try{
+    const { error }=await supa.from('inv_suppliers').insert({ dept:state.dept, name, contact:$('#sup-contact').value.trim()||null, created_by:curUser() });
+    if(error) throw error;
+    $('#sup-name').value=''; $('#sup-contact').value='';
+    toast(tx('supAdded'),'ok'); await load();
+  }catch(e){ toast(tx('supFail')+e.message,'err'); }
+}
+async function toggleSup(id){
+  const s0=(state.sups||[]).find(x=>x.id===id); if(!s0) return;
+  try{
+    const { error }=await supa.from('inv_suppliers').update({ active:!(s0.active!==false) }).eq('id',id);
+    if(error) throw error; await load();
+  }catch(e){ toast(tx('supFail')+e.message,'err'); }
+}
+
+/* ── 이번 달 지출 ── */
+function renderSpend(){
+  const p=$('#spend-panel'); if(!p) return;
+  const rows=state.spend||[];
+  const total=rows.reduce((a,r)=>a+num(r.amount),0);
+  if(!rows.length || total<=0){ p.style.display='none'; return; }
+  p.style.display='';
+  $('#t-spendh').textContent=tx('spendH')(thisYM());
+  const bySup={}; rows.forEach(r=>{ const k=r.supplier_name||tx('supNone'); bySup[k]=(bySup[k]||0)+num(r.amount); });
+  const byItem=rows.slice().sort((a,b)=>num(b.amount)-num(a.amount)).slice(0,8);
+  $('#spend-sum').innerHTML=`<span class="lb">${tx('spendTotal')}</span> <b>${yen(total)}</b>`
+    +`<span class="lb">${tx('spendItems')}</span> <b style="font-size:15px">${rows.length}</b>`;
+  $('#spend-by').innerHTML=`<table class="sp-t"><thead><tr><th>${tx('thSupplier')}</th><th style="text-align:right">${tx('thAmount')}</th></tr></thead><tbody>`
+    +Object.keys(bySup).sort((a,b)=>bySup[b]-bySup[a]).map(k=>`<tr><td>${esc(k)}</td><td class="n">${yen(bySup[k])}</td></tr>`).join('')
+    +`</tbody></table>`
+    +`<table class="sp-t" style="margin-top:8px"><thead><tr><th>${tx('thItem')}</th><th style="text-align:right">${tx('thQtyIn')}</th><th style="text-align:right">${tx('thAmount')}</th></tr></thead><tbody>`
+    +byItem.map(r=>`<tr><td>${esc(r.item_name||'')}</td><td class="n">${fmtQ(r.qty_in)}</td><td class="n">${yen(r.amount)}</td></tr>`).join('')
+    +`</tbody></table>`;
 }
 
 /* ── 렌더 ── */
@@ -355,19 +491,21 @@ function render(){
   setDeptBtns(); renderAddCats(); renderCatChips();
   const rows=state.items.filter(i=>state.catFilter==='__all'||(i.category||'기타')===state.catFilter);
   const lowN=state.items.filter(isLow).length;
-  $('#inv-sum').innerHTML=`${tx('all')} ${state.items.length}${tx('sumTotal')}`+(lowN?` · <span class="low">${tx('sumLow')} ${lowN}</span>`:` · ${tx('sumLow0')}`);
+  const stockVal=state.items.reduce((a,i)=>a+num(i.unit_cost)*num(i.current_qty),0);
+  $('#inv-sum').innerHTML=`${tx('all')} ${state.items.length}${tx('sumTotal')}`+(lowN?` · <span class="low">${tx('sumLow')} ${lowN}</span>`:` · ${tx('sumLow0')}`)
+    +(stockVal>0?` · ${tx('sumValue')} <b style="font-family:var(--mono)">${yen(stockVal)}</b>`:'');
   const box=$('#inv-list');
   // 품목이 늘어나면 눈으로 못 찾는다 — 공용 행 검색(구분 머리행은 그대로 두고 품목 행만 거른다)
   if(!window._invSearchWired && window.__so_rowSearch && $('#inv-q')){
     window._invSearchWired=true;
     __so_rowSearch('#inv-q','#inv-list','tr[data-id]',{count:'#inv-qc',label:n=>n+'건'});
   }
-  if(!rows.length){ box.innerHTML=`<div class="inv-empty">${tx('emptyNoItems')}</div>`; renderTxns(); return; }
-  let html=`<table class="inv-table"><thead><tr><th>${tx('thItem')}</th><th>${tx('thLoc')}</th><th>${tx('thUnit')}</th><th style="text-align:right">${tx('thQty')}</th><th style="text-align:right">${tx('thPar')}</th><th>${tx('thStat')}</th><th>${tx('thAct')}</th></tr></thead><tbody>`;
+  if(!rows.length){ box.innerHTML=`<div class="inv-empty">${tx('emptyNoItems')}</div>`; renderSupSelect(); renderSups(); renderSpend(); renderTxns(); return; }
+  let html=`<table class="inv-table"><thead><tr><th>${tx('thItem')}</th><th>${tx('thLoc')}</th><th>${tx('thUnit')}</th><th style="text-align:right">${tx('thQty')}</th><th style="text-align:right">${tx('thPar')}</th><th style="text-align:right">${tx('thCost')}</th><th>${tx('thSupplier')}</th><th style="text-align:right">${tx('thValue')}</th><th>${tx('thStat')}</th><th>${tx('thAct')}</th></tr></thead><tbody>`;
   let lastCat=null;
   rows.forEach(i=>{
     const cat=i.category||'기타';
-    if(cat!==lastCat){ lastCat=cat; html+=`<tr class="cat-h"><td colspan="7">▸ ${esc(catLabel(cat))}</td></tr>`; }
+    if(cat!==lastCat){ lastCat=cat; html+=`<tr class="cat-h"><td colspan="10">▸ ${esc(catLabel(cat))}</td></tr>`; }
     const low=isLow(i), zero=num(i.current_qty)<=0;
     const badge=zero?`<span class="st-badge st-zero">${tx('stZero')}</span>`:(low?`<span class="st-badge st-low">${tx('stLow')}</span>`:`<span class="st-badge st-ok">${tx('stOk')}</span>`);
     html+=`<tr class="${low?'low':''}" data-id="${i.id}">
@@ -376,6 +514,9 @@ function render(){
       <td style="color:var(--text2)">${esc(i.unit||'')}</td>
       <td style="text-align:right" class="qty">${fmtQ(i.current_qty)}</td>
       <td style="text-align:right;color:var(--muted)">${num(i.par_level)?fmtQ(i.par_level):'-'}</td>
+      <td style="text-align:right;font-family:var(--mono)">${num(i.unit_cost)?yen(i.unit_cost):'<span style="color:var(--muted)">-</span>'}</td>
+      <td style="color:var(--text2)">${esc(supName(i.supplier_id))}</td>
+      <td style="text-align:right;font-family:var(--mono);font-weight:700">${num(i.unit_cost)?yen(num(i.unit_cost)*num(i.current_qty)):'<span style="color:var(--muted)">-</span>'}</td>
       <td>${badge}</td>
       <td class="actbtns">
         <button class="b-in"  data-act="in"  data-id="${i.id}">${tx('actIn')}</button>
@@ -388,6 +529,7 @@ function render(){
   html+='</tbody></table>';
   box.innerHTML=html;
   box.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',()=>onAct(b.dataset.act,b.dataset.id)));
+  renderSupSelect(); renderSups(); renderSpend();
   renderTxns();
 }
 function renderTxns(){
@@ -404,6 +546,8 @@ function renderTxns(){
       <span class="tn">${esc(nm)}</span>
       <span class="${cls}">${sign}${fmtQ(d)}</span>
       <span style="width:80px">${esc(reasonLabel(t.reason||''))}</span>
+      <span style="width:92px;text-align:right;font-family:var(--mono)">${num(t.amount)?yen(t.amount):''}</span>
+      <span style="width:110px;color:var(--text2)">${esc(supName(t.supplier_id))}</span>
       <span style="width:110px;text-align:right;color:var(--muted)">${esc(t.created_by||'')}</span></div>`;
   }).join('');
 }
@@ -413,17 +557,21 @@ async function addItem(){
   if(!supa){ toast(tx('needConn'),'err'); return; }
   const name=$('#add-name').value.trim();
   if(!name){ toast(tx('needName'),'err'); return; }
+  const cost=num($('#add-cost').value), sup=$('#add-sup').value||null;
   const row={ dept:state.dept, category:$('#add-cat').value, name_ko:name,
     unit:$('#add-unit').value.trim()||tx('unitDefault'), location:$('#add-loc').value.trim()||null,
-    par_level:num($('#add-par').value), current_qty:num($('#add-qty').value) };
+    par_level:num($('#add-par').value), current_qty:num($('#add-qty').value),
+    unit_cost:cost>0?cost:null, supplier_id:sup };
   try{
     const { data, error }=await supa.from('inv_items').insert(row).select().single();
     if(error) throw error;
     // 초기 현재고가 있으면 입고 이력 1건 (reason=DB 저장값 '입고')
     if(num(row.current_qty)>0){
-      await supa.from('inv_txns').insert({ item_id:data.id, delta:num(row.current_qty), reason:'입고', note:'초기 등록', qty_after:num(row.current_qty), created_by:curUser() });
+      await supa.from('inv_txns').insert({ item_id:data.id, delta:num(row.current_qty), reason:'입고', note:'초기 등록',
+        qty_after:num(row.current_qty), created_by:curUser(),
+        unit_cost:cost>0?cost:null, amount:cost>0?cost*num(row.current_qty):null, supplier_id:sup });
     }
-    $('#add-name').value=''; $('#add-loc').value=''; $('#add-par').value=''; $('#add-qty').value='';
+    $('#add-name').value=''; $('#add-loc').value=''; $('#add-par').value=''; $('#add-qty').value=''; $('#add-cost').value='';
     toast(tx('added'),'ok'); await load();
   }catch(e){ toast(tx('addFail')+e.message,'err'); }
 }
@@ -435,9 +583,14 @@ async function onAct(act,id){
   if(act==='del') return delItem(it);
   let delta=0, reason='';
   const arg={ name:it.name_ko, cur:fmtQ(it.current_qty), unit:it.unit||'' };
+  let unitCost=null, supId=null;
   if(act==='in'){
     const q=num(prompt(tx('promptIn')(arg),''));
     if(q<=0) return; delta=q; reason='입고';
+    // 사입 관리 — 입고에는 단가를 받는다(기본=품목 기준 단가). 비우면 금액 없이 수량만 기록.
+    const c=prompt(tx('promptCost')({name:it.name_ko, unit:it.unit||'', qty:fmtQ(q)}), it.unit_cost!=null?String(it.unit_cost):'');
+    if(c!==null && String(c).trim()!==''){ unitCost=num(c); if(unitCost<0) unitCost=null; }
+    supId=it.supplier_id||null;
   } else if(act==='out'){
     const q=num(prompt(tx('promptOut')(arg),''));
     if(q<=0) return; delta=-q; reason='사용';
@@ -450,16 +603,30 @@ async function onAct(act,id){
   try{
     const { error:e1 }=await supa.from('inv_items').update({ current_qty:after }).eq('id',id);
     if(e1) throw e1;
-    await supa.from('inv_txns').insert({ item_id:id, delta, reason, qty_after:after, created_by:curUser() });
-    toast(`${reasonLabel(reason)} ${delta>0?'+':''}${fmtQ(delta)} → ${fmtQ(after)}`,'ok'); await load();
+    const amount=(unitCost!=null&&delta>0)?unitCost*delta:null;
+    await supa.from('inv_txns').insert({ item_id:id, delta, reason, qty_after:after, created_by:curUser(),
+      unit_cost:unitCost, amount, supplier_id:supId });
+    // 단가가 바뀌었으면 품목 기준 단가도 최신값으로(다음 입고 기본값이 된다)
+    if(unitCost!=null && unitCost!==num(it.unit_cost)) { try{ await supa.from('inv_items').update({ unit_cost:unitCost }).eq('id',id); }catch(_){} }
+    toast(`${reasonLabel(reason)} ${delta>0?'+':''}${fmtQ(delta)} → ${fmtQ(after)}`+(amount?` · ${yen(amount)}`:''),'ok'); await load();
   }catch(e){ toast(tx('actFail')+e.message,'err'); }
 }
 async function editItem(it){
   const name=prompt(tx('pEditName'), it.name_ko); if(name===null) return;
   const par=prompt(tx('pEditPar'), fmtQ(it.par_level)); if(par===null) return;
   const loc=prompt(tx('pEditLoc'), it.location||''); if(loc===null) return;
+  const cost=prompt(tx('pEditCost'), it.unit_cost!=null?String(it.unit_cost):''); if(cost===null) return;
+  const sups=(state.sups||[]).filter(x=>x.active!==false);
+  let sup=it.supplier_id||null;
+  if(sups.length){
+    const listTxt=sups.map((x,i)=>`${i+1}. ${x.name}`).join('\n');
+    const cur=sup?String(sups.findIndex(x=>x.id===sup)+1||''):'';
+    const v=prompt(tx('pEditSup')(listTxt), cur);
+    if(v!==null){ const n=num(v); sup=(n>=1&&n<=sups.length)?sups[n-1].id:null; }
+  }
   try{
-    const { error }=await supa.from('inv_items').update({ name_ko:name.trim()||it.name_ko, par_level:num(par), location:loc.trim()||null }).eq('id',it.id);
+    const { error }=await supa.from('inv_items').update({ name_ko:name.trim()||it.name_ko, par_level:num(par), location:loc.trim()||null,
+      unit_cost:String(cost).trim()===''?null:num(cost), supplier_id:sup }).eq('id',it.id);
     if(error) throw error; toast(tx('saved'),'ok'); await load();
   }catch(e){ toast(tx('saveFail')+e.message,'err'); }
 }
@@ -476,6 +643,8 @@ window.onSaizenLangChange=function(){ applyStatic(); if(supa){ render(); } else 
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-reload').addEventListener('click',load);
 $('#btn-add').addEventListener('click',addItem);
+{ const b=$('#btn-sup-add'); if(b) b.addEventListener('click',addSup); }
+{ const e=$('#sup-name'); if(e) e.addEventListener('keypress',ev=>{ if(ev.key==='Enter') addSup(); }); }
 $('#add-name').addEventListener('keypress',e=>{ if(e.key==='Enter') addItem(); });
 $('#dept-fnb').addEventListener('click',()=>{ state.dept='fnb'; state.catFilter='__all'; if(supa)load(); else { setDeptBtns(); renderAddCats(); } });
 $('#dept-room').addEventListener('click',()=>{ state.dept='room'; state.catFilter='__all'; if(supa)load(); else { setDeptBtns(); renderAddCats(); } });
