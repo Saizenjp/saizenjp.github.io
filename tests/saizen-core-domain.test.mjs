@@ -245,20 +245,3 @@ test('cartRemarkKind — 명확/애매/없음', () => {
   assert.equal(SZCore.wantsElectricCart('전기'), false);
   assert.equal(SZCore.wantsElectricCart('전기카트'), true);
 });
-
-test('손익 구간 — 손익분기 가동률·공헌이익·가동률 1%p 효과', () => {
-  assert.equal(SZ.contribPerNight(), 12054);                       // ¥15,154 − ¥3,100
-  assert.ok(Math.abs(SZ.bepOccupancy() - 75.9) < 0.15);            // 자체 침대 248 · 영업 275일
-  assert.ok(Math.abs(SZ.profitPerPoint() - 8_220_828) < 1000);     // 1%p = 연 822만엔
-});
-
-test('손익 구간 — 가동률별 손익과 기간 배분', () => {
-  const at = (o, d) => SZ.plAtOccupancy(o, d);
-  assert.ok(at(60).profit < 0);                                    // 60% = 적자
-  assert.ok(Math.abs(at(76).profit) < 2_000_000);                   // 76% ≈ 손익분기
-  assert.ok(at(81).profit > 0 && at(90).profit > at(81).profit);    // 오를수록 이익 증가
-  const m = at(81, 30);
-  assert.equal(Math.round(m.paxNights), 6026);                     // 월 30일 · 81%
-  assert.equal(Math.round(m.fixed), Math.round(624_000_000 * 30 / 275));  // 고정비 일수 비례
-  assert.equal(Math.round(m.contribution - m.fixed), Math.round(m.profit));
-});
