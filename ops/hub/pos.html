@@ -167,6 +167,14 @@
   .proom-h .proom-n{font-size:11px;font-weight:700;color:var(--muted)}
   .cr-room{display:block;line-height:1.55}
   .cr-room b{color:var(--accent);margin-right:5px}
+  .qr-hits{display:flex;flex-direction:column;gap:6px;margin-top:9px;max-height:34vh;overflow:auto}
+  .qrhit{font-family:inherit;text-align:left;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+  .qrhit:hover{border-color:var(--accent);background:var(--accentSoft)}
+  .qrhit b{font-size:14.5px;color:var(--accent);margin-right:6px}
+  .qrhit span{font-size:12px;color:var(--text2)}
+  .listhide{text-align:center;padding:26px 14px;border:1px dashed var(--border2);border-radius:12px;background:var(--surface2)}
+  .listhide .lh-t{font-size:14px;font-weight:800;color:var(--text)}
+  .listhide .lh-s{font-size:12px;color:var(--muted);margin:5px 0 11px}
   .payer-hint{font-size:11px;color:var(--muted)}
   .payer-act{display:flex;gap:6px;margin-top:5px}
   .payer-act button{font-family:inherit;font-size:10.5px;font-weight:700;padding:2px 8px;border:1px solid var(--border2);border-radius:5px;background:var(--surface);color:var(--text2);cursor:pointer}
@@ -287,10 +295,11 @@
       <div id="qr-reader" style="width:100%;border-radius:10px;overflow:hidden"></div>
       <div id="qr-status" style="font-size:12.5px;color:var(--text2);margin-top:8px;min-height:18px"></div>
       <div style="display:flex;gap:6px;margin-top:10px">
-        <input class="inp" id="qr-manual-in" type="text" autocomplete="off" style="flex:1" data-i18n-ph="po_qrManualPh">
+        <input class="inp" id="qr-manual-in" type="text" autocomplete="off" style="flex:1">
         <button class="btn sm" id="qr-manual-go" type="button" data-i18n="po_qrManualGo"></button>
       </div>
-      <div style="font-size:11.5px;color:var(--muted);margin-top:8px" data-i18n="po_qrNoQrHint"></div>
+      <div id="qr-hits" class="qr-hits"></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:8px" id="qr-hint-txt"></div>
     </div>
   </div>
 </div>
@@ -319,7 +328,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.95"></script>
+<script src="../assets/saizen-ops.js?v=15.96"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -333,6 +342,8 @@ const TAX_RATE=0.10;   // 内税: 메뉴가=최종가(税込). 단가에서 소�
 // ── i18n (한·일 직원 공용. ja 기본) — saizen-ops.js 의 data-i18n/t() 와 병행, 동적 JS 문자열용 ──
 const L={
   ja:{ noTeamHead:'チーム未選択 — 会計時に選びます', pickTeamFirst:'先にメニューを選び、会計で「チーム選択」を押してください',
+    listHidden:'チーム一覧は非表示です', listHiddenSub:'QRスキャン、または上の検索窓にタグコード・お名前・部屋番号を入力してください。', listShow:'一覧を表示', listHide:'一覧を隠す',
+    qrHits:n=>`${n}件`, qrFindPh:'タグコード・お名前・部屋番号 / QRコード', qrFindHint:'QRが読めないときは、この欄にタグコード・お名前・部屋番号を入力すると候補が出ます。',
     noRoom:'部屋未割当', cartAdded:(n,q)=>`${n} ${q}点 追加`, cartCount:(l,q)=>`${l}件 ${q}点`,
     teamPicked:t=>`${t} 選択 — 支払い方法を確認して[注文を送信]`, btnPickTeam:'👥 チーム選択(会計)', changeTeam:'👥 チーム変更',
     today:'今日', prevDay:'前日', nextDay:'翌日', backToday:'今日へ',
@@ -359,6 +370,8 @@ const L={
     vRestaurant:'レストラン', vBanquet:'宴会場', vProshop:'ゴルフショップ', vFront:'フロント売店', vEtc:'その他',
     oFront:'フロント売店', oRestaurant:'レストラン·宴会', oGolf:'ゴルフショップ' },
   ko:{ noTeamHead:'팀 미선택 — 계산할 때 고릅니다', pickTeamFirst:'메뉴를 먼저 담고, 계산에서 [팀 선택]을 누르세요',
+    listHidden:'팀 목록은 숨겨져 있습니다', listHiddenSub:'QR을 스캔하거나, 위 검색창에 태그코드·이름·방번호를 입력하세요.', listShow:'목록 보기', listHide:'목록 숨기기',
+    qrHits:n=>`${n}건`, qrFindPh:'태그코드·이름·방번호 / QR 코드', qrFindHint:'QR이 안 되면 이 칸에 태그코드·이름·방번호를 입력하면 후보가 나옵니다.',
     noRoom:'방배정 없음', cartAdded:(n,q)=>`${n} ${q}개 담음`, cartCount:(l,q)=>`${l}건 ${q}개`,
     teamPicked:t=>`${t} 선택 — 지불 방식 확인 후 [주문 전송]`, btnPickTeam:'👥 팀 선택(계산)', changeTeam:'👥 팀 변경',
     today:'오늘', prevDay:'전날', nextDay:'다음날', backToday:'오늘로',
@@ -385,6 +398,8 @@ const L={
     vRestaurant:'레스토랑', vBanquet:'연회장', vProshop:'골프샵', vFront:'프론트 매점', vEtc:'기타',
     oFront:'프론트 매점', oRestaurant:'레스토랑·연회', oGolf:'골프샵' },
   en:{ noTeamHead:'No team yet — pick it at checkout', pickTeamFirst:'Add items first, then press [Pick team] at checkout',
+    listHidden:'Team list is hidden', listHiddenSub:'Scan a QR code, or type a tag code, name or room number in the search box above.', listShow:'Show list', listHide:'Hide list',
+    qrHits:n=>`${n} found`, qrFindPh:'Tag code · name · room no. / QR code', qrFindHint:'If the QR will not read, type a tag code, name or room number here to see matches.',
     noRoom:'No room', cartAdded:(n,q)=>`${n} ×${q} added`, cartCount:(l,q)=>`${l} lines ${q} items`,
     teamPicked:t=>`${t} selected — check payer, then [Send order]`, btnPickTeam:'👥 Pick team (checkout)', changeTeam:'👥 Change team',
     today:'Today', prevDay:'Prev', nextDay:'Next', backToday:'Go to today',
@@ -429,7 +444,7 @@ const _outletParam=new URLSearchParams(location.search).get('outlet')||'';
 // 팀 QR(bill.html?t=…)을 직원이 스캔 → [POS 주문] 링크로 넘어올 때 그 팀 자동선택(1회 소비).
 //   ?seq=<event_seq> · 그 날짜 체류 목록에 있으면 바로 주문 화면으로.
 let _deepSeq=(new URLSearchParams(location.search).get('seq')||'').trim();
-let state={ date:'', teams:[], menu:[], venue:'__all__', team:null, folioId:null, runningGross:0, cart:[],
+let state={ date:'', teams:[], menu:[], venue:'__all__', team:null, folioId:null, runningGross:0, cart:[], showList:false,
   roster:[], payerMode:'split', payerSel:new Set(), memberFolio:{},
   outlet:(OUTLETS[_outletParam]?_outletParam:null), teamQ:'', activeSeqs:new Set(), members:[], roomsBySeq:{}, accomSel:null };
 const ACCOM_ALL=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
@@ -669,6 +684,7 @@ function renderTeams(){
   const box=$('#team-grid'); box.innerHTML='';
   const q=(state.teamQ||'').trim().toLowerCase();
   const ac=$('#active-cnt');
+  const acbox=$('#pos-accom'); if(acbox) acbox.style.display=(q||state.showList)?'flex':'none';
   const pool=state.teams.filter(tm=>accomPass(tm.accom));   // 숙소 토글 필터
 
   if(q){   // ── 검색: 팀 + 일행(동명이인은 팀으로 구분) ──
@@ -697,11 +713,20 @@ function renderTeams(){
     return;
   }
 
-  // ── 검색 없음: 숙소별 색상 섹션(섹션 내 = 주문중 우선 → 그룹코드순) ──
-  //   POS 응대는 장소 단위라 숙소로 묶고 색 구분. 정렬은 대표자명이 아닌 그룹코드(직원이 태그로 찾음).
+  // ── 검색 없음 ──
+  //   목록을 늘 펼쳐두면 카운터 화면에 남의 팀 이름·방번호가 그대로 노출된다(Min 2026-08).
+  //   기본은 감추고, 직원이 필요할 때만 [목록 보기]로 펼친다.
   $('#team-cnt').innerHTML=`${pool.length}${t('po_cntTeam')}`;
   if(ac) ac.innerHTML=state.activeSeqs.size?(''+t('po_active')+' '+state.activeSeqs.size):'';
   if(!pool.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
+  if(!state.showList){
+    box.innerHTML=`<div class="listhide">
+      <div class="lh-t">${tx('listHidden')}</div>
+      <div class="lh-s">${tx('listHiddenSub')}</div>
+      <button class="btn ghost sm" type="button" id="btn-show-list">${tx('listShow')}</button></div>`;
+    box.querySelector('#btn-show-list').addEventListener('click',()=>{ state.showList=true; renderTeams(); });
+    return;
+  }
   const byAccom={};
   pool.forEach(tm=>{ const k=tm.accom||'-'; (byAccom[k]=byAccom[k]||[]).push(tm); });
   const order=ACCOM_ALL.concat(Object.keys(byAccom).filter(k=>ACCOM_ALL.indexOf(k)<0));
@@ -711,6 +736,10 @@ function renderTeams(){
     box.appendChild(accomHeadEl(acc, arr.length));
     box.appendChild(gridOf(arr));
   });
+  const hide=document.createElement('button'); hide.type='button'; hide.className='btn ghost sm';
+  hide.style.marginTop='10px'; hide.textContent=tx('listHide');
+  hide.addEventListener('click',()=>{ state.showList=false; renderTeams(); });
+  box.appendChild(hide);
 }
 // 팀 라벨 통일: 상단 = 그룹코드, # 뒤 = 행사번호(event_no)
 function teamTag(tm){ return tm.group_code||tm.team_tag||tx('teamFallback')(tm.event_seq); }
@@ -1091,6 +1120,9 @@ async function openScan(){
   if(!supa){ toast(tx('needConn'),'warn'); return; }
   $('#qr-modal').style.display='flex';
   $('#qr-manual-in').value=''; qrStatus(tx('qrScanning'));
+  $('#qr-manual-in').placeholder=tx('qrFindPh');
+  const ht=$('#qr-hint-txt'); if(ht) ht.textContent=tx('qrFindHint');
+  const hb=$('#qr-hits'); if(hb) hb.innerHTML='';
   try{
     if(!window.Html5Qrcode) throw new Error('lib');
     _qr=new Html5Qrcode('qr-reader');
@@ -1118,6 +1150,28 @@ async function teamBySeq(seq){
       session_ym:x.session_ym||ymOf(state.date||isoToday()),rep:x.bookings?.rep_name||'',event_no:x.bookings?.event_no||'',checkin:x.bookings?.dep_date||''}; }
   }catch(e){}
   return null;
+}
+// QR 모달 안에서 태그코드·이름·방번호로 바로 찾는다 — 목록을 펼치지 않고 여기서 끝낸다.
+function qrFind(v){
+  const q=String(v||'').trim().toLowerCase(); const box=$('#qr-hits'); if(!box) return 0;
+  box.innerHTML='';
+  if(!q){ return 0; }
+  const teams=state.teams.filter(tm=>((tm.group_code||'')+' '+(tm.team_tag||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')+' '+roomsOf(tm.event_seq).join(' ')).toLowerCase().includes(q));
+  const seen=new Set(teams.map(x=>x.event_seq));
+  state.members.forEach(m=>{
+    if(seen.has(m.event_seq)) return;
+    if(!((m.name_kr||'')+' '+(m.name_en||'')).toLowerCase().includes(q)) return;
+    const tm=teamBySeq(m.event_seq); if(tm){ seen.add(tm.event_seq); teams.push(tm); }
+  });
+  if(!teams.length) return 0;
+  teams.slice(0,12).forEach(tm=>{
+    const b=document.createElement('button'); b.type='button'; b.className='qrhit';
+    b.innerHTML=`<b>${teamTag(tm)}</b> ${escP(tm.rep||'')}`
+      +`<span>${escP(tm.accom||'')} · ${tm.pax}${t('po_cntPpl')}${roomLabel(tm.event_seq)?(' · '+roomLabel(tm.event_seq)):''}</span>`;
+    b.addEventListener('click',()=>{ closeScan(); confirmTeam(tm); });
+    box.appendChild(b);
+  });
+  return teams.length;
 }
 async function scanResolve(raw){
   let token=String(raw||'').trim(); if(!token) return;
@@ -1175,7 +1229,12 @@ $('#btn-connect').addEventListener('click',connect);
 $('#btn-load').addEventListener('click',loadTeams);
 $('#btn-qr-scan').addEventListener('click',openScan);
 $('#qr-close').addEventListener('click',closeScan);
-$('#qr-manual-go').addEventListener('click',()=>{ const v=$('#qr-manual-in').value.trim(); if(!v){ qrStatus(tx('qrEmpty')); return; } scanResolve(v); });
+$('#qr-manual-go').addEventListener('click',()=>{
+  const v=$('#qr-manual-in').value.trim(); if(!v){ qrStatus(tx('qrEmpty')); return; }
+  if(qrFind(v)) { qrStatus(''); return; }     // 태그코드·이름·방번호로 찾히면 여기서 고른다
+  scanResolve(v);                              // 아니면 QR 토큰으로 취급
+});
+$('#qr-manual-in').addEventListener('input',e=>{ const n=qrFind(e.target.value); qrStatus(n?tx('qrHits')(n):''); });
 $('#qr-manual-in').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#qr-manual-go').click(); } });
 $('#qr-modal').addEventListener('click',e=>{ if(e.target.id==='qr-modal') closeScan(); });
 $('#conf-yes').addEventListener('click',()=>{ const tm=_confTm; $('#conf-modal').style.display='none'; _confTm=null; if(tm) selectTeam(tm); });
