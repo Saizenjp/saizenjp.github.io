@@ -129,11 +129,16 @@
   /* 카트 */
   .cart{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;position:sticky;top:74px}
   .cart > h3{font-size:14px;font-weight:800;padding:12px 15px;border-bottom:2px solid var(--accentSoft);background:var(--surface2);color:var(--accent)}
+  .cart > h3 .cnt{font-size:12px;font-weight:700;color:var(--text2)}
   .cart-body{padding:11px 13px;max-height:46vh;overflow:auto}
-  .cart-line{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
-  .cart-line .cl-name{font-size:13.5px;font-weight:700}
-  .cart-line .cl-price{font-family:var(--mono);font-size:11.5px;color:var(--text2)}
-  .cart-line .qtybox{display:flex;align-items:center;gap:6px}
+  .cart-line{display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
+  .cart-line .cl-name{font-size:15px;font-weight:800;line-height:1.3}
+  .cart-line .cl-name .cl-ko{color:var(--text2);font-weight:600;font-size:13px}
+  .cart-line .cl-price{font-family:var(--mono);font-size:12px;color:var(--text2)}
+  .cart-line .cl-sum{font-family:var(--mono);font-size:14.5px;font-weight:800;color:var(--accent);text-align:right}
+  .cart-line .qtybox{display:flex;align-items:center;gap:6px;grid-row:1;grid-column:2}
+  @keyframes clhit{from{background:var(--accentSoft)}to{background:transparent}}
+  .cart-line.hit{animation:clhit 1s ease-out}
   .qbtn{width:30px;height:30px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);font-size:17px;font-weight:800;color:var(--accent);cursor:pointer;line-height:1}
   .qbtn:hover{background:var(--accentSoft)}
   .cart-line .qn{font-family:var(--mono);font-weight:800;min-width:22px;text-align:center}
@@ -157,6 +162,11 @@
   .pchip .pc-en{font-size:12px;font-weight:600;color:var(--text2);margin-top:2px}
   .pchip.on .pc-en{color:rgba(255,255,255,.92)}
   .pchip .mbadge{background:var(--accent2);color:#fff;border-radius:8px;padding:0 4px;font-size:9px;margin-left:3px;font-weight:700}
+  .proom{margin-bottom:9px}
+  .proom-h{display:flex;align-items:baseline;gap:6px;font-size:12.5px;font-weight:800;color:var(--accent);margin:0 0 4px 1px}
+  .proom-h .proom-n{font-size:11px;font-weight:700;color:var(--muted)}
+  .cr-room{display:block;line-height:1.55}
+  .cr-room b{color:var(--accent);margin-right:5px}
   .payer-hint{font-size:11px;color:var(--muted)}
   .payer-act{display:flex;gap:6px;margin-top:5px}
   .payer-act button{font-family:inherit;font-size:10.5px;font-weight:700;padding:2px 8px;border:1px solid var(--border2);border-radius:5px;background:var(--surface);color:var(--text2);cursor:pointer}
@@ -240,7 +250,7 @@
         <div class="menu-grid" id="menu-grid"></div>
       </div>
       <div class="cart">
-        <h3 data-i18n="po_cart"></h3>
+        <h3><span data-i18n="po_cart"></span> <span id="cart-cnt" class="cnt"></span></h3>
         <div class="payer" id="payer"></div>
         <div class="cart-body" id="cart-body"><div class="cart-empty" data-i18n="po_cartEmpty"></div></div>
         <div class="cart-foot">
@@ -309,7 +319,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.94"></script>
+<script src="../assets/saizen-ops.js?v=15.95"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -323,6 +333,7 @@ const TAX_RATE=0.10;   // 内税: 메뉴가=최종가(税込). 단가에서 소�
 // ── i18n (한·일 직원 공용. ja 기본) — saizen-ops.js 의 data-i18n/t() 와 병행, 동적 JS 문자열용 ──
 const L={
   ja:{ noTeamHead:'チーム未選択 — 会計時に選びます', pickTeamFirst:'先にメニューを選び、会計で「チーム選択」を押してください',
+    noRoom:'部屋未割当', cartAdded:(n,q)=>`${n} ${q}点 追加`, cartCount:(l,q)=>`${l}件 ${q}点`,
     teamPicked:t=>`${t} 選択 — 支払い方法を確認して[注文を送信]`, btnPickTeam:'👥 チーム選択(会計)', changeTeam:'👥 チーム変更',
     today:'今日', prevDay:'前日', nextDay:'翌日', backToday:'今日へ',
     needUrlKey:'URL・key必要', connecting:'接続中…', connectedBtn:'✓ 接続済', connOk:'接続済', connectedToast:'Supabaseに接続しました',
@@ -348,6 +359,7 @@ const L={
     vRestaurant:'レストラン', vBanquet:'宴会場', vProshop:'ゴルフショップ', vFront:'フロント売店', vEtc:'その他',
     oFront:'フロント売店', oRestaurant:'レストラン·宴会', oGolf:'ゴルフショップ' },
   ko:{ noTeamHead:'팀 미선택 — 계산할 때 고릅니다', pickTeamFirst:'메뉴를 먼저 담고, 계산에서 [팀 선택]을 누르세요',
+    noRoom:'방배정 없음', cartAdded:(n,q)=>`${n} ${q}개 담음`, cartCount:(l,q)=>`${l}건 ${q}개`,
     teamPicked:t=>`${t} 선택 — 지불 방식 확인 후 [주문 전송]`, btnPickTeam:'👥 팀 선택(계산)', changeTeam:'👥 팀 변경',
     today:'오늘', prevDay:'전날', nextDay:'다음날', backToday:'오늘로',
     needUrlKey:'URL·key 필요', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connOk:'연결됨', connectedToast:'Supabase 연결됨',
@@ -373,6 +385,7 @@ const L={
     vRestaurant:'레스토랑', vBanquet:'연회장', vProshop:'골프샵', vFront:'프론트 매점', vEtc:'기타',
     oFront:'프론트 매점', oRestaurant:'레스토랑·연회', oGolf:'골프샵' },
   en:{ noTeamHead:'No team yet — pick it at checkout', pickTeamFirst:'Add items first, then press [Pick team] at checkout',
+    noRoom:'No room', cartAdded:(n,q)=>`${n} ×${q} added`, cartCount:(l,q)=>`${l} lines ${q} items`,
     teamPicked:t=>`${t} selected — check payer, then [Send order]`, btnPickTeam:'👥 Pick team (checkout)', changeTeam:'👥 Change team',
     today:'Today', prevDay:'Prev', nextDay:'Next', backToday:'Go to today',
     needUrlKey:'URL·key required', connecting:'Connecting…', connectedBtn:'✓ Connected', connOk:'Connected', connectedToast:'Connected to Supabase',
@@ -496,7 +509,7 @@ async function loadTeams(){
   await loadMembers();  // 일행 이름 검색용
   await loadRooms();    // 방배정 호수(그날 점유) — 표시·검색용
   renderAccomPos();     // 숙소 토글(기본 야마나미+쿠주)
-  backToTeams();
+  showOrderView();      // 진입 = 메뉴 화면. 팀 목록은 계산 단계([팀 선택])에서만 연다(Min 2026-08)
   toast(tx('stayToast')(d,state.teams.length),'ok');
   // QR 딥링크(?seq=) → 그 팀 주문 화면으로 자동 진입. 1회만 소비(뒤로가기 후 재점프 방지).
   if(_deepSeq){
@@ -509,18 +522,19 @@ async function loadTeams(){
 
 // 그날 점유 방번호(event_seq → [호수…]) — 방배정 후 POS/검색에 표기
 async function loadRooms(){
-  state.roomsBySeq={};
+  state.roomsBySeq={}; state.roomByMember={};
   const seqs=state.teams.map(x=>x.event_seq);
   if(!seqs.length||!supa) return;
   const d=state.date;
   let pg=0;
   while(true){
-    const {data,error}=await supa.from('rooms').select('event_seq,room_no,check_in,check_out').in('event_seq',seqs).range(pg,pg+999);
+    const {data,error}=await supa.from('rooms').select('event_seq,member_id,room_no,check_in,check_out').in('event_seq',seqs).range(pg,pg+999);
     if(error) break;
     (data||[]).forEach(r=>{
       if(r.room_no && r.check_in<=d && d<r.check_out){   // 그날 밤 점유 방만
         const arr=state.roomsBySeq[r.event_seq]=state.roomsBySeq[r.event_seq]||[];
         if(!arr.includes(r.room_no)) arr.push(r.room_no);
+        if(r.member_id) state.roomByMember[String(r.member_id)]=r.room_no;   // 누가 어느 방인지
       }
     });
     if(!data||data.length<1000) break;
@@ -543,7 +557,7 @@ function renderAccomPos(){
     const k=b.dataset.k;
     if(k==='__all'){ state.accomSel = allOn ? new Set() : new Set(ACCOM_ALL); }
     else { if(sel.has(k)) sel.delete(k); else sel.add(k); state.accomSel=sel; }
-    renderAccomPos(); renderTeams(); showOrderView();
+    renderAccomPos(); renderTeams();
   }));
 }
 
@@ -596,7 +610,6 @@ function showOrderView(){
   $('#oh-run').textContent=yen(0);
   const rl=$('#run-list'); if(rl){ rl.style.display='none'; rl.innerHTML=''; }
   renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); updateSendBtn();
-  if(state.cart.length) toast(tx('teamPicked',teamTag(tm)),'ok');   // 계산 단계에서 고른 경우 updateSendBtn();
 }
 // [주문 전송] 버튼 = 팀이 없으면 「팀 선택(계산)」으로 바뀐다
 function updateSendBtn(){
@@ -731,7 +744,8 @@ async function selectTeam(tm){
   $('#oh-run').textContent=yen(state.runningGross);
   const rl=$('#run-list'); if(rl){ rl.style.display='none'; rl.innerHTML=''; }
   const rb=$('#btn-run-list'); if(rb) rb.textContent=tx('runShow');
-  renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); updateCustBtn();
+  renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); updateSendBtn();
+  if(state.cart.length) toast(tx('teamPicked')(teamTag(tm)),'ok');   // 메뉴 먼저 담고 계산에서 고른 경우
 }
 
 // ── 결제 주체(payer): 팀 공통 / 개인·N분의1 ──
@@ -746,17 +760,31 @@ function renderPayer(){
     if(!state.roster.length){
       h+=`<div class="payer-hint">${tx('noRoster')}</div>`;
     } else {
-      const chips=state.roster.map(m=>{
+      const chipOf=(m)=>{
         const on=state.payerSel.has(String(m.id));
         const isMem=posIsMember(m);
         return `<button type="button" class="pchip${on?' on':''}" data-mid="${m.id}">`
           +`<span class="pc-top">${m.seq_in_team!=null?m.seq_in_team+'. ':''}${escP(m.name_kr||m.name_en||'-')}`
           +`${isMem?`<span class="mbadge">${tx('member')}</span>`:''}</span>`
           +`${m.name_en&&m.name_kr?`<span class="pc-en">${escP(m.name_en)}</span>`:''}</button>`;
-      }).join('');
+      };
+      // 방별로 묶는다(방배정이 없으면 한 덩어리로 그대로)
+      const rby=state.roomByMember||{};
+      const groups={};
+      state.roster.forEach(m=>{ const rn=rby[String(m.id)]||''; (groups[rn]=groups[rn]||[]).push(m); });
+      const keys=Object.keys(groups).sort((a,b)=>{
+        if(!a) return 1; if(!b) return -1;                      // 미배정은 맨 뒤
+        return String(a).localeCompare(String(b),undefined,{numeric:true});
+      });
+      const grouped = keys.length>1 || (keys.length===1 && keys[0]);
+      const chips = grouped
+        ? keys.map(rn=>`<div class="proom"><div class="proom-h">${rn?escP(rn):tx('noRoom')}`
+            +`<span class="proom-n">${groups[rn].length}${t('po_cntPpl')}</span></div>`
+            +`<div class="payer-roster">${groups[rn].map(chipOf).join('')}</div></div>`).join('')
+        : `<div class="payer-roster">${state.roster.map(chipOf).join('')}</div>`;
       const k=state.payerSel.size;
       const hint=k===0?tx('pickPayer'):(k===1?tx('payerOne'):tx('payerN')(k));
-      h+=`<div class="payer-roster">${chips}</div>`
+      h+=`${chips}`
         +`<div class="payer-act"><button type="button" id="pa-all">${tx('paAll')}</button><button type="button" id="pa-none">${tx('paNone')}</button></div>`
         +`<div class="payer-hint">${hint}</div>`;
     }
@@ -845,32 +873,37 @@ function addToCart(m){
     let st=m.station||'kitchen';
     if(vv==='front'||vv==='proshop') st='none';
     state.cart.push({key, id:m.id, category:m.category, venue:vv, station:st, name_ja:desc, name_ko:(price===Number(m.unit_price)?m.name_ko:''), unit_price:price, qty:1}); }
-  renderCart();
+  const line=state.cart.find(l=>l.key===key);
+  renderCart(key);
+  toast(tx('cartAdded')(lang()==='ko'?(m.name_ko||desc):desc, line?line.qty:1),'ok');   // 무엇이 몇 개 담겼는지 바로 안내
 }
 function changeQty(key,delta){
   const l=state.cart.find(x=>x.key===key); if(!l) return;
   l.qty+=delta; if(l.qty<=0) state.cart=state.cart.filter(x=>x.key!==key);
-  renderCart();
+  renderCart(key);
 }
 function removeLine(key){ state.cart=state.cart.filter(x=>x.key!==key); renderCart(); }
 
-function renderCart(){
+function renderCart(hitKey){
   const body=$('#cart-body'); body.innerHTML='';
   if(!state.cart.length){ body.innerHTML='<div class="cart-empty">'+t('po_cartEmpty')+'</div>'; }
   else state.cart.forEach(l=>{
-    const row=document.createElement('div'); row.className='cart-line';
-    row.innerHTML=`<div>
-        <div class="cl-name">${l.name_ja}${l.name_ko?` <span style="color:var(--text2);font-weight:400">${l.name_ko}</span>`:''}</div>
-        <div class="cl-price">${yen(l.unit_price)} × ${l.qty} = ${yen(l.unit_price*l.qty)}</div>
-      </div>
+    const row=document.createElement('div'); row.className='cart-line'+(l.key===hitKey?' hit':'');
+    row.innerHTML=`<div class="cl-name">${l.name_ja}${l.name_ko?` <span class="cl-ko">${l.name_ko}</span>`:''}</div>
       <div class="qtybox">
         <button class="qbtn" data-minus="${l.key}">−</button>
         <span class="qn">${l.qty}</span>
         <button class="qbtn" data-plus="${l.key}">＋</button>
         <button class="cl-rm" data-rm="${l.key}">✕</button>
-      </div>`;
+      </div>
+      <div class="cl-price">${yen(l.unit_price)} × ${l.qty}</div>
+      <div class="cl-sum">${yen(l.unit_price*l.qty)}</div>`;
     body.appendChild(row);
   });
+  // 카트 제목에 건수·개수 — 몇 개 담았는지 눈으로 확인
+  const hd=document.getElementById('cart-cnt');
+  if(hd){ const q=state.cart.reduce((s,l)=>s+l.qty,0);
+    hd.textContent = q?tx('cartCount')(state.cart.length,q):''; }
   body.querySelectorAll('[data-minus]').forEach(b=>b.addEventListener('click',()=>changeQty(b.dataset.minus,-1)));
   body.querySelectorAll('[data-plus]').forEach(b=>b.addEventListener('click',()=>changeQty(b.dataset.plus,1)));
   body.querySelectorAll('[data-rm]').forEach(b=>b.addEventListener('click',()=>removeLine(b.dataset.rm)));
@@ -1023,18 +1056,31 @@ function applyOutlet(){
 let _confTm=null;
 function confirmTeam(tm){
   _confTm=tm;
-  const roster=state.members.filter(m=>m.event_seq===tm.event_seq).map(m=>(m.name_kr||m.name_en||'').trim()).filter(Boolean);
+  const mem=state.members.filter(m=>m.event_seq===tm.event_seq);
   const room=roomLabel(tm.event_seq);
   $('#conf-title').textContent=tx('confTitle');
   $('#conf-tag').textContent=teamTag(tm);
   $('#conf-rep').textContent=(tm.rep||'')+tx('confHonor');
   $('#conf-sub').textContent=[tm.accom||'', tm.pax+tx('confPplUnit'), room||tx('unassigned'), '#'+teamNo(tm)].filter(Boolean).join(' · ');
   $('#conf-roster-lab').textContent=tx('confRoster');
-  $('#conf-roster').textContent=roster.length?roster.join(' · '):'-';
+  $('#conf-roster').innerHTML=rosterByRoomHTML(mem);   // 어느 방에 누가 있는지까지
   $('#conf-hint').textContent=tx('confHint');
   $('#conf-no').textContent=tx('confNo');
   $('#conf-yes').textContent=tx('confYes');
   $('#conf-modal').style.display='flex';
+}
+// 명단을 방별로 묶어 보여준다(방배정이 없으면 이름만 나열)
+function rosterByRoomHTML(mem){
+  const nm=m=>(m.name_kr||m.name_en||'').trim();
+  const names=mem.map(nm).filter(Boolean);
+  if(!names.length) return '-';
+  const rby=state.roomByMember||{};
+  const groups={};
+  mem.forEach(m=>{ const rn=rby[String(m.id)]||''; if(nm(m)) (groups[rn]=groups[rn]||[]).push(nm(m)); });
+  const keys=Object.keys(groups).sort((a,b)=>{ if(!a) return 1; if(!b) return -1;
+    return String(a).localeCompare(String(b),undefined,{numeric:true}); });
+  if(!(keys.length>1 || (keys.length===1 && keys[0]))) return escP(names.join(' · '));
+  return keys.map(rn=>`<span class="cr-room"><b>${rn?escP(rn):tx('noRoom')}</b> ${escP(groups[rn].join(' · '))}</span>`).join('');
 }
 function closeConfirm(){ $('#conf-modal').style.display='none'; _confTm=null; }
 

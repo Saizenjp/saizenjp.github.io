@@ -408,7 +408,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/saizen-ops.js?v=15.94"></script>
+<script src="assets/saizen-ops.js?v=15.95"></script>
 <script>
 // ── 랜딩 게이트: 미로그인=안내 / 로그인=허용 카드만 표시 ──
 (function(){
@@ -584,22 +584,25 @@
       var seqs=rows.map(function(b){return b.event_seq;});
       return c.from('guests').select('event_seq,accom').in('event_seq',seqs).then(function(g){
         var accomBy={}; ((g&&g.data)||[]).forEach(function(x){ accomBy[x.event_seq]=x.accom||''; });
-        var byAccom={}, total=0, ci=0, ciT=0, co=0, coT=0;
+        var byAccom={}, byAccomT={}, total=0, totalT=0, ci=0, ciT=0, co=0, coT=0;
         rows.forEach(function(b){
           var n=Number(b.pax)||0, a=accomBy[b.event_seq]||'—';
-          byAccom[a]=(byAccom[a]||0)+n; total+=n;
+          byAccom[a]=(byAccom[a]||0)+n; byAccomT[a]=(byAccomT[a]||0)+1;   // 인원과 팀 수를 같이 센다
+          total+=n; totalT++;
           if(b.dep_date===today){ ci+=n; ciT++; }
         });
         return c.from('bookings').select('event_seq,pax').eq('arr_date',today).then(function(o){
           ((o&&o.data)||[]).forEach(function(b){ co+=Number(b.pax)||0; coT++; });
           var chip=function(html,bg,bd){ return '<span style="background:'+(bg||'#fff')+';border:1px solid '+(bd||'#b8c8e8')+';border-radius:99px;padding:3px 11px">'+html+'</span>'; };
           var acLbl=function(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,(window.SaizenOps&&SaizenOps.lang)||'ko'):a; };
-          var html=chip('<b style="font-size:14px;color:#2c5078">'+total.toLocaleString()+'</b>'+t('ix_pplUnit'),'#dce6f7','#93aede');
+          var sub=function(txt){ return '<span style="color:#6b7280;font-weight:700"> · '+txt+'</span>'; };
+          var html=chip('<b style="font-size:14px;color:#2c5078">'+total.toLocaleString()+'</b>'+t('ix_pplUnit')
+                        +sub(totalT+t('ix_teamUnit')),'#dce6f7','#93aede');
           html+=Object.keys(byAccom).sort(function(x,y){return byAccom[y]-byAccom[x];}).map(function(a){
-            return chip(esc(acLbl(a))+' <b>'+byAccom[a].toLocaleString()+'</b>');
+            return chip(esc(acLbl(a))+' <b>'+byAccom[a].toLocaleString()+'</b>'+t('ix_pplUnit')+sub(byAccomT[a]+t('ix_teamUnit')));
           }).join('');
-          if(ciT) html+=chip(t('ix_ciToday')+' <b>'+ciT+'</b>'+t('ix_teamUnit')+' '+ci+t('ix_pplUnit'),'#e7efe1','#a9c39a');
-          if(coT) html+=chip(t('ix_coToday')+' <b>'+coT+'</b>'+t('ix_teamUnit')+' '+co+t('ix_pplUnit'),'#f5ecd8','#dcc48d');
+          if(ciT) html+=chip(t('ix_ciToday')+' <b>'+ci+'</b>'+t('ix_pplUnit')+sub(ciT+t('ix_teamUnit')),'#e7efe1','#a9c39a');
+          if(coT) html+=chip(t('ix_coToday')+' <b>'+co+'</b>'+t('ix_pplUnit')+sub(coT+t('ix_teamUnit')),'#f5ecd8','#dcc48d');
           var box=document.getElementById('stay-strip-list');
           if(box){ box.innerHTML=html; document.getElementById('stay-strip').style.display='flex'; }
         });

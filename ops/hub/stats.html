@@ -97,6 +97,7 @@
   .cell.sun .dn{color:#b13b2c}.cell.sat .dn{color:#2c5078}
   .cell.today{outline:2px solid var(--accent2);outline-offset:-2px}
   .cell .pv{font-size:20px;font-weight:800;font-family:var(--mono);line-height:1.15;margin-top:2px}
+  .cell .pv .pu{font-size:10.5px;font-weight:700;font-family:var(--sans);color:var(--text2);margin-left:2px}
   .cell .io{font-size:10.5px;font-weight:700;margin-top:3px;display:flex;gap:6px;flex-wrap:wrap}
   .cell .io .i{color:#2f7d4f}.cell .io .o{color:#8a5a12}
   .ylist{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
@@ -158,7 +159,7 @@
 </main>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=15.94"></script>
+<script src="../assets/saizen-ops.js?v=15.95"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, DATA=null;
@@ -212,7 +213,9 @@ const L={
  }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
-function tx(k){ const d=L[lang()]||L.ja; return (d[k]!==undefined?d[k]:(L.ja[k]!==undefined?L.ja[k]:k)); }
+// 사전값이 함수(문구 안에 숫자가 들어가는 것)면 인자를 적용해 문자열로 돌려준다.
+function tx(k,...a){ const d=L[lang()]||L.ja; const v=(d[k]!==undefined?d[k]:(L.ja[k]!==undefined?L.ja[k]:k));
+  return typeof v==='function'?v(...a):v; }
 // ⚠ 로컬 전용 키는 data-i18n 금지(saizen-ops 전역 t()가 키 문자열로 덮어씀 — CLAUDE.md §10).
 //   id="t-..." 노드만 로컬 사전으로 채운다. navHome 등 전역 키만 data-i18n 사용.
 function applyStatic(){
@@ -396,12 +399,12 @@ async function calLoad(){
 // 날짜별 집계 {스테이 인원, 체크인 팀·인원, 체크아웃 팀·인원}
 function calDays(rows,f,t){
   const day={};
-  const add=(d)=>day[d]=day[d]||{pax:0,ci:0,ciT:0,co:0,coT:0};
+  const add=(d)=>day[d]=day[d]||{pax:0,teams:0,ci:0,ciT:0,co:0,coT:0};
   for(let d=new Date(f+'T00:00:00'); iso(d)<=t; d.setDate(d.getDate()+1)) add(iso(d));
   rows.forEach(b=>{
     const n=Number(b.pax)||0;
     for(let d=new Date(b.dep_date+'T00:00:00'); iso(d)<b.arr_date; d.setDate(d.getDate()+1)){
-      const k=iso(d); if(day[k]) day[k].pax+=n;      // 그날 '밤' 묵는 인원
+      const k=iso(d); if(day[k]){ day[k].pax+=n; day[k].teams++; }   // 그날 '밤' 묵는 인원·팀
     }
     if(day[b.dep_date]){ day[b.dep_date].ci+=n; day[b.dep_date].ciT++; }
     if(day[b.arr_date]){ day[b.arr_date].co+=n; day[b.arr_date].coT++; }
@@ -436,20 +439,21 @@ async function renderCal(){
     for(let i=0;i<pad0;i++) cells+=`<div class="cell pad"></div>`;
     const today=iso(new Date());
     for(let d=1; d<=lastD; d++){
-      const k=`${CALY}-${pad(CALM+1)}-${pad(d)}`, v=day[k]||{pax:0,ci:0,ciT:0,co:0,coT:0};
+      const k=`${CALY}-${pad(CALM+1)}-${pad(d)}`, v=day[k]||{pax:0,teams:0,ci:0,ciT:0,co:0,coT:0};
       const w=new Date(CALY,CALM,d).getDay();
       const a=v.pax?(0.10+0.55*(v.pax/max)):0;    // 인원이 많을수록 진하게
       cells+=`<a class="cell${w===0?' sun':(w===6?' sat':'')}${k===today?' today':''}" href="frontdesk.html?date=${k}"
         style="background:rgba(100,117,72,${a.toFixed(3)})" title="${esc(k)}">
         <div class="dn">${d}</div>
-        <div class="pv">${v.pax?num(v.pax):''}</div>
+        <div class="pv">${v.pax?num(v.pax):''}${v.pax?`<span class="pu">${tx('uPpl')}${v.teams?` · ${num(v.teams)}${tx('uTeam')}`:''}</span>`:''}</div>
         <div class="io">${v.ciT?`<span class="i">🛬${v.ciT}·${v.ci}</span>`:''}${v.coT?`<span class="o">🛫${v.coT}·${v.co}</span>`:''}</div>
       </a>`;
     }
     const monTot=Object.keys(day).reduce((s,k)=>s+day[k].pax,0);
+    const monTeams=new Set(rows.filter(b=>String(b.dep_date).slice(0,7)===`${CALY}-${pad(CALM+1)}`).map(b=>b.event_seq)).size;
     const peak=Object.keys(day).sort((a,b)=>day[b].pax-day[a].pax)[0];
     body=`<div class="panel">
-      <h3>${tx('calH')}<span class="c">${tx('calNights',num(monTot))} · ${tx('calPeak',peak?peak.slice(5):'-',num(peak?day[peak].pax:0))}</span></h3>
+      <h3>${tx('calH')}<span class="c">${tx('calNights',num(monTot))} · ${tx('calTeams',num(monTeams))} · ${tx('calPeak',peak?peak.slice(5):'-',num(peak?day[peak].pax:0))}</span></h3>
       <div class="cal">${cells}</div>
       <div class="note">${tx('calNote')}</div></div>`;
   } else {
