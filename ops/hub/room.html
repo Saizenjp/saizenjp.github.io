@@ -66,7 +66,7 @@
 
   /* 2단 레이아웃 */
   /* 미배정 목록을 서랍으로 뺐으므로 객실 배정표가 화면 전폭을 쓴다(Min 2026-08) */
-  .stage{display:grid;grid-template-columns:1fr;gap:16px;padding:16px 20px;align-items:start}
+  .stage{display:grid;grid-template-columns:1fr;gap:16px;padding:8px 20px 16px;align-items:start}
   /* 미배정 서랍 — 화면을 막지 않는다(뒤의 객실을 그대로 클릭해 배정) */
   .ua-drawer{position:fixed;left:0;top:0;bottom:0;width:340px;max-width:88vw;z-index:60;
     background:var(--surface);border-right:2px solid var(--accent);box-shadow:6px 0 22px rgba(15,23,42,.16);
@@ -82,7 +82,7 @@
   /* 컨트롤 바(월·버튼+날짜칩) = 상단 topbar 아래 고정. top은 JS가 topbar 높이로 동기화. */
   .ctrlbar{position:sticky;top:56px;z-index:25;background:var(--bg);box-shadow:0 4px 8px -5px rgba(0,0,0,.22)}
   /* 좌측 미배정 패널 = 컨트롤 바 아래에 고정(높이는 JS가 --stick2로 계산) */
-  .stage > .col:first-child{position:sticky;top:var(--stick2,150px);max-height:calc(100vh - var(--stick2,150px) - 12px);overflow:auto}
+  .stage > .col:first-child{position:sticky;top:var(--stick2,150px);max-height:calc(100vh - var(--stick2,150px) - 4px);overflow:auto}
   @media(max-width:860px){.stage{grid-template-columns:1fr}.stage > .col:first-child{position:static;max-height:none;overflow:visible}}
 
   .col{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.05)}
@@ -512,6 +512,9 @@
     <input type="checkbox" id="ck-autorun"><span id="t-autorun-lbl">열 때 자동배정</span></label>
   <button class="btn ghost sm" id="btn-closure" type="button" disabled title="특정 객실을 기간 지정해 폐쇄(잠금) — 대표님 사용 중·점검 등. 폐쇄 기간엔 배정 불가" style="color:var(--err);border-color:#e3bdb4">🔒 객실 폐쇄</button>
   <button class="btn sm" id="btn-holds" type="button" style="display:none;background:#fdf6e7;color:#6b5312;border-color:#e6d3a3;font-weight:800"></button>
+  <!-- 이력 2종 = 버튼(팝업). 상단에 펼쳐 두면 객실 배정 화면이 그만큼 좁아진다. -->
+  <button class="btn ghost sm" id="btn-cxhist" type="button" title="취소 이력" style="color:var(--err);border-color:#e3bdb4">🚫</button>
+  <button class="btn ghost sm" id="btn-histhist" type="button" title="방배정 변경 이력">🕘</button>
   <!-- 위 버튼 라벨/타이틀은 applyStaticRoom()이 언어별로 채움(월/오늘/자동배정/전체 비우기/충돌 점검/객실 폐쇄) -->
   <span class="hint" id="session-hint"></span>
   <span id="sel-bar" style="display:none;align-items:center;gap:8px">
@@ -534,28 +537,38 @@
 <div class="day-strip" id="day-strip"></div>
 </div><!-- /ctrlbar -->
 
-<!-- 🚫 취소 이력 — step1 자동 취소(팀/개인)를 cancel_log로 기록 → 상단 배치(실무 동선) -->
-<details id="cxbox" style="margin:10px 20px 0;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
-  <summary id="cx-title" style="cursor:pointer;padding:10px 16px;font-weight:800;font-size:13.5px;color:var(--red,#c0392b);list-style:none">🚫 취소 이력 <span style="font-weight:600;color:var(--muted);font-size:12px">— 팀·개인 취소 (행사번호·일정·팀·영문명)</span></summary>
-  <div style="padding:0 16px 16px">
-    <div id="cx-list"><div class="empty-hint" style="padding:14px">펼치면 최근 취소 내역이 표시됩니다.</div></div>
-    <div style="text-align:center;margin-top:10px"><button class="btn ghost sm" id="cx-more" type="button" style="display:none">더 보기 (다음 40건)</button></div>
-  </div>
-</details>
-
-<details id="histbox" style="margin:8px 20px 0;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
-  <summary id="hist-title" style="cursor:pointer;padding:12px 16px;font-weight:800;font-size:14px;color:var(--accent);list-style:none">🕘 방배정 변경 이력 <span style="font-weight:600;color:var(--muted);font-size:12px">— 누가·언제·어디로 (자동배정=요약 1건)</span></summary>
-  <div style="padding:0 16px 16px">
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-      <input class="inp" id="hist-q" placeholder="이름·방번호·그룹코드 검색" style="flex:1;min-width:200px;max-width:380px">
-      <button class="btn ghost sm" id="hist-search" type="button">검색</button>
-      <span class="hint" id="hist-cnt" style="margin-left:auto"></span>
+<!-- 🚫 취소 이력 · 🕘 방배정 변경 이력 — 화면(객실 배정)을 넓히려고 상단 접이식 패널에서
+     컨트롤바 버튼 + 팝업으로 옮겼다(Min 2026-08). 내부 id 는 그대로라 로드·검색·더보기 로직 불변. -->
+<div class="modal-bg" id="cxbox" style="display:none">
+  <div class="modal" style="max-width:820px">
+    <div class="mhead" style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)">
+      <b id="cx-title" style="font-size:14px;font-weight:800;color:var(--err);flex:1">🚫 취소 이력 <span style="font-weight:600;color:var(--muted);font-size:12px">— 팀·개인 취소 (행사번호·일정·팀·영문명)</span></b>
+      <button class="btn ghost sm" id="cx-close" type="button">✕</button>
     </div>
-    <div id="hist-list"><div class="empty-hint" style="padding:14px">펼치면 최근 변경 이력이 표시됩니다.</div></div>
-    <div style="text-align:center;margin-top:10px"><button class="btn ghost sm" id="hist-more" type="button" style="display:none">더 보기 (다음 40건)</button></div>
-    <!-- 이력 패널 정적 텍스트는 applyStaticRoom()이 언어별로 채움 -->
+    <div class="mbody" style="max-height:66vh;overflow:auto;padding:10px 16px 16px">
+      <div id="cx-list"><div class="empty-hint" style="padding:14px">펼치면 최근 취소 내역이 표시됩니다.</div></div>
+      <div style="text-align:center;margin-top:10px"><button class="btn ghost sm" id="cx-more" type="button" style="display:none">더 보기 (다음 40건)</button></div>
+    </div>
   </div>
-</details>
+</div>
+
+<div class="modal-bg" id="histbox" style="display:none">
+  <div class="modal" style="max-width:820px">
+    <div class="mhead" style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)">
+      <b id="hist-title" style="font-size:14px;font-weight:800;color:var(--accent);flex:1">🕘 방배정 변경 이력 <span style="font-weight:600;color:var(--muted);font-size:12px">— 누가·언제·어디로 (자동배정=요약 1건)</span></b>
+      <button class="btn ghost sm" id="hist-close" type="button">✕</button>
+    </div>
+    <div class="mbody" style="max-height:66vh;overflow:auto;padding:10px 16px 16px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <input class="inp" id="hist-q" placeholder="이름·방번호·그룹코드 검색" style="flex:1;min-width:200px;max-width:380px">
+        <button class="btn ghost sm" id="hist-search" type="button">검색</button>
+        <span class="hint" id="hist-cnt" style="margin-left:auto"></span>
+      </div>
+      <div id="hist-list"><div class="empty-hint" style="padding:14px">펼치면 최근 변경 이력이 표시됩니다.</div></div>
+      <div style="text-align:center;margin-top:10px"><button class="btn ghost sm" id="hist-more" type="button" style="display:none">더 보기 (다음 40건)</button></div>
+    </div>
+  </div>
+</div>
 
 <!-- 미배정 팀 = 서랍(팝업). 배정은 "선택 → 객실 클릭"이라 화면을 막지 않는 서랍이 맞다.
      반대 방향(빈 방 클릭 → 그 방에 넣을 사람 고르기)은 기존 배정 피커가 그대로 담당. -->
@@ -587,7 +600,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=32"></script>
-<script src="../assets/saizen-ops.js?v=16.1"></script>
+<script src="../assets/saizen-ops.js?v=16.2"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -679,6 +692,7 @@ const L={
     thRoom:'部屋', thType:'タイプ', thCap:'定員', thGuests:'宿泊者',
     onlyEmpty:'空室のみ', onlyEmptyT:'空いている部屋だけ表示', tblNone:'該当する客室がありません',
     fldFold:'折りたたむ/開く',
+    cxBtnT:'キャンセル履歴を開く', histBtnT:'客室割当 変更履歴を開く',
     histTitle:'🕘 客室割当 変更履歴', histTitleSub:'— 誰が・いつ・どこへ (自動割当=要約1件)',
     histQph:'氏名・部屋番号・グループコード 検索', histSearch:'検索',
     histEmpty:'開くと最近の変更履歴が表示されます。', histMore:'もっと見る (次の40件)',
@@ -923,6 +937,7 @@ const L={
     thRoom:'호수', thType:'타입', thCap:'정원', thGuests:'점유자',
     onlyEmpty:'빈 방만', onlyEmptyT:'빈 방만 표시', tblNone:'해당하는 객실이 없습니다',
     fldFold:'접기/펴기',
+    cxBtnT:'취소 이력 열기', histBtnT:'방배정 변경 이력 열기',
     histTitle:'🕘 방배정 변경 이력', histTitleSub:'— 누가·언제·어디로 (자동배정=요약 1건)',
     histQph:'이름·방번호·그룹코드 검색', histSearch:'검색',
     histEmpty:'펼치면 최근 변경 이력이 표시됩니다.', histMore:'더 보기 (다음 40건)',
@@ -1160,6 +1175,7 @@ const L={
     thRoom:'Room', thType:'Type', thCap:'Cap.', thGuests:'Guests',
     onlyEmpty:'Vacant only', onlyEmptyT:'Show vacant rooms only', tblNone:'No matching rooms',
     fldFold:'Collapse / expand',
+    cxBtnT:'Open cancellations', histBtnT:'Open assignment history',
     histTitle:'🕘 Room assignment change history', histTitleSub:'— who · when · where (auto-assign = 1 summary)',
     histQph:'Search name · room no. · group code', histSearch:'Search',
     histEmpty:'Expand to see recent change history.', histMore:'Show more (next 40)',
@@ -1336,6 +1352,7 @@ function applyStaticRoom(){
   set('#lbl-from','textContent','monthLbl');
   updateHoldsBtn();
   set('#btn-closure','textContent','btnClosure'); set('#btn-closure','title','btnClosureT');
+  set('#btn-cxhist','title','cxBtnT'); set('#btn-histhist','title','histBtnT');   // 이력 팝업 버튼(아이콘)
   set('#room-search','placeholder','roomSearchPh');
   set('#view-card','textContent','viewCard'); set('#view-timeline','textContent','viewTimeline'); set('#view-timeline','title','viewTimelineT');
   set('#view-table','textContent','viewTable'); set('#view-table','title','viewTableT');
@@ -4659,9 +4676,16 @@ async function loadHist(reset){
   }finally{ _histLoading=false; }
 }
 function _histSearch(){ _histQ=($('#hist-q').value||'').trim(); loadHist(true); }
+// 팝업 열기 — 처음 열 때만 로드(이후는 [더 보기]·검색이 담당)
+function openHistBox(){ const b=$('#histbox'); if(!b) return; b.style.display='flex'; if(!_histOff) loadHist(true); }
+function openCxBox(){ const b=$('#cxbox'); if(!b) return; b.style.display='flex'; if(!_cxOff) loadCancelHist(true); }
+function closeHistBox(){ const b=$('#histbox'); if(b) b.style.display='none'; }
+function closeCxBox(){ const b=$('#cxbox'); if(b) b.style.display='none'; }
 (function bindHist(){
   const box=$('#histbox'); if(!box) return;
-  box.addEventListener('toggle', ()=>{ if(box.open && !_histOff) loadHist(true); });
+  const ob=$('#btn-histhist'); if(ob) ob.addEventListener('click', openHistBox);
+  const cb2=$('#hist-close'); if(cb2) cb2.addEventListener('click', closeHistBox);
+  box.addEventListener('click', e=>{ if(e.target===box) closeHistBox(); });
   $('#hist-search').addEventListener('click', _histSearch);
   $('#hist-q').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); _histSearch(); } });
   $('#hist-more').addEventListener('click', ()=>loadHist(false));
@@ -4709,7 +4733,10 @@ async function loadCancelHist(reset){
 }
 (function bindCx(){ const box=$('#cxbox'); if(!box) return;
   const ttl=$('#cx-title'); if(ttl) ttl.innerHTML=`🚫 ${_cxT('취소 이력','キャンセル履歴','Cancellations')} <span style="font-weight:600;color:var(--muted);font-size:12px">— ${_cxT('팀·개인 취소 (행사번호·일정·팀·영문명)','チーム·個人キャンセル (行事番号·日程·チーム·英文名)','team/person (event no · dates · team · eng name)')}</span>`;
-  box.addEventListener('toggle',()=>{ if(box.open && !_cxOff) loadCancelHist(true); });
+  const ob=$('#btn-cxhist'); if(ob) ob.addEventListener('click', openCxBox);
+  const cb2=$('#cx-close'); if(cb2) cb2.addEventListener('click', closeCxBox);
+  box.addEventListener('click', e=>{ if(e.target===box) closeCxBox(); });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeCxBox(); closeHistBox(); } });
   const mb=$('#cx-more'); if(mb) mb.addEventListener('click',()=>loadCancelHist(false));
 })();
 function openClosureModal(){
