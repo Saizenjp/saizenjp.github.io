@@ -76,6 +76,8 @@
   .qt .fl{font-weight:800;color:var(--text2)}
   .qt .nt{color:var(--muted)}
   .qt .warn{color:var(--err);font-weight:700}
+  .rebtn{font-family:inherit;font-size:11.5px;font-weight:700;color:var(--text2);background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:4px 10px;cursor:pointer;white-space:nowrap}
+  .rebtn:hover{border-color:var(--err);color:var(--err);background:#fbeeeb}
   /* 팀 묶음 배지 — 手配書·전기카트와 같은 표기(「팀」 + 묶음별 색) */
   .gbadge{display:inline-block;font-size:10.5px;font-weight:800;color:#fff;border-radius:99px;padding:1px 7px;margin-left:5px;vertical-align:middle}
   .srch{flex:1;min-width:220px}
@@ -112,7 +114,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.96"></script>
+<script src="../assets/saizen-ops.js?v=15.97"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, YM=null, ROWS=[], TOKMAP={}, DATESEL=new Set(), ACCOMSEL=new Set(), Q='', TG={};
@@ -158,6 +160,8 @@ const L={
     loading:'読込中…', noMonth:'今月のデータなし', loadFail:'読込失敗', loadFailToast:msg=>`読込失敗: ${msg}`,
     statCount:(v,t,nt)=>`${v} / ${t}チーム${nt?` · ⚠ トークンなし ${nt}`:''}`,
     noData:'今月のデータがありません。', noMatch:'選択条件に合うチームがありません。',
+    reissue:'再発行', reissueConfirm:(tag,rep)=>`${tag} ${rep} 様のQRカードを再発行します。\n\n・これまでのQR(カード)は この時点で使えなくなります(紛失カードの悪用防止)。\n・注文・精算の内訳はそのまま残ります。\n\n再発行しますか？`,
+    reissueDone:(tag)=>`${tag} 再発行しました — 旧QRは無効です`, reissuePrint:'新しいカードを今すぐ印刷しますか？', reissueFail:(e)=>'再発行に失敗: '+e,
     pvNoTok:'⚠ QRトークンなし', paxUnit:'名', roomLbl:'部屋', roomEach:' ※部屋ごとに1枚',
     searchPh:'代表者・タグコード・部屋番号で検索', searchClr:'✕ クリア', srchHit:n=>`検索 ${n}件`,
     thTag:'タグコード', thRep:'代表者', thAccom:'宿泊', thFloor:'階', thRoom:'部屋番号', thStay:'滞在', thPax:'人数', thTok:'QR',
@@ -174,6 +178,8 @@ const L={
     loading:'로딩…', noMonth:'이 달 데이터 없음', loadFail:'로드 실패', loadFailToast:msg=>`로드 실패: ${msg}`,
     statCount:(v,t,nt)=>`${v} / ${t}팀${nt?` · ⚠ 토큰없음 ${nt}`:''}`,
     noData:'이 달 데이터가 없습니다.', noMatch:'선택 조건에 맞는 팀이 없습니다.',
+    reissue:'재발급', reissueConfirm:(tag,rep)=>`${tag} ${rep} 님의 QR 카드를 재발급합니다.\n\n· 지금까지의 QR(카드)은 이 시점부터 사용할 수 없습니다(분실 카드 악용 방지).\n· 주문·정산 내역은 그대로 남습니다.\n\n재발급할까요?`,
+    reissueDone:(tag)=>`${tag} 재발급 완료 — 이전 QR은 무효`, reissuePrint:'새 카드를 지금 인쇄할까요?', reissueFail:(e)=>'재발급 실패: '+e,
     pvNoTok:'⚠ QR 토큰 없음', paxUnit:'名', roomLbl:'방', roomEach:' ※방마다 1장',
     searchPh:'대표자·태그코드·방호수로 검색', searchClr:'✕ 지움', srchHit:n=>`검색 ${n}건`,
     thTag:'태그코드', thRep:'대표자', thAccom:'숙소', thFloor:'층', thRoom:'방호수', thStay:'체류', thPax:'인원', thTok:'QR',
@@ -190,6 +196,8 @@ const L={
     loading:'Loading…', noMonth:'No data this month', loadFail:'Load failed', loadFailToast:msg=>`Load failed: ${msg}`,
     statCount:(v,t,nt)=>`${v} / ${t} teams${nt?` · ⚠ no token ${nt}`:''}`,
     noData:'No data this month.', noMatch:'No teams match the selection.',
+    reissue:'Reissue', reissueConfirm:(tag,rep)=>`Reissue the QR card for ${tag} ${rep}.\n\n· The previous QR (card) stops working immediately (protects a lost card).\n· Orders and billing history stay as they are.\n\nReissue?`,
+    reissueDone:(tag)=>`${tag} reissued — the old QR is now invalid`, reissuePrint:'Print the new card now?', reissueFail:(e)=>'Reissue failed: '+e,
     pvNoTok:'⚠ No QR token', paxUnit:'', roomLbl:'Room', roomEach:' ※1 card per room',
     searchPh:'Search by name, tag code or room no', searchClr:'✕ Clear', srchHit:n=>`${n} found`,
     thTag:'Tag code', thRep:'Rep', thAccom:'Stay', thFloor:'Floor', thRoom:'Room', thStay:'Dates', thPax:'Pax', thTok:'QR',
@@ -245,9 +253,32 @@ function renderUI(){
     <div class="panel"><div id="preview"></div></div>`;
   $('#ym-prev').addEventListener('click',()=>{ YM=shiftYM(YM,-1); load(); });
   $('#ym-next').addEventListener('click',()=>{ YM=shiftYM(YM,1); load(); });
-  $('#btn-print').addEventListener('click',printCards);
+  $('#btn-print').addEventListener('click',()=>printCards());
   const q=$('#q'); if(q){ q.value=Q; q.addEventListener('input',()=>{ Q=q.value.trim(); renderPreview(); }); }
   const qc=$('#q-clr'); if(qc) qc.addEventListener('click',()=>{ Q=''; const e=$('#q'); if(e) e.value=''; renderPreview(); });
+}
+
+function newToken(){ return (window.crypto&&crypto.randomUUID)?crypto.randomUUID().replace(/-/g,'').slice(0,16):(Date.now().toString(36)+Math.random().toString(36).slice(2,10)); }
+
+// ── 카드 분실 재발급 — 새 토큰으로 갱신하면 옛 QR은 그 즉시 무효.
+//    주문·정산 내역은 event_seq 로 묶여 있어 그대로 남는다(토큰은 팀을 여는 열쇠일 뿐).
+async function reissueToken(seq){
+  const r=ROWS.find(x=>x.seq===seq); if(!r) return;
+  if(!confirm(tx('reissueConfirm',r.tag,r.rep||''))) return;
+  const tok=newToken(), by=(window.__so_getUser&&__so_getUser())||null;
+  try{
+    const {data:cur}=await supa.from('order_tokens').select('reissue_count').eq('event_seq',seq).maybeSingle();
+    const n=Number((cur&&cur.reissue_count)||0)+1;
+    const {error}=await supa.from('order_tokens')
+      .update({token:tok, created_by:by, reissued_at:new Date().toISOString(), reissue_count:n}).eq('event_seq',seq);
+    if(error) throw error;
+    TOKMAP[seq]=tok; r.token=tok;
+    try{ await supa.from('change_log').insert({entity:'qr_token', entity_id:String(seq), action:'reissue',
+      label:`${r.tag} ${r.rep||''}`, changes:{count:n}, changed_by:by}); }catch(_){}
+    renderPreview();
+    toast(tx('reissueDone',r.tag),'ok');
+    if(confirm(tx('reissuePrint'))) printCards([r]);
+  }catch(e){ toast(tx('reissueFail',String(e.message||e)),'err'); }
 }
 
 // 토큰 확보 — 없으면 즉시 발급(팀 고유 랜덤). 권한(print/room) 없으면 조용히 스킵.
@@ -259,8 +290,7 @@ async function ensureTokens(seqs){
     (data||[]).forEach(t=>{ TOKMAP[t.event_seq]=t.token; });
   }
   const by=(window.__so_getUser&&__so_getUser())||null;
-  const rnd=()=>(window.crypto&&crypto.randomUUID)?crypto.randomUUID().replace(/-/g,'').slice(0,16):(Date.now().toString(36)+Math.random().toString(36).slice(2,10));
-  const miss=seqs.filter(s=>!TOKMAP[s]).map(s=>({event_seq:s, token:rnd(), created_by:by}));
+  const miss=seqs.filter(s=>!TOKMAP[s]).map(s=>({event_seq:s, token:newToken(), created_by:by}));
   if(miss.length){
     const {error}=await supa.from('order_tokens').insert(miss);
     if(!error) miss.forEach(m=>{ TOKMAP[m.event_seq]=m.token; });
@@ -358,7 +388,7 @@ function renderPreview(){
   let cur=null; const body=[];
   sorted.forEach(r=>{
     const k=key(r);
-    if(k!==cur){ cur=k; body.push(`<tr class="gh"><td colspan="8">${esc(k)}</td></tr>`); }
+    if(k!==cur){ cur=k; body.push(`<tr class="gh"><td colspan="9">${esc(k)}</td></tr>`); }
     const fl=[...new Set((r.rooms||[]).map(x=>floorLabel(x.zone,x.no)).filter(Boolean))].join(' · ');
     const rooms=(r.rooms||[]).map(x=>esc(x.no)).join(' · ');
     body.push(`<tr>
@@ -370,12 +400,14 @@ function renderPreview(){
       <td class="nt">${fmtMD(r.dep)}~${fmtMD(r.arr)}</td>
       <td>${r.pax}</td>
       <td>${r.token?'✓':`<span class="warn">${tx('pvNoTok')}</span>`}</td>
+      <td>${r.token?`<button type="button" class="rebtn" data-reissue="${r.seq}">${tx('reissue')}</button>`:''}</td>
     </tr>`);
   });
   $('#preview').innerHTML=`<div class="tblwrap"><table class="qt">
     <thead><tr><th>${tx('thTag')}</th><th>${tx('thRep')}</th><th>${tx('thAccom')}</th><th>${tx('thFloor')}</th>
-      <th>${tx('thRoom')}</th><th>${tx('thStay')}</th><th>${tx('thPax')}</th><th>${tx('thTok')}</th></tr></thead>
+      <th>${tx('thRoom')}</th><th>${tx('thStay')}</th><th>${tx('thPax')}</th><th>${tx('thTok')}</th><th></th></tr></thead>
     <tbody>${body.join('')}</tbody></table></div>`;
+  $('#preview').querySelectorAll('[data-reissue]').forEach(b=>b.addEventListener('click',()=>reissueToken(Number(b.dataset.reissue))));
 }
 
 // QR 데이터URL 생성 — 자체 호스팅 qrcode-generator(동기, 전역 window.qrcode). CDN 의존 없음.
@@ -388,8 +420,8 @@ function qrDataURL(text){
 // 손님 폰 카메라로 찍으면 결제내역(bill.html) 이 열리는 URL. 직원 POS 스캔도 ?t= 를 파싱해 호환.
 function billUrl(token){ return new URL('bill.html?t='+encodeURIComponent(token), location.href).href; }
 // 카드 그리드 인쇄(새 창) — QR dataURL을 img로 삽입
-async function printCards(){
-  const cards=visibleRows().filter(r=>r.token);
+async function printCards(only){
+  const cards=(Array.isArray(only)?only:visibleRows()).filter(r=>r.token);
   if(!cards.length){ toast(tx('noCards'),'err'); return; }
   if(typeof qrcode!=='function'){ toast(tx('qrLibFail'),'err'); return; }
   const w=window.open('','_blank','width=920,height=950'); if(!w){ toast(tx('popupBlocked'),'err'); return; }

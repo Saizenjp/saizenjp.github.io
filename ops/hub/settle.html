@@ -221,8 +221,9 @@
 
 <div id="toast"></div>
 
+<script src="../assets/qrcode-generator.js?v=1"></script>
 <script src="../assets/saizen-core.js?v=30"></script>
-<script src="../assets/saizen-ops.js?v=15.96"></script>
+<script src="../assets/saizen-ops.js?v=15.97"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -261,6 +262,7 @@ const L={
     statusChangeFail:'状態変更失敗', statusTo:'状態 → ',
     noBookings:'この月の予約(bookings)がありません。STEP1の登録をご確認ください', alreadyOpen:'既に開設',
     openModalTitle:'計上口座を開く (チーム単位)', openModalLabel:'行事(チーム)を選択してください。選択した行事に計上口座を1つ開きます。',
+    billQrBtn:'📱 請求QR', billQrTitle:'請求内訳 QR', billQrSub:'お客様のスマホでこのQRを読み取ると、ご請求内訳が表示されます。', qrLibFail:'QRライブラリの読み込みに失敗しました。再読み込みしてください。', qrTokFail:(e)=>'QR発行に失敗: '+e,
     openFilterPh:'代表者/商品名 検索', closeBtn:'閉じる', folioOpenFail:'口座開設失敗', folioOpened:'計上口座を開きました',
     stmtPreviewTitle:'御請求書 プレビュー', printBtn:'印刷', excelBtn:'Excel', closeXBtn:'閉じる', downloadFromOpener:'元の画面でダウンロードしてください',
     popupBlocked:'ポップアップがブロックされました — 許可が必要です', stmtDownloaded:'御請求書をダウンロードしました',
@@ -294,6 +296,7 @@ const L={
     statusChangeFail:'상태 변경 실패', statusTo:'상태 → ',
     noBookings:'이 월의 예약(bookings)이 없습니다. STEP1 등록을 확인하세요', alreadyOpen:'이미 열림',
     openModalTitle:'정산계정 열기 (팀 단위)', openModalLabel:'행사(팀)를 선택하세요. 선택한 행사에 정산 계정 1개를 엽니다.',
+    billQrBtn:'📱 청구서 QR', billQrTitle:'청구 내역 QR', billQrSub:'손님 휴대폰으로 이 QR을 찍으면 청구 내역이 열립니다.', qrLibFail:'QR 라이브러리 로드 실패 — 새로고침 후 다시 시도하세요.', qrTokFail:(e)=>'QR 발급 실패: '+e,
     openFilterPh:'대표자/상품명 검색', closeBtn:'닫기', folioOpenFail:'계정 열기 실패', folioOpened:'정산 계정 열림',
     stmtPreviewTitle:'御請求書 미리보기', printBtn:'인쇄', excelBtn:'엑셀', closeXBtn:'닫기', downloadFromOpener:'원래 창에서 다운로드해 주세요',
     popupBlocked:'팝업 차단 — 허용 필요', stmtDownloaded:'御請求書 다운로드',
@@ -327,6 +330,7 @@ const L={
     statusChangeFail:'Status change failed', statusTo:'Status → ',
     noBookings:'No bookings for this month. Check STEP1 registration', alreadyOpen:'already open',
     openModalTitle:'Open folio (per team)', openModalLabel:'Select an event (team). One folio is opened for the selected event.',
+    billQrBtn:'📱 Bill QR', billQrTitle:'Bill QR', billQrSub:'The guest scans this with their phone to see the bill.', qrLibFail:'QR library failed to load — refresh and try again.', qrTokFail:(e)=>'QR issue failed: '+e,
     openFilterPh:'Search rep / product', closeBtn:'Close', folioOpenFail:'Open folio failed', folioOpened:'Folio opened',
     stmtPreviewTitle:'御請求書 preview', printBtn:'Print', excelBtn:'Excel', closeXBtn:'Close', downloadFromOpener:'Please download from the original window',
     popupBlocked:'Popup blocked — please allow', stmtDownloaded:'御請求書 downloaded',
@@ -663,6 +667,7 @@ function renderDetail(){
       </div>
       <div class="dactions">
         <button class="btn ghost sm" id="btn-statement" type="button" data-i18n="st_btnStatement"></button>
+        <button class="btn ghost sm" id="btn-billqr" type="button">${tx('billQrBtn')}</button>
         ${f.status==='open'?'<button class="btn ghost sm" id="btn-close" type="button" data-i18n="st_btnClose"></button>':''}
         ${f.status==='closed'?'<button class="btn ghost sm" id="btn-settle" type="button" data-i18n="st_btnSettle"></button>':''}
         ${f.status!=='open'?'<button class="btn ghost sm" id="btn-reopen" type="button" data-i18n="st_btnReopen"></button>':''}
@@ -730,6 +735,7 @@ function renderDetail(){
   box.querySelectorAll('[data-void-charge]').forEach(b=>b.addEventListener('click',()=>voidCharge(b.dataset.voidCharge)));
   box.querySelectorAll('[data-void-pay]').forEach(b=>b.addEventListener('click',()=>voidPayment(b.dataset.voidPay)));
   const st=$('#btn-statement'); if(st) st.addEventListener('click',()=>previewStatement(f));
+  const bq=$('#btn-billqr'); if(bq) bq.addEventListener('click',()=>showBillQR(f));
   const bc=$('#btn-close'); if(bc) bc.addEventListener('click',()=>setStatus(f.folio_id,'closed'));
   const bs=$('#btn-settle'); if(bs) bs.addEventListener('click',()=>setStatus(f.folio_id,'settled'));
   const br=$('#btn-reopen'); if(br) br.addEventListener('click',()=>setStatus(f.folio_id,'open'));
@@ -885,6 +891,43 @@ function xFill(argb){ return {type:'pattern',pattern:'solid',fgColor:{argb}}; }
 function xBorderAll(){ const s={style:'thin',color:{argb:XLM.line}}; return {top:s,left:s,bottom:s,right:s}; }
 
 // ── 御請求書 HTML 미리보기 팝업(→ 인쇄). 즉시 엑셀 다운로드 대신 한 단계 거침. ──
+// ── 청구서 QR — 손님이 폰으로 찍으면 그 팀 청구내역(bill.html)이 열린다.
+//    최종 체크아웃 전날·정산 시점에 종이 없이 확인시키는 용도. 토큰은 주문 QR과 같은 것.
+async function billToken(seq){
+  const {data}=await supa.from('order_tokens').select('token').eq('event_seq',seq).maybeSingle();
+  if(data&&data.token) return data.token;
+  const tok=(window.crypto&&crypto.randomUUID)?crypto.randomUUID().replace(/-/g,'').slice(0,16):(Date.now().toString(36)+Math.random().toString(36).slice(2,10));
+  const {error}=await supa.from('order_tokens').insert({event_seq:seq, token:tok, created_by:(window.__so_getUser&&__so_getUser())||null});
+  if(error) throw error;
+  return tok;
+}
+function qrImg(text,px){
+  try{ const q=qrcode(0,'M'); q.addData(String(text)); q.make(); return q.createDataURL(px||8,0); }catch(_){ return ''; }
+}
+function billUrlOf(token){ return new URL('bill.html?t='+encodeURIComponent(token), location.href).href; }
+function escQ(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+async function showBillQR(f){
+  if(typeof qrcode!=='function'){ toast(tx('qrLibFail'),'err'); return; }
+  let tok;
+  try{ tok=await billToken(f.event_seq); }catch(e){ toast(tx('qrTokFail')(String(e.message||e)),'err'); return; }
+  const url=billUrlOf(tok), img=qrImg(url,10);
+  const tag=f.team_tag||(tx('teamPrefix')+evNo(f.event_seq));
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal" style="max-width:400px;text-align:center">
+    <h3 style="margin-bottom:2px">${tx('billQrTitle')}</h3>
+    <div style="font-size:13px;font-weight:800;color:var(--accent);margin-bottom:2px">${escQ(tag)} ${escQ(f.rep_name||'')}</div>
+    <div class="hint" style="margin-bottom:10px">${tx('billQrSub')}</div>
+    <img src="${img}" alt="QR" style="width:236px;height:236px;image-rendering:pixelated;border:1px solid var(--border);border-radius:10px;padding:8px;background:#fff">
+    <div class="hint" style="margin-top:9px;word-break:break-all">${escQ(url)}</div>
+    <div class="form-row" style="justify-content:center;margin-top:12px">
+      <button class="btn ghost sm" id="bq-close" type="button">${tx('closeBtn')}</button>
+    </div></div>`;
+  document.body.appendChild(bg);
+  const close=()=>bg.remove();
+  bg.querySelector('#bq-close').addEventListener('click',close);
+  bg.addEventListener('click',e=>{ if(e.target===bg) close(); });
+}
+
 async function previewStatement(f){
   if(f.folio_id!==state.selId) await selectFolio(f.folio_id);
   window.__curStmtF=f;
@@ -902,6 +945,10 @@ async function previewStatement(f){
   const pays=state.payments.filter(p=>!p.voided);
   const paid=pays.reduce((s,p)=>s+Number(p.amount||0),0);
   const bal=grand-paid;
+  // 청구서에도 QR — 손님이 종이를 찍으면 폰에서 같은 내역을 본다(발급 실패해도 인쇄는 진행)
+  let qrHTML='';
+  try{ if(typeof qrcode==='function'){ const tk=await billToken(f.event_seq); const d=qrImg(billUrlOf(tk),6);
+    if(d) qrHTML=`<div class="qrbox"><img src="${d}" alt="QR"><span>スマホでご確認<br>폰으로 확인</span></div>`; } }catch(_){}
   const rowsHTML=lines.length?lines.map(c=>{
     const tot=Number(c.amount||0)+Number(c.tax||0)+Number(c.service_charge||0);
     return `<tr><td>${esc(catJ[c.category]||c.category)}</td><td class="l">${esc(c.description||'')}</td><td class="r">${Number(c.qty||0)}</td><td class="r">${Y(c.unit_price)}</td><td class="r">${Y(c.amount)}</td><td class="r">${Y(c.tax)}</td><td class="r b">${Y(tot)}</td></tr>`;
@@ -919,7 +966,7 @@ async function previewStatement(f){
   .toolbar h1{font-size:15px;color:#1a2540}.toolbar .meta{font-size:12px;color:#666}
   .toolbar button{padding:8px 18px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;background:#15803d;color:#fff}
   .toolbar button.x{background:#1a4d8f}.toolbar button.c{background:#999}
-  .page{width:190mm;min-height:262mm;margin:18px auto;background:#fff;padding:16mm 16mm;box-shadow:0 2px 14px rgba(0,0,0,.1)}
+  .page{width:190mm;min-height:262mm;margin:18px auto;background:#fff;padding:16mm 16mm;box-shadow:0 2px 14px rgba(0,0,0,.1);position:relative}
   .h1{font-size:26px;font-weight:800;letter-spacing:8px;text-align:center;color:#1a2540}
   .sub{text-align:center;font-size:12px;color:#1a4d8f;margin:4px 0 18px}
   .info{font-size:13px;line-height:1.9;border-top:2px solid #1a2540;border-bottom:1px solid #b9c4d6;padding:10px 2px;margin-bottom:14px}
@@ -936,6 +983,9 @@ async function previewStatement(f){
   .trow{display:flex;justify-content:space-between;font-size:13px;padding:6px 8px}
   .trow.grand{background:#eaf0f7;font-weight:800;border-top:1px solid #b9c4d6}
   .trow.bal{background:#eaf0f7;font-weight:800;font-size:16px;border-top:2px solid #1a2540;color:#1a2540}
+  .qrbox{position:absolute;top:14mm;right:16mm;text-align:center}
+  .qrbox img{width:22mm;height:22mm;image-rendering:pixelated;display:block}
+  .qrbox span{font-size:8pt;color:#1a4d8f;line-height:1.25;display:block;margin-top:1mm}
   .paytitle{margin:22px 0 6px;font-weight:700;color:#1a4d8f;font-size:13px}
   table.pay{border-collapse:collapse;font-size:12px}
   table.pay th{background:#1a4d8f;color:#fff;padding:6px 14px}
@@ -949,6 +999,7 @@ async function previewStatement(f){
   <div class="page">
     <div class="h1">御　請　求　書</div>
     <div class="sub">アソ ヤマナミリゾート ／ 株式会社SaiZen</div>
+    ${qrHTML}
     <div class="info">
       <div><span class="lab">宛名 / 御一行</span> <b>${esc(ate)}</b></div>
       <div><span class="lab">御部屋 / Room</span> ${esc(rooms)}</div>
