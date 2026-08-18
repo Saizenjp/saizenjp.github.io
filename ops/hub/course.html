@@ -243,7 +243,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=33"></script>
-<script src="../assets/saizen-ops.js?v=16.9"></script>
+<script src="../assets/saizen-ops.js?v=17.0"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -275,6 +275,7 @@ const L={
     savedN:n=>`${n}組を保存しました`, saveFail:'保存失敗: ', loadFail:'読み込み失敗',
     noSlot:'ティ枠が足りません — 手動で調整してください', autoDone:n=>`${n}組を割り当てました`,
     selMoveHint:'移動先のマスを押してください(空きでも他の組でも可) · ESCで取消', selCancel:'選択解除',
+    moreSlots:'＋ 遅い時間の枠(16:59まで)', slotsMax:'枠は16:59まで表示中', slotsAdded:'16:59まで枠を追加しました',
     late:'遅め', lateT:'久住ヒルズ宿泊 — 16:30〜17:00終了→シャワー→18時食事に合わせ遅い組',
     grp:'組', person:'名', teamUnit:'チーム', unassignedN:n=>`未割当 ${n}チーム`,
     excl:'除外', incl:'↩ 戻す', exclH:'除外したチーム(この日はラウンドなし)', exclN:n=>`${n}チーム`,
@@ -314,6 +315,7 @@ const L={
     savedN:n=>`${n}개 조 저장했습니다`, saveFail:'저장 실패: ', loadFail:'불러오기 실패',
     noSlot:'티오프 자리가 모자랍니다 — 수기로 조정하세요', autoDone:n=>`${n}개 조를 배정했습니다`,
     selMoveHint:'옮길 자리를 누르세요(빈 칸·다른 조 모두 가능) · ESC 취소', selCancel:'선택 해제',
+    moreSlots:'＋ 늦은 시간 자리(16:59까지)', slotsMax:'자리를 16:59까지 표시 중', slotsAdded:'16:59까지 자리를 늘렸습니다',
     late:'늦게', lateT:'쿠주힐즈 숙박 — 16:30~17:00 종료→샤워→18시 식사에 맞춰 늦은 조',
     grp:'조', person:'명', teamUnit:'팀', unassignedN:n=>`미배정 ${n}팀`,
     excl:'제외', incl:'↩ 복귀', exclH:'제외한 팀(이 날 라운딩 안 함)', exclN:n=>`${n}팀`,
@@ -353,6 +355,7 @@ const L={
     savedN:n=>`Saved ${n} groups`, saveFail:'Save failed: ', loadFail:'Load failed',
     noSlot:'Not enough tee slots — adjust manually', autoDone:n=>`Assigned ${n} groups`,
     selMoveHint:'Tap the target cell (empty or occupied) · ESC to cancel', selCancel:'Clear',
+    moreSlots:'＋ Later tee slots (to 16:59)', slotsMax:'Slots shown to 16:59', slotsAdded:'Slots extended to 16:59',
     late:'Late', lateT:'Kuju Hills stay — finish 16:30–17:00 → shower → 18:00 dinner, so a later tee',
     grp:'G', person:'', teamUnit:' teams', unassignedN:n=>`${n} unassigned`,
     excl:'Skip', incl:'↩ Restore', exclH:'Skipped teams (not playing this day)', exclN:n=>`${n} teams`,
@@ -441,13 +444,17 @@ let MONTHRUN=new Set();  // 이번 세션에 이달 자동배정을 이미 돌�
 //  (코스당 17조 × 3코스 = 51조. 성수기엔 67팀이 들어와 자리가 모자라므로 늘려야 전원 배정된다.)
 const STD_SLOTS=(window.SZCore&&SZCore.teeSlots)?SZCore.teeSlots():[];
 const STD_N=STD_SLOTS.length||17;
+// 하루 자리의 끝 = 16:59(6:50부터 7분 간격). 늦게 나가는 팀도 손으로 넣을 수 있게 한다(Min 2026-08).
+//   기본 화면은 지금처럼 짧게 두고, 표 아래 버튼으로 여기까지 늘린다.
+const MAX_TEE='16:59';
+const MAX_SLOT_N=Math.floor(((16*60+59)-(6*60+50))/7)+1;   // = 88
 function makeSlots(n){
   const out=[]; let t=6*60+50;
   for(let i=0;i<Math.max(1,n);i++){ out.push(String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0')); t+=7; }
   return out;
 }
 let SLOTS=STD_SLOTS.slice();
-function ensureSlots(n){ if(n>SLOTS.length) SLOTS=makeSlots(n); }
+function ensureSlots(n){ if(n>SLOTS.length) SLOTS=makeSlots(Math.min(n,MAX_SLOT_N)); }
 // ⚠ SZCore.fmtDate 는 Date 전용(문자열을 주면 '')이라 DB의 date 문자열엔 이걸 쓴다.
 function dstr(d){ if(!d) return ''; if(d instanceof Date) return SZCore.fmtDate(d); return String(d).slice(0,10); }
 function normGender(g){ g=String(g||'').trim(); if(/여|女/.test(g)||/^f/i.test(g))return '女'; if(/남|男/.test(g)||/^m/i.test(g))return '男'; return ''; }
@@ -934,9 +941,14 @@ function render(){
           `<th class="chd ${c.code}">${esc(courseL(c.code))} ${tx('startHd')}<small>${esc(rotLabel(c.code,27))}</small></th>`).join('')}</tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
+      ${SLOTS.length<MAX_SLOT_N
+        ? `<button class="btn ghost sm" id="btn-more-slots" type="button" style="margin-top:8px">${esc(tx('moreSlots'))}</button>`
+        : `<div class="cnt" style="margin-top:8px;color:var(--muted)">${esc(tx('slotsMax'))}</div>`}
       <div class="legend">${tx('rotNote')}</div>
     </div>`;
   bind();
+  { const mb=$('#btn-more-slots');
+    if(mb) mb.addEventListener('click',()=>{ SLOTS=makeSlots(MAX_SLOT_N); render(); touch(); toast(tx('slotsAdded'),'ok'); }); }
   { const c=$('#course-qc');
     if(c) c.textContent = qOn()? tx('qHit', BOARD.filter(g=>teamHit(g.seq)).length) : ''; }
   if(TV) renderTV();
@@ -1477,8 +1489,11 @@ function renderTV(){
 // ── A3 세로 공지용 인쇄 ────────────────────────────────────────────────
 //  코스 입구·클럽하우스에 붙이는 공지물이라 멀리서 읽혀야 한다 →
 //  A3 세로 한 장에 꽉 채우고, 줄이 많은 날은 글자배율(--fs)을 자동으로 줄여 맞춘다.
+// 인쇄물은 **10시 이전 출발까지만** 낸다(Min 2026-08) — 손님이 보는 표라 그 뒤는 필요 없다.
+const PRINT_UNTIL='10:00';
 function boardRowsHTML(forPrint){
   return SLOTS.map((tee,i)=>{
+    if(forPrint && String(tee)>=PRINT_UNTIL) return '';
     const slot=i+1;
     const tds=COURSES.map(c=>{
       const gi=groupAt(c.code,slot);
