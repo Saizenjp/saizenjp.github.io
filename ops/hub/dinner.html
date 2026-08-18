@@ -65,7 +65,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.1">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.2">
 </head>
 <body data-so-area="print">
 <div class="topbar so-bar">
@@ -96,7 +96,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=34"></script>
-<script src="../assets/saizen-ops.js?v=18.1"></script>
+<script src="../assets/saizen-ops.js?v=18.2"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(印刷 산출물·도메인 데이터는 미번역) ──
@@ -117,6 +117,7 @@ const L={
     selDate:'— 日付 —', selTeam:'— チーム選択 —', noTeamDay:'— その日宿泊チームなし —', noTag:'(タグなし)',
     addonEmpty:'登録された別注・アレルギーはありません。',
     pvH:'日付別 食数プレビュー', teditH:'チーム 夕食除外·名札',
+    teditSumN:n=>`${n}チーム`, teditSum:(n,e)=>`${n}チーム · 除外 ${e}`,
     teditHint:'— 夕食除外は<b>夕食数量のみ</b>から控除(朝・昼食の食数は維持)。<b>レストラン名札は運営チーム(現地手配書)単位で1枚に合席</b>。チームの括りは現地手配書が唯一の基準。タグコード・人数はstep1データ基準(編集不可)',
     dgHint:'レストラン名札は<b>運営チーム(現地手配書で設定)単位で自動合席</b>されます。',
     thIn:'入国', thFac:'施設', thRep:'代表者', thEng:'英文名', thTag:'タグコード', thPax:'人数', thTeam:'運営チーム', thTeamTitle:'運営チーム(現地手配書で設定)。レストラン名札はこの単位で合席。', thEx:'夕食除外', thExTitle:'夕食のみ控除(朝・昼食の食数は維持)',
@@ -146,6 +147,7 @@ const L={
     selDate:'— 날짜 —', selTeam:'— 팀 선택 —', noTeamDay:'— 그날 묵는 팀 없음 —', noTag:'(태그없음)',
     addonEmpty:'등록된 別注·알레르기가 없습니다.',
     pvH:'날짜별 식수 미리보기', teditH:'팀 夕食除外·명패',
+    teditSumN:n=>`${n}팀`, teditSum:(n,e)=>`${n}팀 · 제외 ${e}`,
     teditHint:'— 夕食除外는 <b>석식 수량에서만</b> 빠짐(朝·昼食 식수 유지). <b>レストラン名札은 운영팀(現地手配書) 단위로 1장에 합석</b>. 팀 묶음은 現地手配書가 단일 기준. 태그코드·인원은 step1 데이터 기준(수정 불가)',
     dgHint:'레스토랑 명패는 <b>운영팀(現地手配書에서 설정) 단위로 자동 합석</b>됩니다.',
     thIn:'入国', thFac:'施設', thRep:'代表者', thEng:'英文名', thTag:'タグコード', thPax:'人数', thTeam:'운영팀', thTeamTitle:'운영 팀(現地手配書에서 설정). 레스토랑 명패는 이 단위로 합석.', thEx:'夕食除外', thExTitle:'석식만 제외(朝·昼食 식수는 유지)',
@@ -175,6 +177,7 @@ const L={
     selDate:'— Date —', selTeam:'— Select team —', noTeamDay:'— No team staying that day —', noTag:'(no tag)',
     addonEmpty:'No 別注·allergy registered.',
     pvH:'Per-date meal-count preview', teditH:'Team 夕食除外·Nameplate',
+    teditSumN:n=>`${n} team(s)`, teditSum:(n,e)=>`${n} team(s) · ${e} excluded`,
     teditHint:'— 夕食除外 deducts <b>from dinner count only</b> (朝·昼食 meal counts kept). <b>The restaurant nameplate merges by operational team (現地手配書) onto one card</b>. Team grouping is driven solely by 現地手配書. Tag code & count follow step1 data (not editable)',
     dgHint:'The restaurant nameplate <b>auto-merges by operational team (set in 現地手配書)</b>.',
     thIn:'入国', thFac:'施設', thRep:'代表者', thEng:'Eng name', thTag:'タグコード', thPax:'人数', thTeam:'Team', thTeamTitle:'Operational team (set in 現地手配書). The nameplate merges by this unit.', thEx:'夕食除外', thExTitle:'Dinner only excluded (朝·昼食 counts kept)',
@@ -322,11 +325,16 @@ function renderUI(){
       <div id="preview" class="preview"></div>
     </div>
     <div class="panel">
-      <h3>${tx('teditH')} <span class="cnt">${tx('teditHint')}</span></h3>
-      <div id="tedit-tools" style="display:flex;gap:8px;align-items:center;margin:0 0 8px;flex-wrap:wrap">
-        <span class="hint">${tx('dgHint')}</span>
-      </div>
-      <div style="overflow:auto"><table class="tedit" id="tedit"><thead></thead><tbody></tbody></table></div>
+      <details class="so-fold" id="tedit-fold">
+        <summary><h3>${tx('teditH')}</h3><span class="so-fsum" id="tedit-sum"></span></summary>
+        <div class="so-fbody">
+          <div class="cnt" style="margin:0 0 8px">${tx('teditHint')}</div>
+          <div id="tedit-tools" style="display:flex;gap:8px;align-items:center;margin:0 0 8px;flex-wrap:wrap">
+            <span class="hint">${tx('dgHint')}</span>
+          </div>
+          <div style="overflow:auto"><table class="tedit" id="tedit"><thead></thead><tbody></tbody></table></div>
+        </div>
+      </details>
     </div>`;
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
@@ -452,6 +460,10 @@ function renderTeamEdit(){
   const _dsel=selectedDates();
   const rows=TEAMS.filter(t=>(ACCOMSEL.size===0||ACCOMSEL.has(t.accom)) && _dsel.some(d=>t.dep<=d&&t.arr>d)).slice()
     .sort(teamSortByCode);   // 팀별 규칙(코드순·묶음 인접)
+  { const sm=$('#tedit-sum');
+    if(sm){ const nEx=rows.filter(t=>t.excluded).length;
+      sm.textContent = nEx?tx('teditSum')(rows.length,nEx):tx('teditSumN')(rows.length);
+      sm.className = 'so-fsum'+(nEx?' on':''); } }
   thead.innerHTML=`<tr><th>${tx('thIn')}</th><th>${tx('thFac')}</th><th>${tx('thRep')}</th><th>${tx('thEng')}</th><th>${tx('thTag')}</th><th title="${tx('thTeamTitle')}">${tx('thTeam')}</th><th>${tx('thPax')}</th><th title="${tx('thExTitle')}">${tx('thEx')}</th></tr>`;
   if(!rows.length){ tbody.innerHTML=`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:18px">${tx('noTeam')}</td></tr>`; return; }
   tbody.innerHTML=rows.map(t=>{ const ex=!!t.excluded;

@@ -88,15 +88,6 @@
   /* 검색 강조 — 찾은 조는 또렷하게, 나머지는 흐리게 */
   .cell.qhit{outline:2px solid var(--accent2);outline-offset:-2px}
   .cell.qdim{opacity:.33}
-  /* 라운딩 예외 패널 — 기본은 접어 둔다(대부분 예외가 없는 날) */
-  details.expanel>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-  details.expanel>summary::-webkit-details-marker{display:none}
-  details.expanel>summary h3{margin:0}
-  details.expanel>summary::before{content:"▸";color:var(--accent);font-weight:800;font-size:13px;transition:.13s}
-  details.expanel[open]>summary::before{transform:rotate(90deg)}
-  details.expanel>summary .exsum{font-size:12px;font-weight:700;color:var(--text2);background:var(--surface3);border-radius:99px;padding:2px 10px}
-  details.expanel>summary .exsum.on{background:var(--accentSoft);color:var(--accent)}
-  details.expanel>.exbody{margin-top:10px}
   /* 라운딩 예외 패널 */
   .exrow{border:1px solid var(--border);border-radius:9px;padding:8px 10px;margin-bottom:7px;background:var(--surface)}
   .exrow.skip{background:var(--surface3);opacity:.75}
@@ -222,7 +213,7 @@
     color:#fff;border-radius:8px;padding:4px 12px;cursor:pointer}
   .ckok:hover{background:var(--accentDeep)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.1">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.2">
 </head>
 <body data-so-area="golf">
 <div class="topbar so-bar">
@@ -252,7 +243,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=34"></script>
-<script src="../assets/saizen-ops.js?v=18.1"></script>
+<script src="../assets/saizen-ops.js?v=18.2"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -286,6 +277,7 @@ const L={
     noSlot:'ティ枠が足りません — 手動で調整してください', autoDone:n=>`${n}組を割り当てました`,
     selMoveHint:'移動先のマスを押してください(空きでも他の組でも可) · ESCで取消', selCancel:'選択解除',
     moreSlots:'＋ 遅い時間の枠(16:59まで)', slotsMax:'枠は16:59まで表示中', slotsAdded:'16:59まで枠を追加しました',
+    lessSlots:'− 遅い枠をたたむ', slotsShrunk:'遅い枠をたたみました', lessSlotsT:'組が入っている枠は残します',
     late:'遅め', lateT:'久住ヒルズ宿泊 — 16:30〜17:00終了→シャワー→18時食事に合わせ遅い組',
     grp:'組', person:'名', teamUnit:'チーム', unassignedN:n=>`未割当 ${n}チーム`,
     excl:'除外', incl:'↩ 戻す', exclH:'除外したチーム(この日はラウンドなし)', exclN:n=>`${n}チーム`,
@@ -327,6 +319,7 @@ const L={
     noSlot:'티오프 자리가 모자랍니다 — 수기로 조정하세요', autoDone:n=>`${n}개 조를 배정했습니다`,
     selMoveHint:'옮길 자리를 누르세요(빈 칸·다른 조 모두 가능) · ESC 취소', selCancel:'선택 해제',
     moreSlots:'＋ 늦은 시간 자리(16:59까지)', slotsMax:'자리를 16:59까지 표시 중', slotsAdded:'16:59까지 자리를 늘렸습니다',
+    lessSlots:'− 늦은 자리 접기', slotsShrunk:'늦은 자리를 접었습니다', lessSlotsT:'조가 들어 있는 자리는 남깁니다',
     late:'늦게', lateT:'쿠주힐즈 숙박 — 16:30~17:00 종료→샤워→18시 식사에 맞춰 늦은 조',
     grp:'조', person:'명', teamUnit:'팀', unassignedN:n=>`미배정 ${n}팀`,
     excl:'제외', incl:'↩ 복귀', exclH:'제외한 팀(이 날 라운딩 안 함)', exclN:n=>`${n}팀`,
@@ -368,6 +361,7 @@ const L={
     noSlot:'Not enough tee slots — adjust manually', autoDone:n=>`Assigned ${n} groups`,
     selMoveHint:'Tap the target cell (empty or occupied) · ESC to cancel', selCancel:'Clear',
     moreSlots:'＋ Later tee slots (to 16:59)', slotsMax:'Slots shown to 16:59', slotsAdded:'Slots extended to 16:59',
+    lessSlots:'− Collapse later slots', slotsShrunk:'Later slots collapsed', lessSlotsT:'Slots holding a group are kept',
     late:'Late', lateT:'Kuju Hills stay — finish 16:30–17:00 → shower → 18:00 dinner, so a later tee',
     grp:'G', person:'', teamUnit:' teams', unassignedN:n=>`${n} unassigned`,
     excl:'Skip', incl:'↩ Restore', exclH:'Skipped teams (not playing this day)', exclN:n=>`${n} teams`,
@@ -449,7 +443,13 @@ function touch(){ clearTimeout(SAVET); SAVET=setTimeout(()=>{ save(true); },900)
 let MONTHG={};       // 날짜 → [{event_seq,course_code,slot_no,capacity}]  그 달 저장된 조
 let CQ='';   // 검색어(태그코드·대표자·팀원 이름·행사번호) — 목록·조를 좁힌다
 let HOLESM={}, ABSM={};   // 라운딩 예외(홀수 수기지정 · 개인 불참) — SQL 106
-let EX_OPEN=false;        // 예외 패널 펼침 여부(기본 접힘 — 예외 없는 날이 대부분)
+//  접이식 패널 펼침 상태 — 재렌더가 잦아 화면 밖에 보관한다(키=패널 이름)
+const FOLD={};            // ex(라운딩 예외) · un(미배정) · ex2(제외)
+function foldOpen(k,dflt){ return FOLD[k]==null?!!dflt:!!FOLD[k]; }
+function fold(k,title,sum,body,open){
+  return `<details class="so-fold" data-fold="${k}"${open?' open':''}>`
+    +`<summary><h3>${title}</h3>${sum||''}</summary><div class="so-fbody">${body}</div></details>`;
+}
 let SKIPM={};        // 날짜 → Set(event_seq)  그 달 제외 팀
 let MONTHRUN=new Set();  // 이번 세션에 이달 자동배정을 이미 돌린 달(중복 실행 방지)
 
@@ -468,6 +468,8 @@ function makeSlots(n){
 }
 let SLOTS=STD_SLOTS.slice();
 function ensureSlots(n){ if(n>SLOTS.length) SLOTS=makeSlots(Math.min(n,MAX_SLOT_N)); }
+//  접었을 때 남길 줄 수 — 기본 17줄과 '조가 들어 있는 마지막 자리' 중 큰 쪽.
+function minSlots(){ return Math.max(STD_N, BOARD.reduce((m,g)=>Math.max(m,g.slot||0),0)); }
 // ⚠ SZCore.fmtDate 는 Date 전용(문자열을 주면 '')이라 DB의 date 문자열엔 이걸 쓴다.
 function dstr(d){ if(!d) return ''; if(d instanceof Date) return SZCore.fmtDate(d); return String(d).slice(0,10); }
 function normGender(g){ g=String(g||'').trim(); if(/여|女/.test(g)||/^f/i.test(g))return '女'; if(/남|男/.test(g)||/^m/i.test(g))return '男'; return ''; }
@@ -851,7 +853,38 @@ function renderSelBar(){
   const c=document.getElementById('gsel-cancel');
   if(c) c.addEventListener('click',()=>{ SELG=null; render(); });
 }
+// ── 화면 흔들림 방지 ────────────────────────────────────────────────────
+//   조를 고르면 표 **위쪽** 패널(조원 편성·미배정·재확인)이 커져 코스 표가 통째로
+//   밀린다 → 방금 누른 줄이 눈앞에서 사라진다. 다시 그리기 전에 「보고 있던 줄」을
+//   기억해 두고, 그린 뒤 같은 자리에 오도록 스크롤을 맞춘다(눈에 안 띄는 보정).
+function topOffset(){ return ((document.querySelector('.topbar')||{}).offsetHeight||56)+4; }
+function anchorRow(){
+  const off=topOffset();
+  const rows=document.querySelectorAll('table.cb tbody tr');
+  for(const r of rows){
+    const t=r.getBoundingClientRect().top;
+    if(t>=off){ const c=r.querySelector('td.tee'); if(c) return {tee:c.textContent, top:t}; }
+  }
+  return null;
+}
+function restoreRow(a){
+  if(!a||!a.tee) return;
+  const rows=document.querySelectorAll('table.cb tbody tr');
+  for(const r of rows){
+    const c=r.querySelector('td.tee');
+    if(c && c.textContent===a.tee){
+      const d=r.getBoundingClientRect().top-a.top;
+      if(Math.abs(d)>2) window.scrollBy(0,d);
+      return;
+    }
+  }
+}
 function render(){
+  const _a=anchorRow();
+  _render();
+  try{ restoreRow(_a); }catch(e){}
+}
+function _render(){
   try{ renderSelBar(); }catch(e){}
   const box=$('#board'); if(!box) return;
   const on=!!DATESEL;
@@ -930,21 +963,22 @@ function render(){
 
   box.className=PICK?'picking':'';
   box.innerHTML=`
+${chkTeams.length?`
     <div class="panel ckpanel">
       <h3>${tx('chkH')} <span class="cnt warnc">${tx('chkTeamN',chkTeams.length,chk.length)}</span></h3>
       <div class="legend" style="margin:0 0 9px">${tx('chkT')}</div>
       <div class="cklist">${chkHTML}</div>
-    </div>
-    <div class="panel">
-      <h3>${tx('unH')} <span class="cnt">${tx('unassignedN',un.length)}</span></h3>
-      <div class="legend" style="margin:0 0 8px">${tx('unWhy')}</div>
-      <div class="un-list">${unHTML}</div>
-      <div class="legend">${tx('pickCell')} · ${tx('dragHint')}</div>
-    </div>
-    <div class="panel">
-      <h3>${tx('exclH')} <span class="cnt">${tx('exclN',skipped.length)}</span></h3>
-      <div class="un-list">${skHTML}</div>
-    </div>
+    </div>`:''}
+    <div class="panel">${fold('un',tx('unH'),
+      un.length?`<span class="so-fsum on">${tx('unassignedN',un.length)}</span>`:`<span class="so-fsum">${tx('allSet')}</span>`,
+      `<div class="legend" style="margin:0 0 8px">${tx('unWhy')}</div>
+       <div class="un-list">${unHTML}</div>
+       <div class="legend">${tx('pickCell')} · ${tx('dragHint')}</div>`,
+      foldOpen('un', un.length>0)||qOn())}</div>
+    <div class="panel">${fold('ex2',tx('exclH'),
+      skipped.length?`<span class="so-fsum on">${tx('exclN',skipped.length)}</span>`:`<span class="so-fsum">${tx('exclNone')}</span>`,
+      `<div class="un-list">${skHTML}</div>`,
+      foldOpen('ex2',false)||qOn())}</div>
     <div class="panel" id="ex-panel">${exceptionsHTML()}</div>
     <div class="panel" id="roster-panel">${rosterHTML()}</div>
     <div class="panel">
@@ -954,14 +988,20 @@ function render(){
           `<th class="chd ${c.code}">${esc(courseL(c.code))} ${tx('startHd')}<small>${esc(rotLabel(c.code,27))}</small></th>`).join('')}</tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
-      ${SLOTS.length<MAX_SLOT_N
-        ? `<button class="btn ghost sm" id="btn-more-slots" type="button" style="margin-top:8px">${esc(tx('moreSlots'))}</button>`
-        : `<div class="cnt" style="margin-top:8px;color:var(--muted)">${esc(tx('slotsMax'))}</div>`}
+      <div class="row" style="margin-top:8px;gap:7px">
+        ${SLOTS.length<MAX_SLOT_N
+          ? `<button class="btn ghost sm" id="btn-more-slots" type="button">${esc(tx('moreSlots'))}</button>`
+          : `<span class="cnt" style="color:var(--muted)">${esc(tx('slotsMax'))}</span>`}
+        ${SLOTS.length>minSlots()
+          ? `<button class="btn ghost sm" id="btn-less-slots" type="button" title="${esc(tx('lessSlotsT'))}">${esc(tx('lessSlots'))}</button>` : ''}
+      </div>
       <div class="legend">${tx('rotNote')}</div>
     </div>`;
   bind();
   { const mb=$('#btn-more-slots');
     if(mb) mb.addEventListener('click',()=>{ SLOTS=makeSlots(MAX_SLOT_N); render(); touch(); toast(tx('slotsAdded'),'ok'); }); }
+  { const lb=$('#btn-less-slots');
+    if(lb) lb.addEventListener('click',()=>{ SLOTS=makeSlots(minSlots()); SELG=null; render(); touch(); toast(tx('slotsShrunk'),'ok'); }); }
   { const c=$('#course-qc');
     if(c) c.textContent = qOn()? tx('qHit', BOARD.filter(g=>teamHit(g.seq)).length) : ''; }
   if(TV) renderTV();
@@ -973,10 +1013,9 @@ function render(){
 function exceptionsHTML(){
   const teams=teamsOnDate(DATESEL).filter(t=>teamHit(t.seq));   // 검색으로 좁힌다
   // 검색 중에는 결과가 접혀서 안 보이면 안 되니 자동으로 펼친다
-  const open=EX_OPEN||qOn();
-  const wrap=(sum,body)=>`<details class="expanel"${open?' open':''}>
-    <summary><h3>${tx('exH')}</h3>${sum}</summary><div class="exbody">${body}</div></details>`;
-  if(!teams.length) return wrap(`<span class="exsum">${tx('exSetNone')}</span>`,
+  const open=foldOpen('ex',false)||qOn();
+  const wrap=(sum,body)=>fold('ex',tx('exH'),sum,body,open);
+  if(!teams.length) return wrap(`<span class="so-fsum">${tx('exSetNone')}</span>`,
     `<div class="legend">${qOn()?tx('qNone'):tx('exNone')}</div>`);
   const abs=absMap(DATESEL);
   const rows=teams.map(t=>{
@@ -1006,7 +1045,7 @@ function exceptionsHTML(){
   // 접힌 채로도 「예외가 걸린 팀이 몇인지」는 보이게 — 열지 않아도 그날 상태를 안다
   const nSet=teams.filter(t=>{ const q=String(t.seq);
     return isSkip(q) || !!holesOv(DATESEL,q) || (ROSTER[q]||[]).some(m=>abs.has(String(m.id))); }).length;
-  const sum=nSet?`<span class="exsum on">${tx('exSetN',nSet)}</span>`:`<span class="exsum">${tx('exSetNone')}</span>`;
+  const sum=nSet?`<span class="so-fsum on">${tx('exSetN',nSet)}</span>`:`<span class="so-fsum">${tx('exSetNone')}</span>`;
   return wrap(sum, `<div class="legend" style="margin:0 0 9px">${tx('exT')}</div>${rows}`);
 }
 async function setHoles(seq, h){
@@ -1127,7 +1166,7 @@ function bindRoster(){
 
 function bind(){
   // 라운딩 예외 패널 — 펼침 상태는 재렌더를 넘어 유지한다
-  document.querySelectorAll('details.expanel').forEach(d=>d.addEventListener('toggle',()=>{ EX_OPEN=d.open; }));
+  document.querySelectorAll('details.so-fold[data-fold]').forEach(d=>d.addEventListener('toggle',()=>{ FOLD[d.dataset.fold]=d.open; }));
   // 라운딩 예외 패널 — 홀수 버튼 · 이름(불참) · 라운딩 안 함
   document.querySelectorAll('[data-exh]').forEach(b=>b.addEventListener('click',()=>setHoles(b.dataset.exh, +b.dataset.h)));
   document.querySelectorAll('[data-exa]').forEach(b=>b.addEventListener('click',()=>toggleAbsent(b.dataset.exa, b.dataset.seq)));
