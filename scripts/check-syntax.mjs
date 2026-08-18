@@ -42,6 +42,16 @@ for (const f of files) {
   });
 }
 
+// ── 공유 asset(.js)도 파싱검사 ── 인라인만 보다가 saizen-ops.js 의 문법 오류를 놓친 적이 있다.
+//    (SO_HELP 문자열 편집 중 쉼표 하나가 빠져 전 페이지의 상단바·게이트가 죽었다.)
+const ASSETS = ['ops/assets/saizen-ops.js', 'ops/assets/saizen-core.js', 'ops/assets/qrcode-generator.js'];
+for (const a of ASSETS) {
+  let src; try { src = readFileSync(join(process.cwd(), a), 'utf8'); } catch { continue; }
+  scripts++;
+  try { new vm.Script(src, { filename: a }); }
+  catch (e) { errors++; console.error(`✗ ${a}: ${e.message}`); }
+}
+
 console.log(`검사 대상: HTML ${files.length}개 · 인라인 스크립트 ${scripts}개`);
 
 // ── 미정의 공용 헬퍼 검사 ───────────────────────────────────────────────

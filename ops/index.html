@@ -209,7 +209,7 @@
         <div class="cd" data-i18n="ix_cDinnerCd"></div>
         <span class="go" data-i18n="ix_goEnter"></span>
       </a>
-      <a class="card" href="hub/transfer.html" data-area="print">
+      <a class="card" href="hub/transfer.html" data-area="print front">
         <h4 data-i18n="ix_cTransferH"></h4>
         <div class="cd" data-i18n="ix_cTransferCd"></div>
         <span class="go" data-i18n="ix_goEnter"></span>
@@ -222,19 +222,6 @@
       <a class="card print" href="hub/notice.html" data-area="print">
         <h4 data-i18n="ix_cNoticeH"></h4>
         <div class="cd" data-i18n="ix_cNoticeCd"></div>
-        <span class="go" data-i18n="ix_goEnter"></span>
-      </a>
-    </div>
-  </div>
-
-  <!-- 제휴 숙소(야마나미 외) — 시즈노야도·간지호텔처럼 숙소별 예약표를 따로 모은다(Min 2026-08).
-       이 랜딩의 나머지 카드는 대부분 야마나미리조트 기준이라, 섞이면 헷갈린다. -->
-  <div class="group">
-    <h3><span data-i18n="ix_dPartner"></span> <span class="desc" data-i18n="ix_dPartnerDesc"></span></h3>
-    <div class="cards">
-      <a class="card" href="hub/shizu.html" data-area="shizu">
-        <h4 data-i18n="ix_cShizuH"></h4>
-        <div class="cd" data-i18n="ix_cShizuCd"></div>
         <span class="go" data-i18n="ix_goEnter"></span>
       </a>
     </div>
@@ -343,6 +330,20 @@
   </div>
 
 
+  <!-- 제휴 숙소(야마나미 외) — 시즈노야도·간지호텔처럼 숙소별 예약표를 따로 모은다(Min 2026-08).
+       이 랜딩의 나머지 카드는 대부분 야마나미리조트 기준이라, 섞이면 헷갈린다. -->
+  <div class="group">
+    <h3><span data-i18n="ix_dPartner"></span> <span class="desc" data-i18n="ix_dPartnerDesc"></span></h3>
+    <div class="cards">
+      <a class="card" href="hub/shizu.html" data-area="shizu">
+        <h4 data-i18n="ix_cShizuH"></h4>
+        <div class="cd" data-i18n="ix_cShizuCd"></div>
+        <span class="go" data-i18n="ix_goEnter"></span>
+      </a>
+    </div>
+  </div>
+
+
   <!-- 경영(대표·부서장 — admin 또는 stats 권한자) -->
   <div class="group" id="mgmt-group">
     <h3><span data-i18n="ix_gMgmt"></span></h3>
@@ -413,7 +414,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/saizen-ops.js?v=16.4"></script>
+<script src="assets/saizen-ops.js?v=16.5"></script>
 <script>
 // ── 랜딩 게이트: 미로그인=안내 / 로그인=허용 카드만 표시 ──
 (function(){
@@ -487,11 +488,11 @@
       var all=(acc.role==='admin');   // 마스터만 전체. 매니저도 지정 영역만 노출(역할=구분, 노출=지정영역).
       var wr=acc.areas||[], rd=acc.read_areas||[];   // 쓰기 영역 ∪ 보기 영역 = 카드 노출(페이지 가드가 보기=읽기전용 처리)
       document.querySelectorAll('.card[data-area]').forEach(function(card){
-        var area=card.getAttribute('data-area');
-        // stats(경영 통계) = admin 또는 'stats' 명시 보유자만(매니저 자동노출 제외)
-        var ok = (area==='stats')
+        // 영역은 여럿 쓸 수 있다(공백 구분 = OR). 페이지 가드(data-so-area)와 같은 규칙.
+        var areas=(card.getAttribute('data-area')||'').split(/[\s,]+/).filter(Boolean);
+        var ok = (areas.indexOf('stats')>=0)
           ? (acc.role==='admin' || wr.indexOf('stats')>=0 || rd.indexOf('stats')>=0)
-          : (all || wr.indexOf(area)>=0 || rd.indexOf(area)>=0);
+          : (all || areas.some(function(a){ return wr.indexOf(a)>=0 || rd.indexOf(a)>=0; }));
         card.style.display = ok ? '' : 'none';
       });
       if(acc.role==='admin'){ document.getElementById('admin-group').style.display=''; }
