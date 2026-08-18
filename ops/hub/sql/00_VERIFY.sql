@@ -181,6 +181,7 @@ from (
   union all select 109,'109 사입 금액','inv_suppliers + inv_txns.amount + v_inv_spend', case when to_regclass('public.inv_suppliers') is not null and exists(select 1 from information_schema.columns where table_name='inv_txns' and column_name='amount') and to_regclass('public.v_inv_spend') is not null then '✅ 있음' else '❌ 없음 (109)' end
   union all select 110,'110 송영 점검','transfer_checks', case when to_regclass('public.transfer_checks') is not null then '✅ 있음' else '❌ 없음 (110)' end
   union all select 111,'111 메뉴 2단 분류','menu_items.menu_group·sub', case when exists(select 1 from information_schema.columns where table_name='menu_items' and column_name='menu_group') then '✅ 있음' else '❌ 없음 (111)' end
+  union all select 112,'112 명단 신원키','guest_members.person_key + 유니크', case when exists(select 1 from information_schema.columns where table_name='guest_members' and column_name='person_key') and exists(select 1 from pg_indexes where indexname='ux_guest_members_person') then '✅ 있음' else '❌ 없음 (112)' end
 ) t
 order by ord, 항목;
 

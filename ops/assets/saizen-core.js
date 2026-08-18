@@ -702,6 +702,24 @@
     });
   }
 
+  // ── 공항 코드(IATA) ── 송영표·인쇄물은 「인천 → 구마모토」 대신 **ICN-KMJ** 로 짧게 쓴다.
+  //   엠클릭은 한글 지명으로 내려온다(인천·김해·청주 / 구마모토·후쿠오카).
+  var AIRPORT = {
+    '인천': 'ICN', '서울': 'ICN', '김해': 'PUS', '부산': 'PUS', '청주': 'CJJ', '대구': 'TAE', '제주': 'CJU',
+    '구마모토': 'KMJ', '후쿠오카': 'FUK', '나리타': 'NRT', '하네다': 'HND', '오사카': 'KIX', '간사이': 'KIX'
+  };
+  function airportCode(name) {
+    var s = String(name == null ? '' : name).trim();
+    if (!s) return '';
+    if (/^[A-Za-z]{3}$/.test(s)) return s.toUpperCase();   // 이미 코드면 그대로
+    return AIRPORT[s] || s;                                 // 모르는 지명은 원문 유지
+  }
+  // 구간 표기 — 「ICN-KMJ」. 한쪽이 비면 있는 쪽만.
+  function routeCode(from, to) {
+    var a = airportCode(from), b = airportCode(to);
+    return (a && b) ? (a + '-' + b) : (a || b || '');
+  }
+
   // 영문 성명 → {sur, given} 가타카나(성=첫 토큰·관용보정, 명=나머지 토큰 각각 변환 후 결합)
   function nameYomiEn(nameEn) {
     var s = String(nameEn || '').trim();
@@ -772,6 +790,9 @@
     nameYomi: nameYomi,
     romajiToKana: romajiToKana,
     nameYomiEn: nameYomiEn,
+    AIRPORT: AIRPORT,
+    airportCode: airportCode,
+    routeCode: routeCode,
     tagStripSeq: tagStripSeq,
     teamTagN: teamTagN,
     personTagN: personTagN,

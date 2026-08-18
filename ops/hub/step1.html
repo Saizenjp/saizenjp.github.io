@@ -227,8 +227,8 @@
 </div>
 <style>@keyframes runspin{to{transform:rotate(360deg)}}</style>
 
-<script src="../assets/saizen-core.js?v=32"></script>
-<script src="../assets/saizen-ops.js?v=16.6"></script>
+<script src="../assets/saizen-core.js?v=33"></script>
+<script src="../assets/saizen-ops.js?v=16.7"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -263,7 +263,7 @@ const L = {
     codeMatched:n=>`· グループコードxlsxなしでmember_codesから${n}件マッチ`,
     codeMatchFail:'· member_codesマッチ失敗(SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ 会員 ${mem}チーム · 非会員Fプール ${nm}チーム${full?` · プール枯渇 ${full}チーム`:''}`,
-    ghostCleaned:(n)=>`減員による残存 ${n}件を整理`, autoGroup:(n)=>`備考「チーム:…」で ${n}件 自動グループ化(手配書・夕食)`, repFixed:(n)=>`既存グループ ${n}件 の代表を会員に更新`, shizuAuto:(n)=>`志津の宿 未配置 ${n}名を空室へ自動配置`,
+    ghostCleaned:(n)=>`名簿から外れた ${n}件を整理`, paxCleaned:(n)=>`原本名簿の重複 ${n}件を整理`, autoGroup:(n)=>`備考「チーム:…」で ${n}件 自動グループ化(手配書・夕食)`, repFixed:(n)=>`既存グループ ${n}件 の代表を会員に更新`, shizuAuto:(n)=>`志津の宿 未配置 ${n}名を空室へ自動配置`,
     syncCleaned:(months,del)=>`✓ ${months} 残存チーム ${del}個整理 — ファイル基準で最新化`,
     syncKept:n=>`· 残存チーム ${n}個 — データ累積(削除しない)`,
     syncDelFail:'· 残存整理失敗: ',
@@ -305,7 +305,7 @@ const L = {
     codeMatched:n=>`· 그룹코드 xlsx 없이 member_codes에서 ${n}건 매칭`,
     codeMatchFail:'· member_codes 매칭 실패(22번 SQL?): ',
     guestsSummary:(mem,nm,full)=>`  └ 회원 ${mem}팀 · 비회원 F풀 ${nm}팀${full?` · 풀소진 ${full}팀`:''}`,
-    ghostCleaned:(n)=>`인원 감소로 남은 자리 ${n}건 정리`, autoGroup:(n)=>`비고 「팀:…」로 ${n}건 자동 묶기(手配書·夕食)`, repFixed:(n)=>`기존 묶음 ${n}건 대표를 회원으로 교정`, shizuAuto:(n)=>`시즈노야도 미배정 ${n}명을 빈 방에 자동 배정`,
+    ghostCleaned:(n)=>`명단에서 빠진 ${n}건 정리`, paxCleaned:(n)=>`원본 명단 중복 ${n}건 정리`, autoGroup:(n)=>`비고 「팀:…」로 ${n}건 자동 묶기(手配書·夕食)`, repFixed:(n)=>`기존 묶음 ${n}건 대표를 회원으로 교정`, shizuAuto:(n)=>`시즈노야도 미배정 ${n}명을 빈 방에 자동 배정`,
     syncCleaned:(months,del)=>`✓ ${months} 잔존 팀 ${del}개 정리 — 파일 기준 최신화`,
     syncKept:n=>`· 잔존 팀 ${n}개 — 데이터 누적(삭제 안 함)`,
     syncDelFail:'· 잔존 정리 실패: ',
@@ -347,7 +347,7 @@ const L = {
     codeMatched:n=>`· Matched ${n} from member_codes without a group-code xlsx`,
     codeMatchFail:'· member_codes match failed (SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ Members ${mem} teams · Non-member F-pool ${nm} teams${full?` · Pool exhausted ${full} teams`:''}`,
-    ghostCleaned:(n)=>`Cleaned ${n} stale rows from reduced teams`, autoGroup:(n)=>`Auto-grouped ${n} team-group(s) from 「팀:…」 remark`, repFixed:(n)=>`Upgraded rep to member on ${n} existing group(s)`, shizuAuto:(n)=>`Auto-placed ${n} unassigned Shizu guest(s) into empty rooms`,
+    ghostCleaned:(n)=>`Cleaned ${n} rows no longer on the roster`, paxCleaned:(n)=>`Removed ${n} duplicate source-roster rows`, autoGroup:(n)=>`Auto-grouped ${n} team-group(s) from 「팀:…」 remark`, repFixed:(n)=>`Upgraded rep to member on ${n} existing group(s)`, shizuAuto:(n)=>`Auto-placed ${n} unassigned Shizu guest(s) into empty rooms`,
     syncCleaned:(months,del)=>`✓ ${months} cleaned ${del} leftover team(s) — synced to the file`,
     syncKept:n=>`· ${n} leftover team(s) — data accumulated (not deleted)`,
     syncDelFail:'· Leftover cleanup failed: ',
@@ -743,6 +743,28 @@ async function run(){
       });
     });
     stat['passengers'] = await upsertChunked('passengers', paxRows, 'id');
+
+    // ── 원본 명단(passengers) 유령행 정리 ──────────────────────────────────
+    //   엠클릭이 같은 사람에게 **No(pkgPsgrSeq)를 다시 부여**해 내려주는 일이 있다.
+    //   passengers 는 id upsert 라 옛 행이 그대로 남아 명단 수가 부풀었다(#30012382: 4명인데 8행).
+    //   → 이번 파일에 명단이 실린 팀에 한해, 파일에 없는 행을 지운다.
+    //   ⚠ 명단이 0건인 팀은 손대지 않는다(파일 누락 ≠ 취소). FK 는 SET NULL 이라 안전.
+    try{
+      const fileIds={};   // event_seq → Set(id)
+      paxRows.forEach(p=>{ (fileIds[p.event_seq]=fileIds[p.event_seq]||new Set()).add(p.id); });
+      const pxSeqs=Object.keys(fileIds).map(Number);
+      const stale=[];
+      for(let i=0;i<pxSeqs.length;i+=120){ const chunk=pxSeqs.slice(i,i+120);
+        let pg=0;
+        while(true){ const {data,error}=await supa.from('passengers').select('id,event_seq').in('event_seq',chunk).range(pg,pg+999);
+          if(error||!data||!data.length) break;
+          data.forEach(r=>{ const set=fileIds[r.event_seq]; if(set && !set.has(r.id)) stale.push(r.id); });
+          if(data.length<1000) break; pg+=1000; }
+      }
+      let pxDel=0;
+      for(let i=0;i<stale.length;i+=200){ const {data,error}=await supa.from('passengers').delete().in('id',stale.slice(i,i+200)).select('id'); if(!error&&data) pxDel+=data.length; }
+      if(pxDel) log(`✓ ${tx('paxCleaned')(pxDel)}`,'dim');
+    }catch(_){ /* 정리 실패는 임포트를 막지 않음 */ }
     log(`✓ ${t('s1_dyn_log_pax')} ${stat['passengers']}${t('s1_dyn_cases')}`,'ok');
 
     // ── 3) guests (팀 운영 원장) — procMap 기준 ──
@@ -914,10 +936,17 @@ async function run(){
       const list = byTeam[seq].sort((a,b)=>(a.seq_in_team||0)-(b.seq_in_team||0));
       list.forEach((p,idx)=>{
         const num = idx+1;
+        // 신원키 = 이름|생년6 (회원 판정 member_key 와 같은 규칙). 생년이 없으면 구분할 방법이
+        // 없으므로 이름|#자리번호 로 폴백한다. ⚠ 자리번호(seq_in_team)로 사람을 식별하면
+        // 동명이인이 합쳐지고 명단 순서가 바뀔 때 방배정이 남에게 옮겨 붙는다(SQL 112).
+        const _nm=(String(p.name_kr||'').trim())||'무기명';
+        const _bt=String(p.birth_yymmdd||'').trim();
+        const personKey = _bt ? (_nm+'|'+_bt) : (_nm+'|#'+num);
         const pfx = g.accom_prefix||'X';
         const personTag = g.group_code ? `${g.group_code}-${num}${pfx}` : null;  // 회원·비회원 모두 group_code 보유
         gmRows.push({
           event_seq:seq,
+          person_key:personKey,
           passenger_id:p.id,
           person_tag:personTag,
           seq_in_team:num,
@@ -930,44 +959,45 @@ async function run(){
         });
       });
     });
-    stat['guest_members'] = await upsertChunked('guest_members', gmRows, 'event_seq,seq_in_team');
+    // 충돌키 = (event_seq, person_key) — 같은 사람이면 자리번호가 바뀌어도 **같은 행**을 갱신한다.
+    //   → 방배정(rooms.member_id)·골프 조·개인 청구가 그 사람에게 그대로 붙어 있는다.
+    stat['guest_members'] = await upsertChunked('guest_members', gmRows, 'event_seq,person_key');
     log(`✓ ${t('s1_dyn_log_members')} ${stat['guest_members']}${t('s1_dyn_cntPpl')}`,'ok');
 
-    // ── 유령행 청소: 팀 인원이 줄어든 재임포트에서 초과 자리(seq_in_team)만 삭제 ──
-    //   충돌키가 위치(event_seq,seq_in_team)라 upsert는 새 명단 1..N 자리만 덮어씀.
-    //   이전 임포트/수기(File1)로 만든 행의 seq_in_team이 1..N과 어긋나면 재임포트가
-    //   새 자리(1..N)를 삽입하고 옛 행(높은 seq)은 여기서 삭제됨.
-    //   ⚠ rooms.member_id FK는 CASCADE(SET NULL 아님) → 옛 행을 그냥 지우면 그 방배정도
-    //   같이 삭제됨(2번째 멤버 방 소실 버그). 그래서 삭제 전, 방 있는 옛 행의 방을
-    //   같은 사람(passenger_id·이름)의 새 자리로 이전(re-link)해 방배정을 보존한다.
+    // ── 유령행 청소: 이번 파일 명단에 없는 사람 행을 지운다 ─────────────────
+    //   키가 (event_seq, person_key) 로 바뀐 뒤로는 '자리 초과'가 아니라 **사람 기준**이다.
+    //   · 취소된 사람 → 파일에 없으니 여기서 정리된다.
+    //   · 같은 사람이 자리만 바뀐 경우 → upsert 가 같은 행을 갱신하므로 애초에 남지 않는다.
+    //   ⚠ rooms.member_id FK 는 CASCADE 다. 지우기 전에, 같은 사람의 살아남은 행으로
+    //     방배정을 옮긴다(SQL 112 로 `#dup` 로 밀어 둔 옛 중복행이 여기서 정리된다).
     try {
-      const maxNumBySeq = {};
-      gmRows.forEach(g=>{ const s=g.event_seq; if(!maxNumBySeq[s]||g.seq_in_team>maxNumBySeq[s]) maxNumBySeq[s]=g.seq_in_team; });
-      const teamSeqs = Object.keys(maxNumBySeq).map(Number);
-      // ⚡ 성능: 팀마다 개별 쿼리(수백 팀 × 왕복)를 하지 않고, 전체 팀 guest_members를
-      //   벌크로 페이지네이션 조회 → 메모리에서 유령행(seq_in_team>max)만 골라낸다.
-      //   대부분 팀은 유령이 없으므로 삭제·방이전 작업은 극소수에만 발생.
+      const keysBySeq = {};
+      gmRows.forEach(g=>{ (keysBySeq[g.event_seq]=keysBySeq[g.event_seq]||new Set()).add(g.person_key); });
+      const teamSeqs = Object.keys(keysBySeq).map(Number);
+      // ⚡ 팀마다 개별 쿼리 대신 벌크 페이지네이션(수백 팀 × 왕복 방지)
       const allGm = [];
       for(let i=0;i<teamSeqs.length;i+=120){ const chunk=teamSeqs.slice(i,i+120);
         let pg=0;
         while(true){ const {data,error}=await supa.from('guest_members')
-            .select('id,event_seq,seq_in_team,passenger_id,name_kr').in('event_seq',chunk).range(pg,pg+999);
+            .select('id,event_seq,seq_in_team,person_key,passenger_id,name_kr').in('event_seq',chunk).range(pg,pg+999);
           if(error||!data||!data.length) break; allGm.push(...data); if(data.length<1000) break; pg+=1000; }
       }
-      // 팀별 생존자(1..max) 매핑(같은 사람 방 이전용) + 유령(초과 자리) 목록
+      const baseKey = k => String(k||'').split('#dup')[0];
+      // 살아남는 행(= 이번 파일에 있는 사람) 색인 — 방 이전 대상 찾기용
       const survByTeam={};
-      allGm.forEach(r=>{ if(r.seq_in_team<=(maxNumBySeq[r.event_seq]||0)){
-        const tt=(survByTeam[r.event_seq]=survByTeam[r.event_seq]||{byPid:{},byName:{}});
-        if(r.passenger_id!=null) tt.byPid[r.passenger_id]=r.id; if(r.name_kr) tt.byName[r.name_kr]=r.id; } });
-      const ghosts = allGm.filter(r=> r.seq_in_team>(maxNumBySeq[r.event_seq]||0));
+      allGm.forEach(r=>{ if((keysBySeq[r.event_seq]||new Set()).has(r.person_key)){
+        const tt=(survByTeam[r.event_seq]=survByTeam[r.event_seq]||{byKey:{},byPid:{},byName:{}});
+        tt.byKey[baseKey(r.person_key)]=r.id;
+        if(r.passenger_id!=null) tt.byPid[r.passenger_id]=r.id;
+        if(r.name_kr) tt.byName[r.name_kr]=r.id; } });
+      const ghosts = allGm.filter(r=> !(keysBySeq[r.event_seq]||new Set()).has(r.person_key));
       let ghost=0, relinked=0;
-      // 방 있는 유령행 → 같은 사람 새 자리로 방 이전(re-link) 후 삭제(방배정 보존)
-      //   ⚠ rooms.member_id FK는 CASCADE라 그냥 지우면 방배정 소실 → 이전 먼저.
-      for(const o of ghosts){ const surv=survByTeam[o.event_seq]||{byPid:{},byName:{}};
-        const newId=(o.passenger_id!=null && surv.byPid[o.passenger_id]) || (o.name_kr && surv.byName[o.name_kr]);
-        if(newId && newId!==o.id){ try{ const {data:mv}=await supa.from('rooms').update({member_id:newId}).eq('member_id',o.id).select('id'); if(mv) relinked+=mv.length; }catch(_){} }
+      for(const o of ghosts){ const surv=survByTeam[o.event_seq]||{byKey:{},byPid:{},byName:{}};
+        const newId = surv.byKey[baseKey(o.person_key)]
+                   || (o.passenger_id!=null && surv.byPid[o.passenger_id])
+                   || (o.name_kr && surv.byName[o.name_kr]);
+        if(newId && newId!==o.id){ try{ const {data:mv}=await supa.from('rooms').update({member_id:newId}).eq('member_id',o.id).select('id'); if(mv) relinked+=mv.length; }catch(_){}}
       }
-      // 유령행 벌크 삭제(200개씩)
       const ghostIds=ghosts.map(g=>g.id);
       for(let i=0;i<ghostIds.length;i+=200){ const {data,error}=await supa.from('guest_members').delete().in('id',ghostIds.slice(i,i+200)).select('id'); if(!error&&data) ghost+=data.length; }
       if(ghost) log(`✓ ${t('s1_dyn_log_members')} ${tx('ghostCleaned')(ghost)}${relinked?` (방 ${relinked}건 보존)`:''}`,'dim');

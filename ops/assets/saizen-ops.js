@@ -1150,8 +1150,11 @@
 
   // ── 손님 이름 표기 — 일본어 화면에서는 한글 이름을 **가타카나**로 보여준다.
   //   현장은 일본어로 돌아가는데 명단만 한글이면 일본인 담당자가 읽지 못한다.
-  //   요미는 **여권 영문 철자 우선**(SZCore.nameYomiEn) — 한글 발음 기반보다 실제 표기에 가깝다.
-  //   영문이 없으면 한글에서 변환(SZCore.nameYomi). 한국어·영어 화면은 한글 그대로.
+  //   판정 규칙은 **現地手配書(dispatch.html)와 동일**하다 — 여권 영문 철자가 있으면 그것으로
+  //   요미를 만들고(SZCore.nameYomiEn), 없을 때만 한글 발음으로 폴백(SZCore.nameYomi).
+  //   예: 강병욱 KANG BYONG UK → カン ビョンウク (한글기반 ピョン 이 아니라 영문 유성음 b→ビョン)
+  //   手配書는 姓/名 칸이 따로라 두 칸에 나눠 찍고, 화면은 한 줄이라 **사이를 띄워** 같은 구분을 보인다.
+  //   한국어·영어 화면은 한글 그대로.
   //   ⚠ 표시 전용 — 저장값(name_kr)은 건드리지 않는다. 검색은 원문(한글·영문)으로 계속 걸린다.
   var _pnCache = {};
   function personName(nameKr, nameEn) {
@@ -1166,7 +1169,8 @@
       if (en && C && C.nameYomiEn) y = C.nameYomiEn(en);
       else if (kr && C && C.nameYomi) y = C.nameYomi(kr);
     } catch (e) { y = null; }
-    var out = (y && (y.sur || y.given)) ? (y.sur + y.given) : (kr || en);
+    // 現地手配書와 같은 규칙·같은 구분 — 姓/名 을 나눠 읽는다(手配書는 칸이 따로, 화면은 사이를 띄운다).
+    var out = (y && (y.sur || y.given)) ? ((y.sur && y.given) ? (y.sur + ' ' + y.given) : (y.sur || y.given)) : (kr || en);
     return (_pnCache[key] = out);
   }
   global.__so_pname = personName;
@@ -1780,7 +1784,14 @@
   }
 
   // ── 사이트 제공자 표기(흐린 푸터) — 전 ops 페이지 공통 ──
+  // 제공자 표기 푸터 — **홈(랜딩)에만** 둔다.
+  //   실무 화면(배정·정산·주문 등)은 아래까지 목록이 이어지는데 푸터가 내용을 가린다(Min 2026-08).
+  function isLandingPage() {
+    var p = String(location.pathname || '');
+    return /\/ops\/?$/.test(p) || /\/ops\/index\.html$/.test(p) || /^\/?index\.html$/.test(p);
+  }
   function mountFooter() {
+    if (!isLandingPage()) return;
     if (document.querySelector('.so-footer')) return;
     var f = document.createElement('footer');
     f.className = 'so-footer';
