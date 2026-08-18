@@ -275,7 +275,9 @@ const L={
     mCash:'現金', mCard:'カード',
     foldAdd:'＋ 手入力で請求を追加(ラウンド追加・ルームチャージ・返金調整)', foldPay:'＋ 手入力で入金を記録',
     thPayMethod:'決済', pmUnset:'未定', pmBulkHint:'各件を現金/カードで選択 →', allCash:'全部現金', allCard:'全部カード',
-    settleAutoBtn:'💰 精算締め(自動決済)', needAllMethod:'未定の請求あり — 全件に現金/カードを指定してください', settledDone:'締めました(精算完了)',
+    settleAutoBtn:'💰 精算締め(自動決済)',
+    settleAlreadyPaid:v=>`すでに ${v} を受け取り済みです。入金は追加せず、この会計を締めます。よろしいですか？`,
+    settleOverpaid:v=>`過入金 ${v} があります。入金は追加せず、この会計を締めます。よろしいですか？`, needAllMethod:'未定の請求あり — 全件に現金/カードを指定してください', settledDone:'締めました(精算完了)',
     settleConfirm:'この内容で締めますか?(現金/カード決済を自動作成)', saveFail:'保存失敗',
     refundHint:'💡 払戻し/調整は単価にマイナス金額を入力(同じ手段で相殺されます)' },
   ko:{ dayLbl:'날짜', monthAll:'월 전체', monthAllTitle:'이 달 전체 팀 보기', searchPh:'이름·호수·대표자·그룹코드 검색',
@@ -309,7 +311,9 @@ const L={
     mCash:'현금', mCard:'카드',
     foldAdd:'＋ 수기로 청구 추가(라운딩 추가·룸차지·환불 조정)', foldPay:'＋ 수기로 결제 기록',
     thPayMethod:'결제', pmUnset:'미정', pmBulkHint:'각 건을 현금/카드로 선택 →', allCash:'전부 현금', allCard:'전부 카드',
-    settleAutoBtn:'💰 정산 마감(자동결제)', needAllMethod:'미정 청구가 있습니다 — 전 건에 현금/카드를 지정하세요', settledDone:'마감했습니다(결제완료)',
+    settleAutoBtn:'💰 정산 마감(자동결제)',
+    settleAlreadyPaid:v=>`이미 ${v} 을(를) 받았습니다. 결제를 더 만들지 않고 이 회계를 마감합니다. 진행할까요?`,
+    settleOverpaid:v=>`과오납 ${v} 이(가) 있습니다. 결제를 더 만들지 않고 마감합니다. 진행할까요?`, needAllMethod:'미정 청구가 있습니다 — 전 건에 현금/카드를 지정하세요', settledDone:'마감했습니다(결제완료)',
     settleConfirm:'이대로 마감할까요?(현금/카드 결제 자동 생성)', saveFail:'저장 실패',
     refundHint:'💡 환불/조정은 단가에 마이너스 금액 입력(같은 수단으로 상계됩니다)' },
   en:{ dayLbl:'Date', monthAll:'Whole month', monthAllTitle:'Show all teams this month', searchPh:'Search name / room / rep / group code',
@@ -343,7 +347,9 @@ const L={
     mCash:'Cash', mCard:'Card',
     foldAdd:'＋ Add a charge manually (extra round, room charge, refund)', foldPay:'＋ Record a payment manually',
     thPayMethod:'Pay', pmUnset:'Unset', pmBulkHint:'Tag each charge cash/card →', allCash:'All cash', allCard:'All card',
-    settleAutoBtn:'💰 Settle (auto-pay)', needAllMethod:'Some charges have no method — set cash/card on all', settledDone:'Settled',
+    settleAutoBtn:'💰 Settle (auto-pay)',
+    settleAlreadyPaid:v=>`${v} has already been received. Closing this folio without adding a payment. Continue?`,
+    settleOverpaid:v=>`Overpaid by ${v}. Closing this folio without adding a payment. Continue?`, needAllMethod:'Some charges have no method — set cash/card on all', settledDone:'Settled',
     settleConfirm:'Settle now? (auto-creates cash/card payments)', saveFail:'Save failed',
     refundHint:'💡 Refund/adjust: enter a negative unit price (offset by the same method)' }
 };
@@ -846,19 +852,41 @@ async function bulkPay(method){
 async function settleClose(f){
   const chs=state.charges.filter(c=>!c.voided);
   if(!chs.length){ toast(tx('noCharges'),'warn'); return; }
-  const unset=chs.filter(c=>!c.pay_method);
-  if(unset.length){ toast(tx('needAllMethod')+` (${unset.length})`,'warn'); return; }
   const tot=c=>Number(c.amount||0)+Number(c.tax||0)+Number(c.service_charge||0);
-  let cash=0,card=0; chs.forEach(c=>{ if(c.pay_method==='현금')cash+=tot(c); else if(c.pay_method==='카드')card+=tot(c); });
   const pays=state.payments.filter(p=>!p.voided);
-  const paidCash=pays.filter(p=>p.method==='현금').reduce((s,p)=>s+Number(p.amount||0),0);
-  const paidCard=pays.filter(p=>p.method==='카드').reduce((s,p)=>s+Number(p.amount||0),0);
-  const addCash=Math.round(cash-paidCash), addCard=Math.round(card-paidCard);
-  if(!confirm(`${tx('settleConfirm')}\n${tx('mCash')}: ${yen(addCash)} / ${tx('mCard')}: ${yen(addCard)}`)) return;
+  const gross=Math.round(chs.reduce((s,c)=>s+tot(c),0));
+  const paid =Math.round(pays.reduce((s,p)=>s+Number(p.amount||0),0));
+  const rest =gross-paid;                       // 아직 못 받은 금액
   const u=(window.__so_getUser&&__so_getUser())||null;
   const rows=[];
-  if(addCash!==0) rows.push({folio_id:f.folio_id, method:'현금', amount:addCash, received_by:u});
-  if(addCard!==0) rows.push({folio_id:f.folio_id, method:'카드', amount:addCard, received_by:u});
+
+  if(rest>0){
+    // 남은 잔액을 받는다 — 줄마다 지정한 현금/카드 기준으로 나눈다.
+    const unset=chs.filter(c=>!c.pay_method);
+    if(unset.length){ toast(tx('needAllMethod')+` (${unset.length})`,'warn'); return; }
+    let cash=0,card=0;
+    chs.forEach(c=>{ if(c.pay_method==='현금')cash+=tot(c); else if(c.pay_method==='카드')card+=tot(c); });
+    const paidCash=pays.filter(p=>p.method==='현금').reduce((s,p)=>s+Number(p.amount||0),0);
+    const paidCard=pays.filter(p=>p.method==='카드').reduce((s,p)=>s+Number(p.amount||0),0);
+    // ⚠ 이미 받은 금액을 되돌리는 **음수 결제는 만들지 않는다**(부분 결제를 섞으면 예전엔 음수가 나와
+    //   현금/카드 집계가 뒤집혔다 — 카드 매출 통계가 틀어진다).
+    let addCash=Math.max(0,Math.round(cash-paidCash));
+    let addCard=Math.max(0,Math.round(card-paidCard));
+    // 합이 남은 잔액과 어긋나면(부분 결제를 미리 받은 경우) **잔액에 맞춘다** — 과오납·이중청구 방지.
+    const sum=addCash+addCard;
+    if(sum!==rest){
+      if(sum<=0){ addCard=rest; addCash=0; }
+      else { addCash=Math.round(rest*addCash/sum); addCard=rest-addCash; }
+    }
+    if(!confirm(`${tx('settleConfirm')}\n${tx('mCash')}: ${yen(addCash)} / ${tx('mCard')}: ${yen(addCard)}`)) return;
+    if(addCash>0) rows.push({folio_id:f.folio_id, method:'현금', amount:addCash, received_by:u});
+    if(addCard>0) rows.push({folio_id:f.folio_id, method:'카드', amount:addCard, received_by:u});
+  } else {
+    // 이미 다 받았다(부분 결제를 나눠 받은 경우 포함) → **결제를 더 만들지 않고 마감만** 한다.
+    const msg = rest<0 ? tx('settleOverpaid')(yen(-rest)) : tx('settleAlreadyPaid')(yen(paid));
+    if(!confirm(msg)) return;
+  }
+
   try{
     if(rows.length){ const {error}=await supa.from('payments').insert(rows); if(error)throw error; }
     const {error:e2}=await supa.from('folios').update({status:'settled',closed_at:new Date().toISOString()}).eq('id',f.folio_id);
@@ -867,7 +895,6 @@ async function settleClose(f){
     await refreshAfterChange(f.folio_id);
   }catch(e){ toast(tx('statusChangeFail')+': '+e.message,'err'); }
 }
-
 // folio 목록 잔액 갱신 + 현재 상세 재로딩
 async function refreshAfterChange(folioId){
   const fres=await pagedQuery(()=>supa.from('v_folio_balance').select('*').eq('session_ym',state.ym).order('opened_at').order('folio_id'));
