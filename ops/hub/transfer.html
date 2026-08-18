@@ -133,7 +133,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=33"></script>
-<script src="../assets/saizen-ops.js?v=17.3"></script>
+<script src="../assets/saizen-ops.js?v=17.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -206,16 +206,24 @@ function tx(k,...a){ const d=L[lang()]||L.ja; let v=d[k]; if(v===undefined) v=L.
 //  시각은 현장 기준 기본값 — 바뀌면 여기만 고치면 된다.
 const YAMANAMI='야마나미리조트';
 //  ⚠ 시각은 **적지 않는다**(Min 2026-08) — 체류중 송영은 그날 상황에 맞춰 움직인다.
-//    구간(아침 숙소→야마나미 / 저녁 야마나미→숙소)만 잡아 두고 시각 칸은 비운다.
+//    구간(아침 숙소→라운딩장 / 저녁 라운딩장→숙소)만 잡아 두고 시각 칸은 비운다.
+//  golf:'any'  = 라운딩이 있는 날이면 코스가 어디든 그 코스로 왕복(간지호텔 — 평일은 구주고원)
+//  golf:'yama' = 야마나미CC 라운딩이 있는 날만
+//  golf:'none' = 라운딩과 무관하게 매일(쿠주힐즈)
+const KUJU_CC='구주고원CC';
 const STAY_PLAN={
-  '간지호텔':      { am:'', pm:'', golfOnly:true  },
-  '시즈노야도 료칸':{ am:'', pm:'', golfOnly:true  },
-  '쿠주힐즈':      { am:'', pm:'', golfOnly:false }
+  '간지호텔':      { golf:'any'  },
+  '시즈노야도 료칸':{ golf:'yama' },
+  '쿠주힐즈':      { golf:'none' }
 };
 function korPort(r){ const v=(r.dir==='in')?r.from:r.to; return (window.SZCore&&SZCore.airportCode)?SZCore.airportCode(v):(v||''); }
 // 인쇄물(직원용)은 일본어 우선 — 숙소명도 일본어 표기로 낸다(Min 2026-08).
-function accomJa(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,'ja'):(a||''); }
-function accomKo(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,'ko'):(a||''); }
+// 숙소가 아닌 목적지(골프장)도 같은 표기 규칙으로 낸다.
+const PLACE_JA={ '구주고원CC':'九重高原CC' };
+function accomJa(a){ const k=String(a||'').trim(); if(PLACE_JA[k]) return PLACE_JA[k];
+  return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,'ja'):(a||''); }
+function accomKo(a){ const k=String(a||'').trim(); if(PLACE_JA[k]) return k;
+  return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,'ko'):(a||''); }
 // 인쇄물은 **한·일 병기**가 기본(Min 표기 원칙) — 일본어를 크게, 한국어를 작게 아래에.
 // 숙소 구분 색 — 네임택·航空カバー와 **같은 색**을 쓴다(현장이 색으로 숙소를 구분한다).
 //   Y 야마나미=검정 · K 쿠주힐즈=보라 · G 간지호텔=초록 · S 시즈노야도=갈색
@@ -346,13 +354,18 @@ async function load(){
         if(plan){
           const p0=list[0]||{};
           const isPus=(window.SZCore&&SZCore.isPus)?SZCore.isPus(p0.origin,p0.dep_flight):false;
-          const golfHere=(window.SZCore&&SZCore.usesYamanamiCC)
-            ? SZCore.usesYamanamiCC({dep:b.dep_date,arr:b.arr_date,accom:g.accom},isPus,DATE) : true;
-          if(!plan.golfOnly || golfHere){
+          // 그날 라운딩 코스 — 간지호텔 팀은 평일 구주고원, 주말·공휴일은 야마나미(SZCore.golfRows)
+          let gr=null;
+          try{ gr=(SZCore.golfRows({dep:b.dep_date,arr:b.arr_date,accom:g.accom},isPus)||[])
+                 .find(x=>x.date===DATE) || null; }catch(_){ gr=null; }
+          const yama = !gr || gr.course==='やまなみCC';
+          const go = plan.golf==='none' ? true : (plan.golf==='yama' ? (!!gr && yama) : !!gr);
+          if(go){
+            const dest = yama ? YAMANAMI : KUJU_CC;   // 라운딩장 = 야마나미 또는 구주고원
             const base={seq:b.event_seq, no:b.event_no||b.event_seq, tag, rep:b.rep_name||'',
               accom:g.accom||'', pax:Number(b.pax)||0, flight:''};
-            rows.push({dir:'stay', leg:'am', time:plan.am, from:g.accom, to:YAMANAMI, ...base});
-            rows.push({dir:'stay', leg:'pm', time:plan.pm, from:YAMANAMI, to:g.accom, ...base});
+            rows.push({dir:'stay', leg:'am', time:'', from:g.accom, to:dest, ...base});
+            rows.push({dir:'stay', leg:'pm', time:'', from:dest, to:g.accom, ...base});
           }
         }
       }
