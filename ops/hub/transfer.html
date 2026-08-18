@@ -133,7 +133,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=33"></script>
-<script src="../assets/saizen-ops.js?v=17.1"></script>
+<script src="../assets/saizen-ops.js?v=17.2"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -219,8 +219,21 @@ const STAY_PLAN={
 function korPort(r){ const v=(r.dir==='in')?r.from:r.to; return (window.SZCore&&SZCore.airportCode)?SZCore.airportCode(v):(v||''); }
 // 인쇄물(직원용)은 일본어 우선 — 숙소명도 일본어 표기로 낸다(Min 2026-08).
 function accomJa(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,'ja'):(a||''); }
+function accomKo(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,'ko'):(a||''); }
+// 인쇄물은 **한·일 병기**가 기본(Min 표기 원칙) — 일본어를 크게, 한국어를 작게 아래에.
+// 숙소 구분 색 — 네임택·航空カバー와 **같은 색**을 쓴다(현장이 색으로 숙소를 구분한다).
+//   Y 야마나미=검정 · K 쿠주힐즈=보라 · G 간지호텔=초록 · S 시즈노야도=갈색
+const ACCOM_COLOR={ '야마나미리조트':'#000000', '쿠주힐즈':'#5B21B6', '간지호텔':'#065F46',
+                    '시즈노야도 료칸':'#92400E', '시즈노야도':'#92400E' };
+function accomColor(a){ return ACCOM_COLOR[String(a||'').trim()]||'#1A2540'; }
+function accomBoth(a){ const j=accomJa(a), k=accomKo(a); if(!j&&!k) return '-';
+  const c=accomColor(a);
+  return `<span style="color:${c};font-weight:800">${esc(j||k)}</span>`+(k&&k!==j?`<br><i style="color:${c}">${esc(k)}</i>`:''); }
+function accomPair(a){ const j=accomJa(a), k=accomKo(a); return (k&&k!==j)?(j+' / '+k):(j||k||'-'); }
 // 체류중 왕복은 공항이 아니라 숙소↔야마나미 구간이라 공항코드 대신 숙소명을 쓴다.
 function routeOf(g){ return g.dir==='stay' ? (accomJa(g.from)+' → '+accomJa(g.to)) : route(g.from,g.to); }
+// 인쇄용 구간 — 체류중은 숙소 한·일 병기, 도착·출발은 공항코드
+function routePrint(g){ return g.dir==='stay' ? (accomPair(g.from)+' → '+accomPair(g.to)) : route(g.from,g.to); }
 function route(from,to){ return (window.SZCore&&SZCore.routeCode)?SZCore.routeCode(from,to):[from,to].filter(Boolean).join('-'); }
 function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,lang()):(a||''); }
 
@@ -244,7 +257,7 @@ function meetKey(g){
   if(g.dir==='stay') return (g.leg==='pm') ? (g.to||'') : (g.from||'');
   const r=g.rows&&g.rows[0]; return r?korPort(r):'';
 }
-function meetLabel(k){ return /[가-힣]/.test(String(k||'')) ? (accomJa(k)||k) : (k||'-'); }
+function meetLabel(k){ return /[가-힣]/.test(String(k||'')) ? (accomPair(k)||k) : (k||'-'); }
 // [{dir, meet, gs:[…]}] — 구분(도착·체류·출발) → 만나는 곳 순서
 function printPages(groups){
   const ord={in:0,stay:1,out:2}, out=[], idx={};
@@ -604,7 +617,7 @@ function printSheet(){
       <div class="sec-h">${title}<span>${teams}チーム / ${pax}名</span></div>
       ${gs.map(g=>`<div class="fl-h"><b>${esc(g.dir==='stay'?(g.leg==='pm'?'夕 / 저녁':'朝 / 아침'):(g.flight||'-'))}</b>
           <span class="t">${esc(g.time||'--:--')}</span>
-          <span class="r">${esc(routeOf(g)||'-')}</span>
+          <span class="r">${esc(routePrint(g)||'-')}</span>
           <span class="n">${g.teams}チーム / ${g.pax}名</span></div>
         <table class="pt"><thead><tr>
           <th class="c">コード<br><i>코드</i></th><th class="c">代表者<br><i>대표자</i></th>
@@ -613,7 +626,7 @@ function printSheet(){
         </tr></thead><tbody>
         ${g.rows.map(r=>`<tr>
           <td class="code">${esc(r.tag)}</td><td>${esc(r.rep||'-')}</td>
-          <td class="n pax">${r.pax}</td><td>${esc(accomJa(r.accom)||'-')}</td>
+          <td class="n pax">${r.pax}</td><td class="ac">${accomBoth(r.accom)}</td>
           <td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td><td></td>
         </tr>`).join('')}
         <tr class="sub"><td colspan="2">小計 / 소계</td><td class="n pax">${g.pax}</td><td></td><td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td><td></td></tr>
@@ -639,7 +652,8 @@ function printSheet(){
   const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>送迎表_${DATE}</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:'Yu Gothic','Meiryo','Malgun Gothic',sans-serif;background:#e9eaec;color:#111}
+  body{font-family:'Yu Gothic','Meiryo','Malgun Gothic',sans-serif;background:#e9eaec;color:#111;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
   .bar{position:sticky;top:0;display:flex;gap:12px;align-items:center;background:#333;color:#fff;padding:10px 16px;z-index:9}
   .bar h1{font-size:14px}.bar .meta{font-size:11px;opacity:.85}
   .bar button{background:#fff;color:#333;border:none;border-radius:5px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer}
@@ -668,6 +682,8 @@ function printSheet(){
   table.pt td.n,table.pt th.n{text-align:center;white-space:nowrap}
   table.pt th.memo{width:26mm}
   table.pt td.code{font-family:Consolas,monospace;font-weight:800;font-size:12pt}
+  table.pt td.ac{font-size:11pt;line-height:1.25}
+  table.pt td.ac i{font-style:normal;font-size:8.5pt;color:#444}
   table.pt td.pax{font-weight:800;font-size:13pt}
   table.pt tr.sub td{background:#f6f6f6;font-weight:800}
   .box{display:inline-block;width:7mm;height:7mm;border:1pt solid #111}
@@ -699,11 +715,8 @@ function printMeet(){
   const secTitle=p=>({in:'到着 ミーティング <i>도착 미팅 · 공항에서 맞이</i>',
                       stay:'滞在中 送迎 <i>체류중 · 숙소↔야마나미 왕복</i>',
                       out:'出発 サンディング <i>출발 샌딩 · 공항으로 배웅</i>'}[p.dir]||'');
-  const namesOf=(seq,pax)=>{
-    const l=MEM[seq]||[];
-    if(!l.length) return '<span class="dim">名簿未登録 / 명단 미등록</span>';
-    return l.map(m=>esc(pn(m.kr,m.en)||'-')).join(' · ');
-  };
+  // 종이에서는 **다 모였는지(인원 수)만** 본다 — 이름 나열은 넣지 않는다(Min 2026-08).
+  //   이름은 태블릿 화면에서 사람마다 눌러 확인한다.
   const sec=(page,title)=>{
     const gs=page.gs; if(!gs.length) return '';
     const dir=page.dir;
@@ -714,19 +727,21 @@ function printMeet(){
         const lab = g.dir==='stay' ? (g.leg==='pm'?'夕 / 저녁':'朝 / 아침') : (g.flight||'-');
         return `<div class="fl-h"><b>${esc(lab)}</b>
           <span class="t">${esc(g.time||'--:--')}</span>
-          <span class="r">${esc(routeOf(g)||'-')}</span>
+          <span class="r">${esc(routePrint(g)||'-')}</span>
           <span class="n">${g.teams}チーム / ${g.pax}名</span></div>
         <table class="pt"><thead><tr>
           <th class="c code">コード<br><i>코드</i></th><th class="c rep">代表者<br><i>대표자</i></th>
-          <th class="c n">人数<br><i>인원</i></th><th>名簿 / 명단</th>
+          <th>宿泊施設<br><i>숙소</i></th>
+          <th class="c n">人数<br><i>인원</i></th>
           <th class="c n">確認<br><i>확인</i></th><th class="c n">実人数<br><i>실인원</i></th>
         </tr></thead><tbody>
         ${g.rows.map(r=>`<tr>
           <td class="code">${esc(r.tag)}</td><td>${esc(pn(r.rep,''))}</td>
-          <td class="n pax">${r.pax}</td><td class="nm">${namesOf(r.seq,r.pax)}</td>
+          <td class="ac">${accomBoth(r.accom)}</td>
+          <td class="n pax">${r.pax}</td>
           <td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td>
         </tr>`).join('')}
-        <tr class="sub"><td colspan="2">小計 / 소계</td><td class="n pax">${g.pax}</td><td></td>
+        <tr class="sub"><td colspan="3">小計 / 소계</td><td class="n pax">${g.pax}</td>
           <td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td></tr>
         </tbody></table>`; }).join('')}
     </div>`;
@@ -734,7 +749,8 @@ function printMeet(){
   const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>送迎名簿_${DATE}</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:'Yu Gothic','Meiryo','Malgun Gothic',sans-serif;background:#e9eaec;color:#111}
+  body{font-family:'Yu Gothic','Meiryo','Malgun Gothic',sans-serif;background:#e9eaec;color:#111;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
   .bar{position:sticky;top:0;display:flex;gap:12px;align-items:center;background:#333;color:#fff;padding:10px 16px;z-index:9}
   .bar h1{font-size:14px}.bar .meta{font-size:11px;opacity:.85}
   .bar button{background:#fff;color:#333;border:none;border-radius:5px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer}
@@ -764,8 +780,8 @@ function printMeet(){
   table.pt th.code{width:20mm} table.pt th.rep{width:24mm}
   table.pt td.code{font-family:Consolas,monospace;font-weight:800;font-size:11pt}
   table.pt td.pax{font-weight:800;font-size:12pt}
-  table.pt td.nm{font-size:10pt;line-height:1.35}
-  table.pt td.nm .dim{color:#777}
+  table.pt td.ac{font-size:10.5pt;line-height:1.25}
+  table.pt td.ac i{font-style:normal;font-size:8.5pt;color:#444}
   table.pt tr.sub td{background:#f6f6f6;font-weight:800}
   .box{display:inline-block;width:6.5mm;height:6.5mm;border:1pt solid #111}
   .fill{display:inline-block;width:12mm;border-bottom:0.8pt solid #111;height:5mm}
@@ -785,8 +801,8 @@ function printMeet(){
       <div class="date">${DATE} ${mdw(DATE)} · ${esc(meetLabel(p.meet))}</div></div>
     <div class="staff"><div><b>担当者 / 담당자</b></div><div><b>集合場所 / 집합 장소</b></div><div><b>連絡先 / 연락처</b></div></div>
     ${sec(p, secTitle(p))}
-    <div class="note">※ 名前を呼んで<b>全員そろったか</b>だけ確認し、□にチェック。人数が違えば「実人数」に記入してフロントへ連絡。
-      / 이름을 부르고 <b>다 모였는지만</b> 확인해 □에 체크하세요. 인원이 다르면 「실인원」에 적고 프론트로 연락합니다.</div>
+    <div class="note">※ <b>人数だけ</b>確認して□にチェック。人数が違えば「実人数」に記入してフロントへ連絡。お名前はタブレットで確認します。
+      / <b>인원 수만</b> 확인해 □에 체크하세요. 인원이 다르면 「실인원」에 적고 프론트로 연락합니다. 이름은 태블릿에서 확인합니다.</div>
     <div class="foot"><div>確認者 / 확인자</div><div>フロント確認 / 프론트 확인</div></div>
   </div>`).join('')}
 </body></html>`;

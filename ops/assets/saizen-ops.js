@@ -372,6 +372,7 @@
       me_code: 'コード',
       me_nameJa: r('日本語名','にほんごめい'),
       me_nameKo: r('韓国語名','かんこくごめい'),
+      so_auditH: '🕘 変更履歴 — 誰が·いつ·何を変えたか',
       me_cat: r('区分','くぶん'),
       me_grp: r('大分類','だいぶんるい'),
       me_sub: r('小分類','しょうぶんるい'),
@@ -718,6 +719,7 @@
       me_code: '코드',
       me_nameJa: '일본어명',
       me_nameKo: '한국어명',
+      so_auditH: '🕘 변경 이력 — 누가·언제·무엇을 바꿨는지',
       me_cat: '정산 구분',
       me_grp: '큰 구분',
       me_sub: '소분류',
@@ -1068,6 +1070,7 @@
       me_code: 'Code',
       me_nameJa: 'Name (JA)',
       me_nameKo: 'Name (KO)',
+      so_auditH: '🕘 Change history — who changed what, when',
       me_cat: 'Billing category',
       me_grp: 'Group',
       me_sub: 'Sub',
@@ -1581,7 +1584,7 @@
     det.className = 'so-audit';
     det.setAttribute('data-audit-tables', tables);
     det.setAttribute('data-audit-auto', '1');
-    det.innerHTML = '<summary>🕘 변경 이력 — 누가·언제·무엇을 바꿨는지</summary><div class="so-audit-body"></div>';
+    det.innerHTML = '<summary data-i18n="so_auditH"></summary><div class="so-audit-body"></div>';
     host.appendChild(det);
     bindAudit(null);
   }
