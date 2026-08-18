@@ -373,6 +373,8 @@
       me_nameJa: r('日本語名','にほんごめい'),
       me_nameKo: r('韓国語名','かんこくごめい'),
       me_cat: r('区分','くぶん'),
+      me_grp: r('大分類','だいぶんるい'),
+      me_sub: r('小分類','しょうぶんるい'),
       me_venue: r('場所','ばしょ'),
       me_station: 'station',
       me_price: r('単価','たんか')+'(¥)',
@@ -716,7 +718,9 @@
       me_code: '코드',
       me_nameJa: '일본어명',
       me_nameKo: '한국어명',
-      me_cat: '구분',
+      me_cat: '정산 구분',
+      me_grp: '큰 구분',
+      me_sub: '소분류',
       me_venue: '장소',
       me_station: 'station',
       me_price: '단가(¥)',
@@ -1064,7 +1068,9 @@
       me_code: 'Code',
       me_nameJa: 'Name (JA)',
       me_nameKo: 'Name (KO)',
-      me_cat: 'Category',
+      me_cat: 'Billing category',
+      me_grp: 'Group',
+      me_sub: 'Sub',
       me_venue: 'Venue',
       me_station: 'station',
       me_price: 'Price (¥)',
@@ -1164,6 +1170,44 @@
     return (_pnCache[key] = out);
   }
   global.__so_pname = personName;
+
+  // ── 하드웨어 QR 스캐너(HID 키보드 모드) 전역 입력 ────────────────────────────
+  //   시중의 2D 바코드 스캐너는 USB 를 꽂으면 '키보드'로 인식되어, 읽은 문자열을
+  //   글자 입력으로 흘려보내고 끝에 Enter 를 붙인다. 따로 드라이버·연동 코드가 필요 없다.
+  //   사람 타이핑과 구분: 사람은 8자 이상을 글자당 50ms 미만으로 연속 입력하지 못한다.
+  //   ⚠ 스캐너가 없어도 토큰을 키보드로 치고 Enter 를 누르면 같은 경로로 동작(검증 가능).
+  //   cb(raw) 로 읽은 문자열을 넘긴다. 페이지마다 무엇을 열지는 cb 가 정한다.
+  global.__so_hidScan = function (cb, opt) {
+    var MAXGAP = (opt && opt.maxGap) || 50, MINLEN = (opt && opt.minLen) || 8;
+    var buf = '', last = 0, el = null, prev = '';
+    function reset() { buf = ''; el = null; prev = ''; }
+    document.addEventListener('keydown', function (e) {
+      var now = Date.now();
+      if (e.key === 'Enter') {
+        var fast = buf.length >= MINLEN && (now - last) <= MAXGAP;
+        if (fast) {
+          var raw = buf;
+          // 스캔 문자가 입력칸에 섞였으면 원래 값으로 되돌린다(검색창에 토큰이 남지 않게)
+          if (el && 'value' in el) { try { el.value = prev; el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {} }
+          reset(); e.preventDefault();
+          try { cb(raw); } catch (_) {}
+        } else reset();
+        return;
+      }
+      if (e.key.length !== 1) return;      // 제어키 무시
+      if (now - last > MAXGAP) {           // 간격이 벌어지면 새 버스트 시작
+        buf = ''; el = document.activeElement || null;
+        prev = (el && 'value' in el) ? el.value : '';
+      }
+      buf += e.key; last = now;
+    });
+  };
+  // QR 값(청구서 URL 또는 raw 토큰) → 토큰 문자열
+  global.__so_qrToken = function (raw) {
+    var t = String(raw == null ? '' : raw).trim();
+    var m = t.match(/[?&]t=([^&\s]+)/);
+    return m ? decodeURIComponent(m[1]) : t;
+  };
 
   // ── 담당자(식별 라벨) — 모든 ops 페이지 상단바에 주입. 수정이력 기록용.
   //    로그인 세션이 있으면 그 이름(가입 시 입력)을 우선 사용 → 로그인=담당자 통합.

@@ -160,10 +160,10 @@
         <table class="menu" id="menu-table">
         <thead><tr>
           <th data-i18n="me_code"></th><th data-i18n="me_nameJa"></th><th data-i18n="me_nameKo"></th>
-          <th data-i18n="me_cat"></th><th data-i18n="me_venue"></th><th data-i18n="me_station"></th>
+          <th data-i18n="me_cat"></th><th data-i18n="me_grp"></th><th data-i18n="me_sub"></th><th data-i18n="me_venue"></th><th data-i18n="me_station"></th>
           <th class="num" data-i18n="me_price"></th><th data-i18n="me_sort"></th><th data-i18n="me_active"></th><th></th>
         </tr></thead>
-        <tbody id="menu-body"><tr><td colspan="10" class="empty-hint" data-i18n="me_connectFirst"></td></tr></tbody>
+        <tbody id="menu-body"><tr><td colspan="12" class="empty-hint" data-i18n="me_connectFirst"></td></tr></tbody>
       </table>
     </div>
   </div>
@@ -172,7 +172,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=16.5"></script>
+<script src="../assets/saizen-ops.js?v=16.6"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 메뉴 관리(menu_items CRUD)  · POS/KDS 단가·station 마스터
@@ -234,6 +234,17 @@ function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem
 function tx(k){ const d=L[lang()]||L.ja; const v=d[k]!==undefined?d[k]:(L.ja[k]||k); return v; }
 
 const CATS=['라운딩','식음','숙박','골프샵','기타'];
+// ── 주문 화면 분류(menu_group·sub, SQL 111) ── 정산 구분(category)과 별개다.
+//   POS 는 큰 구분을 탭, 소분류를 섹션으로 그린다. 여기서 지정하지 않으면 '기타'로 묶인다.
+const MGRPS=['음료','음식','기타'];
+const MSUBS={ '음료':['생맥주','맥주','소주','니혼슈','위스키','와인','기타주류','논알콜'],
+              '음식':['일반주문','업그레이드','추가메뉴'],
+              '기타':['반입료','숙박','기타'] };
+function grpOpts(cur){ return ['']. concat(MGRPS).map(g=>
+  `<option value="${esc(g)}" ${g===(cur||'')?'selected':''}>${esc(g||'-')}</option>`).join(''); }
+function subOpts(grp,cur){ const list=MSUBS[grp||'']||[].concat(MSUBS['음료'],MSUBS['음식'],MSUBS['기타']);
+  const all=[''].concat(list.indexOf(cur)<0&&cur?[cur].concat(list):list);
+  return all.map(x=>`<option value="${esc(x)}" ${x===(cur||'')?'selected':''}>${esc(x||'-')}</option>`).join(''); }
 // 라인(구분) 표시 라벨 — 저장값(한국어)은 그대로(정산·御請求書 영향 없음), 표시만 언어별 번역('숙박'→룸/ルーム/Room)
 const CAT_TXKEY={'라운딩':'catRound','식음':'catFb','숙박':'catRoom','골프샵':'catProshop','기타':'catEtc'};
 function catLabel(c){ const k=CAT_TXKEY[c]; return k?tx(k):(c||tx('catEtc')); }
@@ -372,7 +383,7 @@ function render(){
       ||(CATS.indexOf(a.category||'기타')-CATS.indexOf(b.category||'기타'))
       ||((a.sort_order||0)-(b.sort_order||0)));
   $('#list-cnt').innerHTML=`${items.length}${t('me_cntItem')}`;
-  if(!items.length){ body.innerHTML='<tr><td colspan="10" class="empty-hint">'+t('me_empty')+'</td></tr>'; return; }
+  if(!items.length){ body.innerHTML='<tr><td colspan="12" class="empty-hint">'+t('me_empty')+'</td></tr>'; return; }
   let lastVenue=null, lastCat=null;
   items.forEach(m=>{
     const venue=m.venue||'etc';
@@ -381,7 +392,7 @@ function render(){
     if(venue!==lastVenue){
       lastVenue=venue; lastCat=null;
       const vr=document.createElement('tr');
-      vr.innerHTML=`<td colspan="10" class="venue-h"><div style="display:flex;align-items:center;gap:10px">
+      vr.innerHTML=`<td colspan="12" class="venue-h"><div style="display:flex;align-items:center;gap:10px">
         <span>${esc(venueLabel(venue))} <span style="color:var(--muted);font-weight:600">(${esc(venuePrefix(venue))})</span></span>
         <button class="btn ghost sm" type="button" data-savevenue style="margin-left:auto">${esc(tx('saveVenue'))}</button>
       </div></td>`;
@@ -392,7 +403,7 @@ function render(){
     if(cat!==lastCat){
       lastCat=cat;
       const cr=document.createElement('tr');
-      cr.innerHTML=`<td colspan="10" class="line-subh" style="background:var(--surface2);color:var(--text2);font-weight:700;font-size:12px;padding:5px 14px 5px 26px;border-bottom:1px solid var(--border)">▸ ${esc(catLabel(cat))}</td>`;
+      cr.innerHTML=`<td colspan="12" class="line-subh" style="background:var(--surface2);color:var(--text2);font-weight:700;font-size:12px;padding:5px 14px 5px 26px;border-bottom:1px solid var(--border)">▸ ${esc(catLabel(cat))}</td>`;
       body.appendChild(cr);
     }
     const tr=document.createElement('tr');
@@ -405,6 +416,8 @@ function render(){
       <td><input class="inp" data-f="name_ja" value="${esc(m.name_ja)}"></td>
       <td><input class="inp" data-f="name_ko" value="${esc(m.name_ko)}"></td>
       <td><select class="inp" data-f="category">${catOpts}</select></td>
+      <td><select class="inp" data-f="menu_group">${grpOpts(m.menu_group)}</select></td>
+      <td><select class="inp" data-f="sub">${subOpts(m.menu_group,m.sub)}</select></td>
       <td><select class="inp" data-f="venue">${venueOpts(venue)}</select></td>
       <td><select class="inp" data-f="station">${stOpts}</select></td>
       <td><input class="inp price" data-f="unit_price" type="number" min="0" step="100" value="${Number(m.unit_price||0)}"></td>
@@ -428,6 +441,8 @@ function rowPatch(tr){
     name_ja:g('name_ja').value.trim(),
     name_ko:g('name_ko').value.trim()||null,
     category:g('category').value,
+    menu_group:g('menu_group').value||null,
+    sub:g('sub').value||null,
     venue:g('venue').value.trim()||'etc',
     station:g('station').value,
     unit_price:Math.round(Number(g('unit_price').value||0)),
@@ -436,7 +451,7 @@ function rowPatch(tr){
   };
 }
 // ── 변경이력(change_log) 기록 — best-effort(테이블 없거나 실패해도 저장은 진행) ──
-const LOG_FIELDS=['code','name_ja','name_ko','category','venue','station','unit_price','sort_order','active'];
+const LOG_FIELDS=['code','name_ja','name_ko','category','menu_group','sub','venue','station','unit_price','sort_order','active'];
 function norm(v){ return (v===true||v===false)?v:(v==null?'':String(v)); }
 function diffItem(before,after){
   const ch={};

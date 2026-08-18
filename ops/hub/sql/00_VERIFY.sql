@@ -180,6 +180,7 @@ from (
   union all select 108,'108 QR 재발급','order_tokens.reissue_count + ot_upd 정책', case when exists(select 1 from information_schema.columns where table_name='order_tokens' and column_name='reissue_count') and exists(select 1 from pg_policies where tablename='order_tokens' and policyname='ot_upd') then '✅ 있음' else '❌ 없음 (108)' end
   union all select 109,'109 사입 금액','inv_suppliers + inv_txns.amount + v_inv_spend', case when to_regclass('public.inv_suppliers') is not null and exists(select 1 from information_schema.columns where table_name='inv_txns' and column_name='amount') and to_regclass('public.v_inv_spend') is not null then '✅ 있음' else '❌ 없음 (109)' end
   union all select 110,'110 송영 점검','transfer_checks', case when to_regclass('public.transfer_checks') is not null then '✅ 있음' else '❌ 없음 (110)' end
+  union all select 111,'111 메뉴 2단 분류','menu_items.menu_group·sub', case when exists(select 1 from information_schema.columns where table_name='menu_items' and column_name='menu_group') then '✅ 있음' else '❌ 없음 (111)' end
 ) t
 order by ord, 항목;
 

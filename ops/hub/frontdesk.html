@@ -183,7 +183,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=32"></script>
-<script src="../assets/saizen-ops.js?v=16.5"></script>
+<script src="../assets/saizen-ops.js?v=16.6"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -206,6 +206,7 @@ const L={
     coUndoConfirm:'チェックアウトを取り消しますか？', coHint:'チェックアウトすると注文・請求QRは無効になります',
     teamWord:'チーム', nameWord:'名', teamPrefix:'チーム', unassigned:'未割当', noneApplicable:'該当なし',
     searchNone:'検索結果なし — 別の名前・タグ・部屋番号で検索してください', honor:'様',
+    qrNoMatch:'QRに一致するチームがありません', qrNotToday:'この日の一覧にないチームです — 日付を変えてください',
     roster:'👥 名簿', roomNo:'🛏 部屋番号', charge:'請求', payment:'支払', balance:'残高',
     cntUnit:'件', memo:'📝 メモ', noMemo:'メモなし',
     ntRemarks:'📌 備考(運営)', ntRemarksHint:'現場で必ず確認する重要事項', ntRemarksPh:'例) VIP・アレルギー・特別要望…',
@@ -232,6 +233,7 @@ const L={
     coUndoConfirm:'체크아웃을 취소할까요?', coHint:'체크아웃하면 주문·청구 QR이 만료됩니다',
     teamWord:'팀', nameWord:'名', teamPrefix:'팀', unassigned:'미배정', noneApplicable:'해당 없음',
     searchNone:'검색 결과 없음 — 다른 이름·태그·방번호로 검색해 보세요', honor:'様',
+    qrNoMatch:'QR에 맞는 팀이 없습니다', qrNotToday:'이 날짜 목록에 없는 팀입니다 — 날짜를 바꿔 주세요',
     roster:'👥 명단', roomNo:'🛏 방번호', charge:'청구', payment:'결제', balance:'잔액',
     cntUnit:'건', memo:'📝 메모', noMemo:'메모 없음',
     ntRemarks:'📌 비고(운영)', ntRemarksHint:'현장에서 꼭 확인할 중요사항', ntRemarksPh:'예) VIP·알러지·특별요청…',
@@ -258,6 +260,7 @@ const L={
     coUndoConfirm:'Undo this check-out?', coHint:'Order & bill QR expires once checked out',
     teamWord:'teams', nameWord:' ppl', teamPrefix:'Team', unassigned:'Unassigned', noneApplicable:'None',
     searchNone:'No results — try another name / tag / room', honor:'',
+    qrNoMatch:'No team matches that QR', qrNotToday:'That team is not on this date — change the date',
     roster:'👥 Roster', roomNo:'🛏 Room', charge:'Charges', payment:'Paid', balance:'Balance',
     cntUnit:' items', memo:'📝 Memo', noMemo:'No memo',
     ntRemarks:'📌 Remarks (ops)', ntRemarksHint:'Key on-site notes to always check', ntRemarksPh:'e.g. VIP, allergy, special request…',
@@ -620,6 +623,19 @@ async function saveNote(seq, field, val){
 }
 
 // 언어 토글 시 정적 라벨 + 동적 목록 재렌더
+// ── 하드웨어 QR 스캐너(HID) — 손님 카드를 찍으면 그 팀이 바로 열린다 ──────────
+if(window.__so_hidScan) __so_hidScan(async function(raw){
+  if(!supa) return;
+  const token=__so_qrToken(raw);
+  try{
+    const {data}=await supa.from('order_tokens').select('event_seq').eq('token',token).limit(1);
+    const seq=data&&data[0]&&data[0].event_seq;
+    if(!seq){ toast(tx('qrNoMatch'),'err'); return; }
+    if(state.byId&&state.byId[seq]){ selectTeam(Number(seq)); return; }
+    toast(tx('qrNotToday'),'warn');          // 그날 목록에 없는 팀(다른 날짜)
+  }catch(e){ toast(tx('qrNoMatch'),'err'); }
+});
+
 window.onSaizenLangChange=function(){ applyStatic(); if(state.teams.length||state.day) render(); };
 
 /* ── 부팅 ── */

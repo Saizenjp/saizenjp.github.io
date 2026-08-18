@@ -110,6 +110,17 @@
   .venue-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
   .venue-tab:not(.active):hover{background:var(--accentSoft);color:var(--accent)}
 
+  /* 큰 구분(마실 것 / 먹는 것) — 손가락으로 먼저 누르는 곳이라 크게 */
+  .grp-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px}
+  .gtab{min-height:46px;font-size:16px;font-weight:800;border:2px solid var(--border2);background:var(--surface);
+    color:var(--text);border-radius:11px;padding:8px 18px;cursor:pointer}
+  .gtab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  .gtab .gc{font-size:12px;font-weight:700;opacity:.75;margin-left:6px}
+  /* 소분류(술 종류 · 주문 성격) */
+  .sub-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:11px}
+  .schip{font-size:13.5px;font-weight:700;border:1px solid var(--border2);background:var(--surface);color:var(--text2);
+    border-radius:99px;padding:6px 13px;cursor:pointer}
+  .schip.on{background:var(--accent2);border-color:var(--accent2);color:#fff}
   .menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:11px}
   .menu-btn{
     position:relative;text-align:left;background:var(--surface);border:1px solid var(--border);
@@ -255,6 +266,8 @@
     <div class="order-stage">
       <div>
         <div class="venue-tabs" id="venue-tabs"></div>
+        <div class="grp-tabs" id="grp-tabs"></div>
+        <div class="sub-chips" id="sub-chips"></div>
         <div class="menu-grid" id="menu-grid"></div>
       </div>
       <div class="cart">
@@ -328,7 +341,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=32"></script>
-<script src="../assets/saizen-ops.js?v=16.5"></script>
+<script src="../assets/saizen-ops.js?v=16.6"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -444,7 +457,7 @@ const _outletParam=new URLSearchParams(location.search).get('outlet')||'';
 // 팀 QR(bill.html?t=…)을 직원이 스캔 → [POS 주문] 링크로 넘어올 때 그 팀 자동선택(1회 소비).
 //   ?seq=<event_seq> · 그 날짜 체류 목록에 있으면 바로 주문 화면으로.
 let _deepSeq=(new URLSearchParams(location.search).get('seq')||'').trim();
-let state={ date:'', teams:[], menu:[], venue:'__all__', team:null, folioId:null, runningGross:0, cart:[], showList:false,
+let state={ date:'', teams:[], menu:[], venue:'__all__', grp:'__all__', sub:'__all__', team:null, folioId:null, runningGross:0, cart:[], showList:false,
   roster:[], payerMode:'split', payerSel:new Set(), memberFolio:{},
   outlet:(OUTLETS[_outletParam]?_outletParam:null), teamQ:'', activeSeqs:new Set(), members:[], roomsBySeq:{}, accomSel:null };
 const ACCOM_ALL=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
@@ -624,7 +637,7 @@ function showOrderView(){
   $('#oh-rep').textContent=tx('noTeamHead');
   $('#oh-run').textContent=yen(0);
   const rl=$('#run-list'); if(rl){ rl.style.display='none'; rl.innerHTML=''; }
-  renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); updateSendBtn();
+  renderVenueTabs(); renderGrpTabs(); renderSubChips(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); updateSendBtn();
 }
 // [주문 전송] 버튼 = 팀이 없으면 「팀 선택(계산)」으로 바뀐다
 function updateSendBtn(){
@@ -775,7 +788,7 @@ async function selectTeam(tm){
   $('#oh-run').textContent=yen(state.runningGross);
   const rl=$('#run-list'); if(rl){ rl.style.display='none'; rl.innerHTML=''; }
   const rb=$('#btn-run-list'); if(rb) rb.textContent=tx('runShow');
-  renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); updateSendBtn();
+  renderVenueTabs(); renderGrpTabs(); renderSubChips(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); updateSendBtn();
   if(state.cart.length) toast(tx('teamPicked')(teamTag(tm)),'ok');   // 메뉴 먼저 담고 계산에서 고른 경우
 }
 
@@ -846,28 +859,79 @@ function renderVenueTabs(){
     const b=document.createElement('button'); b.type='button';
     b.className='venue-tab'+(state.venue===v?' active':'');
     b.textContent=label;
-    b.addEventListener('click',()=>{state.venue=v;renderVenueTabs();renderMenu();});
+    b.addEventListener('click',()=>{state.venue=v;state.grp='__all__';state.sub='__all__';renderVenueTabs();renderGrpTabs();renderSubChips();renderMenu();});
     box.appendChild(b);
   });
 }
 
+// 주문 화면 분류(menu_group·sub) — 정산 구분(category)과 별개다. SQL 111.
+//  큰 구분 = 마실 것 / 먹는 것 / 기타, 소분류 = 술 종류 · 주문 성격.
+const POS_GRP_ORDER=['음료','음식','기타'];
+const POS_GRPL={ '음료':{ja:'飲み物',ko:'마실 것',en:'Drinks'}, '음식':{ja:'食べ物',ko:'먹는 것',en:'Food'},
+  '기타':{ja:'その他',ko:'기타',en:'Other'} };
+const POS_SUB_ORDER=['생맥주','맥주','소주','니혼슈','위스키','와인','기타주류','논알콜',
+  '일반주문','업그레이드','추가메뉴','반입료','숙박','기타'];
+const POS_SUBL={
+  '생맥주':{ja:'生ビール',en:'Draft beer'}, '맥주':{ja:'ビール',en:'Beer'}, '소주':{ja:'焼酎',en:'Soju/Shochu'},
+  '니혼슈':{ja:'日本酒',en:'Sake'}, '위스키':{ja:'ウイスキー',en:'Whisky'}, '와인':{ja:'ワイン',en:'Wine'},
+  '기타주류':{ja:'その他のお酒',en:'Other alcohol'}, '논알콜':{ja:'ノンアルコール',en:'Non-alcoholic'},
+  '일반주문':{ja:'一品',en:'A la carte'}, '업그레이드':{ja:'コース変更',en:'Upgrade'}, '추가메뉴':{ja:'追加料理',en:'Add-on'},
+  '반입료':{ja:'持込料',en:'Corkage'}, '숙박':{ja:'宿泊',en:'Room'}, '기타':{ja:'その他',en:'Other'} };
+function posGrpLabel(g){ const m=POS_GRPL[g||'기타']; const lg=lang(); return m?(lg==='ja'?m.ja:(lg==='en'?m.en:m.ko)):(g||'기타'); }
+function posSubLabel(x){ const m=POS_SUBL[x||'기타']; const lg=lang(); return m?(lg==='ja'?m.ja:(lg==='en'?m.en:x)):(x||'기타'); }
+function ordOf(arr,v){ const i=arr.indexOf(v); return i<0?99:i; }
 const POS_CAT_ORDER=['라운딩','식음','숙박','골프샵','기타'];
 // category = DB 저장값(한국어 키, CSS class·정렬에도 사용) — 저장·키 유지, 표시 라벨만 번역
 const POS_CATL={ '라운딩':{ja:'ラウンド',en:'Round'}, '식음':{ja:'飲食',en:'F&B'},
   '숙박':{ja:'ルーム',en:'Room'}, '골프샵':{ja:'ゴルフショップ',en:'Pro shop'}, '기타':{ja:'その他',en:'Other'} };
 function posCatLabel(c){ const m=POS_CATL[c||'기타']; const lg=lang(); return m?(lg==='ja'?m.ja:(lg==='en'?m.en:c)):(c||'기타'); }
-function renderMenu(){
-  const box=$('#menu-grid'); box.innerHTML='';
+// 이 매장·이 venue 의 품목(그룹 탭 이전 단계)
+function venueMenu(){
   const ov=outletVenues();
-  const list=state.menu.filter(m=>{
+  return state.menu.filter(m=>{
     const v=m.venue||'etc';
     if(ov && !ov.includes(v)) return false;               // 이 매장 venue만
     return state.venue==='__all__' || v===state.venue;    // 선택 탭
   });
+}
+// 큰 구분 탭 — 마실 것 / 먹는 것 / 기타. 있는 구분만 나온다.
+function renderGrpTabs(){
+  const box=$('#grp-tabs'); if(!box) return;
+  const list=venueMenu();
+  const grps=[...new Set(list.map(m=>m.menu_group||'기타'))].sort((a,b)=>ordOf(POS_GRP_ORDER,a)-ordOf(POS_GRP_ORDER,b));
+  if(grps.length<=1){ box.innerHTML=''; state.grp='__all__'; return; }
+  if(state.grp!=='__all__' && !grps.includes(state.grp)) state.grp='__all__';
+  const allL=(window.__so_plain?__so_plain(t('po_allVenues')):t('po_allVenues'));
+  const tabs=[['__all__',allL,list.length]].concat(grps.map(g=>[g,posGrpLabel(g),list.filter(m=>(m.menu_group||'기타')===g).length]));
+  box.innerHTML=tabs.map(([g,label,n])=>
+    `<button type="button" class="gtab${state.grp===g?' active':''}" data-g="${escP(g)}">${escP(label)}<span class="gc">${n}</span></button>`).join('');
+  box.querySelectorAll('[data-g]').forEach(b=>b.addEventListener('click',()=>{
+    state.grp=b.dataset.g; state.sub='__all__'; renderGrpTabs(); renderSubChips(); renderMenu();
+  }));
+}
+// 소분류 칩 — 술 종류 · 주문 성격. 선택한 큰 구분 안에서만.
+function renderSubChips(){
+  const box=$('#sub-chips'); if(!box) return;
+  const list=venueMenu().filter(m=>state.grp==='__all__'||(m.menu_group||'기타')===state.grp);
+  const subs=[...new Set(list.map(m=>m.sub||'기타'))].sort((a,b)=>ordOf(POS_SUB_ORDER,a)-ordOf(POS_SUB_ORDER,b));
+  if(subs.length<=1){ box.innerHTML=''; state.sub='__all__'; return; }
+  if(state.sub!=='__all__' && !subs.includes(state.sub)) state.sub='__all__';
+  const allL=(window.__so_plain?__so_plain(t('po_allVenues')):t('po_allVenues'));
+  box.innerHTML=[['__all__',allL]].concat(subs.map(x=>[x,posSubLabel(x)]))
+    .map(([x,label])=>`<button type="button" class="schip${state.sub===x?' on':''}" data-s="${escP(x)}">${escP(label)}</button>`).join('');
+  box.querySelectorAll('[data-s]').forEach(b=>b.addEventListener('click',()=>{
+    state.sub=b.dataset.s; renderSubChips(); renderMenu();
+  }));
+}
+function renderMenu(){
+  const box=$('#menu-grid'); box.innerHTML='';
+  const list=venueMenu().filter(m=>
+    (state.grp==='__all__'||(m.menu_group||'기타')===state.grp) &&
+    (state.sub==='__all__'||(m.sub||'기타')===state.sub));
   if(!list.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyMenu')+'</div>'; return; }
-  // 구분(라인=category)별 섹션 헤더로 묶기
-  const byCat={}; list.forEach(m=>{ const c=m.category||'기타'; (byCat[c]=byCat[c]||[]).push(m); });
-  const cats=Object.keys(byCat).sort((a,b)=>{const ai=POS_CAT_ORDER.indexOf(a),bi=POS_CAT_ORDER.indexOf(b);return (ai<0?99:ai)-(bi<0?99:bi);});
+  // 소분류별 섹션 헤더로 묶기(칩으로 하나만 고른 상태면 헤더는 하나)
+  const byCat={}; list.forEach(m=>{ const c=m.sub||'기타'; (byCat[c]=byCat[c]||[]).push(m); });
+  const cats=Object.keys(byCat).sort((a,b)=>ordOf(POS_SUB_ORDER,a)-ordOf(POS_SUB_ORDER,b));
   const card=(m)=>{
     const b=document.createElement('button'); b.type='button'; b.className='menu-btn';
     b.innerHTML=`<span class="mcat cat-${m.category}"></span>
@@ -880,7 +944,7 @@ function renderMenu(){
   cats.forEach(c=>{
     const h=document.createElement('div');
     h.style.cssText='grid-column:1/-1;font-size:13px;font-weight:800;color:var(--accent2);padding:6px 2px 2px;border-bottom:1px solid var(--border);margin-top:4px';
-    h.textContent=posCatLabel(c);
+    h.textContent=posSubLabel(c);
     box.appendChild(h);
     byCat[c].forEach(m=>box.appendChild(card(m)));
   });
@@ -1195,36 +1259,9 @@ async function scanResolve(raw){
   }catch(e){ fail(tx('qrNoMatch')); }
 }
 
-// ── 하드웨어 스캐너(2D 이미저, HID 키보드 모드) 전역 입력 ────────────────────
-//  스캐너는 읽은 문자열을 '키보드 입력'으로 흘려보내고 끝에 Enter 를 붙인다.
-//  → 어느 화면에 있든, 어디에 포커스가 있든 스캔하면 그 팀이 바로 열린다(모달·카메라 불필요).
-//  사람 타이핑과 구분: 사람은 8자 이상을 글자당 50ms 미만으로 연속 입력하지 못한다.
-//  ⚠ 스캐너가 없어도 키보드로 토큰을 치고 Enter 치면 같은 경로로 동작(하드웨어 없이 검증 가능).
-const HID_MAX_GAP=50;    // 글자 간격 상한(ms) — 넘으면 사람 입력으로 보고 버퍼 리셋
-const HID_MIN_LEN=8;     // 이 길이 미만은 스캔으로 보지 않음
-let _hidBuf='', _hidLast=0, _hidEl=null, _hidPrev='';
-function hidReset(){ _hidBuf=''; _hidEl=null; _hidPrev=''; }
-document.addEventListener('keydown',(e)=>{
-  if(!supa) return;
-  const now=Date.now();
-  if(e.key==='Enter'){
-    const fast=_hidBuf.length>=HID_MIN_LEN && (now-_hidLast)<=HID_MAX_GAP;
-    if(fast){
-      const raw=_hidBuf;
-      // 스캔 문자가 입력칸에 섞였으면 원래 값으로 되돌린다(검색창에 토큰이 남지 않게).
-      if(_hidEl && 'value' in _hidEl){ try{ _hidEl.value=_hidPrev; _hidEl.dispatchEvent(new Event('input',{bubbles:true})); }catch(_){} }
-      hidReset(); e.preventDefault();
-      scanResolve(raw);
-    }else hidReset();
-    return;
-  }
-  if(e.key.length!==1) return;                 // 제어키는 무시
-  if(now-_hidLast>HID_MAX_GAP){                // 간격이 벌어지면 새 버스트 시작
-    _hidBuf=''; _hidEl=document.activeElement||null;
-    _hidPrev=(_hidEl && 'value' in _hidEl)?_hidEl.value:'';
-  }
-  _hidBuf+=e.key; _hidLast=now;
-});
+// ── 하드웨어 스캐너(HID 키보드 모드) — 공용 헬퍼(saizen-ops __so_hidScan)에 위임.
+//   스캐너를 꽂기만 하면 어느 화면·어느 포커스에서 스캔해도 그 팀이 바로 열린다.
+if(window.__so_hidScan) __so_hidScan(function(raw){ if(supa) scanResolve(raw); });
 
 // ── 부팅 ──
 $('#btn-connect').addEventListener('click',connect);
@@ -1301,8 +1338,12 @@ if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자�
 window.onSaizenLangChange=function(){
   try{
     applyStatic(); applyOutlet();
-    if(state.team){ renderVenueTabs(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); }
-    else { if(state.teams.length) renderAccomPos(); renderTeams(); }
+    // ⚠ 팀을 안 고른 상태(메뉴 먼저 담는 기본 화면)에서도 다시 그려야 한다.
+    //   이전엔 팀이 있을 때만 다시 그려서, 언어를 바꿔도 메뉴·카트·머리글이 한국어로 남았다.
+    if(state.menu.length){ renderVenueTabs(); renderGrpTabs(); renderSubChips(); renderMenu(); }
+    renderPayer(); renderCart(); updateCustBtn(); updateSendBtn();
+    if(!state.team && document.getElementById('oh-rep')) $('#oh-rep').textContent=tx('noTeamHead');
+    if(!state.team){ if(state.teams.length) renderAccomPos(); renderTeams(); }
     if(supa) koRefresh();
   }catch(e){}
 };
