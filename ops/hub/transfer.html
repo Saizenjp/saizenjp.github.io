@@ -133,7 +133,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=33"></script>
-<script src="../assets/saizen-ops.js?v=17.5"></script>
+<script src="../assets/saizen-ops.js?v=17.6"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -236,19 +236,24 @@ function accomBoth(a){ const j=accomJa(a), k=accomKo(a); if(!j&&!k) return '-';
 // 인쇄 표의 한 줄 = 그 팀이 **어디에서 어디로** 가는가. 숙소만 적으면 머리줄과 겹친다(Min 2026-08).
 //   도착 = 공항 → 숙소 · 출발 = 숙소 → 공항 · 체류중 = 숙소 → 라운딩장(또는 그 반대)
 function apCode(v){ return (window.SZCore&&SZCore.airportCode)?SZCore.airportCode(v):(v||''); }
+// 인쇄물은 코드(ICN·KMJ) 대신 **공항명(일본어)** 으로 적는다(Min 2026-08).
+const AIRPORT_JA={ ICN:'仁川空港', PUS:'金海空港', CJJ:'清州空港', TAE:'大邱空港', CJU:'済州空港',
+                   KMJ:'熊本空港', FUK:'福岡空港', NRT:'成田空港', HND:'羽田空港', KIX:'関西空港' };
+function apJa(v){ const c=apCode(v); return AIRPORT_JA[c]||c||''; }
 function moveCell(r){
   const c=accomColor(r.accom);
   let ja, ko;
   if(r.dir==='stay'){ ja=accomJa(r.from)+' → '+accomJa(r.to); ko=accomKo(r.from)+' → '+accomKo(r.to); }
-  else if(r.dir==='in'){ const a=apCode(r.to)||apCode(r.from); ja=a+' → '+accomJa(r.accom); ko=a+' → '+accomKo(r.accom); }
-  else { const a=apCode(r.from)||apCode(r.to); ja=accomJa(r.accom)+' → '+a; ko=accomKo(r.accom)+' → '+a; }
+  else if(r.dir==='in'){ const a=apJa(r.to)||apJa(r.from); ja=a+' → '+accomJa(r.accom); ko=a+' → '+accomKo(r.accom); }
+  else { const a=apJa(r.from)||apJa(r.to); ja=accomJa(r.accom)+' → '+a; ko=accomKo(r.accom)+' → '+a; }
   return `<span style="color:${c};font-weight:800">${esc(ja)}</span>`+(ko&&ko!==ja?`<br><i style="color:${c}">${esc(ko)}</i>`:'');
 }
 function accomPair(a){ const j=accomJa(a), k=accomKo(a); return (k&&k!==j)?(j+' / '+k):(j||k||'-'); }
 // 체류중 왕복은 공항이 아니라 숙소↔야마나미 구간이라 공항코드 대신 숙소명을 쓴다.
 function routeOf(g){ return g.dir==='stay' ? (accomJa(g.from)+' → '+accomJa(g.to)) : route(g.from,g.to); }
 // 인쇄용 구간 — 체류중은 숙소 한·일 병기, 도착·출발은 공항코드
-function routePrint(g){ return g.dir==='stay' ? (accomPair(g.from)+' → '+accomPair(g.to)) : route(g.from,g.to); }
+function routePrint(g){ return g.dir==='stay' ? (accomPair(g.from)+' → '+accomPair(g.to))
+                                              : (apJa(g.from)+' → '+apJa(g.to)); }
 function route(from,to){ return (window.SZCore&&SZCore.routeCode)?SZCore.routeCode(from,to):[from,to].filter(Boolean).join('-'); }
 function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,lang()):(a||''); }
 
@@ -261,7 +266,6 @@ let PORTSEL=new Set();   // 한국 쪽 공항(ICN·PUS…) 필터 — 인천팀�
 let MEM={};            // event_seq → [{id,name,seq}]
 let CK={in:{team:new Set(),member:new Set()}, out:{team:new Set(),member:new Set()},
         stay_am:{team:new Set(),member:new Set()}, stay_pm:{team:new Set(),member:new Set()}};
-function pn(kr,en){ return window.__so_pname?__so_pname(kr,en):(kr||en||''); }
 function ckHas(leg,kind,ref){ return CK[leg]&&CK[leg][kind].has(String(ref)); }
 // transfer_checks.leg — 도착/출발은 in·out, 체류중 왕복은 stay_am·stay_pm(SQL 114)
 function legOf(r){ return r.dir==='stay' ? ('stay_'+(r.leg||'am')) : r.dir; }
@@ -272,7 +276,7 @@ function meetKey(g){
   if(g.dir==='stay') return (g.leg==='pm') ? (g.to||'') : (g.from||'');
   const r=g.rows&&g.rows[0]; return r?korPort(r):'';
 }
-function meetLabel(k){ return /[가-힣]/.test(String(k||'')) ? (accomPair(k)||k) : (k||'-'); }
+function meetLabel(k){ return /[가-힣]/.test(String(k||'')) ? (accomPair(k)||k) : (apJa(k)||k||'-'); }
 // [{dir, meet, gs:[…]}] — 구분(도착·체류·출발) → 만나는 곳 순서
 function printPages(groups){
   const ord={in:0,stay:1,out:2}, out=[], idx={};
@@ -589,7 +593,7 @@ function renderMeet(box,groups){
         const full=list.length&&dn===list.length;
         return `<div class="thead2">
             <span class="tg">${esc(r.tag)}</span>
-            <span class="rp">${esc(pn(r.rep,''))}</span>
+            <span class="rp">${esc(r.rep||'')}</span>
             <span class="ac">${esc(accomL(r.accom)||'-')}</span>
             <span class="tprog${full?' full':''}">${esc(tx('progPax',dn,list.length||r.pax))}</span>
             <button type="button" class="bigck${full?' on':''}" data-ck="all" data-leg="${lg}" data-seq="${r.seq}">${esc(full?tx('clearTeam'):tx('teamAll'))}</button>
@@ -597,7 +601,7 @@ function renderMeet(box,groups){
           +(list.length
             ? `<div class="mems">`+list.map(m=>{ const on=ckHas(lg,'member',m.id);
                 return `<button type="button" class="memck${on?' on':''}" data-ck="member" data-leg="${lg}" data-ref="${m.id}" data-seq="${r.seq}">`
-                  +`<span class="sq">${m.seq<99?m.seq:''}</span>${esc(pn(m.kr,m.en)||'-')}</button>`; }).join('')+`</div>`
+                  +`<span class="sq">${m.seq<99?m.seq:''}</span>${esc(m.kr||m.en||'-')}</button>`; }).join('')+`</div>`
             : `<div class="norost">${esc(tx('noRoster'))}</div>`);
       }).join('')
       +`</div>`;
@@ -754,7 +758,7 @@ ${g.time?`<span class="t">${esc(g.time)}</span>`:''}
           <th class="c n">確認<br><i>확인</i></th><th class="c n">実人数<br><i>실인원</i></th>
         </tr></thead><tbody>
         ${g.rows.map(r=>`<tr>
-          <td class="code">${esc(r.tag)}</td><td>${esc(pn(r.rep,''))}</td>
+          <td class="code">${esc(r.tag)}</td><td>${esc(r.rep||'-')}</td>
           <td class="ac">${moveCell(r)}</td>
           <td class="n pax">${r.pax}</td>
           <td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td>
