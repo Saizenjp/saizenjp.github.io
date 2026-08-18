@@ -233,6 +233,17 @@ function accomColor(a){ return ACCOM_COLOR[String(a||'').trim()]||'#1A2540'; }
 function accomBoth(a){ const j=accomJa(a), k=accomKo(a); if(!j&&!k) return '-';
   const c=accomColor(a);
   return `<span style="color:${c};font-weight:800">${esc(j||k)}</span>`+(k&&k!==j?`<br><i style="color:${c}">${esc(k)}</i>`:''); }
+// 인쇄 표의 한 줄 = 그 팀이 **어디에서 어디로** 가는가. 숙소만 적으면 머리줄과 겹친다(Min 2026-08).
+//   도착 = 공항 → 숙소 · 출발 = 숙소 → 공항 · 체류중 = 숙소 → 라운딩장(또는 그 반대)
+function apCode(v){ return (window.SZCore&&SZCore.airportCode)?SZCore.airportCode(v):(v||''); }
+function moveCell(r){
+  const c=accomColor(r.accom);
+  let ja, ko;
+  if(r.dir==='stay'){ ja=accomJa(r.from)+' → '+accomJa(r.to); ko=accomKo(r.from)+' → '+accomKo(r.to); }
+  else if(r.dir==='in'){ const a=apCode(r.to)||apCode(r.from); ja=a+' → '+accomJa(r.accom); ko=a+' → '+accomKo(r.accom); }
+  else { const a=apCode(r.from)||apCode(r.to); ja=accomJa(r.accom)+' → '+a; ko=accomKo(r.accom)+' → '+a; }
+  return `<span style="color:${c};font-weight:800">${esc(ja)}</span>`+(ko&&ko!==ja?`<br><i style="color:${c}">${esc(ko)}</i>`:'');
+}
 function accomPair(a){ const j=accomJa(a), k=accomKo(a); return (k&&k!==j)?(j+' / '+k):(j||k||'-'); }
 // 체류중 왕복은 공항이 아니라 숙소↔야마나미 구간이라 공항코드 대신 숙소명을 쓴다.
 function routeOf(g){ return g.dir==='stay' ? (accomJa(g.from)+' → '+accomJa(g.to)) : route(g.from,g.to); }
@@ -628,12 +639,12 @@ ${g.time?`<span class="t">${esc(g.time)}</span>`:''}
           <span class="n">${g.teams}チーム / ${g.pax}名</span></div>
         <table class="pt"><thead><tr>
           <th class="c">コード<br><i>코드</i></th><th class="c">代表者<br><i>대표자</i></th>
-          <th class="c n">人数<br><i>인원</i></th><th class="c">${dir==='in'?'行き先(宿泊施設)':'出発地(宿泊施設)'}<br><i>${dir==='in'?'행선지(숙소)':'출발지(숙소)'}</i></th>
+          <th class="c n">人数<br><i>인원</i></th><th class="c">移動<br><i>이동</i></th>
           <th class="c n">確認<br><i>확인</i></th><th class="c n">実人数<br><i>실인원</i></th><th class="c memo">備考 / 비고</th>
         </tr></thead><tbody>
         ${g.rows.map(r=>`<tr>
           <td class="code">${esc(r.tag)}</td><td>${esc(r.rep||'-')}</td>
-          <td class="n pax">${r.pax}</td><td class="ac">${accomBoth(r.accom)}</td>
+          <td class="n pax">${r.pax}</td><td class="ac">${moveCell(r)}</td>
           <td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td><td></td>
         </tr>`).join('')}
         <tr class="sub"><td colspan="2">小計 / 소계</td><td class="n pax">${g.pax}</td><td></td><td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td><td></td></tr>
@@ -738,13 +749,13 @@ ${g.time?`<span class="t">${esc(g.time)}</span>`:''}
           <span class="n">${g.teams}チーム / ${g.pax}名</span></div>
         <table class="pt"><thead><tr>
           <th class="c code">コード<br><i>코드</i></th><th class="c rep">代表者<br><i>대표자</i></th>
-          <th>宿泊施設<br><i>숙소</i></th>
+          <th>移動<br><i>이동</i></th>
           <th class="c n">人数<br><i>인원</i></th>
           <th class="c n">確認<br><i>확인</i></th><th class="c n">実人数<br><i>실인원</i></th>
         </tr></thead><tbody>
         ${g.rows.map(r=>`<tr>
           <td class="code">${esc(r.tag)}</td><td>${esc(pn(r.rep,''))}</td>
-          <td class="ac">${accomBoth(r.accom)}</td>
+          <td class="ac">${moveCell(r)}</td>
           <td class="n pax">${r.pax}</td>
           <td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td>
         </tr>`).join('')}
