@@ -194,7 +194,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=33"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
+<script src="../assets/saizen-core.js?v=34"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
 <script src="../assets/saizen-ops.js?v=17.9"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -214,6 +214,7 @@ const L={
     tblTitle:'チーム別 申請', dirty:n=>`未保存 ${n}件`,
     thTeam:'タグコード', thRep:'代表', thAccom:'宿泊', thPax:'人数', thElig:'事前申請', thCourse:'コース', thTee:'ティ',
     thSrc:'申請区分', thNos:'カート番号', thMemo:'メモ', thFee:'料金', thTotal:'計',
+    feeFree:'無料', feeFreeT:'入国日（仁川便の初日）・帰国日（釜山便の最終日）のラウンドはカート無料です',
     srcPre:'事前', srcOnsite:'現場',
     eligOk:'可', eligCond:'可（やまなみCC日）', eligNo:'不可',
     eligOkT:'やまなみリゾートゴルフクラブ利用 → 電動カート事前申請 可',
@@ -273,6 +274,7 @@ const L={
     tblTitle:'팀별 신청', dirty:n=>`미저장 ${n}건`,
     thTeam:'태그코드', thRep:'대표', thAccom:'숙소', thPax:'인원', thElig:'사전신청', thCourse:'코스', thTee:'티오프',
     thSrc:'신청구분', thNos:'카트번호', thMemo:'메모', thFee:'요금', thTotal:'계',
+    feeFree:'무료', feeFreeT:'입국일(인천출발 첫날)·귀국일(부산출발 마지막날) 라운딩은 카트 요금을 받지 않습니다',
     srcPre:'사전', srcOnsite:'현장',
     eligOk:'가능', eligCond:'가능(야마나미CC일)', eligNo:'불가',
     eligOkT:'야마나미 리조트 골프클럽 이용 → 전기카트 유료 사전신청 가능',
@@ -332,6 +334,7 @@ const L={
     tblTitle:'Requests by team', dirty:n=>`${n} unsaved`,
     thTeam:'Tag code', thRep:'Rep', thAccom:'Lodging', thPax:'Pax', thElig:'Pre-booking', thCourse:'Course', thTee:'Tee',
     thSrc:'Type', thNos:'Cart no.', thMemo:'Note', thFee:'Fee', thTotal:'Total',
+    feeFree:'Free', feeFreeT:'Rounds on the arrival day (ICN teams) and the departure day (PUS teams) carry no cart fee',
     srcPre:'Pre', srcOnsite:'On-site',
     eligOk:'Yes', eligCond:'Yes (Yamanami CC day)', eligNo:'No',
     eligOkT:'Plays Yamanami Resort Golf Club → electric cart pre-booking available',
@@ -896,7 +899,9 @@ function renderTable(){
   const th=TYPES.map(t=>`<th>${esc(lang()==='ja'?t.name_ja:t.name_ko)}</th>`).join('');
   const NOS=allocForDay();
   const rowHtml=r=>{ const i=ROWS.indexOf(r);
-    const fee=TYPES.reduce((s,t)=>s+(+r.qty[t.code]||0)*(+t.fee_yen||0),0);
+    // 입국일·귀국일 라운딩은 카트 무료(Min 2026-08) — 배정은 그대로, 요금만 0.
+    const freeDay=SZCore.cartFreeDay(r,DATE);
+    const fee=freeDay?0:TYPES.reduce((s,t)=>s+(+r.qty[t.code]||0)*(+t.fee_yen||0),0);
     const gc=r.grpCourse?`${COURSE_NAME[r.grpCourse]||r.grpCourse}`:'';
     return `<tr data-i="${i}" class="${DIRTY.has(r.seq)?'dirty':''}">
       <td class="l"><div class="tcell"><input type="checkbox" class="pick noprint" data-pick="${i}"${PICK.has(r.seq)?' checked':''} title="${esc(tx('pickT'))}"><span class="tag">${esc(r.tag)}</span>`
@@ -916,13 +921,13 @@ function renderTable(){
       <td class="tee">${esc(r.tee||'-')}</td>
       ${TYPES.map(t=>`<td><input class="inp qty" type="number" min="0" data-q="${t.code}" value="${+r.qty[t.code]||0}"></td>`).join('')}
       <td><input class="inp memo" type="text" data-f="memo" value="${esc(r.memo)}"></td>
-      <td class="tee">${fee?('¥'+fee.toLocaleString()):'-'}</td>
+      <td class="tee">${freeDay?`<span class="bdg ok" title="${esc(tx('feeFreeT'))}">${esc(tx('feeFree'))}</span>`:(fee?('¥'+fee.toLocaleString()):'-')}</td>
     </tr>`;
   };
   const rows=LIST.map(rowHtml).join('');
   const rows2=NOREQ.map(rowHtml).join('');
   const CXL=ROWS.filter(r=>+r.cx>0);
-  const totFee=LIST.reduce((s,r)=>s+TYPES.reduce((n,t)=>n+(+r.qty[t.code]||0)*(+t.fee_yen||0),0),0);
+  const totFee=LIST.reduce((s,r)=>s+(SZCore.cartFreeDay(r,DATE)?0:TYPES.reduce((n,t)=>n+(+r.qty[t.code]||0)*(+t.fee_yen||0),0)),0);
   const head=`<thead><tr>
       <th>${tx('thTeam')}</th><th>${tx('thRep')}</th><th>${tx('thAccom')}</th><th>${tx('thPax')}</th>
       <th>${tx('thElig')}</th><th>${tx('thCourse')}</th><th>${tx('thTee')}</th>${th}
@@ -1099,7 +1104,10 @@ async function loadMonth(){
       const pax=g.pax||bk.pax||0;
       const elec=SZCore.wantsElectricCart(bk.remark_local||'');
       const t={ seq:bk.event_seq, tag:g.team_tag||g.group_code||'', rep:bk.rep_name||'', accom, pax, elec,
-                days:rows.map(r=>r.date), planned:{}, saved:{}, missing:[] };
+                days:rows.map(r=>r.date), planned:{}, saved:{}, missing:[],
+                // 요금 대상 대수(입국일·귀국일 무료분 제외) · 무료 대수
+                billable:{}, freeQty:0 };
+      const team0={dep:bk.dep_date, arr:bk.arr_date};
       rows.forEach(r=>{
         const courseOk = (r.course==='やまなみCC');
         let plan=SZCore.cartPlan(pax, elec&&courseOk);
@@ -1111,12 +1119,15 @@ async function loadMonth(){
         const eff = got || (plan?{[plan.code]:plan.qty}:{});
         if(!Object.keys(eff).length) return;                        // 전기 대상 아닌 날은 집계 제외
         if(!got) t.missing.push({date:r.date, plan});
+        const freeDay=SZCore.cartFreeDay(team0,r.date);
         Object.keys(eff).forEach(c=>{
           t[got?'saved':'planned'][c]=(t[got?'saved':'planned'][c]||0)+eff[c];
-          const d=(byDate[r.date]=byDate[r.date]||{teams:0,qty:{}});
+          if(freeDay) t.freeQty+=eff[c]; else t.billable[c]=(t.billable[c]||0)+eff[c];
+          const d=(byDate[r.date]=byDate[r.date]||{teams:0,qty:{},bqty:{}});
           d.qty[c]=(d.qty[c]||0)+eff[c];
+          if(!freeDay) d.bqty[c]=(d.bqty[c]||0)+eff[c];
         });
-        const d=(byDate[r.date]=byDate[r.date]||{teams:0,qty:{}});
+        const d=(byDate[r.date]=byDate[r.date]||{teams:0,qty:{},bqty:{}});
         d.teams++;
       });
       if(Object.keys(t.saved).length||Object.keys(t.planned).length) MTEAMS.push(t);
@@ -1165,10 +1176,12 @@ function renderMonth(){
       ${lines}
     </div>`);
   }
-  const gTot={}; MDAYS.forEach(d=>TYPES.forEach(t=>{ gTot[t.code]=(gTot[t.code]||0)+(+d.qty[t.code]||0); }));
+  const gTot={}, gBil={};
+  MDAYS.forEach(d=>TYPES.forEach(t=>{ gTot[t.code]=(gTot[t.code]||0)+(+d.qty[t.code]||0);
+                                      gBil[t.code]=(gBil[t.code]||0)+(+((d.bqty||{})[t.code])||0); }));
   const totLine=TYPES.map(t=>`${esc(shortType(t.code))} ${gTot[t.code]||0}`).join(' · ');
   sum.innerHTML=`<div class="cal">${WD.map((w,i)=>`<div class="wd${i===0?' sun':(i===6?' sat':'')}">${esc(w)}</div>`).join('')}${cells.join('')}</div>`
-    +`<div class="lgd" style="margin-top:8px;font-size:12px;color:var(--text2);font-weight:700">${esc(tx('thTotal'))}: ${totLine} · ${tx('thFee')} ¥${feeOf(gTot).toLocaleString()}</div>`;
+    +`<div class="lgd" style="margin-top:8px;font-size:12px;color:var(--text2);font-weight:700">${esc(tx('thTotal'))}: ${totLine} · ${tx('thFee')} ¥${feeOf(gBil).toLocaleString()}</div>`;
   sum.querySelectorAll('.cd[data-d]').forEach(el=>el.addEventListener('click',()=>{
     DATE=el.dataset.d; const dp=$('#d-pick'); if(dp) dp.value=DATE;
     markCalendar(); load();
@@ -1190,7 +1203,7 @@ function renderMonth(){
       <td>${t.days.length}</td>
       <td class="l">${alloc}</td>
       <td>${cd}</td>
-      <td class="tee">${feeOf(all)?('¥'+feeOf(all).toLocaleString()):'-'}</td>
+      <td class="tee">${feeOf(t.billable)?('¥'+feeOf(t.billable).toLocaleString()):'-'}${t.freeQty?` <span class="bdg ok" title="${esc(tx('feeFreeT'))}">${esc(tx('feeFree'))} ${t.freeQty}</span>`:''}</td>
     </tr>`;
   }).join('');
   team.innerHTML=`<table class="t"><thead><tr>

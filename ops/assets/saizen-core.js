@@ -394,6 +394,17 @@
     return (n > 0 && n <= 20) ? n : null;
   }
 
+  //  전기카트 요금 무료일(Min 2026-08).
+  //   인천출발 팀은 **입국일(첫날) 라운딩**이 무료, 부산출발 팀은 **귀국일(마지막날) 라운딩**이 무료.
+  //   golfRows 가 입국일 행은 인천편에만·귀국일 행은 부산편에만 만들므로,
+  //   「그날이 입국일이거나 귀국일이면 무료」로 두면 두 규칙을 정확히 덮는다.
+  //   → 출·귀국 양쪽 날은 카트 요금을 받지 않는다.
+  function cartFreeDay(team, date) {
+    var d = String(date == null ? '' : date).slice(0, 10);
+    if (!team || !d) return false;
+    return d === String(team.dep || '').slice(0, 10) || d === String(team.arr || '').slice(0, 10);
+  }
+
   function cartPlan(pax, electric) {
     var p = Math.max(0, Math.floor(+pax || 0));
     if (!p) return null;
@@ -767,6 +778,7 @@
     cartRemarkKind: cartRemarkKind,
     GOLF_COURSES: GOLF_COURSES,
     buildRounding: buildRounding,
+    cartFreeDay: cartFreeDay,
     cartPlan: cartPlan,
     cartQtyFromRemark: cartQtyFromRemark,
     parseCartNos: parseCartNos,

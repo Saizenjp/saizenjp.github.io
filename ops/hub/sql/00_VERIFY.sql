@@ -185,6 +185,7 @@ from (
   union all select 113,'113 자리번호 유니크 해제','guest_members 옛 UNIQUE 제거', case when not exists(select 1 from pg_indexes where indexname='guest_members_event_seq_seq_in_team_key') then '✅ 적용' else '❌ 미적용 (113) — 재임포트가 실패한다' end
   union all select 114,'114 체류중 송영','transfer_checks.leg 에 stay_am·stay_pm', case when exists(select 1 from pg_constraint where conname='transfer_checks_leg_check' and pg_get_constraintdef(oid) like '%stay_am%') then '✅ 있음' else '❌ 없음 (114)' end
   union all select 115,'115 객실 쪽지','room_notes', case when to_regclass('public.room_notes') is not null then '✅ 있음' else '❌ 없음 (115)' end
+  union all select 116,'116 카트 무료일','cart_sync_charge 입국·귀국일 제외', case when exists(select 1 from pg_proc where proname='cart_sync_charge' and prosrc like '%v_dep%') then '✅ 적용' else '❌ 미적용 (116)' end
 ) t
 order by ord, 항목;
 

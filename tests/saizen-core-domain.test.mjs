@@ -245,3 +245,19 @@ test('cartRemarkKind — 명확/애매/없음', () => {
   assert.equal(SZCore.wantsElectricCart('전기'), false);
   assert.equal(SZCore.wantsElectricCart('전기카트'), true);
 });
+
+test('cartFreeDay: 입국일·귀국일 라운딩은 카트 무료', () => {
+  const team = { dep: '2026-08-12', arr: '2026-08-16' };
+  // 인천출발 = 입국일(첫날) 라운딩 무료
+  assert.equal(SZCore.cartFreeDay(team, '2026-08-12'), true);
+  // 부산출발 = 귀국일(마지막날) 9홀 라운딩 무료
+  assert.equal(SZCore.cartFreeDay(team, '2026-08-16'), true);
+  // 체류 중간일은 유료
+  assert.equal(SZCore.cartFreeDay(team, '2026-08-13'), false);
+  assert.equal(SZCore.cartFreeDay(team, '2026-08-15'), false);
+  // 날짜에 시각이 붙어 와도 앞 10자만 본다
+  assert.equal(SZCore.cartFreeDay(team, '2026-08-12T00:00:00Z'), true);
+  // 값이 없으면 무료 아님
+  assert.equal(SZCore.cartFreeDay(null, '2026-08-12'), false);
+  assert.equal(SZCore.cartFreeDay(team, ''), false);
+});
