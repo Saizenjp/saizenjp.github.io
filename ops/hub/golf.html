@@ -117,7 +117,7 @@
 <main id="content"></main>
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=16.3"></script>
+<script src="../assets/saizen-ops.js?v=16.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 const COURSES=[ {code:'aso',ko:'아소',ja:'阿蘇',pop:1}, {code:'sobo',ko:'소보',ja:'祖母',pop:2}, {code:'kuju',ko:'쿠주',ja:'久住',pop:3} ];
@@ -158,6 +158,8 @@ const L={
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; const v=d[k]; return v!=null?v:(L.ja[k]!=null?L.ja[k]:k); }
+// 이름 표기 — 일본어 화면이면 가타카나(표시 전용, 검색·저장은 원문 그대로)
+function pn(kr,en){ return window.__so_pname?__so_pname(kr,en):(kr||en||''); }
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2500);}
 function setConn(t,c){const e=$('#conn-state');if(e){e.textContent=t;e.className='pill'+(c?' '+c:'');}}
@@ -253,7 +255,7 @@ async function load(){
     // 대표 출발지(팀 isPus)
     const oriMap={}; pxs.forEach(p=>{ if(oriMap[p.event_seq]==null){ oriMap[p.event_seq]=SZCore.isPus(p.origin,p.dep_flight); } });
     const memByTeam={}; gms.forEach(m=>{ const nm=String(m.name_kr||'').trim();
-      (memByTeam[m.event_seq]=memByTeam[m.event_seq]||[]).push({ id:m.id, name:nm, eng:titleCase(m.name_en), gender:genMap[m.event_seq+'|'+nm]||'', seq:m.event_seq }); });
+      (memByTeam[m.event_seq]=memByTeam[m.event_seq]||[]).push({ id:m.id, name:pn(nm,m.name_en)||nm, kr:nm, eng:titleCase(m.name_en), gender:genMap[m.event_seq+'|'+nm]||'', seq:m.event_seq }); });
     TEAMS=(bs||[]).map(b=>{ const g=gmap[b.event_seq]||{};
       const t={ seq:b.event_seq, dep:fmtDate(b.dep_date), arr:fmtDate(b.arr_date), accom:g.accom||'',
         tag:(window.SZCore&&SZCore.tagStripSeq)?SZCore.tagStripSeq(g.team_tag||g.group_code||''):(g.team_tag||g.group_code||''),
@@ -491,7 +493,7 @@ function printSheet(){
     const tr=rows.map((r,i)=>`<tr>
       <td class="tm">${esc(r.t.replace(/^0/,''))}</td>
       <td class="gp">${esc(r.tag)}</td>
-      <td class="rp">${esc(r.rep)}</td>
+      <td class="rp">${esc(pn(r.rep,''))}</td>
       ${span[i]?`<td class="bg${r.note===N9?' n9':(r.note?' n18':'')}" rowspan="${span[i]}">${esc(r.note).replace(/\n/g,'<br>')}</td>`:''}
     </tr>`).join('');
     return `<div class="ct">

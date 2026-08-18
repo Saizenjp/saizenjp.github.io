@@ -183,7 +183,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=32"></script>
-<script src="../assets/saizen-ops.js?v=16.3"></script>
+<script src="../assets/saizen-ops.js?v=16.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -289,6 +289,8 @@ function renderAccomChips(){
   }));
 }
 
+// 이름 표기 — 일본어 화면이면 가타카나(표시 전용, 검색은 원문도 같이 건다)
+function pn(kr,en){ return window.__so_pname?__so_pname(kr,en):(kr||en||''); }
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function yen(n){const v=Math.round(Number(n)||0);return '¥'+v.toLocaleString('ja-JP');}
 function setConn(t,c){const e=$('#conn-state');if(e){e.textContent=t;e.className='pill'+(c?' '+c:'');}}
@@ -358,7 +360,7 @@ async function load(){
     const {data:bs,error:e1}=await supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax,product_name').lte('dep_date',day).gte('arr_date',day);
     if(e1)throw e1;
     const seqs=(bs||[]).map(b=>b.event_seq);
-    const G={},R={},BAL={},NOTE={},MEM={},ECO={},OVR={},FU={},MB={};
+    const G={},R={},BAL={},NOTE={},MEM={},MEMQ={},ECO={},OVR={},FU={},MB={};
     for(let i=0;i<seqs.length;i+=300){
       const chunk=seqs.slice(i,i+300);
       const {data:gs}=await supa.from('guests').select('event_seq,team_tag,group_code,accom,pax,check_status').in('event_seq',chunk); (gs||[]).forEach(g=>G[g.event_seq]=g);
@@ -366,7 +368,9 @@ async function load(){
       const {data:nt}=await supa.from('event_notes').select('event_seq,remarks,memo,team_label').in('event_seq',chunk); (nt||[]).forEach(n=>NOTE[n.event_seq]=n);
       // 동행자 명단 + 조기퇴실(actual_dep) + 회원·등급 집계 — "누구와 누가 팀인지" 검색·표시 + 운영상태
       const mq=await pagedQuery(()=>supa.from('guest_members').select('event_seq,seq_in_team,name_kr,name_en,actual_dep,member_grade,member_class,member_div').in('event_seq',chunk).order('event_seq').order('seq_in_team'));
-      (mq.data||[]).forEach(m=>{const nm=(m.name_kr||m.name_en||'').trim(); if(nm)(MEM[m.event_seq]=MEM[m.event_seq]||[]).push(nm); if(m.actual_dep) ECO[m.event_seq]=(ECO[m.event_seq]||0)+1;
+      (mq.data||[]).forEach(m=>{const nm=(m.name_kr||m.name_en||'').trim();
+        if(nm){ (MEM[m.event_seq]=MEM[m.event_seq]||[]).push(pn(m.name_kr,m.name_en)||nm);
+                (MEMQ[m.event_seq]=MEMQ[m.event_seq]||[]).push(nm+' '+(m.name_en||'')); } if(m.actual_dep) ECO[m.event_seq]=(ECO[m.event_seq]||0)+1;
         if(window.SZCore&&SZCore.isMember(m)){const mb=MB[m.event_seq]=MB[m.event_seq]||{n:0,g:{}}; mb.n++; const gl=SZCore.gradeLabel(m); mb.g[gl]=(mb.g[gl]||0)+1;}});
       // 운영 상태(각 섹션 입력) — 석식제외·석식분리·운영팀 / 확인필요
       const {data:ov}=await supa.from('print_overrides').select('event_seq,excluded,dinner_split,team_group').in('event_seq',chunk); (ov||[]).forEach(o=>OVR[o.event_seq]=o);
@@ -381,7 +385,7 @@ async function load(){
       const rooms=R[b.event_seq]?[...R[b.event_seq]]:[];
       const memo=[n.remarks,n.memo].filter(Boolean).join(' / ');
       const members=MEM[b.event_seq]||[];
-      const search=[tag,rep,g.accom,memo,n.team_label,...members,...rooms].filter(Boolean).join(' ').toLowerCase();
+      const search=[tag,rep,pn(rep,''),g.accom,memo,n.team_label,...members,...(MEMQ[b.event_seq]||[]),...rooms].filter(Boolean).join(' ').toLowerCase();
       const ov=OVR[b.event_seq]||{};
       return {seq:b.event_seq,no:b.event_no||b.event_seq,rep,pax:g.pax||b.pax||0,dep:b.dep_date,arr:b.arr_date,
         accom:g.accom||'',tag,rooms,bal:bal.bal,gross:bal.gross,paid:bal.paid,cnt:bal.cnt,
@@ -474,7 +478,7 @@ function sect(kind,title,list){
     return `<div class="trow ${t.seq===state.selSeq?'sel':''}${t.co?' done':''}" data-seq="${t.seq}">
       ${co?`<input type="checkbox" class="cock" data-cos="${t.seq}"${t.co?' disabled':''}>`:''}
       <span class="tag">${esc(t.tag)}</span>${t.co?`<span class="cobadge">${tx('coDone')}</span>`:''}
-      <span class="rep">${esc(t.rep)}</span>${membChip(t)}
+      <span class="rep">${esc(pn(t.rep,''))}</span>${membChip(t)}
       <span class="pax">${t.pax}${nw}</span>
       <span class="room">${t.rooms.length?t.rooms.join(','):`<span style="color:var(--muted)">${tx('unassigned')}</span>`}</span>
       <span class="accom">${esc(accomL(t.accom))}</span>
@@ -540,7 +544,7 @@ function statusBadges(t){
 function renderDetail(t){
   const balCls=t.bal>0?'due':'zero', nw=tx('nameWord');
   $('#detail').innerHTML=`
-    <div class="dh"><span class="tag">${esc(t.tag)}</span> ${esc(t.rep)}${tx('honor')}</div>
+    <div class="dh"><span class="tag">${esc(t.tag)}</span> ${esc(pn(t.rep,''))}${tx('honor')}</div>
     <div class="dsub">#${esc(String(t.no))} · ${esc(accomL(t.accom))} · ${t.pax}${nw} · ${esc((t.dep||'').slice(5))}~${esc((t.arr||'').slice(5))}</div>
     <div style="font-size:12.5px;color:var(--text2);margin-top:7px;line-height:1.5"><b style="color:var(--text)">${tx('roster')}</b> ${t.members&&t.members.length?esc(t.members.join(' · ')):'<span style="color:var(--muted)">-</span>'}</div>
     ${statusBadges(t)}

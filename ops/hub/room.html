@@ -600,7 +600,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=32"></script>
-<script src="../assets/saizen-ops.js?v=16.3"></script>
+<script src="../assets/saizen-ops.js?v=16.4"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -1859,7 +1859,7 @@ function renderTimeline(){
         const used=occ.reduce((s,x)=>s+(x.assigned_pax||0),0);
         const r0=occ[0];
         const tag=teamGroupCode(r0.event_seq)||(tx('teamPrefix')+evNo(r0.event_seq));
-        const names=[...new Set(occ.map(x=>{const m=x.member_id!=null?memberById(x.member_id):null;return m?m.name_kr:'';}).filter(Boolean))].join(', ');
+        const names=[...new Set(occ.map(x=>{const m=x.member_id!=null?memberById(x.member_id):null;return mName(m);}).filter(Boolean))].join(', ');
         html+=`<td class="tl-c occ ${tlTypeClass(inv.room_type)}${used>inv.capacity?' tl-over':''}" `
           +`title="${tag} · ${names} · ${r0.check_in}~${r0.check_out} (${used}/${inv.capacity})">`
           +`${r0.check_in===d?`<span class="tl-bar">${tag}</span>`:''}</td>`;
@@ -1958,7 +1958,7 @@ function wzTeamRooms(g){
     const inv=invById(r.inventory_id); if(!inv) return;
     const e=byInv.get(r.inventory_id)||{inv,names:[]};
     const m=r.member_id!=null?memberById(r.member_id):null;
-    if(m&&m.name_kr) e.names.push(m.name_kr);
+    if(m&&(m.name_kr||m.name_en)) e.names.push(mName(m));
     byInv.set(r.inventory_id,e);
   });
   return [...byInv.values()].sort((a,b)=>String(a.inv.room_no||'').localeCompare(String(b.inv.room_no||'')));
@@ -1981,7 +1981,7 @@ function wzBody(){
       const isNon=(g.group_code||'').startsWith('F');
       const note=singleNote(g);
       return `<button type="button" class="wz-team" data-seq="${g.event_seq}"
-        data-hay="${esc([gc,g.rep,g.event_no,...(teamRoster(g.event_seq).map(m=>m.name_kr+' '+(m.name_en||'')))].join(' ').toLowerCase())}"
+        data-hay="${esc([gc,g.rep,g.event_no,...(teamRoster(g.event_seq).map(m=>m.name_kr+' '+(m.name_en||'')+' '+mName(m)))].join(' ').toLowerCase())}"
         style="display:block;width:100%;text-align:left;font-family:inherit;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--${g.pfx==='K'?'k':g.pfx==='G'?'g':g.pfx==='S'?'s':'y'});border-radius:9px;padding:8px 11px;margin-bottom:7px;cursor:pointer">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <b style="font-family:var(--mono);color:var(--accent);font-size:14px">${esc(gc)}</b>
@@ -2030,7 +2030,7 @@ function wzBody(){
   return `<div style="padding:8px 0">
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:9px">
       ${mem.map((m,i)=>`<label style="display:inline-flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:4px 9px;font-size:12.5px;cursor:pointer">
-        <input type="checkbox" class="wz-m" data-mid="${m.id}"${i===0?' checked':''}><b>${esc(m.name_kr||'')}</b>
+        <input type="checkbox" class="wz-m" data-mid="${m.id}"${i===0?' checked':''}><b>${esc(mName(m))}</b>
         <i class="gbadge${isMember(m)?' mem':''}">${gradeShort(m)}</i></label>`).join('')}
       ${mem.length>1?`<button type="button" class="btn xs ghost" id="wz-all">${tx('wzAllSel')}</button>`:''}
     </div>
@@ -2082,7 +2082,7 @@ function renderWizard(){
     // 싱글(빈자리 1)에 3명을 넣으려 하면 앞에서 1명만 — 정원 초과를 애초에 만들지 않는다
     const free=(inv.max_capacity||inv.capacity)-roomOccOver(inv.id,_g().dep,_g().arr).peak;
     if(ids.length>free){ toast(tx('wzCap',inv.room_no,free),'warn'); ids=ids.slice(0,Math.max(1,free)); }
-    const names=ids.map(id=>{ const m=memberById(id); return (m&&(m.name_kr||m.name_en))||''; }).filter(Boolean).join(', ');
+    const names=ids.map(id=>{ const m=memberById(id); return mName(m); }).filter(Boolean).join(', ');
     if(!confirm(tx('wzAsk',inv.room_no,wzTypeLabel(inv),names,ids.length))) return;
     await assignMembers(ids,inv);
     const g2=state.guests.find(x=>x.event_seq===_wzSeq);
@@ -2200,7 +2200,7 @@ function renderUnassigned(){
       return `<div class="rmember${m.is_rep?' rep':''}${isDone?' done':''}${checked?' sel':''}" data-mid="${m.id}" ${isDone?'':'draggable="true"'}>
         <input type="checkbox" class="mchk" data-mid="${m.id}" ${isDone?'disabled':''} ${checked?'checked':''}>
         <span class="rtag">${m.tag||(m.num)}</span>
-        <span class="rname">${m.name_kr||'-'}${gsym(m)}${m.is_rep?`<i class="repbadge">${tx('repBadge')}</i>`:''}<i class="gbadge${isMember(m)?' mem':''}" title="${esc(gradeLabel(m))}">${gradeShort(m)}</i></span>
+        <span class="rname">${mName(m)||'-'}${gsym(m)}${m.is_rep?`<i class="repbadge">${tx('repBadge')}</i>`:''}<i class="gbadge${isMember(m)?' mem':''}" title="${esc(gradeLabel(m))}">${gradeShort(m)}</i></span>
         <span class="ren">${m.name_en||''}</span>
         ${isDone?`<span class="rdone" title="${tx('assignedRoomT')}">${memberRoomLabel(m.id)} <button class="runassign" data-mid="${m.id}" title="${tx('unassignClearT')}">${tx('unassignClear')}</button></span>`:''}
         ${(!isDone && m.actual_dep)?`<button class="reco-cancel" data-mid="${m.id}" title="${tx('ecoUndoUnassignedT')}" style="margin-left:auto;font-size:10.5px;font-weight:700;color:#9a6b00;background:#fff4d6;border:1px solid #f0d48a;border-radius:99px;padding:1px 7px;cursor:pointer">🛫${fmtMD(m.actual_dep)} ✕</button>`:''}
@@ -2323,7 +2323,7 @@ function openRoomOccupants(inv, focusRowId){
   const used=roomUsedPax(inv), cap=inv.capacity||0;
   const list=rows.map(r=>{
     const m=r.member_id!=null?memberById(r.member_id):null;
-    const nm=m?(m.name_kr||''):'', en=m?(m.name_en||''):'';
+    const nm=mName(m), en=m?(m.name_en||''):'';
     const tag=m?personTag(r.event_seq,m.seq_in_team||1):(teamGroupCode(r.event_seq)||'');
     return `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-top:1px solid var(--border);cursor:pointer">
       <input type="checkbox" class="ro-chk" data-rid="${r.id}"${focusRowId&&r.id===focusRowId?' checked':''} style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer">
@@ -2422,11 +2422,11 @@ function openSwapPicker(srcIds){
       const m=r.member_id!=null?memberById(r.member_id):null;
       return `<label class="sw-p"><input type="checkbox" class="sw-chk" data-rid="${r.id}" data-inv="${g.inv.id}" checked>
         <span class="sw-tag">${esc(m?personTag(r.event_seq,m.seq_in_team||1):(teamGroupCode(r.event_seq)||''))}</span>
-        <b>${esc(m?(m.name_kr||''):'')}</b>${m?gsym(m):''}
+        <b>${esc(mName(m))}</b>${m?gsym(m):''}
         <span class="sw-en">${esc(m?(m.name_en||''):'')}</span></label>`;
     }).join('');
     const isMine=g.rows.some(r=>srcSeqs.has(r.event_seq));
-    return `<div class="sw-room" data-inv="${g.inv.id}" data-q="${esc((g.inv.room_no||'')+' '+g.rows.map(r=>{const m=memberById(r.member_id);return m?(m.name_kr||''):'';}).join(' '))}">
+    return `<div class="sw-room" data-inv="${g.inv.id}" data-q="${esc((g.inv.room_no||'')+' '+g.rows.map(r=>{const m=memberById(r.member_id);return m?((m.name_kr||'')+' '+mName(m)):'';}).join(' '))}">
       <div class="sw-h"><b>${esc(g.inv.room_no)}</b> <span class="sw-t">${esc(TYPE_KO[g.inv.room_type]||g.inv.room_type||'')}</span>
         ${isMine?`<span class="sw-mine">${tx('swMine')}</span>`:''}
         <button class="btn xs" type="button" data-sw-go="${g.inv.id}" style="margin-left:auto">${tx('swDo')}</button></div>
@@ -2475,7 +2475,7 @@ async function doSwap(aIds, bIds){
     r.inventory_id=iv.id; r.facility=iv.facility; r.room_no=iv.room_no; r.room_type=iv.room_type; r.assign_source='manual'; } });
   put(aIds,bInv); put(bIds,aInv);
   rebuildAssignMap(); render();
-  const nm=ids=>ids.map(id=>{const r=state.rooms.find(x=>x.id===id);const m=r&&memberById(r.member_id);return m?(m.name_kr||''):'';}).filter(Boolean).join('·');
+  const nm=ids=>ids.map(id=>{const r=state.rooms.find(x=>x.id===id);const m=r&&memberById(r.member_id);return mName(m);}).filter(Boolean).join('·');
   logAssign('맞바꾸기', `${(aInv||{}).room_no||''}(${nm(aIds)}) ↔ ${(bInv||{}).room_no||''}(${nm(bIds)})`);
   toast(tx('swDone',(aInv||{}).room_no||'',(bInv||{}).room_no||''),'ok');
 }
@@ -2485,10 +2485,10 @@ function startMoveRows(rowIds){
   const rows=rowIds.map(id=>state.rooms.find(r=>r.id===id)).filter(r=>r&&r.member_id!=null);
   if(!rows.length){ toast(tx('splitOnlyMember'),'warn'); return; }
   if(rows.length===1){ startSplit(rows[0].id, rows[0].check_in); return; }   // 1명은 기존 흐름 그대로
-  const names=rows.map(r=>{const m=memberById(r.member_id);return m?(m.name_kr||''):'';}).filter(Boolean);
+  const names=rows.map(r=>{const m=memberById(r.member_id);return mName(m);}).filter(Boolean);
   const from=rows.map(r=>r.check_in).sort()[0];
   const to=rows.map(r=>r.check_out).sort().slice(-1)[0];
-  state.splitPending={ multi:true, whole:true, rows:rows.map(r=>({id:r.id,name:(memberById(r.member_id)||{}).name_kr||'',event_seq:r.event_seq})),
+  state.splitPending={ multi:true, whole:true, rows:rows.map(r=>({id:r.id,name:mName(memberById(r.member_id)),event_seq:r.event_seq})),
     srcIds:rows.map(r=>r.id), from, to, name:names.join('·'), event_seq:rows[0].event_seq, srcId:rows[0].id };
   render();
   openSplitPicker(rows[0]);
@@ -2520,10 +2520,10 @@ function openAssignPicker(inv){
     const fit=roomFitsTeam(inv,g);
     const gcode=teamGroupCode(g.event_seq)||tx('codeUndecided');
     const mem=unassignedMembers(g.event_seq);
-    const rows=mem.map(m=>`<label class="ap-m" data-hay="${esc([m.name_kr,m.name_en,m.tag,m.num,gcode,g.event_no,g.rep].filter(Boolean).join(' ').toLowerCase())}" style="display:flex;align-items:center;gap:7px;padding:5px 9px;cursor:pointer;border-top:1px solid var(--border)">
+    const rows=mem.map(m=>`<label class="ap-m" data-hay="${esc([m.name_kr,m.name_en,mName(m),m.tag,m.num,gcode,g.event_no,g.rep].filter(Boolean).join(' ').toLowerCase())}" style="display:flex;align-items:center;gap:7px;padding:5px 9px;cursor:pointer;border-top:1px solid var(--border)">
         <input type="checkbox" class="ap-chk" data-mid="${m.id}" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer">
         <span style="font-family:var(--mono);font-size:11px;color:var(--text2);min-width:30px">${m.tag||m.num||''}</span>
-        <span style="font-size:13px;font-weight:600">${m.name_kr||'-'}${m.is_rep?` <i style="font-size:8px;font-weight:800;color:var(--accent2)">${tx('repBadge')}</i>`:''}${gbadge(m)}</span>
+        <span style="font-size:13px;font-weight:600">${mName(m)||'-'}${m.is_rep?` <i style="font-size:8px;font-weight:800;color:var(--accent2)">${tx('repBadge')}</i>`:''}${gbadge(m)}</span>
         <span style="margin-left:auto;font-size:11px;color:var(--muted)">${m.name_en||''}</span>
       </label>`).join('');
     return `<div class="ap-team" data-hay="${esc([gcode,g.rep,g.event_no,g.accom].filter(Boolean).join(' ').toLowerCase())}" style="border:1px solid ${fit?'var(--accent)':'var(--border)'};border-radius:9px;margin-bottom:8px;overflow:hidden;${fit?'box-shadow:0 0 0 1px var(--accent) inset':''}">
@@ -2907,6 +2907,9 @@ function unassignedMembers(seq){
 function teamFullyAssigned(seq){
   return unassignedMembers(seq).length===0 && (state.members[seq]||[]).length>0;
 }
+// 이름 표기 — 일본어 화면이면 가타카나(saizen-ops __so_pname). 저장값·검색은 원문 그대로.
+function pn(kr,en){ return window.__so_pname?__so_pname(kr,en):(kr||en||''); }
+function mName(m){ return m?pn(m.name_kr,m.name_en):''; }
 function memberById(mid){
   for(const seq in state.members){
     const hit=(state.members[seq]||[]).find(m=>m.id===mid);
@@ -2991,7 +2994,7 @@ function roomChipsHtml(assigned, refDay, compact){
     const flag = !refDay ? '' : (isIn?`<span class="cflag cf-in">${tx('flagIn')}</span>` : `<span class="cflag cf-cont">${tx('flagCont')}</span>`);
     const mem=r=>{
       const m=r.member_id!=null?memberById(r.member_id):null;
-      const nameKr=m?(m.name_kr||'-'):gcode;
+      const nameKr=m?(mName(m)||'-'):gcode;
       const nameEn=m?(m.name_en||''):'';
       const gb=m?`<i class="gbadge${isMember(m)?' mem':''}" title="${esc(gradeLabel(m))}">${gradeShort(m)}</i>`:'';
       const ecoMk=(m&&m.actual_dep)?`<span class="ceco" title="${tx('ecoMark',m.actual_dep)}">🛫${fmtMD(m.actual_dep)}</span>`:'';
@@ -3193,7 +3196,7 @@ function startSplit(roomId, atDate){
   if(D===row.check_in){
     const m0=memberById(row.member_id);
     state.splitPending={ srcId:row.id, member_id:row.member_id, event_seq:row.event_seq,
-      from:row.check_in, to:row.check_out, name:(m0?m0.name_kr:''), whole:true };
+      from:row.check_in, to:row.check_out, name:mName(m0), whole:true };
     render(); openSplitPicker(row); return;
   }
   if(!(row.check_in < D && D < row.check_out)){
@@ -3201,7 +3204,7 @@ function startSplit(roomId, atDate){
     return;
   }
   const m=memberById(row.member_id);
-  state.splitPending={ srcId:row.id, member_id:row.member_id, event_seq:row.event_seq, from:D, to:row.check_out, name:(m?m.name_kr:'') };
+  state.splitPending={ srcId:row.id, member_id:row.member_id, event_seq:row.event_seq, from:D, to:row.check_out, name:mName(m) };
   render();
   openSplitPicker(row);   // 옮길 수 있는 방을 층별로 바로 보여준다(닫고 객실을 직접 눌러도 동일)
 }
@@ -3230,7 +3233,7 @@ function openMemberModal(roomId){
 
   const bg=document.createElement('div'); bg.className='modal-bg'; bg.id='member-modal';
   bg.innerHTML=`<div class="modal" style="max-width:520px">
-    <h2>${tx('mmTitle')} <span style="font-size:13px;font-weight:700;color:var(--text2)">· ${esc(m.name_kr||'')} ${esc(m.name_en||'')}</span></h2>
+    <h2>${tx('mmTitle')} <span style="font-size:13px;font-weight:700;color:var(--text2)">· ${esc(mName(m))} ${esc(m.name_en||'')}</span></h2>
     <div class="mbody" style="max-height:64vh;overflow:auto">
       <div class="mm-sec">
         <h4>${tx('mmNow')}</h4>
@@ -3472,7 +3475,7 @@ async function earlyCheckout(roomId, opts){
   const row=state.rooms.find(r=>r.id===roomId);
   if(!row || row.member_id==null){ toast(tx('splitOnlyMember'),'warn'); return; }
   const m=memberById(row.member_id);
-  const name=m?(m.name_kr||''):'';
+  const name=mName(m);
   const seq=row.event_seq;
   // 이미 조기퇴실로 설정된 경우 → 해제 제안
   if(m && m.actual_dep){
@@ -3592,7 +3595,7 @@ function openHoldsModal(){
     const isNon=(g.group_code||'').startsWith('F');
     const note=singleNote(g);
     const hay=[gc,g.rep,g.event_no,...c.items.map(h=>h.t),
-      ...teamRoster(g.event_seq).map(m=>m.name_kr+' '+(m.name_en||''))].join(' ').toLowerCase();
+      ...teamRoster(g.event_seq).map(m=>m.name_kr+' '+(m.name_en||'')+' '+mName(m))].join(' ').toLowerCase();
     return `<button type="button" class="hd-card hd-team" data-seq="${g.event_seq}"
       data-cats="${esc(catsOf(c).join(' '))}" data-acc="${esc(teamPlaceKeys(g)[0]||g.accom||'')}" data-hay="${esc(hay)}"
       style="border-left:4px solid var(--${g.pfx==='K'?'k':g.pfx==='G'?'g':g.pfx==='S'?'s':'y'})">
@@ -3728,7 +3731,7 @@ function renderFloorRing(zoneRooms){
     const chips=assigned.map(r=>{
       const m=r.member_id!=null?memberById(r.member_id):null;
       const tag=m?personTag(r.event_seq,m.seq_in_team||1):(teamGroupCode(r.event_seq)||(tx('teamPrefix')+evNo(r.event_seq)));
-      const nm=m?(m.name_kr||''):'';
+      const nm=mName(m);
       return `<span class="rchip"><b>${tag}</b> ${nm}</span>`;   // 평면도에선 ✕ 취소 없음(카드에서만)
     }).join('');
     node.innerHTML=`
@@ -3814,7 +3817,7 @@ async function assignMembers(memberIds, inv, opts={}){
       const others=[...new Set(overlapRows.map(r=>{
         const mm=memberById(r.member_id);
         const gc=teamGroupCode(r.event_seq)||evNo(r.event_seq)||'';
-        const nm=mm?(mm.name_kr||mm.name_en||''):'';
+        const nm=mName(mm);
         const who=nm?(gc?`${nm}(${gc})`:nm):(gc||tx('unknown'));
         return `${who} ${fmtMD(r.check_in)}~${fmtMD(r.check_out)}`;
       }))].join(' / ');
@@ -3863,7 +3866,7 @@ async function recordByeolche(g, inv, nights, m){
     description:`별채 온천 사전신청비 (${inv.room_no}, ${nights}박)`,
     qty:nights, unit_price:BYEOLCHE_FEE, amount:BYEOLCHE_FEE*nights, currency:'JPY',
     posted_by:'front', settle_status:'onsite'
-  }); toast(tx('bzRecorded',(BYEOLCHE_FEE*nights).toLocaleString(),m.name_kr||''),'ok'); }catch(e){}
+  }); toast(tx('bzRecorded',(BYEOLCHE_FEE*nights).toLocaleString(),mName(m)),'ok'); }catch(e){}
 }
 
 // 수기로 별채에 배정했을 때: 온천 사전신청 인원만 골라 +2,000/박 기록(체크 안 하면 미기록)
@@ -3876,7 +3879,7 @@ function openByeolcheModal(inv, list){
       <div class="mrow" style="grid-template-columns:1fr"><div>
         ${list.map((x,i)=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer">
           <input type="checkbox" class="bz-chk" data-i="${i}" style="width:16px;height:16px">
-          ${x.m.name_kr||tx('bzNoName')} <span class="desc">· ${x.nights}${tx('bzNight')} → +¥${(BYEOLCHE_FEE*x.nights).toLocaleString()}</span></label>`).join('')}
+          ${mName(x.m)||tx('bzNoName')} <span class="desc">· ${x.nights}${tx('bzNight')} → +¥${(BYEOLCHE_FEE*x.nights).toLocaleString()}</span></label>`).join('')}
       </div></div>
     </div>
     <div class="mfoot">
@@ -4137,7 +4140,7 @@ function placePairs(g,list,primaryPool,fallbackPool,label,pending,holds,occ,floo
   placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,occ,floorOrder);
   if(i<list.length){
     if(AUTO_OPTS.allowSingle) placeSingles(g,[list[i]],primaryPool,fallbackPool,label,pending,holds,occ,floorOrder);
-    else { const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq)); holds.push(mkHold(tx('holdOddLeft',gc,list[i].name_kr||''),g,'oddLeft')); }
+    else { const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq)); holds.push(mkHold(tx('holdOddLeft',gc,mName(list[i])),g,'oddLeft')); }
   }
 }
 // 미리 구성된 짝 배열을 받아 같은 층 묶기 + 방 배정(부족 시 fallbackPool로 강등).
@@ -4159,7 +4162,7 @@ function placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,oc
     if(!inv && widePool && widePool!==primaryPool) inv=pickRoom(widePool,g.dep,g.arr,2,pending,occ); // 허용 층에 디럭스 없음 → 층 이동(전층 디럭스 = 룸레벨 우선)
     if(!inv && fallbackPool && fallbackPool!==primaryPool)
       inv=pickRoom(fallbackPool,g.dep,g.arr,2,pending,occ);          // 전층에도 디럭스 없음 → 다음 룸레벨로 강등
-    if(!inv){ holds.push(mkHold(tx('holdNoRoom',gc,pair[0].name_kr||'',pair[1].name_kr||'',label)
+    if(!inv){ holds.push(mkHold(tx('holdNoRoom',gc,mName(pair[0]),mName(pair[1]),label)
         +' — '+noRoomWhy([usePool,primaryPool,widePool,fallbackPool],g.dep,g.arr,2,pending,occ),g,'noRoom')); continue; }
     pending.push(mkRow(g,pair[0],inv));
     pending.push(mkRow(g,pair[1],inv));
@@ -4184,7 +4187,7 @@ function placeSingles(g,list,primaryPool,fallbackPool,label,pending,holds,occ,fl
   for(const m of list){
     let inv=pickRoom(primaryPool,g.dep,g.arr,1,pending,occ);
     if(!inv && fallbackPool && fallbackPool!==primaryPool) inv=pickRoom(fallbackPool,g.dep,g.arr,1,pending,occ);
-    if(!inv){ holds.push(mkHold(tx('holdNoRoom',gc,m.name_kr||'','',label),g,'noRoom')); continue; }
+    if(!inv){ holds.push(mkHold(tx('holdNoRoom',gc,mName(m),'',label),g,'noRoom')); continue; }
     pending.push(mkRow(g,m,inv));
   }
 }
@@ -4200,7 +4203,7 @@ function placeLeftovers(g, route, leftovers, flr, pending, holds, occ, floorOrde
     let inv=pickRoom(sg,g.dep,g.arr,1,pending,occ);                       // 허용 층 싱글
     if(!inv) inv=pickRoom(sgAll,g.dep,g.arr,1,pending,occ);               // 전층 싱글(층 넘기 허용)
     if(!inv && AUTO_OPTS.allowSingle && genPool) inv=pickRoom(genPool,g.dep,g.arr,1,pending,occ); // 2인실 단독(옵션)
-    if(!inv){ holds.push(mkHold(tx('holdOddLeft',gc,m.name_kr||''),g,'oddLeft')); continue; }
+    if(!inv){ holds.push(mkHold(tx('holdOddLeft',gc,mName(m)),g,'oddLeft')); continue; }
     pending.push(mkRow(g,m,inv));
   }
 }
@@ -4449,7 +4452,7 @@ async function autoAssign(){
       const b=_beforeRoom[r.member_id]; if(!b) return;                       // 이전 배정 없음(신규)
       if(b.no===r.room_no && b.f===r.facility) return;                       // 같은 방(안 바뀜)
       const m=r.member_id!=null?memberById(r.member_id):null;
-      const nm=(m&&(m.name_kr||m.name_en))||'';
+      const nm=mName(m);
       const gc=teamGroupCode(r.event_seq)||evNo(r.event_seq)||'';
       _moves.push(`${nm}(${gc}) ${b.f||''} ${b.no} → ${r.facility||''} ${r.room_no}`);
     });
@@ -4519,7 +4522,7 @@ function openSingleFeeModal(g, inv, nights, roomId, preMember){
         <div>
           <label style="display:block;margin-bottom:5px">${tx('sfTargetLbl')}</label>
           <select class="inp" id="sf-member" style="width:100%">
-            ${members.length? members.map(m=>`<option value="${m.id}" ${preMember&&preMember.id===m.id?'selected':''}>${m.seq_in_team||''}. ${m.name_kr||tx('bzNoName')}${m.is_rep?tx('sfRep'):''}</option>`).join('')
+            ${members.length? members.map(m=>`<option value="${m.id}" ${preMember&&preMember.id===m.id?'selected':''}>${m.seq_in_team||''}. ${mName(m)||tx('bzNoName')}${m.is_rep?tx('sfRep'):''}</option>`).join('')
               : `<option value="">${tx('sfNoList')}</option>`}
           </select>
         </div>
@@ -4542,7 +4545,7 @@ function openSingleFeeModal(g, inv, nights, roomId, preMember){
     const memberId=bg.querySelector('#sf-member').value||null;
     const prepaid=bg.querySelector('#sf-prepaid').checked;
     const settle=prepaid?'prepaid_merit':'onsite';
-    const memberName=members.find(m=>m.id===memberId)?.name_kr||'';
+    const memberName=mName(members.find(m=>m.id===memberId));
     const {error:te}=await supa.from('transactions').insert({
       event_seq:g.event_seq, member_id:memberId, category:'single_charge',
       description:`싱글차지 ${memberName?memberName+' ':''}(${inv.facility} ${inv.room_no}, ${nights}박)`,
@@ -4618,12 +4621,12 @@ async function revertUnassign(id){
 async function cancelEcoByMember(mid){
   if(!supa) return;
   const m=memberById(mid); if(!m||!m.actual_dep){ return; }
-  if(!confirm(tx('ecoUnassignedConfirm', m.name_kr||'', m.actual_dep))) return;
+  if(!confirm(tx('ecoUnassignedConfirm', mName(m), m.actual_dep))) return;
   const {error}=await supa.from('guest_members').update({actual_dep:null,actual_dep_reason:null}).eq('id',mid);
   if(error){ toast(tx('ecoFail',error.message),'err'); return; }
   patchMember(mid,{actual_dep:null,actual_dep_reason:null});
   logAssign('조기퇴실 취소', `${m.name_kr||''}(${teamGroupCode(m.event_seq)||evNo(m.event_seq)||''}) — 미배정 상태 해제`);
-  render(); toast(tx('ecoCanceled',m.name_kr||''),'ok');
+  render(); toast(tx('ecoCanceled',mName(m)),'ok');
 }
 // 이동(어디서→어디로) 여러 건을 한 번에 기록 — 자동배정 재배치 추적용(배치 insert 1회).
 async function logMoves(labels){
@@ -4947,11 +4950,11 @@ try{ applyStaticRoom(); }catch(e){}
     const hits=[];
     (state.rooms||[]).forEach(r=>{
       const m=r.member_id!=null?memberById(r.member_id):null;
-      const nameKr=(m&&m.name_kr)||'', nameEn=(m&&m.name_en)||'';
+      const nameKr=mName(m), nameEn=(m&&m.name_en)||'', nameSrc=(m&&m.name_kr)||'';
       const tag=m?personTag(r.event_seq, m.seq_in_team||1):'';
       const gcode=teamGroupCode(r.event_seq)||'';
       const eno=String(evNo(r.event_seq)||'');
-      if((nameKr+' '+nameEn+' '+tag+' '+gcode+' '+eno).toLowerCase().indexOf(q)>=0)
+      if((nameSrc+' '+nameKr+' '+nameEn+' '+tag+' '+gcode+' '+eno).toLowerCase().indexOf(q)>=0)
         hits.push({r,nameKr,nameEn,tag,gcode,eno});
     });
     hits.sort((a,b)=>String(a.r.check_in||'').localeCompare(String(b.r.check_in||''))
@@ -4964,10 +4967,10 @@ try{ applyStaticRoom(); }catch(e){}
       const g=(state.guests||[]).find(x=>String(x.event_seq)===String(seq)); const dep=(g&&g.dep)||'';
       (state.members[seq]||[]).forEach(m=>{
         if(assigned.has(m.id)) return;
-        const nameKr=m.name_kr||'', nameEn=m.name_en||'';
+        const nameKr=mName(m), nameEn=m.name_en||'', nameSrc=m.name_kr||'';
         const tag=personTag(Number(seq), m.seq_in_team||1)||'';
         const gcode=teamGroupCode(Number(seq))||''; const eno=String(evNo(Number(seq))||'');
-        if((nameKr+' '+nameEn+' '+tag+' '+gcode+' '+eno).toLowerCase().indexOf(q)>=0)
+        if((nameSrc+' '+nameKr+' '+nameEn+' '+tag+' '+gcode+' '+eno).toLowerCase().indexOf(q)>=0)
           unhits.push({nameKr,nameEn,tag,gcode,eno,dep,eco:m.actual_dep||''});
       });
     });

@@ -328,7 +328,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=32"></script>
-<script src="../assets/saizen-ops.js?v=16.3"></script>
+<script src="../assets/saizen-ops.js?v=16.4"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -658,6 +658,8 @@ function updateCustBtn(){
 
 function teamBySeq(seq){ return state.teams.find(x=>x.event_seq===seq); }
 // 회원 판정은 공유 모듈(saizen-core.js)이 단일 진실원 — 3컬럼 OR(회원 우선) 위임.
+// 이름 표기 — 일본어 화면이면 가타카나(표시 전용, 검색은 원문·가타카나 둘 다)
+function pn(kr,en){ return window.__so_pname?__so_pname(kr,en):(kr||en||''); }
 function posIsMember(m){ return SZCore.isMember(m); }
 function fmtMD(iso){ if(!iso||iso==='-') return '-'; const p=String(iso).slice(0,10).split('-'); return p.length===3?`${+p[1]}/${+p[2]}`:iso; }
 function teamCardEl(tm){
@@ -691,7 +693,7 @@ function renderTeams(){
     const teamHits=pool
       .filter(tm=>((tm.group_code||'')+' '+(tm.team_tag||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')+' '+(tm.accom||'')+' '+roomsOf(tm.event_seq).join(' ')).toLowerCase().includes(q))
       .slice().sort((a,b)=>(state.activeSeqs.has(b.event_seq)?1:0)-(state.activeSeqs.has(a.event_seq)?1:0));
-    const memHits=state.members.filter(m=>{const tm=teamBySeq(m.event_seq);return tm&&accomPass(tm.accom)&&((m.name_kr||'')+' '+(m.name_en||'')).toLowerCase().includes(q);});
+    const memHits=state.members.filter(m=>{const tm=teamBySeq(m.event_seq);return tm&&accomPass(tm.accom)&&((m.name_kr||'')+' '+(m.name_en||'')+' '+pn(m.name_kr,m.name_en)).toLowerCase().includes(q);});
     $('#team-cnt').innerHTML=`${t('po_secTeam')} ${teamHits.length} · ${t('po_secMember')} ${memHits.length}`;
     if(ac) ac.textContent='';
     if(!teamHits.length && !memHits.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
@@ -703,8 +705,8 @@ function renderTeams(){
         const tm=teamBySeq(m.event_seq); if(!tm) return;
         const isMem=posIsMember(m);
         const btn=document.createElement('button'); btn.type='button'; btn.className='mhit';
-        btn.innerHTML=`<span class="mh-name">${escP(m.name_kr||m.name_en||'-')}${isMem?`<span class="mh-mem">${tx('member')}</span>`:''}</span>`
-          +`<span class="mh-team">${teamTag(tm)} · ${escP(tm.rep||'')} · #${teamNo(tm)}${tm.accom?(' · '+escP(tm.accom)):''}${roomLabel(tm.event_seq)?(' · '+roomLabel(tm.event_seq)):''}</span>`;
+        btn.innerHTML=`<span class="mh-name">${escP(pn(m.name_kr,m.name_en)||'-')}${isMem?`<span class="mh-mem">${tx('member')}</span>`:''}</span>`
+          +`<span class="mh-team">${teamTag(tm)} · ${escP(pn(tm.rep,''))} · #${teamNo(tm)}${tm.accom?(' · '+escP(tm.accom)):''}${roomLabel(tm.event_seq)?(' · '+roomLabel(tm.event_seq)):''}</span>`;
         btn.addEventListener('click',()=>confirmTeam(tm));
         wrap.appendChild(btn);
       });
@@ -793,7 +795,7 @@ function renderPayer(){
         const on=state.payerSel.has(String(m.id));
         const isMem=posIsMember(m);
         return `<button type="button" class="pchip${on?' on':''}" data-mid="${m.id}">`
-          +`<span class="pc-top">${m.seq_in_team!=null?m.seq_in_team+'. ':''}${escP(m.name_kr||m.name_en||'-')}`
+          +`<span class="pc-top">${m.seq_in_team!=null?m.seq_in_team+'. ':''}${escP(pn(m.name_kr,m.name_en)||'-')}`
           +`${isMem?`<span class="mbadge">${tx('member')}</span>`:''}</span>`
           +`${m.name_en&&m.name_kr?`<span class="pc-en">${escP(m.name_en)}</span>`:''}</button>`;
       };
@@ -1100,7 +1102,7 @@ function confirmTeam(tm){
 }
 // 명단을 방별로 묶어 보여준다(방배정이 없으면 이름만 나열)
 function rosterByRoomHTML(mem){
-  const nm=m=>(m.name_kr||m.name_en||'').trim();
+  const nm=m=>pn(m.name_kr,m.name_en).trim();
   const names=mem.map(nm).filter(Boolean);
   if(!names.length) return '-';
   const rby=state.roomByMember||{};
@@ -1160,13 +1162,13 @@ function qrFind(v){
   const seen=new Set(teams.map(x=>x.event_seq));
   state.members.forEach(m=>{
     if(seen.has(m.event_seq)) return;
-    if(!((m.name_kr||'')+' '+(m.name_en||'')).toLowerCase().includes(q)) return;
+    if(!((m.name_kr||'')+' '+(m.name_en||'')+' '+pn(m.name_kr,m.name_en)).toLowerCase().includes(q)) return;
     const tm=teamBySeq(m.event_seq); if(tm){ seen.add(tm.event_seq); teams.push(tm); }
   });
   if(!teams.length) return 0;
   teams.slice(0,12).forEach(tm=>{
     const b=document.createElement('button'); b.type='button'; b.className='qrhit';
-    b.innerHTML=`<b>${teamTag(tm)}</b> ${escP(tm.rep||'')}`
+    b.innerHTML=`<b>${teamTag(tm)}</b> ${escP(pn(tm.rep,''))}`
       +`<span>${escP(tm.accom||'')} · ${tm.pax}${t('po_cntPpl')}${roomLabel(tm.event_seq)?(' · '+roomLabel(tm.event_seq)):''}</span>`;
     b.addEventListener('click',()=>{ closeScan(); confirmTeam(tm); });
     box.appendChild(b);
@@ -1267,7 +1269,7 @@ async function toggleRunList(){
   if(error){ box.innerHTML=`<div class="empty">${escP(error.message)}</div>`; return; }
   const rows=data||[];
   if(!rows.length){ box.innerHTML=`<div class="empty">${escP(tx('runEmpty'))}</div>`; return; }
-  const nameOf=mid=>{ const m=(state.roster||[]).find(x=>String(x.id)===String(mid)); return m?(m.name_kr||m.name_en||'-'):tx('runTeamCol'); };
+  const nameOf=mid=>{ const m=(state.roster||[]).find(x=>String(x.id)===String(mid)); return m?(pn(m.name_kr,m.name_en)||'-'):tx('runTeamCol'); };
   const th=tx('runTh');
   let sum=0;
   const body=rows.map(c=>{

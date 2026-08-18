@@ -1142,6 +1142,29 @@
   global.__so_toggleFuri = toggleFuri;
   global.__so_plain = stripRuby;   // 후리가나(ruby) HTML → 평문. <option>·textContent·esc 컨텍스트용(루비 누출 방지)
 
+  // ── 손님 이름 표기 — 일본어 화면에서는 한글 이름을 **가타카나**로 보여준다.
+  //   현장은 일본어로 돌아가는데 명단만 한글이면 일본인 담당자가 읽지 못한다.
+  //   요미는 **여권 영문 철자 우선**(SZCore.nameYomiEn) — 한글 발음 기반보다 실제 표기에 가깝다.
+  //   영문이 없으면 한글에서 변환(SZCore.nameYomi). 한국어·영어 화면은 한글 그대로.
+  //   ⚠ 표시 전용 — 저장값(name_kr)은 건드리지 않는다. 검색은 원문(한글·영문)으로 계속 걸린다.
+  var _pnCache = {};
+  function personName(nameKr, nameEn) {
+    var kr = String(nameKr == null ? '' : nameKr).trim();
+    var en = String(nameEn == null ? '' : nameEn).trim();
+    if (LANG !== 'ja') return kr || en;
+    if (!kr && !en) return '';
+    var key = kr + '|' + en;
+    if (_pnCache[key]) return _pnCache[key];
+    var C = global.SZCore, y = null;
+    try {
+      if (en && C && C.nameYomiEn) y = C.nameYomiEn(en);
+      else if (kr && C && C.nameYomi) y = C.nameYomi(kr);
+    } catch (e) { y = null; }
+    var out = (y && (y.sur || y.given)) ? (y.sur + y.given) : (kr || en);
+    return (_pnCache[key] = out);
+  }
+  global.__so_pname = personName;
+
   // ── 담당자(식별 라벨) — 모든 ops 페이지 상단바에 주입. 수정이력 기록용.
   //    로그인 세션이 있으면 그 이름(가입 시 입력)을 우선 사용 → 로그인=담당자 통합.
   //    로그인 안 했으면 수기 위젯값(saizen_ops_user)을 사용.

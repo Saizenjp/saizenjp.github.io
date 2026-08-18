@@ -230,7 +230,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=32"></script>
-<script src="../assets/saizen-ops.js?v=16.3"></script>
+<script src="../assets/saizen-ops.js?v=16.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -540,7 +540,8 @@ async function load(){
     ROSTER={};
     gms.slice().sort((a,b)=>(a.seq_in_team||0)-(b.seq_in_team||0)).forEach(m=>{
       const nm=String(m.name_kr||'').trim();
-      (ROSTER[m.event_seq]=ROSTER[m.event_seq]||[]).push({ id:m.id, seq:m.event_seq, name:nm||(m.name_en||'-'),
+      (ROSTER[m.event_seq]=ROSTER[m.event_seq]||[]).push({ id:m.id, seq:m.event_seq,
+        name:pn(nm,m.name_en)||nm||(m.name_en||'-'), kr:nm,
         eng:titleCase(m.name_en), gender:genMap[m.event_seq+'|'+nm]||'' });
     });
     TEAMS=(bs||[]).map(b=>{ const g=gmap[b.event_seq]||{};
@@ -582,6 +583,8 @@ function teamsOnDate(date){
   if(_todCache[date]) return _todCache[date];
   return (_todCache[date]=TEAMS.filter(t=>!!rowFor(t,date)));
 }
+// 이름 표기 — 일본어 화면이면 가타카나(표시 전용, 검색은 원문도 같이 건다)
+function pn(kr,en){ return window.__so_pname?__so_pname(kr,en):(kr||en||''); }
 function isLate(t){ return String(t.accom||'').indexOf('쿠주')>=0; }
 
 // 그 달의 저장된 조·제외를 한 번에 읽어 날짜 칩 배지(미배정 N)를 만든다.
@@ -617,9 +620,9 @@ function qOn(){ return (CQ||'').trim().toLowerCase(); }
 function teamHit(seq){
   const q=qOn(); if(!q) return true;
   const t=TEAMS.find(x=>String(x.seq)===String(seq)); if(!t) return false;
-  const base=[t.tag,t.rep,t.seq,t.accom].filter(Boolean).join(' ').toLowerCase();
+  const base=[t.tag,t.rep,pn(t.rep,''),t.seq,t.accom].filter(Boolean).join(' ').toLowerCase();
   if(base.includes(q)) return true;
-  return (ROSTER[String(seq)]||[]).some(m=>((m.name||'')+' '+(m.eng||'')).toLowerCase().includes(q));
+  return (ROSTER[String(seq)]||[]).some(m=>((m.name||'')+' '+(m.kr||'')+' '+(m.eng||'')).toLowerCase().includes(q));
 }
 // 그 날짜 예외 조회 헬퍼
 function holesOv(date,seq){ const m=HOLESM[date]; const v=m&&m[String(seq)]; return v?v.holes:0; }
@@ -812,7 +815,7 @@ function render(){
   const unHTML = un.length? un.map(t=>{
     const rest=paxOn(DATESEL,t)-(placed[t.seq]||0);   // 불참자는 빼고 센다(Min 2026-08)
     return `<span class="un" data-seq="${t.seq}"><b>${esc(t.tag||('#'+t.seq))}</b>`
-      +`<small>${esc(t.rep||'')} · ${rest}${tx('person')} · ${holesOn(t,DATESEL)}${tx('holesU')}</small>`
+      +`<small>${esc(pn(t.rep,''))} · ${rest}${tx('person')} · ${holesOn(t,DATESEL)}${tx('holesU')}</small>`
       +`${isLate(t)?`<span class="lateb" title="${esc(tx('lateT'))}">${tx('late')}</span>`:''}`
       +`<button type="button" class="skipb" data-skip="${t.seq}">${tx('excl')}</button></span>`;
   }).join('') : `<span class="cnt" style="color:var(--muted)">${tx('allSet')}</span>`;
@@ -830,7 +833,7 @@ function render(){
     const done=BOARD.filter(x=>String(x.seq)===String(seq)).reduce((n,x)=>n+((x.members||[]).length),0);
     return `<div class="ckrow">
       <div class="ck-hd"><span class="ck-tag">${esc(g0.tag||('#'+seq))}</span>
-        <span class="ck-rep">${esc(g0.rep||'')}</span>
+        <span class="ck-rep">${esc(pn(g0.rep,''))}</span>
         <span class="ck-pax">${teamPax(seq)}${tx('person')}</span>
         <span class="ck-st">${tx('memCnt',done,teamPax(seq))}</span>
         <button type="button" class="ckok" data-okseq="${seq}">${tx('chkOk')}</button></div>
@@ -845,7 +848,7 @@ function render(){
     </div>`;
   }).join('') : `<span class="cnt" style="color:var(--muted)">${tx('chkNone')}</span>`;
   const skHTML = skipped.length? skipped.map(t=>
-    `<span class="un off"><b>${esc(t.tag||('#'+t.seq))}</b><small>${esc(t.rep||'')} · ${t.pax}${tx('person')}</small>`
+    `<span class="un off"><b>${esc(t.tag||('#'+t.seq))}</b><small>${esc(pn(t.rep,''))} · ${t.pax}${tx('person')}</small>`
     +`<button type="button" class="skipb on" data-skip="${t.seq}">${tx('incl')}</button></span>`).join('')
     : `<span class="cnt" style="color:var(--muted)">${tx('exclNone')}</span>`;
 
@@ -860,7 +863,7 @@ function render(){
         +`<span class="grip" title="${esc(tx('dragHint'))}">≡</span>`
         +`<span class="g-x" data-del="${gi}">✕</span>`
         +`<span class="g-tag">${esc(g.tag||('#'+g.seq))}</span>`
-        +`<span class="g-rep">${esc(g.rep||'')}${gnoOf(gi)?`<i class="gno">${tx('grpNo',gnoOf(gi))}</i>`:''}</span>`
+        +`<span class="g-rep">${esc(pn(g.rep,''))}${gnoOf(gi)?`<i class="gno">${tx('grpNo',gnoOf(gi))}</i>`:''}</span>`
         +`<span class="g-pax">${(g.members&&g.members.length)?tx('memCnt',g.members.length,g.pax):g.pax+tx('person')}</span>`
         +`<span class="g-holes">${g.holes?g.holes+tx('holesU'):''}</span>`
         +`${g.late?`<span class="lateb" title="${esc(tx('lateT'))}">${tx('late')}</span>`:''}`
@@ -926,7 +929,7 @@ function exceptionsHTML(){
     const nAbs=(ROSTER[seq]||[]).filter(m=>abs.has(String(m.id))).length;
     return `<div class="exrow${sk?' skip':''}">
       <div class="exhd">
-        <b>${esc(t.tag||('#'+seq))}</b> <span class="exrep">${esc(t.rep||'')}</span>
+        <b>${esc(t.tag||('#'+seq))}</b> <span class="exrep">${esc(pn(t.rep,''))}</span>
         <span class="cnt">${t.pax}${tx('person')}${nAbs?` · <span class="exabs">${tx('exAbsN',nAbs)}</span>`:''}</span>
         <span class="exsp"></span>
         <span class="exeff">${sk?tx('exNoPlay'):tx('exHoles',eff)}${(!sk&&ov)?'<i>*</i>':''}</span>
@@ -997,7 +1000,7 @@ function exPrintHTML(){
   if(!skip.length && !ovs.length && !absList.length) return '';
   const line=(lab,html)=>html?`<div><b>${esc(lab)}</b> ${html}</div>`:'';
   return `<div class="exbox">`
-    + line(tx('exNoPlay'), skip.map(t=>`<span class="ex-l">${esc(t.tag||('#'+t.seq))} ${esc(t.rep||'')}</span>`).join(''))
+    + line(tx('exNoPlay'), skip.map(t=>`<span class="ex-l">${esc(t.tag||('#'+t.seq))} ${esc(pn(t.rep,''))}</span>`).join(''))
     + line(tx('exHoleSet'), ovs.map(t=>`<span class="ex-l">${esc(t.tag||('#'+t.seq))} ${holesOv(DATESEL,t.seq)}H</span>`).join(''))
     + line(tx('exAbsent'), absList.join(''))
     + `</div>`;
@@ -1020,10 +1023,10 @@ function rosterHTML(){
   let others=[];
   if(q){
     teamsOnDate(DATESEL).filter(t=>!isSkip(t.seq)&&String(t.seq)!==String(g.seq)).forEach(t=>{
-      (ROSTER[t.seq]||[]).forEach(m=>{ if(!used.has(String(m.id)) && !isAbsent(DATESEL,m.id) && (m.name+' '+(m.eng||'')).toLowerCase().includes(q)) others.push({...m,_tag:t.tag}); });
+      (ROSTER[t.seq]||[]).forEach(m=>{ if(!used.has(String(m.id)) && !isAbsent(DATESEL,m.id) && (m.name+' '+(m.kr||'')+' '+(m.eng||'')).toLowerCase().includes(q)) others.push({...m,_tag:t.tag}); });
     });
   }
-  const ownF=q? own.filter(m=>(m.name+' '+(m.eng||'')).toLowerCase().includes(q)) : own;
+  const ownF=q? own.filter(m=>(m.name+' '+(m.kr||'')+' '+(m.eng||'')).toLowerCase().includes(q)) : own;
   const addHTML=(ownF.length||others.length)
     ? ownF.map(m=>memChip(m,'','add')).join('')
       + others.map(m=>memChip({...m,name:m.name+' ('+(m._tag||tx('rosOther'))+')'},'oth','add')).join('')
@@ -1435,7 +1438,7 @@ function renderTV(){
       const g=BOARD[gi];
       const no=gnoOf(gi);
       return `<td><b>${esc(g.tag||('#'+g.seq))}</b>${no?`<i>${tx('grpNo',no)}</i>`:''} `
-        +`<span class="nm">${esc(g.rep||'')}${tx('teamOf')}</span> <span class="pax">${(g.members&&g.members.length)||g.pax}${tx('person')}</span></td>`;
+        +`<span class="nm">${esc(pn(g.rep,''))}${tx('teamOf')}</span> <span class="pax">${(g.members&&g.members.length)||g.pax}${tx('person')}</span></td>`;
     }).join('');
     return `<tr class="${past?'past':''}"><td class="tee">${esc(tee)}</td>${tds}</tr>`;
   }).join('');
@@ -1465,8 +1468,8 @@ function boardRowsHTML(forPrint){
       if(gi<0) return '<td class="e"></td>';
       const g=BOARD[gi];
       const no=gnoOf(gi);
-      const who = forPrint ? `${esc(g.rep||'')}${tx('teamOf')}`
-        : ((g.members&&g.members.length)? g.members.map(m=>esc(m.name)).join(' · ') : esc(g.rep||''));
+      const who = forPrint ? `${esc(pn(g.rep,''))}${tx('teamOf')}`
+        : ((g.members&&g.members.length)? g.members.map(m=>esc(m.name)).join(' · ') : esc(pn(g.rep,'')));
       return `<td><b>${esc(g.tag||('#'+g.seq))}</b>${no?`<i>${tx('grpNo',no)}</i>`:''} ${who}`
         +` <span class="p">${(g.members&&g.members.length)||g.pax}${forPrint?'名':tx('person')}</span>`
         +`${(()=>{const ov=holesOv(DATESEL,g.seq); const hh=ov||g.holes;
