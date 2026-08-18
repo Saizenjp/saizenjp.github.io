@@ -70,6 +70,18 @@
   .cell:hover{background:var(--accentSoft)}
   .cell.has{background:var(--surface)}
   .cell.sel{outline:2px solid var(--accent2);outline-offset:-2px;background:#fdf6e6}
+  /* 선택 안내 — 무엇을 골랐고 다음에 무엇을 하면 되는지 화면 아래에 붙여 둔다 */
+  #gsel-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:120;display:none;
+    align-items:center;gap:12px;background:var(--accentDeep,#3b4a2f);color:#fff;border-radius:12px;
+    padding:11px 16px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-size:13.5px;max-width:94vw}
+  #gsel-bar b{font-family:var(--mono);font-size:15px}
+  #gsel-bar .who{font-weight:800;font-size:15px}
+  #gsel-bar .at{opacity:.85}
+  #gsel-bar .hintx{opacity:.9;border-left:1px solid rgba(255,255,255,.35);padding-left:12px}
+  #gsel-bar button{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.45);
+    border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer}
+  #gsel-bar button:hover{background:rgba(255,255,255,.28)}
+  @media print{ #gsel-bar{display:none!important} }
   .cell .g-tag{font-family:var(--mono);font-weight:800;color:var(--accent)}
   .cell .g-rep{color:var(--text);font-weight:700;margin-left:5px}
   .cell .g-pax{color:var(--text);font-weight:700;margin-left:5px;font-size:12.5px}
@@ -227,10 +239,11 @@
 </div>
 
 <main id="content"></main>
+<div id="gsel-bar"></div>
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=33"></script>
-<script src="../assets/saizen-ops.js?v=16.7"></script>
+<script src="../assets/saizen-ops.js?v=16.8"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -261,6 +274,7 @@ const L={
     allSet:'全チーム割当済', pickCell:'空きマスを押すと移動します', moveDone:'移動しました', full:'そのマスは埋まっています',
     savedN:n=>`${n}組を保存しました`, saveFail:'保存失敗: ', loadFail:'読み込み失敗',
     noSlot:'ティ枠が足りません — 手動で調整してください', autoDone:n=>`${n}組を割り当てました`,
+    selMoveHint:'移動先のマスを押してください(空きでも他の組でも可) · ESCで取消', selCancel:'選択解除',
     late:'遅め', lateT:'久住ヒルズ宿泊 — 16:30〜17:00終了→シャワー→18時食事に合わせ遅い組',
     grp:'組', person:'名', teamUnit:'チーム', unassignedN:n=>`未割当 ${n}チーム`,
     excl:'除外', incl:'↩ 戻す', exclH:'除外したチーム(この日はラウンドなし)', exclN:n=>`${n}チーム`,
@@ -299,6 +313,7 @@ const L={
     allSet:'전 팀 배정됨', pickCell:'빈 칸을 누르면 그 자리로 옮깁니다', moveDone:'옮겼습니다', full:'그 칸은 이미 찼습니다',
     savedN:n=>`${n}개 조 저장했습니다`, saveFail:'저장 실패: ', loadFail:'불러오기 실패',
     noSlot:'티오프 자리가 모자랍니다 — 수기로 조정하세요', autoDone:n=>`${n}개 조를 배정했습니다`,
+    selMoveHint:'옮길 자리를 누르세요(빈 칸·다른 조 모두 가능) · ESC 취소', selCancel:'선택 해제',
     late:'늦게', lateT:'쿠주힐즈 숙박 — 16:30~17:00 종료→샤워→18시 식사에 맞춰 늦은 조',
     grp:'조', person:'명', teamUnit:'팀', unassignedN:n=>`미배정 ${n}팀`,
     excl:'제외', incl:'↩ 복귀', exclH:'제외한 팀(이 날 라운딩 안 함)', exclN:n=>`${n}팀`,
@@ -337,6 +352,7 @@ const L={
     allSet:'All teams assigned', pickCell:'Tap an empty cell to move it there', moveDone:'Moved', full:'That cell is taken',
     savedN:n=>`Saved ${n} groups`, saveFail:'Save failed: ', loadFail:'Load failed',
     noSlot:'Not enough tee slots — adjust manually', autoDone:n=>`Assigned ${n} groups`,
+    selMoveHint:'Tap the target cell (empty or occupied) · ESC to cancel', selCancel:'Clear',
     late:'Late', lateT:'Kuju Hills stay — finish 16:30–17:00 → shower → 18:00 dinner, so a later tee',
     grp:'G', person:'', teamUnit:' teams', unassignedN:n=>`${n} unassigned`,
     excl:'Skip', incl:'↩ Restore', exclH:'Skipped teams (not playing this day)', exclN:n=>`${n} teams`,
@@ -799,7 +815,24 @@ function gnoOf(i){
 }
 function groupAt(course,slot){ return BOARD.findIndex(g=>g.course===course && g.slot===slot); }
 
+// 선택 안내 — 고른 조가 무엇인지, 다음에 무엇을 하면 되는지 화면 아래에 보여 준다.
+function renderSelBar(){
+  const bar=document.getElementById('gsel-bar'); if(!bar) return;
+  const g=(SELG!=null)?BOARD[SELG]:null;
+  if(!g){ bar.style.display='none'; bar.innerHTML=''; return; }
+  const no=gnoOf(SELG);
+  bar.innerHTML=`<span class="who"><b>${esc(g.tag||('#'+g.seq))}</b> ${esc(pn(g.rep,''))}`
+    +`${no?` <i style="font-style:normal;font-size:11px;font-weight:800;opacity:.85">${tx('grpNo',no)}</i>`:''}`
+    +` <span style="opacity:.9;font-weight:700">${(g.members&&g.members.length)||g.pax}${tx('person')}</span></span>`
+    +`<span class="at">${esc(courseL(g.course))} ${esc(g.tee||'')}</span>`
+    +`<span class="hintx">${esc(tx('selMoveHint'))}</span>`
+    +`<button type="button" id="gsel-cancel">${esc(tx('selCancel'))}</button>`;
+  bar.style.display='flex';
+  const c=document.getElementById('gsel-cancel');
+  if(c) c.addEventListener('click',()=>{ SELG=null; render(); });
+}
 function render(){
+  try{ renderSelBar(); }catch(e){}
   const box=$('#board'); if(!box) return;
   const on=!!DATESEL;
   ['#btn-print','#btn-tv','#btn-redo'].forEach(s=>{ const b=$(s); if(b) b.disabled=!on; });
@@ -1097,8 +1130,11 @@ function bind(){
       }
       const c=b.getAttribute('data-c'), slot=+b.getAttribute('data-s');
       const gi=b.getAttribute('data-i');
-      if(gi!=null&&gi!==''){ SELG=(SELG===+gi)?null:+gi; render(); return; }
-      if(SELG==null) return;                       // 빈 칸 — 선택한 조가 있으면 그 자리로
+      // 조를 한 번 누르면 선택(하단에 안내가 뜬다) → 옮길 자리를 누르면 이동.
+      //   빈 칸·다른 조 어디든 놓을 수 있다(드래그와 같은 규칙: 찬 자리는 끼워넣고 아래를 민다).
+      //   같은 조를 다시 누르면 선택 해제. ESC 로도 취소된다.
+      if(SELG==null){ if(gi!=null&&gi!=='') { SELG=+gi; render(); } return; }
+      if(gi!=null&&gi!=='' && +gi===SELG){ SELG=null; render(); return; }
       snap(); moveGroup(SELG, c, slot); SELG=null; render(); touch();
     });
     // ≡ 를 잡고 자유 이동. 찬 칸에 놓으면 그 자리에 끼워넣고 아래를 한 칸씩 민다.
@@ -1554,6 +1590,8 @@ function printBoard(){
   try{ w.document.open(); w.document.write(html); w.document.close(); }catch(_){}
 }
 
+// ESC = 선택 취소(옮기다 마음이 바뀌면)
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && SELG!=null){ SELG=null; render(); } });
 $('#btn-connect').addEventListener('click',connect);
 window.onSaizenLangChange=function(){ try{ applyStatic(); }catch(e){} try{ if(supa){ renderUI(); $('#ym-label').textContent=YM||''; renderDateChips(); render(); } }catch(e){} };
 applyStatic();
