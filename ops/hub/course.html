@@ -243,7 +243,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=33"></script>
-<script src="../assets/saizen-ops.js?v=16.8"></script>
+<script src="../assets/saizen-ops.js?v=16.9"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -1021,25 +1021,6 @@ async function toggleAbsent(mid, seq){
 
 
 // 인쇄물 하단 예외 목록 — 라운딩 안 함 팀 · 불참자(취소선) · 홀수 수기 지정
-function exPrintHTML(){
-  const teams=teamsOnDate(DATESEL);
-  const abs=absMap(DATESEL);
-  const skip=teams.filter(t=>isSkip(t.seq));
-  const ovs=teams.filter(t=>!isSkip(t.seq) && holesOv(DATESEL,t.seq));
-  const absList=[];
-  teams.forEach(t=>(ROSTER[String(t.seq)]||[]).forEach(m=>{
-    if(abs.has(String(m.id))) absList.push(`<span class="ex-l ex-off">${esc(m.name)}</span><small>(${esc(t.tag||('#'+t.seq))})</small>`);
-  }));
-  if(!skip.length && !ovs.length && !absList.length) return '';
-  const line=(lab,html)=>html?`<div><b>${esc(lab)}</b> ${html}</div>`:'';
-  return `<div class="exbox">`
-    + line(tx('exNoPlay'), skip.map(t=>`<span class="ex-l">${esc(t.tag||('#'+t.seq))} ${esc(pn(t.rep,''))}</span>`).join(''))
-    + line(tx('exHoleSet'), ovs.map(t=>`<span class="ex-l">${esc(t.tag||('#'+t.seq))} ${holesOv(DATESEL,t.seq)}H</span>`).join(''))
-    + line(tx('exAbsent'), absList.join(''))
-    + `</div>`;
-}
-
-// 이미 어느 조엔가 들어간 사람(그날 기준)
 function usedMemberIds(){ const s=new Set(); BOARD.forEach(g=>(g.members||[]).forEach(m=>s.add(String(m.id)))); return s; }
 function memChip(m,cls,act){
   const g=m.gender==='男'?'<span class="mg m">♂</span>':m.gender==='女'?'<span class="mg f">♀</span>':'';
@@ -1506,10 +1487,12 @@ function boardRowsHTML(forPrint){
       const no=gnoOf(gi);
       const who = forPrint ? `${esc(pn(g.rep,''))}${tx('teamOf')}`
         : ((g.members&&g.members.length)? g.members.map(m=>esc(m.name)).join(' · ') : esc(pn(g.rep,'')));
+      // 손님이 보는 인쇄물에는 **홀수(27H)를 넣지 않는다**(Min 2026-08). 화면에서는 그대로 본다.
+      const holes = forPrint ? '' : (()=>{ const ov=holesOv(DATESEL,g.seq); const hh=ov||g.holes;
+        return hh?` <span class="h">${hh}H${ov?'*':''}</span>`:''; })();
       return `<td><b>${esc(g.tag||('#'+g.seq))}</b>${no?`<i>${tx('grpNo',no)}</i>`:''} ${who}`
         +` <span class="p">${(g.members&&g.members.length)||g.pax}${forPrint?'名':tx('person')}</span>`
-        +`${(()=>{const ov=holesOv(DATESEL,g.seq); const hh=ov||g.holes;
-             return hh?` <span class="h">${hh}H${ov?'*':''}</span>`:'';})()}</td>`;
+        +holes+`</td>`;
     }).join('');
     const ext = slot>STD_N;
     return `<tr${ext?' class="ext"':''}><td class="tee">${esc(tee)}</td>${tds}</tr>`;
@@ -1551,11 +1534,6 @@ function printBoard(){
   td.e{background:#fafafa}
   tr.ext td{background:#e9e9e9}
   tr.ext td.tee{background:#dcdcdc}
-  .foot{margin-top:3mm;font-size:13pt;font-weight:600;color:#111;line-height:1.5;border-top:.5mm solid #666;padding-top:2.5mm}
-  .exbox{margin-top:4mm;border-top:1.2pt solid #666;padding-top:2mm;font-size:13pt;font-weight:600;color:#111;line-height:1.6}
-  .exbox b{font-weight:800}
-  .exbox .ex-off{text-decoration:line-through}
-  .exbox .ex-l{margin-right:3mm}
   @media print{ @page{size:A3 portrait;margin:8mm} body{background:#fff} .bar{display:none}
     .page{margin:0;width:auto;min-height:auto;padding:0} }
 </style></head><body>
@@ -1567,8 +1545,8 @@ function printBoard(){
       <div class="dt">${esc(DATESEL)} ${esc(SZCore.mdWd(DATESEL,lang()))}</div>
       <div class="sub">${esc(tx('totalG',BOARD.length))}</div></div>
     <table><thead>${headHTML()}</thead><tbody>${boardRowsHTML(true)}</tbody></table>
-    ${exPrintHTML()}
-    <div class="foot">${tx('rotNote')}</div>
+    <!-- 손님이 보는 인쇄물 — 홀수·코스 로테이션 설명·라운딩 예외 목록은 넣지 않는다(Min 2026-08).
+         그 정보는 담당자 화면(코스 배정표·라운딩 예외 패널)에서 그대로 본다. -->
   </div>
 <script>
   // A3 세로 인쇄영역을 넘으면 글자배율을 이분탐색으로 낮춰 한 장에 맞춘다
