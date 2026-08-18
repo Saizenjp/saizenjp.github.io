@@ -391,6 +391,7 @@
   /* 배정 검색 */
   /* 검색은 툴바 같은 줄 오른쪽 — 줄바꿈되면 고정행이 한 줄 더 내려가 배정 화면이 좁아진다(Min 2026-08).
      그래서 폭을 줄여서라도 한 줄에 붙인다. */
+  .rnote{margin-left:5px;font-size:12px;cursor:help}
   .rsearch{position:relative;display:flex;align-items:center;gap:6px;margin-left:auto;min-width:0;flex:0 1 auto}
   .rsearch #room-search{width:210px;max-width:34vw;font-size:12px;padding:5px 9px}
   .rsearch #room-search:focus{width:320px}
@@ -607,7 +608,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=33"></script>
-<script src="../assets/saizen-ops.js?v=17.7"></script>
+<script src="../assets/saizen-ops.js?v=17.8"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -1734,6 +1735,12 @@ async function loadDay(){
   try{
     const cl=await supa.from('room_closures').select('*').lte('from_date',to).gte('to_date',from);
     if(!cl.error) state.closures=cl.data||[];
+  }catch(e){}
+  // 객실 쪽지(열린 것만) — 청소 화면에서 남긴 벌레·고장 표시
+  RNOTE={};
+  try{
+    const nt=await supa.from('room_notes').select('inventory_id,kind,body').eq('done',false);
+    (nt.data||[]).forEach(x=>{ (RNOTE[x.inventory_id]=RNOTE[x.inventory_id]||[]).push(x); });
   }catch(e){}
   state.sel=new Set();
   rebuildAssignMap();
@@ -2921,6 +2928,14 @@ function teamFullyAssigned(seq){
 }
 // 이름 표기 — 일본어 화면이면 가타카나(saizen-ops __so_pname). 저장값·검색은 원문 그대로.
 function pn(kr,en){ return window.__so_pname?__so_pname(kr,en):(kr||en||''); }
+// 객실 쪽지(벌레·고장 — 청소 화면에서 남긴 것, SQL 115). 배정할 때 그 방 상태를 알 수 있게 표시만 한다.
+let RNOTE={};   // inventory_id → [{kind,body}]
+function noteMark(inv){
+  const l=RNOTE[inv&&inv.id]||[]; if(!l.length) return '';
+  const ic=k=>k==='bug'?'🐛':(k==='fix'?'🔧':'📌');
+  const t=l.map(x=>ic(x.kind)+' '+x.body).join(' / ');
+  return `<span class="rnote" title="${esc(t)}">${ic(l[0].kind)}</span>`;
+}
 function mName(m){ return m?pn(m.name_kr,m.name_en):''; }
 function memberById(mid){
   for(const seq in state.members){
@@ -3054,7 +3069,7 @@ function renderRoom(inv){
   div.innerHTML=`
     <span class="cap">${usedPax}/${inv.capacity}</span>
     <span class="lock" data-inv-id="${inv.id}" title="${inv.active?tx('lockOnT'):tx('lockOffT')}">${inv.active?'🔓':'🔒'}</span>
-    <div class="rn">${inv.room_no}${zonePin(inv)}</div>
+    <div class="rn">${inv.room_no}${zonePin(inv)}${noteMark(inv)}</div>
     <div class="rt">${typeLabel(inv.room_type,inv.facility,inv.zone)}</div>
     ${inv.note?`<div class="note">${inv.note}</div>`:''}
     ${clo?`<div class="note" style="color:#b13b2c;font-weight:700">${tx('closedNote',fmtMD(clo.from_date),fmtMD(clo.to_date),clo.reason)}</div>`:''}
@@ -3118,7 +3133,7 @@ function renderRoomRow(inv){
   const refDay = _span ? null : (state.focus||state.from);
   const chips=roomChipsHtml(assigned, refDay, true);
   tr.innerHTML=`
-    <td class="c-no">${inv.room_no}${zonePin(inv)}<span class="lock" data-inv-id="${inv.id}" title="${inv.active?tx('lockOnT'):tx('lockOffT')}">${inv.active?'🔓':'🔒'}</span></td>
+    <td class="c-no">${inv.room_no}${zonePin(inv)}${noteMark(inv)}<span class="lock" data-inv-id="${inv.id}" title="${inv.active?tx('lockOnT'):tx('lockOffT')}">${inv.active?'🔓':'🔒'}</span></td>
     <td class="c-ty">${typeLabel(inv.room_type,inv.facility,inv.zone)}</td>
     <td class="c-cap"><span${usedPax>inv.capacity?' style="color:var(--err);font-weight:800"':''}>${usedPax}/${inv.capacity}</span>${usedPax>inv.capacity?` <span class="badge">${tx('over')}${usedPax>cap?'!':''}</span>`:''}</td>
     <td class="c-gu">${chips}${clo?`<span class="c-clo">${tx('closedNote',fmtMD(clo.from_date),fmtMD(clo.to_date),clo.reason)}</span>`:''}${inv.note?`<span class="c-clo" style="color:var(--muted);font-weight:600">${esc(inv.note)}</span>`:''}</td>`;

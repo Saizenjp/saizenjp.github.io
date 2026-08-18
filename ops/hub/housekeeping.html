@@ -143,6 +143,34 @@
   /* 표 보기에서도 같은 버튼을 쓰지만 셀 안이라 폭만 자동 */
   .hkt .dbtn{width:auto;min-width:118px}
   /* 층 단위 일괄 — 층 머리줄 오른쪽 */
+  /* 객실 쪽지 — 카드 맨 위(방에 들어가기 전에 본다) */
+  .rc-note-bar{display:flex;flex-direction:column}
+  .rn{display:flex;align-items:center;gap:7px;padding:7px 10px;font-size:13.5px;font-weight:700;
+    background:#fbeeeb;color:#8a2a1c;border-bottom:1px solid rgba(0,0,0,.08)}
+  .rn.k-fix{background:#fdf3e2;color:#7a5a16}
+  .rn.k-etc{background:var(--surface3);color:var(--text2)}
+  .rn .ri{font-size:15px}
+  .rn .rb{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rn .rdone{border:1px solid currentColor;background:transparent;color:inherit;border-radius:7px;
+    padding:3px 9px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap}
+  .nbtn{min-height:44px;font-size:13px;font-weight:800;border:1.5px dashed var(--border2);background:var(--surface);
+    color:var(--text2);border-radius:10px;padding:6px 12px;cursor:pointer;white-space:nowrap}
+  .nbtn:hover{border-color:var(--accent2);color:var(--accent2)}
+  /* 입력 팝업 */
+  .nm-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:300;align-items:center;justify-content:center;padding:16px}
+  .nm{background:var(--surface);border-radius:14px;padding:18px;width:min(460px,94vw);box-shadow:0 12px 40px rgba(0,0,0,.3)}
+  .nm h3{font-size:15px;margin-bottom:12px}
+  .nm h3 b{font-family:var(--mono);color:var(--accent)}
+  .nm-kinds{display:flex;gap:8px;margin-bottom:10px}
+  .nk{flex:1;min-height:48px;font-size:14px;font-weight:800;border:2px solid var(--border2);background:var(--surface);
+    color:var(--text2);border-radius:11px;cursor:pointer}
+  .nk.on{border-color:var(--accent);background:var(--accentSoft);color:var(--accentDeep)}
+  .nm #note-text{width:100%;font-size:16px;min-height:46px}
+  .nm-quick{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 14px}
+  .nm-quick button{font-size:12.5px;font-weight:700;border:1px solid var(--border2);background:var(--surface2);
+    color:var(--text2);border-radius:99px;padding:6px 11px;cursor:pointer}
+  .nm-acts{display:flex;gap:8px;justify-content:flex-end}
+  @media print{ .rn .rdone,.nbtn,.nm-bg{display:none!important} }
   .flr-all{display:flex;gap:7px;margin-left:auto;flex-wrap:wrap}
   .allb{min-height:34px;font-size:12.5px;font-weight:800;border:1.5px solid var(--border2);background:var(--surface);
     color:var(--text2);border-radius:9px;padding:5px 12px;cursor:pointer;white-space:nowrap}
@@ -234,10 +262,27 @@
   <div class="panel"><div class="deny" id="t-preconn">연결 후 표시됩니다.</div></div>
 </main>
 
+<!-- 객실 쪽지 입력 — 태블릿에서 한 손으로(종류 3개 · 자주 쓰는 문구 · 30자) -->
+<div id="note-modal" class="nm-bg">
+  <div class="nm">
+    <h3><span id="t-noteH"></span> <b class="nm-room"></b></h3>
+    <div class="nm-kinds">
+      <button type="button" class="nk on" data-k="bug">🐛 <span id="t-nkBug"></span></button>
+      <button type="button" class="nk" data-k="fix">🔧 <span id="t-nkFix"></span></button>
+      <button type="button" class="nk" data-k="etc">📌 <span id="t-nkEtc"></span></button>
+    </div>
+    <input id="note-text" class="inp" type="text" maxlength="30" autocomplete="off">
+    <div class="nm-quick" id="note-quick"></div>
+    <div class="nm-acts">
+      <button type="button" class="btn ghost" id="note-cancel"></button>
+      <button type="button" class="btn" id="note-save"></button>
+    </div>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=33"></script>
-<script src="../assets/saizen-ops.js?v=17.7"></script>
+<script src="../assets/saizen-ops.js?v=17.8"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -280,6 +325,10 @@ const L={
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'最終夜', linen:'シーツ交換', nextIn:n=>`入室 ${n}名`,
     closed:(f,t,r)=>`閉鎖 ${f}~${t}${r?' · '+r:''}`,
     noRooms:'該当する客室がありません。', floorStat:(c)=>`清掃 ${c}室`,
+
+    noteAdd:'＋ メモ', noteH:'客室メモ', noteDone:'処理済', noteEmpty:'内容を入力してください',
+    nkBug:'虫', nkFix:'設備', nkEtc:'その他', noteSave:'保存', noteCancel:'閉じる',
+    noteQuick:['浴室に虫','水が出ない','エアコン不調','匂い','備品不足','要点検'],
     allClean:(n)=>`✓ この階 清掃 ${n}室`, allCleanOff:(n)=>`↺ この階 清掃 取消`, allTowel:(n)=>`✓ この階 タオル ${n}室`, allTowelOff:(n)=>`↺ この階 タオル 取消`,
     allDone:(n)=>`${n}室 完了`, allUndone:(n)=>`${n}室 取消`,
     lgd:'左の色帯＝状態 / 上から優先順に並んでいます',
@@ -312,6 +361,10 @@ const L={
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'마지막밤', linen:'시트 교체', nextIn:n=>`입실 ${n}명`,
     closed:(f,t,r)=>`폐쇄 ${f}~${t}${r?' · '+r:''}`,
     noRooms:'해당하는 객실이 없습니다.', floorStat:(c)=>`청소 ${c}실`,
+
+    noteAdd:'＋ 메모', noteH:'객실 메모', noteDone:'처리 완료', noteEmpty:'내용을 입력하세요',
+    nkBug:'벌레', nkFix:'설비', nkEtc:'기타', noteSave:'저장', noteCancel:'닫기',
+    noteQuick:['욕실 벌레','물 안 나옴','에어컨 이상','냄새','비품 부족','점검 필요'],
     allClean:(n)=>`✓ 이 층 청소 ${n}실`, allCleanOff:(n)=>`↺ 이 층 청소 취소`, allTowel:(n)=>`✓ 이 층 타월 ${n}실`, allTowelOff:(n)=>`↺ 이 층 타월 취소`,
     allDone:(n)=>`${n}실 완료`, allUndone:(n)=>`${n}실 취소`,
     lgd:'왼쪽 색띠 = 상태 / 위에서부터 우선순위 순서',
@@ -344,6 +397,10 @@ const L={
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'Last night', linen:'Linen change', nextIn:n=>`${n} arriving`,
     closed:(f,t,r)=>`Closed ${f}~${t}${r?' · '+r:''}`,
     noRooms:'No matching rooms.', floorStat:(c)=>`${c} rooms`,
+
+    noteAdd:'＋ Note', noteH:'Room note', noteDone:'Done', noteEmpty:'Enter a note',
+    nkBug:'Bug', nkFix:'Repair', nkEtc:'Other', noteSave:'Save', noteCancel:'Close',
+    noteQuick:['Bug in bath','No water','A/C issue','Smell','Supplies low','Needs check'],
     allClean:(n)=>`✓ Floor clean ${n}`, allCleanOff:(n)=>`↺ Undo floor clean`, allTowel:(n)=>`✓ Floor towels ${n}`, allTowelOff:(n)=>`↺ Undo floor towels`,
     allDone:(n)=>`${n} rooms done`, allUndone:(n)=>`${n} rooms undone`,
     lgd:'Left colour bar = status / listed in priority order',
@@ -372,6 +429,7 @@ const PRIO={turn:0, out:1, stay:2, in:3, vacant:4, ooo:5};
 let supa=null, INV=[], ROWS=[], TEAM={}, CLO=[], TEE={}, COURSE={};
 let NOROOM=0;   // 그날 묵는데 방배정이 없는 팀 수(배정 자체가 비어 있으면 「공실 N」으로 오해한다)
 let DONE={};    // 완료 상태 {inventory_id|kind:{by}}
+let NOTES={};   // 객실 쪽지(열린 것) {inventory_id:[{id,kind,body,created_by,created_at}]} — SQL 115
 let ORIGIN={};  // event_seq → 'ICN'|'PUS'
 let DATE=todayISO(), SORT='prio';
 // 숙소 구분은 방배정 화면과 같은 기준(SZCore) — 소보별장·아소별장·돔하우스 배정도 그대로 보인다
@@ -619,6 +677,13 @@ async function load(){
         const dn=await supa.from('hk_done').select('inventory_id,kind,done_by').eq('work_date',D);
         (dn.data||[]).forEach(x=>{ DONE[x.inventory_id+'|'+x.kind]={by:x.done_by||''}; });
       }catch(e){ DONE={}; }
+      // 객실 쪽지(벌레·고장·특이사항) — 처리 전(done=false)만. 날짜와 무관하게 계속 뜬다.
+      try{
+        NOTES={};
+        const nt=await supa.from('room_notes').select('id,inventory_id,kind,body,created_by,created_at')
+          .eq('done',false).order('created_at',{ascending:false});
+        (nt.data||[]).forEach(x=>{ (NOTES[x.inventory_id]=NOTES[x.inventory_id]||[]).push(x); });
+      }catch(e){ NOTES={}; }
       const bk=await paged((a,b)=>supa.from('bookings').select('event_seq')
         .lte('dep_date',D).gt('arr_date',D).order('event_seq').range(a,b));
       if(!bk.error){
@@ -796,9 +861,39 @@ function render(){
   box.querySelectorAll('[data-all]').forEach(b=>b.addEventListener('click',ev=>{
     ev.stopPropagation(); toggleFloor(b.dataset.zone, b.dataset.all);
   }));
+  box.querySelectorAll('[data-note]').forEach(b=>b.addEventListener('click',ev=>{
+    ev.stopPropagation(); openNote(b.dataset.note, b.dataset.room);
+  }));
+  box.querySelectorAll('[data-ndone]').forEach(b=>b.addEventListener('click',ev=>{
+    ev.stopPropagation(); doneNote(b.dataset.ndone);
+  }));
   wireZoneSpy(); syncStickyTop();
 }
 
+// 쪽지 팝업 — 라벨·자주 쓰는 문구는 언어에 따라 채운다
+function applyNoteUI(){
+  const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
+  set('t-noteH',tx('noteH')); set('t-nkBug',tx('nkBug')); set('t-nkFix',tx('nkFix')); set('t-nkEtc',tx('nkEtc'));
+  const c=document.getElementById('note-cancel'); if(c) c.textContent=tx('noteCancel');
+  const sv=document.getElementById('note-save'); if(sv) sv.textContent=tx('noteSave');
+  const inp=document.getElementById('note-text'); if(inp) inp.placeholder=tx('noteH');
+  const q=document.getElementById('note-quick');
+  if(q){ q.innerHTML=(tx('noteQuick')||[]).map(t=>`<button type="button">${esc(t)}</button>`).join('');
+    q.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+      const i=document.getElementById('note-text'); if(i){ i.value=b.textContent; i.focus(); } })); }
+}
+function wireNoteModal(){
+  const box=document.getElementById('note-modal'); if(!box) return;
+  box.querySelectorAll('.nk').forEach(b=>b.addEventListener('click',()=>{
+    box.querySelectorAll('.nk').forEach(x=>x.classList.remove('on')); b.classList.add('on'); }));
+  const c=document.getElementById('note-cancel'); if(c) c.addEventListener('click',closeNote);
+  const sv=document.getElementById('note-save'); if(sv) sv.addEventListener('click',saveNote);
+  box.addEventListener('click',e=>{ if(e.target===box) closeNote(); });
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeNote(); });
+  const inp=document.getElementById('note-text');
+  if(inp) inp.addEventListener('keydown',e=>{ if(e.key==='Enter') saveNote(); });
+  applyNoteUI();
+}
 function renderKpis(recs){
   const box=$('#kpis'); if(!box) return;
   const c={turn:0,out:0,stay:0,in:0,vacant:0,ooo:0};
@@ -870,6 +965,65 @@ function floorHtml(g,key){
   </div>`;
 }
 
+// ── 객실 쪽지(SQL 115) ── 벌레·고장·특이사항을 **방에** 짧게 남긴다.
+//   날짜가 아니라 열림/닫힘으로 관다 — 처리할 때까지 매일 뜬다(다음날 청소자도 본다).
+const NOTE_KINDS=[['bug','🐛'],['fix','🔧'],['etc','📌']];
+function noteIcon(k){ return (NOTE_KINDS.find(x=>x[0]===k)||NOTE_KINDS[2])[1]; }
+function noteBar(invId){
+  const list=NOTES[invId]||[]; if(!list.length) return '';
+  return `<div class="rc-note-bar">`+list.map(x=>
+    `<div class="rn k-${esc(x.kind)}">
+       <span class="ri">${noteIcon(x.kind)}</span>
+       <span class="rb">${esc(x.body)}</span>
+       <button type="button" class="rdone" data-ndone="${x.id}">${esc(tx('noteDone'))}</button>
+     </div>`).join('')+`</div>`;
+}
+// 입력 팝업 — 태블릿에서 한 손으로. 종류 3개 + 자주 쓰는 문구 + 30자.
+let _noteInv=null;
+function openNote(invId, roomNo){
+  _noteInv=invId;
+  const box=document.getElementById('note-modal'); if(!box) return;
+  box.querySelector('.nm-room').textContent=roomNo||'';
+  box.querySelectorAll('.nk').forEach(b=>b.classList.toggle('on', b.dataset.k==='bug'));
+  const inp=box.querySelector('#note-text'); inp.value='';
+  box.style.display='flex'; setTimeout(()=>inp.focus(),30);
+}
+function closeNote(){ const b=document.getElementById('note-modal'); if(b) b.style.display='none'; _noteInv=null; }
+async function saveNote(){
+  const box=document.getElementById('note-modal'); if(!box||!_noteInv) return;
+  const kind=(box.querySelector('.nk.on')||{}).dataset ? box.querySelector('.nk.on').dataset.k : 'etc';
+  const body=String(box.querySelector('#note-text').value||'').trim().slice(0,30);
+  if(!body){ toast(tx('noteEmpty'),'warn'); return; }
+  const by=(window.__so_getUser&&__so_getUser())||null;
+  const invId=_noteInv;
+  const tmp={id:'tmp-'+Date.now(), inventory_id:invId, kind, body, created_by:by};
+  (NOTES[invId]=NOTES[invId]||[]).unshift(tmp); closeNote(); render();      // 먼저 화면
+  try{
+    const {data,error}=await supa.from('room_notes')
+      .insert({inventory_id:invId, kind, body, created_by:by}).select('id').single();
+    if(error) throw error;
+    tmp.id=data.id;
+  }catch(e){
+    NOTES[invId]=(NOTES[invId]||[]).filter(x=>x.id!==tmp.id); render();
+    toast(tx('hkSaveFail')(e.message),'err');
+  }
+}
+async function doneNote(id){
+  let invId=null, keep=null;
+  Object.keys(NOTES).forEach(k=>{ const f=(NOTES[k]||[]).find(x=>x.id===id); if(f){ invId=k; keep=f; } });
+  if(!invId) return;
+  NOTES[invId]=(NOTES[invId]||[]).filter(x=>x.id!==id); render();           // 먼저 화면
+  try{
+    const by=(window.__so_getUser&&__so_getUser())||null;
+    const {error}=await supa.from('room_notes')
+      .update({done:true, done_by:by, done_at:new Date().toISOString()}).eq('id',id);
+    if(error) throw error;
+  }catch(e){
+    (NOTES[invId]=NOTES[invId]||[]).unshift(keep); render();
+    toast(tx('hkSaveFail')(e.message),'err');
+  }
+}
+
 // 카드 한 장 = 객실 하나. 상태색을 머리줄로 크게 잡아 멀리서도 구분되게.
 function cardHtml(r){
   const line=(lab,arr)=>arr.map(t=>`<div class="rc-team"><i>${esc(lab)}</i><span class="tag">${esc(t.tag)}</span>${esc(t.rep)} (${t.pax})</div>`).join('');
@@ -889,6 +1043,7 @@ function cardHtml(r){
   const nth=(r.status==='stay'||r.status==='in')&&r.total?` · ${tx('nthOf')(r.nth,r.total)}`:'';
   const tee=r.tee?` · <span class="rc-tee">${r.tee.time}${r.tee.course?' '+esc(courseL(r.tee.course)):''}</span>`:'';
   return `<div class="rc s-${r.status}">
+    ${noteBar(r.inv.id)}
     <div class="rc-h">
       <span class="no">${esc(String(r.inv.room_no).replace(/호$/,''))}</span>
       <span class="rc-ty">${esc(r.inv.room_type||'')}</span>
@@ -905,6 +1060,7 @@ function cardHtml(r){
           : ((r.status!=='vacant'&&r.status!=='ooo')
               ? `<button type="button" class="dbtn tw${r.towelDone?' on':''}" data-done="${r.inv.id}" data-kind="towel">${r.towelDone?esc(tx('hkDone')):esc(tx('hkTowel'))}</button>`
               : '')}
+        <button type="button" class="nbtn" data-note="${r.inv.id}" data-room="${esc(r.inv.room_no||'')}">${esc(tx('noteAdd'))}</button>
       </div>
     </div>
   </div>`;
@@ -949,12 +1105,12 @@ function applyStatic(){
   else { setConn(tx('notConn'),''); if(btn) btn.textContent=tx('connect'); }
 }
 window.onSaizenLangChange=function(){
-  applyStatic();
+  applyStatic(); applyNoteUI();
   if(supa && $('#floors')){ renderUI(); renderAccomChips(); render(); }
 };
 
 $('#btn-connect').addEventListener('click',connect);
-applyStatic(); loadCreds();
+applyStatic(); wireNoteModal(); loadCreds();
 if($('#sb-url').value && $('#sb-key').value) connect();
 </script>
 </body>
