@@ -88,6 +88,15 @@
   /* 검색 강조 — 찾은 조는 또렷하게, 나머지는 흐리게 */
   .cell.qhit{outline:2px solid var(--accent2);outline-offset:-2px}
   .cell.qdim{opacity:.33}
+  /* 라운딩 예외 패널 — 기본은 접어 둔다(대부분 예외가 없는 날) */
+  details.expanel>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  details.expanel>summary::-webkit-details-marker{display:none}
+  details.expanel>summary h3{margin:0}
+  details.expanel>summary::before{content:"▸";color:var(--accent);font-weight:800;font-size:13px;transition:.13s}
+  details.expanel[open]>summary::before{transform:rotate(90deg)}
+  details.expanel>summary .exsum{font-size:12px;font-weight:700;color:var(--text2);background:var(--surface3);border-radius:99px;padding:2px 10px}
+  details.expanel>summary .exsum.on{background:var(--accentSoft);color:var(--accent)}
+  details.expanel>.exbody{margin-top:10px}
   /* 라운딩 예외 패널 */
   .exrow{border:1px solid var(--border);border-radius:9px;padding:8px 10px;margin-bottom:7px;background:var(--surface)}
   .exrow.skip{background:var(--surface3);opacity:.75}
@@ -213,7 +222,7 @@
     color:#fff;border-radius:8px;padding:4px 12px;cursor:pointer}
   .ckok:hover{background:var(--accentDeep)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.1">
 </head>
 <body data-so-area="golf">
 <div class="topbar so-bar">
@@ -243,7 +252,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=34"></script>
-<script src="../assets/saizen-ops.js?v=18.0"></script>
+<script src="../assets/saizen-ops.js?v=18.1"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -265,6 +274,7 @@ const L={
     qPh:'🔎 タグコード・代表者・同行者名・イベント番号で検索', qHit:(n)=>`該当 ${n}組`, qNone:'該当なし',
     exH:'ラウンド例外(ホール数・不参加)', exT:'この日だけの例外です。ホール数を選ぶと自動計算より優先し、名前を押すとその人は不参加になります。印刷物にも出ます。',
     exHoleSet:'ホール数指定', exRule:'ルール', exNoPlay:'ラウンドなし', exHoles:h=>`${h}H`, exAbsent:'不参加', exAbsN:n=>`不参加 ${n}名`,
+    exSetN:n=>`例外 ${n}チーム`, exSetNone:'例外なし',
     exSaved:'保存しました', exFail:e=>'保存失敗: '+e, exNone:'この日は例外なし',
     daySel:'ラウンド日', dayNote:'※ 商品名からラウンド日を自動抽出(入国ICN・滞在中・帰国PUS)。ホール数も自動(平日27H=18+9・週末/祝日18H・帰国PUS 9H)。',
     boardH:'コース割当(組単位)', unH:'スタート枠のないチーム(未割当)',
@@ -305,6 +315,7 @@ const L={
     qPh:'🔎 태그코드·대표자·팀원 이름·행사번호로 검색', qHit:(n)=>`검색 ${n}조`, qNone:'검색 결과 없음',
     exH:'라운딩 예외(홀수·불참)', exT:'이 날짜에만 적용되는 예외입니다. 홀수를 고르면 자동 계산보다 우선하고, 이름을 누르면 그 사람은 불참으로 표시됩니다. 인쇄물에도 나옵니다.',
     exHoleSet:'홀수 지정', exRule:'규칙대로', exNoPlay:'라운딩 안 함', exHoles:h=>`${h}H`, exAbsent:'불참', exAbsN:n=>`불참 ${n}명`,
+    exSetN:n=>`예외 ${n}팀`, exSetNone:'예외 없음',
     exSaved:'저장했습니다', exFail:e=>'저장 실패: '+e, exNone:'이 날짜는 예외 없음',
     daySel:'라운딩 날짜', dayNote:'※ 상품명으로 라운딩 날짜 자동 추출(입국ICN·체류중·귀국PUS). 홀수도 자동(평일 27H=18+9·주말/공휴일 18H·귀국PUS 9H).',
     boardH:'코스 배정(조 단위)', unH:'출발 자리 없는 팀(미배정)',
@@ -345,6 +356,7 @@ const L={
     qPh:'🔎 Search tag code, rep, member name, event no.', qHit:(n)=>`${n} groups`, qNone:'No match',
     exH:'Round exceptions (holes · absentees)', exT:'Applies to this date only. Picking holes overrides the automatic rule; tapping a name marks that person absent. Both appear on the printout.',
     exHoleSet:'Holes set', exRule:'By rule', exNoPlay:'No round', exHoles:h=>`${h}H`, exAbsent:'Absent', exAbsN:n=>`${n} absent`,
+    exSetN:n=>`${n} team(s) with exceptions`, exSetNone:'no exceptions',
     exSaved:'Saved', exFail:e=>'Save failed: '+e, exNone:'No exceptions on this date',
     daySel:'Round date', dayNote:'※ Round days auto-derived from the product name (arrival ICN · during stay · departure PUS). Holes auto too (weekday 27H=18+9 · weekend/holiday 18H · departure PUS 9H).',
     boardH:'Course assignment (by group)', unH:'Teams without a start slot',
@@ -437,6 +449,7 @@ function touch(){ clearTimeout(SAVET); SAVET=setTimeout(()=>{ save(true); },900)
 let MONTHG={};       // 날짜 → [{event_seq,course_code,slot_no,capacity}]  그 달 저장된 조
 let CQ='';   // 검색어(태그코드·대표자·팀원 이름·행사번호) — 목록·조를 좁힌다
 let HOLESM={}, ABSM={};   // 라운딩 예외(홀수 수기지정 · 개인 불참) — SQL 106
+let EX_OPEN=false;        // 예외 패널 펼침 여부(기본 접힘 — 예외 없는 날이 대부분)
 let SKIPM={};        // 날짜 → Set(event_seq)  그 달 제외 팀
 let MONTHRUN=new Set();  // 이번 세션에 이달 자동배정을 이미 돌린 달(중복 실행 방지)
 
@@ -959,7 +972,12 @@ function render(){
 //   담당자가 여기서 정리해 두면 화면·인쇄물이 그대로 따라간다.
 function exceptionsHTML(){
   const teams=teamsOnDate(DATESEL).filter(t=>teamHit(t.seq));   // 검색으로 좁힌다
-  if(!teams.length) return `<h3>${tx('exH')}</h3><div class="legend">${qOn()?tx('qNone'):tx('exNone')}</div>`;
+  // 검색 중에는 결과가 접혀서 안 보이면 안 되니 자동으로 펼친다
+  const open=EX_OPEN||qOn();
+  const wrap=(sum,body)=>`<details class="expanel"${open?' open':''}>
+    <summary><h3>${tx('exH')}</h3>${sum}</summary><div class="exbody">${body}</div></details>`;
+  if(!teams.length) return wrap(`<span class="exsum">${tx('exSetNone')}</span>`,
+    `<div class="legend">${qOn()?tx('qNone'):tx('exNone')}</div>`);
   const abs=absMap(DATESEL);
   const rows=teams.map(t=>{
     const seq=String(t.seq);
@@ -985,7 +1003,11 @@ function exceptionsHTML(){
       ${(!sk&&mem)?`<div class="exmem">${mem}</div>`:''}
     </div>`;
   }).join('');
-  return `<h3>${tx('exH')}</h3><div class="legend" style="margin:0 0 9px">${tx('exT')}</div>${rows}`;
+  // 접힌 채로도 「예외가 걸린 팀이 몇인지」는 보이게 — 열지 않아도 그날 상태를 안다
+  const nSet=teams.filter(t=>{ const q=String(t.seq);
+    return isSkip(q) || !!holesOv(DATESEL,q) || (ROSTER[q]||[]).some(m=>abs.has(String(m.id))); }).length;
+  const sum=nSet?`<span class="exsum on">${tx('exSetN',nSet)}</span>`:`<span class="exsum">${tx('exSetNone')}</span>`;
+  return wrap(sum, `<div class="legend" style="margin:0 0 9px">${tx('exT')}</div>${rows}`);
 }
 async function setHoles(seq, h){
   const by=(window.__so_getUser&&__so_getUser())||null;
@@ -1104,6 +1126,8 @@ function bindRoster(){
 }
 
 function bind(){
+  // 라운딩 예외 패널 — 펼침 상태는 재렌더를 넘어 유지한다
+  document.querySelectorAll('details.expanel').forEach(d=>d.addEventListener('toggle',()=>{ EX_OPEN=d.open; }));
   // 라운딩 예외 패널 — 홀수 버튼 · 이름(불참) · 라운딩 안 함
   document.querySelectorAll('[data-exh]').forEach(b=>b.addEventListener('click',()=>setHoles(b.dataset.exh, +b.dataset.h)));
   document.querySelectorAll('[data-exa]').forEach(b=>b.addEventListener('click',()=>toggleAbsent(b.dataset.exa, b.dataset.seq)));
