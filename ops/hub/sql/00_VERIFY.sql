@@ -183,6 +183,7 @@ from (
   union all select 111,'111 메뉴 2단 분류','menu_items.menu_group·sub', case when exists(select 1 from information_schema.columns where table_name='menu_items' and column_name='menu_group') then '✅ 있음' else '❌ 없음 (111)' end
   union all select 112,'112 명단 신원키','guest_members.person_key + 유니크', case when exists(select 1 from information_schema.columns where table_name='guest_members' and column_name='person_key') and exists(select 1 from pg_indexes where indexname='ux_guest_members_person') then '✅ 있음' else '❌ 없음 (112)' end
   union all select 113,'113 자리번호 유니크 해제','guest_members 옛 UNIQUE 제거', case when not exists(select 1 from pg_indexes where indexname='guest_members_event_seq_seq_in_team_key') then '✅ 적용' else '❌ 미적용 (113) — 재임포트가 실패한다' end
+  union all select 114,'114 체류중 송영','transfer_checks.leg 에 stay_am·stay_pm', case when exists(select 1 from pg_constraint where conname='transfer_checks_leg_check' and pg_get_constraintdef(oid) like '%stay_am%') then '✅ 있음' else '❌ 없음 (114)' end
 ) t
 order by ord, 항목;
 
