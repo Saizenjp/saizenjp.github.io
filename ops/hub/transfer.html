@@ -133,7 +133,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=33"></script>
-<script src="../assets/saizen-ops.js?v=17.2"></script>
+<script src="../assets/saizen-ops.js?v=17.3"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -153,13 +153,11 @@ const L={
     cntSum:(t,p)=>`${t}チーム · ${p}名`, sumIn:(t,p)=>`到着 ${t}チーム ${p}名`, sumOut:(t,p)=>`出発 ${t}チーム ${p}名`,
     popupBlocked:'ポップアップブロック — 許可が必要', printTarget:'印刷対象',
     port:'空港', view:'画面', vDriver:'🚌 運転手用', vMeet:'🙋 ミーティング·送り用',
-    vDriverT:'便ごとの運行表 — 何便·何名·どこへ。名簿は要りません。',
-    vMeetT:'お客様を迎えに行く担当者用 — <b>お名前の名簿</b>にチェックします。',
     prDriver:'🖨 運転手用 印刷', prMeet:'🖨 名簿(ミーティング) 印刷',
     boarded:'乗車完了', boardedOff:'乗車確認', teamAll:'チーム全員', clearTeam:'解除',
     prog:(a,b)=>`${a}/${b}`, progPax:(a,b)=>`${a}/${b}名`,
     noRoster:'名簿がまだ登録されていません(予約人数のみ)。',
-    saveFail:'保存に失敗しました', ckHint:'タブレットでチェックします。タブレットが無い日は印刷して使ってください。' },
+    saveFail:'保存に失敗しました' },
   ko:{ step:'송영표', home:'← 홈',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패·재시도',
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
@@ -174,13 +172,11 @@ const L={
     cntSum:(t,p)=>`${t}팀 · ${p}명`, sumIn:(t,p)=>`도착 ${t}팀 ${p}명`, sumOut:(t,p)=>`출발 ${t}팀 ${p}명`,
     popupBlocked:'팝업 차단 — 허용 필요', printTarget:'인쇄 대상',
     port:'공항', view:'화면', vDriver:'🚌 기사용', vMeet:'🙋 미팅·샌딩용',
-    vDriverT:'항공편별 운행표 — 몇 편·몇 명·어디로. 이름은 필요 없습니다.',
-    vMeetT:'손님을 맞이하러 가는 담당자용 — <b>이름 명단</b>에 체크합니다.',
     prDriver:'🖨 기사용 인쇄', prMeet:'🖨 명단표(미팅) 인쇄',
     boarded:'승차 완료', boardedOff:'승차 확인', teamAll:'팀 전원', clearTeam:'해제',
     prog:(a,b)=>`${a}/${b}`, progPax:(a,b)=>`${a}/${b}명`,
     noRoster:'명단이 아직 등록되지 않았습니다(예약 인원만).',
-    saveFail:'저장 실패', ckHint:'태블릿에서 체크합니다. 태블릿이 없는 날은 인쇄해서 쓰세요.' },
+    saveFail:'저장 실패' },
   en:{ step:'Transfer sheet', home:'← Home',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
@@ -195,13 +191,11 @@ const L={
     cntSum:(t,p)=>`${t} teams · ${p} pax`, sumIn:(t,p)=>`Arrivals ${t} teams ${p} pax`, sumOut:(t,p)=>`Departures ${t} teams ${p} pax`,
     popupBlocked:'Popup blocked — allow it', printTarget:'Print list',
     port:'Airport', view:'View', vDriver:'🚌 Driver', vMeet:'🙋 Meet & send',
-    vDriverT:'Per-flight run sheet — which flight, how many, where to. No names needed.',
-    vMeetT:'For the staff meeting the guests — tick off the <b>name list</b>.',
     prDriver:'🖨 Print driver sheet', prMeet:'🖨 Print name list',
     boarded:'Boarded', boardedOff:'Confirm boarding', teamAll:'Whole team', clearTeam:'Clear',
     prog:(a,b)=>`${a}/${b}`, progPax:(a,b)=>`${a}/${b} pax`,
     noRoster:'No roster yet (booking headcount only).',
-    saveFail:'Save failed', ckHint:'Tick on the tablet. Print it for days without one.' }
+    saveFail:'Save failed' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k,...a){ const d=L[lang()]||L.ja; let v=d[k]; if(v===undefined) v=L.ja[k]; if(v===undefined) return k; return (typeof v==='function')?v(...a):v; }
@@ -211,11 +205,12 @@ function tx(k,...a){ const d=L[lang()]||L.ja; let v=d[k]; if(v===undefined) v=L.
 //   쿠주힐즈는 1분 거리라도 **아침·저녁 기본 왕복**. 중간에 잠깐 오가는 이동은 넣지 않는다.
 //  시각은 현장 기준 기본값 — 바뀌면 여기만 고치면 된다.
 const YAMANAMI='야마나미리조트';
+//  ⚠ 시각은 **적지 않는다**(Min 2026-08) — 체류중 송영은 그날 상황에 맞춰 움직인다.
+//    구간(아침 숙소→야마나미 / 저녁 야마나미→숙소)만 잡아 두고 시각 칸은 비운다.
 const STAY_PLAN={
-  // 간지·시즈 = 숙소 → 야마나미 07:40 / 야마나미 → 숙소 17:30 (Min 2026-08, 임시 기준값)
-  '간지호텔':      { am:'07:40', pm:'17:30', golfOnly:true  },
-  '시즈노야도 료칸':{ am:'07:40', pm:'17:30', golfOnly:true  },
-  '쿠주힐즈':      { am:'07:30', pm:'18:00', golfOnly:false }
+  '간지호텔':      { am:'', pm:'', golfOnly:true  },
+  '시즈노야도 료칸':{ am:'', pm:'', golfOnly:true  },
+  '쿠주힐즈':      { am:'', pm:'', golfOnly:false }
 };
 function korPort(r){ const v=(r.dir==='in')?r.from:r.to; return (window.SZCore&&SZCore.airportCode)?SZCore.airportCode(v):(v||''); }
 // 인쇄물(직원용)은 일본어 우선 — 숙소명도 일본어 표기로 낸다(Min 2026-08).
@@ -443,7 +438,6 @@ function renderUI(){
     <div class="row" style="margin-bottom:10px">
       <span class="cnt" id="t-viewlab"></span>
       <div class="row" id="view-chips" style="gap:6px"></div>
-      <span class="hint" id="t-viewhint" style="margin-left:8px"></span>
     </div>
     <div class="row" style="margin-bottom:8px">
       <span class="cnt" id="t-portlab"></span>
@@ -475,7 +469,6 @@ function applyStatic(){
   set('#d-prev',tx('prev')); set('#d-next',tx('next')); set('#d-today',tx('today'));
   set('#btn-print',VIEW==='meet'?tx('prMeet'):tx('prDriver')); set('#t-listh',tx('printTarget'));
   set('#t-viewlab',tx('view'));
-  const vh=$('#t-viewhint'); if(vh) vh.innerHTML=(VIEW==='meet'?tx('vMeetT'):tx('vDriverT'))+' · '+tx('ckHint');
   const d=$('#t-desc'); if(d) d.innerHTML=tx('desc');
   const pc=$('#t-preconn'); if(pc) pc.textContent=tx('preConn');
 }
@@ -538,7 +531,7 @@ function renderList(){
 function flHead(g,doneN,totN){
   const lab = g.dir==='stay' ? tx(g.leg==='pm'?'stayPm':'stayAm') : (g.flight||'-');
   return `<div class="fh"><span class="fdir ${g.dir==='in'?'d-in':(g.dir==='stay'?'d-stay':'d-out')}">${esc(dirShort(g.dir))}</span>`
-    +`<span class="ftm">${esc(g.time||'--:--')}</span><span class="fno">${esc(lab)}</span>`
+    +`${g.time?`<span class="ftm">${esc(g.time)}</span>`:''}<span class="fno">${esc(lab)}</span>`
     +`<span class="frt">${esc(routeOf(g)||'-')}</span>`
     +`<span class="fcnt"><b>${esc(tx('prog',doneN,totN))}</b> · ${esc(tx('cntSum',g.teams,g.pax))}</span></div>`;
 }
@@ -617,7 +610,7 @@ function printSheet(){
     return `<div class="sec">
       <div class="sec-h">${title}<span>${teams}チーム / ${pax}名</span></div>
       ${gs.map(g=>`<div class="fl-h"><b>${esc(g.dir==='stay'?(g.leg==='pm'?'夕 / 저녁':'朝 / 아침'):(g.flight||'-'))}</b>
-          <span class="t">${esc(g.time||'--:--')}</span>
+${g.time?`<span class="t">${esc(g.time)}</span>`:''}
           <span class="r">${esc(routePrint(g)||'-')}</span>
           <span class="n">${g.teams}チーム / ${g.pax}名</span></div>
         <table class="pt"><thead><tr>
@@ -727,7 +720,7 @@ function printMeet(){
       ${gs.map(g=>{
         const lab = g.dir==='stay' ? (g.leg==='pm'?'夕 / 저녁':'朝 / 아침') : (g.flight||'-');
         return `<div class="fl-h"><b>${esc(lab)}</b>
-          <span class="t">${esc(g.time||'--:--')}</span>
+${g.time?`<span class="t">${esc(g.time)}</span>`:''}
           <span class="r">${esc(routePrint(g)||'-')}</span>
           <span class="n">${g.teams}チーム / ${g.pax}名</span></div>
         <table class="pt"><thead><tr>
