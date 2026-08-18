@@ -1674,7 +1674,7 @@ async function loadDay(){
         .filter(r=>!mine.has(r.id) && !mineKey.has([r.inventory_id,r.member_id,r.check_in,r.check_out].join('|')))
         .map(r=>({...r,_ext:true}));
     }catch(e){ state.extRooms=[]; }
-    const mm=await pagedInSeq('guest_members','id,event_seq,seq_in_team,passenger_id,name_kr,name_en,is_rep,member_grade,member_class,member_div,actual_dep,actual_dep_reason',seqs);
+    const mm=await pagedInSeq('guest_members','id,event_seq,seq_in_team,person_key,passenger_id,name_kr,name_en,is_rep,member_grade,member_class,member_div,actual_dep,actual_dep_reason',seqs);
     if(mm.error){toast(tx('rosterLoadFail',mm.error.message),'warn');}
     else (mm.data||[]).forEach(x=>{(state.members[x.event_seq]=state.members[x.event_seq]||[]).push(x);});
     // 성별(男/女)은 passengers 에만 있다 — guest_members.passenger_id 로 붙인다(골프 화면과 같은 소스).
@@ -1694,10 +1694,15 @@ async function loadDay(){
       Object.keys(state.members).forEach(seq=>{
         const rows=state.members[seq]||[]; const keep=new Map(); const noName=[];
         rows.forEach(m=>{
-          const k=(m.name_kr||'').trim()+'|'+(m.name_en||'').trim();
-          // ⚠ 이름이 비어 있는 행(무기명 명단)은 같은 사람인지 알 수 없다 → 합치지 않고 그대로 둔다.
-          //    (합치면 8명 무기명 팀이 1명으로 줄어 「N명 숨김」이 과장되고 미배정 인원도 사라진다 — Min 2026-08)
-          if(k==='|'){ noName.push(m); return; }
+          // 같은 사람 판정 = **person_key**(이름|생년6, SQL 112). 생년이 없으면 이름|#자리라서
+          //   서로 다른 무기명끼리는 절대 합쳐지지 않는다. person_key 가 없는 옛 행만 이름으로 폴백.
+          const pk=(m.person_key||'').trim();
+          const k = pk || ((m.name_kr||'').trim()+'|'+(m.name_en||'').trim());
+          // ⚠ 이름이 비어 있거나 「무기명」처럼 **아직 이름이 안 들어온 자리**는 같은 사람인지 알 수 없다
+          //    → 절대 합치지 않는다. (합치면 미배정 인원이 사라지고, [정리]가 남의 방배정을 건드린다 — Min 2026-08)
+          const anon=/^(무기명|미정|미기재)$/.test((m.name_kr||'').trim());
+          if(!pk && (k==='|' || anon)){ noName.push(m); return; }
+          if(pk && anon && !/\|\d{6}$/.test(pk)){ noName.push(m); return; }   // 생년 없는 무기명 = 각각 다른 사람
           const cur=keep.get(k);
           if(!cur){ keep.set(k,m); return; }
           const better = done.has(m.id)&&!done.has(cur.id) ? m
