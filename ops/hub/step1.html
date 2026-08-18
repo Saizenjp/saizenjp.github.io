@@ -263,7 +263,7 @@ const L = {
     codeMatched:n=>`· グループコードxlsxなしでmember_codesから${n}件マッチ`,
     codeMatchFail:'· member_codesマッチ失敗(SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ 会員 ${mem}チーム · 非会員Fプール ${nm}チーム${full?` · プール枯渇 ${full}チーム`:''}`,
-    diffLine:(a,c,k)=>`新規 ${a} · 変更 ${c} · そのまま ${k}`,
+    diffLine:(a,c,k)=>`新規 ${a} · 変更 ${c} · そのまま ${k}`, diffFallback:'既存データの照合に失敗 — 全件を送ります ', ghostGuard:(n)=>`⚠ ${n}チームは名簿整理を保留(キー不一致の疑い) — コンソールに番号`,
     ghostCleaned:(n)=>`名簿から外れた ${n}件を整理`, paxCleaned:(n)=>`原本名簿の重複 ${n}件を整理`, autoGroup:(n)=>`備考「チーム:…」で ${n}件 自動グループ化(手配書・夕食)`, repFixed:(n)=>`既存グループ ${n}件 の代表を会員に更新`, shizuAuto:(n)=>`志津の宿 未配置 ${n}名を空室へ自動配置`,
     syncCleaned:(months,del)=>`✓ ${months} 残存チーム ${del}個整理 — ファイル基準で最新化`,
     syncKept:n=>`· 残存チーム ${n}個 — データ累積(削除しない)`,
@@ -306,7 +306,7 @@ const L = {
     codeMatched:n=>`· 그룹코드 xlsx 없이 member_codes에서 ${n}건 매칭`,
     codeMatchFail:'· member_codes 매칭 실패(22번 SQL?): ',
     guestsSummary:(mem,nm,full)=>`  └ 회원 ${mem}팀 · 비회원 F풀 ${nm}팀${full?` · 풀소진 ${full}팀`:''}`,
-    diffLine:(a,c,k)=>`신규 ${a} · 변경 ${c} · 그대로 ${k}`,
+    diffLine:(a,c,k)=>`신규 ${a} · 변경 ${c} · 그대로 ${k}`, diffFallback:'기존 데이터 대조 실패 — 전체를 보냅니다 ', ghostGuard:(n)=>`⚠ ${n}팀은 명단 정리를 보류했습니다(키 불일치 의심) — 콘솔에 행사번호`,
     ghostCleaned:(n)=>`명단에서 빠진 ${n}건 정리`, paxCleaned:(n)=>`원본 명단 중복 ${n}건 정리`, autoGroup:(n)=>`비고 「팀:…」로 ${n}건 자동 묶기(手配書·夕食)`, repFixed:(n)=>`기존 묶음 ${n}건 대표를 회원으로 교정`, shizuAuto:(n)=>`시즈노야도 미배정 ${n}명을 빈 방에 자동 배정`,
     syncCleaned:(months,del)=>`✓ ${months} 잔존 팀 ${del}개 정리 — 파일 기준 최신화`,
     syncKept:n=>`· 잔존 팀 ${n}개 — 데이터 누적(삭제 안 함)`,
@@ -349,7 +349,7 @@ const L = {
     codeMatched:n=>`· Matched ${n} from member_codes without a group-code xlsx`,
     codeMatchFail:'· member_codes match failed (SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ Members ${mem} teams · Non-member F-pool ${nm} teams${full?` · Pool exhausted ${full} teams`:''}`,
-    diffLine:(a,c,k)=>`new ${a} · changed ${c} · unchanged ${k}`,
+    diffLine:(a,c,k)=>`new ${a} · changed ${c} · unchanged ${k}`, diffFallback:'Could not compare existing rows — sending all ', ghostGuard:(n)=>`⚠ Skipped roster cleanup for ${n} team(s) (key mismatch suspected) — see console`,
     ghostCleaned:(n)=>`Cleaned ${n} rows no longer on the roster`, paxCleaned:(n)=>`Removed ${n} duplicate source-roster rows`, autoGroup:(n)=>`Auto-grouped ${n} team-group(s) from 「팀:…」 remark`, repFixed:(n)=>`Upgraded rep to member on ${n} existing group(s)`, shizuAuto:(n)=>`Auto-placed ${n} unassigned Shizu guest(s) into empty rooms`,
     syncCleaned:(months,del)=>`✓ ${months} cleaned ${del} leftover team(s) — synced to the file`,
     syncKept:n=>`· ${n} leftover team(s) — data accumulated (not deleted)`,
@@ -578,13 +578,36 @@ function refreshRunBtn(){
 // ── 변경분만 보낸다 ── 재임포트는 대부분 '거의 그대로'다(비고 몇 줄만 바뀐다).
 //   전 행을 upsert 하면 수천 행을 쓰고 updated_at 이 전부 바뀌어 무엇이 달라졌는지 알 수 없다.
 //   그래서 기존 행을 읽어와 **새 행·값이 다른 행만** 보낸다. 등록 방식은 그대로(파일 2종 업로드).
-async function fetchByIn(table, cols, col, values){
-  const out=[];
-  for(let i=0;i<values.length;i+=120){ const chunk=values.slice(i,i+120); let pg=0;
-    while(true){ const {data,error}=await supa.from(table).select(cols).in(col,chunk).range(pg,pg+999);
-      if(error||!data||!data.length) break; out.push(...data); if(data.length<1000) break; pg+=1000; }
+async function fetchByIn(table, cols, col, values, label){
+  const out=[]; const uniq=[...new Set(values)];
+  const CH=400;                       // 한 번에 400건씩 — 왕복 수를 줄인다(대조는 읽기라 부담이 적다)
+  for(let i=0;i<uniq.length;i+=CH){
+    const chunk=uniq.slice(i,i+CH); let pg=0, guard=0;
+    while(guard++<60){                // 안전장치 — 어떤 경우에도 무한 대기하지 않는다
+      const {data,error}=await supa.from(table).select(cols).in(col,chunk).range(pg,pg+999);
+      if(error) throw error;          // 대조 실패는 위에서 잡아 '전체 보내기'로 넘어간다
+      if(!data||!data.length) break;
+      out.push(...data);
+      if(data.length<1000) break; pg+=1000;
+    }
+    if(label) runProgress(`${label} ${Math.min(i+CH,uniq.length)}/${uniq.length}`);
   }
   return out;
+}
+// 등록 중 진행 상황 — 오래 걸릴 때 '멈춘 것처럼' 보이지 않게 버튼·오버레이에 표시한다.
+function runProgress(msg){
+  const b=$('#btn-run'); if(b&&window._running) b.textContent=tx('btnRunning')+' '+msg;
+  const o=document.getElementById('run-step'); if(o) o.textContent=msg;   // 오버레이의 진행 줄
+}
+// 기존 데이터와 대조해 변경분만 고른다. 대조에 실패하면 **전부 보낸다**(등록이 막히면 안 된다).
+async function safeDiff(label, table, cols, col, values, rows, keyOf, fields, onExist){
+  try{
+    const ex=await fetchByIn(table, cols, col, values, label);
+    return pickChanged(rows, ex, keyOf, fields, onExist);
+  }catch(e){
+    log(`${label}: ${tx('diffFallback')}(${e.message||e})`,'warn');
+    return {changed:rows, same:0, add:rows.length, diffs:{}};
+  }
 }
 //  값 비교용 정규화 — null·빈칸은 같게, 숫자는 문자열로, 날짜/시각은 앞 10자(YYYY-MM-DD)만 본다.
 function _nv(v){
@@ -744,8 +767,8 @@ async function run(){
 
     const BOOK_F=['event_no','status','rep_name','member_type','dep_date','arr_date','reserved_at','nights_label',
       'origin','airline','product_name','pax','sales_amount','unpaid_amount','remark','remark_local','remark_etc','team_label','session_ym'];
-    const exB=await fetchByIn('bookings','event_seq,'+BOOK_F.join(','),'event_seq',bookingRows.map(b=>b.event_seq));
-    const dB=pickChanged(bookingRows, exB, r=>String(r.event_seq), BOOK_F);
+    const dB=await safeDiff(t('s1_dyn_log_booking'),'bookings','event_seq,'+BOOK_F.join(','),'event_seq',
+      bookingRows.map(b=>b.event_seq), bookingRows, r=>String(r.event_seq), BOOK_F);
     stat['bookings'] = await upsertChunked('bookings', dB.changed, 'event_seq');
     diffLog(t('s1_dyn_log_booking'), dB);
     log(`  (${t('s1_dyn_cntTarget')} ${Object.keys(procMap).length}${t('s1_dyn_teams')})`,'dim');
@@ -796,8 +819,8 @@ async function run(){
     const PAX_F=['event_seq','seq_in_team','name_kr','name_en','gender','birth','birth_yymmdd','passport_no','passport_exp',
       'phone','dep_flight','ret_flight','origin','airline','pnr','dest','dep_time','loc_arr_time','ret_dep_time','kor_arr_time',
       'pre_seat','air_included','member_grade','member_class','member_div'];
-    const exP=await fetchByIn('passengers','id,'+PAX_F.join(','),'id',paxRows.map(p=>p.id));
-    const dP=pickChanged(paxRows, exP, r=>String(r.id), PAX_F);
+    const dP=await safeDiff(t('s1_dyn_log_pax'),'passengers','id,'+PAX_F.join(','),'id',
+      paxRows.map(p=>p.id), paxRows, r=>String(r.id), PAX_F);
     stat['passengers'] = await upsertChunked('passengers', dP.changed, 'id');
     window._dP=dP;
 
@@ -978,8 +1001,8 @@ async function run(){
     // ⚠ check_status 는 현장에서 바뀌는 값이다(체크인·체크아웃). 재임포트가 '체크인전'으로
     //   되돌리면 안 된다 → 기존 행이 있으면 그 값을 그대로 쓴다.
     const GUEST_F=['team_tag','group_code','accom','accom_prefix','pax','session_ym'];
-    const exG=await fetchByIn('guests','event_seq,check_status,'+GUEST_F.join(','),'event_seq',guestRows.map(g=>g.event_seq));
-    const dG=pickChanged(guestRows, exG, r=>String(r.event_seq), GUEST_F,
+    const dG=await safeDiff(t('s1_dyn_log_guests'),'guests','event_seq,check_status,'+GUEST_F.join(','),'event_seq',
+      guestRows.map(g=>g.event_seq), guestRows, r=>String(r.event_seq), GUEST_F,
       (row,ex)=>{ if(ex.check_status) row.check_status=ex.check_status; });
     stat['guests'] = await upsertChunked('guests', dG.changed, 'event_seq');
     diffLog(t('s1_dyn_log_guests'), dG);
@@ -1025,8 +1048,8 @@ async function run(){
     // 충돌키 = (event_seq, person_key) — 같은 사람이면 자리번호가 바뀌어도 **같은 행**을 갱신한다.
     //   → 방배정(rooms.member_id)·골프 조·개인 청구가 그 사람에게 그대로 붙어 있는다.
     const GM_F=['passenger_id','person_tag','seq_in_team','name_kr','name_en','is_rep','member_grade','member_class','member_div'];
-    const exM=await fetchByIn('guest_members','event_seq,person_key,'+GM_F.join(','),'event_seq',[...new Set(gmRows.map(g=>g.event_seq))]);
-    const dM=pickChanged(gmRows, exM, r=>r.event_seq+'|'+r.person_key, GM_F);
+    const dM=await safeDiff(t('s1_dyn_log_members'),'guest_members','event_seq,person_key,'+GM_F.join(','),'event_seq',
+      gmRows.map(g=>g.event_seq), gmRows, r=>r.event_seq+'|'+r.person_key, GM_F);
     stat['guest_members'] = await upsertChunked('guest_members', dM.changed, 'event_seq,person_key');
     diffLog(t('s1_dyn_log_members'), dM);
 
@@ -1056,7 +1079,22 @@ async function run(){
         tt.byKey[baseKey(r.person_key)]=r.id;
         if(r.passenger_id!=null) tt.byPid[r.passenger_id]=r.id;
         if(r.name_kr) tt.byName[r.name_kr]=r.id; } });
-      const ghosts = allGm.filter(r=> !(keysBySeq[r.event_seq]||new Set()).has(r.person_key));
+      let ghosts = allGm.filter(r=> !(keysBySeq[r.event_seq]||new Set()).has(r.person_key));
+      // 🛡 안전장치 — 한 팀에서 절반 넘게 지워야 한다면 키가 어긋난 것이지 취소가 아니다.
+      //   (이름 표기 변경·생년 누락 등으로 person_key 가 달라지면 멀쩡한 사람이 통째로 지워질 수 있다)
+      {
+        const byTeam={}; ghosts.forEach(r=>{ (byTeam[r.event_seq]=byTeam[r.event_seq]||[]).push(r); });
+        const skip=new Set();
+        Object.keys(byTeam).forEach(seq=>{
+          const have=allGm.filter(r=>String(r.event_seq)===String(seq)).length;
+          if(have && byTeam[seq].length > Math.max(2, have*0.5)) skip.add(String(seq));
+        });
+        if(skip.size){
+          log(tx('ghostGuard')(skip.size),'warn');
+          console.warn('명단 정리 보류(키 불일치 의심) 행사번호:', [...skip].join(', '));
+          ghosts = ghosts.filter(r=>!skip.has(String(r.event_seq)));
+        }
+      }
       let ghost=0, relinked=0;
       for(const o of ghosts){ const surv=survByTeam[o.event_seq]||{byKey:{},byPid:{},byName:{}};
         const newId = surv.byKey[baseKey(o.person_key)]
