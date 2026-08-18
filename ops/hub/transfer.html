@@ -217,6 +217,10 @@ const STAY_PLAN={
   '쿠주힐즈':      { am:'07:30', pm:'18:00', golfOnly:false }
 };
 function korPort(r){ const v=(r.dir==='in')?r.from:r.to; return (window.SZCore&&SZCore.airportCode)?SZCore.airportCode(v):(v||''); }
+// 인쇄물(직원용)은 일본어 우선 — 숙소명도 일본어 표기로 낸다(Min 2026-08).
+function accomJa(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,'ja'):(a||''); }
+// 체류중 왕복은 공항이 아니라 숙소↔야마나미 구간이라 공항코드 대신 숙소명을 쓴다.
+function routeOf(g){ return g.dir==='stay' ? (accomJa(g.from)+' → '+accomJa(g.to)) : route(g.from,g.to); }
 function route(from,to){ return (window.SZCore&&SZCore.routeCode)?SZCore.routeCode(from,to):[from,to].filter(Boolean).join('-'); }
 function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,lang()):(a||''); }
 
@@ -240,7 +244,7 @@ function meetKey(g){
   if(g.dir==='stay') return (g.leg==='pm') ? (g.to||'') : (g.from||'');
   const r=g.rows&&g.rows[0]; return r?korPort(r):'';
 }
-function meetLabel(k){ return (window.SZCore&&SZCore.accomLabel&&/[가-힣]/.test(k))?SZCore.accomLabel(k,lang()):(k||'-'); }
+function meetLabel(k){ return /[가-힣]/.test(String(k||'')) ? (accomJa(k)||k) : (k||'-'); }
 // [{dir, meet, gs:[…]}] — 구분(도착·체류·출발) → 만나는 곳 순서
 function printPages(groups){
   const ord={in:0,stay:1,out:2}, out=[], idx={};
@@ -521,7 +525,7 @@ function flHead(g,doneN,totN){
   const lab = g.dir==='stay' ? tx(g.leg==='pm'?'stayPm':'stayAm') : (g.flight||'-');
   return `<div class="fh"><span class="fdir ${g.dir==='in'?'d-in':(g.dir==='stay'?'d-stay':'d-out')}">${esc(dirShort(g.dir))}</span>`
     +`<span class="ftm">${esc(g.time||'--:--')}</span><span class="fno">${esc(lab)}</span>`
-    +`<span class="frt">${esc(route(g.from,g.to)||'-')}</span>`
+    +`<span class="frt">${esc(routeOf(g)||'-')}</span>`
     +`<span class="fcnt"><b>${esc(tx('prog',doneN,totN))}</b> · ${esc(tx('cntSum',g.teams,g.pax))}</span></div>`;
 }
 function renderDriver(box,groups){
@@ -600,7 +604,7 @@ function printSheet(){
       <div class="sec-h">${title}<span>${teams}チーム / ${pax}名</span></div>
       ${gs.map(g=>`<div class="fl-h"><b>${esc(g.dir==='stay'?(g.leg==='pm'?'夕 / 저녁':'朝 / 아침'):(g.flight||'-'))}</b>
           <span class="t">${esc(g.time||'--:--')}</span>
-          <span class="r">${esc(route(g.from,g.to)||'-')}</span>
+          <span class="r">${esc(routeOf(g)||'-')}</span>
           <span class="n">${g.teams}チーム / ${g.pax}名</span></div>
         <table class="pt"><thead><tr>
           <th class="c">コード<br><i>코드</i></th><th class="c">代表者<br><i>대표자</i></th>
@@ -609,7 +613,7 @@ function printSheet(){
         </tr></thead><tbody>
         ${g.rows.map(r=>`<tr>
           <td class="code">${esc(r.tag)}</td><td>${esc(r.rep||'-')}</td>
-          <td class="n pax">${r.pax}</td><td>${esc(r.accom||'-')}</td>
+          <td class="n pax">${r.pax}</td><td>${esc(accomJa(r.accom)||'-')}</td>
           <td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td><td></td>
         </tr>`).join('')}
         <tr class="sub"><td colspan="2">小計 / 소계</td><td class="n pax">${g.pax}</td><td></td><td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td><td></td></tr>
@@ -710,7 +714,7 @@ function printMeet(){
         const lab = g.dir==='stay' ? (g.leg==='pm'?'夕 / 저녁':'朝 / 아침') : (g.flight||'-');
         return `<div class="fl-h"><b>${esc(lab)}</b>
           <span class="t">${esc(g.time||'--:--')}</span>
-          <span class="r">${esc(route(g.from,g.to)||'-')}</span>
+          <span class="r">${esc(routeOf(g)||'-')}</span>
           <span class="n">${g.teams}チーム / ${g.pax}名</span></div>
         <table class="pt"><thead><tr>
           <th class="c code">コード<br><i>코드</i></th><th class="c rep">代表者<br><i>대표자</i></th>
