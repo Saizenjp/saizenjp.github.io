@@ -12,7 +12,7 @@
     --text:#1f2937; --text2:#525b66; --muted:#8b919b;
     --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
     --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
-    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,'SZJpMono',monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh}
@@ -74,13 +74,22 @@
 
   .stage{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
   /* 오른쪽 정산표 셀을 고정 — 왼쪽 목록을 내려도 따라옴(방배정과 동일 원리). 패널이 화면보다 길면 내부 스크롤. */
-  .stage>.col:last-child{position:sticky;top:74px;align-self:start;max-height:calc(100vh - 90px);overflow:auto}
+  .stage>.col:last-child{position:sticky;top:74px;align-self:start;max-height:calc(100vh - 90px);overflow:auto;padding-bottom:76px;scrollbar-gutter:stable}
   @media(max-width:900px){.stage{grid-template-columns:1fr}.stage>.col:last-child{position:static;max-height:none;overflow:visible}}
   .col h3{font-size:13px;font-weight:800;color:var(--accent);margin:6px 0 8px;display:flex;align-items:center;gap:8px}
   .col h3 .c{font-size:11.5px;color:var(--text2);font-weight:700}
   .sect{margin-bottom:16px}
   .sect .sh{font-size:12.5px;font-weight:800;margin:0 0 7px;padding:5px 10px;border-radius:8px;display:flex;align-items:center;gap:8px}
   .sh.arr{background:#e7efe1;color:#3c5230} .sh.dep{background:#f5ecd8;color:#7a5a14} .sh.stay{background:#e9f0f7;color:#2c5078}
+  .sh.dine{background:#f3eefa;color:#553a86} .sh.dineex{background:#fbeeeb;color:#8a2a1c}
+  .trow .dpax{font-family:var(--mono);font-weight:800;font-size:13.5px;color:#553a86}
+  .trow .dmark{font-size:10.5px;font-weight:800;border-radius:99px;padding:1px 8px;flex:none;white-space:nowrap;border:1px solid var(--border2);background:var(--surface2);color:var(--text2)}
+  .trow .dmark.up{background:#fdf6e6;color:var(--accent2);border-color:#e6cf95}
+  .trow .dmark.eco{background:#f5ecd8;color:#7a5a14;border-color:#e6cf95}
+  .trow .dmark.ex{background:#fbeeeb;color:#8a2a1c;border-color:#e3bdb4}
+  .trow .dmark.grp{background:var(--accentSoft);color:var(--accent);border-color:#b4cda0}
+  .trow.exd{opacity:.72}
+  .dhint{font-size:11.5px;color:var(--muted);margin:-2px 0 8px 2px}
   .sh .c{margin-left:auto;font-family:var(--mono)}
   .trow{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 8px 9px 12px;margin-bottom:7px;cursor:pointer;transition:.12s;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .trow:hover{border-color:var(--accent);box-shadow:0 3px 10px rgba(15,23,42,.10);transform:translateY(-1px);background:var(--surface2)}
@@ -140,7 +149,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=15.41">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.0">
 </head>
 <body data-so-area="front">
 <div class="topbar so-bar">
@@ -188,7 +197,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=34"></script>
-<script src="../assets/saizen-ops.js?v=17.9"></script>
+<script src="../assets/saizen-ops.js?v=18.0"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -204,6 +213,9 @@ const L={
     accomLbl:'宿泊施設', all:'全体', searchPh:'🔍 チーム・代表・同行者・部屋番号 検索',
     emptyConnect:'上部で接続すると本日の状況が表示されます。', detailNone:'チームを選択すると<br>客室・残高・メモがここに表示されます。',
     kpiIn:'🛬 チェックイン', kpiOut:'🛫 チェックアウト', kpiStay:'🏨 滞在中(連泊)', kpiDinner:'🍽 本日夕食', kpiDue:'💴 未収残高', kpiGo:'↓ 一覧へ',
+    kpiOpen:'↓ 開く', kpiClose:'✕ 閉じる',
+    secDine:'🍽 本日夕食', secDineEx:'🍽 夕食除外', dineHint:'夕食オーダーで整理した内容（除外・早期退室・アップグレード）を反映しています',
+    dnEco:n=>`早期退室 −${n}`, dnUp:n=>`UP −${n}`, dnAdd:n=>`別注 ${n}`, dnAlg:n=>`⚠ アレルギー ${n}`, dnGrp:'運営チーム', dnEx:'除外',
     secIn:'🛬 本日チェックイン', secOut:'🛫 本日チェックアウト', secStay:'🏨 滞在中(連泊)',
     connectFirst:'先に接続してください', coDone:'チェックアウト済', btnCo:'✓ チェックアウト', btnCoUndo:'↩ チェックアウト取消', btnCoSel:(n)=>`✓ 選択 ${n}件 チェックアウト`, btnCoAll:'✓ 本日退室 全件',
     coNone:'チェックアウトするチームを選択してください', coConfirm:(n)=>`${n}チームをチェックアウト処理しますか？`,
@@ -231,6 +243,9 @@ const L={
     accomLbl:'숙소', all:'전체', searchPh:'🔍 팀·대표·동행자·방번호 검색',
     emptyConnect:'상단에서 연결하면 오늘 현황이 표시됩니다.', detailNone:'팀을 선택하면<br>방·잔액·메모가 여기 표시됩니다.',
     kpiIn:'🛬 체크인', kpiOut:'🛫 체크아웃', kpiStay:'🏨 체류중(연박)', kpiDinner:'🍽 오늘 석식', kpiDue:'💴 미수 잔액', kpiGo:'↓ 목록으로',
+    kpiOpen:'↓ 열기', kpiClose:'✕ 닫기',
+    secDine:'🍽 오늘 석식', secDineEx:'🍽 석식 제외', dineHint:'夕食オーダー에서 정리한 내용(제외·조기퇴실·업그레이드)을 그대로 반영합니다',
+    dnEco:n=>`조기퇴실 −${n}`, dnUp:n=>`UP −${n}`, dnAdd:n=>`別注 ${n}`, dnAlg:n=>`⚠ 알레르기 ${n}`, dnGrp:'운영팀', dnEx:'제외',
     secIn:'🛬 오늘 체크인', secOut:'🛫 오늘 체크아웃', secStay:'🏨 체류중(연박)',
     connectFirst:'먼저 연결하세요', coDone:'체크아웃 완료', btnCo:'✓ 체크아웃', btnCoUndo:'↩ 체크아웃 취소', btnCoSel:(n)=>`✓ 선택 ${n}팀 체크아웃`, btnCoAll:'✓ 오늘 퇴실 전체',
     coNone:'체크아웃할 팀을 선택하세요', coConfirm:(n)=>`${n}팀을 체크아웃 처리할까요?`,
@@ -258,6 +273,9 @@ const L={
     accomLbl:'Lodging', all:'All', searchPh:'🔍 Search team / rep / companion / room',
     emptyConnect:'Connect above to see today’s status.', detailNone:'Select a team to see<br>room, balance &amp; memo here.',
     kpiIn:'🛬 Check-in', kpiOut:'🛫 Check-out', kpiStay:'🏨 In-house (staying)', kpiDinner:'🍽 Dinner today', kpiDue:'💴 Outstanding', kpiGo:'↓ list',
+    kpiOpen:'↓ open', kpiClose:'✕ close',
+    secDine:'🍽 Dinner today', secDineEx:'🍽 Excluded from dinner', dineHint:'Mirrors what was arranged on the 夕食オーダー screen (exclusions, early checkout, upgrades)',
+    dnEco:n=>`early out −${n}`, dnUp:n=>`UP −${n}`, dnAdd:n=>`extra ${n}`, dnAlg:n=>`⚠ allergy ${n}`, dnGrp:'Op-team', dnEx:'excluded',
     secIn:'🛬 Check-in today', secOut:'🛫 Check-out today', secStay:'🏨 In-house (staying)',
     connectFirst:'Connect first', coDone:'Checked out', btnCo:'✓ Check out', btnCoUndo:'↩ Undo check-out', btnCoSel:(n)=>`✓ Check out ${n} selected`, btnCoAll:'✓ All departures today',
     coNone:'Select teams to check out', coConfirm:(n)=>`Check out ${n} team(s)?`,
@@ -281,7 +299,7 @@ function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem
 function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,lang()):(a||''); }   // 숙소·구역 표시 라벨(ja/ko/en) = saizen-core 단일 진실원
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
 
-let state={ day:'', teams:[], byId:{}, selSeq:null, accomSel:new Set(['야마나미리조트','쿠주힐즈']), q:'', conn:'none' };
+let state={ day:'', teams:[], byId:{}, selSeq:null, accomSel:new Set(['야마나미리조트','쿠주힐즈']), q:'', conn:'none', dineOpen:false };
 function accomPass(ac){ return state.accomSel.size===0 || state.accomSel.has(ac); }
 function renderAccomChips(){
   const box=$('#accomchips'); if(!box) return;
@@ -382,7 +400,7 @@ async function load(){
     const {data:bs,error:e1}=await supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax,product_name').lte('dep_date',day).gte('arr_date',day);
     if(e1)throw e1;
     const seqs=(bs||[]).map(b=>b.event_seq);
-    const G={},R={},RINV={},BAL={},NOTE={},MEM={},MEMQ={},ECO={},OVR={},FU={},MB={};
+    const G={},R={},RINV={},BAL={},NOTE={},MEM={},MEMQ={},ECO={},EARLY={},OVR={},FU={},MB={},ADD={};
     for(let i=0;i<seqs.length;i+=300){
       const chunk=seqs.slice(i,i+300);
       const {data:gs}=await supa.from('guests').select('event_seq,team_tag,group_code,accom,pax,check_status').in('event_seq',chunk); (gs||[]).forEach(g=>G[g.event_seq]=g);
@@ -394,10 +412,13 @@ async function load(){
       const mq=await pagedQuery(()=>supa.from('guest_members').select('event_seq,seq_in_team,name_kr,name_en,actual_dep,member_grade,member_class,member_div').in('event_seq',chunk).order('event_seq').order('seq_in_team'));
       (mq.data||[]).forEach(m=>{const nm=(m.name_kr||m.name_en||'').trim();
         if(nm){ (MEM[m.event_seq]=MEM[m.event_seq]||[]).push(pn(m.name_kr,m.name_en)||nm);
-                (MEMQ[m.event_seq]=MEMQ[m.event_seq]||[]).push(nm+' '+(m.name_en||'')); } if(m.actual_dep) ECO[m.event_seq]=(ECO[m.event_seq]||0)+1;
+                (MEMQ[m.event_seq]=MEMQ[m.event_seq]||[]).push(nm+' '+(m.name_en||'')); } if(m.actual_dep){ ECO[m.event_seq]=(ECO[m.event_seq]||0)+1; (EARLY[m.event_seq]=EARLY[m.event_seq]||[]).push(String(m.actual_dep).slice(0,10)); }
         if(window.SZCore&&SZCore.isMember(m)){const mb=MB[m.event_seq]=MB[m.event_seq]||{n:0,g:{}}; mb.n++; const gl=SZCore.gradeLabel(m); mb.g[gl]=(mb.g[gl]||0)+1;}});
       // 운영 상태(각 섹션 입력) — 석식제외·석식분리·운영팀 / 확인필요
-      const {data:ov}=await supa.from('print_overrides').select('event_seq,excluded,dinner_split,team_group').in('event_seq',chunk); (ov||[]).forEach(o=>OVR[o.event_seq]=o);
+      const {data:ov}=await supa.from('print_overrides').select('event_seq,excluded,exclude_reason,dinner_split,team_group').in('event_seq',chunk); (ov||[]).forEach(o=>OVR[o.event_seq]=o);
+      // 夕食オーダー에서 넣은 別注·업그레이드·알레르기(그날치) — 석식 목록에 그대로 보인다
+      try{ const {data:ad}=await supa.from('dinner_addons').select('event_seq,kind,item,qty,note').eq('order_date',day).in('event_seq',chunk);
+           (ad||[]).forEach(a=>{ (ADD[a.event_seq]=ADD[a.event_seq]||[]).push(a); }); }catch(_){}
       const {data:fu}=await supa.from('followups').select('event_seq,area,title,link,status').eq('status','open').in('event_seq',chunk); (fu||[]).forEach(f=>{(FU[f.event_seq]=FU[f.event_seq]||[]).push(f);});
     }
     // 잔액: v_folio_balance(월) → event_seq 합산
@@ -415,7 +436,9 @@ async function load(){
       return {seq:b.event_seq,no:b.event_no||b.event_seq,rep,pax:g.pax||b.pax||0,dep:b.dep_date,arr:b.arr_date,
         accom:g.accom||'',tag,rooms,invIds:[...(RINV[b.event_seq]||[])],bal:bal.bal,gross:bal.gross,paid:bal.paid,cnt:bal.cnt,
         memo,remarks:n.remarks||'',noteMemo:n.memo||'',teamLabel:n.team_label||'',members,search,
-        ecoCnt:ECO[b.event_seq]||0, excluded:!!ov.excluded, dinnerSplit:!!ov.dinner_split, teamGroup:ov.team_group||'',
+        ecoCnt:ECO[b.event_seq]||0, earlyDeps:EARLY[b.event_seq]||[],
+        excluded:!!ov.excluded, excludeReason:ov.exclude_reason||'', dinnerSplit:!!ov.dinner_split, teamGroup:ov.team_group||'',
+        addons:ADD[b.event_seq]||[],
         followups:FU[b.event_seq]||[], memb:MB[b.event_seq]||{n:0,g:{}},
         co:(g.check_status==='체크아웃')};   // 체크아웃 처리 여부(담당자 버튼) — QR 만료 기준
     });
@@ -454,6 +477,14 @@ async function doneFollowup(id){
   }catch(e){ toast(tx('fuFail')+': '+e.message,'err'); }
 }
 
+// ── 석식 인원 = 夕食オーダー(dinner.html) 와 같은 규칙 ────────────────────
+//   그날 묵는 인원 − 조기퇴실(그 끼니에 이미 떠난 사람) − 업그레이드 인분(기본 석식이 안 나감).
+//   夕食除外 팀은 합계에서 빠지고 따로 모아 보여준다. 규칙은 SZCore 단일 진실원.
+function dineGone(t,day){ return (window.SZCore&&SZCore.mealGoneCount)?SZCore.mealGoneCount(t.earlyDeps||[],day,'d'):0; }
+function dineUp(t){ return (t.addons||[]).filter(a=>a.kind==='upgrade').reduce((s,a)=>s+(parseInt(a.qty,10)||0),0); }
+function dinePax(t,day){ return Math.max(0,(parseInt(t.pax,10)||0)-dineGone(t,day)); }
+function dineNet(t,day){ const p=dinePax(t,day); return Math.max(0,p-Math.min(p,dineUp(t))); }
+
 function render(){
   renderAccomChips();
   renderFollowups();
@@ -465,13 +496,22 @@ function render(){
   const stay=pool.filter(t=>t.dep<day&&t.arr>day);          // 연박(재실)
   const dine=pool.filter(t=>t.dep<=day&&t.arr>day);         // 그날 묵는 전원 = 석식 대상
   const ppl=a=>a.reduce((s,t)=>s+(parseInt(t.pax,10)||0),0);
+  const dineOn=dine.filter(t=>!t.excluded && dinePax(t,day)>0);   // 전원 조기퇴실 팀은 명단에 안 올린다
+  const dineEx=dine.filter(t=>t.excluded);
+  const dineN=dineOn.reduce((s,t)=>s+dineNet(t,day),0);
   const dueSum=pool.reduce((s,t)=>s+Math.max(0,t.bal),0);
   $('#kpis').innerHTML=
     kpi(tx('kpiIn'),`${arr.length}<small>${tw} · ${ppl(arr)}${nw}</small>`,'','sec-arr')+
     kpi(tx('kpiOut'),`${dep.length}<small>${tw} · ${ppl(dep)}${nw}</small>`,'','sec-dep')+
     kpi(tx('kpiStay'),`${stay.length}<small>${tw} · ${ppl(stay)}${nw}</small>`,'','sec-stay')+
-    kpi(tx('kpiDinner'),`${ppl(dine)}<small>${nw} · ${dine.length}${tw}</small>`)+
+    kpi(tx('kpiDinner'),`${dineN}<small>${nw} · ${dineOn.length}${tw}</small>`,'',null,'dine')+
     kpi(tx('kpiDue'),`${yen(dueSum)}`,dueSum>0?'due':'');
+  $('#kpis').querySelectorAll('[data-open]').forEach(el=>el.addEventListener('click',()=>{
+    state.dineOpen=!state.dineOpen; render();
+    if(state.dineOpen) setTimeout(()=>{ const tg=document.getElementById('sec-dine'); if(!tg) return;
+      const off=((document.querySelector('.topbar')||{}).offsetHeight||56)+8;
+      window.scrollTo({top: tg.getBoundingClientRect().top+window.scrollY-off, behavior:'smooth'}); },30);
+  }));
   $('#kpis').querySelectorAll('[data-go]').forEach(el=>el.addEventListener('click',()=>{
     const tg=document.getElementById(el.dataset.go); if(!tg) return;
     const off=((document.querySelector('.topbar')||{}).offsetHeight||56)+8;   // 상단 고정바 가림 보정 → 라인명부터 보이게
@@ -481,7 +521,8 @@ function render(){
   const q=(state.q||'').trim().toLowerCase();
   const qp=t=>!q||(t.search||'').includes(q);
   const block=(kind,title,list)=>{const f=list.filter(qp);return (q&&!f.length)?'':sect(kind,title,f);};
-  const html=block('arr',tx('secIn'),arr)+block('dep',tx('secOut'),dep)+block('stay',tx('secStay'),stay);
+  const html=block('arr',tx('secIn'),arr)+block('dep',tx('secOut'),dep)+block('stay',tx('secStay'),stay)
+    +(state.dineOpen?dineSect(dineOn.filter(qp),dineEx.filter(qp),day,dineN):'');
   $('#lists').innerHTML = html || `<div class="empty">${q?tx('searchNone'):tx('noneApplicable')}</div>`;
   $('#lists').querySelectorAll('[data-seq]').forEach(el=>el.addEventListener('click',e=>{
     if(e.target.classList&&e.target.classList.contains('cock')) return;   // 체크박스 클릭은 행 선택으로 번지지 않게
@@ -494,7 +535,11 @@ function render(){
   refreshCoBar();
   if(state.selSeq && state.byId[state.selSeq]) renderDetail(state.byId[state.selSeq]);
 }
-function kpi(l,v,cls,go){return `<div class="kpi ${cls||''} ${go?'go':''}"${go?` data-go="${go}"`:''}><div class="l">${l}</div><div class="v">${v}</div>${go?`<span class="goh">${tx('kpiGo')}</span>`:''}</div>`;}
+function kpi(l,v,cls,go,open){
+  const hint = open ? (state.dineOpen?tx('kpiClose'):tx('kpiOpen')) : (go?tx('kpiGo'):'');
+  const attr = open ? ` data-open="${open}"` : (go?` data-go="${go}"`:'');
+  return `<div class="kpi ${cls||''} ${(go||open)?'go':''}"${attr}><div class="l">${l}</div><div class="v">${v}</div>${hint?`<span class="goh">${hint}</span>`:''}</div>`;
+}
 function sect(kind,title,list){
   const nw=tx('nameWord'), tw=tx('teamWord');
   const co=(kind==='dep');   // 체크아웃 섹션에만 선택 체크박스·처리 버튼(개별/다중/일괄)
@@ -517,6 +562,39 @@ function sect(kind,title,list){
     </div>` : '';
   return `<div class="sect" id="sec-${kind}"><div class="sh ${kind}">${title}<span class="c">${list.length}${tw}</span></div>${bar}${rows}</div>`;
 }
+// 🍽 오늘 석식 목록 — 夕食オーダー(dinner.html)에서 정리한 내용을 그대로 보여준다.
+//   인원 = 그날 묵는 인원 − 조기퇴실 − 업그레이드 인분. 제외 팀은 아래에 따로 모은다.
+function dineSect(list, ex, day, total){
+  const nw=tx('nameWord'), tw=tx('teamWord');
+  const row=(t,excluded)=>{
+    const base=parseInt(t.pax,10)||0, gone=dineGone(t,day), up=dineUp(t), net=dineNet(t,day);
+    const ad=(t.addons||[]);
+    const nAdd=ad.filter(a=>a.kind==='add').length, nAlg=ad.filter(a=>a.kind==='allergy').length;
+    const marks=[];
+    if(gone) marks.push(`<span class="dmark eco">${esc(tx('dnEco')(gone))}</span>`);
+    if(up)   marks.push(`<span class="dmark up">${esc(tx('dnUp')(up))}</span>`);
+    if(nAdd) marks.push(`<span class="dmark">${esc(tx('dnAdd')(nAdd))}</span>`);
+    if(nAlg) marks.push(`<span class="dmark ex">${esc(tx('dnAlg')(nAlg))}</span>`);
+    if(t.teamGroup) marks.push(`<span class="dmark grp" title="${tx('obTeamT')}">🔗 ${esc(tx('dnGrp'))}</span>`);
+    if(excluded) marks.push(`<span class="dmark ex">${esc(tx('dnEx'))}${t.excludeReason?': '+esc(t.excludeReason):''}</span>`);
+    return `<div class="trow ${t.seq===state.selSeq?'sel':''}${excluded?' exd':''}" data-seq="${t.seq}">
+      <span class="tag">${esc(t.tag)}</span>
+      <span class="rep">${esc(pn(t.rep,''))}</span>${membChip(t)}
+      <span class="dpax">${excluded?'-':net+nw}</span>
+      ${(!excluded&&net!==base)?`<span class="pax">(${base}${nw})</span>`:''}
+      <span class="room">${t.rooms.length?t.rooms.join(','):`<span style="color:var(--muted)">${tx('unassigned')}</span>`}</span>
+      <span class="accom">${esc(accomL(t.accom))}</span>
+      ${marks.join('')}
+    </div>`;
+  };
+  const sorted=a=>a.slice().sort((x,y)=>(x.accom||'').localeCompare(y.accom||'')||String(x.tag).localeCompare(String(y.tag)));
+  const main=list.length?sorted(list).map(t=>row(t,false)).join(''):`<div class="empty">${tx('noneApplicable')}</div>`;
+  const exHtml=ex.length?`<div class="sect"><div class="sh dineex">${tx('secDineEx')}<span class="c">${ex.length}${tw}</span></div>`
+    +sorted(ex).map(t=>row(t,true)).join('')+`</div>`:'';
+  return `<div class="sect" id="sec-dine"><div class="sh dine">${tx('secDine')}<span class="c">${total}${nw} · ${list.length}${tw}</span></div>
+    <div class="dhint">${tx('dineHint')}</div>${main}</div>${exHtml}`;
+}
+
 // ── 체크아웃 처리 ────────────────────────────────────────────────────────
 //  담당자가 명시적으로 누르는 행위 = 정산완료 신호(Min 결정). 잔액 0 자동판정은
 //  아무것도 안 산 팀이 입실 첫날부터 잔액 0이라 쓸 수 없다.
@@ -548,7 +626,11 @@ function membChip(t){
   const lab=keys.map(k=>k==='회원'?tx('obMember'):k).join('·');
   return `<span class="memchip" title="${tx('obMemberT')}">${esc(lab)}</span>`;
 }
-function selectTeam(seq){state.selSeq=seq;render();}
+function selectTeam(seq){
+  state.selSeq=seq; render();
+  const col=document.querySelector('.stage>.col:last-child');
+  if(col && col.scrollTop) col.scrollTop=0;
+}
 // 운영 상태 배지 — 각 섹션에서 입력한 것을 팀 카드 한 곳에 모음(조기퇴실·석식·키택·운영팀·확인필요)
 function statusBadges(t){
   const b=[];
