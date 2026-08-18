@@ -142,6 +142,15 @@
   .rc-acts{margin-top:9px}
   /* 표 보기에서도 같은 버튼을 쓰지만 셀 안이라 폭만 자동 */
   .hkt .dbtn{width:auto;min-width:118px}
+  /* 층 단위 일괄 — 층 머리줄 오른쪽 */
+  .flr-all{display:flex;gap:7px;margin-left:auto;flex-wrap:wrap}
+  .allb{min-height:34px;font-size:12.5px;font-weight:800;border:1.5px solid var(--border2);background:var(--surface);
+    color:var(--text2);border-radius:9px;padding:5px 12px;cursor:pointer;white-space:nowrap}
+  .allb:hover{border-color:var(--accent);color:var(--accent)}
+  .allb.on{background:var(--ok,#2f7d4f);border-color:var(--ok,#2f7d4f);color:#fff}
+  .allb.tw{border-color:#a9bcd4;color:#2c5078}
+  .allb.tw.on{background:#2c5078;border-color:#2c5078;color:#fff}
+  @media print{ .flr-all{display:none} }
   @media(max-width:1100px){   /* 태블릿 세로 — 카드를 크게, 버튼은 더 크게 */
     .rcards{grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:13px}
     .dbtn{min-height:60px;font-size:18.5px}
@@ -228,7 +237,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=33"></script>
-<script src="../assets/saizen-ops.js?v=17.4"></script>
+<script src="../assets/saizen-ops.js?v=17.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -271,6 +280,8 @@ const L={
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'最終夜', linen:'シーツ交換', nextIn:n=>`入室 ${n}名`,
     closed:(f,t,r)=>`閉鎖 ${f}~${t}${r?' · '+r:''}`,
     noRooms:'該当する客室がありません。', floorStat:(c)=>`清掃 ${c}室`,
+    allClean:(n)=>`✓ この階 清掃 ${n}室`, allCleanOff:(n)=>`↺ この階 清掃 取消`, allTowel:(n)=>`✓ この階 タオル ${n}室`, allTowelOff:(n)=>`↺ この階 タオル 取消`,
+    allDone:(n)=>`${n}室 完了`, allUndone:(n)=>`${n}室 取消`,
     lgd:'左の色帯＝状態 / 上から優先順に並んでいます',
     noRoomWarn:n=>`この日 泊まるのに<b>客室が割り当てられていないチームが ${n}件</b>あります — 空室数はその分 実際より多く見えます。`, noRoomGo:'客室割当を開く →',
     teeHint:'連泊はティオフが早い部屋から（チームが出た後に入れる）',
@@ -301,6 +312,8 @@ const L={
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'마지막밤', linen:'시트 교체', nextIn:n=>`입실 ${n}명`,
     closed:(f,t,r)=>`폐쇄 ${f}~${t}${r?' · '+r:''}`,
     noRooms:'해당하는 객실이 없습니다.', floorStat:(c)=>`청소 ${c}실`,
+    allClean:(n)=>`✓ 이 층 청소 ${n}실`, allCleanOff:(n)=>`↺ 이 층 청소 취소`, allTowel:(n)=>`✓ 이 층 타월 ${n}실`, allTowelOff:(n)=>`↺ 이 층 타월 취소`,
+    allDone:(n)=>`${n}실 완료`, allUndone:(n)=>`${n}실 취소`,
     lgd:'왼쪽 색띠 = 상태 / 위에서부터 우선순위 순서',
     noRoomWarn:n=>`이 날 묵는데 <b>방배정이 안 된 팀이 ${n}건</b> 있습니다 — 그만큼 공실이 실제보다 많아 보입니다.`, noRoomGo:'방배정 열기 →',
     teeHint:'연박은 티오프 빠른 방부터(팀이 나간 뒤 들어갈 수 있음)',
@@ -331,6 +344,8 @@ const L={
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'Last night', linen:'Linen change', nextIn:n=>`${n} arriving`,
     closed:(f,t,r)=>`Closed ${f}~${t}${r?' · '+r:''}`,
     noRooms:'No matching rooms.', floorStat:(c)=>`${c} rooms`,
+    allClean:(n)=>`✓ Floor clean ${n}`, allCleanOff:(n)=>`↺ Undo floor clean`, allTowel:(n)=>`✓ Floor towels ${n}`, allTowelOff:(n)=>`↺ Undo floor towels`,
+    allDone:(n)=>`${n} rooms done`, allUndone:(n)=>`${n} rooms undone`,
     lgd:'Left colour bar = status / listed in priority order',
     noRoomWarn:n=>`<b>${n} team(s) staying this night have no room assigned</b> — the vacant count looks higher than it really is.`, noRoomGo:'Open room assignment →',
     teeHint:'Stayovers are ordered by tee-off — clean once the team has left',
@@ -676,21 +691,74 @@ function roomRecord(inv){
 
 // 완료 상태(hk_done) — 있으면 완료, 지우면 미완료
 function isDone(invId, kind){ return !!DONE[invId+'|'+kind]; }
+// ── 완료 표시 ── 누르는 즉시 화면을 바꾸고(낙관적), 저장은 뒤에서 한다.
+//   예전엔 서버 응답을 기다렸다가 전체를 다시 그려서 누를 때마다 한 박자 늦었다(Min 2026-08).
+//   실패하면 원래대로 되돌리고 알린다.
+function setDone(invId, kind, on, by){
+  const k=invId+'|'+kind;
+  if(on) DONE[k]={by:by||''}; else delete DONE[k];
+}
+//  버튼 하나만 바로 칠한다(전체 재렌더 없음)
+function paintDone(invId, kind){
+  const on=!!DONE[invId+'|'+kind];
+  document.querySelectorAll(`[data-done="${invId}"][data-kind="${kind}"]`).forEach(b=>{
+    b.classList.toggle('on',on);
+    b.textContent = on ? tx('hkDone') : (kind==='clean'?tx('hkClean'):tx('hkTowel'));
+  });
+}
+//  숫자(층 진행·KPI)만 다시 계산 — 목록 DOM 은 건드리지 않는다
+let _cntTimer=null;
+function refreshCounts(){
+  clearTimeout(_cntTimer);
+  _cntTimer=setTimeout(()=>{ try{ render(); }catch(e){} }, 400);
+}
 async function toggleDone(invId, kind){
-  const key=invId+'|'+kind;
+  const key=invId+'|'+kind, was=!!DONE[key];
   const by=(window.__so_getUser&&__so_getUser())||null;
-  try{
-    if(DONE[key]){
+  setDone(invId,kind,!was,by); paintDone(invId,kind); refreshCounts();   // ① 먼저 화면
+  try{                                                                    // ② 그다음 저장
+    if(was){
       const {error}=await supa.from('hk_done').delete().eq('work_date',DATE).eq('inventory_id',invId).eq('kind',kind);
-      if(error) throw error; delete DONE[key];
+      if(error) throw error;
     } else {
       const {error}=await supa.from('hk_done')
         .upsert({work_date:DATE, inventory_id:invId, kind, done_by:by, done_at:new Date().toISOString()},
                 {onConflict:'work_date,inventory_id,kind'});
-      if(error) throw error; DONE[key]={by:by||''};
+      if(error) throw error;
     }
-    render();
-  }catch(e){ toast(tx('hkSaveFail')(e.message),'err'); }
+  }catch(e){
+    setDone(invId,kind,was,by); paintDone(invId,kind); refreshCounts();   // ③ 실패하면 되돌린다
+    toast(tx('hkSaveFail')(e.message),'err');
+  }
+}
+// ── 층 단위 일괄 ── 그 층의 대상 객실을 한 번에 완료/취소한다.
+// 층 묶음 키 — 목록 그리기와 일괄 처리가 같은 기준을 쓰게 한 곳에 둔다
+function zoneKeyOf(r){ return (r.inv.facility||'')+'|'+(r.inv.zone||r.inv.facility||''); }
+async function toggleFloor(zoneKey, kind){
+  const invs=INV.filter(invInScope).map(roomRecord)
+    .filter(r=>zoneKeyOf(r)===zoneKey)
+    .filter(r=> kind==='clean' ? needsClean(r) : (r.status!=='vacant'&&r.status!=='ooo'));
+  if(!invs.length) return;
+  const ids=invs.map(r=>r.inv.id);
+  const allOn=ids.every(id=>DONE[id+'|'+kind]);
+  const by=(window.__so_getUser&&__so_getUser())||null;
+  ids.forEach(id=>{ setDone(id,kind,!allOn,by); paintDone(id,kind); });   // ① 먼저 화면
+  refreshCounts();
+  try{
+    if(allOn){
+      const {error}=await supa.from('hk_done').delete().eq('work_date',DATE).eq('kind',kind).in('inventory_id',ids);
+      if(error) throw error;
+    } else {
+      const now=new Date().toISOString();
+      const rows=ids.map(id=>({work_date:DATE, inventory_id:id, kind, done_by:by, done_at:now}));
+      const {error}=await supa.from('hk_done').upsert(rows,{onConflict:'work_date,inventory_id,kind'});
+      if(error) throw error;
+    }
+    toast(allOn?tx('allUndone')(ids.length):tx('allDone')(ids.length),'ok');
+  }catch(e){
+    ids.forEach(id=>{ setDone(id,kind,allOn,by); paintDone(id,kind); });
+    refreshCounts(); toast(tx('hkSaveFail')(e.message),'err');
+  }
 }
 // 그 방이 오늘 '청소 대상'인가 — 퇴실/턴오버(무조건) + 체류 청소일
 function needsClean(r){ return r.status==='turn'||r.status==='out'||r.linen; }
@@ -707,7 +775,7 @@ function render(){
 
   // 층(zone) 단위 — 청소팀은 층을 맡아 움직인다
   const groups={};
-  recs.forEach(r=>{ const k=(r.inv.facility||'')+'|'+(r.inv.zone||r.inv.facility||'');
+  recs.forEach(r=>{ const k=zoneKeyOf(r);
     (groups[k]=groups[k]||{fac:r.inv.facility||'', zone:r.inv.zone||r.inv.facility||'', list:[]}).list.push(r); });
   const keys=Object.keys(groups).sort((a,b)=>{
     const A=groups[a], B=groups[b];
@@ -724,6 +792,9 @@ function render(){
   // 완료 버튼(청소·타월) — 누르면 바로 저장되고 진행률이 올라간다
   box.querySelectorAll('[data-done]').forEach(b=>b.addEventListener('click',ev=>{
     ev.stopPropagation(); toggleDone(b.dataset.done, b.dataset.kind);
+  }));
+  box.querySelectorAll('[data-all]').forEach(b=>b.addEventListener('click',ev=>{
+    ev.stopPropagation(); toggleFloor(b.dataset.zone, b.dataset.all);
   }));
   wireZoneSpy(); syncStickyTop();
 }
@@ -779,6 +850,14 @@ function floorHtml(g,key){
         ${badge('stay',tx('sStay'),c.stay)}${badge('in',tx('sIn'),c.in)}
         <span class="cnt">${esc(tx('floorStat')(clean))}${fpax?esc(' · '+tx('paxN')(fpax)):''}</span>
       </span>
+      ${(()=>{  // 층 단위 일괄 — 청소 대상 방을 한 번에 완료/취소(Min 2026-08)
+        const cl=list.filter(needsClean);
+        const clOn=cl.length&&cl.every(r=>DONE[r.inv.id+'|clean']);
+        const twOn=list.length&&list.every(r=>DONE[r.inv.id+'|towel']);
+        return `<span class="flr-all">
+          ${cl.length?`<button type="button" class="allb${clOn?' on':''}" data-all="clean" data-zone="${esc(key)}">${esc((clOn?tx('allCleanOff'):tx('allClean'))(cl.length))}</button>`:''}
+          ${list.length?`<button type="button" class="allb tw${twOn?' on':''}" data-all="towel" data-zone="${esc(key)}">${esc((twOn?tx('allTowelOff'):tx('allTowel'))(list.length))}</button>`:''}
+        </span>`; })()}
     </div>
     ${VIEW==='card'?`<div class="rcards" style="padding:11px">${list.map(cardHtml).join('')}</div>`:`<table class="hkt">
       <thead><tr>
