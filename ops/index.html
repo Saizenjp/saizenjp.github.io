@@ -527,6 +527,13 @@
       st.style.display='flex';
     }).catch(function(){});
   }
+  // 언어를 바꿔도 **JS 로 만든 띠**는 그대로 남는다(data-i18n 이 아니라 innerHTML 이라).
+  //   → 각 띠가 '다시 그리는 함수'를 여기에 등록해 두고, 언어 전환 때 데이터 재조회 없이 다시 그린다.
+  var __redraw={};
+  window.onSaizenLangChange=function(){
+    Object.keys(__redraw).forEach(function(k){ try{ __redraw[k](); }catch(e){} });
+  };
+
   // ── 등록된 데이터 현황 — 월 목록은 실제 데이터(bookings.session_ym) 기준,
   //    등록 시각·등록자는 import_log에서 보강. (import_log 누락/한도와 무관하게 등록된 모든 달 표시) ──
   function loadRegStrip(){
@@ -556,6 +563,7 @@
           .then(function(r){ return {ym:ym,ppl:(r&&r.count)}; }).catch(function(){ return {ym:ym,ppl:null}; });
       })).then(function(pplArr){
         var pplBy={}; pplArr.forEach(function(o){ pplBy[o.ym]=o.ppl; });
+        var draw=function(){
         var html=yms.map(function(ym){
           var info=infoBy[ym]; var who='', ts='';
           if(info){ var d=new Date(info.uploaded_at); ts=' · <span style="color:var(--muted)">'+p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+'</span>'; who=info.uploaded_by?(' · '+info.uploaded_by):''; }
@@ -564,6 +572,8 @@
                + '<b style="font-family:var(--mono)">'+ym+'</b>'+who+ts+cnt+'</span>';
         }).join('');
         var box=document.getElementById('reg-strip-list'); if(box){ box.innerHTML=html; document.getElementById('reg-strip').style.display='flex'; }
+        };
+        __redraw.reg=draw; draw();
       });
     }).catch(function(){});
   }
@@ -599,6 +609,7 @@
         });
         return c.from('bookings').select('event_seq,pax').eq('arr_date',today).then(function(o){
           ((o&&o.data)||[]).forEach(function(b){ co+=Number(b.pax)||0; coT++; });
+          var draw=function(){
           var chip=function(html,bg,bd){ return '<span style="background:'+(bg||'#fff')+';border:1px solid '+(bd||'#b8c8e8')+';border-radius:99px;padding:3px 11px">'+html+'</span>'; };
           var acLbl=function(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,(window.SaizenOps&&SaizenOps.lang)||'ko'):a; };
           var sub=function(txt){ return '<span style="color:#6b7280;font-weight:700"> · '+txt+'</span>'; };
@@ -611,6 +622,8 @@
           if(coT) html+=chip(t('ix_coToday')+' <b>'+co+'</b>'+t('ix_pplUnit')+sub(coT+t('ix_teamUnit')),'#f5ecd8','#dcc48d');
           var box=document.getElementById('stay-strip-list');
           if(box){ box.innerHTML=html; document.getElementById('stay-strip').style.display='flex'; }
+          };
+          __redraw.stay=draw; draw();
         });
       });
     }).catch(function(){});
