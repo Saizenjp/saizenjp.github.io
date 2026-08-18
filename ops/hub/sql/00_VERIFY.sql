@@ -186,6 +186,7 @@ from (
   union all select 114,'114 체류중 송영','transfer_checks.leg 에 stay_am·stay_pm', case when exists(select 1 from pg_constraint where conname='transfer_checks_leg_check' and pg_get_constraintdef(oid) like '%stay_am%') then '✅ 있음' else '❌ 없음 (114)' end
   union all select 115,'115 객실 쪽지','room_notes', case when to_regclass('public.room_notes') is not null then '✅ 있음' else '❌ 없음 (115)' end
   union all select 116,'116 카트 무료일','cart_sync_charge 입국·귀국일 제외', case when exists(select 1 from pg_proc where proname='cart_sync_charge' and prosrc like '%v_dep%') then '✅ 적용' else '❌ 미적용 (116)' end
+  union all select 117,'117 정산 마감','folios.updated_at (없으면 folio UPDATE 전부 실패)', case when exists(select 1 from information_schema.columns where table_name='folios' and column_name='updated_at') then '✅ 있음' else '❌ 없음 (117) — 정산 마감이 안 된다' end
 ) t
 order by ord, 항목;
 
