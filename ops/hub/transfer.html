@@ -102,7 +102,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=19.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=19.1">
 </head>
 <body data-so-area="print front">
 <div class="topbar so-bar">
@@ -133,7 +133,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=35"></script>
-<script src="../assets/saizen-ops.js?v=19.0"></script>
+<script src="../assets/saizen-ops.js?v=19.1"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -235,6 +235,13 @@ function apCode(v){ return (window.SZCore&&SZCore.airportCode)?SZCore.airportCod
 // 인쇄물은 코드(ICN·KMJ) 대신 **공항명(일본어)** 으로 적는다(Min 2026-08).
 //  공항명(일본어) = saizen-core 의 'full' 형식. 매핑은 core 한 곳(네임택=코드·航空カバー=도시).
 function apJa(v){ return SZCore.airportLabel(v,'full'); }
+// 지역명 — 담당자는 코드(ICN·PUS)보다 「서울·부산」으로 나눠 부른다(Min 2026-08).
+const KO_CITY={ICN:'서울',GMP:'서울',PUS:'부산',CJU:'제주',TAE:'대구',CJJ:'청주',KMJ:'구마모토',FUK:'후쿠오카'};
+function cityJa(v){ const c=apCode(v); return SZCore.airportLabel(c,'city')||c; }
+function cityKo(v){ const c=apCode(v); return KO_CITY[c]||c; }
+// 「서울 입국」·「부산 귀국」 — 지역 + 방향
+function cityDir(v,dir){ const w=(dir==='in')?['入国','입국']:['帰国','귀국'];
+  return [cityJa(v)+w[0], cityKo(v)+' '+w[1]]; }
 function accomPair(a){ const j=accomJa(a), k=accomKo(a); return (k&&k!==j)?(j+' / '+k):(j||k||'-'); }
 // 체류중 왕복은 공항이 아니라 숙소↔야마나미 구간이라 공항코드 대신 숙소명을 쓴다.
 function routeOf(g){ return g.dir==='stay' ? (accomJa(g.from)+' → '+accomJa(g.to)) : route(g.from,g.to); }
@@ -637,7 +644,6 @@ function dirShort(d){ const ja=lang()==='ja', en=lang()==='en';
 function printSheet(){
   const vis=visible(); if(!vis.length){ toast(tx('noData'),'err'); return; }
   const w=window.open('','_blank','width=980,height=1000'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
-  const md=v=>{ const d=pd(v); return d?`${d.getMonth()+1}/${d.getDate()}`:''; };
   //  현장 종이의 약칭 — 칸이 좁아 정식 명칭 대신 실물과 같은 표기를 쓴다
   const SHORT={'간지호텔':'ガンジー','야마나미리조트':'やまなみ','구주고원CC':'九重高原'};
   const shortJa=a=>SHORT[String(a||'').trim()]||accomJa(a);
@@ -658,19 +664,18 @@ function printSheet(){
   const ins =vis.filter(r=>r.dir==='in');
   const outs=vis.filter(r=>r.dir==='out');
 
-  //  체류중 카드는 이미 머리줄이 숙소별로 나뉘므로 숙소 열을 두지 않는다(중복) → 備考를 넓게 쓴다
-  const teamRows=(rows,kind)=>rows
+  //  기사가 보는 건 **누가(태그코드·대표자) 몇 명**인가 뿐이다(Min 2026-08).
+  //   숙소 열은 두지 않는다 — 행선지별 인원은 便 머리줄 소계에 있고,
+  //   어느 숙소 팀인지는 **태그코드 색**(네임택·航空カバー와 같은 숙소 구분색)으로 보인다.
+  const teamRows=rows=>rows
     .sort((a,b)=>accomOrd(a.accom)-accomOrd(b.accom)||String(a.tag).localeCompare(String(b.tag)))
-    .map((r,i)=>`<tr>
-      <td class="n">${i+1}</td><td class="n pax">${r.pax}</td><td>${esc(r.rep||'-')}</td>
-      <td class="mono code">${esc(r.tag)}</td>${kind==='stay'?'':`<td class="ac">${acHTML(r.accom)}</td>`}
-      <td class="n mono">${esc(md(kind==='out'?r.dep:r.arr))}</td><td class="w"></td></tr>`).join('');
+    .map(r=>`<tr>
+      <td class="code" style="color:${accomColor(r.accom)}">${esc(r.tag)}</td>
+      <td class="rp">${esc(r.rep||'-')}</td><td class="n pax">${r.pax}</td><td class="w"></td></tr>`).join('');
 
-  const COLS=kind=>`<colgroup><col style="width:8mm"><col style="width:13mm"><col style="width:30mm">
-      <col style="width:20mm">${kind==='stay'?'':'<col style="width:26mm">'}<col style="width:15mm"><col></colgroup>`;
-  const head=kind=>`<thead><tr><th>NO</th><th class="n">人数<i>인원</i></th><th>代表者<i>대표자</i></th>
-      <th>Group<i>코드</i></th>${kind==='stay'?'':`<th>${kind==='in'?'行き先<i>행선지</i>':'出発地<i>출발지</i>'}</th>`}
-      <th class="n">${kind==='out'?'入国日<i>입국일</i>':'出国日<i>귀국일</i>'}</th><th>備考<i>비고</i></th></tr></thead>`;
+  const COLS=`<colgroup><col style="width:30mm"><col style="width:60mm"><col style="width:20mm"><col></colgroup>`;
+  const head=`<thead><tr><th>Group<i>코드</i></th><th>代表者<i>대표자</i></th>
+      <th class="n">人数<i>인원</i></th><th>備考<i>비고</i></th></tr></thead>`;
 
   // ── IN / OUT = 便(항공편) 카드. 배차는 便 단위로 정해진다 ──
   const flightBlock=(kind,rows)=>{
@@ -684,15 +689,15 @@ function printSheet(){
       <div class="blk-h"><b>${kind==='in'?'IN':'OUT'}</b><span class="sub">${kind==='in'?'到着 · 空港 → 宿 / 도착':'出発 · 宿 → 空港 / 출발'}</span>
         <span class="big">${pax}</span><span class="unit">名</span><span class="cnt">${rows.length}チーム · ${gs.length}便</span></div>
       ${gs.map(g=>{
-        const p0=g.rows[0]||{}, port=apCode(kind==='in'?p0.from:p0.to)||'';
+        const p0=g.rows[0]||{}, p0Port=(kind==='in'?p0.from:p0.to)||'';
         const gp=g.rows.reduce((s,r)=>s+r.pax,0);
         return `<div class="fl">
           <div class="fl-h"><b class="mono">${esc(g.flight||'-')}</b><span class="tm mono">${esc(g.time||'')}</span>
-            <span class="rt mono">${esc(kind==='in'?(port+' → KMJ'):('KMJ → '+port))}</span>
+            <span class="rt">${esc(cityDir(p0Port,kind)[0])}<i>${esc(cityDir(p0Port,kind)[1])}</i></span>
             <span class="nn">${g.rows.length}チーム · ${gp}名</span>
             <span class="sb">${subtotal(g.rows)}</span></div>
           ${dispatch}
-          <table class="pt">${COLS(kind)}${head(kind)}<tbody>${teamRows(g.rows,kind)}</tbody></table>
+          <table class="pt">${COLS}${head}<tbody>${teamRows(g.rows)}</tbody></table>
         </div>`; }).join('')}
     </div>`;
   };
@@ -715,7 +720,7 @@ function printSheet(){
           <div class="fl-h"><b>${acHTML(g.accom)} ⇔ ${course}</b>
             <span class="sb">${g.rows.length}チーム · <u>${gp}</u>名</span></div>
           ${dispatch}
-          <table class="pt">${COLS('stay')}${head('stay')}<tbody>${teamRows(g.rows,'stay')}</tbody></table>
+          <table class="pt">${COLS}${head}<tbody>${teamRows(g.rows)}</tbody></table>
         </div>`; }).join('')}
     </div>`;
   };
@@ -736,7 +741,7 @@ function printSheet(){
   .hd h2 i{font-size:9.5pt;font-style:normal;font-weight:600;color:#444;letter-spacing:0;margin-left:5px}
   .hd .rest{font-size:9.5pt;font-weight:700;display:flex;align-items:baseline;gap:2mm}
   .hd .rest u{text-decoration:none;display:inline-block;width:30mm;border-bottom:0.9pt solid #111}
-  .hd .date{margin-left:auto;font-size:15pt;font-weight:800;font-family:Consolas,'SZJpMono',monospace}
+  .hd .date{margin-left:auto;font-size:16pt;font-weight:800;color:#c0272d;font-family:Consolas,'SZJpMono',monospace}
   .blk{margin-bottom:2.6mm}
   .blk-h{display:flex;align-items:baseline;gap:3mm;background:#111;color:#fff;padding:calc(1mm * var(--fs)) 3mm;
     break-after:avoid;page-break-after:avoid}
@@ -750,7 +755,8 @@ function printSheet(){
     padding:calc(1mm * var(--fs)) 2.5mm;break-after:avoid;page-break-after:avoid}
   .fl-h b{font-size:calc(12pt * var(--fs));font-weight:800}
   .fl-h .tm{font-size:calc(12pt * var(--fs));font-weight:800}
-  .fl-h .rt{font-size:calc(9.5pt * var(--fs));font-weight:700;color:#333}
+  .fl-h .rt{font-size:calc(10.5pt * var(--fs));font-weight:800;color:#111}
+  .fl-h .rt i{font-size:calc(8pt * var(--fs));font-weight:600;font-style:normal;color:#555;margin-left:3px}
   .fl-h .nn{font-size:calc(9.5pt * var(--fs));font-weight:700}
   .fl-h .sb{margin-left:auto;font-size:calc(9pt * var(--fs));white-space:nowrap}
   .fl-h .sb u{text-decoration:none;font-weight:800;font-family:Consolas,'SZJpMono',monospace;font-size:calc(10.5pt * var(--fs))}
@@ -759,7 +765,7 @@ function printSheet(){
   .dp span i{font-style:normal;font-weight:600;color:#555}
   .dp em{flex:1;border-bottom:0.8pt solid #111;height:calc(4.6mm * var(--fs))}
   .dp em.s{flex:0 0 22mm}
-  table.pt{width:100%;border-collapse:collapse;table-layout:fixed;font-size:calc(9.5pt * var(--fs))}
+  table.pt{width:100%;border-collapse:collapse;table-layout:fixed;font-size:calc(11pt * var(--fs))}
   table.pt th{background:#f6f6f6;border:0.6pt solid #111;border-left:none;padding:0.7mm 1.2mm;
     font-size:calc(8pt * var(--fs));font-weight:800;line-height:1.15;text-align:left}
   table.pt th i{display:block;font-size:calc(6.5pt * var(--fs));font-weight:600;font-style:normal;color:#555}
@@ -769,8 +775,9 @@ function printSheet(){
   table.pt th:last-child,table.pt td:last-child{border-right:none}
   table.pt td.n,table.pt th.n{text-align:center}
   table.pt td.mono{font-family:Consolas,'SZJpMono',monospace}
-  table.pt td.code{font-weight:800;font-size:calc(10pt * var(--fs))}
-  table.pt td.pax{font-weight:800;font-size:calc(10.5pt * var(--fs))}
+  table.pt td.code{font-family:Consolas,'SZJpMono',monospace;font-weight:800;font-size:calc(12pt * var(--fs))}
+  table.pt td.pax{font-weight:800;font-size:calc(12pt * var(--fs))}
+  table.pt td.rp{font-size:calc(11.5pt * var(--fs));font-weight:700}
   table.pt td.ac{font-size:calc(9pt * var(--fs))}
   table.pt td.w{background:#fff}
   @media print{ @page{size:A4 portrait;margin:0} body{background:#fff} .bar{display:none}
@@ -825,7 +832,9 @@ function printMeet(){
   const groups=groupByFlight(vis);
   // 만나는 곳(공항·숙소)마다 종이를 나눈다 — 담당자가 서로 다른 곳으로 나간다(Min 2026-08)
   const PAGES=printPages(groups);
-  const dirBig=p=>({in:['到着','도착'], stay:['滞在中','체류중'], out:['出発','출발']}[p.dir]||['','']);
+  const dirBig=p=>({in:'IN', stay:'滞在', out:'OUT'}[p.dir]||'');
+  //  종이는 **지역**으로 나눠 부른다 — 「서울 입국」·「부산 귀국」(Min 2026-08)
+  const placeLabel=p=>p.dir==='stay' ? [accomJa(p.meet), accomKo(p.meet)] : cityDir(p.meet, p.dir);
   // 종이에서는 **다 모였는지(인원 수)만** 본다 — 이름 나열은 넣지 않는다(Min 2026-08).
   //   이름은 태블릿 화면에서 사람마다 눌러 확인한다.
   const sec=(page)=>{
@@ -864,38 +873,40 @@ ${g.time?`<span class="t">${esc(g.time)}</span>`:''}
   .bar button{background:#fff;color:#333;border:none;border-radius:5px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer}
   .bar .x{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
   /* --fs = 한 장에 맞추는 자동 배율(팀이 많은 날엔 스크립트가 낮춘다). 머리글·담당자칸은 고정. */
-  .page{width:210mm;min-height:297mm;margin:10px auto;background:#fff;padding:12mm 11mm;--fs:1}
-  .hd{display:flex;align-items:baseline;gap:5mm;border-bottom:2.2pt solid #111;padding-bottom:2.5mm;margin-bottom:3mm}
-  .hd .dir b{font-size:28pt;font-weight:800;letter-spacing:3px}
-  .hd .dir i{font-size:11pt;font-style:normal;font-weight:700;color:#444;margin-left:5px}
-  .hd .date{font-size:24pt;font-weight:800;font-family:Consolas,'SZJpMono',monospace}
-  .hd .meet{margin-left:auto;text-align:right;font-size:13pt;font-weight:800}
-  .hd .meet span{display:block;font-size:9.5pt;font-weight:700;color:#444}
-  .staff{display:flex;gap:4mm;font-size:9.5pt;margin-bottom:4mm}
-  .staff div{flex:1;border:0.8pt solid #111;padding:2mm 3mm;min-height:11mm}
-  .staff b{font-size:8.5pt;color:#444;display:block;margin-bottom:1mm}
+  .page{width:297mm;min-height:210mm;margin:10px auto;background:#fff;padding:9mm 11mm;--fs:1}
+  .hd{display:flex;align-items:baseline;gap:6mm;border-bottom:2.2pt solid #111;
+    padding-bottom:calc(2.5mm * var(--fs));margin-bottom:calc(3mm * var(--fs))}
+  .hd .dir{font-size:calc(30pt * var(--fs));font-weight:800;letter-spacing:3px;font-family:Consolas,'SZJpMono',monospace}
+  .hd .place{font-size:calc(18pt * var(--fs));font-weight:800}
+  .hd .place i{font-size:calc(11pt * var(--fs));font-style:normal;font-weight:700;color:#444;margin-left:5px}
+  .hd .date{font-size:calc(24pt * var(--fs));font-weight:800;color:#c0272d;font-family:Consolas,'SZJpMono',monospace}
+  .hd .meet{margin-left:auto;font-size:calc(13pt * var(--fs));font-weight:800}
+  .staff{display:flex;gap:4mm;font-size:calc(9.5pt * var(--fs));margin-bottom:calc(4mm * var(--fs))}
+  .staff div{flex:1;border:0.8pt solid #111;padding:calc(1.6mm * var(--fs)) 3mm;min-height:calc(10mm * var(--fs))}
+  .staff b{font-size:calc(8.5pt * var(--fs));color:#444;display:block;margin-bottom:0.8mm}
   .sec{margin-bottom:calc(5mm * var(--fs))}
   .fl-h{display:flex;align-items:baseline;gap:4mm;border:0.8pt solid #111;background:#efefef;padding:calc(1.4mm * var(--fs)) 3mm;font-size:calc(10.5pt * var(--fs))}
   .fl-h b{font-size:calc(12.5pt * var(--fs));font-family:Consolas,'SZJpMono',monospace}
   .fl-h .t{font-size:calc(12.5pt * var(--fs));font-weight:800;font-family:Consolas,'SZJpMono',monospace}
   .fl-h .r{font-size:calc(10.5pt * var(--fs));font-weight:700;font-family:Consolas,'SZJpMono',monospace}
   .fl-h .n{margin-left:auto;font-size:10pt;font-weight:700}
-  table.pt{width:100%;border-collapse:collapse;font-size:calc(10.5pt * var(--fs));margin-bottom:calc(2.5mm * var(--fs))}
+  table.pt{width:100%;border-collapse:collapse;font-size:calc(12pt * var(--fs));margin-bottom:calc(2.5mm * var(--fs))}
   table.pt th{background:#f6f6f6;border:0.7pt solid #111;padding:calc(1.2mm * var(--fs)) 2mm;font-size:calc(9pt * var(--fs));font-weight:800;line-height:1.2}
   table.pt th i{font-size:calc(7.5pt * var(--fs));font-weight:600;font-style:normal;color:#444}
   table.pt td{border:0.7pt solid #111;padding:calc(1.5mm * var(--fs)) 2mm}
   table.pt td.n,table.pt th.n{text-align:center;white-space:nowrap;width:14mm}
   table.pt th.code{width:20mm}
-  table.pt td.code{font-family:Consolas,'SZJpMono',monospace;font-weight:800;font-size:calc(11pt * var(--fs))}
-  table.pt td.pax{font-weight:800;font-size:calc(10.5pt * var(--fs))}
+  table.pt td.code{font-family:Consolas,'SZJpMono',monospace;font-weight:800;font-size:calc(13pt * var(--fs))}
+  table.pt td.pax{font-weight:800;font-size:calc(13pt * var(--fs))}
   /* 명단 — 대표자를 앞에 굵게, 나머지는 가운뎃점으로 이어 붙여 줄을 아낀다 */
-  table.pt td.nm{font-size:calc(10.5pt * var(--fs));line-height:1.3}
+  table.pt td.nm{font-size:calc(12.5pt * var(--fs));line-height:1.35}
   table.pt td.nm b{font-weight:800}
   table.pt tr.sub td{background:#f6f6f6;font-weight:800}
   .box{display:inline-block;width:calc(6.5mm * var(--fs));height:calc(6.5mm * var(--fs));border:1pt solid #111}
   .fill{display:inline-block;width:12mm;border-bottom:0.8pt solid #111;height:calc(5mm * var(--fs))}
-  @media print{ @page{size:A4 portrait;margin:0} body{background:#fff} .bar{display:none}
-    .page{margin:0;width:auto;min-height:auto;padding:11mm 10mm} tr{break-inside:avoid}
+  @media print{ @page{size:A4 landscape;margin:0} body{background:#fff} .bar{display:none}
+    .page{margin:0;width:auto;min-height:auto;padding:9mm 10mm} tr{break-inside:avoid}
+    thead{display:table-header-group}
     .page{break-after:page;page-break-after:always} .page:last-child{break-after:auto;page-break-after:auto} }
 </style></head><body>
   <div class="bar"><h1>送迎名簿 / 송영 명단표</h1><div class="meta">${vis.length}チーム · ${PAGES.length}枚</div><div style="flex:1"></div>
@@ -904,9 +915,10 @@ ${g.time?`<span class="t">${esc(g.time)}</span>`:''}
   ${PAGES.map(p=>`
   <div class="page">
     <div class="hd">
-      <div class="dir"><b>${esc(dirBig(p)[0])}</b><i>${esc(dirBig(p)[1])}</i></div>
+      <div class="dir">${esc(dirBig(p))}</div>
+      <div class="place">${esc(placeLabel(p)[0])}<i>${esc(placeLabel(p)[1])}</i></div>
       <div class="date">${mdw(DATE)}</div>
-      <div class="meet">${esc(meetLabel(p.meet))}<span>${p.gs.reduce((s,g)=>s+g.teams,0)}チーム / ${p.gs.reduce((s,g)=>s+g.pax,0)}名</span></div>
+      <div class="meet">${p.gs.reduce((s,g)=>s+g.teams,0)}チーム / ${p.gs.reduce((s,g)=>s+g.pax,0)}名</div>
     </div>
     <div class="staff"><div><b>担当者 / 담당자</b></div><div><b>集合場所 / 집합 장소</b></div><div><b>連絡先 / 연락처</b></div></div>
     ${sec(p)}
@@ -915,30 +927,28 @@ ${g.time?`<span class="t">${esc(g.time)}</span>`:''}
   // 한 장에 맞춘다 — 넘치면 그 장의 글자배율(--fs)을 이분탐색으로 낮춘다(Min 2026-08).
   //  머리글·담당자칸은 고정이라 줄어들지 않는다. 0.5 까지 낮춰도 안 되면 그대로 두고 넘긴다.
   (function(){
+    var FLOOR=0.75;   // 이름을 부르며 확인하는 종이라 **가독이 우선** — 더 줄이느니 장을 늘린다
     function fit(){
-      var mm = (function(){ var d=document.createElement('div');
+      var mm=(function(){ var d=document.createElement('div');
         d.style.cssText='height:100mm;position:absolute;visibility:hidden';
         document.body.appendChild(d); var h=d.offsetHeight/100; d.remove(); return h; })();
-      var LIMIT = 297 * mm;                        // A4 세로 한 장(여백 포함한 페이지 상자 전체)
+      var LIMIT=210*mm;                            // A4 **가로** 한 장
       var pages=document.querySelectorAll('.page');
       for(var i=0;i<pages.length;i++){
-        var pg=pages[i], lo=0.45, hi=1, best=1;
-        var keep=pg.style.minHeight;
-        pg.style.minHeight='auto';                 // 화면용 min-height 297mm 를 잠시 풀고 실제 내용 높이를 잰다
-        pg.style.setProperty('--fs','1');
-        if(pg.scrollHeight > LIMIT){
-          for(var k=0;k<12;k++){
-            var mid=(lo+hi)/2;
-            pg.style.setProperty('--fs', String(mid));
-            if(pg.scrollHeight <= LIMIT){ best=mid; lo=mid; } else { hi=mid; }
-          }
-          pg.style.setProperty('--fs', String(best));
-        }
+        var pg=pages[i], keep=pg.style.minHeight;
+        pg.style.minHeight='auto';
+        var H=function(fs){ pg.style.setProperty('--fs',String(fs)); return pg.scrollHeight; };
+        if(H(1)<=LIMIT){ pg.style.minHeight=keep; continue; }
+        var minPages=Math.ceil(H(FLOOR)/LIMIT), target=minPages*LIMIT;
+        var lo=FLOOR, hi=1, best=FLOOR;
+        for(var k=0;k<12;k++){ var mid=(lo+hi)/2;
+          if(H(mid)<=target){ best=mid; lo=mid; } else { hi=mid; } }
+        pg.style.setProperty('--fs',String(best));
         pg.style.minHeight=keep;
       }
     }
-    window.addEventListener('load', fit);
-    window.addEventListener('beforeprint', fit);
+    window.addEventListener('load',fit);
+    window.addEventListener('beforeprint',fit);
   })();
 <\/script>
 </body></html>`;
