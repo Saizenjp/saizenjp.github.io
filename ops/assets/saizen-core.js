@@ -399,6 +399,58 @@
   //   golfRows 가 입국일 행은 인천편에만·귀국일 행은 부산편에만 만들므로,
   //   「그날이 입국일이거나 귀국일이면 무료」로 두면 두 규칙을 정확히 덮는다.
   //   → 출·귀국 양쪽 날은 카트 요금을 받지 않는다.
+  // ── 비고에서 「싱글룸」 요청 읽기 ────────────────────────────────────────
+  //  현장 비고는 자유 문장이라 전부를 기계가 읽을 수는 없다. 실제 예약 71건을 전수로 훑어
+  //  **틀리면 손해가 큰 것은 사람에게 넘기고, 확실한 것만** 자동으로 잡도록 갈랐다.
+  //   all     = 「전원 싱글」·「N명 싱글」(N=인원) → 팀 전원 1인 1실. 누가 단독인지 물을 필요가 없다.
+  //   names   = 이름이 적혀 있고 그 이름이 **그 팀 명단에 있다** → 누가 단독인지 확정.
+  //             (이름을 문장에서 뽑는 게 아니라 **명단의 이름이 문장에 있는지** 보므로 오탐이 없다.)
+  //   part    = 「3박 싱글」·「8/2-8/5 싱글」처럼 체류 일부만 → 수기.
+  //   blocked = 대기·불가·만실·취소가 함께 적혀 있다 → 확정된 요청이 아니다. 자동 금지.
+  //   unsure  = 「싱글룸 1개」처럼 개수만 있거나 트윈이 섞였다 → 수기.
+  //  ⚠ 싱글룸은 추가요금(대부분 현지지불)이라 잘못 잡으면 방배정만이 아니라 청구가 틀어진다.
+  //    애매하면 언제나 사람에게 넘긴다.
+  var SG_WORD  = /싱글|single|シングル|1인실|일인실|독방/i;
+  var SG_BLOCK = /대기|불가|어려울|어렵|만실|취소|보류/;
+  var SG_MIX   = /트윈|ツイン|더블|ダブル|트리플|トリプル/;
+  var SG_ALL   = /전원|전부|모두|全員/;
+  function singlePlan(text, pax, names) {
+    var t = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+    if (!SG_WORD.test(t)) return null;
+    //  싱글 얘기가 들어 있는 줄만 본다. 단 현장은 「싱글 룸」 머리줄 아래에 이름만 죽 적기도 하므로
+    //  머리줄이 나오면 다른 룸타입 머리줄(트윈룸 등)이 나올 때까지 이어지는 줄도 함께 본다.
+    var SG_HEAD = /^(싱글|1인실|일인실|독방|シングル|single)\s*(룸|room|ルーム)?\s*[:：]?$/i;
+    var MIX_HEAD = /^(트윈|더블|트리플|ツイン|ダブル|トリプル|twin|double|triple)\s*(룸|room|ルーム)?\s*[:：]?$/i;
+    var sgTxt = '', inSg = false;
+    t.split('\n').forEach(function (raw) {
+      var l = raw.trim();
+      if (!l) return;
+      if (MIX_HEAD.test(l)) { inSg = false; return; }
+      if (SG_HEAD.test(l)) { inSg = true; return; }
+      if (inSg || SG_WORD.test(l)) sgTxt += l + ' ';
+    });
+    sgTxt = sgTxt.trim();
+    if (SG_BLOCK.test(t)) return { kind: 'blocked' };
+    if (/\d+\s*박/.test(sgTxt) || /\d+\s*\/\s*\d+\s*[-~〜]\s*\d+\s*\/\s*\d+/.test(sgTxt)) return { kind: 'part' };
+    var mixed = SG_MIX.test(t);
+    // 명단 대조 — 후보(그 팀 사람)를 문장에서 찾는다
+    var hit = [];
+    (names || []).forEach(function (n) {
+      var nm = String((n && n.name != null) ? n.name : n).trim();
+      if (nm.length >= 2 && sgTxt.indexOf(nm) >= 0) hit.push(n);
+    });
+    if (hit.length) return { kind: 'names', names: hit, mixed: mixed };
+    var n = Number(pax) || 0;
+    if (!mixed && n > 0) {
+      if (SG_ALL.test(sgTxt)) return { kind: 'all', n: n };
+      var m = sgTxt.match(/(\d+)\s*(명|인)/);                      // 「4명 싱글룸희망」
+      if (m && Number(m[1]) === n) return { kind: 'all', n: n };
+      var m2 = sgTxt.match(/싱글[^0-9]{0,4}(\d+)\s*(개|방|실)/);    // 「싱글룸 4개」
+      if (m2 && Number(m2[1]) === n) return { kind: 'all', n: n };
+    }
+    return { kind: 'unsure', mixed: mixed };
+  }
+
   function cartFreeDay(team, date) {
     var d = String(date == null ? '' : date).slice(0, 10);
     if (!team || !d) return false;
@@ -817,6 +869,7 @@
     GOLF_COURSES: GOLF_COURSES,
     buildRounding: buildRounding,
     cartFreeDay: cartFreeDay,
+    singlePlan: singlePlan,
     cartPlan: cartPlan,
     cartQtyFromRemark: cartQtyFromRemark,
     parseCartNos: parseCartNos,
