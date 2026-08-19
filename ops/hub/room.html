@@ -205,6 +205,7 @@
   .mm-name{cursor:pointer}
   .mm-name:hover{text-decoration:underline;text-decoration-style:dotted}
   .cpin{font-size:10px;margin-left:2px;filter:saturate(.9)}
+  .cfrz{font-size:10px;margin-left:2px}
   .sgb{display:inline-block;font-size:9.5px;font-weight:800;color:#fff;background:var(--err);border-radius:4px;padding:1px 6px;margin-left:4px;white-space:nowrap}
   .hd-card{display:block;width:100%;text-align:left;font-family:inherit;background:var(--surface);
     border:1px solid var(--border);border-radius:9px;padding:8px 11px;margin-bottom:7px}
@@ -478,7 +479,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.7">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.8">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -608,7 +609,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=35"></script>
-<script src="../assets/saizen-ops.js?v=18.7"></script>
+<script src="../assets/saizen-ops.js?v=18.8"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -665,6 +666,12 @@ const L={
     uaBtn:(t,p)=>`未割当 ${t}チーム · ${p}名`, uaBtnNone:'未割当なし', uaOpenT:'未割当チームを開く（選んで客室をクリック）',
     uaClose:'閉じる', uaDrawerT:'未割当チーム',
     pinT:'直接割当（固定 — 自動割当で動きません）', pinMark:'📌',
+    unpinBtn:'📌 固定解除', unpinT:'この部屋の固定を外し、次の自動割当の対象に戻します(いまの割当はそのまま)',
+    unpinNone:'固定された割当がありません', unpinDone:n=>`${n}件の固定を解除しました`, unpinFail:e=>'固定解除に失敗: '+e, unpinLog:'固定解除',
+    frzMark:'❄', frzT:`入国まで${'7'}日以内 — 確定した割当です(現場準備が済んでいます)`,
+    frzDday:d=>`D-${d}`, frzWordChange:'変更', frzWordMove:'移動', frzWordUn:'解除', frzWordSwap:'入れ替え', frzWordSplit:'分割',
+    frzConfirm:(w)=>`入国まで7日以内の確定チームが含まれています。\nネームタグ・キーラベル・現地手配書はすでに用意されている可能性があります。\nそれでも${w}しますか？`,
+    frzNote:'入国7日前からは確定 — 自動割当は動かしません。手で変える時は確認が出ます。',
     autoNote:'月を開くと自動で割り当てます。手動で置いた部屋は📌固定。',
     pinList:'📌 直接割当', pinListT:'直接割り当てて固定した部屋だけを表示', pinNone:'直接割当はありません',
     pinOnly:'📌 直接割当のみ',
@@ -910,6 +917,12 @@ const L={
     uaBtn:(t,p)=>`미배정 ${t}팀 · ${p}명`, uaBtnNone:'미배정 없음', uaOpenT:'미배정 팀 열기(선택 후 객실 클릭)',
     uaClose:'닫기', uaDrawerT:'미배정 팀',
     pinT:'직접 배정(고정 — 자동배정이 건드리지 않음)', pinMark:'📌',
+    unpinBtn:'📌 고정 해제', unpinT:'이 방의 고정을 풀어 다음 자동배정 대상으로 되돌립니다(지금 배정은 그대로)',
+    unpinNone:'고정된 배정이 없습니다', unpinDone:n=>`${n}건 고정을 풀었습니다`, unpinFail:e=>'고정 해제 실패: '+e, unpinLog:'고정 해제',
+    frzMark:'❄', frzT:'입국 7일 이내 — 확정된 배정입니다(현장 준비가 끝나 있습니다)',
+    frzDday:d=>`D-${d}`, frzWordChange:'변경', frzWordMove:'이동', frzWordUn:'해제', frzWordSwap:'맞바꾸기', frzWordSplit:'분할',
+    frzConfirm:(w)=>`입국이 7일 이내로 확정된 팀이 들어 있습니다.\n네임택·키택·現地手配書가 이미 준비돼 있을 수 있습니다.\n그래도 ${w}할까요?`,
+    frzNote:'입국 7일 전부터는 확정 — 자동배정이 건드리지 않고, 손으로 바꿀 때 확인을 받습니다.',
     autoNote:'월을 열면 자동으로 배정합니다. 수기로 놓은 방은 📌 고정됩니다.',
     pinList:'📌 직접 배정', pinListT:'직접 배정해 고정한 방만 보기', pinNone:'직접 배정이 없습니다',
     pinOnly:'📌 직접 배정만',
@@ -1148,6 +1161,12 @@ const L={
     uaBtn:(t,p)=>`Unassigned ${t} teams · ${p}`, uaBtnNone:'None unassigned', uaOpenT:'Open unassigned teams (select, then click a room)',
     uaClose:'Close', uaDrawerT:'Unassigned teams',
     pinT:'Direct assignment (pinned — auto-assign will not move it)', pinMark:'📌',
+    unpinBtn:'📌 Unpin', unpinT:'Releases the pin so the next auto-assign can move it (the current room stays for now)',
+    unpinNone:'Nothing is pinned here', unpinDone:n=>`Unpinned ${n}`, unpinFail:e=>'Unpin failed: '+e, unpinLog:'unpin',
+    frzMark:'❄', frzT:'Within 7 days of arrival — this assignment is final (on-site prep is done)',
+    frzDday:d=>`D-${d}`, frzWordChange:'change', frzWordMove:'move', frzWordUn:'release', frzWordSwap:'swap', frzWordSplit:'split',
+    frzConfirm:(w)=>`This includes teams arriving within 7 days.\nName tags, key labels and the dispatch sheet may already be printed.\n${w} anyway?`,
+    frzNote:'From 7 days before arrival the assignment is final — auto-assign leaves it alone and manual changes ask first.',
     autoNote:'Opens and assigns automatically. Rooms you place by hand are pinned.',
     pinList:'📌 Direct', pinListT:'Show only rooms assigned directly (pinned)', pinNone:'No direct assignments',
     pinOnly:'📌 Direct only',
@@ -2350,6 +2369,8 @@ function openRoomOccupants(inv, focusRowId){
       <span style="font-size:13px;font-weight:700">${esc(nm)}${m?gsym(m):''}</span>
       <span style="font-size:11px;color:var(--muted)">${esc(en)}</span>
       <span style="margin-left:auto;font-size:11px;color:var(--text2)">${fmtMD(r.check_in)}~${fmtMD(r.check_out)}</span>
+      ${frozenRow(r)?`<span class="cfrz" title="${tx('frzT')}">${tx('frzMark')}</span>`:''}
+      ${r.assign_source==='manual'?`<span class="cpin" title="${tx('pinT')}">${tx('pinMark')}</span>`:''}
       <button class="btn xs" type="button" data-ro-move="${r.id}">${tx('roMove')}</button>
       <button class="btn xs ghost" type="button" data-ro-un="${r.id}" style="color:var(--err);border-color:#e3bdb4">${tx('roUn')}</button>
     </label>`;
@@ -2368,6 +2389,7 @@ function openRoomOccupants(inv, focusRowId){
       <button class="btn sm" type="button" id="ro-move-sel" disabled>${tx('roMoveSel')}</button>
       <button class="btn sm ghost" type="button" id="ro-un-sel" disabled style="color:var(--err);border-color:#e3bdb4">${tx('roUnSel')}</button>
       <button class="btn sm ghost" type="button" id="ro-swap">${tx('swBtn')}</button>
+      ${rows.some(r=>r.assign_source==='manual')?`<button class="btn sm ghost" type="button" id="ro-unpin" title="${tx('unpinT')}">${tx('unpinBtn')}</button>`:''}
     </div>
     <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;margin-top:10px">
       <button class="btn ghost sm" type="button" id="ro-add" style="margin-right:auto">${tx('roAdd')}</button>
@@ -2382,7 +2404,8 @@ function openRoomOccupants(inv, focusRowId){
     const id=b.dataset.roMove; closeRoomOccupants(); openMemberModal(id);   // 방 이동·조기퇴실·해제 한 곳에서
   }));
   bg.querySelectorAll('[data-ro-un]').forEach(b=>b.addEventListener('click',async()=>{
-    const id=b.dataset.roUn; closeRoomOccupants(); await unassign(id);
+    const id=b.dataset.roUn; if(!confirmFrozen([id], tx('frzWordUn'))) return;
+    closeRoomOccupants(); await unassign(id);
   }));
   // 여러 명 한꺼번에 — 같은 방 사람들을 통째로 다른 방으로 옮기는 일이 잦다(Min 2026-08)
   const chks=[...bg.querySelectorAll('.ro-chk')];
@@ -2397,18 +2420,49 @@ function openRoomOccupants(inv, focusRowId){
     const ids=picked(); if(!ids.length) return;
     closeRoomOccupants(); startMoveRows(ids);
   });
+  { const up=$('#ro-unpin');
+    if(up) up.addEventListener('click',async()=>{
+      const sel=picked();
+      // 고른 사람이 있으면 그 사람만, 없으면 이 방의 고정 전부
+      const ids=(sel.length?sel:chks.map(c=>c.dataset.rid))
+        .filter(id=>{ const r=state.rooms.find(x=>String(x.id)===String(id)); return r&&r.assign_source==='manual'; });
+      closeRoomOccupants();
+      await unpinRows(ids);
+    }); }
   $('#ro-swap').addEventListener('click',()=>{
     const ids=picked().length?picked():chks.map(c=>c.dataset.rid);   // 선택 없으면 방 전원
     closeRoomOccupants(); openSwapPicker(ids);
   });
   $('#ro-un-sel').addEventListener('click',async()=>{
     const ids=picked(); if(!ids.length) return;
+    if(!confirmFrozen(ids, tx('frzWordUn'))) return;
     closeRoomOccupants();
     const snaps=[];
     for(const id of ids){ const sn=await unassign(id,{silent:true}); if(sn) snaps.push(sn); }
     rebuildAssignMap(); render();
     if(snaps.length) toastUndo(tx('roUnDone',snaps.length), ()=>restoreRooms(snaps));   // 되돌리기 제공(단건 해제와 동일)
   });
+}
+
+// ── 📌 고정 해제 ───────────────────────────────────────────────────────────
+//  맞바꾸기·수기 배정을 하면 그 방은 assign_source='manual' 이 되어 자동배정이 건드리지 않는다.
+//  그런데 **맞바꾸기는 밀려난 상대 팀까지 고정**시킨다 — 그 팀은 원래 자동으로 놔둬도 될 팀인데
+//  이후 자동배정에서 영영 안 움직인다. 그래서 고정을 되돌리는 길이 필요하다(Min 2026-08).
+//  해제하면 그 방은 **다음 자동배정 때 다시 계산 대상**이 된다(지금 배정이 바로 풀리지는 않는다).
+async function unpinRows(ids){
+  ids=[...new Set((ids||[]).map(String))].filter(Boolean);
+  if(!ids.length){ toast(tx('unpinNone'),'warn'); return; }
+  const before=ids.map(id=>{ const r=state.rooms.find(x=>String(x.id)===String(id)); return r?{id:r.id, src:r.assign_source}:null; }).filter(Boolean);
+  try{
+    const {error}=await supa.from('rooms').update({assign_source:'auto'}).in('id',ids);
+    if(error) throw error;
+    before.forEach(b=>{ const r=state.rooms.find(x=>String(x.id)===String(b.id)); if(r) r.assign_source='auto'; });
+    render();
+    logAssign(tx('unpinLog'), ids.map(id=>{ const r=state.rooms.find(x=>String(x.id)===String(id)); if(!r) return '';
+      const m=r.member_id!=null?memberById(r.member_id):null;
+      return `${r.room_no||''} ${m?mName(m):(teamGroupCode(r.event_seq)||'')}`; }).filter(Boolean).join(' · '));
+    toast(tx('unpinDone',ids.length),'ok');
+  }catch(e){ toast(tx('unpinFail', e.message||e),'err'); }
 }
 
 // ── 🔁 맞바꾸기 — 두 방이 모두 차 있어도 자리를 교환한다 ───────────────────
@@ -2484,6 +2538,7 @@ function openSwapPicker(srcIds){
   }));
 }
 async function doSwap(aIds, bIds){
+  if(!confirmFrozen([...(aIds||[]),...(bIds||[])], tx('frzWordSwap'))) return;
   if(!supa){ toast(tx('connectFirst'),'warn'); return; }
   const aInv=state.inventory.find(x=>x.id===(state.rooms.find(r=>r.id===aIds[0])||{}).inventory_id);
   const bInv=state.inventory.find(x=>x.id===(state.rooms.find(r=>r.id===bIds[0])||{}).inventory_id);
@@ -2501,6 +2556,7 @@ async function doSwap(aIds, bIds){
 
 // 여러 배정 행을 통째로 다른 방으로 — 기존 '체류 전체 이동'(whole)을 다건으로 확장
 function startMoveRows(rowIds){
+  if(!confirmFrozen(rowIds, tx('frzWordMove'))) return;
   const rows=rowIds.map(id=>state.rooms.find(r=>r.id===id)).filter(r=>r&&r.member_id!=null);
   if(!rows.length){ toast(tx('splitOnlyMember'),'warn'); return; }
   if(rows.length===1){ startSplit(rows[0].id, rows[0].check_in); return; }   // 1명은 기존 흐름 그대로
@@ -3015,7 +3071,8 @@ function roomChipsHtml(assigned, refDay, compact){
     const asoB='';   // 아소 후보 표기는 「아소별장」 토글 패널에서만(Min 2026-08)
     // 수기(분할 포함) 배정 = 고정. 자동배정이 다시 돌아도 이 방은 그대로다.
     const pinned = rows.some(r=>r.assign_source==='manual');
-    const pin = pinned ? `<span class="cpin" title="${tx('pinT')}">${tx('pinMark')}</span>` : '';
+    const pin = (isFrozenSeq(seq) ? `<span class="cfrz" title="${tx('frzT')}">${tx('frzMark')}</span>` : '')
+              + (pinned ? `<span class="cpin" title="${tx('pinT')}">${tx('pinMark')}</span>` : '');
     const isIn = refDay && r0.check_in===refDay;                       // 오늘 입실 팀
     const chipCls = !refDay ? '' : (isIn?' chip-in' : ' chip-cont');
     const flag = !refDay ? '' : (isIn?`<span class="cflag cf-in">${tx('flagIn')}</span>` : `<span class="cflag cf-cont">${tx('flagCont')}</span>`);
@@ -3401,6 +3458,7 @@ function openSplitPicker(srcRow){
   }));
 }
 async function commitSplit(inv){
+  if(sp && sp.srcId && !confirmFrozen([sp.srcId], tx('frzWordSplit'))) return;
   const sp=state.splitPending; if(!sp) return;
   const srcRow=state.rooms.find(r=>r.id===sp.srcId);
   if(srcRow && srcRow.inventory_id===inv.id){ toast(tx('sameRoom'),'warn'); return; }
@@ -4235,6 +4293,35 @@ function placeLeftovers(g, route, leftovers, flr, pending, holds, occ, floorOrde
   }
 }
 
+// ── D-7 확정(freeze) ───────────────────────────────────────────────────────
+//  Min 2026-08: 입국일이 **7일 앞으로** 다가오면 그 팀 방배정은 확정으로 본다.
+//   그 무렵엔 네임택·키택·手配書 같은 현장 준비가 이미 끝나 있어서, 방이 바뀌면
+//   인쇄물부터 다시 만들어야 한다. 그래서
+//    · 자동배정이 **그 팀 방을 건드리지 않는다**(auto 배정이어도 그대로 둔다)
+//    · 사람이 옮기거나 해제할 때는 **한 번 더 확인**을 받는다
+//   지난 팀(이미 도착)도 당연히 확정이다.
+const FREEZE_DAYS=7;
+function _today(){ return SZCore.fmtDate(new Date()); }
+function daysTo(dep){ if(!dep) return 9999;
+  const a=SZCore.parseLocalDate(_today()), b=SZCore.parseLocalDate(String(dep).slice(0,10));
+  if(!a||!b||isNaN(a)||isNaN(b)) return 9999;
+  return Math.round((b-a)/86400000); }
+//  seq(팀) 또는 dep(입국일) 어느 쪽을 줘도 된다.
+function isFrozenSeq(seq){
+  const g=state.guests.find(x=>String(x.event_seq)===String(seq));
+  return g ? daysTo(g.dep)<=FREEZE_DAYS : false;
+}
+function frozenRow(r){ return r && isFrozenSeq(r.event_seq); }
+//  옮기려는 배정 행들 중 확정 팀이 있으면 확인을 받는다. 진행하면 true.
+function confirmFrozen(ids, what){
+  const rows=(ids||[]).map(id=>state.rooms.find(x=>String(x.id)===String(id))).filter(Boolean);
+  const hit=[...new Set(rows.filter(frozenRow).map(r=>r.event_seq))];
+  if(!hit.length) return true;
+  const names=hit.map(sq=>{ const g=state.guests.find(x=>String(x.event_seq)===String(sq));
+    return (teamGroupCode(sq)||'')+' '+((g&&g.rep)||'')+' ('+tx('frzDday',Math.max(0,daysTo(g&&g.dep)))+')'; });
+  return confirm(tx('frzConfirm',what||tx('frzWordChange'))+'\n\n'+names.join('\n'));
+}
+
 // 월을 열 때 자동배정을 돌릴지 — 끄면 수기 전용(Min 2026-08)
 function autoRunOn(){ try{ return localStorage.getItem('saizen_room_autorun')!=='0'; }catch(e){ return true; } }
 let _autoRunning=false;
@@ -4262,9 +4349,10 @@ async function autoAssign(){
     //  ⚠ 예전엔 여기서 DB의 auto 배정을 통째로 지우고 나중에 전부 다시 넣었다. 결과가 같아도
     //    매번 1,400여 행이 지워졌다 다시 쓰여 변경이력이 하루 2만 건씩 불어났다(Min 2026-08).
     //    → **계산은 그대로 다시 하되, DB에는 달라진 것만** 반영한다(아래 diff).
-    const autoSnap=state.rooms.filter(r=>r.assign_source==='auto');
+    //  ⚠ D-7 안으로 들어온 팀은 auto 배정이어도 **그대로 둔다**(현장 준비가 끝난 방이다).
+    const autoSnap=state.rooms.filter(r=>r.assign_source==='auto' && !frozenRow(r));
     const autoIdSet=new Set(autoSnap.map(r=>r.id));
-    state.rooms=state.rooms.filter(r=>r.assign_source!=='auto');   // 계산은 '비운 상태' 기준
+    state.rooms=state.rooms.filter(r=>r.assign_source!=='auto' || frozenRow(r));   // 계산은 '비운 상태' 기준(확정 팀은 남긴다)
     rebuildAssignMap();
 
     // ── DB 기준 점유원장: 배정 대상 팀들의 전체 체류 구간에 걸치는 '모든' 기존 배정(다른 달 포함) ──
