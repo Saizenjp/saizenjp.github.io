@@ -102,7 +102,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=19.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=19.4">
 </head>
 <body data-so-area="print front">
 <div class="topbar so-bar">
@@ -133,7 +133,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=35"></script>
-<script src="../assets/saizen-ops.js?v=19.3"></script>
+<script src="../assets/saizen-ops.js?v=19.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -659,8 +659,8 @@ function printSheet(){
       .map(k=>`${acHTML(k)} <u>${m[k]}</u>名`).join('　·　');
   };
   const dispatch=`<div class="dp"><span>車両 <i>차량</i></span><em></em>
-      <span>ドライバー <i>기사</i></span><em></em><span>出発 <i>출발</i></span><em class="s"></em></div>
-    <div class="dp sp"><span>特記 <i>특이사항</i></span><em></em></div>`;
+      <span>ドライバー <i>기사</i></span><em></em><span>出発 <i>출발</i></span><em class="s"></em>
+      <span>特記 <i>특이사항</i></span><em class="sp"></em></div>`;
 
   // 체류중은 왕복 한 줄(⇔) — 화면은 아침·저녁 두 다리로 나누지만 종이는 팀당 한 줄이다
   const stayBy={};
@@ -672,15 +672,13 @@ function printSheet(){
   //  기사가 보는 건 **누가(태그코드·대표자) 몇 명**인가 뿐이다(Min 2026-08).
   //   숙소 열은 두지 않는다 — 행선지별 인원은 便 머리줄 소계에 있고,
   //   어느 숙소 팀인지는 **태그코드 색**(네임택·航空カバー와 같은 숙소 구분색)으로 보인다.
-  const teamRows=rows=>rows
+  //  ⚠ 4칸짜리 목록이 190mm 를 다 쓰면 세로로만 길어져 글씨가 작아진다 →
+  //   **여러 단으로 흘려** 세로를 줄이고 그만큼 글씨를 키운다(단 수는 아래 스크립트가 고른다).
+  const teamRows=rows=>`<div class="tl">`+rows
     .sort((a,b)=>accomOrd(a.accom)-accomOrd(b.accom)||String(a.tag).localeCompare(String(b.tag)))
-    .map(r=>`<tr>
-      <td class="code" style="color:${accomColor(r.accom)}">${esc(r.tag)}</td>
-      <td class="rp">${esc(r.rep||'-')}</td><td class="n pax">${r.pax}</td><td class="w"></td></tr>`).join('');
-
-  const COLS=`<colgroup><col style="width:30mm"><col style="width:60mm"><col style="width:20mm"><col></colgroup>`;
-  const head=`<thead><tr><th>Group<i>코드</i></th><th>代表者<i>대표자</i></th>
-      <th class="n">人数<i>인원</i></th><th>備考<i>비고</i></th></tr></thead>`;
+    .map(r=>`<div class="tr"><span class="c" style="color:${accomColor(r.accom)}">${esc(r.tag)}</span>
+      <span class="r">${esc(r.rep||'-')}</span><span class="p">${r.pax}</span><span class="m"></span></div>`).join('')
+    +`</div>`;
 
   // ── IN / OUT = 便(항공편) 카드. 배차는 便 단위로 정해진다 ──
   const flightBlock=(kind,rows)=>{
@@ -702,7 +700,7 @@ function printSheet(){
             <span class="nn">${g.rows.length}チーム · ${gp}名</span>
             <span class="sb">${subtotal(g.rows)}</span></div>
           ${dispatch}
-          <table class="pt">${COLS}${head}<tbody>${teamRows(g.rows)}</tbody></table>
+          ${teamRows(g.rows)}
         </div>`; }).join('')}
     </div>`;
   };
@@ -725,7 +723,7 @@ function printSheet(){
           <div class="fl-h"><b>${acHTML(g.accom)} ⇔ ${course}</b>
             <span class="sb">${g.rows.length}チーム · <u>${gp}</u>名</span></div>
           ${dispatch}
-          <table class="pt">${COLS}${head}<tbody>${teamRows(g.rows)}</tbody></table>
+          ${teamRows(g.rows)}
         </div>`; }).join('')}
     </div>`;
   };
@@ -740,7 +738,7 @@ function printSheet(){
   .bar h1{font-size:14px}.bar .meta{font-size:11px;opacity:.85}
   .bar button{background:#fff;color:#333;border:none;border-radius:5px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer}
   .bar .x{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
-  .page{width:210mm;min-height:297mm;margin:10px auto;background:#fff;padding:8mm 10mm;--fs:1}
+  .page{width:210mm;min-height:297mm;margin:10px auto;background:#fff;padding:8mm 10mm;--fs:1;--tcols:2}
   .hd{display:flex;align-items:flex-end;gap:6mm;border-bottom:2pt solid #111;padding-bottom:1.5mm;margin-bottom:2.4mm}
   .hd h2{font-size:15pt;letter-spacing:2px}
   .hd h2 i{font-size:9.5pt;font-style:normal;font-weight:600;color:#444;letter-spacing:0;margin-left:5px}
@@ -757,7 +755,7 @@ function printSheet(){
   .blk-h .cnt{font-size:calc(9pt * var(--fs));font-weight:700}
   .fl{border:0.9pt solid #111;border-top:none;break-inside:auto}
   .fl-h{display:flex;align-items:baseline;gap:3mm;background:#ececec;border-bottom:0.6pt solid #111;
-    padding:calc(1mm * var(--fs)) 2.5mm;break-after:avoid;page-break-after:avoid}
+    padding:calc(1mm * var(--fs)) 2.5mm;break-after:avoid;page-break-after:avoid;white-space:nowrap;overflow:hidden}
   .fl-h b{font-size:calc(12pt * var(--fs));font-weight:800}
   .fl-h .tm{font-size:calc(12pt * var(--fs));font-weight:800}
   .fl-h .rt{font-size:calc(10.5pt * var(--fs));font-weight:800;color:#111}
@@ -766,29 +764,22 @@ function printSheet(){
   .fl-h .sb{margin-left:auto;font-size:calc(9pt * var(--fs));white-space:nowrap}
   .fl-h .sb u{text-decoration:none;font-weight:800;font-family:Consolas,'SZJpMono',monospace;font-size:calc(10.5pt * var(--fs))}
   .dp{display:flex;align-items:center;gap:2mm;padding:calc(1mm * var(--fs)) 2.5mm;border-bottom:0.6pt solid #111}
-  .dp span{font-size:calc(8.5pt * var(--fs));font-weight:700;white-space:nowrap}
-  .dp span i{font-style:normal;font-weight:600;color:#555}
-  .dp em{flex:1;border-bottom:0.8pt solid #111;height:calc(4.6mm * var(--fs))}
-  .dp em.s{flex:0 0 22mm}
-  .dp.sp em{border-bottom-style:dashed}
-  table.pt{width:100%;border-collapse:collapse;table-layout:fixed;font-size:calc(11pt * var(--fs))}
-  table.pt th{background:#f6f6f6;border:0.6pt solid #111;border-left:none;padding:0.7mm 1.2mm;
-    font-size:calc(8pt * var(--fs));font-weight:800;line-height:1.15;text-align:left}
-  table.pt th i{display:block;font-size:calc(6.5pt * var(--fs));font-weight:600;font-style:normal;color:#555}
-  table.pt td{border:0.6pt solid #111;border-left:none;padding:calc(0.6mm * var(--fs)) 1.2mm;
-    height:calc(5mm * var(--fs));line-height:1.2;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-  table.pt th:first-child,table.pt td:first-child{border-left:none}
-  table.pt th:last-child,table.pt td:last-child{border-right:none}
-  table.pt td.n,table.pt th.n{text-align:center}
-  table.pt td.mono{font-family:Consolas,'SZJpMono',monospace}
-  table.pt td.code{font-family:Consolas,'SZJpMono',monospace;font-weight:800;font-size:calc(12pt * var(--fs))}
-  table.pt td.pax{font-weight:800;font-size:calc(12pt * var(--fs))}
-  table.pt td.rp{font-size:calc(11.5pt * var(--fs));font-weight:700}
-  table.pt td.ac{font-size:calc(9pt * var(--fs))}
-  table.pt td.w{background:#fff}
+  .dp span{font-size:calc(8pt * var(--fs));font-weight:700;white-space:nowrap}
+  .dp span i{font-style:normal;font-weight:600;color:#555;font-size:calc(6.5pt * var(--fs));margin-left:1px}
+  .dp em{flex:1.3;border-bottom:0.8pt solid #111;height:calc(4.6mm * var(--fs))}
+  .dp em.s{flex:0 0 18mm}
+  .dp em.sp{flex:1.8;border-bottom-style:dashed}
+  .tr{display:flex;align-items:baseline;gap:1.6mm;padding:calc(0.7mm * var(--fs)) 2mm}
+  .tl{column-count:var(--tcols,2);column-gap:4mm;column-fill:balance;column-rule:0.5pt solid #999}
+  .tl .tr{border-bottom:0.5pt solid #999;break-inside:avoid;page-break-inside:avoid}
+  .tr .c{flex:0 0 21mm;font-family:Consolas,'SZJpMono',monospace;font-weight:800;
+    font-size:calc(13pt * var(--fs));white-space:nowrap;overflow:hidden}
+  .tr .r{flex:1 1 auto;min-width:0;font-size:calc(12.5pt * var(--fs));font-weight:700;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tr .p{flex:0 0 9mm;text-align:center;font-size:calc(13pt * var(--fs));font-weight:800}
+  .tr .m{flex:0 0 20mm;border-bottom:0.4pt dotted #999;height:calc(4mm * var(--fs))}
   @media print{ @page{size:A4 portrait;margin:0} body{background:#fff} .bar{display:none}
-    .page{margin:0;width:auto;min-height:auto;padding:8mm 10mm}
-    table.pt{break-inside:auto} tr{break-inside:avoid} thead{display:table-header-group} }
+    .page{margin:0;width:auto;min-height:auto;padding:8mm 10mm} }
 </style></head><body>
   <div class="bar"><h1>送迎表 / 송영표</h1><div class="meta">${DATE} · ${vis.length}${lang()==='ja'?'件':(lang()==='en'?' rows':'건')}</div><div style="flex:1"></div>
     <button onclick="window.print()">\u{1F5A8} ${lang()==='ja'?'印刷':(lang()==='en'?'Print':'인쇄')}</button>
@@ -804,23 +795,45 @@ function printSheet(){
   //  0.55(가독 하한)에서 몇 장이 되는지 재고, 그 장수를 유지하는 **가장 큰** 배율을 쓴다.
   //  → 1.2장짜리 날은 한 장으로, 2.4장짜리 날은 세 장이 아니라 두 장으로(빈 장이 안 생긴다).
   (function(){
-    var FLOOR=0.55;
+    var FLOOR=0.7, MAXUP=1.35, TCOLS=[2,1];
     function fit(){
       var mm=(function(){ var d=document.createElement('div');
         d.style.cssText='height:100mm;position:absolute;visibility:hidden';
         document.body.appendChild(d); var h=d.offsetHeight/100; d.remove(); return h; })();
       var LIMIT=297*mm, pg=document.querySelector('.page'); if(!pg) return;
       var keep=pg.style.minHeight; pg.style.minHeight='auto';
-      function H(fs){ pg.style.setProperty('--fs',String(fs)); return pg.scrollHeight; }
-      if(H(1)<=LIMIT){ pg.style.minHeight=keep; return; }        // 원래 크기로 한 장이면 그대로
-      // 가장 작은 배율에서 몇 장이 되는지 = 이 날짜가 도달할 수 있는 최소 장수
-      var minPages=Math.ceil(H(FLOOR)/LIMIT), target=minPages*LIMIT;
-      var lo=FLOOR, hi=1, best=FLOOR;                            // 그 장수를 유지하는 **가장 큰** 배율
-      for(var k=0;k<12;k++){ var mid=(lo+hi)/2;
-        if(H(mid)<=target){ best=mid; lo=mid; } else { hi=mid; } }
-      pg.style.setProperty('--fs',String(best));
+      reset(pg);
+      function H(tc,fs){ pg.style.setProperty('--tcols',String(tc));
+        pg.style.setProperty('--fs',String(fs)); return pg.scrollHeight; }
+      function maxFs(tc){                                        // 그 단 수로 한 장에 들어가는 가장 큰 배율
+        if(H(tc,FLOOR)>LIMIT) return 0;
+        var lo=FLOOR, hi=MAXUP, b=FLOOR;
+        for(var k=0;k<12;k++){ var mid=(lo+hi)/2; if(H(tc,mid)<=LIMIT){ b=mid; lo=mid; } else { hi=mid; } }
+        return b;
+      }
+      var bc=0, bf=0;
+      for(var t=0;t<TCOLS.length;t++){ var f=maxFs(TCOLS[t]); if(f>bf){ bf=f; bc=TCOLS[t]; } }
+      if(bf){ H(bc,bf); }
+      else{                                                      // 한 장은 무리 — 최소 장수에 맞춘다
+        var tc2=TCOLS[0], minPages=Math.ceil(H(tc2,FLOOR)/LIMIT), target=minPages*LIMIT;
+        var lo2=FLOOR, hi2=1, b2=FLOOR;
+        for(var k2=0;k2<12;k2++){ var m2=(lo2+hi2)/2; if(H(tc2,m2)<=target){ b2=m2; lo2=m2; } else { hi2=m2; } }
+        H(tc2,b2);
+      }
+      shrink(pg);
       pg.style.minHeight=keep;
     }
+    // 대표자 이름은 사람을 부르는 값이라 **잘리면 안 된다** — 칸을 넘는 것만 그 칸에서 줄인다
+    function shrink(pg){
+      var es=pg.querySelectorAll('.tl .tr .r');
+      for(var i=0;i<es.length;i++){ es[i].style.fontSize=''; }
+      for(var j=0;j<es.length;j++){ var el=es[j];
+        if(el.scrollWidth<=el.clientWidth) continue;
+        var b=parseFloat(getComputedStyle(el).fontSize)||12;
+        el.style.fontSize=Math.max(b*(el.clientWidth/el.scrollWidth)*0.97, b*0.55)+'px'; }
+    }
+    function reset(pg){ var es=pg.querySelectorAll('.tl .tr .r');
+      for(var i=0;i<es.length;i++) es[i].style.fontSize=''; }
     window.addEventListener('load',fit);
     window.addEventListener('beforeprint',fit);
   })();
@@ -939,9 +952,9 @@ function printMeet(){
     overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.25}
   table.pl tr:first-child td{border-top:none}
   table.pl td.no{width:4.5mm;text-align:center;font-size:calc(8pt * var(--fs));color:#555}
-  table.pl td.kr{width:32%;font-size:calc(12.5pt * var(--fs));font-weight:700}
+  table.pl td.kr{width:36%;font-size:calc(12.5pt * var(--fs));font-weight:700}
   table.pl td.kr i{font-style:normal;font-weight:600;color:#555;font-size:calc(9.5pt * var(--fs))}
-  table.pl td.en{width:48%;font-size:calc(7pt * var(--fs));color:#222;letter-spacing:-0.3px}
+  table.pl td.en{width:44%;font-size:calc(7.5pt * var(--fs));color:#222;letter-spacing:-0.3px}
   table.pl td.sx{width:4.5mm;text-align:center;font-size:calc(8.5pt * var(--fs));font-weight:800;color:#444}
   @media print{ @page{size:A4 landscape;margin:0} body{background:#fff} .bar{display:none}
     .page{margin:0;width:auto;min-height:auto;padding:8mm 9mm}
@@ -968,6 +981,7 @@ function printMeet(){
       var pages=document.querySelectorAll('.page');
       for(var i=0;i<pages.length;i++){
         var pg=pages[i], keep=pg.style.minHeight; pg.style.minHeight='auto';
+        reset(pg);
         var H=function(c,fs){ pg.style.setProperty('--cols',String(c));
           pg.style.setProperty('--fs',String(fs)); return pg.scrollHeight; };
         var maxFs=function(c){                      // 그 단 수로 한 장에 들어가는 가장 큰 배율
@@ -990,8 +1004,39 @@ function printMeet(){
           for(var k2=0;k2<12;k2++){ var m2=(lo2+hi2)/2; if(H(c2,m2)<=tg){ b2=m2; lo2=m2; } else { hi2=m2; } }
           H(c2,b2);
         }
+        shrink(pg);
         pg.style.minHeight=keep;
       }
+    }
+    // 이름은 사람을 부르는 값이라 **잘리면 안 된다**(Min 2026-08).
+    //  칸을 넘는 셀만 그 셀의 글자를 줄여 맞춘다 — 표 전체를 줄이지 않으므로 짧은 이름은 그대로 크다.
+    function shrink(pg){
+      reset(pg);
+      var tds=pg.querySelectorAll('table.pl td.kr, table.pl td.en');
+      for(var j=0;j<tds.length;j++){
+        var td=tds[j];
+        if(td.scrollWidth<=td.clientWidth) continue;
+        var base=parseFloat(getComputedStyle(td).fontSize)||12;
+        var r=td.clientWidth/td.scrollWidth;
+        td.style.fontSize=Math.max(base*r*0.97, base*0.55)+'px';
+        if(td.scrollWidth>td.clientWidth) td.style.letterSpacing='-0.4px';
+      }
+      // 팀 머리줄(코드·날짜·인원·숙소)도 좁은 단에서 끝이 잘린다 → 넘치면 그 줄만 통째로 줄인다
+      var hs=pg.querySelectorAll('.tm-h');
+      for(var h=0;h<hs.length;h++){
+        var el=hs[h];
+        if(el.scrollWidth<=el.clientWidth) continue;
+        var rr=Math.max(el.clientWidth/el.scrollWidth*0.96, 0.6);
+        for(var c=0;c<el.children.length;c++){ var k=el.children[c];
+          var bb=parseFloat(getComputedStyle(k).fontSize)||10; k.style.fontSize=(bb*rr)+'px'; }
+      }
+    }
+    function reset(pg){
+      var tds=pg.querySelectorAll('table.pl td.kr, table.pl td.en');
+      for(var i=0;i<tds.length;i++){ tds[i].style.fontSize=''; tds[i].style.letterSpacing=''; }
+      var hs=pg.querySelectorAll('.tm-h');
+      for(var h=0;h<hs.length;h++){ var el=hs[h];
+        for(var c=0;c<el.children.length;c++) el.children[c].style.fontSize=''; }
     }
     window.addEventListener('load',fit);
     window.addEventListener('beforeprint',fit);
