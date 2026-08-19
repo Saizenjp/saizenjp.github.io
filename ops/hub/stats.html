@@ -87,6 +87,14 @@
   /* 📅 캘린더 — 대표님 화면: 하루 = 한 칸, 진할수록 사람이 많다 */
   .calbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
   .calbar b{font-family:var(--mono);font-size:16px;min-width:96px;text-align:center}
+  /* 월/연 합계 줄 — 달력 칸에 있는 항목마다 그 기간 총계를 따로 낸다 */
+  .calsum{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;margin-top:12px;padding:11px 14px;
+    background:var(--surface2);border:1px solid var(--border);border-radius:9px;font-size:13px;color:var(--text2)}
+  .calsum b{font-size:13px;font-weight:800;color:var(--text)}
+  .calsum span{font-weight:700;font-variant-numeric:tabular-nums}
+  .calsum .v{font-size:15px;font-weight:800;color:var(--accent)}
+  .calsum .i{color:#2f7d4f} .calsum .o{color:#8a5a14}
+
   .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
   .cal .dow{font-size:11px;font-weight:800;color:var(--text2);text-align:center;padding:2px 0}
   .cal .dow.sun{color:#b13b2c}.cal .dow.sat{color:#2c5078}
@@ -168,6 +176,8 @@ let supa=null, DATA=null;
 const L={
   ja:{ calH:'滞在カレンダー', vSum:'サマリー', vCal:'カレンダー', calYH:y=>`${y}年 月別`, calMonth:'月', calYear:'年', calToday:'今日',
     calNights:n=>`延べ ${n}人泊`, calPeak:(d,n)=>`最多 ${d} ${n}名`, calPeakShort:n=>`最多 ${n}名`, calTeams:n=>`${n}チーム`,
+    calSumH:'月合計', calSumIn:(t,p)=>`🛬 チェックイン ${t}チーム ${p}名`, calSumOut:(t,p)=>`🛫 チェックアウト ${t}チーム ${p}名`,
+    calSumAvg:n=>`1日平均 ${n}名`, calSumDays:n=>`稼働 ${n}日`,
     calNote:'大きい数字=その夜に泊まる人数 · 🛬チェックイン · 🛫チェックアウト(チーム·人数)。色が濃いほど多い。日付を押すとフロントデスク。',
     navHome:'ホーム', step:'経営統計', connIdle:'未接続', connecting:'接続中…', connOk:'接続済', connFail:'接続失敗', connect:'接続', connectedBtn:'✓ 接続済',
     connHint:'代表・部署長向けの月/年 統合統計(送客・売上・稼働率・顧客構成)。読み取り専用集計。',
@@ -183,6 +193,8 @@ const L={
  },
   ko:{ calH:'체류 캘린더', vSum:'요약', vCal:'캘린더', calYH:y=>`${y}년 월별`, calMonth:'월', calYear:'연', calToday:'오늘',
     calNights:n=>`연 ${n}인박`, calPeak:(d,n)=>`최다 ${d} ${n}명`, calPeakShort:n=>`최다 ${n}명`, calTeams:n=>`${n}팀`,
+    calSumH:'월 합계', calSumIn:(t,p)=>`🛬 체크인 ${t}팀 ${p}명`, calSumOut:(t,p)=>`🛫 체크아웃 ${t}팀 ${p}명`,
+    calSumAvg:n=>`하루 평균 ${n}명`, calSumDays:n=>`묵은 날 ${n}일`,
     calNote:'큰 숫자 = 그날 밤 묵는 인원 · 🛬 체크인 · 🛫 체크아웃(팀·인원). 색이 진할수록 많습니다. 날짜를 누르면 그날 프론트 데스크로.',
     navHome:'홈', step:'경영 통계', connIdle:'미연결', connecting:'연결 중…', connOk:'연결됨', connFail:'연결 실패', connect:'연결', connectedBtn:'✓ 연결됨',
     connHint:'대표·부서장용 월/연 통합 통계(입도·매출·가동률·고객구성). 읽기 전용 집계.',
@@ -198,6 +210,8 @@ const L={
  },
   en:{ calH:'Stay calendar', vSum:'Summary', vCal:'Calendar', calYH:y=>`${y} by month`, calMonth:'Month', calYear:'Year', calToday:'Today',
     calNights:n=>`${n} person-nights`, calPeak:(d,n)=>`peak ${d} ${n}`, calPeakShort:n=>`peak ${n}`, calTeams:n=>`${n} teams`,
+    calSumH:'Month total', calSumIn:(t,p)=>`🛬 check-in ${t} teams / ${p}`, calSumOut:(t,p)=>`🛫 check-out ${t} teams / ${p}`,
+    calSumAvg:n=>`${n} per day`, calSumDays:n=>`${n} nights occupied`,
     calNote:'Big number = guests staying that night · 🛬 check-ins · 🛫 check-outs (teams·guests). Darker = busier. Click a date for that day at the front desk.',
     navHome:'Home', step:'Exec Stats', connIdle:'Not connected', connecting:'Connecting…', connOk:'Connected', connFail:'Connect failed', connect:'Connect', connectedBtn:'✓ Connected',
     connHint:'Monthly/yearly consolidated stats for execs (arrivals, revenue, occupancy, customer mix). Read-only aggregation.',
@@ -451,20 +465,39 @@ async function renderCal(){
         <div class="io">${v.ciT?`<span class="i">🛬${v.ciT}·${v.ci}</span>`:''}${v.coT?`<span class="o">🛫${v.coT}·${v.co}</span>`:''}</div>
       </a>`;
     }
-    const monTot=Object.keys(day).reduce((s,k)=>s+day[k].pax,0);
-    const monTeams=new Set(rows.filter(b=>String(b.dep_date).slice(0,7)===`${CALY}-${pad(CALM+1)}`).map(b=>b.event_seq)).size;
-    const peak=Object.keys(day).sort((a,b)=>day[b].pax-day[a].pax)[0];
+    // 월 합계 — 달력 칸에 있는 항목마다 그 달 총계를 따로 낸다(Min 2026-08)
+    const ym=`${CALY}-${pad(CALM+1)}`;
+    const inMon=k=>String(k).slice(0,7)===ym;
+    const keys=Object.keys(day).filter(inMon);
+    const monTot=keys.reduce((s,k)=>s+day[k].pax,0);
+    const monCi =keys.reduce((s,k)=>s+day[k].ci,0),  monCiT=keys.reduce((s,k)=>s+day[k].ciT,0);
+    const monCo =keys.reduce((s,k)=>s+day[k].co,0),  monCoT=keys.reduce((s,k)=>s+day[k].coT,0);
+    const busyDays=keys.filter(k=>day[k].pax>0).length;
+    const avg=busyDays?Math.round(monTot/busyDays):0;
+    const monTeams=new Set(rows.filter(b=>String(b.dep_date).slice(0,7)===ym).map(b=>b.event_seq)).size;
+    const peak=keys.sort((a,b)=>day[b].pax-day[a].pax)[0];
     body=`<div class="panel">
       <h3>${tx('calH')}<span class="c">${tx('calNights',num(monTot))} · ${tx('calTeams',num(monTeams))} · ${tx('calPeak',peak?peak.slice(5):'-',num(peak?day[peak].pax:0))}</span></h3>
       <div class="cal">${cells}</div>
+      <div class="calsum">
+        <b>${tx('calSumH')} ${esc(ym)}</b>
+        <span class="v">${tx('calNights',num(monTot))}</span>
+        <span>${tx('calTeams',num(monTeams))}</span>
+        <span class="i">${tx('calSumIn',num(monCiT),num(monCi))}</span>
+        <span class="o">${tx('calSumOut',num(monCoT),num(monCo))}</span>
+        <span>${tx('calSumAvg',num(avg))}</span>
+        <span>${tx('calSumDays',num(busyDays))}</span>
+        <span>${tx('calPeak',peak?peak.slice(5):'-',num(peak?day[peak].pax:0))}</span>
+      </div>
       <div class="note">${tx('calNote')}</div></div>`;
   } else {
     // 연 보기 — 월별 연인원(인원×박수)·팀수·최다 인원
     const byM={};
-    for(let m=0;m<12;m++) byM[m]={nights:0,peak:0,teams:new Set()};
+    for(let m=0;m<12;m++) byM[m]={nights:0,peak:0,teams:new Set(),ci:0,co:0};
     Object.keys(day).forEach(k=>{
       const m=Number(k.slice(5,7))-1, v=day[k];
       byM[m].nights+=v.pax; if(v.pax>byM[m].peak) byM[m].peak=v.pax;
+      byM[m].ci+=v.ci; byM[m].co+=v.co;
     });
     rows.forEach(b=>{ const m=Number(String(b.dep_date).slice(5,7))-1; if(byM[m]) byM[m].teams.add(b.event_seq); });
     const maxN=Math.max(1,...Object.values(byM).map(x=>x.nights));
@@ -474,11 +507,21 @@ async function renderCal(){
         <div class="ym">${CALY}-${pad(mm)}</div>
         <div class="big">${num(v.nights)}<span style="font-size:12px;color:var(--text2)">${tx('uNight')||'인박'}</span></div>
         <div class="sub">${tx('calTeams',num(v.teams.size))} · ${tx('calPeakShort',num(v.peak))}</div>
+        <div class="sub" style="opacity:.85">🛬 ${num(v.ci)} · 🛫 ${num(v.co)}</div>
         <div class="bar"><i style="width:${Math.round(v.nights/maxN*100)}%"></i></div></a>`;
     }).join('');
     const yTot=Object.values(byM).reduce((s,v)=>s+v.nights,0);
+    const yCi=Object.values(byM).reduce((s,v)=>s+v.ci,0), yCo=Object.values(byM).reduce((s,v)=>s+v.co,0);
+    const yTeams=new Set(rows.filter(b=>String(b.dep_date).slice(0,4)===String(CALY)).map(b=>b.event_seq)).size;
     body=`<div class="panel"><h3>${tx('calYH',CALY)}<span class="c">${tx('calNights',num(yTot))}</span></h3>
       <div class="ylist">${cards}</div>
+      <div class="calsum">
+        <b>${CALY}</b>
+        <span class="v">${tx('calNights',num(yTot))}</span>
+        <span>${tx('calTeams',num(yTeams))}</span>
+        <span class="i">🛬 ${num(yCi)}</span>
+        <span class="o">🛫 ${num(yCo)}</span>
+      </div>
       <div class="note">${tx('calNote')}</div></div>`;
   }
   box.innerHTML=bar+body;
