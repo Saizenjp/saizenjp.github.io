@@ -261,3 +261,24 @@ test('cartFreeDay: 입국일·귀국일 라운딩은 카트 무료', () => {
   assert.equal(SZCore.cartFreeDay(null, '2026-08-12'), false);
   assert.equal(SZCore.cartFreeDay(team, ''), false);
 });
+
+test('airportLabel / accomColor: 세 인쇄물 표기가 한 곳에서 나온다', () => {
+  // 같은 공항을 인쇄물 성격에 맞는 형식으로 — 매핑은 한 곳
+  assert.equal(SZCore.airportLabel('ICN', 'code'), 'ICN');   // 네임택
+  assert.equal(SZCore.airportLabel('ICN', 'city'), 'ソウル'); // 航空カバー
+  assert.equal(SZCore.airportLabel('ICN', 'full'), '仁川空港'); // 송영표
+  assert.equal(SZCore.airportLabel('PUS', 'city'), '釜山');
+  assert.equal(SZCore.airportLabel('PUS', 'full'), '金海空港');
+  assert.equal(SZCore.airportLabel('부산', 'full'), '金海空港');   // 지명으로 줘도 같은 결과
+  assert.equal(SZCore.airportLabel('KMJ', 'full'), '熊本空港');
+  assert.equal(SZCore.airportLabel('', 'full'), '');
+  assert.equal(SZCore.airportLabel('ZZZ', 'full'), 'ZZZ');        // 모르는 코드는 원문
+
+  // 숙소 구분색 — 숙소명으로 주든 접두문자로 주든 같은 색(세 인쇄물 동일)
+  assert.equal(SZCore.accomColor('야마나미리조트'), SZCore.accomColor('Y'));
+  assert.equal(SZCore.accomColor('쿠주힐즈'), '#5B21B6');
+  assert.equal(SZCore.accomColor('간지호텔'), '#065F46');
+  assert.equal(SZCore.accomColor('시즈노야도 료칸'), '#92400E');
+  assert.equal(SZCore.accomPrefix('쿠주힐즈'), 'K');
+  assert.equal(SZCore.accomPrefix(''), '');
+});

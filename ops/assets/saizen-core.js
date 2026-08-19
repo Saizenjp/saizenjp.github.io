@@ -725,6 +725,44 @@
     if (/^[A-Za-z]{3}$/.test(s)) return s.toUpperCase();   // 이미 코드면 그대로
     return AIRPORT[s] || s;                                 // 모르는 지명은 원문 유지
   }
+  // ── 인쇄물 표기 단일 진실원 (Min 2026-08) ─────────────────────────────────
+  //  같은 팀을 세 인쇄물(네임택·航空カバー·송영표)에서 보는데 공항 이름이 서로 달랐다
+  //  (ICN / ソウル / 仁川空港). 매핑을 여기 한 곳에 두고 **형식만 골라 쓴다**.
+  //   'code' = ICN·PUS (네임택 — 손님 가방에 다는 것, 국제 표준 코드)
+  //   'city' = ソウル·釜山 (航空カバー — 현장 손글씨와 같은 표기)
+  //   'full' = 仁川空港·金海空港 (송영표 — 기사·미팅 담당이 실제로 가는 곳)
+  var AIRPORT_JA = {
+    ICN: { city: 'ソウル', full: '仁川空港' }, GMP: { city: 'ソウル', full: '金浦空港' },
+    PUS: { city: '釜山',   full: '金海空港' }, CJU: { city: '済州',   full: '済州空港' },
+    TAE: { city: '大邱',   full: '大邱空港' }, CJJ: { city: '清州',   full: '清州空港' },
+    KMJ: { city: '熊本',   full: '熊本空港' }, FUK: { city: '福岡',   full: '福岡空港' },
+    NGS: { city: '長崎',   full: '長崎空港' }, OIT: { city: '大分',   full: '大分空港' },
+    KOJ: { city: '鹿児島', full: '鹿児島空港' }
+  };
+  function airportLabel(v, style) {
+    var c = airportCode(v); if (!c) return '';
+    if (style === 'code' || !style) return c;
+    var e = AIRPORT_JA[c]; if (!e) return c;
+    return e[style] || c;
+  }
+  //  숙소 구분색 — 태그코드 끝 글자(Y·K·G·S) 기준. 세 인쇄물이 같은 색을 써야
+  //  담당자가 종이를 바꿔 봐도 같은 숙소로 읽힌다.
+  var ACCOM_COLOR = { Y: '#000000', K: '#5B21B6', G: '#065F46', S: '#92400E' };
+  var ACCOM_COLOR_FALLBACK = '#1A2540';
+  function accomPrefix(accom) {
+    var a = String(accom || '');
+    if (a.indexOf('쿠주') >= 0) return 'K';
+    if (a.indexOf('간지') >= 0 || a.indexOf('ガーン') >= 0) return 'G';
+    if (a.indexOf('시즈') >= 0) return 'S';
+    return a ? 'Y' : '';
+  }
+  //  숙소명 또는 접두문자(Y/K/G/S) 어느 쪽을 줘도 같은 색을 돌려준다.
+  function accomColor(v) {
+    var k = String(v || '').trim();
+    if (ACCOM_COLOR[k]) return ACCOM_COLOR[k];
+    return ACCOM_COLOR[accomPrefix(k)] || ACCOM_COLOR_FALLBACK;
+  }
+
   // 구간 표기 — 「ICN-KMJ」. 한쪽이 비면 있는 쪽만.
   function routeCode(from, to) {
     var a = airportCode(from), b = airportCode(to);
@@ -805,6 +843,11 @@
     AIRPORT: AIRPORT,
     airportCode: airportCode,
     routeCode: routeCode,
+    AIRPORT_JA: AIRPORT_JA,
+    airportLabel: airportLabel,
+    ACCOM_COLOR: ACCOM_COLOR,
+    accomPrefix: accomPrefix,
+    accomColor: accomColor,
     tagStripSeq: tagStripSeq,
     teamTagN: teamTagN,
     personTagN: personTagN,
