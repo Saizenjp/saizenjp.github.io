@@ -102,7 +102,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=19.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=19.3">
 </head>
 <body data-so-area="print front">
 <div class="topbar so-bar">
@@ -133,7 +133,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=35"></script>
-<script src="../assets/saizen-ops.js?v=19.2"></script>
+<script src="../assets/saizen-ops.js?v=19.3"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -341,7 +341,7 @@ async function load(){
     const seqs=(bs||[]).map(b=>b.event_seq);
     if(!seqs.length){ ROWS=[]; renderList(); return; }
     const {data:gs}=await pagedIn('guests','event_seq,group_code,team_tag,accom','event_seq',seqs);
-    const {data:ps}=await pagedIn('passengers','event_seq,origin,dest,airline,dep_flight,ret_flight,dep_time,loc_arr_time,ret_dep_time','event_seq',seqs);
+    const {data:ps}=await pagedIn('passengers','id,event_seq,gender,origin,dest,airline,dep_flight,ret_flight,dep_time,loc_arr_time,ret_dep_time','event_seq',seqs);
     const gBy={}; (gs||[]).forEach(g=>{ gBy[g.event_seq]=g; });
     const pBy={}; (ps||[]).forEach(p=>{ (pBy[p.event_seq]=pBy[p.event_seq]||[]).push(p); });
     const rows=[];
@@ -393,8 +393,12 @@ async function load(){
     ROWS=rows;
     // 미팅·샌딩 담당자는 이름 명단을 본다 → 그날 팀의 명단을 같이 읽는다.
     MEM={};
-    const {data:gm}=await pagedIn('guest_members','id,event_seq,seq_in_team,name_kr,name_en','event_seq',seqs);
-    (gm||[]).forEach(m=>{ (MEM[m.event_seq]=MEM[m.event_seq]||[]).push({id:m.id, kr:m.name_kr||'', en:m.name_en||'', seq:m.seq_in_team||99}); });
+    const {data:gm}=await pagedIn('guest_members','id,event_seq,seq_in_team,name_kr,name_en,passenger_id','event_seq',seqs);
+    // 성별 — 현장 명단표가 M/F 를 함께 본다(같은 이름이 섞여도 구분되고, 방·좌석 배치에 쓴다)
+    const gBySeqId={}; (ps||[]).forEach(x=>{ if(x.id!=null) gBySeqId[x.id]=x.gender||''; });
+    (gm||[]).forEach(m=>{ const g=String(gBySeqId[m.passenger_id]||'');
+      (MEM[m.event_seq]=MEM[m.event_seq]||[]).push({id:m.id, kr:m.name_kr||'', en:m.name_en||'', seq:m.seq_in_team||99,
+        sex: /女|F/.test(g)?'F':(/男|M/.test(g)?'M':'')}); });
     Object.values(MEM).forEach(l=>l.sort((a,b)=>(a.seq-b.seq)||String(a.kr).localeCompare(String(b.kr))));
     await loadChecks();
     renderPortChips();
@@ -655,7 +659,8 @@ function printSheet(){
       .map(k=>`${acHTML(k)} <u>${m[k]}</u>名`).join('　·　');
   };
   const dispatch=`<div class="dp"><span>車両 <i>차량</i></span><em></em>
-      <span>ドライバー <i>기사</i></span><em></em><span>出発 <i>출발</i></span><em class="s"></em></div>`;
+      <span>ドライバー <i>기사</i></span><em></em><span>出発 <i>출발</i></span><em class="s"></em></div>
+    <div class="dp sp"><span>特記 <i>특이사항</i></span><em></em></div>`;
 
   // 체류중은 왕복 한 줄(⇔) — 화면은 아침·저녁 두 다리로 나누지만 종이는 팀당 한 줄이다
   const stayBy={};
@@ -765,6 +770,7 @@ function printSheet(){
   .dp span i{font-style:normal;font-weight:600;color:#555}
   .dp em{flex:1;border-bottom:0.8pt solid #111;height:calc(4.6mm * var(--fs))}
   .dp em.s{flex:0 0 22mm}
+  .dp.sp em{border-bottom-style:dashed}
   table.pt{width:100%;border-collapse:collapse;table-layout:fixed;font-size:calc(11pt * var(--fs))}
   table.pt th{background:#f6f6f6;border:0.6pt solid #111;border-left:none;padding:0.7mm 1.2mm;
     font-size:calc(8pt * var(--fs));font-weight:800;line-height:1.15;text-align:left}
@@ -823,46 +829,81 @@ function printSheet(){
   try{ w.document.open(); w.document.write(html); w.document.close(); }catch(_){}
 }
 
-// ── 인쇄 ②: 미팅·샌딩 담당자용 **명단표** — 기사용과 같은 표 형식(팀당 한 줄).
-//   태블릿에서는 사람마다 눌러 확인하지만, 종이에서는 **다 모였는지만** 보면 된다(Min 2026-08)
-//   → 개인 체크칸을 없애고 팀당 「확인 □ · 실인원 ___」 하나로. 이름은 한 칸에 이어서 적는다.
+// ── 인쇄 ②: 미팅·샌딩 명단표(Min 2026-08, 현장 실물 양식 대조 후 재구성) ──
+//   현장 종이는 **팀당 한 줄이 아니라 사람마다 한 줄**이고, 그 팀 묶음을 **여러 단으로 흘려**
+//   81명을 A4 한 장에 담는다. 그래서 같은 방식으로 짠다 — 한 장에 담으면서 글씨가 커진다.
+//   한 장 = 한 便(도착·출발) 또는 한 숙소(체류중). 便이 곧 만나는 공항이라 담당이 안 섞인다.
+//   체크칸은 두지 않는다 — 실물처럼 이름 위에 직접 표시한다(칸을 없앤 만큼 이름이 커진다).
 function printMeet(){
   const vis=visible(); if(!vis.length){ toast(tx('noData'),'err'); return; }
-  const w=window.open('','_blank','width=980,height=1000'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
-  const groups=groupByFlight(vis);
-  // 만나는 곳(공항·숙소)마다 종이를 나눈다 — 담당자가 서로 다른 곳으로 나간다(Min 2026-08)
-  const PAGES=printPages(groups);
+  const w=window.open('','_blank','width=1000,height=1000'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
+  const md=v=>{ const d=pd(v); return d?`${d.getMonth()+1}/${d.getDate()}`:''; };
+  const SHORT={'간지호텔':'ガンジー','야마나미리조트':'やまなみ','구주고원CC':'九重高原'};
+  const shortJa=a=>SHORT[String(a||'').trim()]||accomJa(a);
+  //  팀 머리줄용 최단 약칭(한 단이 좁다) — 색이 이미 숙소를 말하므로 글자는 짧게
+  const TINY={'간지호텔':'ガンジー','쿠주힐즈':'久住','시즈노야도 료칸':'志津','시즈노야도':'志津'};
+  const tinyJa=a=>TINY[String(a||'').trim()]||shortJa(a);
+
+  // ── 장 나누기: 도착·출발 = 便마다 / 체류중 = 숙소마다 ──
+  const PAGES=[];
+  ['in','out'].forEach(dir=>{
+    const m={};
+    vis.filter(r=>r.dir===dir).forEach(r=>{ const k=(r.flight||'-')+'|'+(r.time||'');
+      (m[k]=m[k]||{dir, flight:r.flight||'', time:r.time||'', rows:[]}).rows.push(r); });
+    Object.values(m).sort((a,b)=>tmv(a.time)-tmv(b.time)).forEach(g=>PAGES.push(g));
+  });
+  { const m={};
+    vis.filter(r=>r.dir==='stay').forEach(r=>{ if(m['x'+r.seq]) return; m['x'+r.seq]=r; });
+    const byAc={};
+    Object.values(m).forEach(r=>{ (byAc[r.accom||'']=byAc[r.accom||'']||{dir:'stay', accom:r.accom||'', rows:[]}).rows.push(r); });
+    Object.values(byAc).sort((a,b)=>accomOrd(a.accom)-accomOrd(b.accom))
+      .forEach(g=>PAGES.splice(PAGES.filter(p=>p.dir==='in').length,0,g));
+  }
+  if(!PAGES.length){ toast(tx('noData'),'err'); return; }
+
   const dirBig=p=>({in:'IN', stay:'滞在', out:'OUT'}[p.dir]||'');
-  //  종이는 **지역**으로 나눠 부른다 — 「서울 입국」·「부산 귀국」(Min 2026-08)
-  const placeLabel=p=>p.dir==='stay' ? [accomJa(p.meet), accomKo(p.meet)] : cityDir(p.meet, p.dir);
-  // 종이에서는 **다 모였는지(인원 수)만** 본다 — 이름 나열은 넣지 않는다(Min 2026-08).
-  //   이름은 태블릿 화면에서 사람마다 눌러 확인한다.
-  const sec=(page)=>{
-    const gs=page.gs; if(!gs.length) return '';
-    return `<div class="sec">
-      ${gs.map(g=>{
-        const lab = g.dir==='stay' ? (g.leg==='pm'?'夕 / 저녁':'朝 / 아침') : (g.flight||'-');
-        return `<div class="fl-h"><b>${esc(lab)}</b>
-${g.time?`<span class="t">${esc(g.time)}</span>`:''}
-          <span class="r">${esc(routePrint(g)||'-')}</span>
-          <span class="n">${g.teams}チーム / ${g.pax}名</span></div>
-        <table class="pt"><thead><tr>
-          <th class="c code">コード<br><i>코드</i></th>
-          <th>お名前<br><i>명단 (대표자 포함)</i></th>
-          <th class="c n">人数<br><i>인원</i></th>
-          <th class="c n">確認<br><i>확인</i></th><th class="c n">実人数<br><i>실인원</i></th>
-        </tr></thead><tbody>
-        ${g.rows.map(r=>`<tr>
-          <td class="code">${esc(r.tag)}</td>
-          <td class="nm">${namesCell(r)}</td>
-          <td class="n pax">${r.pax}</td>
-          <td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td>
-        </tr>`).join('')}
-        <tr class="sub"><td colspan="2">小計 / 소계</td><td class="n pax">${g.pax}</td>
-          <td class="n"><span class="box"></span></td><td class="n"><span class="fill"></span></td></tr>
-        </tbody></table>`; }).join('')}
-    </div>`;
+  const placeLabel=p=>{
+    if(p.dir==='stay') return [shortJa(p.accom), accomKo(p.accom)];
+    const r=p.rows[0]||{}; return cityDir(p.dir==='in'?r.from:r.to, p.dir);
   };
+  //  便 줄 — 실물의 「熊本空港 TW287 (9:25) 着」
+  const flightLine=p=>{
+    if(p.dir==='stay') return `${shortJa(p.accom)} ⇔ ゴルフ場`;
+    const r=p.rows[0]||{}, ap=apJa(p.dir==='in'?r.to:r.from)||'熊本空港';
+    return `${ap}　${p.flight||'-'}${p.time?`（${p.time}）`:''}　${p.dir==='in'?'着':'発'}`;
+  };
+
+  //  팀 묶음 = 그룹코드 + 반대쪽 날짜 + 인원, 그 아래 사람마다 한 줄
+  const teamBlock=(r,dir)=>{
+    const list=(MEM[r.seq]||[]).slice().sort((a,b)=>(a.seq-b.seq)||String(a.kr).localeCompare(String(b.kr)));
+    const col=accomColor(r.accom);
+    const dayLbl=dir==='out' ? `${md(r.dep)}着` : `${md(r.arr)}帰`;
+    const ac=(r.accom&&r.accom!==YAMANAMI)?`<span class="ac">${esc(tinyJa(r.accom))}</span>`:'';
+    const rows=list.length
+      ? list.map((m,i)=>`<tr><td class="no">${i+1}</td><td class="kr">${esc(m.kr||m.en||'-')}</td>
+          <td class="en">${esc(m.en||'')}</td><td class="sx">${esc(m.sex||'')}</td></tr>`).join('')
+      : `<tr><td class="no"></td><td class="kr" colspan="3">${esc(r.rep||'')} <i>(${r.pax}名)</i></td></tr>`;
+    return `<div class="tm" style="border-left-color:${col}">
+      <div class="tm-h"><b style="color:${col}">${esc(r.tag)}</b><span class="dy">${esc(dayLbl)}</span>
+        <span class="px">${r.pax}名</span>${ac}</div>
+      <table class="pl">${rows}</table></div>`;
+  };
+
+  const pagesHTML=PAGES.map(p=>{
+    const rows=p.rows.slice().sort((a,b)=>accomOrd(a.accom)-accomOrd(b.accom)||String(a.tag).localeCompare(String(b.tag)));
+    const pax=rows.reduce((s,r)=>s+r.pax,0);
+    return `<div class="page">
+      <div class="hd">
+        <div class="dir">${esc(dirBig(p))}</div>
+        <div class="place">${esc(placeLabel(p)[0])}<i>${esc(placeLabel(p)[1])}</i></div>
+        <div class="date">${mdw(DATE)}</div>
+        <div class="pax"><b>${pax}</b>名<span>${rows.length}チーム</span></div>
+        <div class="fl">${esc(flightLine(p))}</div>
+      </div>
+      <div class="cols">${rows.map(r=>teamBlock(r,p.dir)).join('')}</div>
+    </div>`;
+  }).join('');
+
   const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>送迎名簿_${DATE}</title>
 <style>${window.__SO_JP_FONT||''}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -872,78 +913,83 @@ ${g.time?`<span class="t">${esc(g.time)}</span>`:''}
   .bar h1{font-size:14px}.bar .meta{font-size:11px;opacity:.85}
   .bar button{background:#fff;color:#333;border:none;border-radius:5px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer}
   .bar .x{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
-  /* --fs = 한 장에 맞추는 자동 배율(팀이 많은 날엔 스크립트가 낮춘다). 머리글·담당자칸은 고정. */
-  .page{width:210mm;min-height:297mm;margin:10px auto;background:#fff;padding:9mm 11mm;--fs:1}
-  .hd{display:flex;align-items:baseline;gap:6mm;border-bottom:2.2pt solid #111;
-    padding-bottom:calc(2.5mm * var(--fs));margin-bottom:calc(3mm * var(--fs))}
-  .hd .dir{font-size:calc(30pt * var(--fs));font-weight:800;letter-spacing:3px;font-family:Consolas,'SZJpMono',monospace}
-  .hd .place{font-size:calc(18pt * var(--fs));font-weight:800}
-  .hd .place i{font-size:calc(11pt * var(--fs));font-style:normal;font-weight:700;color:#444;margin-left:5px}
-  .hd .date{font-size:calc(24pt * var(--fs));font-weight:800;color:#c0272d;font-family:Consolas,'SZJpMono',monospace}
-  .hd .meet{margin-left:auto;font-size:calc(13pt * var(--fs));font-weight:800}
-  .staff{display:flex;gap:4mm;font-size:calc(9.5pt * var(--fs));margin-bottom:calc(4mm * var(--fs))}
-  .staff div{flex:1;border:0.8pt solid #111;padding:calc(1.6mm * var(--fs)) 3mm;min-height:calc(10mm * var(--fs))}
-  .staff b{font-size:calc(8.5pt * var(--fs));color:#444;display:block;margin-bottom:0.8mm}
-  .sec{margin-bottom:calc(5mm * var(--fs))}
-  .fl-h{display:flex;align-items:baseline;gap:4mm;border:0.8pt solid #111;background:#efefef;padding:calc(1.4mm * var(--fs)) 3mm;font-size:calc(10.5pt * var(--fs))}
-  .fl-h b{font-size:calc(12.5pt * var(--fs));font-family:Consolas,'SZJpMono',monospace}
-  .fl-h .t{font-size:calc(12.5pt * var(--fs));font-weight:800;font-family:Consolas,'SZJpMono',monospace}
-  .fl-h .r{font-size:calc(10.5pt * var(--fs));font-weight:700;font-family:Consolas,'SZJpMono',monospace}
-  .fl-h .n{margin-left:auto;font-size:10pt;font-weight:700}
-  table.pt{width:100%;border-collapse:collapse;font-size:calc(12pt * var(--fs));margin-bottom:calc(2.5mm * var(--fs))}
-  table.pt th{background:#f6f6f6;border:0.7pt solid #111;padding:calc(1.2mm * var(--fs)) 2mm;font-size:calc(9pt * var(--fs));font-weight:800;line-height:1.2}
-  table.pt th i{font-size:calc(7.5pt * var(--fs));font-weight:600;font-style:normal;color:#444}
-  table.pt td{border:0.7pt solid #111;padding:calc(1.5mm * var(--fs)) 2mm}
-  table.pt td.n,table.pt th.n{text-align:center;white-space:nowrap;width:14mm}
-  table.pt th.code{width:20mm}
-  table.pt td.code{font-family:Consolas,'SZJpMono',monospace;font-weight:800;font-size:calc(13pt * var(--fs))}
-  table.pt td.pax{font-weight:800;font-size:calc(13pt * var(--fs))}
-  /* 명단 — 대표자를 앞에 굵게, 나머지는 가운뎃점으로 이어 붙여 줄을 아낀다 */
-  table.pt td.nm{font-size:calc(12.5pt * var(--fs));line-height:1.35}
-  table.pt td.nm b{font-weight:800}
-  table.pt tr.sub td{background:#f6f6f6;font-weight:800}
-  .box{display:inline-block;width:calc(6.5mm * var(--fs));height:calc(6.5mm * var(--fs));border:1pt solid #111}
-  .fill{display:inline-block;width:12mm;border-bottom:0.8pt solid #111;height:calc(5mm * var(--fs))}
-  @media print{ @page{size:A4 portrait;margin:0} body{background:#fff} .bar{display:none}
-    .page{margin:0;width:auto;min-height:auto;padding:9mm 10mm} tr{break-inside:avoid}
-    thead{display:table-header-group}
+  /* --fs = 글자배율 · --cols = 단 수. 스크립트가 「한 장에 들어가는 가장 큰 글씨」 조합을 고른다 */
+  .page{width:297mm;min-height:210mm;margin:10px auto;background:#fff;padding:8mm 9mm;--fs:1;--cols:4}
+  .hd{display:flex;align-items:baseline;gap:5mm;border-bottom:2pt solid #111;padding-bottom:1.6mm;margin-bottom:2.4mm}
+  .hd .dir{font-size:26pt;font-weight:800;letter-spacing:3px;font-family:Consolas,'SZJpMono',monospace}
+  .hd .place{font-size:16pt;font-weight:800}
+  .hd .place i{font-size:10pt;font-style:normal;font-weight:700;color:#444;margin-left:4px}
+  .hd .date{font-size:21pt;font-weight:800;color:#c0272d;font-family:Consolas,'SZJpMono',monospace}
+  .hd .pax{font-size:11pt;font-weight:700}
+  .hd .pax b{font-size:21pt;font-weight:800;font-family:Consolas,'SZJpMono',monospace}
+  .hd .pax span{font-size:10pt;color:#444;margin-left:4px}
+  .hd .fl{margin-left:auto;font-size:14pt;font-weight:800;font-family:Consolas,'SZJpMono',monospace}
+  /* column-fill:auto 는 높이를 정해 줘야 나뉜다 → balance 로 두어 단 수만큼 고르게 흐르게 한다 */
+  .cols{column-count:var(--cols);column-gap:4mm;column-fill:balance}
+  .tm{break-inside:avoid;page-break-inside:avoid;border:0.7pt solid #111;border-left-width:2.6pt;
+    margin-bottom:calc(2mm * var(--fs))}
+  .tm-h{display:flex;align-items:baseline;gap:1.6mm;background:#f0f0f0;border-bottom:0.7pt solid #111;
+    padding:calc(0.9mm * var(--fs)) 1.4mm;white-space:nowrap;overflow:hidden}
+  .tm-h b{font-size:calc(13pt * var(--fs));font-weight:800;font-family:Consolas,'SZJpMono',monospace}
+  .tm-h .dy{font-size:calc(9pt * var(--fs));font-weight:700;color:#333;font-family:Consolas,'SZJpMono',monospace}
+  .tm-h .px{margin-left:auto;font-size:calc(9.5pt * var(--fs));font-weight:800}
+  .tm-h .ac{font-size:calc(9pt * var(--fs));font-weight:800}
+  table.pl{width:100%;border-collapse:collapse;table-layout:fixed}
+  table.pl td{border-top:0.5pt solid #bbb;padding:calc(0.7mm * var(--fs)) 0.6mm;
+    overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.25}
+  table.pl tr:first-child td{border-top:none}
+  table.pl td.no{width:4.5mm;text-align:center;font-size:calc(8pt * var(--fs));color:#555}
+  table.pl td.kr{width:32%;font-size:calc(12.5pt * var(--fs));font-weight:700}
+  table.pl td.kr i{font-style:normal;font-weight:600;color:#555;font-size:calc(9.5pt * var(--fs))}
+  table.pl td.en{width:48%;font-size:calc(7pt * var(--fs));color:#222;letter-spacing:-0.3px}
+  table.pl td.sx{width:4.5mm;text-align:center;font-size:calc(8.5pt * var(--fs));font-weight:800;color:#444}
+  @media print{ @page{size:A4 landscape;margin:0} body{background:#fff} .bar{display:none}
+    .page{margin:0;width:auto;min-height:auto;padding:8mm 9mm}
     .page{break-after:page;page-break-after:always} .page:last-child{break-after:auto;page-break-after:auto} }
 </style></head><body>
-  <div class="bar"><h1>送迎名簿 / 송영 명단표</h1><div class="meta">${vis.length}チーム · ${PAGES.length}枚</div><div style="flex:1"></div>
+  <div class="bar"><h1>送迎名簿 / 송영 명단표</h1><div class="meta">${DATE} · ${PAGES.length}枚</div><div style="flex:1"></div>
     <button onclick="window.print()">\u{1F5A8} ${lang()==='ja'?'印刷':(lang()==='en'?'Print':'인쇄')}</button>
-    <button class="x" onclick="window.close()">\u2715 ${lang()==='ja'?'閉じる':(lang()==='en'?'Close':'닫기')}</button></div>
-  ${PAGES.map(p=>`
-  <div class="page">
-    <div class="hd">
-      <div class="dir">${esc(dirBig(p))}</div>
-      <div class="place">${esc(placeLabel(p)[0])}<i>${esc(placeLabel(p)[1])}</i></div>
-      <div class="date">${mdw(DATE)}</div>
-      <div class="meet">${p.gs.reduce((s,g)=>s+g.teams,0)}チーム / ${p.gs.reduce((s,g)=>s+g.pax,0)}名</div>
-    </div>
-    <div class="staff"><div><b>担当者 / 담당자</b></div><div><b>集合場所 / 집합 장소</b></div><div><b>連絡先 / 연락처</b></div></div>
-    ${sec(p)}
-  </div>`).join('')}
+    <button class="x" onclick="window.close()">✕ ${lang()==='ja'?'閉じる':(lang()==='en'?'Close':'닫기')}</button></div>
+  ${pagesHTML}
 <script>
-  // 한 장에 맞춘다 — 넘치면 그 장의 글자배율(--fs)을 이분탐색으로 낮춘다(Min 2026-08).
-  //  머리글·담당자칸은 고정이라 줄어들지 않는다. 0.5 까지 낮춰도 안 되면 그대로 두고 넘긴다.
+  // 「한 장 + 가장 큰 글씨」 — 단 수(3~6)와 글자배율(--fs)의 조합 중 한 장에 들어가는 가장 큰 배율을 고른다.
+  //  단을 늘리면 세로가 짧아져 글씨를 덜 줄여도 되고, 대신 한 단이 좁아져 영문 이름이 잘린다 →
+  //  둘을 같이 탐색해야 실제로 가장 크게 나온다. 어떤 조합으로도 한 장이 안 되면 최소 장수에 맞춘다.
   (function(){
-    var FLOOR=0.85;   // 이름을 부르며 확인하는 종이라 **가독이 우선** — 더 줄이느니 장을 늘린다(Min 2026-08)
+    // 단 수는 **적을수록 한 단이 넓어** 영문 이름이 안 잘린다 → 3단을 먼저 쓰고,
+    // 그 단 수로 원래 크기가 한 장에 들어가면 **남는 세로만큼 글씨를 키운다**(최대 1.3배).
+    // 3단으로 안 되면 단을 늘리고, 그래도 안 되면 글씨를 줄인다(0.6까지), 마지막엔 장을 나눈다.
+    var FLOOR=0.6, MAXUP=1.3, COLS=[3,4,5,6];
     function fit(){
       var mm=(function(){ var d=document.createElement('div');
         d.style.cssText='height:100mm;position:absolute;visibility:hidden';
         document.body.appendChild(d); var h=d.offsetHeight/100; d.remove(); return h; })();
-      var LIMIT=297*mm;                            // A4 세로 한 장
+      var LIMIT=210*mm;
       var pages=document.querySelectorAll('.page');
       for(var i=0;i<pages.length;i++){
-        var pg=pages[i], keep=pg.style.minHeight;
-        pg.style.minHeight='auto';
-        var H=function(fs){ pg.style.setProperty('--fs',String(fs)); return pg.scrollHeight; };
-        if(H(1)<=LIMIT){ pg.style.minHeight=keep; continue; }
-        var minPages=Math.ceil(H(FLOOR)/LIMIT), target=minPages*LIMIT;
-        var lo=FLOOR, hi=1, best=FLOOR;
-        for(var k=0;k<12;k++){ var mid=(lo+hi)/2;
-          if(H(mid)<=target){ best=mid; lo=mid; } else { hi=mid; } }
-        pg.style.setProperty('--fs',String(best));
+        var pg=pages[i], keep=pg.style.minHeight; pg.style.minHeight='auto';
+        var H=function(c,fs){ pg.style.setProperty('--cols',String(c));
+          pg.style.setProperty('--fs',String(fs)); return pg.scrollHeight; };
+        var maxFs=function(c){                      // 그 단 수로 한 장에 들어가는 가장 큰 배율
+          if(H(c,FLOOR)>LIMIT) return 0;
+          var lo=FLOOR, hi=MAXUP, b=FLOOR;
+          for(var k=0;k<12;k++){ var mid=(lo+hi)/2; if(H(c,mid)<=LIMIT){ b=mid; lo=mid; } else { hi=mid; } }
+          return b;
+        };
+        var pickC=0, pickF=0, bestC=0, bestF=0;
+        for(var ci=0;ci<COLS.length;ci++){
+          var c=COLS[ci], f=maxFs(c);
+          if(f>bestF){ bestF=f; bestC=c; }
+          if(f>=1){ pickC=c; pickF=f; break; }      // 원래 크기 이상 → 가장 적은 단 수로 확정
+        }
+        if(pickC){ H(pickC,pickF); }
+        else if(bestF){ H(bestC,bestF); }
+        else{                                       // 어떤 조합으로도 한 장은 무리 — 최소 장수에 맞춘다
+          var c2=COLS[COLS.length-1], minP=Math.ceil(H(c2,FLOOR)/LIMIT), tg=minP*LIMIT;
+          var lo2=FLOOR, hi2=1, b2=FLOOR;
+          for(var k2=0;k2<12;k2++){ var m2=(lo2+hi2)/2; if(H(c2,m2)<=tg){ b2=m2; lo2=m2; } else { hi2=m2; } }
+          H(c2,b2);
+        }
         pg.style.minHeight=keep;
       }
     }
