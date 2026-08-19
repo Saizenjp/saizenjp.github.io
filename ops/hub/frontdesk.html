@@ -149,7 +149,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.3">
 </head>
 <body data-so-area="front">
 <div class="topbar so-bar">
@@ -197,7 +197,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=35"></script>
-<script src="../assets/saizen-ops.js?v=18.2"></script>
+<script src="../assets/saizen-ops.js?v=18.3"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -221,6 +221,9 @@ const L={
     coNone:'チェックアウトするチームを選択してください', coConfirm:(n)=>`${n}チームをチェックアウト処理しますか？`,
     coDue:(n,a)=>`未決済 ${n}チーム（${a}）が含まれています。そのまま進めますか？`, coOk:(n)=>`${n}チーム チェックアウト`, coFail:'チェックアウト失敗: ',
     coUndoConfirm:'チェックアウトを取り消しますか？', coHint:'チェックアウトすると注文・請求QRは無効になります',
+    ciDone:'到着確認済', btnCi:'✓ チェックイン', btnCiSel:(n)=>`✓ 選択 ${n}件 チェックイン`, btnCiAll:'✓ 本日到着 全件',
+    ciNone:'チェックインするチームを選択してください', ciConfirm:(n)=>`${n}チームを到着(チェックイン)として記録しますか？`,
+    ciOk:(n)=>`${n}チーム チェックイン`, ciHint:'到着したチームを記録します。鍵・QRカードをお渡ししたチームが一目で分かります',
     teamWord:'チーム', nameWord:'名', teamPrefix:'チーム', unassigned:'未割当', noneApplicable:'該当なし',
     searchNone:'検索結果なし — 別の名前・タグ・部屋番号で検索してください', honor:'様',
     qrNoMatch:'QRに一致するチームがありません', qrNotToday:'この日の一覧にないチームです — 日付を変えてください',
@@ -251,6 +254,9 @@ const L={
     coNone:'체크아웃할 팀을 선택하세요', coConfirm:(n)=>`${n}팀을 체크아웃 처리할까요?`,
     coDue:(n,a)=>`미결제 ${n}팀(${a})이 포함되어 있습니다. 그래도 진행할까요?`, coOk:(n)=>`${n}팀 체크아웃`, coFail:'체크아웃 실패: ',
     coUndoConfirm:'체크아웃을 취소할까요?', coHint:'체크아웃하면 주문·청구 QR이 만료됩니다',
+    ciDone:'도착 확인', btnCi:'✓ 체크인', btnCiSel:(n)=>`✓ 선택 ${n}팀 체크인`, btnCiAll:'✓ 오늘 도착 전체',
+    ciNone:'체크인할 팀을 선택하세요', ciConfirm:(n)=>`${n}팀을 도착(체크인)으로 기록할까요?`,
+    ciOk:(n)=>`${n}팀 체크인`, ciHint:'도착한 팀을 기록합니다. 키·QR카드를 드린 팀이 한눈에 구분됩니다',
     teamWord:'팀', nameWord:'名', teamPrefix:'팀', unassigned:'미배정', noneApplicable:'해당 없음',
     searchNone:'검색 결과 없음 — 다른 이름·태그·방번호로 검색해 보세요', honor:'様',
     qrNoMatch:'QR에 맞는 팀이 없습니다', qrNotToday:'이 날짜 목록에 없는 팀입니다 — 날짜를 바꿔 주세요',
@@ -281,6 +287,9 @@ const L={
     coNone:'Select teams to check out', coConfirm:(n)=>`Check out ${n} team(s)?`,
     coDue:(n,a)=>`${n} team(s) with an outstanding balance (${a}) are included. Proceed anyway?`, coOk:(n)=>`${n} team(s) checked out`, coFail:'Check-out failed: ',
     coUndoConfirm:'Undo this check-out?', coHint:'Order & bill QR expires once checked out',
+    ciDone:'Arrived', btnCi:'✓ Check in', btnCiSel:(n)=>`✓ Check in ${n} selected`, btnCiAll:'✓ All arrivals today',
+    ciNone:'Select the teams to check in', ciConfirm:(n)=>`Record ${n} team(s) as arrived (checked in)?`,
+    ciOk:(n)=>`${n} team(s) checked in`, ciHint:'Marks teams that have arrived — shows at a glance who already got keys and QR cards',
     teamWord:'teams', nameWord:' ppl', teamPrefix:'Team', unassigned:'Unassigned', noneApplicable:'None',
     searchNone:'No results — try another name / tag / room', honor:'',
     qrNoMatch:'No team matches that QR', qrNotToday:'That team is not on this date — change the date',
@@ -440,7 +449,8 @@ async function load(){
         excluded:!!ov.excluded, excludeReason:ov.exclude_reason||'', dinnerSplit:!!ov.dinner_split, teamGroup:ov.team_group||'',
         addons:ADD[b.event_seq]||[],
         followups:FU[b.event_seq]||[], memb:MB[b.event_seq]||{n:0,g:{}},
-        co:(g.check_status==='체크아웃')};   // 체크아웃 처리 여부(담당자 버튼) — QR 만료 기준
+        co:(g.check_status==='체크아웃'),   // 체크아웃 처리 여부(담당자 버튼) — QR 만료 기준
+        ci:(g.check_status==='체크인'||g.check_status==='체크아웃')};  // 도착 확인 여부(체크아웃한 팀은 당연히 도착했다)
     });
     state.byId={}; state.teams.forEach(t=>state.byId[t.seq]=t);
     // 확인 필요(후속 조치) — 미완료 전체(날짜 무관: 놓치지 않게 항상 노출)
@@ -529,9 +539,11 @@ function render(){
     selectTeam(Number(el.dataset.seq));
   }));
   $('#lists').querySelectorAll('.cock').forEach(c=>c.addEventListener('change',refreshCoBar));
-  const bSel=document.getElementById('btn-co-sel'); if(bSel) bSel.addEventListener('click',()=>doCheckout(coSelected(),'체크아웃'));
+  const bSel=document.getElementById('btn-co-sel'); if(bSel) bSel.addEventListener('click',()=>doCheckout(coSelected('dep'),'체크아웃'));
   // 「전체」는 화면에 보이는 것만(검색 중이면 검색 결과) — 보이지 않는 팀이 처리되지 않게
   const bAll=document.getElementById('btn-co-all'); if(bAll) bAll.addEventListener('click',()=>doCheckout(dep.filter(qp).filter(t=>!t.co).map(t=>t.seq),'체크아웃'));
+  const cSel=document.getElementById('btn-ci-sel'); if(cSel) cSel.addEventListener('click',()=>doCheckout(coSelected('arr'),'체크인'));
+  const cAll=document.getElementById('btn-ci-all'); if(cAll) cAll.addEventListener('click',()=>doCheckout(arr.filter(qp).filter(t=>!t.ci).map(t=>t.seq),'체크인'));
   refreshCoBar();
   if(state.selSeq && state.byId[state.selSeq]) renderDetail(state.byId[state.selSeq]);
 }
@@ -542,12 +554,14 @@ function kpi(l,v,cls,go,open){
 }
 function sect(kind,title,list){
   const nw=tx('nameWord'), tw=tx('teamWord');
-  const co=(kind==='dep');   // 체크아웃 섹션에만 선택 체크박스·처리 버튼(개별/다중/일괄)
+  //  도착 = 체크인 처리 / 출발 = 체크아웃 처리. 둘 다 선택 체크박스와 일괄 버튼을 쓴다.
+  const co=(kind==='dep'), ci=(kind==='arr'), pick=co||ci;
+  const done=t=>ci?t.ci:t.co;
   let rows = list.length? list.sort((a,b)=>(a.accom||'').localeCompare(b.accom||'')||(a.rep||'').localeCompare(b.rep||'')).map(t=>{
     const balCls=t.bal>0?'due':(t.cnt?'':'zero');
-    return `<div class="trow ${t.seq===state.selSeq?'sel':''}${t.co?' done':''}" data-seq="${t.seq}">
-      ${co?`<input type="checkbox" class="cock" data-cos="${t.seq}"${t.co?' disabled':''}>`:''}
-      <span class="tag">${esc(t.tag)}</span>${t.co?`<span class="cobadge">${tx('coDone')}</span>`:''}
+    return `<div class="trow ${t.seq===state.selSeq?'sel':''}${done(t)?' done':''}" data-seq="${t.seq}">
+      ${pick?`<input type="checkbox" class="cock" data-cos="${t.seq}"${done(t)?' disabled':''}>`:''}
+      <span class="tag">${esc(t.tag)}</span>${done(t)?`<span class="cobadge">${ci?tx('ciDone'):tx('coDone')}</span>`:''}
       <span class="rep">${esc(pn(t.rep,''))}</span>${membChip(t)}
       <span class="pax">${t.pax}${nw}</span>
       <span class="room">${t.rooms.length?t.rooms.join(','):`<span style="color:var(--muted)">${tx('unassigned')}</span>`}</span>
@@ -555,10 +569,10 @@ function sect(kind,title,list){
       <span class="bal ${balCls}">${t.cnt?yen(t.bal):'-'}</span>
     </div>`;
   }).join('') : `<div class="empty">${tx('noneApplicable')}</div>`;
-  const bar=co&&list.length ? `<div class="cobar">
-      <button class="btn sm" id="btn-co-sel" type="button">${tx('btnCoSel')(0)}</button>
-      <button class="btn sm ghost" id="btn-co-all" type="button">${tx('btnCoAll')}</button>
-      <span class="cohint">${tx('coHint')}</span>
+  const bar=pick&&list.length ? `<div class="cobar">
+      <button class="btn sm" id="btn-${ci?'ci':'co'}-sel" type="button">${(ci?tx('btnCiSel'):tx('btnCoSel'))(0)}</button>
+      <button class="btn sm ghost" id="btn-${ci?'ci':'co'}-all" type="button">${ci?tx('btnCiAll'):tx('btnCoAll')}</button>
+      <span class="cohint">${ci?tx('ciHint'):tx('coHint')}</span>
     </div>` : '';
   return `<div class="sect" id="sec-${kind}"><div class="sh ${kind}">${title}<span class="c">${list.length}${tw}</span></div>${bar}${rows}</div>`;
 }
@@ -599,24 +613,34 @@ function dineSect(list, ex, day, total){
 //  담당자가 명시적으로 누르는 행위 = 정산완료 신호(Min 결정). 잔액 0 자동판정은
 //  아무것도 안 산 팀이 입실 첫날부터 잔액 0이라 쓸 수 없다.
 //  잔액이 남아도 막지 않는다(후불·B2B 이월이 실제로 있음) — 경고 후 진행.
-function coSelected(){ return [...document.querySelectorAll('.cock:checked')].map(c=>Number(c.dataset.cos)); }
-function refreshCoBar(){ const b=document.getElementById('btn-co-sel'); if(b) b.textContent=tx('btnCoSel')(coSelected().length); }
-async function doCheckout(seqs,status){
+function coSelected(kind){
+  const root=kind?document.getElementById('sec-'+kind):document; if(!root) return [];
+  return [...root.querySelectorAll('.cock:checked')].map(c=>Number(c.dataset.cos));
+}
+function refreshCoBar(){
+  const b=document.getElementById('btn-co-sel'); if(b) b.textContent=tx('btnCoSel')(coSelected('dep').length);
+  const c=document.getElementById('btn-ci-sel'); if(c) c.textContent=tx('btnCiSel')(coSelected('arr').length);
+}
+//  status='체크아웃' = 퇴실 처리 / '체크인' = 도착 확인.
+//  undo=true 면 '체크인' 이 **체크아웃 취소**를 뜻한다(같은 상태값, 다른 확인 문구).
+async function doCheckout(seqs,status,undo){
   if(!supa){ toast(tx('connectFirst'),'err'); return; }
   seqs=[...new Set(seqs)].filter(Boolean);
-  if(!seqs.length){ toast(tx('coNone'),'warn'); return; }
+  if(!seqs.length){ toast(status==='체크인'&&!undo?tx('ciNone'):tx('coNone'),'warn'); return; }
   if(status==='체크아웃'){
     const due=seqs.map(s=>state.byId[s]).filter(t=>t&&t.bal>0);
     const msg=due.length ? tx('coDue')(due.length, yen(due.reduce((s,t)=>s+t.bal,0)))
                          : tx('coConfirm')(seqs.length);
     if(!confirm(msg)) return;
-  }else if(!confirm(tx('coUndoConfirm'))) return;
+  }else if(undo){ if(!confirm(tx('coUndoConfirm'))) return; }
+  else if(!confirm(tx('ciConfirm')(seqs.length))) return;
   try{
     const {data,error}=await supa.rpc('set_check_status',{p_seqs:seqs,p_status:status,p_by:curUser()});
     if(error) throw error;
-    seqs.forEach(s=>{ if(state.byId[s]) state.byId[s].co=(status==='체크아웃'); });
+    seqs.forEach(s=>{ const t=state.byId[s]; if(!t) return;
+      t.co=(status==='체크아웃'); t.ci=true; });   // 체크인·체크아웃 둘 다 '도착함'
     render();
-    toast(tx('coOk')((data&&data.updated)||seqs.length),'ok');
+    toast((status==='체크아웃'?tx('coOk'):(undo?tx('coOk'):tx('ciOk')))((data&&data.updated)||seqs.length),'ok');
   }catch(e){ toast(tx('coFail')+e.message,'err'); }
 }
 // 목록 행 회원 칩 — 클릭 전 VIP 식별. 등급 라벨 그대로(서열 없음), 없으면 '회원'
@@ -676,12 +700,15 @@ function renderDetail(t){
     <div class="links">
       <a class="btn ghost sm" href="room.html?ym=${ymOf(t.dep)}&date=${state.day}&seq=${t.seq}" title="${tx('linkRoomT')}">${tx('linkRoom')}</a>
       <a class="btn ghost sm" href="settle.html?ym=${ymOf(t.dep)}&seq=${t.seq}" title="${tx('linkSettleT')}">${tx('linkSettle')}</a>
+      ${(!t.co&&!t.ci)?`<button class="btn sm" id="btn-ci-one" type="button" title="${tx('ciHint')}">${tx('btnCi')}</button>`:''}
       <button class="btn sm${t.co?' ghost':''}" id="btn-co-one" type="button" title="${tx('coHint')}">${t.co?tx('btnCoUndo'):tx('btnCo')}</button>
       <button class="btn sm${CUST_SEQ===t.seq?'':' ghost'}" id="btn-cust" type="button" title="${tx('custT')}">${CUST_SEQ===t.seq?tx('custOn'):tx('custShow')}</button>
     </div>`;
   $('#detail').querySelectorAll('.ntf').forEach(el=>el.addEventListener('blur',()=>saveNote(el.dataset.seq,el.dataset.nf,el.value)));
   const bOne=document.getElementById('btn-co-one');
-  if(bOne) bOne.addEventListener('click',()=>doCheckout([t.seq], t.co?'체크인':'체크아웃'));
+  if(bOne) bOne.addEventListener('click',()=>doCheckout([t.seq], t.co?'체크인':'체크아웃', t.co));
+  const cOne=document.getElementById('btn-ci-one');
+  if(cOne) cOne.addEventListener('click',()=>doCheckout([t.seq],'체크인',false));
   const bCu=document.getElementById('btn-cust');
   if(bCu) bCu.addEventListener('click',()=>pushCustomerDisplay(CUST_SEQ===t.seq?null:t.seq));
 }
