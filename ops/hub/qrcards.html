@@ -82,7 +82,7 @@
   .gbadge{display:inline-block;font-size:10.5px;font-weight:800;color:#fff;border-radius:99px;padding:1px 7px;margin-left:5px;vertical-align:middle}
   .srch{flex:1;min-width:220px}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.9">
 </head>
 <body data-so-area="print">
 <div class="topbar so-bar">
@@ -114,7 +114,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=35"></script>
-<script src="../assets/saizen-ops.js?v=18.8"></script>
+<script src="../assets/saizen-ops.js?v=18.9"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, YM=null, ROWS=[], TOKMAP={}, DATESEL=new Set(), ACCOMSEL=new Set(), Q='', TG={};
@@ -156,7 +156,7 @@ const L={
     waitConn:'接続後に表示されます。', loginNeeded:'ログインが必要です。ホームでログイン後、再度接続してください。',
     panelH:'注文QRカード印刷',
     panelDesc:'チェックインチームを選び <b>チーム別ミニQRカード</b> を印刷します(A4に複数枚)。お客様がスマホで撮影して保管 → 注文時にPOSでスキャンすると、そのチームが自動選択されます。カードには名前・QR・案内文のみ入ります。',
-    printBtn:'🖨 QRカード プレビュー', arrLbl:'入国日', accomLbl:'宿泊', allChip:'全体',
+    printBtn:'🖨 QRカード 印刷プレビュー', arrLbl:'入国日', accomLbl:'宿泊', allChip:'全体',
     loading:'読込中…', noMonth:'今月のデータなし', loadFail:'読込失敗', loadFailToast:msg=>`読込失敗: ${msg}`,
     statCount:(v,t,nt)=>`${v} / ${t}チーム${nt?` · ⚠ トークンなし ${nt}`:''}`,
     noData:'今月のデータがありません。', noMatch:'選択条件に合うチームがありません。',
@@ -174,7 +174,7 @@ const L={
     waitConn:'연결 후 표시됩니다.', loginNeeded:'로그인이 필요합니다. 홈에서 로그인 후 다시 연결하세요.',
     panelH:'주문 QR카드 인쇄',
     panelDesc:'체크인 팀을 골라 <b>팀별 미니 QR 카드</b>를 인쇄합니다(A4에 여러 장). 손님이 폰으로 찍어 보관 → 주문 때 POS에서 스캔하면 그 팀이 자동 선택됩니다. 카드엔 이름·QR·안내문만 담깁니다.',
-    printBtn:'🖨 QR카드 미리보기', arrLbl:'입국일', accomLbl:'숙소', allChip:'전체',
+    printBtn:'🖨 QR카드 인쇄 미리보기', arrLbl:'입국일', accomLbl:'숙소', allChip:'전체',
     loading:'로딩…', noMonth:'이 달 데이터 없음', loadFail:'로드 실패', loadFailToast:msg=>`로드 실패: ${msg}`,
     statCount:(v,t,nt)=>`${v} / ${t}팀${nt?` · ⚠ 토큰없음 ${nt}`:''}`,
     noData:'이 달 데이터가 없습니다.', noMatch:'선택 조건에 맞는 팀이 없습니다.',
@@ -192,7 +192,7 @@ const L={
     waitConn:'Shown after connecting.', loginNeeded:'Login required. Log in from Home, then connect again.',
     panelH:'Print order QR cards',
     panelDesc:'Pick check-in teams and print <b>per-team mini QR cards</b> (several per A4). Guests photograph and keep it → scanning it at the POS auto-selects that team when ordering. Cards contain only name, QR and instructions.',
-    printBtn:'🖨 QR card preview', arrLbl:'Arrival', accomLbl:'Stay', allChip:'All',
+    printBtn:'🖨 QR card print preview', arrLbl:'Arrival', accomLbl:'Stay', allChip:'All',
     loading:'Loading…', noMonth:'No data this month', loadFail:'Load failed', loadFailToast:msg=>`Load failed: ${msg}`,
     statCount:(v,t,nt)=>`${v} / ${t} teams${nt?` · ⚠ no token ${nt}`:''}`,
     noData:'No data this month.', noMatch:'No teams match the selection.',
@@ -316,10 +316,10 @@ async function load(){
     const INVN={}; { const {data:inv}=await supa.from('room_inventory').select('id,room_no,zone'); (inv||[]).forEach(r=>INVN[r.id]=r); }
     const RM={};
     for(let i=0;i<seqs.length;i+=300){ const chunk=seqs.slice(i,i+300);
-      const {data:rr}=await supa.from('rooms').select('event_seq,inventory_id').in('event_seq',chunk);
+      const {data:rr}=await supa.from('rooms').select('event_seq,inventory_id,facility').in('event_seq',chunk);
       (rr||[]).forEach(r=>{ const iv=INVN[r.inventory_id]; if(iv&&iv.room_no){
         const m=(RM[r.event_seq]=RM[r.event_seq]||new Map());
-        if(!m.has(iv.room_no)) m.set(iv.room_no,{no:iv.room_no, zone:iv.zone||''});
+        if(!m.has(iv.room_no)) m.set(iv.room_no,{no:iv.room_no, zone:iv.zone||'', fac:r.facility||''});
       }});
     }
     // 팀 묶음(手配書에서 묶은 그룹) — 배지 표기를 다른 화면과 똑같이 맞춘다
@@ -343,7 +343,8 @@ async function load(){
 
 function renderChips(){
   const dates=[...new Set(ROWS.map(r=>r.dep).filter(Boolean))].sort();
-  const accoms=[...new Set(ROWS.map(r=>r.accom).filter(Boolean))].sort((a,b)=>accomOrd(a)-accomOrd(b));
+  // 칩 목록 = 예약 숙소 + 실제 배정 시설(콤보 상품 팀이 묵는 시설도 고를 수 있게)
+  const accoms=[...new Set([...ROWS.map(r=>r.accom), ...ROWS.flatMap(r=>(r.rooms||[]).map(x=>x.fac))].filter(Boolean))].sort((a,b)=>accomOrd(a)-accomOrd(b));
   const allLbl=tx('allChip');
   $('#datechips').innerHTML = `<button type="button" class="chip${DATESEL.size?'':' on'}" data-date="__all">${allLbl}</button>`
     + dates.map(d=>`<button type="button" class="chip${DATESEL.has(d)?' on':''}" data-date="${esc(d)}">${esc(SZCore.mdWd(d,lang()))}</button>`).join('');
@@ -359,7 +360,10 @@ function renderChips(){
 
 function pass(r){
   if(DATESEL.size && !DATESEL.has(r.dep)) return false;
-  if(ACCOMSEL.size && !ACCOMSEL.has(r.accom)) return false;
+  // 숙소 = 예약상 숙소(guests.accom) 또는 실제 배정된 객실의 시설.
+  // 콤보 상품(예: 별장+간지+시즈)은 예약 숙소가 하나뿐이라, 실제로 그 시설에 묵는 팀이
+  // 그 시설 칩에서 빠져 카드가 안 나오던 것을 막는다.
+  if(ACCOMSEL.size && !ACCOMSEL.has(r.accom) && !(r.rooms||[]).some(x=>ACCOMSEL.has(x.fac))) return false;
   // 검색은 날짜·숙소 필터보다 우선한다 — 「인쇄물 잃어버린 그 팀만 다시」 쓰는 용도라
   // 무슨 칩이 켜져 있든 이름만 치면 찾아진다.
   return true;
