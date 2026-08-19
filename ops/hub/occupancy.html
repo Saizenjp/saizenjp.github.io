@@ -96,6 +96,11 @@
   table.oc td.c.over{background:#c0392b;color:#fff;font-weight:800}        /* 초과 = 넘겼다(조치 필요) */
   table.oc td.c.over::after{content:"!";font-size:11px;vertical-align:super;margin-left:1px}
   table.oc td.c.zero{background:#fafbfc;color:#c9ced6;font-weight:600;font-size:13px}
+  /* 대기 예약 — 확정이 아니라 빠질 수 있다. **색은 바꾸지 않고** 작은 회색 배지만 덧붙인다 */
+  table.oc td.c{position:relative}
+  table.oc td.c .wq{position:absolute;right:1px;bottom:0;font-size:9px;font-weight:800;line-height:1.1;
+    color:#5a6472;background:rgba(255,255,255,.82);border:1px solid #aab3c0;border-radius:3px;padding:0 2px}
+  table.oc td.c.over .wq{background:rgba(255,255,255,.92)}
   table.oc td.c.sel{outline:3px solid var(--accent);outline-offset:-3px}
   table.oc tr.sum td{background:#e3e7ec;font-weight:800;border-top:2px solid var(--border2)}
   table.oc tr.sum td.c{font-size:15px;color:var(--text)}
@@ -103,6 +108,7 @@
   .lgd{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--text2);font-weight:700;margin-top:8px;align-items:center}
   .lgd i{display:inline-block;width:13px;height:13px;border-radius:3px;border:1px solid var(--border2);margin-right:4px;vertical-align:-2px;font-style:normal}
   .lgd .f{background:#cfe8d4}.lgd .t{background:#fbe6a8}.lgd .u{background:#c8d4e6}.lgd .x{background:#c0392b}
+  .lgd .w{background:#fff;border:1px solid #aab3c0;position:relative}
 
   table.dt{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
   table.dt th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:6px 9px;text-align:left;font-size:11px;color:var(--text2);font-weight:800;white-space:nowrap}
@@ -111,7 +117,7 @@
   table.dt tr:hover td{background:var(--surface2)}
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.6">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -143,7 +149,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=35"></script>
-<script src="../assets/saizen-ops.js?v=18.5"></script>
+<script src="../assets/saizen-ops.js?v=18.6"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -158,6 +164,7 @@ const L={
     months:'表示する月', accom:'宿泊施設', all:'全体',
     byType:'ルームタイプ別に見る', actRooms:n=>`実際の使用 ${n}室`, dtRooms:n=>`この日の使用: ${n}室`,
     lgFree:'余裕(残4+)', lgTight:'ひっ迫(残1〜3)', lgFull:'満室(ちょうど)', lgOver:'超過(対応が必要)',
+    lgWait:'待機予約(未確定)', waitMark:'待', waitT:(r,p)=>`待機 ${r}室 / ${p}名(未確定 — 外れる可能性)`,
     nights:n=>`${n}泊`, roomsN:n=>`${n}室`, paxN:n=>`${n}名`,
     thRow:'施設・ルームタイプ', own:'保有',
     dtTitle:d=>`${d} の内訳`, dtNone:'この日この客室タイプに滞在中のチームはありません。',
@@ -175,6 +182,7 @@ const L={
     months:'보는 달', accom:'숙소', all:'전체',
     byType:'룸타입별로 보기', actRooms:n=>`실제 사용 ${n}실`, dtRooms:n=>`이 날 사용: ${n}실`,
     lgFree:'여유(잔여 4+)', lgTight:'임박(잔여 1~3)', lgFull:'만실(딱 참)', lgOver:'초과(조치 필요)',
+    lgWait:'대기 예약(미확정)', waitMark:'대', waitT:(r,p)=>`대기 ${r}실 / ${p}명(미확정 — 빠질 수 있음)`,
     nights:n=>`${n}박`, roomsN:n=>`${n}실`, paxN:n=>`${n}명`,
     thRow:'숙소 · 룸타입', own:'보유',
     dtTitle:d=>`${d} 상세`, dtNone:'이 날 이 룸타입에 체류 중인 팀이 없습니다.',
@@ -192,6 +200,7 @@ const L={
     months:'Months', accom:'Lodging', all:'All',
     byType:'By room type', actRooms:n=>`${n} rooms actually used`, dtRooms:n=>`Rooms used this day: ${n}`,
     lgFree:'Free (4+ left)', lgTight:'Tight (1–3 left)', lgFull:'Full (exact)', lgOver:'Over (needs action)',
+    lgWait:'Waitlisted (not confirmed)', waitMark:'W', waitT:(r,p)=>`Waitlist ${r} rooms / ${p} pax (not confirmed — may drop)`,
     nights:n=>`${n} nights`, roomsN:n=>`${n} rooms`, paxN:n=>`${n}`,
     thRow:'Facility · room type', own:'Stock',
     dtTitle:d=>`${d} detail`, dtNone:'No team staying in this room type on this date.',
@@ -281,6 +290,7 @@ function renderUI(){
         <span><i class="t"></i>${tx('lgTight')}</span>
         <span><i class="u"></i>${tx('lgFull')}</span>
         <span><i class="x"></i>${tx('lgOver')}</span>
+        <span><i class="w"></i>${tx('lgWait')}</span>
       </div>
     </div>
     <div class="panel">
@@ -350,9 +360,10 @@ async function load(){
       const gs=await pagedIn('guests','event_seq,group_code,team_tag,accom','event_seq',seqs);
       if(gs.error) throw gs.error;
       (gs.data||[]).forEach(g=>{ TEAM[g.event_seq]={tag:g.team_tag||g.group_code||'', accom:g.accom||'', rep:''}; });
-      const bs=await pagedIn('bookings','event_seq,rep_name','event_seq',seqs);
+      const bs=await pagedIn('bookings','event_seq,rep_name,status','event_seq',seqs);
       if(bs.error) throw bs.error;
-      (bs.data||[]).forEach(b=>{ (TEAM[b.event_seq]=TEAM[b.event_seq]||{tag:'',accom:''}).rep=b.rep_name||''; });
+      (bs.data||[]).forEach(b=>{ const t=(TEAM[b.event_seq]=TEAM[b.event_seq]||{tag:'',accom:''});
+        t.rep=b.rep_name||''; t.status=b.status||''; });
     }
     buildRows();
     renderAccomChips();
@@ -363,6 +374,8 @@ async function load(){
 
 // 행 = 숙소 → 룸타입. 칸값 = 그 날 밤 사용 객실 수(중복 객실은 1실)·인원.
 function rowKey(inv){ return BYTYPE ? (inv.facility||'')+'|'+(inv.room_type||'-') : (inv.facility||''); }
+//  예약 구분값 = 엠클릭 원본(정산·확정·견적·대기). '대기'는 확정 전이라 방이 빠질 수 있다.
+function isWait(seq){ return (TEAM[seq]&&TEAM[seq].status)==='대기'; }
 function buildRows(){
   const own={}, meta={};
   INV.forEach(i=>{ const k=rowKey(i); own[k]=(own[k]||0)+1; meta[k]={facility:i.facility||'', type:BYTYPE?(i.room_type||'-'):''}; });
@@ -376,17 +389,19 @@ function buildRows(){
     if(isNaN(c)||isNaN(e)) return;
     for(const d=new Date(c); d<e; d.setDate(d.getDate()+1)){
       const ds=fmt(d); if(!dset.has(ds)) continue;
-      const m=(use[k]=use[k]||{}); const cell=(m[ds]=m[ds]||{rooms:new Set(),pax:0});
+      const m=(use[k]=use[k]||{}); const cell=(m[ds]=m[ds]||{rooms:new Set(),pax:0,wait:new Set(),waitPax:0});
       cell.rooms.add(r.inventory_id); cell.pax++;
+      // 엠클릭 구분값이 '대기' 인 예약 — 아직 확정이 아니라 빠질 수 있다(Min 2026-08)
+      if(isWait(r.event_seq)){ cell.wait.add(r.inventory_id); cell.waitPax++; }
     }
   });
   ROWS=Object.keys(own).map(k=>({
     key:k, facility:meta[k].facility, type:meta[k].type, own:own[k],
     days:DAYS.map(d=>{
-      const c=use[k]&&use[k][d]; if(!c) return {r:0,p:0,act:0};
+      const c=use[k]&&use[k][d]; if(!c) return {r:0,p:0,act:0,w:0,wp:0};
       // 사용 = 그날 밤 실제로 쓰인 객실 수(같은 방에 여러 팀·여러 명이 들어가도 1실).
       //  ⚠ 인원÷2 환산은 트리플(시즈 등)에서 같은 방을 2실로 세어 과대계상 → 폐기(Min 지적).
-      return {r:c.rooms.size, p:c.pax, act:c.rooms.size};
+      return {r:c.rooms.size, p:c.pax, act:c.rooms.size, w:c.wait.size, wp:c.waitPax};
     })
   })).sort((a,b)=>accomIdx(a.facility)-accomIdx(b.facility)
       || String(a.facility).localeCompare(String(b.facility))
@@ -427,7 +442,7 @@ function renderGrid(){
       const sel=(SEL&&SEL.key===r.key&&SEL.date===d)?' sel':'';
       const w=SZCore.parseLocalDate(d).getDay(), wk=(w===0||w===6)?' wk':'';
       return `<td class="c ${cls}${wk}${ms?' mstart':''}${sel}" data-k="${esc(r.key)}" data-d="${d}"
-        title="${esc(accomL(r.facility)+(r.type?' · '+r.type:'')+' · '+d)} — ${esc(tx('roomsN')(c.r))} / ${esc(tx('own'))} ${r.own} · ${esc(tx('paxN')(c.p))}${(!BYTYPE&&c.act&&c.act!==c.r)?' · '+esc(tx('actRooms')(c.act)):''}">${c.r||'·'}</td>`;
+        title="${esc(accomL(r.facility)+(r.type?' · '+r.type:'')+' · '+d)} — ${esc(tx('roomsN')(c.r))} / ${esc(tx('own'))} ${r.own} · ${esc(tx('paxN')(c.p))}${(!BYTYPE&&c.act&&c.act!==c.r)?' · '+esc(tx('actRooms')(c.act)):''}${c.w?' · '+esc(tx('waitT')(c.w,c.wp)):''}">${c.r||'·'}${c.w?`<span class="wq" title="${esc(tx('waitT')(c.w,c.wp))}">${tx('waitMark')}${c.w}</span>`:''}</td>`;
     }).join('');
     body.push(`<tr><td class="rh"><span class="rt">${esc(BYTYPE?r.type:accomL(r.facility))}</span><span class="own">${esc(tx('own'))} ${r.own}</span></td>${tds}</tr>`);
   });
