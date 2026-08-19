@@ -96,11 +96,11 @@
   table.oc td.c.over{background:#c0392b;color:#fff;font-weight:800}        /* 초과 = 넘겼다(조치 필요) */
   table.oc td.c.over::after{content:"!";font-size:11px;vertical-align:super;margin-left:1px}
   table.oc td.c.zero{background:#fafbfc;color:#c9ced6;font-weight:600;font-size:13px}
-  /* 대기 예약 — 확정이 아니라 빠질 수 있다. **색은 바꾸지 않고** 작은 회색 배지만 덧붙인다 */
-  table.oc td.c{position:relative}
-  table.oc td.c .wq{position:absolute;right:1px;bottom:0;font-size:9px;font-weight:800;line-height:1.1;
-    color:#5a6472;background:rgba(255,255,255,.82);border:1px solid #aab3c0;border-radius:3px;padding:0 2px}
-  table.oc td.c.over .wq{background:rgba(255,255,255,.92)}
+  /* 대기 예약 줄 — 방을 차지하지 않는 예약이라 **객실 수가 아니라 팀·인원**으로 따로 보여준다 */
+  table.oc tr.wait td{background:#f2f0f7;color:#4a3d63;border-top:1px dashed #b9aed4}
+  table.oc tr.wait td.rh{font-weight:800;font-size:12px;color:#4a3d63}
+  table.oc tr.wait td.c{font-size:12px;font-weight:800;cursor:default}
+  table.oc tr.wait td.c.none{color:#c3bcd4;font-weight:600}
   table.oc td.c.sel{outline:3px solid var(--accent);outline-offset:-3px}
   table.oc tr.sum td{background:#e3e7ec;font-weight:800;border-top:2px solid var(--border2)}
   table.oc tr.sum td.c{font-size:15px;color:var(--text)}
@@ -108,7 +108,7 @@
   .lgd{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--text2);font-weight:700;margin-top:8px;align-items:center}
   .lgd i{display:inline-block;width:13px;height:13px;border-radius:3px;border:1px solid var(--border2);margin-right:4px;vertical-align:-2px;font-style:normal}
   .lgd .f{background:#cfe8d4}.lgd .t{background:#fbe6a8}.lgd .u{background:#c8d4e6}.lgd .x{background:#c0392b}
-  .lgd .w{background:#fff;border:1px solid #aab3c0;position:relative}
+  .lgd .w{background:#f2f0f7;border:1px dashed #b9aed4}
 
   table.dt{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
   table.dt th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:6px 9px;text-align:left;font-size:11px;color:var(--text2);font-weight:800;white-space:nowrap}
@@ -117,7 +117,7 @@
   table.dt tr:hover td{background:var(--surface2)}
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=18.7">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -149,7 +149,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=35"></script>
-<script src="../assets/saizen-ops.js?v=18.6"></script>
+<script src="../assets/saizen-ops.js?v=18.7"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -164,7 +164,7 @@ const L={
     months:'表示する月', accom:'宿泊施設', all:'全体',
     byType:'ルームタイプ別に見る', actRooms:n=>`実際の使用 ${n}室`, dtRooms:n=>`この日の使用: ${n}室`,
     lgFree:'余裕(残4+)', lgTight:'ひっ迫(残1〜3)', lgFull:'満室(ちょうど)', lgOver:'超過(対応が必要)',
-    lgWait:'待機予約(未確定)', waitMark:'待', waitT:(r,p)=>`待機 ${r}室 / ${p}名(未確定 — 外れる可能性)`,
+    lgWait:'待機予約 — 満室でもお受けした未確定の予約(客室は押さえていません)', waitRowH:'待機予約', waitT:(t,p)=>`待機 ${t}チーム / ${p}名`,
     nights:n=>`${n}泊`, roomsN:n=>`${n}室`, paxN:n=>`${n}名`,
     thRow:'施設・ルームタイプ', own:'保有',
     dtTitle:d=>`${d} の内訳`, dtNone:'この日この客室タイプに滞在中のチームはありません。',
@@ -182,7 +182,7 @@ const L={
     months:'보는 달', accom:'숙소', all:'전체',
     byType:'룸타입별로 보기', actRooms:n=>`실제 사용 ${n}실`, dtRooms:n=>`이 날 사용: ${n}실`,
     lgFree:'여유(잔여 4+)', lgTight:'임박(잔여 1~3)', lgFull:'만실(딱 참)', lgOver:'초과(조치 필요)',
-    lgWait:'대기 예약(미확정)', waitMark:'대', waitT:(r,p)=>`대기 ${r}실 / ${p}명(미확정 — 빠질 수 있음)`,
+    lgWait:'대기 예약 — 만실이어도 받아 둔 미확정 예약(객실을 잡고 있지 않습니다)', waitRowH:'대기 예약', waitT:(t,p)=>`대기 ${t}팀 / ${p}명`,
     nights:n=>`${n}박`, roomsN:n=>`${n}실`, paxN:n=>`${n}명`,
     thRow:'숙소 · 룸타입', own:'보유',
     dtTitle:d=>`${d} 상세`, dtNone:'이 날 이 룸타입에 체류 중인 팀이 없습니다.',
@@ -200,7 +200,7 @@ const L={
     months:'Months', accom:'Lodging', all:'All',
     byType:'By room type', actRooms:n=>`${n} rooms actually used`, dtRooms:n=>`Rooms used this day: ${n}`,
     lgFree:'Free (4+ left)', lgTight:'Tight (1–3 left)', lgFull:'Full (exact)', lgOver:'Over (needs action)',
-    lgWait:'Waitlisted (not confirmed)', waitMark:'W', waitT:(r,p)=>`Waitlist ${r} rooms / ${p} pax (not confirmed — may drop)`,
+    lgWait:'Waitlist — taken even when full, not confirmed (holds no room)', waitRowH:'Waitlist', waitT:(t,p)=>`Waitlist ${t} teams / ${p} pax`,
     nights:n=>`${n} nights`, roomsN:n=>`${n} rooms`, paxN:n=>`${n}`,
     thRow:'Facility · room type', own:'Stock',
     dtTitle:d=>`${d} detail`, dtNone:'No team staying in this room type on this date.',
@@ -225,7 +225,7 @@ function fmt(d){ return SZCore.fmtDate(d); }
 const ACCOM_ORDER=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
 function accomIdx(a){ const i=ACCOM_ORDER.indexOf(a); return i<0?99:i; }
 
-let supa=null, INV=[], ROOMS=[], TEAM={}, DAYS=[], ROWS=[], SEL=null;
+let supa=null, INV=[], ROOMS=[], TEAM={}, DAYS=[], ROWS=[], SEL=null, WAIT={};
 let YMS=[thisYM(), shiftYM(thisYM(),1)];       // 이어보기(복수 월)
 // 기본 = 숙소 단위 한 행 + 인원을 트윈(2인 1실)으로 환산한 객실 수(Min 2026-08:
 //  "야마나미리조트는 그냥 야마나미리조트로, 인원 수로 트윈 잡고 갯수만. 방별로 쪼개지 말고.
@@ -365,6 +365,29 @@ async function load(){
       (bs.data||[]).forEach(b=>{ const t=(TEAM[b.event_seq]=TEAM[b.event_seq]||{tag:'',accom:''});
         t.rep=b.rep_name||''; t.status=b.status||''; });
     }
+    // 4) 대기 예약 — **방을 안 잡아도** 보여야 하므로 bookings 에서 직접 읽는다.
+    //    (만실이어도 받아 두는 예약이라 rooms 에 없다 — 있는 것이 오히려 이상하다)
+    WAIT={};
+    const wb=await paged((a,b)=>supa.from('bookings')
+      .select('event_seq,pax,dep_date,arr_date,rep_name')
+      .eq('status','대기').lt('dep_date',to).gt('arr_date',from).order('event_seq').range(a,b));
+    if(wb.error) throw wb.error;
+    const wseqs=(wb.data||[]).map(x=>x.event_seq);
+    const WACC={};
+    for(let i=0;i<wseqs.length;i+=300){
+      const {data:gs}=await supa.from('guests').select('event_seq,accom').in('event_seq',wseqs.slice(i,i+300));
+      (gs||[]).forEach(g=>{ WACC[g.event_seq]=g.accom||''; });
+    }
+    (wb.data||[]).forEach(b=>{
+      const fac=WACC[b.event_seq]||'';
+      const c=SZCore.parseLocalDate(b.dep_date), e=SZCore.parseLocalDate(b.arr_date);
+      if(isNaN(c)||isNaN(e)) return;
+      for(const d=new Date(c); d<e; d.setDate(d.getDate()+1)){
+        const ds=fmt(d); if(!DAYS.includes(ds)) continue;
+        const m=(WAIT[fac]=WAIT[fac]||{}); const cell=(m[ds]=m[ds]||{teams:0,pax:0,reps:[]});
+        cell.teams++; cell.pax+=Number(b.pax)||0; if(cell.reps.length<6) cell.reps.push(b.rep_name||'');
+      }
+    });
     buildRows();
     renderAccomChips();
     $('#stat').textContent=tx('statN')(ROWS.length,DAYS.length);
@@ -389,19 +412,20 @@ function buildRows(){
     if(isNaN(c)||isNaN(e)) return;
     for(const d=new Date(c); d<e; d.setDate(d.getDate()+1)){
       const ds=fmt(d); if(!dset.has(ds)) continue;
-      const m=(use[k]=use[k]||{}); const cell=(m[ds]=m[ds]||{rooms:new Set(),pax:0,wait:new Set(),waitPax:0});
+      // ⚠ 대기 예약은 **방을 차지하지 않는다**(만실이어도 받아 두는 예약) → 사용 수에서 뺀다.
+      //   견적·확정·정산은 모두 실제로 들어온 예약이라 그대로 센다(Min 2026-08).
+      if(isWait(r.event_seq)) return;
+      const m=(use[k]=use[k]||{}); const cell=(m[ds]=m[ds]||{rooms:new Set(),pax:0});
       cell.rooms.add(r.inventory_id); cell.pax++;
-      // 엠클릭 구분값이 '대기' 인 예약 — 아직 확정이 아니라 빠질 수 있다(Min 2026-08)
-      if(isWait(r.event_seq)){ cell.wait.add(r.inventory_id); cell.waitPax++; }
     }
   });
   ROWS=Object.keys(own).map(k=>({
     key:k, facility:meta[k].facility, type:meta[k].type, own:own[k],
     days:DAYS.map(d=>{
-      const c=use[k]&&use[k][d]; if(!c) return {r:0,p:0,act:0,w:0,wp:0};
+      const c=use[k]&&use[k][d]; if(!c) return {r:0,p:0,act:0};
       // 사용 = 그날 밤 실제로 쓰인 객실 수(같은 방에 여러 팀·여러 명이 들어가도 1실).
       //  ⚠ 인원÷2 환산은 트리플(시즈 등)에서 같은 방을 2실로 세어 과대계상 → 폐기(Min 지적).
-      return {r:c.rooms.size, p:c.pax, act:c.rooms.size, w:c.wait.size, wp:c.waitPax};
+      return {r:c.rooms.size, p:c.pax, act:c.rooms.size};
     })
   })).sort((a,b)=>accomIdx(a.facility)-accomIdx(b.facility)
       || String(a.facility).localeCompare(String(b.facility))
@@ -415,6 +439,18 @@ function cellCls(u,own){
   if(left===0) return 'full';    // 만실 = 딱 찼다(정상)
   if(left<=3) return 'tight';
   return 'free';
+}
+//  대기 예약 줄 — 그 숙소에 대기가 하나도 없으면 줄 자체를 안 그린다.
+function waitRow(fac){
+  const m=WAIT[fac]; if(!m || !Object.keys(m).length) return '';
+  let prevM='';
+  const tds=DAYS.map(d=>{
+    const ms=d.slice(0,7)!==prevM; prevM=d.slice(0,7);
+    const c=m[d];
+    if(!c) return `<td class="c none${ms?' mstart':''}">·</td>`;
+    return `<td class="c${ms?' mstart':''}" title="${esc(tx('waitT')(c.teams,c.pax)+(c.reps.length?' — '+c.reps.filter(Boolean).join(', '):''))}">${c.teams}<span style="font-weight:600">(${c.pax})</span></td>`;
+  }).join('');
+  return `<tr class="wait"><td class="rh">${tx('waitRowH')}</td>${tds}</tr>`;
 }
 function renderGrid(){
   const box=$('#grid'); if(!box) return;
@@ -442,9 +478,12 @@ function renderGrid(){
       const sel=(SEL&&SEL.key===r.key&&SEL.date===d)?' sel':'';
       const w=SZCore.parseLocalDate(d).getDay(), wk=(w===0||w===6)?' wk':'';
       return `<td class="c ${cls}${wk}${ms?' mstart':''}${sel}" data-k="${esc(r.key)}" data-d="${d}"
-        title="${esc(accomL(r.facility)+(r.type?' · '+r.type:'')+' · '+d)} — ${esc(tx('roomsN')(c.r))} / ${esc(tx('own'))} ${r.own} · ${esc(tx('paxN')(c.p))}${(!BYTYPE&&c.act&&c.act!==c.r)?' · '+esc(tx('actRooms')(c.act)):''}${c.w?' · '+esc(tx('waitT')(c.w,c.wp)):''}">${c.r||'·'}${c.w?`<span class="wq" title="${esc(tx('waitT')(c.w,c.wp))}">${tx('waitMark')}${c.w}</span>`:''}</td>`;
+        title="${esc(accomL(r.facility)+(r.type?' · '+r.type:'')+' · '+d)} — ${esc(tx('roomsN')(c.r))} / ${esc(tx('own'))} ${r.own} · ${esc(tx('paxN')(c.p))}${(!BYTYPE&&c.act&&c.act!==c.r)?' · '+esc(tx('actRooms')(c.act)):''}">${c.r||'·'}</td>`;
     }).join('');
     body.push(`<tr><td class="rh"><span class="rt">${esc(BYTYPE?r.type:accomL(r.facility))}</span><span class="own">${esc(tx('own'))} ${r.own}</span></td>${tds}</tr>`);
+    // 그 숙소의 마지막 행 뒤에 대기 예약 줄(방을 안 잡는 예약이라 팀·인원으로)
+    const nxt=rows[rows.indexOf(r)+1];
+    if(!nxt || nxt.facility!==r.facility) body.push(waitRow(r.facility));
   });
   // 합계 행
   const tot=DAYS.map((d,i)=>rows.reduce((n,r)=>n+r.days[i].r,0));
