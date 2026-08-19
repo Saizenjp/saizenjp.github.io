@@ -216,6 +216,16 @@
     background:var(--surface2);border-radius:6px;padding:4px 8px;margin-top:5px;line-height:1.45}
   .hd-cat{flex:0 0 auto;font-weight:800;color:#fff;background:var(--err);border-radius:5px;padding:1px 7px;font-size:11px}
   .hd-go{margin-top:6px;font-size:11.5px;font-weight:800;color:var(--accent)}
+  /* 미배정 사유 카드의 비고·현지비고 — 왜 손으로 넣어야 하는지는 대부분 여기에 적혀 있다 */
+  .hd-nt{margin-top:5px;display:flex;gap:6px;align-items:flex-start;font-size:11.5px;line-height:1.5;
+    background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:5px 8px;text-align:left}
+  .hd-nt+.hd-nt{margin-top:4px}
+  .hd-nt .k{flex:0 0 auto;font-weight:800;color:#fff;background:var(--muted);border-radius:5px;padding:1px 6px;font-size:10.5px}
+  .hd-nt.loc .k{background:var(--accent2)}
+  .hd-nt .v{flex:1 1 auto;color:var(--text);white-space:pre-wrap;word-break:break-word}
+  .hd-nt .v b{color:var(--err);font-weight:800}
+  .hd-nt.one{margin:2px 8px 0;padding:3px 7px;font-size:11px}
+  .hd-nt.one .v{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .sgn{display:block;font-size:11px;color:#8a2a1c;background:#fbeeeb;border:1px solid #e3bdb4;border-radius:6px;padding:3px 8px;margin-top:4px;line-height:1.4}
   .btn.xs.sg-doc{margin-left:5px;padding:1px 8px;font-size:10.5px;color:var(--err);border-color:#e3bdb4}
   .asob{display:inline-block;font-size:9px;font-weight:800;color:#fff;background:#7a5aa8;border-radius:4px;padding:1px 5px;margin-left:4px;white-space:nowrap}
@@ -479,7 +489,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=19.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=19.5">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -609,7 +619,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=35"></script>
-<script src="../assets/saizen-ops.js?v=19.4"></script>
+<script src="../assets/saizen-ops.js?v=19.5"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -677,6 +687,7 @@ const L={
     pinOnly:'📌 直接割当のみ',
     pickSearch:'名前・タグコード・行事番号で検索', pickNoHit:'該当なし',
     sgBadge:'シングル指定', sgBadgeT:'備考にシングル指定 — 誰が単独か特定できないため手動割当',
+    hdRmk:'備考', hdRmkLocal:'現地備考',
     sgDoc:'手配書', sgDocT:'現地手配書をポップアップで開く(備考を確認して割り当て)',
     holdNoRoster:gc=>`${gc} 名簿未登録`,
     holdCatNoRoster:'名簿未登録', holdFixNoRoster:'その予約の同行者名簿が入っていません。データ登録(step1)でその月を再取込してください。',
@@ -928,6 +939,7 @@ const L={
     pinOnly:'📌 직접 배정만',
     pickSearch:'이름·태그코드·행사번호 검색', pickNoHit:'검색 결과 없음',
     sgBadge:'싱글 지정', sgBadgeT:'비고에 싱글 지정 — 누가 단독인지 특정할 수 없어 수기 배정',
+    hdRmk:'비고', hdRmkLocal:'현지비고',
     sgDoc:'수배서', sgDocT:'현지수배서를 팝업으로 열기(비고 확인 후 바로 배정)',
     holdNoRoster:gc=>`${gc} 명단미등록`,
     holdCatNoRoster:'명단미등록', holdFixNoRoster:'그 예약의 동행자 명단이 들어와 있지 않습니다. 데이터 등록(step1)에서 그 달을 다시 임포트해 주세요.',
@@ -1172,6 +1184,7 @@ const L={
     pinOnly:'📌 Direct only',
     pickSearch:'Search name · tag code · booking no.', pickNoHit:'No match',
     sgBadge:'Single requested', sgBadgeT:'Remarks mention a single room — we cannot tell who, so assign manually',
+    hdRmk:'Remarks', hdRmkLocal:'On-site remarks',
     sgDoc:'Dispatch', sgDocT:'Open the local dispatch sheet in a popup',
     holdNoRoster:gc=>`${gc} roster not registered`,
     holdCatNoRoster:'Roster not registered', holdFixNoRoster:'The companion roster for that booking is missing. Re-import that month in data registration (step1).',
@@ -1931,6 +1944,25 @@ function dayScopeLabel(){
 // ── 「싱글 지정」 팀 — 누가 단독인지 알 수 없으니 수기 배정이 맞다(Min 2026-08).
 //    그래서 배정 화면에서 *비고 원문*을 그대로 보여주고, 현지수배서를 바로 열 수 있게 한다.
 const SG_RE=/싱글|single|シングル/i;
+// 비고·현지비고 — 「싱글」·「별관」처럼 손으로 넣어야 하는 이유가 대부분 여기에 적혀 있다(Min 2026-08).
+//  방배정에 걸리는 낱말은 굵게 칠해 눈에 걸리게 한다.
+const NOTE_HI=/(싱글|シングル|single|별관|別館|별채|別棟|온천|温泉|트윈|ツイン|더블|ダブル|트리플|トリプル|금연|禁煙|흡연|喫煙|1인|一人|독방|층|階)/gi;
+function hiNote(v){ return esc(String(v||'')).replace(NOTE_HI,'<b>$1</b>'); }
+function noteRows(g){
+  if(!g) return '';
+  let h='';
+  if(g.remark_local) h+=`<div class="hd-nt loc"><span class="k">${tx('hdRmkLocal')}</span><span class="v">${hiNote(g.remark_local)}</span></div>`;
+  if(g.remark)       h+=`<div class="hd-nt"><span class="k">${tx('hdRmk')}</span><span class="v">${hiNote(g.remark)}</span></div>`;
+  return h;
+}
+// 배정 화면의 팀 카드용 — 목록이 길어지지 않게 **한 줄**로(넘치면 …, 전체는 툴팁)
+function noteLine(g){
+  if(!g||(!g.remark_local&&!g.remark)) return '';
+  const full=[g.remark_local,g.remark].filter(Boolean).join(' / ');
+  const k=g.remark_local?tx('hdRmkLocal'):tx('hdRmk');
+  return `<div class="hd-nt one${g.remark_local?' loc':''}" title="${esc(full)}">`
+    +`<span class="k">${k}</span><span class="v">${hiNote(full)}</span></div>`;
+}
 function singleNote(g){
   if(!g) return '';
   const t=[g.remark_local,g.remark].filter(Boolean).join(' / ');
@@ -2257,6 +2289,7 @@ function renderUnassigned(){
         <span class="left${leftN?'':' ok'}">${leftN?tx('leftOf',leftN,roster.length||g.pax):tx('allDone')}</span>
       </div>
       ${singleNote(g)?`<div class="tc-s" style="padding-top:0">${singleBadgeHtml(g)}</div>`:''}
+      ${noteLine(g)}
       <div class="tc-s">${fmtMD(g.dep)} → ${fmtMD(g.arr)} · ${teamNights(g)}${tx('nightUnit')} · ${g.pax}${tx('nameUnit')}${g.isNewCheckin?` <b class="cnew">${tx('todayCheckin')}</b>`:''}
         <br>${esc(g.accom||'')} · <b>${esc(g.sale_type||'')} → ${esc(ROOMTYPE_MAP[g.sale_type]||tx('onsiteFix'))}</b></div>
       <div class="roster">${rosterHtml}</div>
@@ -3679,7 +3712,7 @@ function openHoldsModal(){
     const gc=teamGroupCode(g.event_seq)||tx('codeUndecided');
     const isNon=(g.group_code||'').startsWith('F');
     const note=singleNote(g);
-    const hay=[gc,g.rep,g.event_no,...c.items.map(h=>h.t),
+    const hay=[gc,g.rep,g.event_no,g.remark,g.remark_local,...c.items.map(h=>h.t),
       ...teamRoster(g.event_seq).map(m=>m.name_kr+' '+(m.name_en||'')+' '+mName(m))].join(' ').toLowerCase();
     return `<button type="button" class="hd-card hd-team" data-seq="${g.event_seq}"
       data-cats="${esc(catsOf(c).join(' '))}" data-acc="${esc(teamPlaceKeys(g)[0]||g.accom||'')}" data-hay="${esc(hay)}"
@@ -3693,6 +3726,7 @@ function openHoldsModal(){
       </div>
       <div style="font-size:12px;color:var(--text2);margin-top:3px">${fmtMD(g.dep)}→${fmtMD(g.arr)} · ${teamNights(g)}${tx('nightUnit')} · ${esc(g.rep||'')} · ${esc(g.accom||'')}</div>
       ${reasons}
+      ${noteRows(g)}
       <div class="hd-go">${tx('hdOpen')} →</div>
     </button>`;
   };
