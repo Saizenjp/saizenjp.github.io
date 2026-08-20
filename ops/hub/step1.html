@@ -113,7 +113,7 @@
   .navlink:hover{background:rgba(0,0,0,.04)}
   .navlink.cur{background:var(--accentSoft,#e6eeda);color:var(--accent,#647548);border-color:var(--accent,#647548)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=19.7">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=19.8">
 </head>
 <body data-so-area="step1">
 <div class="wrap">
@@ -249,7 +249,7 @@
 <style>@keyframes runspin{to{transform:rotate(360deg)}}</style>
 
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=19.7"></script>
+<script src="../assets/saizen-ops.js?v=19.8"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -270,6 +270,9 @@ const L = {
     mdLbl:'削除する月', mdDelBtn:'🗑 この月のデータ削除', mdRefreshTitle:'月リスト更新',
     mdNote:'選択した月のチーム・名簿・客室割当・現地記録をすべて削除(cascade)します。他の月には影響しません。元に戻せません。',
     mdNoMonths:'(登録された月なし)', btnRunning:'⏳ データ登録中…',
+    dupKeyFixed:(n,names)=>`⚠ 同じチームに氏名+生年が同一の行 ${n}件 — 別人として登録しました(${names}). 원본 확인 요망`,
+    retryN:(i,n)=>`再試行 ${i}/${n}`, stpPxClean:'名簿の整理', stpGuests:'運営チーム作成', stpCodes:'グループコード照合',
+    stpGm:'運営個人 保存', stpFpool:(y,n)=>`${y}年 Fコード読込 ${n}`,
     failTitle:'⚠ 登録に失敗しました', failStep:s=>`止まった所: ${s}`, failCopy:'内容をコピー', failCopied:'コピーしました', failClose:'閉じる',
     failHint:'このPCのネットワーク遮断や権限が原因のことがあります。<b>[内容をコピー]</b>を押して管理者にそのまま送ってください。',
     whyHead:'登録できません —', whyConn:'サーバー未接続', whyRes:'予約リストの未アップロード', whyIlh:'同行者別予約の未アップロード',
@@ -318,6 +321,9 @@ const L = {
     mdLbl:'삭제할 월', mdDelBtn:'🗑 이 달 데이터 삭제', mdRefreshTitle:'월 목록 새로고침',
     mdNote:'선택한 월의 팀·명단·방배정·현장기록을 모두 삭제(cascade)합니다. 다른 달은 영향 없습니다. 되돌릴 수 없습니다.',
     mdNoMonths:'(등록된 월 없음)', btnRunning:'⏳ 데이터 등록중…',
+    dupKeyFixed:(n,names)=>`⚠ 같은 팀에 이름+생년이 똑같은 행 ${n}건 — 다른 사람으로 나눠 등록했습니다(${names}). 엠클릭 원본을 확인해 주세요`,
+    retryN:(i,n)=>`재시도 ${i}/${n}`, stpPxClean:'명단 정리', stpGuests:'운영 팀 만들기', stpCodes:'그룹코드 대조',
+    stpGm:'운영 개인 저장', stpFpool:(y,n)=>`${y}년 F코드 읽는 중 ${n}`,
     failTitle:'⚠ 등록에 실패했습니다', failStep:s=>`멈춘 곳: ${s}`, failCopy:'내용 복사', failCopied:'복사했습니다', failClose:'닫기',
     failHint:'이 PC의 사내망 차단이나 권한 때문일 수 있습니다. <b>[내용 복사]</b>를 눌러 관리자에게 그대로 보내 주세요.',
     whyHead:'등록할 수 없습니다 —', whyConn:'서버 연결 안 됨', whyRes:'예약리스트 파일 없음', whyIlh:'일행별예약 파일 없음',
@@ -366,6 +372,9 @@ const L = {
     mdLbl:'Month to delete', mdDelBtn:'🗑 Delete this month', mdRefreshTitle:'Refresh month list',
     mdNote:'Deletes all teams, rosters, room assignments and field records for the selected month (cascade). Other months are unaffected. This cannot be undone.',
     mdNoMonths:'(no registered months)', btnRunning:'⏳ Registering…',
+    dupKeyFixed:(n,names)=>`⚠ ${n} row(s) share name+birth inside a team — registered as separate people (${names}). Please check the source file`,
+    retryN:(i,n)=>`retry ${i}/${n}`, stpPxClean:'cleaning roster', stpGuests:'building teams', stpCodes:'matching group codes',
+    stpGm:'saving members', stpFpool:(y,n)=>`loading ${y} F-codes ${n}`,
     failTitle:'⚠ Registration failed', failStep:s=>`stopped at: ${s}`, failCopy:'Copy details', failCopied:'Copied', failClose:'Close',
     failHint:'It may be this PC\u2019s network restrictions or permissions. Press <b>[Copy details]</b> and send it to your administrator as-is.',
     whyHead:'Cannot register —', whyConn:'not connected to the server', whyRes:'booking list not uploaded', whyIlh:'passenger list not uploaded',
@@ -648,16 +657,32 @@ function showFailModal(err){
   const cl=$('#fail-close'); if(cl) cl.textContent=tx('failClose');
   m.style.display='flex';
 }
+// 사내망에서는 요청 하나가 조용히 끊기기도 한다. 그 한 번 때문에 몇 분짜리 등록이 통째로
+//  끝나 버리면 「눌러도 안 된다」로 보인다 → **다시 시도**하고, 그래도 안 되면 어디서 멈췄는지 남긴다.
+async function sbTry(label, fn, tries){
+  const n = tries || 3; let last = null;
+  for(let i=1;i<=n;i++){
+    runProgress(i===1 ? label : `${label} · ${tx('retryN')(i,n)}`);
+    try{
+      const r = await fn();
+      if(r && r.error) throw r.error;
+      return r;
+    }catch(e){
+      last = e;
+      if(i<n) await new Promise(res=>setTimeout(res, i*1200));
+    }
+  }
+  throw last;
+}
 async function upsertChunked(table, rows, conflict){
   if(!rows.length){ return 0; }
-  _runStep = `${table} 0/${rows.length}`;   // 실패했을 때 어디서 멈췄는지 남긴다
   const SIZE = 500; let done = 0;
   for(let i=0;i<rows.length;i+=SIZE){
-    if(rows.length>SIZE) runProgress(`${table} ${Math.min(i+SIZE,rows.length)}/${rows.length}`);
     const chunk = rows.slice(i,i+SIZE);
-    const q = supa.from(table).upsert(chunk, conflict?{onConflict:conflict}:undefined);
-    const {error} = await q;
-    if(error) throw new Error(`${table}: ${error.message}`);
+    const label = `${table} ${Math.min(i+SIZE,rows.length)}/${rows.length}`;
+    try{
+      await sbTry(label, ()=>supa.from(table).upsert(chunk, conflict?{onConflict:conflict}:undefined));
+    }catch(e){ throw new Error(`${table}: ${(e&&e.message)||e}`); }
     done += chunk.length;
   }
   return done;
@@ -836,6 +861,7 @@ async function run(){
     //   passengers 는 id upsert 라 옛 행이 그대로 남아 명단 수가 부풀었다(#30012382: 4명인데 8행).
     //   → 이번 파일에 명단이 실린 팀에 한해, 파일에 없는 행을 지운다.
     //   ⚠ 명단이 0건인 팀은 손대지 않는다(파일 누락 ≠ 취소). FK 는 SET NULL 이라 안전.
+    runProgress(tx('stpPxClean'));
     try{
       const fileIds={};   // event_seq → Set(id)
       paxRows.forEach(p=>{ (fileIds[p.event_seq]=fileIds[p.event_seq]||new Set()).add(p.id); });
@@ -854,6 +880,7 @@ async function run(){
     }catch(_){ /* 정리 실패는 임포트를 막지 않음 */ }
     log(`✓ ${t('s1_dyn_log_pax')} ${stat['passengers']}${t('s1_dyn_cases')}`,'ok');
 
+    runProgress(tx('stpGuests'));
     // ── 3) guests (팀 운영 원장) — procMap 기준 ──
     // 팀별 대표자 member_key로 그룹코드 매칭(회원). 미매칭 팀은 비회원 F풀 코드를 자동 배정.
     const guestRows = [];
@@ -883,13 +910,23 @@ async function run(){
     const exAll = [];
     try {
       for(const yr of (impYears.length?impYears:[String(ym||'').slice(0,4)])){
-        const { data: ex } = await supa.from('guests')
-          .select('event_seq, group_code, bookings!inner(dep_date,arr_date)')
-          .like('session_ym', yr+'-%')
-          .like('group_code', 'F%');
-        (ex||[]).forEach(g=>{ const c=g.group_code; if(!c) return; const b=g.bookings||{};
-          exAll.push({ seq:g.event_seq, code:c,
-            dep:String(b.dep_date||'').slice(0,10), arr:String(b.arr_date||'').slice(0,10) }); });
+        // ⚠ 페이지네이션 필수 — Supabase 기본 1000행에서 잘리면 그 뒤 F코드가 안 보여
+        //   이미 쓰는 코드를 다시 배정한다(같은 코드 두 팀). 연 F팀이 1000을 넘는다.
+        let pg=0;
+        for(;;){
+          runProgress(tx('stpFpool')(yr, exAll.length));
+          const { data: ex, error } = await supa.from('guests')
+            .select('event_seq, group_code, bookings!inner(dep_date,arr_date)')
+            .like('session_ym', yr+'-%')
+            .like('group_code', 'F%')
+            .order('event_seq').range(pg, pg+999);
+          if(error) throw error;
+          (ex||[]).forEach(g=>{ const c=g.group_code; if(!c) return; const b=g.bookings||{};
+            exAll.push({ seq:g.event_seq, code:c,
+              dep:String(b.dep_date||'').slice(0,10), arr:String(b.arr_date||'').slice(0,10) }); });
+          if(!ex || ex.length<1000) break;
+          pg+=1000;
+        }
       }
     } catch(e){}
     // 같은 날 도착 팀끼리 한 글자라도 겹치는 코드를 찾아 '나중 것'만 해제 → 아래에서 새 코드를 받는다.
@@ -968,6 +1005,7 @@ async function run(){
     }
 
     // ── 그룹코드 xlsx 미업로드 시: member_codes(Supabase)에서 매칭(RPC) — xlsx 없이도 동작 ──
+    runProgress(tx('stpCodes'));
     if(Object.keys(codeMap).length===0 && supa){
       const repKeys=[...new Set(Object.keys(procMap).map(seqStr=>{
         const seq=parseInt(seqStr,10); const info=procMap[seq];
@@ -1047,8 +1085,27 @@ async function run(){
         });
       });
     });
+    // 🔴 같은 팀에 **이름+생년이 똑같은 행이 두 번** 들어오는 경우가 실제로 있다(엠클릭 원본 중복).
+    //   그대로 upsert 하면 Postgres 가 「ON CONFLICT DO UPDATE cannot affect row a second time」로
+    //   **그 500행 묶음을 통째로 거부**해 등록이 그 자리에서 죽는다(2026-11 노승목 사례로 확인).
+    //   → 두 번째부터 person_key 에 #2·#3 을 붙여 **서로 다른 사람으로** 남긴다.
+    //     (첫 번째는 키가 그대로라 기존 방배정·조편성·청구가 그 사람에게 붙어 있는다.)
+    {
+      const noBySeq = {}; bookingRows.forEach(b=>{ noBySeq[b.event_seq]=b.event_no||b.event_seq; });
+      const seen = {}; let dup = 0; const dupNames = [];
+      gmRows.forEach(r=>{
+        const k = r.event_seq + '|' + r.person_key;
+        if(seen[k]){
+          const n = ++seen[k];
+          r.person_key = r.person_key + '#' + n;
+          dup++; if(dupNames.length<6) dupNames.push(`${r.name_kr||''}(${noBySeq[r.event_seq]||r.event_seq})`);
+        } else seen[k] = 1;
+      });
+      if(dup) log(tx('dupKeyFixed')(dup, dupNames.join(', ')), 'warn');
+    }
     // 충돌키 = (event_seq, person_key) — 같은 사람이면 자리번호가 바뀌어도 **같은 행**을 갱신한다.
     //   → 방배정(rooms.member_id)·골프 조·개인 청구가 그 사람에게 그대로 붙어 있는다.
+    runProgress(tx('stpGm'));
     stat['guest_members'] = await upsertChunked('guest_members', gmRows, 'event_seq,person_key');
     log(`✓ ${t('s1_dyn_log_members')} ${stat['guest_members']}${t('s1_dyn_cntPpl')}`,'ok');
 
