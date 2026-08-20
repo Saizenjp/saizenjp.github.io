@@ -1130,6 +1130,8 @@ async function run(){
             .select('id,event_seq,seq_in_team,person_key,passenger_id,name_kr').in('event_seq',chunk).range(pg,pg+999);
           if(error||!data||!data.length) break; allGm.push(...data); if(data.length<1000) break; pg+=1000; }
       }
+      // ⚠ `#dup` 만 벗긴다. 같은 팀에 같은 이름이 두 자리인 경우 붙인 `#2`·`#3` 은 **벗기면 안 된다** —
+      //   벗으면 두 번째 자리의 방이 첫 번째 사람에게 옮겨 붙는다.
       const baseKey = k => String(k||'').split('#dup')[0];
       // 살아남는 행(= 이번 파일에 있는 사람) 색인 — 방 이전 대상 찾기용
       const survByTeam={};
@@ -1137,7 +1139,9 @@ async function run(){
         const tt=(survByTeam[r.event_seq]=survByTeam[r.event_seq]||{byKey:{},byPid:{},byName:{}});
         tt.byKey[baseKey(r.person_key)]=r.id;
         if(r.passenger_id!=null) tt.byPid[r.passenger_id]=r.id;
-        if(r.name_kr) tt.byName[r.name_kr]=r.id; } });
+        // 이름 폴백은 그 팀에서 **이름이 하나뿐일 때만** 쓴다. 같은 이름이 두 자리면
+        // 누구의 방인지 알 수 없어, 두 번째 자리의 방이 첫 번째 사람에게 붙어 버린다.
+        if(r.name_kr){ tt.byName[r.name_kr] = (r.name_kr in tt.byName) ? null : r.id; } } });
       let ghosts = allGm.filter(r=> !(keysBySeq[r.event_seq]||new Set()).has(r.person_key));
       // 🛡 안전장치 — 한 팀에서 절반 넘게 지워야 한다면 키가 어긋난 것이지 취소가 아니다.
       //   (이름 표기 변경·생년 누락 등으로 person_key 가 달라지면 멀쩡한 사람이 통째로 지워질 수 있다)
