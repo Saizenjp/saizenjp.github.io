@@ -113,7 +113,7 @@
   .navlink:hover{background:rgba(0,0,0,.04)}
   .navlink.cur{background:var(--accentSoft,#e6eeda);color:var(--accent,#647548);border-color:var(--accent,#647548)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=19.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=19.9">
 </head>
 <body data-so-area="step1">
 <div class="wrap">
@@ -249,7 +249,7 @@
 <style>@keyframes runspin{to{transform:rotate(360deg)}}</style>
 
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=19.8"></script>
+<script src="../assets/saizen-ops.js?v=19.9"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -270,7 +270,7 @@ const L = {
     mdLbl:'削除する月', mdDelBtn:'🗑 この月のデータ削除', mdRefreshTitle:'月リスト更新',
     mdNote:'選択した月のチーム・名簿・客室割当・現地記録をすべて削除(cascade)します。他の月には影響しません。元に戻せません。',
     mdNoMonths:'(登録された月なし)', btnRunning:'⏳ データ登録中…',
-    dupKeyFixed:(n,names)=>`⚠ 同じチームに氏名+生年が同一の行 ${n}件 — 別人として登録しました(${names}). 원본 확인 요망`,
+    dupKeyFixed:(n,names)=>`⚠ 同じチームに氏名+生年が同一の行 ${n}件 — 予約人数を保つため**別の席**として残しました(${names})。同一人物が二重に入っているならエムクリックで修正してください`,
     retryN:(i,n)=>`再試行 ${i}/${n}`, stpPxClean:'名簿の整理', stpGuests:'運営チーム作成', stpCodes:'グループコード照合',
     stpGm:'運営個人 保存', stpFpool:(y,n)=>`${y}年 Fコード読込 ${n}`,
     failTitle:'⚠ 登録に失敗しました', failStep:s=>`止まった所: ${s}`, failCopy:'内容をコピー', failCopied:'コピーしました', failClose:'閉じる',
@@ -321,7 +321,7 @@ const L = {
     mdLbl:'삭제할 월', mdDelBtn:'🗑 이 달 데이터 삭제', mdRefreshTitle:'월 목록 새로고침',
     mdNote:'선택한 월의 팀·명단·방배정·현장기록을 모두 삭제(cascade)합니다. 다른 달은 영향 없습니다. 되돌릴 수 없습니다.',
     mdNoMonths:'(등록된 월 없음)', btnRunning:'⏳ 데이터 등록중…',
-    dupKeyFixed:(n,names)=>`⚠ 같은 팀에 이름+생년이 똑같은 행 ${n}건 — 다른 사람으로 나눠 등록했습니다(${names}). 엠클릭 원본을 확인해 주세요`,
+    dupKeyFixed:(n,names)=>`⚠ 같은 팀에 이름+생년이 똑같은 행 ${n}건 — 예약 인원을 맞추려고 **별개의 자리**로 남겼습니다(${names}). 한 사람이 두 번 들어간 것이면 엠클릭에서 고쳐 주세요`,
     retryN:(i,n)=>`재시도 ${i}/${n}`, stpPxClean:'명단 정리', stpGuests:'운영 팀 만들기', stpCodes:'그룹코드 대조',
     stpGm:'운영 개인 저장', stpFpool:(y,n)=>`${y}년 F코드 읽는 중 ${n}`,
     failTitle:'⚠ 등록에 실패했습니다', failStep:s=>`멈춘 곳: ${s}`, failCopy:'내용 복사', failCopied:'복사했습니다', failClose:'닫기',
@@ -372,7 +372,7 @@ const L = {
     mdLbl:'Month to delete', mdDelBtn:'🗑 Delete this month', mdRefreshTitle:'Refresh month list',
     mdNote:'Deletes all teams, rosters, room assignments and field records for the selected month (cascade). Other months are unaffected. This cannot be undone.',
     mdNoMonths:'(no registered months)', btnRunning:'⏳ Registering…',
-    dupKeyFixed:(n,names)=>`⚠ ${n} row(s) share name+birth inside a team — registered as separate people (${names}). Please check the source file`,
+    dupKeyFixed:(n,names)=>`⚠ ${n} row(s) share name+birth inside a team — kept as separate seats to match the booked headcount (${names}). If it is one person entered twice, fix it in the source`,
     retryN:(i,n)=>`retry ${i}/${n}`, stpPxClean:'cleaning roster', stpGuests:'building teams', stpCodes:'matching group codes',
     stpGm:'saving members', stpFpool:(y,n)=>`loading ${y} F-codes ${n}`,
     failTitle:'⚠ Registration failed', failStep:s=>`stopped at: ${s}`, failCopy:'Copy details', failCopied:'Copied', failClose:'Close',
@@ -1088,8 +1088,11 @@ async function run(){
     // 🔴 같은 팀에 **이름+생년이 똑같은 행이 두 번** 들어오는 경우가 실제로 있다(엠클릭 원본 중복).
     //   그대로 upsert 하면 Postgres 가 「ON CONFLICT DO UPDATE cannot affect row a second time」로
     //   **그 500행 묶음을 통째로 거부**해 등록이 그 자리에서 죽는다(2026-11 노승목 사례로 확인).
-    //   → 두 번째부터 person_key 에 #2·#3 을 붙여 **서로 다른 사람으로** 남긴다.
-    //     (첫 번째는 키가 그대로라 기존 방배정·조편성·청구가 그 사람에게 붙어 있는다.)
+    //   → 두 번째부터 person_key 에 #2·#3 을 붙여 **별개의 자리**로 남긴다.
+    //     합치지 않는 이유 = 예약 인원(pax)과 명단 수가 어긋나면 방·식수·네임택이 한 자리 모자란다.
+    //     실제 사례(96093)는 pax 8명인데 대표자 이름이 두 블록에 각각 들어가 노승목이 두 번,
+    //     나머지 6자리는 무기명이었다 — 즉 「다른 사람」이 아니라 **아직 이름이 안 들어온 자리**다.
+    //     첫 번째는 키가 그대로라 기존 방배정·조편성·청구가 그 사람에게 붙어 있는다.
     {
       const noBySeq = {}; bookingRows.forEach(b=>{ noBySeq[b.event_seq]=b.event_no||b.event_seq; });
       const seen = {}; let dup = 0; const dupNames = [];
