@@ -113,7 +113,7 @@
   .navlink:hover{background:rgba(0,0,0,.04)}
   .navlink.cur{background:var(--accentSoft,#e6eeda);color:var(--accent,#647548);border-color:var(--accent,#647548)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=19.9">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.0">
 </head>
 <body data-so-area="step1">
 <div class="wrap">
@@ -203,6 +203,20 @@
   </div>
 </div>
 
+<!-- ── 명단 중복 → 등록 중단 라이트박스: 엠클릭에서 무엇을 고쳐야 하는지 알려 준다 ── -->
+<div id="dup-modal" style="display:none;position:fixed;inset:0;z-index:215;background:rgba(31,42,24,.45);align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--surface);border:1px solid var(--err);border-radius:16px;max-width:640px;width:100%;padding:26px;box-shadow:0 16px 48px rgba(15,23,42,.22)">
+    <h3 id="dup-title" style="font-size:18px;font-weight:800;color:var(--err);margin-bottom:8px"></h3>
+    <p id="dup-lead" style="font-size:13px;color:var(--text2);line-height:1.65;margin-bottom:12px"></p>
+    <div id="dup-list" style="background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:11px 13px;font-size:12.5px;line-height:1.7;max-height:220px;overflow:auto;margin-bottom:12px"></div>
+    <p id="dup-how" style="font-size:12.5px;color:var(--text);line-height:1.65;margin-bottom:16px"></p>
+    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn ghost" id="dup-copy" type="button"></button>
+      <button class="btn" id="dup-close" type="button"></button>
+    </div>
+  </div>
+</div>
+
 <!-- ── 등록 실패 라이트박스 — 실패를 로그 한 줄로만 두면 「눌러도 안 된다」로 보인다 ── -->
 <div id="fail-modal" style="display:none;position:fixed;inset:0;z-index:210;background:rgba(31,42,24,.45);align-items:center;justify-content:center;padding:20px">
   <div style="background:var(--surface);border:1px solid var(--err);border-radius:16px;max-width:520px;width:100%;padding:26px;box-shadow:0 16px 48px rgba(15,23,42,.22)">
@@ -249,7 +263,7 @@
 <style>@keyframes runspin{to{transform:rotate(360deg)}}</style>
 
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=19.9"></script>
+<script src="../assets/saizen-ops.js?v=20.0"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -270,7 +284,12 @@ const L = {
     mdLbl:'削除する月', mdDelBtn:'🗑 この月のデータ削除', mdRefreshTitle:'月リスト更新',
     mdNote:'選択した月のチーム・名簿・客室割当・現地記録をすべて削除(cascade)します。他の月には影響しません。元に戻せません。',
     mdNoMonths:'(登録された月なし)', btnRunning:'⏳ データ登録中…',
-    dupKeyFixed:(n,names)=>`⚠ 同じチームに氏名+生年が同一の行 ${n}件 — 予約人数を保つため**別の席**として残しました(${names})。同一人物が二重に入っているならエムクリックで修正してください`,
+    dupTitle:'⛔ 登録を中止しました — エムクリックの修正が必要です',
+    dupLead:n=>`同行者リストに同じ人が2回入っているチームが ${n}件 あります。このまま登録すると人数が実際と違ってしまい、客室割当·食数·ネームタグがずれます。DBには何も書き込んでいません。`,
+    dupRow:(no,rep,pax,nm,bt,cnt,nos)=>`${no} ${rep}(予約${pax}名) — 「${nm}」(生年${bt}) が ${cnt}回 · 同行者リスト No ${nos}`,
+    dupHow:'エムクリック「同行者別予約」で上の行を直してから、もう一度ダウンロードして登録してください — <b>実際の同行者名に変える</b>か、まだ未定なら<b>氏名を空欄</b>(無記名)にします。',
+    dupStopped:n=>`⛔ 명단 중복 ${n}건 — 등록을 중지했습니다(DB 미변경)`,
+    dupGuard:(nm,seq)=>`名簿の重複が残っています: ${nm}(${seq})`,
     retryN:(i,n)=>`再試行 ${i}/${n}`, stpPxClean:'名簿の整理', stpGuests:'運営チーム作成', stpCodes:'グループコード照合',
     stpGm:'運営個人 保存', stpFpool:(y,n)=>`${y}年 Fコード読込 ${n}`,
     failTitle:'⚠ 登録に失敗しました', failStep:s=>`止まった所: ${s}`, failCopy:'内容をコピー', failCopied:'コピーしました', failClose:'閉じる',
@@ -321,7 +340,12 @@ const L = {
     mdLbl:'삭제할 월', mdDelBtn:'🗑 이 달 데이터 삭제', mdRefreshTitle:'월 목록 새로고침',
     mdNote:'선택한 월의 팀·명단·방배정·현장기록을 모두 삭제(cascade)합니다. 다른 달은 영향 없습니다. 되돌릴 수 없습니다.',
     mdNoMonths:'(등록된 월 없음)', btnRunning:'⏳ 데이터 등록중…',
-    dupKeyFixed:(n,names)=>`⚠ 같은 팀에 이름+생년이 똑같은 행 ${n}건 — 예약 인원을 맞추려고 **별개의 자리**로 남겼습니다(${names}). 한 사람이 두 번 들어간 것이면 엠클릭에서 고쳐 주세요`,
+    dupTitle:'⛔ 등록을 중지했습니다 — 엠클릭 수정이 필요합니다',
+    dupLead:n=>`일행별예약 명단에 같은 사람이 두 번 들어간 팀이 ${n}건 있습니다. 이대로 등록하면 인원이 실제와 달라져 방배정·식수·네임택이 어긋납니다. DB에는 아무것도 쓰지 않았습니다.`,
+    dupRow:(no,rep,pax,nm,bt,cnt,nos)=>`${no} ${rep}(예약 ${pax}명) — 「${nm}」(생년 ${bt})이 ${cnt}번 · 일행별예약 No ${nos}`,
+    dupHow:'엠클릭 「일행별예약」에서 위 줄을 고친 뒤 다시 받아 올려 주세요 — <b>실제 동행자 이름으로 바꾸거나</b>, 아직 미정이면 <b>이름을 비워</b>(무기명) 두시면 됩니다.',
+    dupStopped:n=>`⛔ 명단 중복 ${n}건 — 등록을 중지했습니다(DB 미변경)`,
+    dupGuard:(nm,seq)=>`명단 중복이 남아 있습니다: ${nm}(${seq})`,
     retryN:(i,n)=>`재시도 ${i}/${n}`, stpPxClean:'명단 정리', stpGuests:'운영 팀 만들기', stpCodes:'그룹코드 대조',
     stpGm:'운영 개인 저장', stpFpool:(y,n)=>`${y}년 F코드 읽는 중 ${n}`,
     failTitle:'⚠ 등록에 실패했습니다', failStep:s=>`멈춘 곳: ${s}`, failCopy:'내용 복사', failCopied:'복사했습니다', failClose:'닫기',
@@ -372,7 +396,12 @@ const L = {
     mdLbl:'Month to delete', mdDelBtn:'🗑 Delete this month', mdRefreshTitle:'Refresh month list',
     mdNote:'Deletes all teams, rosters, room assignments and field records for the selected month (cascade). Other months are unaffected. This cannot be undone.',
     mdNoMonths:'(no registered months)', btnRunning:'⏳ Registering…',
-    dupKeyFixed:(n,names)=>`⚠ ${n} row(s) share name+birth inside a team — kept as separate seats to match the booked headcount (${names}). If it is one person entered twice, fix it in the source`,
+    dupTitle:'⛔ Registration stopped — the source file must be fixed',
+    dupLead:n=>`${n} team(s) have the same person listed twice in the passenger list. Registering as-is would make the headcount wrong and throw off rooms, meals and nametags. Nothing was written to the database.`,
+    dupRow:(no,rep,pax,nm,bt,cnt,nos)=>`${no} ${rep} (booked ${pax}) — “${nm}” (b.${bt}) appears ${cnt}× · passenger rows No ${nos}`,
+    dupHow:'Fix those rows in the passenger list, then download and upload again — <b>replace with the real companion\u2019s name</b>, or <b>leave the name blank</b> if it is not decided yet.',
+    dupStopped:n=>`⛔ ${n} duplicate(s) — registration stopped (database unchanged)`,
+    dupGuard:(nm,seq)=>`duplicate roster entry remains: ${nm}(${seq})`,
     retryN:(i,n)=>`retry ${i}/${n}`, stpPxClean:'cleaning roster', stpGuests:'building teams', stpCodes:'matching group codes',
     stpGm:'saving members', stpFpool:(y,n)=>`loading ${y} F-codes ${n}`,
     failTitle:'⚠ Registration failed', failStep:s=>`stopped at: ${s}`, failCopy:'Copy details', failCopied:'Copied', failClose:'Close',
@@ -444,6 +473,7 @@ function slotText(slot, kind){ return t('s1_slot_'+slot.id+'_'+kind); }
 // ── 로그 헬퍼 ──
 function clearLog(){ logEl.innerHTML=''; }
 // 후리가나(ruby) HTML → 평문. 로그·상태줄은 텍스트라 태그가 그대로 보이면 안 된다.
+function esc(v){ return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function plain(v){ v=String(v==null?'':v); return window.__so_plain?__so_plain(v):v; }
 function log(msg, cls){
   const span = document.createElement('span');
@@ -642,6 +672,22 @@ function runProgress(msg){
   const b=$('#btn-run'); if(b&&window._running) b.textContent=tx('btnRunning')+' '+msg;
   const o=document.getElementById('run-step'); if(o) o.textContent=msg;
 }
+// 명단 중복 — 등록을 멈추고 「엠클릭에서 무엇을 고칠지」를 그대로 보여 준다(Min 2026-08)
+let _dupLast=[];
+function dupTextLines(list){
+  return list.map(d=>tx('dupRow')(d.no, d.rep, d.pax, d.nm, d.bt, d.nos.length, d.nos.join(', ')));
+}
+function showDupModal(list){
+  _dupLast=list||[];
+  const m=$('#dup-modal'); if(!m) return;
+  const t1=$('#dup-title'); if(t1) t1.textContent=tx('dupTitle');
+  const t2=$('#dup-lead');  if(t2) t2.textContent=tx('dupLead')(_dupLast.length);
+  const t3=$('#dup-list');  if(t3) t3.innerHTML=dupTextLines(_dupLast).map(x=>'<div>· '+esc(x)+'</div>').join('');
+  const t4=$('#dup-how');   if(t4) t4.innerHTML=tx('dupHow');
+  const c1=$('#dup-copy');  if(c1) c1.textContent=tx('failCopy');
+  const c2=$('#dup-close'); if(c2) c2.textContent=tx('failClose');
+  m.style.display='flex';
+}
 // 실패를 눈에 보이게 — 어디서 멈췄는지·무엇 때문인지·그대로 복사해 전달까지
 function showFailModal(err){
   const m=$('#fail-modal'); if(!m) return;
@@ -794,6 +840,37 @@ async function run(){
         if(partial) log(tx('partialRange')(first,last), 'warn');
       }
     }catch(e){}
+
+    // ── 사전 점검: 한 팀 명단에 같은 사람이 두 번 ──────────────────────────
+    //  Min 결정(2026-08): 이런 파일은 **그대로 등록하면 안 된다**. 인원이 실제와 달라져
+    //  방배정·식수·네임택이 어긋나고, 나중에 누가 잘못 넣었는지도 찾기 어렵다.
+    //  → DB에 한 글자도 쓰기 전에 멈추고, 엠클릭에서 무엇을 고쳐야 하는지 알려 준다.
+    //  (생년이 없는 줄은 자리번호로 구분되므로 애초에 겹치지 않는다 — 무기명 여러 명은 정상)
+    {
+      const seqSet = new Set(bookingRows.map(b=>b.event_seq));
+      const noBySeq = {}, repBySeq = {}, paxBySeq = {};
+      bookingRows.forEach(b=>{ noBySeq[b.event_seq]=b.event_no||b.event_seq;
+        repBySeq[b.event_seq]=b.rep_name||''; paxBySeq[b.event_seq]=b.pax||0; });
+      const seen = {};                    // seq|key → [원본 No…]
+      ilh.forEach(r=>{
+        const seq = parseInt(String(r['eventSeq']||'').trim(),10);
+        if(!seq || !seqSet.has(seq)) return;
+        const nm = String(r['고객명']||'').trim() || '무기명';
+        const bt = birthYYMMDD(r['생년월일']) || '';
+        if(!bt) return;                   // 생년 없음 = 자리번호로 구분 → 충돌 없음
+        const k = seq+'|'+nm+'|'+bt;
+        (seen[k]=seen[k]||{seq,nm,bt,nos:[]}).nos.push(String(r['No']||'').trim()||'?');
+      });
+      const dups = Object.values(seen).filter(x=>x.nos.length>1)
+        .map(x=>({ ...x, no:noBySeq[x.seq], rep:repBySeq[x.seq], pax:paxBySeq[x.seq] }))
+        .sort((a,b)=>String(a.no).localeCompare(String(b.no)));
+      if(dups.length){
+        dups.forEach(d=>log(tx('dupRow')(d.no, d.rep, d.pax, d.nm, d.bt, d.nos.length, d.nos.join(', ')),'err'));
+        log(tx('dupStopped')(dups.length),'err');
+        showDupModal(dups);
+        return;                           // ⛔ 아무것도 쓰지 않고 종료(finally 에서 정리)
+      }
+    }
 
     // ── 수정이력용: 업로드 전 그 달 기존 상태 스냅샷 (upsert 전에 떠야 추가/삭제 구분 가능) ──
     const _oldBk = {};   // event_seq -> rep_name
@@ -1085,26 +1162,15 @@ async function run(){
         });
       });
     });
-    // 🔴 같은 팀에 **이름+생년이 똑같은 행이 두 번** 들어오는 경우가 실제로 있다(엠클릭 원본 중복).
-    //   그대로 upsert 하면 Postgres 가 「ON CONFLICT DO UPDATE cannot affect row a second time」로
-    //   **그 500행 묶음을 통째로 거부**해 등록이 그 자리에서 죽는다(2026-11 노승목 사례로 확인).
-    //   → 두 번째부터 person_key 에 #2·#3 을 붙여 **별개의 자리**로 남긴다.
-    //     합치지 않는 이유 = 예약 인원(pax)과 명단 수가 어긋나면 방·식수·네임택이 한 자리 모자란다.
-    //     실제 사례(96093)는 pax 8명인데 대표자 이름이 두 블록에 각각 들어가 노승목이 두 번,
-    //     나머지 6자리는 무기명이었다 — 즉 「다른 사람」이 아니라 **아직 이름이 안 들어온 자리**다.
-    //     첫 번째는 키가 그대로라 기존 방배정·조편성·청구가 그 사람에게 붙어 있는다.
+    // 같은 (event_seq, person_key) 가 두 번이면 Postgres 가 그 묶음을 통째로 거부한다.
+    //   위 사전 점검에서 이미 걸러 여기까지 오지 않지만, 혹시 남으면 **조용히 넘기지 않고** 멈춘다.
     {
-      const noBySeq = {}; bookingRows.forEach(b=>{ noBySeq[b.event_seq]=b.event_no||b.event_seq; });
-      const seen = {}; let dup = 0; const dupNames = [];
-      gmRows.forEach(r=>{
+      const seen = new Set();
+      for(const r of gmRows){
         const k = r.event_seq + '|' + r.person_key;
-        if(seen[k]){
-          const n = ++seen[k];
-          r.person_key = r.person_key + '#' + n;
-          dup++; if(dupNames.length<6) dupNames.push(`${r.name_kr||''}(${noBySeq[r.event_seq]||r.event_seq})`);
-        } else seen[k] = 1;
-      });
-      if(dup) log(tx('dupKeyFixed')(dup, dupNames.join(', ')), 'warn');
+        if(seen.has(k)) throw new Error(tx('dupGuard')(r.name_kr||'', r.event_seq));
+        seen.add(k);
+      }
     }
     // 충돌키 = (event_seq, person_key) — 같은 사람이면 자리번호가 바뀌어도 **같은 행**을 갱신한다.
     //   → 방배정(rooms.member_id)·골프 조·개인 청구가 그 사람에게 그대로 붙어 있는다.
@@ -1612,6 +1678,13 @@ function startDoneCountdown(sec){
     if(cd) cd.textContent=tx('goHomeIn')(n); n--; };
   tick(); _doneTimer=setInterval(tick,1000);
 }
+$('#dup-close') && $('#dup-close').addEventListener('click',()=>{ const m=$('#dup-modal'); if(m) m.style.display='none'; });
+$('#dup-copy') && $('#dup-copy').addEventListener('click',()=>{
+  const txt=[tx('dupTitle'), tx('dupLead')(_dupLast.length), ...dupTextLines(_dupLast).map(x=>'· '+x),
+    plain(tx('dupHow'))].join('\n');
+  try{ navigator.clipboard.writeText(txt); }catch(_){}
+  const b=$('#dup-copy'); if(b){ const o=b.textContent; b.textContent=tx('failCopied'); setTimeout(()=>{b.textContent=o;},1600); }
+});
 $('#fail-close') && $('#fail-close').addEventListener('click',()=>{ const m=$('#fail-modal'); if(m) m.style.display='none'; });
 $('#fail-copy') && $('#fail-copy').addEventListener('click',()=>{
   const txt=[tx('failTitle'), tx('failStep')(_runStep||'-'), ($('#fail-msg')||{}).textContent||'',
