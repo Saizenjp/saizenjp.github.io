@@ -187,6 +187,10 @@ from (
   union all select 115,'115 객실 쪽지','room_notes', case when to_regclass('public.room_notes') is not null then '✅ 있음' else '❌ 없음 (115)' end
   union all select 116,'116 카트 무료일','cart_sync_charge 입국·귀국일 제외', case when exists(select 1 from pg_proc where proname='cart_sync_charge' and prosrc like '%v_dep%') then '✅ 적용' else '❌ 미적용 (116)' end
   union all select 117,'117 정산 마감','folios.updated_at (없으면 folio UPDATE 전부 실패)', case when exists(select 1 from information_schema.columns where table_name='folios' and column_name='updated_at') then '✅ 있음' else '❌ 없음 (117) — 정산 마감이 안 된다' end
+  union all select 118,'118 죽은 테이블 정리','app_secrets·rounds·dining 등 제거', case when to_regclass('public.app_secrets') is null and to_regclass('public.rounds') is null then '✅ 정리됨' else '❌ 남아 있음 (118)' end
+  union all select 119,'119 RPC 권한','미로그인(anon)이 match_group_codes 를 못 부른다', case when not has_function_privilege('anon','public.match_group_codes(text[])','EXECUTE') then '✅ 차단' else '🔴 anon 이 회원코드를 조회할 수 있다 (119 미적용)' end
+  union all select 119,'119 RPC 권한','미로그인(anon)이 today_summary 를 못 부른다', case when not has_function_privilege('anon','public.today_summary()','EXECUTE') then '✅ 차단' else '🔴 anon 이 매출·체크인을 볼 수 있다 (119 미적용)' end
+  union all select 119,'119 RPC 권한','손님 QR 청구서 guest_bill 은 anon 유지', case when has_function_privilege('anon','public.guest_bill(text)','EXECUTE') then '✅ 유지' else '❌ 막혔다 — 손님 청구서가 안 열린다 (119)' end
 ) t
 order by ord, 항목;
 
