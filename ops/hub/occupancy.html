@@ -102,6 +102,11 @@
   table.oc td.c.over::after{content:"!";font-size:11px;vertical-align:super;margin-left:1px}
   table.oc td.c.zero{background:#fafbfc;color:#c9ced6;font-weight:600;font-size:13px}
   /* 대기 예약 줄 — 방을 차지하지 않는 예약이라 **객실 수가 아니라 팀·인원**으로 따로 보여준다 */
+  /* 미배정 = 방을 아직 못 받은 인원(사용 수에 안 들어간다) — 빨강 계열로 눈에 걸리게 */
+  table.oc tr.una td{background:#fdeceb;color:#8f2d24;border-top:1px dashed #e0a49d}
+  table.oc tr.una td.rh{font-weight:800;font-size:12px;color:#8f2d24}
+  table.oc tr.una td.c{font-size:12px;font-weight:800;cursor:default}
+  table.oc tr.una td.c.none{color:#e3bdb8;font-weight:600}
   table.oc tr.wait td{background:#f2f0f7;color:#4a3d63;border-top:1px dashed #b9aed4}
   table.oc tr.wait td.rh{font-weight:800;font-size:12px;color:#4a3d63}
   table.oc tr.wait td.c{font-size:12px;font-weight:800;cursor:default}
@@ -122,7 +127,7 @@
   table.dt tr:hover td{background:var(--surface2)}
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.1">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.2">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -154,7 +159,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=20.1"></script>
+<script src="../assets/saizen-ops.js?v=20.2"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -171,6 +176,10 @@ const L={
     lgFree:'余裕(残4+)', lgTight:'ひっ迫(残1〜3)', lgFull:'満室(ちょうど)', lgOver:'超過(対応が必要)',
     lgBook:'予約可 — その日から標準パターン(木→日3泊 · 日→木4泊 · 水→水7泊 / 久住ヒルズの7泊は日→日)で最後まで空室あり',
     bookOkT:s=>`予約可 ${s}`, nightUnit:'泊',
+    unaRowH:'未割当', unaT:(t,p)=>`未割当 ${t}チーム / ${p}名`,
+    lgUna:'未割当 — まだ部屋が決まっていない人数です。この行がある日は表の使用数にその分が入っておらず、「予約可」も表示しません。',
+    unaRowH:'未割当', unaT:(t,p)=>`未割当 ${t}チーム / ${p}名`,
+    lgUna:'未割当 — まだ部屋が決まっていない人数。この行がある日は表の使用数にその分が入っておらず、「予約可」も出しません。',
     lgWait:'待機予約 — 満室でもお受けした未確定の予約(客室は押さえていません)', waitRowH:'待機予約', waitT:(t,p)=>`待機 ${t}チーム / ${p}名`,
     nights:n=>`${n}泊`, roomsN:n=>`${n}室`, paxN:n=>`${n}名`,
     thRow:'施設・ルームタイプ', own:'保有',
@@ -191,6 +200,10 @@ const L={
     lgFree:'여유(잔여 4+)', lgTight:'임박(잔여 1~3)', lgFull:'만실(딱 참)', lgOver:'초과(조치 필요)',
     lgBook:'예약 가능 — 그 날짜부터 표준 패턴(목→일 3박 · 일→목 4박 · 수→수 7박 / 쿠주힐즈 7박은 일→일)대로 끝까지 방이 남아 있음',
     bookOkT:s=>`예약 가능 ${s}`, nightUnit:'박',
+    unaRowH:'미배정', unaT:(t,p)=>`미배정 ${t}팀 / ${p}명`,
+    lgUna:'미배정 — 아직 방을 못 받은 인원입니다. 이 줄이 있는 날짜는 표의 사용 수에 그 인원이 빠져 있고, 「예약 가능」도 표시하지 않습니다(들어갈 방이 정해지지 않아서).',
+    unaRowH:'미배정', unaT:(t,p)=>`미배정 ${t}팀 / ${p}명`,
+    lgUna:'미배정 — 아직 방을 못 받은 인원입니다. 이 줄이 있는 날짜는 표의 사용 수에 그 인원이 빠져 있고, 「예약 가능」도 표시하지 않습니다(들어갈 방이 정해지지 않아서).',
     lgWait:'대기 예약 — 만실이어도 받아 둔 미확정 예약(객실을 잡고 있지 않습니다)', waitRowH:'대기 예약', waitT:(t,p)=>`대기 ${t}팀 / ${p}명`,
     nights:n=>`${n}박`, roomsN:n=>`${n}실`, paxN:n=>`${n}명`,
     thRow:'숙소 · 룸타입', own:'보유',
@@ -211,6 +224,10 @@ const L={
     lgFree:'Free (4+ left)', lgTight:'Tight (1–3 left)', lgFull:'Full (exact)', lgOver:'Over (needs action)',
     lgBook:'Bookable — a standard stay can start here (Thu→Sun 3n · Sun→Thu 4n · Wed→Wed 7n; Kuju 7n is Sun→Sun)',
     bookOkT:s=>`bookable ${s}`, nightUnit:'n',
+    unaRowH:'Unassigned', unaT:(t,p)=>`unassigned ${t} teams / ${p} pax`,
+    lgUna:'Unassigned — guests without a room yet. On those dates the used count excludes them and no “bookable” badge is shown.',
+    unaRowH:'Unassigned', unaT:(t,p)=>`unassigned ${t} teams / ${p} pax`,
+    lgUna:'Unassigned — guests with no room yet. On those dates the used count excludes them and no “bookable” badge is shown.',
     lgWait:'Waitlist — taken even when full, not confirmed (holds no room)', waitRowH:'Waitlist', waitT:(t,p)=>`Waitlist ${t} teams / ${p} pax`,
     nights:n=>`${n} nights`, roomsN:n=>`${n} rooms`, paxN:n=>`${n}`,
     thRow:'Facility · room type', own:'Stock',
@@ -242,6 +259,7 @@ let YMS=[thisYM(), shiftYM(thisYM(),1)];       // 이어보기(복수 월)
 //  "야마나미리조트는 그냥 야마나미리조트로, 인원 수로 트윈 잡고 갯수만. 방별로 쪼개지 말고.
 //   내년에는 다 쪼갤 수 있지만 올해는 어려움") → 룸타입별 보기는 체크박스로.
 let BYTYPE=false;
+let UNA={};   // 숙소 → 날짜 → {teams,pax} 미배정 인원
 let ACCOMSEL=new Set();                         // 비면 전체
 
 async function connect(){
@@ -302,6 +320,7 @@ function renderUI(){
         <span><i class="u"></i>${tx('lgFull')}</span>
         <span><i class="x"></i>${tx('lgOver')}</span>
         <span><i class="bkl">3박</i>${tx('lgBook')}</span>
+        <span><i class="u" style="background:#fdeceb;border-color:#e0a49d"></i>${tx('lgUna')}</span>
         <span><i class="w"></i>${tx('lgWait')}</span>
       </div>
     </div>
@@ -376,6 +395,35 @@ async function load(){
       if(bs.error) throw bs.error;
       (bs.data||[]).forEach(b=>{ const t=(TEAM[b.event_seq]=TEAM[b.event_seq]||{tag:'',accom:''});
         t.rep=b.rep_name||''; t.status=b.status||''; });
+    }
+    // 3-2) 미배정 — 방을 아직 못 받은 인원. rooms 에 없으므로 **예약 인원과 대조해** 따로 센다.
+    //   ⚠ 이 표는 배정된 방만 세므로, 미배정이 남아 있으면 실제보다 한산해 보인다(Min 지적 2026-08).
+    //   그 숙소·그 날짜에 미배정이 있으면 「예약 가능」도 표시하지 않는다 — 들어갈 방이 아직 정해지지 않았기 때문.
+    UNA={};
+    {
+      const asgn={};   // event_seq → 배정된 사람 수
+      ROOMS.forEach(r=>{ if(r.member_id!=null){ (asgn[r.event_seq]=asgn[r.event_seq]||new Set()).add(r.member_id); } });
+      const need=[];
+      if(seqs.length){
+        const bb=await pagedIn('bookings','event_seq,pax,dep_date,arr_date,status,rep_name','event_seq',seqs);
+        (bb.data||[]).forEach(b=>{
+          if(String(b.status||'').includes('대기')) return;            // 대기는 별도 줄
+          const left=(Number(b.pax)||0)-((asgn[b.event_seq]&&asgn[b.event_seq].size)||0);
+          if(left>0) need.push({seq:b.event_seq, left, dep:b.dep_date, arr:b.arr_date});
+        });
+      }
+      const dset2=new Set(DAYS);
+      need.forEach(n=>{
+        const fac=(TEAM[n.seq]&&TEAM[n.seq].accom)||''; if(!fac) return;
+        const c=SZCore.parseLocalDate(n.dep), e=SZCore.parseLocalDate(n.arr);
+        if(isNaN(c)||isNaN(e)) return;
+        for(const d=new Date(c); d<e; d.setDate(d.getDate()+1)){
+          const ds=fmt(d); if(!dset2.has(ds)) continue;
+          const m=(UNA[fac]=UNA[fac]||{}); const cell=(m[ds]=m[ds]||{teams:0,pax:0,reps:[]});
+          cell.teams++; cell.pax+=n.left;
+          if(cell.reps.length<8) cell.reps.push((TEAM[n.seq]&&TEAM[n.seq].rep)||'');
+        }
+      });
     }
     // 4) 대기 예약 — **방을 안 잡아도** 보여야 하므로 bookings 에서 직접 읽는다.
     //    (만실이어도 받아 두는 예약이라 rooms 에 없다 — 있는 것이 오히려 이상하다)
@@ -470,11 +518,14 @@ function buildRows(){
     const pats=patternsFor(r.facility);
     r.book=DAYS.map((d,i)=>{
       const w=SZCore.parseLocalDate(d).getDay();
-      const ok=[];
+      const ok=[]; const un=UNA[r.facility]||{};
       pats.filter(p=>p.dow===w).forEach(p=>{
         if(i+p.n>DAYS.length) return;                          // 범위 밖 — 판단 불가
         let free=true;
-        for(let k=0;k<p.n;k++){ if(r.own-r.days[i+k].r<1){ free=false; break; } }
+        for(let k=0;k<p.n;k++){
+          if(r.own-r.days[i+k].r<1){ free=false; break; }
+          if(un[DAYS[i+k]]){ free=false; break; }               // 미배정이 남은 날 = 방이 정해지지 않았다
+        }
         if(free) ok.push(p.n);
       });
       return ok;
@@ -501,6 +552,18 @@ function waitRow(fac){
     return `<td class="c${ms?' mstart':''}" title="${esc(tx('waitT')(c.teams,c.pax)+(c.reps.length?' — '+c.reps.filter(Boolean).join(', '):''))}">${c.teams}<span style="font-weight:600">(${c.pax})</span></td>`;
   }).join('');
   return `<tr class="wait"><td class="rh">${tx('waitRowH')}</td>${tds}</tr>`;
+}
+//  미배정 줄 — 방을 아직 못 받은 인원(표의 사용 수에는 안 들어간다)
+function unaRow(fac){
+  const m=UNA[fac]; if(!m || !Object.keys(m).length) return '';
+  let prevM='';
+  const tds=DAYS.map(d=>{
+    const ms=d.slice(0,7)!==prevM; prevM=d.slice(0,7);
+    const c=m[d];
+    if(!c) return `<td class="c none${ms?' mstart':''}">·</td>`;
+    return `<td class="c${ms?' mstart':''}" title="${esc(tx('unaT')(c.teams,c.pax)+(c.reps.filter(Boolean).length?' — '+c.reps.filter(Boolean).join(', '):''))}">${c.teams}<span style="font-weight:600">(${c.pax})</span></td>`;
+  }).join('');
+  return `<tr class="una"><td class="rh">${tx('unaRowH')}</td>${tds}</tr>`;
 }
 function renderGrid(){
   const box=$('#grid'); if(!box) return;
@@ -536,7 +599,7 @@ function renderGrid(){
     body.push(`<tr><td class="rh"><span class="rt">${esc(BYTYPE?r.type:accomL(r.facility))}</span><span class="own">${esc(tx('own'))} ${r.own}</span></td>${tds}</tr>`);
     // 그 숙소의 마지막 행 뒤에 대기 예약 줄(방을 안 잡는 예약이라 팀·인원으로)
     const nxt=rows[rows.indexOf(r)+1];
-    if(!nxt || nxt.facility!==r.facility) body.push(waitRow(r.facility));
+    if(!nxt || nxt.facility!==r.facility){ body.push(unaRow(r.facility)); body.push(waitRow(r.facility)); }
   });
   // 합계 행
   const tot=DAYS.map((d,i)=>rows.reduce((n,r)=>n+r.days[i].r,0));
