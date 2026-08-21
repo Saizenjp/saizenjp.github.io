@@ -129,7 +129,7 @@
   table.dt tr:hover td{background:var(--surface2)}
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.4">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -161,7 +161,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=20.3"></script>
+<script src="../assets/saizen-ops.js?v=20.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -178,6 +178,7 @@ const L={
     lgFree:'余裕(残4+)', lgTight:'ひっ迫(残1〜3)', lgFull:'満室(ちょうど)', lgOver:'超過(対応が必要)',
     lgBook:'予約可 — その日から標準パターン(木→日3泊 · 日→木4泊 · 水→水7泊 / 久住ヒルズの7泊は日→日)で最後まで空室あり',
     bookOkT:s=>`予約可 ${s}`, nightUnit:'泊',
+    goAssign:'🛏 この日の客室割当を開く',
     needT:(a,n)=>`内訳: 割当済 ${a}室 + 未割当 ${n}室`,
     unaRowH:'未割当', unaT:(t,p)=>`未割当 ${t}チーム / ${p}名`,
     lgUna:'未割当 — まだ部屋が決まっていない人数です。この行がある日は表の使用数にその分が入っておらず、「予約可」も表示しません。',
@@ -203,6 +204,7 @@ const L={
     lgFree:'여유(잔여 4+)', lgTight:'임박(잔여 1~3)', lgFull:'만실(딱 참)', lgOver:'초과(조치 필요)',
     lgBook:'예약 가능 — 그 날짜부터 표준 패턴(목→일 3박 · 일→목 4박 · 수→수 7박 / 쿠주힐즈 7박은 일→일)대로 끝까지 방이 남아 있음',
     bookOkT:s=>`예약 가능 ${s}`, nightUnit:'박',
+    goAssign:'🛏 이 날짜 방배정 열기',
     needT:(a,n)=>`내역: 배정 ${a}실 + 미배정 ${n}실`,
     unaRowH:'미배정', unaT:(t,p)=>`미배정 ${t}팀 / ${p}명`,
     lgUna:'미배정 — 아직 방을 못 받은 인원입니다. 이 줄이 있는 날짜는 표의 사용 수에 그 인원이 빠져 있고, 「예약 가능」도 표시하지 않습니다(들어갈 방이 정해지지 않아서).',
@@ -228,6 +230,7 @@ const L={
     lgFree:'Free (4+ left)', lgTight:'Tight (1–3 left)', lgFull:'Full (exact)', lgOver:'Over (needs action)',
     lgBook:'Bookable — a standard stay can start here (Thu→Sun 3n · Sun→Thu 4n · Wed→Wed 7n; Kuju 7n is Sun→Sun)',
     bookOkT:s=>`bookable ${s}`, nightUnit:'n',
+    goAssign:'🛏 Open room assignment for this date',
     needT:(a,n)=>`breakdown: assigned ${a} + unassigned ${n}`,
     unaRowH:'Unassigned', unaT:(t,p)=>`unassigned ${t} teams / ${p} pax`,
     lgUna:'Unassigned — guests without a room yet. On those dates the used count excludes them and no “bookable” badge is shown.',
@@ -650,7 +653,13 @@ function renderDetail(){
   });
   const meta=ROWS.find(r=>r.key===SEL.key)||{facility:'',type:''};
   if(ttl) ttl.textContent=tx('dtTitle')(`${SEL.date} · ${accomL(meta.facility)}${meta.type?' '+meta.type:''}`);
-  if(!rows.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:8px 0">${tx('dtNone')}</div>`; return; }
+  //  여기서 바로 방배정으로 — 규칙(정원·폐쇄·확정·분할)이 한 곳에만 있도록 화면을 새로 만들지 않고
+  //  방배정 화면을 그 달·그 날짜로 연다. 미배정을 그 자리에서 처리할 수 있다(Min 2026-08).
+  const una=(UNA[meta.facility]||{})[SEL.date];
+  const goBtn=`<a class="btn sm" target="_blank" rel="noopener"
+      href="room.html?ym=${encodeURIComponent(SEL.date.slice(0,7))}&date=${encodeURIComponent(SEL.date)}"
+      style="text-decoration:none">${esc(tx('goAssign'))}${una?` <b style="color:var(--err)">${esc(tx('unaT')(una.teams,una.pax))}</b>`:''}</a>`;
+  if(!rows.length){ box.innerHTML=`<div style="padding:6px 0 10px">${goBtn}</div><div class="cnt" style="color:var(--muted);padding:8px 0">${tx('dtNone')}</div>`; return; }
   // 방 단위로 묶는다 — 같은 방에 두 팀이 들어가 있으면 한 줄에 함께(실수 계산과 일치)
   const g={};
   rows.forEach(r=>{
@@ -669,7 +678,7 @@ function renderDetail(){
       tag:ts.map(t=>t.tag).join(' + '), rep:ts.map(t=>`${t.rep}(${t.pax})`).join(' + '),
       ci:x.ci, co:x.co, multi:ts.length>1};
   }).sort((a,b)=>String(a.room).localeCompare(String(b.room),undefined,{numeric:true}));
-  box.innerHTML=`<table class="dt"><thead><tr>
+  box.innerHTML=`<div style="padding:6px 0 10px">${goBtn}</div><table class="dt"><thead><tr>
       <th>${tx('cRoom')}</th><th>${tx('cTeam')}</th><th>${tx('cRep')}</th>
       <th>${tx('cPax')}</th><th>${tx('cStay')}</th><th>${tx('cAccom')}</th>
     </tr></thead><tbody>${list.map(x=>`<tr>
