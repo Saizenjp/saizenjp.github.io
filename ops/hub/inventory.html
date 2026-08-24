@@ -107,10 +107,15 @@
   .toast.ok{ border-left-color:#3f7d4e; background:#e7efe1; color:#234d2f }
   .toast.warn{ border-left-color:#b8860b; background:#fbf3e2; color:#7a5a16 }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=23.1">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=23.3">
 </head>
 <body data-so-area="room kitchen">
-<script>(function(){var d=new URLSearchParams(location.search).get('dept');document.body.setAttribute('data-so-area', d==='room'?'room':'kitchen');})();</script>
+<script>(function(){
+  // 부서마다 권한영역이 다르다 — 그 부서 사람만 열 수 있게 body 에 심는다(saizen-ops 가드가 읽는다).
+  var M={fnb:'kitchen',room:'room',hk:'hk',golf:'golf',front:'front',shizu:'shizu'};
+  var d=new URLSearchParams(location.search).get('dept');
+  document.body.setAttribute('data-so-area', M[d]||'kitchen');
+})();</script>
 <div class="topbar so-bar">
   <a class="so-logo" href="../index.html" title="홈 / ホーム">
     <img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen">
@@ -142,11 +147,7 @@
     <div class="ph-body" id="t-helpbody"></div>
   </details>
   <div class="inv-bar">
-    <div class="dept-toggle">
-      <button id="dept-fnb" type="button">🍽 F&amp;B</button>
-      <button id="dept-room" type="button">🛏 客室</button>
-      <button id="dept-golf" type="button">⛳ ゴルフ/カート</button>
-    </div>
+    <div class="dept-toggle" id="dept-toggle"></div>
     <button class="btn ghost sm" id="btn-reload" type="button">↻ 更新</button>
     <span class="inv-sum" id="inv-sum"></span>
   </div>
@@ -197,7 +198,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=23.1"></script>
+<script src="../assets/saizen-ops.js?v=23.3"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -207,7 +208,7 @@ const L={
   ja:{ step:'在庫・内部管理', connHint:'接続情報はこのブラウザにのみ保存されます。',
     connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
     notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', connectedToast:'Supabaseに接続しました',
-    deptRoom:'🛏 客室', deptGolf:'⛳ ゴルフ/カート', reload:'↻ 更新',
+    deptRoom:'客室', deptGolf:'ゴルフ/カート', deptFnb:'F&B', deptHk:'清掃/リネン', deptFront:'フロント/事務', deptShizu:'志津の宿', reload:'↻ 更新',
     phName:'品目名 (例: ミネラルウォーター500ml)', phUnit:'単位', phLoc:'保管場所', phPar:'適正在庫', phQty:'現在庫',
     tipPar:'この数量未満で不足アラート', tipQty:'現在の保有数量', btnAdd:'＋ 品目追加', unitDefault:'個',
     emptyConnect:'上部でSupabaseに接続し、部署(F&B / 客室)を選ぶと品目が表示されます。',
@@ -241,7 +242,7 @@ const L={
   ko:{ step:'재고 · 내부 관리', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패 · 재시도',
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', connectedToast:'Supabase 연결됨',
-    deptRoom:'🛏 객실', deptGolf:'⛳ 골프/카트', reload:'↻ 새로고침',
+    deptRoom:'객실', deptGolf:'골프/카트', deptFnb:'F&B', deptHk:'청소/린넨', deptFront:'프론트/사무', deptShizu:'시즈노야도', reload:'↻ 새로고침',
     phName:'품목명 (예: 생수 500ml)', phUnit:'단위', phLoc:'보관 위치', phPar:'적정재고', phQty:'현재고',
     tipPar:'이 수량 미만이면 부족 알림', tipQty:'현재 보유 수량', btnAdd:'＋ 품목 추가', unitDefault:'개',
     emptyConnect:'상단에서 Supabase 연결 후, 부서(F&B / 객실)를 선택하면 품목이 표시됩니다.',
@@ -275,7 +276,7 @@ const L={
   en:{ step:'Inventory · Internal', connHint:'Connection info is stored only in this browser.',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', connectedToast:'Connected to Supabase',
-    deptRoom:'🛏 Rooms', deptGolf:'⛳ Golf/Cart', reload:'↻ Reload',
+    deptRoom:'Rooms', deptGolf:'Golf/Cart', deptFnb:'F&B', deptHk:'Housekeeping', deptFront:'Front/Office', deptShizu:'Shizu', reload:'↻ Reload',
     phName:'Item name (e.g. Water 500ml)', phUnit:'Unit', phLoc:'Location', phPar:'Par level', phQty:'On hand',
     tipPar:'Alert when below this qty', tipQty:'Current quantity on hand', btnAdd:'＋ Add item', unitDefault:'pcs',
     emptyConnect:'Connect to Supabase above, then pick a department (F&B / Rooms) to see items.',
@@ -321,11 +322,17 @@ function catLabel(c){ const m=CATL[c]; if(!m) return c; const lg=lang(); return 
 const REASONL={ '입고':{ja:'入庫',en:'Stock in'}, '사용':{ja:'使用',en:'Use'}, '실사조정':{ja:'棚卸調整',en:'Stocktake adj.'} };
 function reasonLabel(r){ const m=REASONL[r]; if(!m) return r; const lg=lang(); return lg==='ja'?m.ja:(lg==='en'?m.en:r); }
 
+//  부서 = 재고를 따로 쥐는 단위. area 는 그 부서의 권한영역(RLS·페이지 가드가 같은 키를 쓴다).
+//   ⚠ 순서가 곧 화면 탭 순서. 새 부서를 넣으면 SQL 120 의 dept→area 매핑도 같이 늘려야 한다.
 const DEPTS={
-  fnb:{ label:'F&B', cats:['식자재','음료','주류','주방소모품','기타'] },
-  room:{ label:'객실', cats:['객실비품','린넨','어메니티','청소용품','미니바','기타'] },
-  golf:{ label:'골프/카트', cats:['ゴルフカート','送迎カート','기타'] }
+  fnb:   { area:'kitchen', ico:'🍽', cats:['식자재','음료','주류','주방소모품','기타'] },
+  room:  { area:'room',    ico:'🛏', cats:['객실비품','어메니티','미니바','객실소모품','기타'] },
+  hk:    { area:'hk',      ico:'🧹', cats:['린넨','청소용품','세제','비품','기타'] },
+  golf:  { area:'golf',    ico:'⛳', cats:['골프카트','송영카트','코스자재','골프용품','기타'] },
+  front: { area:'front',   ico:'🏨', cats:['사무용품','인쇄용지','판촉물','기타'] },
+  shizu: { area:'shizu',   ico:'♨', cats:['객실비품','어메니티','린넨','청소용품','기타'] }
 };
+const DEPT_KEYS=Object.keys(DEPTS);
 const state={ dept:'fnb', catFilter:'__all', items:[], txns:[], sups:[], spend:[], conn:'none' };
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -341,8 +348,7 @@ function refreshConn(){
 function applyStatic(){
   $('#t-step').textContent=tx('step');
   $('#t-connhint').textContent=tx('connHint');
-  $('#dept-room').textContent=tx('deptRoom');
-  { const g=$('#dept-golf'); if(g) g.textContent=tx('deptGolf'); }
+  renderDeptTabs();
   $('#btn-reload').textContent=tx('reload');
   $('#add-name').placeholder=tx('phName');
   $('#add-unit').placeholder=tx('phUnit');
@@ -476,7 +482,23 @@ function renderSpend(){
 }
 
 /* ── 렌더 ── */
-function setDeptBtns(){ $('#dept-fnb').classList.toggle('on',state.dept==='fnb'); $('#dept-room').classList.toggle('on',state.dept==='room'); const g=$('#dept-golf'); if(g) g.classList.toggle('on',state.dept==='golf'); }
+function deptLabel(d){ const k='dept'+d.charAt(0).toUpperCase()+d.slice(1); const v=tx(k); return (v===k?d:v); }
+function renderDeptTabs(){
+  const box=$('#dept-toggle'); if(!box) return;
+  box.innerHTML=DEPT_KEYS.map(d=>`<button type="button" data-dept="${d}">${DEPTS[d].ico} ${esc(deptLabel(d))}</button>`).join('');
+  box.querySelectorAll('[data-dept]').forEach(b=>b.addEventListener('click',()=>{
+    state.dept=b.dataset.dept; state.catFilter='__all';
+    //  부서마다 권한영역이 달라 주소(?dept=)도 같이 바꾼다 — 새로고침·즐겨찾기해도 그 부서로 열린다
+    try{ const u=new URL(location.href); u.searchParams.set('dept',state.dept); history.replaceState(null,'',u); }catch(e){}
+    document.body.setAttribute('data-so-area', DEPTS[state.dept].area);
+    if(supa) load(); else { setDeptBtns(); renderAddCats(); }
+  }));
+  setDeptBtns();
+}
+function setDeptBtns(){
+  const box=$('#dept-toggle'); if(!box) return;
+  box.querySelectorAll('[data-dept]').forEach(b=>b.classList.toggle('on', b.dataset.dept===state.dept));
+}
 function renderAddCats(){ $('#add-cat').innerHTML=DEPTS[state.dept].cats.map(c=>`<option value="${esc(c)}">${esc(catLabel(c))}</option>`).join(''); }
 function renderCatChips(){
   const cats=DEPTS[state.dept].cats.filter(c=>state.items.some(i=>(i.category||'기타')===c));
@@ -646,11 +668,9 @@ $('#btn-add').addEventListener('click',addItem);
 { const b=$('#btn-sup-add'); if(b) b.addEventListener('click',addSup); }
 { const e=$('#sup-name'); if(e) e.addEventListener('keypress',ev=>{ if(ev.key==='Enter') addSup(); }); }
 $('#add-name').addEventListener('keypress',e=>{ if(e.key==='Enter') addItem(); });
-$('#dept-fnb').addEventListener('click',()=>{ state.dept='fnb'; state.catFilter='__all'; if(supa)load(); else { setDeptBtns(); renderAddCats(); } });
-$('#dept-room').addEventListener('click',()=>{ state.dept='room'; state.catFilter='__all'; if(supa)load(); else { setDeptBtns(); renderAddCats(); } });
-$('#dept-golf').addEventListener('click',()=>{ state.dept='golf'; state.catFilter='__all'; if(supa)load(); else { setDeptBtns(); renderAddCats(); } });
+renderDeptTabs();
 (function init(){
-  const d=new URLSearchParams(location.search).get('dept'); if(d==='room') state.dept='room';
+  const d=new URLSearchParams(location.search).get('dept'); if(d&&DEPTS[d]) state.dept=d;
   applyStatic(); setDeptBtns(); renderAddCats();
   loadCreds();
   if($('#sb-url').value && $('#sb-key').value) connect();

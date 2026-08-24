@@ -244,7 +244,7 @@
     .flr+.flr{page-break-before:always}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=23.1">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=23.3">
 </head>
 <body data-so-area="hk">
 <div class="topbar so-bar">
@@ -293,7 +293,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=37"></script>
-<script src="../assets/saizen-ops.js?v=23.1"></script>
+<script src="../assets/saizen-ops.js?v=23.3"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -465,8 +465,48 @@ async function connect(){
     if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect'); btn.disabled=false;
       $('#content').innerHTML='<div class="panel"><div class="deny">'+esc(tx('loginTitle'))+'<br><small>'+esc(tx('loginSub'))+'</small></div></div>'; return; }
     setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
-    renderUI(); load();
+    renderUI(); load(); startLiveWatch();
   }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn'); btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
+}
+
+// ── 실시간 반영 — 프론트의 체크아웃과 다른 담당자의 완료 표시가 알아서 올라온다 ──
+//  ⚠ 전체 load() 를 주기로 돌리면 객실·예약·골프까지 매번 다시 읽어 무겁다.
+//    바뀌는 건 두 가지뿐이라 **그 두 개만** 읽고 화면을 다시 그린다(가벼운 폴링).
+//     ① guests.check_status — 프론트에서 [체크아웃] 누른 팀(청소 먼저 들어가도 되는 신호)
+//     ② hk_done — 다른 사람이 끝낸 청소·타월(둘이 같은 층을 나눠 돌 때 중복 방지)
+//    입력 중(쪽지)·팝업·다른 탭일 땐 건너뛴다.
+let _liveTimer=null;
+function startLiveWatch(){
+  if(_liveTimer) clearInterval(_liveTimer);
+  _liveTimer=setInterval(liveTick, 25000);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) liveTick(); });
+}
+async function liveTick(){
+  if(!supa || document.hidden || !ROWS.length) return;
+  if(document.querySelector('.modal-bg')) return;                 // 팝업 열려 있으면 건드리지 않는다
+  const ae=document.activeElement;
+  if(ae && (ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT')) return;
+  try{
+    let changed=false;
+    // ① 체크아웃 확정
+    const seqs=[...new Set(ROWS.map(r=>r.event_seq).filter(Boolean))];
+    if(seqs.length){
+      const gs=await pagedIn('guests','event_seq,check_status','event_seq',seqs);
+      if(!gs.error) (gs.data||[]).forEach(g=>{
+        const t=TEAM[g.event_seq]; if(!t) return;
+        const co=(g.check_status==='체크아웃');
+        if(t.ckOut!==co){ t.ckOut=co; changed=true; }
+      });
+    }
+    // ② 다른 담당자의 완료 표시
+    const dn=await supa.from('hk_done').select('inventory_id,kind,done_by').eq('work_date',DATE);
+    if(!dn.error){
+      const next={}; (dn.data||[]).forEach(x=>{ next[x.inventory_id+'|'+x.kind]={by:x.done_by||''}; });
+      const a=Object.keys(DONE).sort().join(','), b=Object.keys(next).sort().join(',');
+      if(a!==b){ DONE=next; changed=true; }
+    }
+    if(changed) render();
+  }catch(e){}                                                     // 조용히 넘어간다 — 다음 주기에 다시 본다
 }
 
 async function paged(qf){
