@@ -513,7 +513,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=22.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=22.5">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -643,7 +643,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=22.4"></script>
+<script src="../assets/saizen-ops.js?v=22.5"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -4743,19 +4743,18 @@ async function autoAssign(){
       //    이미 붙는다 → **1인 1실로 배정**한다. 방이 비어 있는데 미배정으로 남기지 않는다(Min 2026-08).
       // 대기예약(구분=대기)은 확정 전이라 방을 잡지 않는다 — 방이 없어도 정상(Min 2026-08)
       if(String(g.status||'').includes('대기')){ holds.push(mkHold(tx('holdWait',gc),g,'wait')); continue; }
-      // 비고의 싱글룸 요청 — 확실한 것만 자동으로 잡는다(SZCore.singlePlan, 실제 예약 71건 기준).
-      //   all     = 「전원 싱글」·「N명 싱글」(N=인원) → 호텔동도 1인 1실로 자동
-      //   names   = 누가 단독인지 확정 → 그 이름을 보여 주고 수기(추가요금이 걸려 있어 사람이 확인)
-      //   part/unsure = 기간 일부·개수만 → 수기 / blocked = 대기·불가·만실 → 싱글이 아닌 것으로 본다
+      // 비고의 싱글룸(및 트리플) 요청 — **자동판단으로 배정하지 않는다**(Min 2026-08 결정).
+      //   전에는 「전원 싱글」처럼 확실해 보이는 것만 골라 자동으로 1인 1실을 넣었으나,
+      //   실제로는 텍스트 파싱이 틀리기 쉽고(추가요금·회원 등급 등 판단이 걸린 문제라)
+      //   확인된 사고 사례(백준호·정란희 등 트윈 잠식)까지 겹쳐 신뢰하지 않기로 했다.
+      //   → 비고에 싱글 언급이 있으면(대기·불가 등 취소성 언급 제외) **무조건 보류**하고
+      //     방배정 화면에서 비고 원문·비고 속 인물을 보고 사람이 직접 넣는다.
       const _sp=(window.SZCore&&SZCore.singlePlan)
         ? SZCore.singlePlan((g.remark_local||'')+'\n'+(g.remark||''), g.pax,
             roster.map(m=>({id:m.id,name:m.name_kr||''})))
         : (/싱글|single|シングル/i.test((g.remark_local||'')+' '+(g.remark||''))?{kind:'unsure'}:null);
-      let _singleEach=false;
       if(_sp && _sp.kind!=='blocked' && !AUTO_OPTS.singleRemark){
-        if(_sp.kind==='all') _singleEach=true;                 // 전원 싱글 — 호텔동 포함 1인 1실
-        else if(!route.floorOnly) _singleEach=true;            // 비호텔은 트윈 한 종류라 기존대로 1인 1실
-        else { holds.push(mkHold(tx('holdSingle',gc)+singleWhy(_sp),g,'single',_sp)); continue; }
+        holds.push(mkHold(tx('holdSingle',gc)+singleWhy(_sp),g,'single',_sp)); continue;
       }
       // ── 청소 효율 박수→층 규칙: 야마나미 호텔동(floorOnly) 팀만 허용 층으로 제한 ──
       //   허용 층이 없거나(규칙 외 박수+유동층 만석) 만석이면 hold(객실부족) → 수기 배정으로.
@@ -4764,7 +4763,7 @@ async function autoAssign(){
         floorOrder=nightFloors(teamNights(g), occ, pending);
         if(!floorOrder.length) floorOrder=null;   // 규칙 층이 없으면 층 우선순위 없이(전층) 진행 — 보류하지 않음
       }
-      plans.push({g,route,roster,floorOrder,gc,singleEach:_singleEach});
+      plans.push({g,route,roster,floorOrder,gc});
     }
     // ── 관내별장 예약 → 소보별장 우선 (Min 2026-08, 올해 한정) ─────────────
     //   소보별장 가용 = 2호·3호 트윈(2인) + 5호 4인 1동 → 하룻밤 최대 8명.
@@ -4821,27 +4820,11 @@ async function autoAssign(){
     // 한 팀의 짝 배정. phase='member'|'general'. 회원/일반 짝은 disjoint → 이중배정 없음.
     const placePlan=(plan,phase)=>{
       if(plan.done) return;                     // 소보별장으로 이미 보낸 팀
-      const {g,route,roster,floorOrder,gc,singleEach}=plan;
+      const {g,route,roster,floorOrder,gc}=plan;
       const flr = floorOrder ? (p=>poolByFloorOrder(p,floorOrder)) : (p=>p); // 호텔동만 허용 층으로 필터·정렬
-      // 싱글 지정 — 짝을 짓지 않고 1인 1실.
-      //  ⚠ 반드시 **진짜 싱글 타입 방**(room_type='싱글')부터 채운다(Min 2026-08 발견·수정).
-      //    예전엔 route.floorOnly(호텔동) 팀도 곧장 general 풀(트윈·디럭스)에 1인씩 넣어서,
-      //    실제 싱글 18실이 비어 있어도 "전원 싱글" 요청 팀이 트윈을 1인 사용으로 잠식했다
-      //    (백준호·정란희 등 확인된 사례). 싱글 타입이 아예 없는 시설(간지·쿠주·돔)만
-      //    general(트윈 등)을 그대로 쓴다 — 거긴 다른 선택지가 없다.
-      //    진짜 싱글이 모자라면(전원 다 못 들어가면) 남는 사람은 **보류**한다(트윈 잠식 안 함).
-      if(singleEach){
-        if(phase!=='general') return;                    // 한 번만 처리
-        const gp=flr(roomPool(route,'general'));
-        const sgAll=roomPool({fac:route.fac, floorOnly:route.floorOnly, zone:route.zone, genTypes:SINGLE_TYPES},'general');
-        if(sgAll.length){
-          const sg=floorOrder?poolByFloorOrder(sgAll,floorOrder):sgAll;
-          placeSingles(g,roster,sg,sgAll,'single',pending,holds,occ,floorOrder);
-        }else{
-          placeSingles(g,roster,gp,gp,'single',pending,holds,occ,floorOrder);   // 싱글 타입 자체가 없는 시설
-        }
-        return;
-      }
+      // ※ 싱글 지정 자동배정은 없앴다(Min 2026-08) — 비고에 싱글 언급이 있는 팀은
+      //   plans 를 만드는 단계에서 이미 holds 로 빠진다. 여기 도달하는 팀은
+      //   싱글 요청이 아니거나 blocked(대기·불가 등) 뿐이라 일반 로직만 남는다.
       if(route.deluxe){
         // A 규칙: 명단 순서대로 짝(1-2,3-4) → 짝에 회원이 1명이라도 있으면 디럭스, 없으면 예약종류.
         const dlx=flr(roomPool(route,'deluxe')), gp=flr(roomPool(route,'general'));
