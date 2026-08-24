@@ -276,8 +276,13 @@ function meetLabel(k){ return /[가-힣]/.test(String(k||'')) ? (accomPair(k)||k
 // [{dir, meet, gs:[…]}] — 구분(도착·체류·출발) → 만나는 곳 순서
 //  인쇄용 명단 셀 — 그 팀 전원 이름(대표자 포함). 대표자를 맨 앞에 굵게 둔다(Min 2026-08).
 //   이름은 한국어만(손님 이름은 원문 그대로 부르는 것이 정확하다).
+//  그 줄에 실제로 타는 사람 — 조기귀국으로 팀이 날짜별로 갈린 줄은 그 사람들만(memberIds).
+function rowMembers(r){
+  const full=MEM[(r||{}).seq]||[];
+  return (r&&r.memberIds) ? full.filter(m=>r.memberIds.has(m.id)) : full;
+}
 function namesCell(r){
-  const list=(MEM[r.seq]||[]).map(m=>String(m.kr||m.en||'').trim()).filter(Boolean);
+  const list=rowMembers(r).map(m=>String(m.kr||m.en||'').trim()).filter(Boolean);
   const rep=String(r.rep||'').trim();
   const rest=list.filter(n=>n!==rep);
   const head=rep?`<b>${esc(rep)}</b>`:'';
@@ -348,11 +353,23 @@ async function load(){
     const pBy={}; (ps||[]).forEach(p=>{ (pBy[p.event_seq]=pBy[p.event_seq]||[]).push(p); });
     // 現地手配書에서 묶은 팀은 대표팀 코드+팀번호로 통일(手配書·航空カバー·네임택과 같은 코드)
     const GT=(window.__so_groupTags? await __so_groupTags(supa,seqs) : {});
+    // 미팅·샌딩 담당자는 이름 명단을 본다 → 그날 팀의 명단을 먼저 읽는다(조기퇴실 판정에 필요해 출발/도착 행 만들기 전에 로드).
+    MEM={};
+    const {data:gm}=await pagedIn('guest_members','id,event_seq,seq_in_team,name_kr,name_en,passenger_id,actual_dep','event_seq',seqs);
+    // 성별 — 현장 명단표가 M/F 를 함께 본다(같은 이름이 섞여도 구분되고, 방·좌석 배치에 쓴다)
+    const gBySeqId={}; (ps||[]).forEach(x=>{ if(x.id!=null) gBySeqId[x.id]=x.gender||''; });
+    (gm||[]).forEach(m=>{ const g=String(gBySeqId[m.passenger_id]||'');
+      (MEM[m.event_seq]=MEM[m.event_seq]||[]).push({id:m.id, kr:m.name_kr||'', en:m.name_en||'', seq:m.seq_in_team||99,
+        sex: /女|F/.test(g)?'F':(/男|M/.test(g)?'M':''), early:m.actual_dep?String(m.actual_dep).slice(0,10):''}); });
+    Object.values(MEM).forEach(l=>l.sort((a,b)=>(a.seq-b.seq)||String(a.kr).localeCompare(String(b.kr))));
     const rows=[];
     (bs||[]).forEach(b=>{
       const g=gBy[b.event_seq]||{};
       const tag=GT[b.event_seq]||g.group_code||g.team_tag||('#'+(b.event_no||b.event_seq));
       const list=pBy[b.event_seq]||[];
+      const teamMembers=MEM[b.event_seq]||[];
+      //  조기퇴실(guest_members.actual_dep) — 예정 귀국일과 다른 날 떠나는 사람
+      const earlyMembers=teamMembers.filter(m=>m.early && m.early!==b.arr_date);
       const mk=(dir)=>{
         const grp={};
         list.forEach(p=>{
@@ -370,13 +387,50 @@ async function load(){
       };
       if(b.dep_date===DATE) mk('in').forEach(u=>rows.push({dir:'in', seq:b.event_seq, no:b.event_no||b.event_seq,
         tag, rep:b.rep_name||'', accom:g.accom||'', dep:b.dep_date, arr:b.arr_date, ...u}));
-      if(b.arr_date===DATE) mk('out').forEach(u=>rows.push({dir:'out', seq:b.event_seq, no:b.event_no||b.event_seq,
-        tag, rep:b.rep_name||'', accom:g.accom||'', dep:b.dep_date, arr:b.arr_date, ...u}));
+      // ── 출발(귀국) — 팀 전원이 예정된 귀국일에 나가는 게 보통이지만, 1~2명만 조기퇴실
+      //    (guest_members.actual_dep)한 경우 그 사람은 예정일이 아니라 **실제로 떠나는 날** 쪽에
+      //    별도 줄로 찍혀야 한다(Min 2026-08) — 안 그러면 이미 떠난 사람이 원래 날짜 명단에 남거나,
+      //    실제로 그날 나가는데 아무 표에도 안 잡힌다.
+      {
+        const normalCount=teamMembers.length?(teamMembers.length-earlyMembers.length):null;   // null=명단 미확보(예약 인원 fallback)
+        if(b.arr_date===DATE){
+          if(earlyMembers.length){
+            // 정상 귀국 인원만 — 항공편별로 다시 쪼개지 않고 팀 단위 한 줄(조기퇴실이 섞이면 便 그룹핑이 부정확해진다)
+            const remain=normalCount==null?Number(b.pax)||0:normalCount;
+            if(remain>0){
+              const normalIds=new Set(teamMembers.filter(m=>!(m.early&&m.early!==b.arr_date)).map(m=>m.id));
+              const p0=list[0]||{};
+              rows.push({dir:'out', seq:b.event_seq, no:b.event_no||b.event_seq, tag, rep:b.rep_name||'',
+                accom:g.accom||'', dep:b.dep_date, arr:b.arr_date, pax:remain,
+                flight:p0.ret_flight||'', time:p0.ret_dep_time||'', from:p0.dest||'', to:p0.origin||'',
+                memberIds:teamMembers.length?normalIds:null});
+            }
+          } else {
+            mk('out').forEach(u=>rows.push({dir:'out', seq:b.event_seq, no:b.event_no||b.event_seq,
+              tag, rep:b.rep_name||'', accom:g.accom||'', dep:b.dep_date, arr:b.arr_date, ...u}));
+          }
+        }
+        // 조기퇴실 인원 — 실제 떠나는 날짜가 오늘(DATE)인 사람만, 같은 날짜끼리 묶어 별도 줄로
+        if(earlyMembers.length){
+          const byDate={};
+          earlyMembers.forEach(m=>{ (byDate[m.early]=byDate[m.early]||[]).push(m); });
+          Object.keys(byDate).forEach(d=>{
+            if(d!==DATE) return;
+            const ms=byDate[d];
+            rows.push({dir:'out', seq:b.event_seq, no:b.event_no||b.event_seq, tag, rep:b.rep_name||'',
+              accom:g.accom||'', dep:b.dep_date, arr:b.arr_date, pax:ms.length,
+              flight:'', time:'', from:'', to:'', early:true, memberIds:new Set(ms.map(m=>m.id))});
+          });
+        }
+      }
       // ── 체류중(도착일·출발일이 아닌 날) 왕복 셔틀 ──
       if(b.dep_date!==DATE && b.arr_date!==DATE){
         const plan=STAY_PLAN[g.accom||''];
         if(plan){
           const p0=list[0]||{};
+          //  이미 조기퇴실한 사람은 그날 라운딩 셔틀에 타지 않는다
+          const stayMembers=teamMembers.filter(m=>!(m.early && m.early<=DATE));
+          const stayPax=teamMembers.length?stayMembers.length:(Number(b.pax)||0);
           const isPus=(window.SZCore&&SZCore.isPus)?SZCore.isPus(p0.origin,p0.dep_flight):false;
           // 그날 라운딩 코스 — 간지호텔 팀은 평일 구주고원, 주말·공휴일은 야마나미(SZCore.golfRows)
           let gr=null;
@@ -384,10 +438,11 @@ async function load(){
                  .find(x=>x.date===DATE) || null; }catch(_){ gr=null; }
           const yama = !gr || gr.course==='やまなみCC';
           const go = plan.golf==='none' ? true : (plan.golf==='yama' ? (!!gr && yama) : !!gr);
-          if(go){
+          if(go && stayPax>0){
             const dest = yama ? YAMANAMI : KUJU_CC;   // 라운딩장 = 야마나미 또는 구주고원
             const base={seq:b.event_seq, no:b.event_no||b.event_seq, tag, rep:b.rep_name||'',
-              accom:g.accom||'', pax:Number(b.pax)||0, flight:'', dep:b.dep_date, arr:b.arr_date};
+              accom:g.accom||'', pax:stayPax, flight:'', dep:b.dep_date, arr:b.arr_date,
+              memberIds:teamMembers.length?new Set(stayMembers.map(m=>m.id)):null};
             rows.push({dir:'stay', leg:'am', time:'', from:g.accom, to:dest, ...base});
             rows.push({dir:'stay', leg:'pm', time:'', from:dest, to:g.accom, ...base});
           }
@@ -395,15 +450,6 @@ async function load(){
       }
     });
     ROWS=rows;
-    // 미팅·샌딩 담당자는 이름 명단을 본다 → 그날 팀의 명단을 같이 읽는다.
-    MEM={};
-    const {data:gm}=await pagedIn('guest_members','id,event_seq,seq_in_team,name_kr,name_en,passenger_id','event_seq',seqs);
-    // 성별 — 현장 명단표가 M/F 를 함께 본다(같은 이름이 섞여도 구분되고, 방·좌석 배치에 쓴다)
-    const gBySeqId={}; (ps||[]).forEach(x=>{ if(x.id!=null) gBySeqId[x.id]=x.gender||''; });
-    (gm||[]).forEach(m=>{ const g=String(gBySeqId[m.passenger_id]||'');
-      (MEM[m.event_seq]=MEM[m.event_seq]||[]).push({id:m.id, kr:m.name_kr||'', en:m.name_en||'', seq:m.seq_in_team||99,
-        sex: /女|F/.test(g)?'F':(/男|M/.test(g)?'M':'')}); });
-    Object.values(MEM).forEach(l=>l.sort((a,b)=>(a.seq-b.seq)||String(a.kr).localeCompare(String(b.kr))));
     await loadChecks();
     renderPortChips();
     renderAccomChips();
@@ -449,8 +495,8 @@ function visible(){ return ROWS.filter(pass); }
 // 便 → 그 편에 붙는 팀들. 기사·차량 배차는 편 단위로 움직인다.
 function groupByFlight(rows){
   const g={};
-  rows.forEach(r=>{ const k=r.dir+'|'+(r.leg||'')+'|'+(r.flight||'-')+'|'+(r.time||'')+'|'+r.from+'|'+r.to;
-    (g[k]=g[k]||{dir:r.dir,leg:r.leg||'',flight:r.flight,time:r.time,from:r.from,to:r.to,rows:[]}).rows.push(r); });
+  rows.forEach(r=>{ const k=r.dir+'|'+(r.leg||'')+'|'+(r.early?'E':'')+'|'+(r.flight||'-')+'|'+(r.time||'')+'|'+r.from+'|'+r.to;
+    (g[k]=g[k]||{dir:r.dir,leg:r.leg||'',early:!!r.early,flight:r.flight,time:r.time,from:r.from,to:r.to,rows:[]}).rows.push(r); });
   const dord=d=>d==='in'?0:(d==='stay'?1:2);
   return Object.values(g).sort((a,b)=>
     dord(a.dir)-dord(b.dir) || tmv(a.time)-tmv(b.time) || String(a.flight).localeCompare(String(b.flight)))
@@ -607,11 +653,11 @@ function renderDriver(box,groups){
 function renderMeet(box,groups){
   box.innerHTML=groups.map(g=>{
     const lg=legOf(g);
-    const tot=g.rows.reduce((s,r)=>s+((MEM[r.seq]||[]).length||r.pax),0);
-    const done=g.rows.reduce((s,r)=>s+(MEM[r.seq]||[]).filter(m=>ckHas(lg,'member',m.id)).length,0);
+    const tot=g.rows.reduce((s,r)=>s+(rowMembers(r).length||r.pax),0);
+    const done=g.rows.reduce((s,r)=>s+rowMembers(r).filter(m=>ckHas(lg,'member',m.id)).length,0);
     return `<div class="flcard">${flHead(g,done,tot)}`
       +g.rows.map(r=>{
-        const list=MEM[r.seq]||[];
+        const list=rowMembers(r);
         const dn=list.filter(m=>ckHas(lg,'member',m.id)).length;
         const full=list.length&&dn===list.length;
         return `<div class="thead2">
@@ -636,7 +682,8 @@ function wireChecks(box){
     const kind=b.dataset.ck, leg=b.dataset.leg, seq=Number(b.dataset.seq);
     b.disabled=true;
     if(kind==='all'){
-      const list=MEM[seq]||[]; const full=list.length&&list.every(m=>ckHas(leg,'member',m.id));
+      const row=(ROWS||[]).find(x=>x.seq===seq&&legOf(x)===leg);
+      const list=rowMembers(row||{seq}); const full=list.length&&list.every(m=>ckHas(leg,'member',m.id));
       for(const m of list){ if(full===ckHas(leg,'member',m.id)) await toggleCheck(leg,'member',m.id,seq); }
     }else{
       await toggleCheck(leg,kind,b.dataset.ref,seq);
@@ -695,8 +742,8 @@ function printSheet(){
   const flightBlock=(kind,rows)=>{
     if(!rows.length) return '';
     const m={};
-    rows.forEach(r=>{ const k=(r.flight||'-')+'|'+(r.time||'');
-      (m[k]=m[k]||{flight:r.flight||'',time:r.time||'',rows:[]}).rows.push(r); });
+    rows.forEach(r=>{ const k=(r.early?'E|':'')+(r.flight||'-')+'|'+(r.time||'');
+      (m[k]=m[k]||{early:!!r.early,flight:r.flight||'',time:r.time||'',rows:[]}).rows.push(r); });
     const gs=Object.values(m).sort((a,b)=>tmv(a.time)-tmv(b.time)||String(a.flight).localeCompare(String(b.flight)));
     const pax=rows.reduce((s,r)=>s+r.pax,0);
     return `<div class="blk">
@@ -706,7 +753,7 @@ function printSheet(){
         const p0=g.rows[0]||{}, p0Port=(kind==='in'?p0.from:p0.to)||'';
         const gp=g.rows.reduce((s,r)=>s+r.pax,0);
         return `<div class="fl">
-          <div class="fl-h"><b class="mono">${esc(g.flight||'-')}</b><span class="tm mono">${esc(g.time||'')}</span>
+          <div class="fl-h"><b class="mono">${esc(g.early?'早期帰国':(g.flight||'-'))}</b><span class="tm mono">${esc(g.time||'')}</span>
             <span class="rt">${esc(cityDir(p0Port,kind)[0])}<i>${esc(cityDir(p0Port,kind)[1])}</i></span>
             <span class="nn">${g.rows.length}チーム · ${gp}名</span>
             <span class="sb">${subtotal(g.rows)}</span></div>
@@ -879,8 +926,8 @@ function printMeet(){
   const PAGES=[];
   ['in','out'].forEach(dir=>{
     const m={};
-    vis.filter(r=>r.dir===dir).forEach(r=>{ const k=(r.flight||'-')+'|'+(r.time||'');
-      (m[k]=m[k]||{dir, flight:r.flight||'', time:r.time||'', rows:[]}).rows.push(r); });
+    vis.filter(r=>r.dir===dir).forEach(r=>{ const k=(r.early?'E|':'')+(r.flight||'-')+'|'+(r.time||'');
+      (m[k]=m[k]||{dir, early:!!r.early, flight:r.flight||'', time:r.time||'', rows:[]}).rows.push(r); });
     Object.values(m).sort((a,b)=>tmv(a.time)-tmv(b.time)).forEach(g=>PAGES.push(g));
   });
   { const m={};
@@ -895,18 +942,20 @@ function printMeet(){
   const dirBig=p=>({in:'IN', stay:'滞在', out:'OUT'}[p.dir]||'');
   const placeLabel=p=>{
     if(p.dir==='stay') return [shortJa(p.accom), accomKo(p.accom)];
+    if(p.early) return ['早期帰国','조기 귀국'];
     const r=p.rows[0]||{}; return cityDir(p.dir==='in'?r.from:r.to, p.dir);
   };
   //  便 줄 — 실물의 「熊本空港 TW287 (9:25) 着」
   const flightLine=p=>{
     if(p.dir==='stay') return `${shortJa(p.accom)} ⇔ ゴルフ場`;
+    if(p.early) return '早期帰国　便・時刻は個別確認';
     const r=p.rows[0]||{}, ap=apJa(p.dir==='in'?r.to:r.from)||'熊本空港';
     return `${ap}　${p.flight||'-'}${p.time?`（${p.time}）`:''}　${p.dir==='in'?'着':'発'}`;
   };
 
   //  팀 묶음 = 그룹코드 + 반대쪽 날짜 + 인원, 그 아래 사람마다 한 줄
   const teamBlock=(r,dir)=>{
-    const list=(MEM[r.seq]||[]).slice().sort((a,b)=>(a.seq-b.seq)||String(a.kr).localeCompare(String(b.kr)));
+    const list=rowMembers(r).slice().sort((a,b)=>(a.seq-b.seq)||String(a.kr).localeCompare(String(b.kr)));
     const col=accomColor(r.accom);
     const dayLbl=dir==='out' ? `${md(r.dep)}着` : `${md(r.arr)}帰`;
     const ac=(r.accom&&r.accom!==YAMANAMI)?`<span class="ac">${esc(tinyJa(r.accom))}</span>`:'';
