@@ -88,6 +88,7 @@
   .portg .pl{padding:2px 9px;border-radius:99px;background:var(--surface3)}
   .portg.icn .pl{background:#e0ecf7;color:#2c5f8a}
   .portg.pus .pl{background:#f7e8e0;color:#8a5a2c}
+  .portg.acc{font-size:11px;font-weight:700;margin:8px 0 4px;padding-left:10px}
   .portg::after{content:'';flex:1;height:1px;background:var(--border)}
   .trow .dpax{font-family:var(--mono);font-weight:800;font-size:13.5px;color:#553a86}
   .trow .dmark{font-size:10.5px;font-weight:800;border-radius:99px;padding:1px 8px;flex:none;white-space:nowrap;border:1px solid var(--border2);background:var(--surface2);color:var(--text2)}
@@ -223,7 +224,7 @@ const L={
     kpiOpen:'↓ 開く', kpiClose:'✕ 閉じる',
     secDine:'🍽 本日夕食', secDineEx:'🍽 夕食除外', dineHint:'夕食オーダーで整理した内容（除外・早期退室・アップグレード）を反映しています',
     dnEco:n=>`早期退室 −${n}`, dnUp:n=>`UP −${n}`, dnAdd:n=>`別注 ${n}`, dnAlg:n=>`⚠ アレルギー ${n}`, dnGrp:'運営チーム', dnEx:'除外',
-    secIn:'🛬 本日チェックイン', secOut:'🛫 本日チェックアウト', secStay:'🏨 滞在中(連泊)', portICN:'仁川便', portPUS:'釜山便',
+    secIn:'🛬 本日チェックイン', secOut:'🛫 本日チェックアウト', secStay:'🏨 滞在中(連泊)', portICN:'仁川便', portPUS:'釜山便', noAccom:'宿泊未定',
     connectFirst:'先に接続してください', coDone:'チェックアウト済', btnCo:'✓ チェックアウト', btnCoUndo:'↩ チェックアウト取消', btnCoSel:(n)=>`✓ 選択 ${n}件 チェックアウト`, btnCoAll:'✓ 本日退室 全件',
     coNone:'チェックアウトするチームを選択してください', coConfirm:(n)=>`${n}チームをチェックアウト処理しますか？`,
     coDue:(n,a)=>`未決済 ${n}チーム（${a}）が含まれています。そのまま進めますか？`, coOk:(n)=>`${n}チーム チェックアウト`, coFail:'チェックアウト失敗: ',
@@ -256,7 +257,7 @@ const L={
     kpiOpen:'↓ 열기', kpiClose:'✕ 닫기',
     secDine:'🍽 오늘 석식', secDineEx:'🍽 석식 제외', dineHint:'夕食オーダー에서 정리한 내용(제외·조기퇴실·업그레이드)을 그대로 반영합니다',
     dnEco:n=>`조기퇴실 −${n}`, dnUp:n=>`UP −${n}`, dnAdd:n=>`別注 ${n}`, dnAlg:n=>`⚠ 알레르기 ${n}`, dnGrp:'운영팀', dnEx:'제외',
-    secIn:'🛬 오늘 체크인', secOut:'🛫 오늘 체크아웃', secStay:'🏨 체류중(연박)', portICN:'인천편', portPUS:'부산편',
+    secIn:'🛬 오늘 체크인', secOut:'🛫 오늘 체크아웃', secStay:'🏨 체류중(연박)', portICN:'인천편', portPUS:'부산편', noAccom:'숙소 미정',
     connectFirst:'먼저 연결하세요', coDone:'체크아웃 완료', btnCo:'✓ 체크아웃', btnCoUndo:'↩ 체크아웃 취소', btnCoSel:(n)=>`✓ 선택 ${n}팀 체크아웃`, btnCoAll:'✓ 오늘 퇴실 전체',
     coNone:'체크아웃할 팀을 선택하세요', coConfirm:(n)=>`${n}팀을 체크아웃 처리할까요?`,
     coDue:(n,a)=>`미결제 ${n}팀(${a})이 포함되어 있습니다. 그래도 진행할까요?`, coOk:(n)=>`${n}팀 체크아웃`, coFail:'체크아웃 실패: ',
@@ -289,7 +290,7 @@ const L={
     kpiOpen:'↓ open', kpiClose:'✕ close',
     secDine:'🍽 Dinner today', secDineEx:'🍽 Excluded from dinner', dineHint:'Mirrors what was arranged on the 夕食オーダー screen (exclusions, early checkout, upgrades)',
     dnEco:n=>`early out −${n}`, dnUp:n=>`UP −${n}`, dnAdd:n=>`extra ${n}`, dnAlg:n=>`⚠ allergy ${n}`, dnGrp:'Op-team', dnEx:'excluded',
-    secIn:'🛬 Check-in today', secOut:'🛫 Check-out today', secStay:'🏨 In-house (staying)', portICN:'Incheon', portPUS:'Busan',
+    secIn:'🛬 Check-in today', secOut:'🛫 Check-out today', secStay:'🏨 In-house (staying)', portICN:'Incheon', portPUS:'Busan', noAccom:'No lodging',
     connectFirst:'Connect first', coDone:'Checked out', btnCo:'✓ Check out', btnCoUndo:'↩ Undo check-out', btnCoSel:(n)=>`✓ Check out ${n} selected`, btnCoAll:'✓ All departures today',
     coNone:'Select teams to check out', coConfirm:(n)=>`Check out ${n} team(s)?`,
     coDue:(n,a)=>`${n} team(s) with an outstanding balance (${a}) are included. Proceed anyway?`, coOk:(n)=>`${n} team(s) checked out`, coFail:'Check-out failed: ',
@@ -583,15 +584,25 @@ function sect(kind,title,list){
       <span class="bal ${balCls}">${t.cnt?yen(t.bal):'-'}</span>
     </div>`;
   };
+  // 숙소별 소구분 헤더 — 정렬만으로는 구간이 안 보여 "숙소별로 나뉜 게 맞냐"는 문의가 있었다(Min 2026-08).
+  const accomGroups=arr=>{
+    const by={}; const order=[];
+    arr.forEach(t=>{ const k=t.accom||''; if(!by[k]){ by[k]=[]; order.push(k); } by[k].push(t); });
+    order.sort((a,b)=>a.localeCompare(b));
+    return order.map(k=>({accom:k,list:by[k]}));
+  };
+  const accomHtml=arr=>accomGroups(sortAccom(arr)).map(g=>
+    `<div class="portg acc"><span class="pl">${esc(accomL(g.accom)||tx('noAccom'))}</span><span class="pc">${g.list.length}${tw}</span></div>${g.list.map(row).join('')}`
+  ).join('');
   let rows;
   if(!list.length){ rows=`<div class="empty">${tx('noneApplicable')}</div>`; }
   else if(ci){
-    // 체크인은 출발지(인천/부산)로 먼저 나눈다 — 도착 시각·안내가 완전히 갈리는 팀이라(Min 2026-08)
-    const icn=sortAccom(list.filter(t=>t.port!=='PUS')), pus=sortAccom(list.filter(t=>t.port==='PUS'));
-    const grp=(lab,cls,arr)=>arr.length?`<div class="portg ${cls}"><span class="pl">${lab}</span><span class="pc">${arr.length}${tw}</span></div>${arr.map(row).join('')}`:'';
+    // 체크인은 출발지(인천/부산)로 먼저 나누고, 그 안에서 다시 숙소별로 나눈다(Min 2026-08)
+    const icn=list.filter(t=>t.port!=='PUS'), pus=list.filter(t=>t.port==='PUS');
+    const grp=(lab,cls,arr)=>arr.length?`<div class="portg ${cls}"><span class="pl">${lab}</span><span class="pc">${arr.length}${tw}</span></div>${accomHtml(arr)}`:'';
     rows=grp(tx('portICN'),'icn',icn)+grp(tx('portPUS'),'pus',pus);
   } else {
-    rows=sortAccom(list).map(row).join('');
+    rows=accomHtml(list);
   }
   const bar=pick&&list.length ? `<div class="cobar">
       <button class="btn sm" id="btn-${ci?'ci':'co'}-sel" type="button">${(ci?tx('btnCiSel'):tx('btnCoSel'))(0)}</button>
