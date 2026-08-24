@@ -513,7 +513,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=22.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=22.4">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -643,7 +643,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=22.3"></script>
+<script src="../assets/saizen-ops.js?v=22.4"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -2031,11 +2031,14 @@ function noteLinkedPeople(g){
   });
   return out.slice(0,8);
 }
-function noteLinkedHtml(g){
+function noteLinkedHtml(g, editable){
   const ps=noteLinkedPeople(g); if(!ps.length) return '';
   return `<div class="hd-nt loc" style="margin-top:6px"><span class="k">${tx('wzLinked')}</span><span class="v">`
     + ps.map(p=>`<b style="color:var(--text)">${esc(p.nm)}</b>`
-        + (p.room?` <b style="font-family:var(--mono);color:var(--accent)">${esc(p.room)}</b>`:` <span style="color:var(--err);font-weight:800">${tx('wzLinkedNone')}</span>`)
+        + (p.room?` <b style="font-family:var(--mono);color:var(--accent)">${esc(p.room)}</b>`
+            + (editable?` <button type="button" class="wz-un" data-mid="${esc(String(p.mid))}" title="${esc(tx('wzUnT'))}"
+                style="border:none;background:none;color:var(--err);font-weight:900;font-size:12px;line-height:1;cursor:pointer;padding:1px 3px;vertical-align:middle">✕</button>`:'')
+          :` <span style="color:var(--err);font-weight:800">${tx('wzLinkedNone')}</span>`)
         + `<span style="color:var(--muted);font-size:10.5px"> (${esc(p.gc)})</span>`).join(' · ')
     + `</span></div>`;
 }
@@ -2189,6 +2192,7 @@ function wzBody(){
       <b style="color:var(--accent)">${tx('wzMine')}</b>
       ${mine.map(x=>`<span style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;margin:2px 0 2px 7px;vertical-align:middle">
         <b style="font-family:var(--mono)">${esc(x.inv.room_no)}</b>
+        <span style="font-size:10.5px;color:var(--text2)">${esc(wzTypeLabel(x.inv))}</span>
         ${(x.people||[]).map(pp=>`<span style="display:inline-flex;align-items:center;gap:3px;background:var(--surface);border:1px solid var(--border2);border-radius:99px;padding:1px 4px 1px 8px">
           <span style="color:var(--text2)">${esc(pp.name)}</span>
           <button type="button" class="wz-un" data-mid="${esc(String(pp.mid))}" title="${esc(tx('wzUnT'))}"
@@ -2206,7 +2210,7 @@ function wzBody(){
   const notes=noteRows(g);
   const sgb=(typeof singleBadgeHtml==='function' && singleNote(g)) ? singleBadgeHtml(g) : '';
   return `<div style="padding:8px 0">
-    ${(notes||sgb)?`<div style="background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:7px 10px;margin-bottom:10px">${sgb}${notes}${noteLinkedHtml(g)}</div>`:''}
+    ${(notes||sgb)?`<div style="background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:7px 10px;margin-bottom:10px">${sgb}${notes}${noteLinkedHtml(g,true)}</div>`:''}
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:9px">
       ${mem.map((m,i)=>`<label style="display:inline-flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:4px 9px;font-size:12.5px;cursor:pointer">
         <input type="checkbox" class="wz-m" data-mid="${m.id}"${i===0?' checked':''}><b>${esc(mName(m))}</b>
@@ -4613,17 +4617,22 @@ function placeSingles(g,list,primaryPool,fallbackPool,label,pending,holds,occ,fl
   }
 }
 
-// 홀수로 남는 1명 = 싱글 방(정원 1)에 배정. 허용 층 → 전층 순. 싱글이 없으면 보류
-//  (옵션 allowSingle 을 켜면 2인실을 1명이 단독 사용).  Min 2026-08 결정.
+// 홀수로 남는 1명 = 싱글 방(정원 1)에 배정. 허용 층 → 전층 순.
+//  ⚠ 트윈을 1인용으로 대신 쓰는 것은 **그 시설에 애초에 싱글 타입이 없을 때만**이다
+//    (간지호텔·쿠주힐즈·돔하우스 = 트윈/2인1동뿐, 다른 선택지가 없다).
+//    야마나미처럼 진짜 싱글(room_type='싱글')이 있는 시설은, 그 순간 싱글이 다 차 있어도
+//    **트윈으로 떨어지지 않고 보류한다** — 침대 하나를 버리는 판단은 사람이 방을 보고 정할 일이다
+//    (Min 2026-08: "3명 팀의 홀수 잔여를 왜 트윈룸에 넣어. 싱글룸 배정의 인원으로 둬야 함").
 function placeLeftovers(g, route, leftovers, flr, pending, holds, occ, floorOrder, genPool){
   if(!leftovers||!leftovers.length) return;
   const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq));
   const sgAll=roomPool({fac:route.fac, floorOnly:route.floorOnly, zone:route.zone, genTypes:SINGLE_TYPES},'general');
   const sg=floorOrder?poolByFloorOrder(sgAll,floorOrder):sgAll;
+  const hasSingleType=sgAll.length>0;     // 이 시설에 싱글 타입 방이 존재하는지(있는데 다 찼는지와는 다르다)
   for(const m of leftovers){
     let inv=pickRoom(sg,g.dep,g.arr,1,pending,occ);                       // 허용 층 싱글
     if(!inv) inv=pickRoom(sgAll,g.dep,g.arr,1,pending,occ);               // 전층 싱글(층 넘기 허용)
-    if(!inv && AUTO_OPTS.allowSingle && genPool) inv=pickRoom(genPool,g.dep,g.arr,1,pending,occ); // 2인실 단독(옵션)
+    if(!inv && !hasSingleType && genPool) inv=pickRoom(genPool,g.dep,g.arr,1,pending,occ); // 싱글 타입 자체가 없는 시설만 트윈 대체
     if(!inv){ holds.push(mkHold(tx('holdOddLeft',gc,mName(m)),g,'oddLeft')); continue; }
     pending.push(mkRow(g,m,inv));
   }
@@ -4814,11 +4823,23 @@ async function autoAssign(){
       if(plan.done) return;                     // 소보별장으로 이미 보낸 팀
       const {g,route,roster,floorOrder,gc,singleEach}=plan;
       const flr = floorOrder ? (p=>poolByFloorOrder(p,floorOrder)) : (p=>p); // 호텔동만 허용 층으로 필터·정렬
-      // 싱글 지정(비호텔) — 짝을 짓지 않고 1인 1실. 남는 방이 없으면 아래 일반 배정으로 넘어간다.
+      // 싱글 지정 — 짝을 짓지 않고 1인 1실.
+      //  ⚠ 반드시 **진짜 싱글 타입 방**(room_type='싱글')부터 채운다(Min 2026-08 발견·수정).
+      //    예전엔 route.floorOnly(호텔동) 팀도 곧장 general 풀(트윈·디럭스)에 1인씩 넣어서,
+      //    실제 싱글 18실이 비어 있어도 "전원 싱글" 요청 팀이 트윈을 1인 사용으로 잠식했다
+      //    (백준호·정란희 등 확인된 사례). 싱글 타입이 아예 없는 시설(간지·쿠주·돔)만
+      //    general(트윈 등)을 그대로 쓴다 — 거긴 다른 선택지가 없다.
+      //    진짜 싱글이 모자라면(전원 다 못 들어가면) 남는 사람은 **보류**한다(트윈 잠식 안 함).
       if(singleEach){
         if(phase!=='general') return;                    // 한 번만 처리
         const gp=flr(roomPool(route,'general'));
-        placeSingles(g,roster,gp,gp,'single',pending,holds,occ,floorOrder);
+        const sgAll=roomPool({fac:route.fac, floorOnly:route.floorOnly, zone:route.zone, genTypes:SINGLE_TYPES},'general');
+        if(sgAll.length){
+          const sg=floorOrder?poolByFloorOrder(sgAll,floorOrder):sgAll;
+          placeSingles(g,roster,sg,sgAll,'single',pending,holds,occ,floorOrder);
+        }else{
+          placeSingles(g,roster,gp,gp,'single',pending,holds,occ,floorOrder);   // 싱글 타입 자체가 없는 시설
+        }
         return;
       }
       if(route.deluxe){
