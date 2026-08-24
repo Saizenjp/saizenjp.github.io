@@ -163,7 +163,7 @@
      왼쪽으로 밀렸다가 제자리로 튀었다(Min 2026-08). 세로 이동만 남긴다. */
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=21.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=21.3">
 </head>
 <body data-so-area="settle">
 <div class="topbar so-bar">
@@ -226,7 +226,7 @@
 
 <script src="../assets/qrcode-generator.js?v=1"></script>
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=21.2"></script>
+<script src="../assets/saizen-ops.js?v=21.3"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -247,7 +247,7 @@ const L={
   ja:{ dayLbl:'日付', monthAll:'月全体', monthAllTitle:'当月の全チーム表示', searchPh:'氏名・部屋番号・代表者・グループコード 検索',
     needUrlKey:'URL・key必要', connecting:'接続中…', connectedShort:'✓ 接続済', connOk:'接続済', connOkToast:'Supabase 接続済',
     connectedBtn:'✓ 接続済', connFail:'接続失敗', connFailRetry:'接続失敗・再試行', connFailHint:'(09_settlement_core.sqlの実行・keyをご確認ください)',
-    needConnect:'先に接続してください', folioLoadFail:'フォリオ読み込み失敗', loadedFolios:'件 計上口座 読込', noChargeYet:'このチームはまだ請求がありません — 一覧からクリックして開始',
+    needConnect:'先に接続してください', folioLoadFail:'フォリオ読み込み失敗', scanNoMatch:'該当チームなし(無効なQR)', scanOtherMonth:'この月の一覧にないチームです — 月をご確認ください', scanOpened:'QRのチームを開きました', loadedFolios:'件 計上口座 読込', noChargeYet:'このチームはまだ請求がありません — 一覧からクリックして開始',
     chargeWord:'件', balance:'残高', monthWhole:'月全体', allChip:'全体',
     cardHint:'クリックすると追加料金を入力できます', checkout:'チェックアウト', chargeCount0:'請求 0件', balanceLabel:'残高',
     splitN:'個人分割', personUnit:'名', teamTotalBal:'チーム合計残高', personBadge:'個人',
@@ -288,7 +288,7 @@ const L={
   ko:{ dayLbl:'날짜', monthAll:'월 전체', monthAllTitle:'이 달 전체 팀 보기', searchPh:'이름·호수·대표자·그룹코드 검색',
     needUrlKey:'URL·key 필요', connecting:'연결 중…', connectedShort:'✓ 연결됨', connOk:'연결됨', connOkToast:'Supabase 연결됨',
     connectedBtn:'✓ 연결됨', connFail:'연결 실패', connFailRetry:'연결 실패 · 재시도', connFailHint:'(09_settlement_core.sql 실행·키 확인)',
-    needConnect:'먼저 연결하세요', folioLoadFail:'folio 로드 실패', loadedFolios:'건 정산계정 로드', noChargeYet:'이 팀은 아직 청구 없음 — 목록에서 클릭해 시작',
+    needConnect:'먼저 연결하세요', folioLoadFail:'folio 로드 실패', scanNoMatch:'해당 팀 없음(무효 QR)', scanOtherMonth:'이 달 목록에 없는 팀입니다 — 월을 확인해 주세요', scanOpened:'QR 팀 청구서를 열었습니다', loadedFolios:'건 정산계정 로드', noChargeYet:'이 팀은 아직 청구 없음 — 목록에서 클릭해 시작',
     chargeWord:'건', balance:'잔액', monthWhole:'월 전체', allChip:'전체',
     cardHint:'클릭하면 청구를 추가할 수 있습니다', checkout:'체크아웃', chargeCount0:'청구 0건', balanceLabel:'잔액',
     splitN:'개인 분할', personUnit:'명', teamTotalBal:'팀 합계 잔액', personBadge:'개인',
@@ -329,7 +329,7 @@ const L={
   en:{ dayLbl:'Date', monthAll:'Whole month', monthAllTitle:'Show all teams this month', searchPh:'Search name / room / rep / group code',
     needUrlKey:'URL·key required', connecting:'Connecting…', connectedShort:'✓ Connected', connOk:'Connected', connOkToast:'Supabase connected',
     connectedBtn:'✓ Connected', connFail:'Connection failed', connFailRetry:'Failed · retry', connFailHint:'(run 09_settlement_core.sql · check key)',
-    needConnect:'Connect first', folioLoadFail:'Folio load failed', loadedFolios:' folios loaded', noChargeYet:'No charges yet — click in the list to start',
+    needConnect:'Connect first', folioLoadFail:'Folio load failed', scanNoMatch:'No matching team (invalid QR)', scanOtherMonth:'That team is not in this month — check the month', scanOpened:'Opened the scanned team', loadedFolios:' folios loaded', noChargeYet:'No charges yet — click in the list to start',
     chargeWord:' items', balance:'Balance', monthWhole:'Whole month', allChip:'All',
     cardHint:'Click to add an extra charge', checkout:'check-out', chargeCount0:'0 charges', balanceLabel:'Balance',
     splitN:'Per-person split', personUnit:' ppl', teamTotalBal:'Team total balance', personBadge:'Person',
@@ -1378,6 +1378,29 @@ $('#session-ym').value=nowYM();
 applyStatic();   // 정적 라벨(날짜·월전체·검색)을 현재 언어로
 // 프론트 데스크 등에서 ?ym=&seq= 딥링크 → 그 달 로드 후 그 팀 정산 자동 선택(없으면 월 전체에 노출, 자동생성 안 함)
 (function(){ const q=new URLSearchParams(location.search); if(q.get('ym')) $('#session-ym').value=q.get('ym'); window._deepSeq=q.get('seq')?Number(q.get('seq')):null; })();
+
+// ── 하드웨어 QR 스캐너(HID) — 손님 카드를 찍으면 그 팀 청구서가 바로 열린다.
+//   체크아웃 정산이 이 화면에서 끝나므로, 프론트에서 팀을 손으로 찾는 단계를 없앤다.
+if(window.__so_hidScan) __so_hidScan(async function(raw){
+  if(!supa) return;
+  const token=(window.__so_qrToken?__so_qrToken(raw):String(raw||'').trim());
+  try{
+    const {data}=await supa.from('order_tokens').select('event_seq').eq('token',token).limit(1);
+    const seq=data&&data[0]&&data[0].event_seq;
+    if(!seq){ toast(tx('scanNoMatch'),'err'); return; }
+    state.day=''; if($('#settle-day')) $('#settle-day').value='';
+    state.q=''; if($('#settle-q')) $('#settle-q').value='';
+    const tf=state.folios.find(f=>f.event_seq===seq && f.subject==='team');
+    if(tf){ renderFolioList(); selectFolio(tf.folio_id); }
+    else {
+      // 이 달 목록에 없으면 그 달로 이동해 다시 시도(월경계 체크아웃)
+      const b=(state.bookings||[]).find(x=>x.event_seq===seq);
+      if(!b){ toast(tx('scanOtherMonth'),'warn'); return; }
+      renderFolioList(); await openFolio(seq);
+    }
+    toast(tx('scanOpened'),'ok');
+  }catch(e){ toast(tx('scanNoMatch'),'err'); }
+});
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
