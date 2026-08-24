@@ -2024,8 +2024,12 @@ function noteLinkedPeople(g){
       if(txt.indexOf(nm)<0) return;
       seen.add(nm);
       const rs=memberRooms(m.id);
-      out.push({ nm, seq:Number(seq), mid:m.id,
-        room: rs.length?[...new Set(rs.map(r=>r.room_no||((invById(r.inventory_id)||{}).room_no)||''))].filter(Boolean).join(', '):'',
+      const seenNo=new Set();
+      const rooms=rs.map(r=>{
+        const inv=invById(r.inventory_id)||{}; const no=r.room_no||inv.room_no||''; if(!no||seenNo.has(no)) return null;
+        seenNo.add(no); return { no, ty:wzTypeLabel(inv) };
+      }).filter(Boolean);
+      out.push({ nm, seq:Number(seq), mid:m.id, rooms,
         gc: teamGroupCode(Number(seq))||evNo(Number(seq))||'' });
     });
   });
@@ -2033,11 +2037,15 @@ function noteLinkedPeople(g){
 }
 function noteLinkedHtml(g, editable){
   const ps=noteLinkedPeople(g); if(!ps.length) return '';
+  const roomsHtml=p=>p.rooms.map(r=>
+      `<b style="font-family:var(--mono);color:var(--accent)">${esc(r.no)}</b>`
+      + (r.ty?` <span style="font-size:10.5px;color:var(--text2)">${esc(r.ty)}</span>`:'')
+      + (editable?` <button type="button" class="wz-un" data-mid="${esc(String(p.mid))}" title="${esc(tx('wzUnT'))}"
+          style="border:none;background:none;color:var(--err);font-weight:900;font-size:12px;line-height:1;cursor:pointer;padding:1px 3px;vertical-align:middle">✕</button>`:'')
+    ).join(', ');
   return `<div class="hd-nt loc" style="margin-top:6px"><span class="k">${tx('wzLinked')}</span><span class="v">`
     + ps.map(p=>`<b style="color:var(--text)">${esc(p.nm)}</b>`
-        + (p.room?` <b style="font-family:var(--mono);color:var(--accent)">${esc(p.room)}</b>`
-            + (editable?` <button type="button" class="wz-un" data-mid="${esc(String(p.mid))}" title="${esc(tx('wzUnT'))}"
-                style="border:none;background:none;color:var(--err);font-weight:900;font-size:12px;line-height:1;cursor:pointer;padding:1px 3px;vertical-align:middle">✕</button>`:'')
+        + (p.rooms.length?` ${roomsHtml(p)}`
           :` <span style="color:var(--err);font-weight:800">${tx('wzLinkedNone')}</span>`)
         + `<span style="color:var(--muted);font-size:10.5px"> (${esc(p.gc)})</span>`).join(' · ')
     + `</span></div>`;
