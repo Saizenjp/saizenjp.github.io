@@ -425,7 +425,7 @@
   /* 방 위치는 아랫줄 전체 폭으로 — margin-left:auto 로 오른쪽 끝에 붙이면 이름이 길 때 밀려서 잘렸다 */
   .rs-loc{flex:1 0 100%;margin-left:0;margin-top:2px;font-weight:700;color:var(--accent)}
   .rs-empty{padding:12px;color:var(--muted);font-size:12.5px}
-  .room.rs-flash{outline:3px solid var(--accent2);outline-offset:2px;animation:rsFlash 1.8s ease-out}
+  .room.rs-flash,.rrow.rs-flash{outline:3px solid var(--accent2);outline-offset:2px;animation:rsFlash 1.8s ease-out}
   @keyframes rsFlash{0%{box-shadow:0 0 0 6px rgba(154,115,34,.45)}100%{box-shadow:0 0 0 0 rgba(154,115,34,0)}}
   .day-strip:empty{display:none}
   .day-chip{flex:0 0 auto;font-family:inherit;font-size:12px;font-weight:700;line-height:1.1;text-align:center;padding:5px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;transition:.1s;min-width:42px}
@@ -3340,7 +3340,9 @@ function jumpToRoom(invId, date){
   if(date){ if(state.from && date<state.from) date=state.from; if(state.to && date>state.to) date=state.to; state.focus=date; }
   if(viewMode==='timeline') setView('card'); else render();
   setTimeout(()=>{
-    const el=document.querySelector('.room[data-inv-id="'+invId+'"]');
+    // 카드 보기=.room, 표 보기=.rrow — 둘 다 data-inv-id 를 갖는다(예전엔 .room만 찾아서
+    // 표 보기에서는 조용히 아무 일도 안 일어났다. Min 2026-08 발견·수정).
+    const el=document.querySelector('.room[data-inv-id="'+invId+'"],.rrow[data-inv-id="'+invId+'"]');
     if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.classList.add('rs-flash'); setTimeout(()=>el.classList.remove('rs-flash'),1900); }
   },90);
 }
@@ -5531,16 +5533,13 @@ try{ applyStaticRoom(); }catch(e){}
   inp.addEventListener('focus',()=>{ if(inp.value.trim()) run(); });
   box.addEventListener('click',e=>{
     const it=e.target.closest('.rs-item'); if(!it) return;
-    const invId=it.dataset.inv; let date=it.dataset.date||state.from;
-    if(state.from && date<state.from) date=state.from;
-    if(state.to && date>state.to) date=state.to;
-    state.focus=date;
-    if(viewMode==='timeline') setView('card'); else render();   // 카드·표 보기에서 방으로 점프
+    const invId=it.dataset.inv, date=it.dataset.date||state.from;
     box.classList.remove('on');
-    setTimeout(()=>{
-      const el=document.querySelector('.room[data-inv-id="'+invId+'"]');
-      if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.classList.add('rs-flash'); setTimeout(()=>el.classList.remove('rs-flash'),1900); }
-    },90);
+    if(invId) jumpToRoom(invId, date);            // 배정된 사람 → 그 방으로(카드·표 보기 공용)
+    else {                                          // 미배정 → 방은 없으니 그 날짜로만 이동
+      let d=date; if(state.from&&d<state.from) d=state.from; if(state.to&&d>state.to) d=state.to;
+      state.focus=d; render();
+    }
   });
   document.addEventListener('click',e=>{ if(!e.target.closest('.rsearch')) box.classList.remove('on'); });
 })();
