@@ -82,7 +82,7 @@
   .gbadge{display:inline-block;font-size:10.5px;font-weight:800;color:#fff;border-radius:99px;padding:1px 7px;margin-left:5px;vertical-align:middle}
   .srch{flex:1;min-width:220px}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.6">
 </head>
 <body data-so-area="print">
 <div class="topbar so-bar">
@@ -114,7 +114,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=20.5"></script>
+<script src="../assets/saizen-ops.js?v=20.6"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, YM=null, ROWS=[], TOKMAP={}, DATESEL=new Set(), ACCOMSEL=new Set(), Q='', TG={};
@@ -328,9 +328,11 @@ async function load(){
       const {data:po}=await supa.from('print_overrides').select('event_seq,team_group').in('event_seq',chunk);
       (po||[]).forEach(x=>{ if(x.team_group) TG[x.event_seq]=x.team_group; });
     }
+    // 묶은 팀은 대표팀 코드+팀번호로 통일(手配書·航空カバー·네임택·룸키 라벨과 같은 코드)
+    const GT=(window.__so_groupTags? await __so_groupTags(supa,seqs) : {});
     ROWS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{};
       return { seq:b.event_seq, eventNo:b.event_no||'', rep:b.rep_name||'', dep:(b.dep_date||'').slice(0,10), arr:(b.arr_date||'').slice(0,10),
-        tag:g.team_tag||g.group_code||('#'+(b.event_no||b.event_seq)), accom:g.accom||'', pax:g.pax||0, token:TOKMAP[b.event_seq]||'',
+        tag:GT[b.event_seq]||g.team_tag||g.group_code||('#'+(b.event_no||b.event_seq)), accom:g.accom||'', pax:g.pax||0, token:TOKMAP[b.event_seq]||'',
         grp:TG[b.event_seq]||'',
         rooms:[...(RM[b.event_seq]||new Map()).values()].sort((x,y)=>String(x.no).localeCompare(String(y.no),'ko',{numeric:true})) };
     }).sort((a,b)=>(a.dep||'').localeCompare(b.dep||'')||accomOrd(a.accom)-accomOrd(b.accom)||(a.rep||'').localeCompare(b.rep||''));

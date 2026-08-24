@@ -65,7 +65,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.6">
 </head>
 <body data-so-area="print">
 <div class="topbar so-bar">
@@ -96,7 +96,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=20.5"></script>
+<script src="../assets/saizen-ops.js?v=20.6"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(印刷 산출물·도메인 데이터는 미번역) ──
@@ -484,16 +484,10 @@ function renderTeamEdit(){
 function tgPfx(t){ return String(t||'').split('-')[0]; }   // 태그 접두(그룹코드)만 — '-1Y' 개인번호 제거
 function tgroupTags(label){ if(!label) return ''; const tags=TEAMS.filter(t=>t.tgroup===label).map(t=>tgPfx(t.tag)).filter(Boolean); return [...new Set(tags)].join('·'); }
 // 묶은 팀(대표 지정 시)의 통일 표시태그 = 대표 기준코드 + 팀번호(DRな-Y1/Y2). 대표 미지정이면 null(원래 태그 유지).
-function buildTeamGroupTags(){
-  _TGT={};
-  if(!(window.SZCore&&SZCore.teamTagN&&SZCore.orderGroup&&SZCore.tagStripSeq)) return;
-  const groups={};
-  TEAMS.forEach(t=>{ if(t.tgroup){ (groups[t.tgroup]=groups[t.tgroup]||[]).push(t); } });
-  Object.keys(groups).forEach(k=>{ const list=groups[k]; if(list.length<2)return;
-    const rep=list.find(t=>t.tgroupRep); if(!rep)return;
-    const base=SZCore.tagStripSeq(rep.tag);
-    SZCore.orderGroup(list.map(t=>({event_seq:t.seq,dep:t.dep})),rep.seq).forEach((o,i)=>{ _TGT[o.event_seq]=SZCore.teamTagN(base,i+1); });
-  });
+//  계산은 공용 __so_groupTags(saizen-ops) 한 곳에서 — 手配書의 수동 순번(team_group_seq)과
+//  코드 재사용 묶음 분리(splitByReps)까지 같은 규칙으로 처리한다.
+async function buildTeamGroupTags(){
+  _TGT = (window.__so_groupTags && supa) ? await __so_groupTags(supa, TEAMS.map(t=>t.seq)) : {};
 }
 function teamGroupTag(t){ return (_TGT&&_TGT[t.seq])||null; }   // 묶음 통일태그 or null
 function tgroupBadge(label){ if(!label) return '<span style="color:var(--muted)">-</span>'; const tags=tgroupTags(label); const n=TEAMS.filter(t=>t.tgroup===label).length; return `<span class="tgbadge" title="${tx('thTeam')}: ${esc(label)}">${esc(tags)} <b>(${n})</b></span>`; }
@@ -634,7 +628,7 @@ async function load(){
         repName:b.rep_name||r.name||'', engName:r.eng||o.eng||'',
         tag:r.tag||g.team_tag||g.group_code||'', isPus:isPusOf(origin) };
     }).filter(t=>t.accom);
-    buildTeamGroupTags();   // 대표 지정 묶음의 통일 태그(DRな-Y1/Y2) 계산
+    await buildTeamGroupTags();   // 대표 지정 묶음의 통일 태그(DRな-Y1/Y2) 계산
     // 숙소 기본 선택 = 야마나미리조트·쿠주힐즈(데이터에 있는 것만). 「전체」 토글로 전체.
     ACCOMSEL.clear();
     { const _ac=new Set(TEAMS.map(t=>t.accom));

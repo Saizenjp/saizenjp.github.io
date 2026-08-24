@@ -164,7 +164,7 @@
   .cxbox .row{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #f0d8d2;font-size:12.5px}
   .cxbox .row:first-of-type{border-top:0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.6">
 </head>
 <body data-so-area="golf">
 <div class="topbar so-bar">
@@ -195,7 +195,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=36"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
-<script src="../assets/saizen-ops.js?v=20.5"></script>
+<script src="../assets/saizen-ops.js?v=20.6"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -557,6 +557,8 @@ async function load(){
         (po||[]).forEach(x=>{ if(x.team_group) TG[x.event_seq]=String(x.team_group); });
       }
     }catch(e){}
+    // 묶은 팀은 대표팀 코드+팀번호로 통일 표기(手配書·航空カバー·네임택과 같은 코드)
+    const GT=(window.__so_groupTags? await __so_groupTags(supa,seqs) : {});
     // 코스 수기 지정(99_play_course) — 규칙보다 우선. 테이블 미적용이면 조용히 무시.
     PC={};
     try{ const {data:pc,error:pe}=await supa.from('play_course').select('event_seq,course').eq('play_date',DATE);
@@ -570,7 +572,7 @@ async function load(){
       const isPus = SZCore.isPus(p.origin||b.origin||'', p.ret_flight||p.dep_flight||b.airline||'');
       const team={dep:b.dep_date,arr:b.arr_date,accom};
       const row=SZCore.golfRows(team,isPus).find(x=>x.date===DATE);
-      if(!row){ SKIP.push({tag:(g.team_tag||g.group_code||''), rep:b.rep_name||'',
+      if(!row){ SKIP.push({tag:(GT[b.event_seq]||g.team_tag||g.group_code||''), rep:b.rep_name||'',
                  why:(!b.dep_date||!b.arr_date)?'nodate':(DATE===b.dep_date?'inPus':(DATE===b.arr_date?'outIcn':'none'))});
                 return; }                                // 그날 라운딩 없음 — 아래 진단 줄에 남긴다
       const grp=GG[b.event_seq]||{}; const bk=CB[b.event_seq]||{};
@@ -597,7 +599,7 @@ async function load(){
         }
       }
       ROWS.push({
-        seq:b.event_seq, tag:g.team_tag||g.group_code||'', rep:b.rep_name||'', accom,
+        seq:b.event_seq, tag:GT[b.event_seq]||g.team_tag||g.group_code||'', rep:b.rep_name||'', accom,
         pax:g.pax||b.pax||0, dep:b.dep_date, arr:b.arr_date, isPus,
         elec:_elecKind==='sure', elecKind:_elecKind, remarkLocal:_remarkAll,
         grp:(TG[b.event_seq]||b.team_label||''),        // 팀 묶음(手配書 묶기 또는 비고 「팀:」)
@@ -1085,6 +1087,7 @@ async function loadMonth(){
       const {data:ps}=await supa.from('passengers').select('event_seq,seq_in_team,origin,dep_flight,ret_flight').in('event_seq',ch).order('seq_in_team');
       (ps||[]).forEach(p=>{ if(!PX[p.event_seq]) PX[p.event_seq]=p; });
     }
+    const GTM=(window.__so_groupTags? await __so_groupTags(supa,seqs) : {});
     const cbAll=await paged((a,z)=>supa.from('cart_bookings').select('*')
       .gte('play_date',b.from).lte('play_date',b.to).order('play_date').range(a,z));
     if(cbAll.error) throw cbAll.error;
@@ -1103,7 +1106,7 @@ async function loadMonth(){
       if(!rows.length) return;
       const pax=g.pax||bk.pax||0;
       const elec=SZCore.wantsElectricCart(bk.remark_local||'');
-      const t={ seq:bk.event_seq, tag:g.team_tag||g.group_code||'', rep:bk.rep_name||'', accom, pax, elec,
+      const t={ seq:bk.event_seq, tag:GTM[bk.event_seq]||g.team_tag||g.group_code||'', rep:bk.rep_name||'', accom, pax, elec,
                 days:rows.map(r=>r.date), planned:{}, saved:{}, missing:[],
                 // 요금 대상 대수(입국일·귀국일 무료분 제외) · 무료 대수
                 billable:{}, freeQty:0 };
