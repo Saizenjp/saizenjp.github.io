@@ -2014,7 +2014,12 @@ function noteLine(g){
 //   이름 파싱은 규칙이 제각각이라, **불러온 명단의 이름이 비고 안에 나오는지**로 찾는다(오탐이 적고 단순).
 function noteLinkedPeople(g){
   if(!g||(!g.remark&&!g.remark_local)) return [];
-  const txt=[g.remark_local,g.remark].filter(Boolean).join(' ');
+  // *OOO님예약건 · *최대표님예약건 · *오류 예약건 · *전기카트 같은 「*로 시작하는 짧은 관리자 메모」는
+  // 담당자(엠클릭 영업사원 등) 이름이지 동승객이 아니다 — 같은 문구가 서로 다른 여러 예약에 반복
+  // 등장해(예: "*이희주님예약건"이 4건의 다른 팀에 붙어 있음) 우연히 다른 팀 손님과 이름이 겹치면
+  // 엉뚱한 사람을 "비고 속 인물"로 잘못 끌고 온다(Min 2026-08 발견). 매칭 전에 이 구간만 지운다
+  // — 「팀: 이완순 차화엽」처럼 진짜 동승객을 적은 부분은 슬래시 뒤에 남아 그대로 매칭된다.
+  const txt=[g.remark_local,g.remark].filter(Boolean).join(' ').replace(/\*[^/\r\n]*/g,' ');
   const seen=new Set(), out=[];
   Object.keys(state.members||{}).forEach(seq=>{
     if(String(seq)===String(g.event_seq)) return;          // 자기 팀 사람은 제외
@@ -5536,9 +5541,13 @@ try{ applyStaticRoom(); }catch(e){}
     const invId=it.dataset.inv, date=it.dataset.date||state.from;
     box.classList.remove('on');
     if(invId) jumpToRoom(invId, date);            // 배정된 사람 → 그 방으로(카드·표 보기 공용)
-    else {                                          // 미배정 → 방은 없으니 그 날짜로만 이동
+    else {                                          // 미배정 → 방이 없으니 그 날짜로만 이동
       let d=date; if(state.from&&d<state.from) d=state.from; if(state.to&&d>state.to) d=state.to;
       state.focus=d; render();
+      // 방이 없으니 화면 내용 전체(다른 날짜의 다른 팀들)가 바뀐다 — 스크롤은 그대로 두면
+      // 예전 위치에 전혀 다른 내용이 보여 자리가 옮겨진 것처럼 느껴진다(Min 2026-08).
+      // 날짜 칩 줄(선택된 날짜가 강조된)로 스크롤해 새 화면의 기준점을 보여준다.
+      const ds=document.getElementById('day-strip'); if(ds) ds.scrollIntoView({behavior:'smooth',block:'start'});
     }
   });
   document.addEventListener('click',e=>{ if(!e.target.closest('.rsearch')) box.classList.remove('on'); });
