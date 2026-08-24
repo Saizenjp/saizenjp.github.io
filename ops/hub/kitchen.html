@@ -82,7 +82,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.9">
 </head>
 <body data-so-area="kitchen">
 <div class="topbar so-bar">
@@ -128,7 +128,8 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=20.8"></script>
+<script src="../assets/saizen-core.js?v=36"></script><!-- 묶음 통일 태그 계산(SZCore) -->
+<script src="../assets/saizen-ops.js?v=20.9"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 주방 화면(KDS)  · docs 정산명세(04) Phase 3
@@ -224,6 +225,7 @@ async function connect(){
   }
 }
 
+let UNI={}, uniSeen=new Set();   // event_seq → 묶음 통일 태그(표시용). 티켓에 저장된 team_tag 는 원래 코드.
 async function refresh(){
   if(!supa) return;
   let q=supa.from('kitchen_tickets').select('*').in('status',['new','accepted']).order('created_at');
@@ -241,6 +243,15 @@ async function refresh(){
   seenNew=new Set(curNew);
   if(!firstLoad && fresh.length){ chime(); flashIds=new Set(fresh); setTimeout(()=>{flashIds=new Set();},4000); }
   firstLoad=false;
+  // 묶은 팀(現地手配書)은 통일 코드로 표시 — 7초 폴링이라 **새로 나타난 팀만** 조회한다.
+  try{
+    const ns=[...new Set(state.tickets.map(x=>x.event_seq).filter(v=>v!=null).map(String))].filter(v=>!uniSeen.has(v));
+    if(ns.length && window.__so_groupTags){
+      ns.forEach(v=>uniSeen.add(v));
+      const g=await __so_groupTags(supa, ns);
+      Object.keys(g).forEach(k=>{ UNI[k]=g[k]; });
+    }
+  }catch(e){}
   render();
   const now=new Date();
   $('#updated').innerHTML=t('ki_updated')+' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');   // ki_updated=후리가나 → innerHTML
@@ -264,7 +275,7 @@ function render(){
       : `<button class="accept" data-accept="${tk.id}">${t('ki_accept')}</button>`;
     card.innerHTML=`
       <div class="th">
-        <span class="tteam">${tk.team_tag||('#'+tk.event_seq)}</span>
+        <span class="tteam">${UNI[tk.event_seq]||tk.team_tag||('#'+tk.event_seq)}</span>
         <span class="tage ${ageTxtCls}">${agoText(sec)}${t('ki_ago')}</span>
       </div>
       <div class="titem">${tk.item_name} <span class="tqty">×${Number(tk.qty)}</span></div>

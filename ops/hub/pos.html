@@ -201,7 +201,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.9">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -344,7 +344,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=20.8"></script>
+<script src="../assets/saizen-ops.js?v=20.9"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -536,6 +536,9 @@ async function loadTeams(){
     session_ym:x.session_ym||ymOf(d), rep:x.bookings?.rep_name||'', event_no:x.bookings?.event_no||'',
     checkin:(x.bookings?.dep_date||''),
   })).sort((a,b)=>(a.accom||'').localeCompare(b.accom||'')||(a.rep||'').localeCompare(b.rep||''));
+  // 現地手配書에서 묶은 팀은 대표팀 코드+팀번호로 표시(인쇄물과 같은 코드).
+  //   ⚠ charges·kitchen_tickets 에 **저장하는 team_tag 는 원래 코드 그대로**(teamTagRaw) — 표시만 통일한다.
+  state.uni=(window.__so_groupTags? await __so_groupTags(supa, state.teams.map(t=>t.event_seq)) : {});
   await loadActive();   // 주문중(folio 발생) 팀 표시·우선정렬용
   await loadMembers();  // 일행 이름 검색용
   await loadRooms();    // 방배정 호수(그날 점유) — 표시·검색용
@@ -707,7 +710,7 @@ function renderTeams(){
 
   if(q){   // ── 검색: 팀 + 일행(동명이인은 팀으로 구분) ──
     const teamHits=pool
-      .filter(tm=>((tm.group_code||'')+' '+(tm.team_tag||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')+' '+(tm.accom||'')+' '+roomsOf(tm.event_seq).join(' ')).toLowerCase().includes(q))
+      .filter(tm=>((tm.group_code||'')+' '+(tm.team_tag||'')+' '+(((state.uni||{})[tm.event_seq])||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')+' '+(tm.accom||'')+' '+roomsOf(tm.event_seq).join(' ')).toLowerCase().includes(q))
       .slice().sort((a,b)=>(state.activeSeqs.has(b.event_seq)?1:0)-(state.activeSeqs.has(a.event_seq)?1:0));
     const memHits=state.members.filter(m=>{const tm=teamBySeq(m.event_seq);return tm&&accomPass(tm.accom)&&((m.name_kr||'')+' '+(m.name_en||'')+' '+pn(m.name_kr,m.name_en)).toLowerCase().includes(q);});
     $('#team-cnt').innerHTML=`${t('po_secTeam')} ${teamHits.length} · ${t('po_secMember')} ${memHits.length}`;
@@ -760,7 +763,8 @@ function renderTeams(){
   box.appendChild(hide);
 }
 // 팀 라벨 통일: 상단 = 그룹코드, # 뒤 = 행사번호(event_no)
-function teamTag(tm){ return tm.group_code||tm.team_tag||tx('teamFallback')(tm.event_seq); }
+function teamTagRaw(tm){ return tm.group_code||tm.team_tag||tx('teamFallback')(tm.event_seq); }
+function teamTag(tm){ return ((state.uni||{})[tm.event_seq])||teamTagRaw(tm); }   // 화면 표시 = 묶음 통일 코드
 function teamNo(tm){ return tm.event_no||tm.event_seq; }
 function escP(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -1083,7 +1087,7 @@ async function sendCart(){
     // 주방(kitchen)·바(bar)행 모두 KDS 티켓 발행(none=매점은 미발행).
     //  주방 화면=kitchen만 / 바·프론트 화면=kitchen+bar 전부. 조리는 분할 무관 풀 수량(팀 단위).
     const tickets=state.cart.filter(l=>l.station==='kitchen'||l.station==='bar').map(l=>({
-      folio_id:state.folioId||null, event_seq:state.team.event_seq, team_tag:teamTag(state.team),
+      folio_id:state.folioId||null, event_seq:state.team.event_seq, team_tag:teamTagRaw(state.team),
       station:l.station, item_name:l.name_ja, qty:l.qty, created_by:by }));
     if(tickets.length){
       const {error:te}=await supa.from('kitchen_tickets').insert(tickets);
@@ -1123,7 +1127,10 @@ function koRender(rows){
   const nNew=rows.filter(r=>r.status==='new').length, nAcc=rows.filter(r=>r.status==='accepted').length;
   $('#ko-meta').innerHTML=`${t('ki_waiting')} ${nNew} · ${nAcc}`;
   const groups={};
-  rows.forEach(r=>{ const tm=teamBySeq(r.event_seq); const k=r.team_tag||('#'+((tm&&tm.event_no)||r.event_seq)); (groups[k]=groups[k]||[]).push(r); });
+  // 묶은 팀은 통일 코드로 표시(티켓에 저장된 태그는 원래 코드)
+  rows.forEach(r=>{ const tm=teamBySeq(r.event_seq);
+    const k=((state.uni||{})[r.event_seq])||r.team_tag||('#'+((tm&&tm.event_no)||r.event_seq));
+    (groups[k]=groups[k]||[]).push(r); });
   let html='';
   Object.keys(groups).forEach(team=>{
     html+=`<div style="margin:8px 0;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface)">

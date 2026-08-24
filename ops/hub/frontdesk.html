@@ -149,7 +149,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.9">
 </head>
 <body data-so-area="front">
 <div class="topbar so-bar">
@@ -197,7 +197,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=20.8"></script>
+<script src="../assets/saizen-ops.js?v=20.9"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -434,16 +434,19 @@ async function load(){
     const fb=await pagedQuery(()=>supa.from('v_folio_balance').select('event_seq,balance,gross_total,paid_total,charge_count').eq('session_ym',ym));
     (fb.data||[]).forEach(f=>{const b=BAL[f.event_seq]=BAL[f.event_seq]||{bal:0,gross:0,paid:0,cnt:0};b.bal+=Number(f.balance||0);b.gross+=Number(f.gross_total||0);b.paid+=Number(f.paid_total||0);b.cnt+=Number(f.charge_count||0);});
     await loadRoomNotes();   // 객실 쪽지(열린 것) — 팀 상세에 함께 띄운다
+    // 現地手配書에서 묶은 팀은 대표팀 코드+팀번호로 표시(인쇄물과 같은 코드). 원래 코드도 검색으로 찾힌다.
+    const GT=(window.__so_groupTags? await __so_groupTags(supa,seqs) : {});
     state.teams=(bs||[]).map(b=>{const g=G[b.event_seq]||{};const bal=BAL[b.event_seq]||{bal:0,gross:0,paid:0,cnt:0};const n=NOTE[b.event_seq]||{};
-      const tag=g.team_tag||g.group_code||(tx('teamPrefix')+(b.event_no||b.event_seq));
+      const tagOrig=g.team_tag||g.group_code||(tx('teamPrefix')+(b.event_no||b.event_seq));
+      const tag=GT[b.event_seq]||tagOrig;
       const rep=b.rep_name||'';
       const rooms=R[b.event_seq]?[...R[b.event_seq]]:[];
       const memo=[n.remarks,n.memo].filter(Boolean).join(' / ');
       const members=MEM[b.event_seq]||[];
-      const search=[tag,rep,pn(rep,''),g.accom,memo,n.team_label,...members,...(MEMQ[b.event_seq]||[]),...rooms].filter(Boolean).join(' ').toLowerCase();
+      const search=[tag,tagOrig,rep,pn(rep,''),g.accom,memo,n.team_label,...members,...(MEMQ[b.event_seq]||[]),...rooms].filter(Boolean).join(' ').toLowerCase();
       const ov=OVR[b.event_seq]||{};
       return {seq:b.event_seq,no:b.event_no||b.event_seq,rep,pax:g.pax||b.pax||0,dep:b.dep_date,arr:b.arr_date,
-        accom:g.accom||'',tag,rooms,invIds:[...(RINV[b.event_seq]||[])],bal:bal.bal,gross:bal.gross,paid:bal.paid,cnt:bal.cnt,
+        accom:g.accom||'',tag,tagOrig,rooms,invIds:[...(RINV[b.event_seq]||[])],bal:bal.bal,gross:bal.gross,paid:bal.paid,cnt:bal.cnt,
         memo,remarks:n.remarks||'',noteMemo:n.memo||'',teamLabel:n.team_label||'',members,search,
         ecoCnt:ECO[b.event_seq]||0, earlyDeps:EARLY[b.event_seq]||[],
         excluded:!!ov.excluded, excludeReason:ov.exclude_reason||'', dinnerSplit:!!ov.dinner_split, teamGroup:ov.team_group||'',

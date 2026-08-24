@@ -163,7 +163,7 @@
      왼쪽으로 밀렸다가 제자리로 튀었다(Min 2026-08). 세로 이동만 남긴다. */
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.9">
 </head>
 <body data-so-area="settle">
 <div class="topbar so-bar">
@@ -226,7 +226,7 @@
 
 <script src="../assets/qrcode-generator.js?v=1"></script>
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=20.8"></script>
+<script src="../assets/saizen-ops.js?v=20.9"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -455,6 +455,9 @@ async function loadSession(){
   const gres=await pagedQuery(()=>supa.from('guests').select('event_seq,accom,team_tag,group_code').eq('session_ym',ym));
   state.accomBySeq={}; state.tagBySeq={};
   (gres.data||[]).forEach(g=>{ state.accomBySeq[g.event_seq]=g.accom||''; state.tagBySeq[g.event_seq]=g.team_tag||g.group_code||''; });
+  // 現地手配書에서 묶은 팀의 통일 코드(DFな-Y1). 화면에는 **원래 코드를 괄호로 병기**한다 —
+  //   엠클릭·B2B 명세와 대조해야 하기 때문(Min 2026-08). 손님에게 나가는 인쇄물은 통일 코드만.
+  try{ state.uni=(window.__so_groupTags? await __so_groupTags(supa, state.bookings.map(b=>b.event_seq)) : {}); }catch(e){ state.uni={}; }
   await loadRoomsSettle(state.bookings.map(b=>b.event_seq));
   // 기본 숙소필터(야마나미+쿠주) · 기본 날짜(오늘이 이 달이면 오늘, 아니면 월 전체)
   if(state.accomSel===null) state.accomSel=new Set(ACCOM_DEFAULT);
@@ -516,12 +519,16 @@ function teamPresentOnDay(b){
   return dep && arr && dep<=state.day && state.day<=arr;   // 체크아웃일 포함
 }
 function settleHay(b){
-  return ((b.rep_name||'')+' '+(b.event_no||'')+' '+(b.product_name||'')+' '+(state.tagBySeq[b.event_seq]||'')+' '+roomsOfS(b.event_seq).join(' ')).toLowerCase();
+  return ((b.rep_name||'')+' '+(b.event_no||'')+' '+(b.product_name||'')+' '+(state.tagBySeq[b.event_seq]||'')+' '+(((state.uni||{})[b.event_seq])||'')+' '+roomsOfS(b.event_seq).join(' ')).toLowerCase();
 }
 // folio 미개설 팀 카드 — 청구가 없으니 잔액은 ¥0. 클릭하면 청구 추가(계정 자동 개설).
+// 통일 코드 + 원래 코드 병기(화면용) / 통일 코드만(손님 인쇄물용)
+function tagOrig(seq, snap){ return state.tagBySeq[seq] || snap || (tx('teamPrefix')+(state.noBySeq[seq]||seq)); }
+function tagUni(seq, snap){ return ((state.uni||{})[seq]) || tagOrig(seq, snap); }
+function tagShow(seq, snap){ const u=(state.uni||{})[seq]; const o=tagOrig(seq,snap); return u? (u+' ('+o+')') : o; }
 function pendingCard(b){
   const card=document.createElement('div'); card.className='folio-card';
-  const tag=(state.tagBySeq[b.event_seq])||(tx('teamPrefix')+(b.event_no||b.event_seq));
+  const tag=tagShow(b.event_seq);
   const rl=roomLabelS(b.event_seq);
   card.title=tx('cardHint');
   card.innerHTML=`
@@ -542,7 +549,7 @@ function renderTeamFolios(box, seq, list){
   const members=list.filter(f=>f.subject==='member');
   if(!members.length){ list.forEach(f=>box.appendChild(folioCard(f))); return; }
   const teamF=list.find(f=>f.subject==='team')||list[0];
-  const tag=teamF.team_tag||(tx('teamPrefix')+seq);
+  const tag=tagShow(seq, teamF.team_tag);
   const gGross=list.reduce((s,f)=>s+Number(f.gross_total||0),0);
   const gPaid =list.reduce((s,f)=>s+Number(f.paid_total||0),0);
   const gBal=gGross-gPaid; const gCls=gBal<=0?'zero':'due';
@@ -565,7 +572,7 @@ function folioCard(f){
   const isMember=f.subject==='member';
   card.className='folio-card'+(isMember?' member':'')+(f.folio_id===state.selId?' sel':'');
   card.dataset.id=f.folio_id;
-  const tag=f.team_tag||(tx('teamPrefix')+evNo(f.event_seq));
+  const tag=tagShow(f.event_seq, f.team_tag);
   const bal=Number(f.balance||0);
   const balCls=bal<=0?'zero':'due';
   // 개인 folio: 작은 팀태그 + 개인명 강조 / 팀 folio: 팀태그 + 대표자
@@ -648,7 +655,7 @@ function renderDetail(){
   const box=$('#detail');
   const f=curFolio();
   if(!f){ box.innerHTML='<div class="empty-hint">'+t('st_selectFolio')+'</div>'; return; }
-  const tag=f.team_tag||(tx('teamPrefix')+evNo(f.event_seq));
+  const tag=tagShow(f.event_seq, f.team_tag);
   const editable=f.status==='open';
   const charges=state.charges.filter(c=>!c.voided);
   const subTotal=charges.reduce((s,c)=>s+Number(c.amount||0),0);
@@ -958,7 +965,7 @@ async function showBillQR(f){
   let tok;
   try{ tok=await billToken(f.event_seq); }catch(e){ toast(tx('qrTokFail')(String(e.message||e)),'err'); return; }
   const url=billUrlOf(tok), img=qrImg(url,10);
-  const tag=f.team_tag||(tx('teamPrefix')+evNo(f.event_seq));
+  const tag=tagShow(f.event_seq, f.team_tag);
   const bg=document.createElement('div'); bg.className='modal-bg';
   bg.innerHTML=`<div class="modal" style="max-width:400px;text-align:center">
     <h3 style="margin-bottom:2px">${tx('billQrTitle')}</h3>
@@ -984,7 +991,7 @@ function openReceipt(f){
   const pays=(state.payments||[]).filter(p=>!p.voided);
   const paid=Math.round(pays.reduce((s,p)=>s+Number(p.amount||0),0));
   const cash=Math.round(pays.filter(p=>p.method==='현금').reduce((s,p)=>s+Number(p.amount||0),0));
-  const tag=f.team_tag||(tx('teamPrefix')+evNo(f.event_seq));
+  const tag=tagShow(f.event_seq, f.team_tag);
   const fors=tx('rcFors')||[];
   const bg=document.createElement('div'); bg.className='modal-bg';
   bg.innerHTML=`<div class="modal" style="max-width:430px">
@@ -1021,7 +1028,7 @@ function openReceipt(f){
 function printReceipt(f,o){
   const Y=n=>'¥'+Number(n||0).toLocaleString('ja-JP');
   const today=new Date().toISOString().slice(0,10);
-  const tag=f.team_tag||(tx('teamPrefix')+evNo(f.event_seq));
+  const tag=tagUni(f.event_seq, f.team_tag);   // 손님에게 나가는 인쇄물 = 코드 하나만
   const net=Math.round(o.amount/(1+TAX_RATE)), tax=o.amount-net;
   // 収入印紙: **현금** 수령이 5만엔 이상일 때만(카드는 불요)
   const needStamp = Math.min(o.cash, o.amount) >= 50000;
@@ -1098,7 +1105,7 @@ async function previewStatement(f){
   const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const Y=n=>'¥'+Number(n||0).toLocaleString('ja-JP');
   const catJ={'라운딩':'ラウンド','식음':'飲食','숙박':'宿泊','골프샵':'ゴルフショップ','기타':'その他'};
-  const tag=f.team_tag||('팀'+evNo(f.event_seq));
+  const tag=tagUni(f.event_seq, f.team_tag);   // 손님에게 나가는 인쇄물 = 코드 하나만
   const ate=`${tag}  ${f.rep_name||''}${f.subject==='member'?('  ('+(f.member_name||'')+'様)'):' 御一行様'}`;
   const rooms=(roomsOfS(f.event_seq).join(', '))||'-';
   const today=new Date().toISOString().slice(0,10);
@@ -1200,7 +1207,7 @@ async function exportStatement(f){
   const sub=ws.getCell('A2'); sub.value='アソ ヤマナミリゾート ／ 株式会社SaiZen';
   sub.font={size:10,color:{argb:XLM.blue}}; sub.alignment={horizontal:'center'};
 
-  const tag=f.team_tag||('팀'+evNo(f.event_seq));
+  const tag=tagUni(f.event_seq, f.team_tag);   // 손님에게 나가는 인쇄물 = 코드 하나만
   ws.getCell('A4').value='宛名 / 御一行'; ws.getCell('A4').font={bold:true,color:{argb:XLM.navy}};
   ws.getCell('B4').value=`${tag}  ${f.rep_name||''}${f.subject==='member'?('  ('+(f.member_name||'')+'様)'):' 御一行様'}`;
   ws.getCell('A5').value='発行日'; ws.getCell('A5').font={bold:true,color:{argb:XLM.navy}};
