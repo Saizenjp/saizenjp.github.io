@@ -201,7 +201,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=21.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=21.4">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -248,6 +248,7 @@
     <div class="team-search">
       <input class="inp" id="team-q" type="search" data-i18n-ph="po_teamSearch" autocomplete="off">
       <button class="btn" id="btn-qr-scan" type="button" data-i18n="po_qrScan"></button>
+      <button class="btn ghost" id="btn-walkin" type="button"></button>
       <span class="cnt" id="active-cnt"></span>
     </div>
     <div id="pos-accom" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
@@ -282,6 +283,15 @@
           <div class="tr"><span data-i18n="po_tax"></span><span class="v" id="cart-tax">¥0</span></div>
           <div class="tr grand"><span data-i18n="po_total"></span><span class="v" id="cart-total">¥0</span></div>
           <button class="btn big" id="btn-send" type="button" disabled data-i18n="po_send"></button>
+          <div id="wi-pay" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
+            <div style="font-size:12.5px;font-weight:800;color:var(--accent);margin-bottom:3px" id="wi-pay-title"></div>
+            <div style="font-size:11.5px;color:var(--text2);margin-bottom:7px" id="wi-pay-hint"></div>
+            <div style="display:flex;gap:6px;margin-bottom:7px">
+              <button type="button" class="btn sm" id="wi-m-cash" data-m="현금"></button>
+              <button type="button" class="btn sm ghost" id="wi-m-card" data-m="카드"></button>
+            </div>
+            <button class="btn big" id="wi-pay-go" type="button"></button>
+          </div>
         </div>
       </div>
     </div>
@@ -299,6 +309,27 @@
 </div>
 
 <div id="toast"></div>
+
+<!-- 워크인(예약 없는 현장 손님) 전표 개설 -->
+<div id="wi-modal" style="display:none;position:fixed;inset:0;z-index:60;background:rgba(20,24,18,.55);align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:14px;max-width:380px;width:100%;box-shadow:0 18px 48px rgba(0,0,0,.25)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)">
+      <b id="wi-title" style="font-size:15px"></b>
+      <button class="btn ghost sm" id="wi-close" type="button">✕</button>
+    </div>
+    <div style="padding:14px 18px">
+      <div id="wi-hint" style="font-size:12.5px;color:var(--text2);margin-bottom:10px"></div>
+      <label style="display:block;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:4px" id="wi-name-lbl"></label>
+      <input class="inp" id="wi-name" type="text" autocomplete="off" style="width:100%;margin-bottom:10px">
+      <label style="display:block;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:4px" id="wi-pax-lbl"></label>
+      <input class="inp" id="wi-pax" type="number" min="1" step="1" value="2" style="width:110px">
+    </div>
+    <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn ghost sm" id="wi-cancel" type="button"></button>
+      <button class="btn sm" id="wi-go" type="button"></button>
+    </div>
+  </div>
+</div>
 
 <!-- 손님 주문 QR 스캔 모달 -->
 <div id="qr-modal" style="display:none;position:fixed;inset:0;z-index:60;background:rgba(20,24,18,.55);align-items:center;justify-content:center;padding:16px">
@@ -344,7 +375,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=21.3"></script>
+<script src="../assets/saizen-ops.js?v=21.4"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -359,7 +390,7 @@ const TAX_RATE=0.10;   // 内税: 메뉴가=최종가(税込). 단가에서 소�
 const L={
   ja:{ noTeamHead:'チーム未選択 — 会計時に選びます', pickTeamFirst:'先にメニューを選び、会計で「チーム選択」を押してください',
     listHidden:'チーム一覧は非表示です', listHiddenSub:'QRスキャン、または上の検索窓にタグコード・お名前・部屋番号を入力してください。', listShow:'一覧を表示', listHide:'一覧を隠す',
-    qrHits:n=>`${n}件`, qrFindPh:'タグコード・お名前・部屋番号 / QRコード', qrFindHint:'QRが読めないときは、この欄にタグコード・お名前・部屋番号を入力すると候補が出ます。',
+    wiBtn:'＋ ウォークイン', wiTitle:'ウォークイン伝票', wiHint:'予約のないお客様(その場のお客様)の注文をここで受けます。予約データには入りません。', wiName:'お名前(任意)', wiPax:'人数', wiGo:'伝票を開く', wiCancel:'やめる', wiOpened:(t)=>`${t} 伝票を開きました`, wiFail:e=>'ウォークイン伝票の作成に失敗: '+e, wiTag:'ウォークイン', wiPayTitle:'その場でお会計', wiPayHint:'ウォークインはこの場でお支払いいただきます。金額をご確認のうえ締めてください。', wiPayCash:'現金', wiPayCard:'カード', wiPayGo:'受領して締める', wiPayDone:(m,a)=>`${m} ${a} 受領 — 締めました`, wiPayFail:e=>'会計に失敗: '+e, wiPayNone:'請求がありません', qrHits:n=>`${n}件`, qrFindPh:'タグコード・お名前・部屋番号 / QRコード', qrFindHint:'QRが読めないときは、この欄にタグコード・お名前・部屋番号を入力すると候補が出ます。',
     noRoom:'部屋未割当', cartAdded:(n,q)=>`${n} ${q}点 追加`, cartCount:(l,q)=>`${l}件 ${q}点`,
     teamPicked:t=>`${t} 選択 — 支払い方法を確認して[注文を送信]`, btnPickTeam:'👥 チーム選択(会計)', changeTeam:'👥 チーム変更',
     today:'今日', prevDay:'前日', nextDay:'翌日', backToday:'今日へ',
@@ -381,13 +412,13 @@ const L={
     promptAmount:'金額(円·税込·最終価格)を入力してください', needAmount:'金額を入力してください', promptDesc:'内容を入力してください',
     ticketFail:e=>'厨房チケット発行失敗(請求は完了): '+e,
     splitN:n=>'個人 '+n+'名', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n}品目 ${amt} 送信${kn?` · 厨房 ${kn}件`:''}`,
-    sendFail:e=>'送信失敗: '+e,
+    sendFail:e=>'送信失敗: '+e+' — カートはそのまま残っています。つながってから[注文送信]をもう一度押してください', cartRestored:n=>`前回のカート ${n}件を戻しました`,
     koTitle:'注文状況', allVenues:'全体',
     vRestaurant:'レストラン', vBanquet:'宴会場', vProshop:'ゴルフショップ', vFront:'フロント売店', vEtc:'その他',
     oFront:'フロント売店', oRestaurant:'レストラン·宴会', oGolf:'ゴルフショップ' },
   ko:{ noTeamHead:'팀 미선택 — 계산할 때 고릅니다', pickTeamFirst:'메뉴를 먼저 담고, 계산에서 [팀 선택]을 누르세요',
     listHidden:'팀 목록은 숨겨져 있습니다', listHiddenSub:'QR을 스캔하거나, 위 검색창에 태그코드·이름·방번호를 입력하세요.', listShow:'목록 보기', listHide:'목록 숨기기',
-    qrHits:n=>`${n}건`, qrFindPh:'태그코드·이름·방번호 / QR 코드', qrFindHint:'QR이 안 되면 이 칸에 태그코드·이름·방번호를 입력하면 후보가 나옵니다.',
+    wiBtn:'＋ 워크인', wiTitle:'워크인 전표', wiHint:'예약 없이 오신 손님(현장 손님)의 주문을 여기서 받습니다. 예약 데이터에는 들어가지 않습니다.', wiName:'이름(선택)', wiPax:'인원', wiGo:'전표 열기', wiCancel:'취소', wiOpened:(t)=>`${t} 전표를 열었습니다`, wiFail:e=>'워크인 전표 생성 실패: '+e, wiTag:'워크인', wiPayTitle:'그 자리에서 결제', wiPayHint:'워크인은 이 자리에서 받습니다. 금액을 확인하고 마감하세요.', wiPayCash:'현금', wiPayCard:'카드', wiPayGo:'받고 마감', wiPayDone:(m,a)=>`${m} ${a} 수령 — 마감했습니다`, wiPayFail:e=>'결제 실패: '+e, wiPayNone:'청구가 없습니다', qrHits:n=>`${n}건`, qrFindPh:'태그코드·이름·방번호 / QR 코드', qrFindHint:'QR이 안 되면 이 칸에 태그코드·이름·방번호를 입력하면 후보가 나옵니다.',
     noRoom:'방배정 없음', cartAdded:(n,q)=>`${n} ${q}개 담음`, cartCount:(l,q)=>`${l}건 ${q}개`,
     teamPicked:t=>`${t} 선택 — 지불 방식 확인 후 [주문 전송]`, btnPickTeam:'👥 팀 선택(계산)', changeTeam:'👥 팀 변경',
     today:'오늘', prevDay:'전날', nextDay:'다음날', backToday:'오늘로',
@@ -409,13 +440,13 @@ const L={
     promptAmount:'금액(엔, 税込·최종가)을 입력하세요', needAmount:'금액을 입력하세요', promptDesc:'내역을 입력하세요',
     ticketFail:e=>'주방 티켓 발행 실패(청구는 완료): '+e,
     splitN:n=>'개인 '+n+'명', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n}품목 ${amt} 전송됨${kn?` · 주방 ${kn}건`:''}`,
-    sendFail:e=>'전송 실패: '+e,
+    sendFail:e=>'전송 실패: '+e+' — 장바구니는 그대로 있습니다. 연결되면 [주문 전송]을 다시 누르세요', cartRestored:n=>`이전 장바구니 ${n}건을 되살렸습니다`,
     koTitle:'주문 현황', allVenues:'전체',
     vRestaurant:'레스토랑', vBanquet:'연회장', vProshop:'골프샵', vFront:'프론트 매점', vEtc:'기타',
     oFront:'프론트 매점', oRestaurant:'레스토랑·연회', oGolf:'골프샵' },
   en:{ noTeamHead:'No team yet — pick it at checkout', pickTeamFirst:'Add items first, then press [Pick team] at checkout',
     listHidden:'Team list is hidden', listHiddenSub:'Scan a QR code, or type a tag code, name or room number in the search box above.', listShow:'Show list', listHide:'Hide list',
-    qrHits:n=>`${n} found`, qrFindPh:'Tag code · name · room no. / QR code', qrFindHint:'If the QR will not read, type a tag code, name or room number here to see matches.',
+    wiBtn:'＋ Walk-in', wiTitle:'Walk-in ticket', wiHint:'Take orders from guests with no booking. This does not touch reservation data.', wiName:'Name (optional)', wiPax:'Guests', wiGo:'Open ticket', wiCancel:'Cancel', wiOpened:(t)=>`Opened ticket ${t}`, wiFail:e=>'Could not create walk-in ticket: '+e, wiTag:'Walk-in', wiPayTitle:'Settle now', wiPayHint:'Walk-ins pay here. Check the amount and close the ticket.', wiPayCash:'Cash', wiPayCard:'Card', wiPayGo:'Take payment & close', wiPayDone:(m,a)=>`${m} ${a} received — closed`, wiPayFail:e=>'Payment failed: '+e, wiPayNone:'Nothing charged yet', qrHits:n=>`${n} found`, qrFindPh:'Tag code · name · room no. / QR code', qrFindHint:'If the QR will not read, type a tag code, name or room number here to see matches.',
     noRoom:'No room', cartAdded:(n,q)=>`${n} ×${q} added`, cartCount:(l,q)=>`${l} lines ${q} items`,
     teamPicked:t=>`${t} selected — check payer, then [Send order]`, btnPickTeam:'👥 Pick team (checkout)', changeTeam:'👥 Change team',
     today:'Today', prevDay:'Prev', nextDay:'Next', backToday:'Go to today',
@@ -437,7 +468,7 @@ const L={
     promptAmount:'Enter amount (JPY, tax-incl. final price)', needAmount:'Enter an amount', promptDesc:'Enter a description',
     ticketFail:e=>'Kitchen ticket failed (charge done): '+e,
     splitN:n=>n+' people', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n} items ${amt} sent${kn?` · kitchen ${kn}`:''}`,
-    sendFail:e=>'Send failed: '+e,
+    sendFail:e=>'Send failed: '+e+' — your cart is still here. Press [Send order] again once you are back online', cartRestored:n=>`Restored ${n} item(s) from your last cart`,
     koTitle:'Order status', allVenues:'All',
     vRestaurant:'Restaurant', vBanquet:'Banquet', vProshop:'Pro shop', vFront:'Front shop', vEtc:'Other',
     oFront:'Front shop', oRestaurant:'Restaurant·Banquet', oGolf:'Pro shop' }
@@ -490,6 +521,8 @@ function applyStatic(){
   const dn=$('#btn-day-next'); if(dn) dn.title=tx('nextDay');
   const kt=$('#ko-title'); if(kt) kt.textContent=tx('koTitle');
   const cb=$('#btn-cust-display'); if(cb) cb.title=tx('custOnTitle');
+  const wb=$('#btn-walkin'); if(wb){ wb.textContent=tx('wiBtn'); wb.title=tx('wiHint'); }
+  renderWalkinPay();
 }
 
 // ── 연결 ──
@@ -545,6 +578,7 @@ async function loadTeams(){
   renderAccomPos();     // 숙소 토글(기본 야마나미+쿠주)
   showOrderView();      // 진입 = 메뉴 화면. 팀 목록은 계산 단계([팀 선택])에서만 연다(Min 2026-08)
   toast(tx('stayToast')(d,state.teams.length),'ok');
+  await restoreCart();   // 끄거나 새로고침해도 담아둔 주문이 남아 있다
   // QR 딥링크(?seq=) → 그 팀 주문 화면으로 자동 진입. 1회만 소비(뒤로가기 후 재점프 방지).
   if(_deepSeq){
     const seq=_deepSeq; _deepSeq='';
@@ -782,11 +816,14 @@ async function selectTeam(tm){
     if(f.status==='open' && f.subject==='team' && !state.folioId) state.folioId=f.folio_id;
     if(f.status==='open' && f.subject==='member' && f.member_id) state.memberFolio[f.member_id]=f.folio_id;
   });
-  // 개인 분할용 명단(guest_members) 로드
-  const {data:gm}=await supa.from('guest_members')
-    .select('id,seq_in_team,name_kr,name_en,is_rep,member_grade,member_class,member_div')
-    .eq('event_seq',tm.event_seq).order('seq_in_team',{ascending:true});
-  state.roster=gm||[];
+  // 개인 분할용 명단(guest_members) 로드 — 워크인은 명단이 없다(팀 공통만)
+  if(isWalkin(tm)){ state.roster=[]; state.payerMode='team'; }
+  else{
+    const {data:gm}=await supa.from('guest_members')
+      .select('id,seq_in_team,name_kr,name_en,is_rep,member_grade,member_class,member_div')
+      .eq('event_seq',tm.event_seq).order('seq_in_team',{ascending:true});
+    state.roster=gm||[];
+  }
   $('#team-view').style.display='none';
   $('#order-view').style.display='';
   $('#btn-back').style.display='';
@@ -795,8 +832,108 @@ async function selectTeam(tm){
   $('#oh-run').textContent=yen(state.runningGross);
   const rl=$('#run-list'); if(rl){ rl.style.display='none'; rl.innerHTML=''; }
   const rb=$('#btn-run-list'); if(rb) rb.textContent=tx('runShow');
-  renderVenueTabs(); renderGrpTabs(); renderSubChips(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); updateSendBtn();
+  renderVenueTabs(); renderGrpTabs(); renderSubChips(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); updateSendBtn(); renderWalkinPay();
   if(state.cart.length) toast(tx('teamPicked')(teamTag(tm)),'ok');   // 메뉴 먼저 담고 계산에서 고른 경우
+}
+
+// ── 장바구니 보존 — 태블릿이 꺼지거나 새로고침돼도, 전송에 실패해도 담은 것이 남는다.
+//   네트워크가 끊긴 채로 주문을 담아 두었다가 연결되면 그대로 [주문 전송]을 다시 누르면 된다.
+const POS_CART_KEY='saizen_pos_cart';
+function saveCart(){
+  try{
+    if(!state.cart.length){ localStorage.removeItem(POS_CART_KEY); return; }
+    localStorage.setItem(POS_CART_KEY, JSON.stringify({
+      d:state.date, seq:(state.team?state.team.event_seq:null), cart:state.cart }));
+  }catch(e){}
+}
+async function restoreCart(){
+  try{
+    const r=JSON.parse(localStorage.getItem(POS_CART_KEY)||'null');
+    if(!r || r.d!==state.date || !Array.isArray(r.cart) || !r.cart.length) return;
+    state.cart=r.cart;
+    if(r.seq){ const tm=state.teams.find(x=>String(x.event_seq)===String(r.seq));
+      if(tm){ await selectTeam(tm); toast(tx('cartRestored')(r.cart.length),'ok'); return; } }
+    renderCart(); updateSendBtn();
+    toast(tx('cartRestored')(r.cart.length),'ok');
+  }catch(e){}
+}
+
+// ── 워크인(예약 없는 현장 손님) ────────────────────────────────────────
+//  bookings 에 넣지 않는다(step1 월 동기화가 「파일에 없는 팀」으로 지운다) — walkins 테이블 + 전용 번호대 9,900,001+.
+//  주문은 팀과 같은 흐름(charges·kitchen_tickets)이고, 결제만 그 자리에서 받는다.
+function isWalkin(tm){ return !!(tm && tm.walkin); }
+function openWalkinModal(){
+  if(!supa){ toast(tx('needConn'),'warn'); return; }
+  $('#wi-title').textContent=tx('wiTitle');
+  $('#wi-hint').textContent=tx('wiHint');
+  $('#wi-name-lbl').textContent=tx('wiName');
+  $('#wi-pax-lbl').textContent=tx('wiPax');
+  $('#wi-go').textContent=tx('wiGo');
+  $('#wi-cancel').textContent=tx('wiCancel');
+  $('#wi-name').value=''; $('#wi-pax').value='2';
+  $('#wi-modal').style.display='flex';
+  setTimeout(()=>{ const el=$('#wi-name'); if(el) el.focus(); },50);
+}
+function closeWalkinModal(){ $('#wi-modal').style.display='none'; }
+async function walkinOpen(){
+  const name=$('#wi-name').value.trim();
+  const pax=Math.max(1, parseInt($('#wi-pax').value,10)||1);
+  const btn=$('#wi-go'); btn.disabled=true;
+  try{
+    const {data,error}=await supa.rpc('walkin_open',{
+      p_date: state.date||isoToday(), p_name: name||null, p_pax: pax,
+      p_venue: (state.outlet==='golf'?'proshop':(state.outlet==='front'?'front':'restaurant'))
+    });
+    if(error) throw error;
+    const r=(typeof data==='string')?JSON.parse(data):data;
+    closeWalkinModal();
+    const tm={ event_seq:r.event_seq, walkin:true, team_tag:tx('wiTag'), group_code:tx('wiTag'),
+      accom:'', pax:pax, session_ym:r.session_ym, rep:name||tx('wiTag'), event_no:'W'+r.event_seq, checkin:state.date||isoToday() };
+    state.teams.push(tm);            // 그날 목록에도 넣어 다시 찾을 수 있게
+    state.folioId=r.folio_id;
+    await selectTeam(tm);
+    state.folioId=r.folio_id;        // selectTeam 이 재조회하지만 방금 만든 folio 를 확실히 쓴다
+    toast(tx('wiOpened')(tm.rep),'ok');
+  }catch(e){ toast(tx('wiFail')(e.message||e),'err'); }
+  finally{ btn.disabled=false; }
+}
+// 워크인 = 그 자리에서 결제. 잔액 전액을 현금/카드로 받고 folio 를 마감한다.
+let _wiMethod='현금';
+function renderWalkinPay(){
+  const box=$('#wi-pay'); if(!box) return;
+  if(!isWalkin(state.team)){ box.style.display='none'; return; }
+  box.style.display='';
+  $('#wi-pay-title').textContent=tx('wiPayTitle');
+  $('#wi-pay-hint').textContent=tx('wiPayHint');
+  $('#wi-m-cash').textContent=tx('wiPayCash');
+  $('#wi-m-card').textContent=tx('wiPayCard');
+  $('#wi-m-cash').className='btn sm'+(_wiMethod==='현금'?'':' ghost');
+  $('#wi-m-card').className='btn sm'+(_wiMethod==='카드'?'':' ghost');
+  $('#wi-pay-go').textContent=tx('wiPayGo')+' · '+yen(state.runningGross);
+  $('#wi-pay-go').disabled=!(state.runningGross>0);
+}
+async function walkinSettle(){
+  const tm=state.team; if(!isWalkin(tm)) return;
+  const btn=$('#wi-pay-go'); btn.disabled=true;
+  try{
+    // 남은 잔액을 다시 읽어 그만큼만 받는다(중복 수령 방지)
+    const {data}=await supa.from('v_folio_balance').select('folio_id,balance,status').eq('event_seq',tm.event_seq);
+    const open=(data||[]).filter(f=>f.status!=='settled');
+    const rest=open.reduce((s,f)=>s+Number(f.balance||0),0);
+    if(rest<=0){ toast(tx('wiPayNone'),'warn'); btn.disabled=false; return; }
+    const by=opBy();
+    for(const f of open){
+      const b=Number(f.balance||0);
+      if(b>0){ const {error}=await supa.from('payments').insert({folio_id:f.folio_id, method:_wiMethod, amount:b, received_by:by}); if(error) throw error; }
+      const {error:ue}=await supa.from('folios').update({status:'settled', closed_at:new Date().toISOString()}).eq('id',f.folio_id);
+      if(ue) throw ue;
+    }
+    toast(tx('wiPayDone')(_wiMethod, yen(rest)),'ok');
+    state.runningGross=0; $('#oh-run').textContent=yen(0);
+    renderWalkinPay();
+    backToTeams();
+  }catch(e){ toast(tx('wiPayFail')(e.message||e),'err'); }
+  finally{ btn.disabled=false; }
 }
 
 // ── 결제 주체(payer): 팀 공통 / 개인·N분의1 ──
@@ -1010,7 +1147,7 @@ function renderCart(hitKey){
   $('#cart-sub').textContent=yen(gross-tax);   // 세전 소계
   $('#cart-tax').textContent=yen(tax);
   $('#cart-total').textContent=yen(gross);     // 합계 = 메뉴가 그대로
-  updateSendBtn();
+  updateSendBtn(); saveCart();
 }
 
 // ── 전송: folio 확보 후 charges 적재 ──
@@ -1098,7 +1235,7 @@ async function sendCart(){
     toast(tx('sendToast')(teamTag(state.team),who,state.cart.length,yen(total),tickets.length),'ok');
     state.runningGross+=total; $('#oh-run').textContent=yen(state.runningGross);
     { const box=$('#run-list'); if(box && box.style.display!=='none'){ box.style.display='none'; toggleRunList(); } }
-    state.cart=[]; renderCart();
+    state.cart=[]; renderCart(); renderWalkinPay();
     if(tickets.length) koRefresh();   // 방금 보낸 주문이 현황에 바로 뜨도록
   }catch(e){
     toast(tx('sendFail')(e.message),'err'); $('#btn-send').disabled=false;
@@ -1273,6 +1410,15 @@ if(window.__so_hidScan) __so_hidScan(function(raw){ if(supa) scanResolve(raw); }
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-load').addEventListener('click',loadTeams);
 $('#btn-qr-scan').addEventListener('click',openScan);
+$('#btn-walkin').addEventListener('click',openWalkinModal);
+$('#wi-close').addEventListener('click',closeWalkinModal);
+$('#wi-cancel').addEventListener('click',closeWalkinModal);
+$('#wi-go').addEventListener('click',walkinOpen);
+$('#wi-modal').addEventListener('click',e=>{ if(e.target.id==='wi-modal') closeWalkinModal(); });
+$('#wi-name').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); walkinOpen(); } });
+$('#wi-m-cash').addEventListener('click',()=>{ _wiMethod='현금'; renderWalkinPay(); });
+$('#wi-m-card').addEventListener('click',()=>{ _wiMethod='카드'; renderWalkinPay(); });
+$('#wi-pay-go').addEventListener('click',walkinSettle);
 $('#qr-close').addEventListener('click',closeScan);
 $('#qr-manual-go').addEventListener('click',()=>{
   const v=$('#qr-manual-in').value.trim(); if(!v){ qrStatus(tx('qrEmpty')); return; }
