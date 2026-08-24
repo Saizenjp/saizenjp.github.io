@@ -35,7 +35,7 @@
     ja: {
       /* 공통 */
       brandSub: 'Yamanami '+r('運営','うんえい')+r('管理','かんり')+'システム',
-      so_update: '🔄 '+r('更新','こうしん')+'あり',
+      so_update: '🔄 '+r('新','しん')+'バージョン · クリックで'+r('再','さい')+r('読','よ')+'み'+r('込','こ')+'み',
       so_updateT: 'この'+r('画面','がめん')+'の'+r('新','あたら')+'しいバージョンがあります。クリックで'+r('再','さい')+r('読','よ')+'み'+r('込','こ')+'み('+r('入力','にゅうりょく')+r('中','ちゅう')+'の'+r('内容','ないよう')+'は'+r('先','さき')+'に'+r('保存','ほぞん')+'してください)。',
       so_netOff: '⚠ ネットワークが切れています — 注文・保存はできません。紙に控えて、つながってから入力してください',
       so_netOn: 'ネットワークが回復しました',
@@ -389,8 +389,8 @@
     },
     ko: {
       brandSub: 'Yamanami 운영 관리 시스템',
-      so_update: '🔄 업데이트 있음',
-      so_updateT: '이 화면의 새 버전이 있습니다. 클릭하면 새로고침됩니다(입력 중인 내용은 먼저 저장해 주세요).',
+      so_update: '🔄 새 버전 · 눌러서 새로고침',
+      so_updateT: '이 화면의 새 버전이 있습니다. ⚠ 누르면 새로고침되므로 입력 중인 내용(결제·메모 등)은 먼저 저장하세요.',
       so_netOff: '⚠ 인터넷이 끊겼습니다 — 주문·저장이 안 됩니다. 종이에 적어 두고 연결되면 입력하세요',
       so_netOn: '인터넷이 다시 연결되었습니다',
       so_footer: '본 사이트는 메리트투어가 제작·제공합니다',
@@ -739,8 +739,8 @@
     en: {
       /* common */
       brandSub: 'Yamanami Operations Management System',
-      so_update: '🔄 Update available',
-      so_updateT: 'A newer version of this screen is available. Click to reload (save any in-progress input first).',
+      so_update: '🔄 New version · click to reload',
+      so_updateT: 'A newer version of this screen is available. ⚠ Clicking reloads the page — save any in-progress input (payments, memos) first.',
       so_netOff: '⚠ You are offline — orders and saves will not go through. Write it down and enter it once you are back online',
       so_netOn: 'Back online',
       so_footer: 'This site is built &amp; provided by Merit Tour',
