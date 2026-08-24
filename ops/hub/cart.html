@@ -232,6 +232,7 @@ const L={
     skipTitle:n=>`この日ラウンドなしで非表示 ${n}チーム`,
     skipWhy:{nodate:'日付未登録', inPus:'入国日（釜山便はラウンドなし）', outIcn:'帰国日（仁川便はラウンドなし）', none:'この日はラウンド対象外'}, scopeElec:(n,t)=>`表示 ${n}チーム / この日ラウンド ${t}チーム（申請のあるチームのみ）`, scopeAll:t=>`この日ラウンド ${t}チーム すべて表示`, noElecTeam:'この日 電動カートの申請チームはありません。',
     autoMark:'自動', dispBtn:'手配書', dispT:'現地手配書をポップアップで開きます',
+    paxEarlyT:n=>`早期帰国済み ${n}名（room.html 🛫）— 人数はそのまま、確認用の表示のみ`, paxEarly:n=>`早退-${n}`,
     wd:['日','月','火','水','木','金','土'], calNone:'ラウンドなし',
     courseRule:'規則', courseGrp:'組編成',
     vDay:'日別', vMonth:'月別 割当状況', month:'月',
@@ -292,6 +293,7 @@ const L={
     skipTitle:n=>`그날 라운딩 없어 안 보이는 팀 ${n}`,
     skipWhy:{nodate:'날짜 미등록', inPus:'입국일(부산편은 라운딩 없음)', outIcn:'귀국일(인천편은 라운딩 없음)', none:'그날 라운딩 대상 아님'}, scopeElec:(n,t)=>`표시 ${n}팀 / 그날 라운딩 ${t}팀 (신청 있는 팀만)`, scopeAll:t=>`그날 라운딩 ${t}팀 전부 표시`, noElecTeam:'이 날 전기카트 신청 팀이 없습니다.',
     autoMark:'자동', dispBtn:'수배서', dispT:'現地手配書를 팝업으로 엽니다',
+    paxEarlyT:n=>`조기퇴실 ${n}명(room.html 🛫) — 신청 인원은 그대로 두고 확인용 표시만`, paxEarly:n=>`조기퇴실-${n}`,
     wd:['일','월','화','수','목','금','토'], calNone:'라운딩 없음',
     courseRule:'규칙', courseGrp:'조편성',
     vDay:'일별', vMonth:'월별 배정현황', month:'월',
@@ -352,6 +354,7 @@ const L={
     skipTitle:n=>`${n} team(s) hidden — no round that day`,
     skipWhy:{nodate:'dates missing', inPus:'arrival day (PUS flights do not play)', outIcn:'departure day (ICN flights do not play)', none:'not playing that day'}, scopeElec:(n,t)=>`showing ${n} of ${t} teams rounding (requests only)`, scopeAll:t=>`all ${t} teams rounding`, noElecTeam:'No electric-cart request on this date.',
     autoMark:'auto', dispBtn:'Sheet', dispT:'Opens the local arrangement sheet in a popup',
+    paxEarlyT:n=>`${n} already departed early (room.html 🛫) — pax count unchanged, display only`, paxEarly:n=>`early-${n}`,
     wd:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], calNone:'no rounds',
     courseRule:'rule', courseGrp:'grouping',
     vDay:'Daily', vMonth:'Monthly assignment', month:'Month',
@@ -538,11 +541,17 @@ async function load(){
     if(!seqs.length){ ROWS=[]; DIRTY.clear(); $('#stat').textContent=''; renderStock(); renderTable(); return; }
     // 3) 팀 정보(숙소·그룹코드) · 대표 항공편 · 조편성 · 카트 배정
     const GM={}, PX={}, GG={}, CB={};
+    //  조기퇴실(room.html 🛫, guest_members.actual_dep) — 카트 배정·인원은 그대로 두고
+    //   「인원이 바뀌었다」는 확인용 배지만 띄운다(Min 2026-08, 팀단위 배차라 자동변경은 보류).
+    const EARLYN={};
     for(let i=0;i<seqs.length;i+=200){ const ch=seqs.slice(i,i+200);
       const {data:gs}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,pax').in('event_seq',ch);
       (gs||[]).forEach(g=>GM[g.event_seq]=g);
       const {data:ps}=await supa.from('passengers').select('event_seq,seq_in_team,origin,dep_flight,ret_flight').in('event_seq',ch).order('seq_in_team');
       (ps||[]).forEach(p=>{ if(!PX[p.event_seq]) PX[p.event_seq]=p; });
+      const {data:em}=await supa.from('guest_members').select('event_seq,actual_dep').in('event_seq',ch);
+      (em||[]).forEach(m=>{ const d=m.actual_dep?String(m.actual_dep).slice(0,10):'';
+        if(d && d<=DATE) EARLYN[m.event_seq]=(EARLYN[m.event_seq]||0)+1; });
     }
     const {data:gg}=await supa.from('golf_groups').select('event_seq,course_code,tee_time,cart_no,slot_no').eq('play_date',DATE);
     (gg||[]).forEach(g=>{ if(g.event_seq!=null && !GG[g.event_seq]) GG[g.event_seq]=g; });
@@ -607,7 +616,7 @@ async function load(){
         holes:row.holes, note:row.note,
         holesLabel:(/\+9H/.test(row.note||'') ? '27H(18+9)' : row.holes+'H'),   // 평일은 18홀+9홀 서비스
         grpCourse:grp.course_code||'', tee:grp.tee_time||'', cartNo:grp.cart_no||'',
-        qty, cx, cxScope:'day', src:srcOne, memo, nos, auto,
+        qty, cx, cxScope:'day', src:srcOne, memo, nos, auto, earlyN:EARLYN[b.event_seq]||0,
         mainCode:(TYPES.find(t=>(+qty[t.code]||0)>0)||TYPES.find(t=>t.code==='electric')||TYPES[0]||{}).code,
         base:(function(){ const c=(TYPES.find(t=>(+qty[t.code]||0)>0)||TYPES.find(t=>t.code==='electric')||TYPES[0]||{}).code;
                           return (+qty[c]||0)+(+cx||0); })(),   // 원래 신청 대수(취소 전) — 취소 칸 상한
@@ -913,7 +922,7 @@ function renderTable(){
       +(r.cx?`<span class="bdg no" title="${esc(tx('thCx'))}">${esc(tx('thCx'))} ${r.cx}</span>`:'')+`</span></div></td>
       <td class="l">${esc(r.rep)}</td>
       <td class="l">${esc(accomL(r.accom))}</td>
-      <td>${r.pax}</td>
+      <td>${r.pax}${r.earlyN?`<span class="bdg no" title="${esc(tx('paxEarlyT')(r.earlyN))}">${esc(tx('paxEarly')(r.earlyN))}</span>`:''}</td>
       <td><span class="ox ${(r.elec||(+r.qty.electric||0)>0)?'y':'n'}" title="${esc((r.elec?tx('elecReqT'):(r.elecKind==='maybe'?tx('elecMaybeT'):tx('oxNoT')))+(r.remarkLocal?' — '+r.remarkLocal:''))}">${(r.elec||(+r.qty.electric||0)>0)?'○':'×'}</span></td>
       <td><select class="inp course-sel ${r.ruleCourse==='九重高原CC'?'kuju':''}" data-course="${i}" title="${esc(tx('courseT'))}">
             ${COURSES.map(c=>`<option value="${esc(c)}"${r.ruleCourse===c?' selected':''}>${esc(c)}</option>`).join('')}
