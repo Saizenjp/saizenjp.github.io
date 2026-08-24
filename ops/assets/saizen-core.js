@@ -71,6 +71,32 @@
     return m[lang] || m.ja || String(name);
   }
 
+  // 방 타입(room_inventory.room_type) 화면 표시명 — 저장값(한글)은 불변, 표시만 언어별로.
+  var ROOM_TYPE_LABEL = {
+    '디럭스더블트윈': { ja: 'デラックスダブルツイン', ko: '디럭스더블트윈', en: 'Deluxe Double Twin' },
+    '디럭스트윈':     { ja: 'デラックスツイン',       ko: '디럭스트윈',     en: 'Deluxe Twin' },
+    '트윈':           { ja: 'ツイン',                 ko: '스탠다드 트윈',  en: 'Standard Twin' },
+    '컴팩트트윈':     { ja: 'コンパクトツイン',       ko: '컴팩트트윈',     en: 'Compact Twin' },
+    '트리플':         { ja: 'トリプル',               ko: '트리플',         en: 'Triple' },
+    '싱글':           { ja: 'シングル',               ko: '싱글',           en: 'Single' },
+    '더블':           { ja: 'ダブル',                 ko: '더블',           en: 'Double' },
+    '4인실':          { ja: '4人室',                  ko: '4인실',          en: 'Quad Room' },
+    '8인실':          { ja: '8人室',                  ko: '8인실',          en: 'Octa Room' },
+    '2인1동':         { ja: 'コテージ(2名)',          ko: '2인1동',         en: 'Cottage (2p)' }
+  };
+  function roomTypeLabel(type, lang) {
+    var m = ROOM_TYPE_LABEL[type];
+    if (!m) return type == null ? '' : String(type);
+    return m[lang] || m.ja || String(type);
+  }
+  // 층 이름(room_inventory.zone, 예 '3층') 화면 표시명 — 숫자+층 패턴만 언어별 변환, 그 외(소보별장 등)는 accomLabel 위임.
+  function zoneLabel(zone, lang) {
+    var s = zone == null ? '' : String(zone);
+    var m = s.match(/^(\d+)\s*층$/);
+    if (m) return lang === 'ja' ? (m[1] + '階') : (lang === 'en' ? (m[1] + 'F') : s);
+    return accomLabel(s, lang);
+  }
+
   // ── 회원 판정 (3컬럼 OR · 회원 우선) ─────────────────────────────────────
   //  고객등급(T)·회원권구분(V)·회원구분(U) 셋 중 하나라도 회원신호면 회원.
   //  초기 회원등록 오류로 컬럼이 어긋난 케이스 대비(Min 결정).

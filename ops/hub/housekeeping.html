@@ -93,7 +93,18 @@
   .kpi.stay{background:#eef3fa;border-color:#c2d3ea} .kpi.stay .v{color:#2b5f9e}
   .kpi.inn{background:var(--accentSoft);border-color:#b4cda0} .kpi.inn .v{color:var(--ok)}
   .kpi.pax{background:var(--surface);border-color:var(--accent2)} .kpi.pax .v{color:var(--accent2)}
-  .kpi.work{background:var(--surface);border-color:var(--accent);border-width:2px}
+  /* 청소·타월 진행 카드 — 1건이라도 끝나면 초록 막대가 채워지기 시작해 완료 시 카드 전체가 초록(Min 2026-08) */
+  .kpi.work{background:var(--surface);border-color:var(--accent);border-width:2px;position:relative;overflow:hidden;padding-bottom:13px}
+  .kpi.work .pbar{position:absolute;left:0;bottom:0;width:100%;height:4px;background:var(--border2)}
+  .kpi.work .pbar i{display:block;height:100%;background:var(--ok);width:0%;transition:width .25s}
+  .kpi.work.done{background:var(--accentSoft);border-color:var(--ok)}
+  .kpi.work.done .v{color:var(--ok)}
+  /* 위 KPI 행도 층 칩처럼 고정 — 스크롤해도 진행 상황이 계속 보인다(Min 2026-08).
+     panel 밖으로 뺀 이유: panel 안에 있으면 그 짧은 박스 끝에서 고정이 풀린다(층 목록까지 못 따라옴). */
+  .kpis{position:sticky;top:var(--hkTop2,100px);z-index:16;background:var(--surface);
+        border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;
+        box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  @media print{ .kpis{position:static;box-shadow:none;border:none;padding:0} }
 
   /* 층 섹션 */
   .flr{margin-bottom:16px;border:1px solid var(--border2);border-radius:11px;overflow:hidden;background:var(--surface)}
@@ -233,7 +244,7 @@
     .flr+.flr{page-break-before:always}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=22.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=22.6">
 </head>
 <body data-so-area="hk">
 <div class="topbar so-bar">
@@ -281,8 +292,8 @@
 </div>
 <div id="toast"></div>
 
-<script src="../assets/saizen-core.js?v=36"></script>
-<script src="../assets/saizen-ops.js?v=22.5"></script>
+<script src="../assets/saizen-core.js?v=37"></script>
+<script src="../assets/saizen-ops.js?v=22.6"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -319,8 +330,6 @@ const L={
     hkClean:'清掃', hkCleanT:'清掃(タオル交換を含む)', hkTowel:'タオル交換', hkDone:'完了', hkUndo:'取消', hkBy:n=>`${n}`,
     hkDeadline:t=>`${t}まで`, hkPortICN:'ソウル着 09:25', hkPortPUS:'釜山着 13:25',
     hkProg:(d,t)=>`清掃 ${d}/${t}`, hkTowelProg:(d,t)=>`タオル ${d}/${t}`,
-    hkTowelAll:'タオルは毎日全室交換(清掃日は清掃に含む) — 使用済みは各階の廊下で回収',
-    hkRule:'清掃 = 3日目ごと(3・6・9…日目)。3泊以下は清掃なし。',
     hkSaveFail:e=>'保存失敗: '+e,
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'最終夜', linen:'シーツ交換', nextIn:n=>`入室 ${n}名`,
     closed:(f,t,r)=>`閉鎖 ${f}~${t}${r?' · '+r:''}`,
@@ -355,8 +364,6 @@ const L={
     hkClean:'청소', hkCleanT:'청소(타월 교체 포함)', hkTowel:'타월 교체', hkDone:'완료', hkUndo:'취소', hkBy:n=>`${n}`,
     hkDeadline:t=>`${t}까지`, hkPortICN:'인천 09:25 착', hkPortPUS:'부산 13:25 착',
     hkProg:(d,t)=>`청소 ${d}/${t}`, hkTowelProg:(d,t)=>`타월 ${d}/${t}`,
-    hkTowelAll:'타월은 매일 전 객실 교체(청소하는 날은 청소에 포함) — 사용한 타월은 각 층 복도에서 수거',
-    hkRule:'청소 = 3일차마다(3·6·9…일차). 3박 이하는 청소 없음.',
     hkSaveFail:e=>'저장 실패: '+e,
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'마지막밤', linen:'시트 교체', nextIn:n=>`입실 ${n}명`,
     closed:(f,t,r)=>`폐쇄 ${f}~${t}${r?' · '+r:''}`,
@@ -391,8 +398,6 @@ const L={
     hkClean:'Clean', hkCleanT:'Cleaning (includes towel change)', hkTowel:'Towels', hkDone:'Done', hkUndo:'Undo', hkBy:n=>`${n}`,
     hkDeadline:t=>`by ${t}`, hkPortICN:'ICN arr 09:25', hkPortPUS:'PUS arr 13:25',
     hkProg:(d,t)=>`Clean ${d}/${t}`, hkTowelProg:(d,t)=>`Towels ${d}/${t}`,
-    hkTowelAll:'Towels changed daily in every room (included in cleaning on cleaning days) — used towels collected in each floor corridor',
-    hkRule:'Cleaning = every 3rd day (3·6·9…). No cleaning for stays of 3 nights or less.',
     hkSaveFail:e=>'Save failed: '+e,
     nthOf:(n,t)=>`${n}/${t}`, lastNight:'Last night', linen:'Linen change', nextIn:n=>`${n} arriving`,
     closed:(f,t,r)=>`Closed ${f}~${t}${r?' · '+r:''}`,
@@ -411,6 +416,9 @@ const L={
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
 function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,lang()):(a||''); }
+// 방 타입·층 이름도 언어 토글을 따른다(저장값=한글 불변, 표시만) — 예전엔 한글 그대로 노출되던 버그(Min 2026-08)
+function roomTypeL(t){ return (window.SZCore&&SZCore.roomTypeLabel)?SZCore.roomTypeLabel(t,lang()):(t||''); }
+function zoneL(z){ return (window.SZCore&&SZCore.zoneLabel)?SZCore.zoneLabel(z,lang()):(z||''); }
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
 function setConn(t,c){const e=$('#conn-state');if(e){e.textContent=t;e.className='pill'+(c?' '+c:'');}}
@@ -508,11 +516,12 @@ function renderUI(){
     <div class="zbar" id="zbar">
       <span class="lbl">${tx('floorSel')}</span><span id="zchips" class="zchips"></span>
     </div>
-    <div class="panel">
+    <div class="panel" style="margin-bottom:10px">
       <h3>${tx('title')} <span class="cnt" style="font-weight:700;color:var(--muted)">· ${tx('readonly')}</span></h3>
-      <div class="kpis" id="kpis" style="margin-top:9px"></div>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="panel" style="margin-top:10px">
       <div class="lgd noprint"><span>${tx('lgd')}</span><span style="color:var(--muted)">${tx('teeHint')}</span></div>
-    <div class="lgd" style="color:var(--text2)"><b>${tx('hkRule')}</b> · ${tx('hkTowelAll')}</div>
       ${NOROOM?`<div class="noprint noroom">⚠ ${tx('noRoomWarn')(NOROOM)} <a href="room.html?ym=${esc(DATE.slice(0,7))}&date=${esc(DATE)}">${tx('noRoomGo')}</a></div>`:''}
     </div>
     <div id="floors"></div>`;
@@ -561,7 +570,12 @@ function renderAccomChips(){
 // 상단바 높이만큼 아래에 붙게(브라우저·언어에 따라 높이가 달라 실측한다)
 function syncStickyTop(){
   const tb=document.querySelector('.topbar');
-  if(tb) document.documentElement.style.setProperty('--hkTop', Math.round(tb.getBoundingClientRect().height)+'px');
+  const topH=tb?Math.round(tb.getBoundingClientRect().height):54;
+  document.documentElement.style.setProperty('--hkTop', topH+'px');
+  // KPI 행은 층 칩(zbar) 바로 아래에 고정 — zbar 자체 높이(칩 줄바꿈 등으로 가변)를 더한다
+  const zb=document.querySelector('.zbar');
+  const zbH=zb?Math.round(zb.getBoundingClientRect().height):46;
+  document.documentElement.style.setProperty('--hkTop2', (topH+zbH)+'px');
 }
 function renderZoneChips(groups,keys){
   const box=$('#zchips'); if(!box) return;
@@ -569,7 +583,7 @@ function renderZoneChips(groups,keys){
   box.innerHTML=`<button type="button" class="zchip${ZONE?'':' on'}" data-z="">${esc(tx('allFloors'))}</button>`
     +keys.map(k=>{
       const g=groups[k], n=cleanN(k);
-      return `<button type="button" class="zchip${ZONE===k?' on':''}" data-z="${esc(k)}">${esc(g.zone)}${n?`<span class="zn">${n}</span>`:''}</button>`;
+      return `<button type="button" class="zchip${ZONE===k?' on':''}" data-z="${esc(k)}">${esc(zoneL(g.zone))}${n?`<span class="zn">${n}</span>`:''}</button>`;
     }).join('');
   // 칩을 누르면 그 층으로 **이동**한다(필터가 아니라 목차 — Min 2026-08).
   //  「전체」는 맨 위로. 스크롤을 내리면 지금 보고 있는 층 칩이 저절로 켜진다(아래 spy).
@@ -805,7 +819,7 @@ function zoneKeyOf(r){ return (r.inv.facility||'')+'|'+(r.inv.zone||r.inv.facili
 async function toggleFloor(zoneKey, kind){
   const invs=INV.filter(invInScope).map(roomRecord)
     .filter(r=>zoneKeyOf(r)===zoneKey)
-    .filter(r=> kind==='clean' ? needsClean(r) : (r.status!=='vacant'&&r.status!=='ooo'));
+    .filter(r=> kind==='clean' ? needsClean(r) : needsTowel(r));
   if(!invs.length) return;
   const ids=invs.map(r=>r.inv.id);
   const allOn=ids.every(id=>DONE[id+'|'+kind]);
@@ -830,6 +844,9 @@ async function toggleFloor(zoneKey, kind){
 }
 // 그 방이 오늘 '청소 대상'인가 — 퇴실/턴오버(무조건) + 체류 청소일
 function needsClean(r){ return r.status==='turn'||r.status==='out'||r.linen; }
+// 그 방이 오늘 '타월만 따로' 대상인가 — 청소 대상 방은 청소에 타월이 포함되므로 뺀다(중복 집계 방지).
+//  KPI 진행률(921행)·카드 버튼 노출(1060행)과 반드시 같은 기준을 써야 층 일괄 버튼 수가 안 어긋난다.
+function needsTowel(r){ return !needsClean(r) && r.status!=='vacant' && r.status!=='ooo'; }
 function stLabel(s){ return {turn:tx('sTurn'),out:tx('sOut'),stay:tx('sStay'),in:tx('sIn'),vacant:tx('sVacant'),ooo:tx('sOoo')}[s]; }
 
 function render(){
@@ -902,6 +919,10 @@ function renderKpis(recs){
   const c={turn:0,out:0,stay:0,in:0,vacant:0,ooo:0};
   recs.forEach(r=>{ c[r.status]++; });
   const kpi=(cls,k,v,u)=>`<div class="kpi ${cls}"><div class="k">${esc(k)}</div><div class="v">${v}<span class="u">${esc(u||'')}</span></div></div>`;
+  // 청소·타월 진행 카드 — 1건이라도 끝나면 초록 막대가 채워지고, 전부 끝나면 카드 전체가 초록(Min 2026-08)
+  const kpiProg=(k,d,t)=>{ const pct=t>0?Math.round(d/t*100):0, done=t>0&&d===t;
+    return `<div class="kpi work${done?' done':''}"><div class="k">${esc(k)}</div><div class="v">${d}/${t}</div>`
+         + `<div class="pbar"><i style="width:${pct}%"></i></div></div>`; };
   box.innerHTML=
      kpi('turn',tx('kTurn'),c.turn,tx('roomsU'))
     +kpi('out', tx('kOut'), c.out, tx('roomsU'))
@@ -917,11 +938,10 @@ function renderKpis(recs){
                   + (pO?kpi('',tx('kPaxOut'),pO,tx('paxU')):''); })()
     // 진행 상태 — 오늘 할 청소·타월 중 몇 개가 끝났는지(현장이 어디까지 했는지 한눈에)
     + (()=>{ const need=recs.filter(needsClean);
-             // 청소하는 방은 타월도 함께 바꾸므로 타월 진행률에서는 뺀다(중복 집계 방지)
-             const tw=recs.filter(r=>!needsClean(r) && r.status!=='vacant' && r.status!=='ooo');
+             const tw=recs.filter(needsTowel);
              const cd=need.filter(r=>r.cleanDone).length, td=tw.filter(r=>r.towelDone).length;
-             return kpi(cd===need.length&&need.length?'done':'', tx('hkProg')(cd,need.length), cd+'/'+need.length, '')
-                  + kpi(td===tw.length&&tw.length?'done':'', tx('hkTowelProg')(td,tw.length), td+'/'+tw.length, ''); })();
+             return kpiProg(tx('hkProg')(cd,need.length), cd, need.length)
+                  + kpiProg(tx('hkTowelProg')(td,tw.length), td, tw.length); })();
 }
 
 function floorHtml(g,key){
@@ -942,7 +962,7 @@ function floorHtml(g,key){
   const badge=(cls,lab,n)=>n?`<span class="st ${cls}" style="font-size:10.5px;padding:2px 7px">${esc(lab)} ${n}</span>`:'';
   return `<div class="flr" id="fl-${cssId(key)}" data-zone="${esc(key)}">
     <div class="flr-h">
-      <span>${esc(g.zone)}</span><span class="fac">${esc(accomL(g.fac))}</span>
+      <span>${esc(zoneL(g.zone))}</span><span class="fac">${esc(accomL(g.fac))}</span>
       <span class="fst">
         ${badge('turn',tx('sTurn'),c.turn)}${badge('out',tx('sOut'),c.out)}
         ${badge('stay',tx('sStay'),c.stay)}${badge('in',tx('sIn'),c.in)}
@@ -950,11 +970,12 @@ function floorHtml(g,key){
       </span>
       ${(()=>{  // 층 단위 일괄 — 청소 대상 방을 한 번에 완료/취소(Min 2026-08)
         const cl=list.filter(needsClean);
+        const tw2=list.filter(needsTowel);
         const clOn=cl.length&&cl.every(r=>DONE[r.inv.id+'|clean']);
-        const twOn=list.length&&list.every(r=>DONE[r.inv.id+'|towel']);
+        const twOn=tw2.length&&tw2.every(r=>DONE[r.inv.id+'|towel']);
         return `<span class="flr-all">
           ${cl.length?`<button type="button" class="allb${clOn?' on':''}" data-all="clean" data-zone="${esc(key)}">${esc((clOn?tx('allCleanOff'):tx('allClean'))(cl.length))}</button>`:''}
-          ${list.length?`<button type="button" class="allb tw${twOn?' on':''}" data-all="towel" data-zone="${esc(key)}">${esc((twOn?tx('allTowelOff'):tx('allTowel'))(list.length))}</button>`:''}
+          ${tw2.length?`<button type="button" class="allb tw${twOn?' on':''}" data-all="towel" data-zone="${esc(key)}">${esc((twOn?tx('allTowelOff'):tx('allTowel'))(tw2.length))}</button>`:''}
         </span>`; })()}
     </div>
     ${VIEW==='card'?`<div class="rcards" style="padding:11px">${list.map(cardHtml).join('')}</div>`:`<table class="hkt">
@@ -1049,7 +1070,7 @@ function cardHtml(r){
     ${noteBar(r.inv.id)}
     <div class="rc-h">
       <span class="no">${esc(String(r.inv.room_no).replace(/호$/,''))}</span>
-      <span class="rc-ty">${esc(r.inv.room_type||'')}</span>
+      <span class="rc-ty">${esc(roomTypeL(r.inv.room_type))}</span>
       <span class="st2">${esc(stLabel(r.status))}</span>
     </div>
     <div class="rc-b">
@@ -1089,7 +1110,7 @@ function rowHtml(r){
   return `<tr class="r-${r.status}">
     <td><span class="st ${r.status==='in'?'in':r.status}">${esc(stLabel(r.status))}</span></td>
     <td class="c-no">${esc(r.inv.room_no)}</td>
-    <td class="c-ty">${esc(r.inv.room_type||'')}</td>
+    <td class="c-ty">${esc(roomTypeL(r.inv.room_type))}</td>
     <td class="c-pax">${pax||''}</td>
     <td>${teams}</td>
     <td class="c-stay">${esc(stayTxt)}</td>
