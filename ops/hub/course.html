@@ -213,7 +213,7 @@
     color:#fff;border-radius:8px;padding:4px 12px;cursor:pointer}
   .ckok:hover{background:var(--accentDeep)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=22.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=22.9">
 </head>
 <body data-so-area="golf">
 <div class="topbar so-bar">
@@ -243,7 +243,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=37"></script>
-<script src="../assets/saizen-ops.js?v=22.8"></script>
+<script src="../assets/saizen-ops.js?v=22.9"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -408,7 +408,8 @@ let DBIDS=[];        // 로드 시점 DB에 있던 조 id (저장 때 삭제 대
 let SELG=null;       // 선택한 조 index
 let SKIP=new Set();  // 그날 라운딩 제외한 팀(event_seq)
 let DRAG=null;       // 드래그 중인 조 index
-let ROSTER={};       // event_seq → [{id,name,eng,gender}]  그날 라운딩 인원
+let ROSTER={};       // event_seq → [{id,name,eng,gender,early}]  그날 라운딩 인원
+let MIDEARLY={};     // member(guest_members.id) → 조기퇴실 실제 퇴실일(actual_dep, room.html 🛫) — 골프도 자동 제외
 let RQ='';           // 조원 검색어
 let PICK=null;       // 조편성 목록에서 집어든 사람 {gi, mid}
 // 코스 입구 모니터 화면(?tv=1) — 읽기 전용 전체화면. 자동 배정·저장은 하지 않는다.
@@ -569,18 +570,20 @@ async function load(){
     const gs = seqs.length? await pagedIn('guests','event_seq,accom,group_code,team_tag','event_seq',seqs):[];
     const gmap={}; gs.forEach(g=>gmap[g.event_seq]=g);
     // 인원 = 명단 실제 행수(예약 pax보다 우선 — 방배정·정산과 같은 기준)
-    const gms = seqs.length? await pagedIn('guest_members','id,event_seq,seq_in_team,name_kr,name_en','event_seq',seqs):[];
+    const gms = seqs.length? await pagedIn('guest_members','id,event_seq,seq_in_team,name_kr,name_en,actual_dep','event_seq',seqs):[];
     const cnt={}; gms.forEach(m=>{ cnt[m.event_seq]=(cnt[m.event_seq]||0)+1; });
     // 대표 출발지(귀국 부산편 판정) + 성별(이름 매칭)
     const pxs = seqs.length? await pagedIn('passengers','event_seq,name_kr,gender,origin,dep_flight','event_seq',seqs):[];
     const oriMap={}; pxs.forEach(p=>{ if(oriMap[p.event_seq]==null) oriMap[p.event_seq]=SZCore.isPus(p.origin,p.dep_flight); });
     const genMap={}; pxs.forEach(p=>{ const k=p.event_seq+'|'+String(p.name_kr||'').trim(); if(!genMap[k]) genMap[k]=normGender(p.gender); });
-    ROSTER={};
+    ROSTER={}; MIDEARLY={};
     gms.slice().sort((a,b)=>(a.seq_in_team||0)-(b.seq_in_team||0)).forEach(m=>{
       const nm=String(m.name_kr||'').trim();
+      const early=m.actual_dep?String(m.actual_dep).slice(0,10):'';
+      if(early) MIDEARLY[m.id]=early;
       (ROSTER[m.event_seq]=ROSTER[m.event_seq]||[]).push({ id:m.id, seq:m.event_seq,
         name:pn(nm,m.name_en)||nm||(m.name_en||'-'), kr:nm,
-        eng:titleCase(m.name_en), gender:genMap[m.event_seq+'|'+nm]||'' });
+        eng:titleCase(m.name_en), gender:genMap[m.event_seq+'|'+nm]||'', early });
     });
     // 現地手配書에서 묶은 팀은 대표팀 코드+팀번호로 통일(手配書·航空カバー·네임택과 같은 코드)
     const GT=(window.__so_groupTags? await __so_groupTags(supa,seqs) : {});
@@ -667,7 +670,9 @@ function teamHit(seq){
 // 그 날짜 예외 조회 헬퍼
 function holesOv(date,seq){ const m=HOLESM[date]; const v=m&&m[String(seq)]; return v?v.holes:0; }
 function absMap(date){ return ABSM[date]||new Map(); }
-function isAbsent(date,mid){ return absMap(date).has(String(mid)); }
+//  조기퇴실(room.html 🛫, actual_dep)한 사람은 그날부터 라운딩에도 없다 — 별도 표시 없이 자동 제외(Min 2026-08).
+function earlyGone(date,mid){ const d=MIDEARLY[mid]; return !!(d && d<=date); }
+function isAbsent(date,mid){ return absMap(date).has(String(mid)) || earlyGone(date,mid); }
 function skipOn(date,seq){ const s=SKIPM[date]; return !!(s&&s.has(String(seq))); }
 // 그 날짜에 아직 출발 자리가 없는 팀 — 날짜 칩 배지와 화면 목록이 **같은 함수**를 쓴다.
 //  (예전엔 칩은 MONTHG·SKIPM, 목록은 BOARD·SKIP 을 봐서 「✓ 인데 미배정이 있다」가 나왔다)
@@ -745,6 +750,7 @@ async function loadBoard(date, skipAuto){
         });
       });
     }
+    applyAbsentToBoard();   // 저장된 조에도 이미 불참·조기퇴실인 사람이 남아있으면 빼둔다
     // 조원이 비어 있는 조는 기본값(팀 안 명단 순서)으로 채운다 —
     //  사람이 확인(manual)한 조는 손대지 않는다.
     const need=[...new Set(BOARD.filter(g=>g.src!=='manual').map(g=>g.seq))]
@@ -776,8 +782,7 @@ function isSkip(seq){ return SKIP.has(String(seq)); }
 // 2~4명 팀은 그대로 한 조 = 나눌 여지가 없다 → 조원까지 자동으로 채운다.
 // 5명 이상은 「누구와 누구를 한 조로」를 사람이 정해야 한다 → 조만 잡아두고 조원은 비워 확인 대기로 둔다.
 // 그날 불참(golf_absentees) 인원 수 — 조 인원 계산은 모두 이 값을 뺀 '실제 나가는 인원' 기준
-function absCount(date,seq){ const m=ABSM[date]; if(!m||!m.size) return 0; let n=0;
-  m.forEach(v=>{ if(String(v.seq)===String(seq)) n++; }); return n; }
+function absCount(date,seq){ return (ROSTER[seq]||[]).filter(m=>isAbsent(date,m.id)).length; }
 function paxOn(date,t){ return Math.max(0,(t.pax||0)-absCount(date,t.seq)); }
 function teamPax(seq){ const t=TEAMS.find(x=>String(x.seq)===String(seq)); return t?paxOn(DATESEL,t):0; }
 // 조원은 **그 팀 안에서** 명단 순서대로 나눈다(1조=1~4번, 2조=5~8번 …).
@@ -1062,7 +1067,7 @@ async function setHoles(seq, h){
     render(); toast(tx('exSaved'),'ok');
   }catch(e){ toast(tx('exFail',e.message),'err'); }
 }
-// 불참으로 바뀐 사람을 이미 짜인 조에서 빼고 조 인원을 줄인다(빈 조는 없앤다).
+// 불참·조기퇴실(room.html 🛫)로 바뀐 사람을 이미 짜인 조에서 빼고 조 인원을 줄인다(빈 조는 없앤다).
 //  다시 참가로 돌리면 미배정으로 남아 조편성 패널·자동배정이 다시 넣는다.
 function applyAbsentToBoard(){
   let changed=false;
