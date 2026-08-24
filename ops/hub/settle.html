@@ -163,7 +163,7 @@
      왼쪽으로 밀렸다가 제자리로 튀었다(Min 2026-08). 세로 이동만 남긴다. */
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=22.9">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=23.0">
 </head>
 <body data-so-area="settle">
 <div class="topbar so-bar">
@@ -226,7 +226,7 @@
 
 <script src="../assets/qrcode-generator.js?v=1"></script>
 <script src="../assets/saizen-core.js?v=37"></script>
-<script src="../assets/saizen-ops.js?v=22.9"></script>
+<script src="../assets/saizen-ops.js?v=23.0"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -1002,116 +1002,14 @@ async function showBillQR(f){
 //  · 금액 기본값 = **이미 받은 금액**(청구액이 아니다 — 領収書는 받은 돈의 증거다).
 //  · 宛名·但し書き는 손님이 지정하는 경우가 많아 발행 전에 고칠 수 있게 한다.
 //  · 収入印紙: 현금 수령 5만엔 이상이면 필요(카드 결제는 불요) → 화면·인쇄물에 안내.
+// 領収書 — 발행 팝업·인쇄물은 saizen-ops.js 공용(__so_receipt).
+//   프론트 데스크에서도 같은 한 벌을 쓴다(양식이 갈라지지 않게).
 function openReceipt(f){
   const pays=(state.payments||[]).filter(p=>!p.voided);
   const paid=Math.round(pays.reduce((s,p)=>s+Number(p.amount||0),0));
   const cash=Math.round(pays.filter(p=>p.method==='현금').reduce((s,p)=>s+Number(p.amount||0),0));
-  const tag=tagShow(f.event_seq, f.team_tag);
-  const fors=tx('rcFors')||[];
-  const bg=document.createElement('div'); bg.className='modal-bg';
-  bg.innerHTML=`<div class="modal" style="max-width:430px">
-    <h3 style="margin-bottom:2px">${tx('rcTitle')}</h3>
-    <div style="font-size:13px;font-weight:800;color:var(--accent);margin-bottom:10px">${escQ(tag)} ${escQ(f.rep_name||'')}</div>
-    <label class="hint">${tx('rcTo')}</label>
-    <input class="inp" id="rc-to" type="text" value="${escQ(f.rep_name||'')}" placeholder="${escQ(tx('rcToPh'))}" style="width:100%;margin-bottom:9px">
-    <label class="hint">${tx('rcFor')}</label>
-    <select class="inp" id="rc-for" style="width:100%;margin-bottom:9px">
-      ${fors.map(v=>`<option value="${escQ(v)}">${escQ(v)}</option>`).join('')}
-    </select>
-    <label class="hint">${tx('rcAmt')} <span style="font-weight:400">— ${tx('rcAmtHint')}</span></label>
-    <input class="inp" id="rc-amt" type="number" min="0" step="1" value="${paid}" style="width:100%;margin-bottom:6px">
-    ${paid<=0?`<div class="hint" style="color:var(--err);margin-bottom:6px">${tx('rcNoPaid')}</div>`:''}
-    <div class="hint" style="margin-bottom:12px">${tx('rcStamp')}</div>
-    <div class="form-row" style="justify-content:flex-end">
-      <button class="btn ghost sm" id="rc-close" type="button">${tx('closeBtn')}</button>
-      <button class="btn sm" id="rc-go" type="button">${tx('rcMake')}</button>
-    </div></div>`;
-  document.body.appendChild(bg);
-  const close=()=>bg.remove();
-  bg.querySelector('#rc-close').addEventListener('click',close);
-  bg.addEventListener('click',e=>{ if(e.target===bg) close(); });
-  bg.querySelector('#rc-go').addEventListener('click',()=>{
-    const to=(bg.querySelector('#rc-to').value||'').trim();
-    const fr=bg.querySelector('#rc-for').value||'';
-    const amt=Math.round(Number(bg.querySelector('#rc-amt').value||0));
-    if(amt<=0){ toast(tx('needPayAmount'),'warn'); return; }
-    close();
-    printReceipt(f,{to,forWhat:fr,amount:amt,cash});
-  });
-}
-
-function printReceipt(f,o){
-  const Y=n=>'¥'+Number(n||0).toLocaleString('ja-JP');
-  const today=new Date().toISOString().slice(0,10);
-  const tag=tagUni(f.event_seq, f.team_tag);   // 손님에게 나가는 인쇄물 = 코드 하나만
-  const net=Math.round(o.amount/(1+TAX_RATE)), tax=o.amount-net;
-  // 収入印紙: **현금** 수령이 5만엔 이상일 때만(카드는 불요)
-  const needStamp = Math.min(o.cash, o.amount) >= 50000;
-  const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>領収書 — ${escQ(tag)} ${today}</title>
-<style>${window.__SO_JP_FONT||''}
-  @page{size:A4 portrait;margin:0}
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Meiryo','Malgun Gothic','Noto Sans JP',sans-serif;background:#eceef1;color:#111}
-  .toolbar{position:sticky;top:0;background:#fff;border-bottom:1px solid #ccc;display:flex;align-items:center;gap:12px;padding:12px 20px}
-  .toolbar h1{font-size:15px}.toolbar .meta{font-size:12px;color:#666}
-  .toolbar button{padding:8px 18px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;background:#15803d;color:#fff}
-  .toolbar button.c{background:#999}
-  .sheet{width:210mm;min-height:297mm;margin:16px auto;background:#fff;padding:14mm 16mm}
-  /* 領収書 본체 — A4 위쪽 절반. 아래 절취선에서 잘라 손님께 드린다 */
-  .rc{border:1.2pt solid #111;padding:11mm 12mm;height:128mm;display:flex;flex-direction:column}
-  .rc h2{font-size:30pt;font-weight:800;letter-spacing:12px;text-align:center;margin-bottom:2mm}
-  .rc .no{display:flex;justify-content:flex-end;gap:8mm;font-size:9.5pt;color:#333;margin-bottom:6mm}
-  .rc .to{font-size:15pt;font-weight:800;border-bottom:1pt solid #111;padding:0 2mm 2mm;margin-bottom:7mm;min-height:9mm}
-  .rc .to small{font-size:11pt;font-weight:600;margin-left:3mm}
-  .rc .amt{font-size:30pt;font-weight:800;text-align:center;letter-spacing:2px;
-    border-bottom:1.6pt solid #111;padding-bottom:3mm;margin-bottom:6mm;font-family:Consolas,'SZJpMono',monospace}
-  .rc .for{font-size:12.5pt;margin-bottom:2.5mm}
-  .rc .for b{font-weight:800}
-  .rc .said{font-size:12pt;margin-bottom:6mm}
-  .rc .brk{font-size:10.5pt;color:#333;display:flex;gap:8mm}
-  .rc .foot{margin-top:auto;display:flex;align-items:flex-end}
-  .rc .issuer{font-size:11.5pt;line-height:1.7}
-  .rc .issuer b{font-size:13pt;font-weight:800}
-  .rc .stamp{margin-left:auto;width:30mm;height:30mm;border:0.8pt dashed #888;display:flex;align-items:center;
-    justify-content:center;font-size:8.5pt;color:#666;text-align:center;line-height:1.4}
-  .cut{margin:6mm 0;border-top:0.5pt dashed #999;text-align:center}
-  .cut span{position:relative;top:-7px;background:#fff;padding:0 3mm;font-size:8.5pt;color:#888}
-  .note{font-size:9pt;color:#444;line-height:1.7}
-  .note b{color:#111}
-  @media print{ body{background:#fff} .toolbar{display:none} .sheet{margin:0;width:auto;min-height:auto;padding:14mm 16mm} }
-</style></head><body>
-  <div class="toolbar"><h1>領収書</h1><div class="meta">${escQ(tag)} · ${escQ(o.to||'')} · ${today}</div><div style="flex:1"></div>
-    <button onclick="window.print()">🖨 ${tx('printBtn')}</button>
-    <button class="c" onclick="window.close()">✕ ${tx('closeXBtn')}</button></div>
-  <div class="sheet">
-    <div class="rc">
-      <h2>領 収 書</h2>
-      <div class="no"><span>発行日 ${today}</span><span>No. ${escQ(String(evNo(f.event_seq)))}</span></div>
-      <div class="to">${escQ(o.to||'')} <small>様</small></div>
-      <div class="amt">${Y(o.amount)} -</div>
-      <div class="for">但 <b>${escQ(o.forWhat||'')}</b></div>
-      <div class="said">上記正に領収いたしました。</div>
-      <div class="brk"><span>税抜 ${Y(net)}</span><span>消費税(10%) ${Y(tax)}</span><span>合計(税込) ${Y(o.amount)}</span></div>
-      <div class="foot">
-        <div class="issuer">
-          <b>アソ ヤマナミリゾート</b><br>
-          株式会社SaiZen<br>
-          <span style="font-size:10pt;color:#555">熊本県阿蘇郡</span>
-        </div>
-        <div class="stamp">${needStamp?'収入印紙':'収入印紙<br>(不要)'}</div>
-      </div>
-    </div>
-    <div class="cut"><span>✂ ここで切り取ってお渡しください / 여기서 잘라 손님께 드립니다</span></div>
-    <div class="note">
-      <b>控え / 보관용</b> — ${escQ(tag)} ${escQ(f.rep_name||'')} · 発行 ${today} · ${Y(o.amount)} · ${escQ(o.forWhat||'')}<br>
-      ${needStamp
-        ? '⚠ <b>現金で5万円以上</b>のお受け取りです — <b>収入印紙</b>を貼付し、消印してください。'
-        : '※ 収入印紙は不要です(カード決済、または現金5万円未満)。'}
-    </div>
-  </div>
-</body></html>`;
-  const w=window.open('','_blank'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
-  w.document.write(html); w.document.close();
+  if(!window.__so_receipt){ toast('領収書 모듈 로드 실패 — 새로고침','err'); return; }
+  __so_receipt({ tag:tagUni(f.event_seq,f.team_tag), repName:f.rep_name||'', no:evNo(f.event_seq), paid, cash });
 }
 
 async function previewStatement(f){

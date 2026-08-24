@@ -1415,6 +1415,150 @@
     return out;
   };
 
+  // ── 領収書 발행(공용) ────────────────────────────────────────────────
+  //  御請求書(청구서)와 별개. 손님이 「領収書를 달라」고 할 때 그 자리에서 발행한다.
+  //  정산 화면과 프론트 데스크가 **같은 한 벌**을 쓴다(양식이 갈라지지 않게).
+  //    __so_receipt({tag:'FAあ-Y', repName:'김철수', no:12345, paid:24000, cash:24000})
+  //  paid = 이미 받은 금액(기본 금액) · cash = 그중 현금 — 収入印紙 판정에 쓴다.
+  var RC_I18N = {
+    ja: { title:'領収書の発行', to:'宛名', toPh:'例) 株式会社○○ / お客様名', forLbl:'但し書き',
+          amt:'金額(税込)', amtHint:'既定=お受け取り済みの金額',
+          noPaid:'まだ入金がありません — 金額を直接ご入力ください',
+          stamp:'※ 現金でのお受け取りが5万円以上の場合は収入印紙が必要です(カード決済は不要)',
+          make:'領収書を作成', close:'閉じる', needAmt:'金額を入力してください',
+          print:'印刷', closeX:'閉じる', popup:'ポップアップがブロックされました — 許可が必要です' },
+    ko: { title:'領収書 발행', to:'받는 분(宛名)', toPh:'예) 株式会社○○ / 손님 성함', forLbl:'但し書き(명목)',
+          amt:'금액(税込)', amtHint:'기본값 = 이미 받은 금액',
+          noPaid:'아직 받은 금액이 없습니다 — 금액을 직접 입력하세요',
+          stamp:'※ 현금 수령이 5만엔 이상이면 수입인지가 필요합니다(카드 결제는 불요)',
+          make:'領収書 만들기', close:'닫기', needAmt:'금액을 입력하세요',
+          print:'인쇄', closeX:'닫기', popup:'팝업 차단 — 허용 필요' },
+    en: { title:'Issue a receipt (領収書)', to:'Payer name', toPh:'e.g. Company name / guest name', forLbl:'For (但し書き)',
+          amt:'Amount (tax incl.)', amtHint:'Defaults to the amount already received',
+          noPaid:'No payment recorded yet — enter the amount directly',
+          stamp:'※ A revenue stamp is required for cash receipts of ¥50,000 or more (not for card payments)',
+          make:'Create receipt', close:'Close', needAmt:'Enter the amount',
+          print:'Print', closeX:'Close', popup:'Popup blocked — please allow' }
+  };
+  var RC_FORS = ['ご利用代金として', 'ご宿泊代として', 'ご飲食代として', 'ゴルフ代として'];
+  var RC_TAX = 0.10;   // 内税(표시가에 포함된 소비세)
+
+  function rcEsc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c];
+    });
+  }
+  function rcYen(n) { return '¥' + Number(n || 0).toLocaleString('ja-JP'); }
+
+  //  실제 인쇄물 — A4 위쪽이 손님용, 절취선 아래가 控え(보관용)
+  function rcPrint(o, R) {
+    var today = new Date().toISOString().slice(0, 10);
+    var amount = Math.round(Number(o.amount) || 0);
+    var net = Math.round(amount / (1 + RC_TAX)), tax = amount - net;
+    //  収入印紙 = **현금** 수령이 5만엔 이상일 때만(카드 결제는 불요)
+    var needStamp = Math.min(Number(o.cash) || 0, amount) >= 50000;
+    var tag = rcEsc(o.tag || ''), to = rcEsc(o.to || ''), forWhat = rcEsc(o.forWhat || '');
+    var html = '<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>領収書 — ' + tag + ' ' + today + '</title>'
+      + '<style>' + (global.__SO_JP_FONT || '')
+      + '@page{size:A4 portrait;margin:0}'
+      + '*{box-sizing:border-box;margin:0;padding:0}'
+      + "body{font-family:'Meiryo','Malgun Gothic','Noto Sans JP',sans-serif;background:#eceef1;color:#111}"
+      + '.toolbar{position:sticky;top:0;background:#fff;border-bottom:1px solid #ccc;display:flex;align-items:center;gap:12px;padding:12px 20px}'
+      + '.toolbar h1{font-size:15px}.toolbar .meta{font-size:12px;color:#666}'
+      + '.toolbar button{padding:8px 18px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;background:#15803d;color:#fff}'
+      + '.toolbar button.c{background:#999}'
+      + '.sheet{width:210mm;min-height:297mm;margin:16px auto;background:#fff;padding:14mm 16mm}'
+      + '.rc{border:1.2pt solid #111;padding:11mm 12mm;height:128mm;display:flex;flex-direction:column}'
+      + '.rc h2{font-size:30pt;font-weight:800;letter-spacing:12px;text-align:center;margin-bottom:2mm}'
+      + '.rc .no{display:flex;justify-content:flex-end;gap:8mm;font-size:9.5pt;color:#333;margin-bottom:6mm}'
+      + '.rc .to{font-size:15pt;font-weight:800;border-bottom:1pt solid #111;padding:0 2mm 2mm;margin-bottom:7mm;min-height:9mm}'
+      + '.rc .to small{font-size:11pt;font-weight:600;margin-left:3mm}'
+      + ".rc .amt{font-size:30pt;font-weight:800;text-align:center;letter-spacing:2px;border-bottom:1.6pt solid #111;padding-bottom:3mm;margin-bottom:6mm;font-family:Consolas,'SZJpMono',monospace}"
+      + '.rc .for{font-size:12.5pt;margin-bottom:2.5mm}.rc .for b{font-weight:800}'
+      + '.rc .said{font-size:12pt;margin-bottom:6mm}'
+      + '.rc .brk{font-size:10.5pt;color:#333;display:flex;gap:8mm}'
+      + '.rc .foot{margin-top:auto;display:flex;align-items:flex-end}'
+      + '.rc .issuer{font-size:11.5pt;line-height:1.7}.rc .issuer b{font-size:13pt;font-weight:800}'
+      + '.rc .stamp{margin-left:auto;width:30mm;height:30mm;border:0.8pt dashed #888;display:flex;align-items:center;justify-content:center;font-size:8.5pt;color:#666;text-align:center;line-height:1.4}'
+      + '.cut{margin:6mm 0;border-top:0.5pt dashed #999;text-align:center}'
+      + '.cut span{position:relative;top:-7px;background:#fff;padding:0 3mm;font-size:8.5pt;color:#888}'
+      + '.note{font-size:9pt;color:#444;line-height:1.7}.note b{color:#111}'
+      + '@media print{ body{background:#fff} .toolbar{display:none} .sheet{margin:0;width:auto;min-height:auto;padding:14mm 16mm} }'
+      + '</style></head><body>'
+      + '<div class="toolbar"><h1>領収書</h1><div class="meta">' + tag + ' · ' + to + ' · ' + today + '</div><div style="flex:1"></div>'
+      + '<button onclick="window.print()">🖨 ' + rcEsc(R.print) + '</button>'
+      + '<button class="c" onclick="window.close()">✕ ' + rcEsc(R.closeX) + '</button></div>'
+      + '<div class="sheet"><div class="rc">'
+      + '<h2>領 収 書</h2>'
+      + '<div class="no"><span>発行日 ' + today + '</span><span>No. ' + rcEsc(String(o.no == null ? '' : o.no)) + '</span></div>'
+      + '<div class="to">' + to + ' <small>様</small></div>'
+      + '<div class="amt">' + rcYen(amount) + ' -</div>'
+      + '<div class="for">但 <b>' + forWhat + '</b></div>'
+      + '<div class="said">上記正に領収いたしました。</div>'
+      + '<div class="brk"><span>税抜 ' + rcYen(net) + '</span><span>消費税(10%) ' + rcYen(tax) + '</span><span>合計(税込) ' + rcYen(amount) + '</span></div>'
+      + '<div class="foot"><div class="issuer"><b>アソ ヤマナミリゾート</b><br>株式会社SaiZen<br>'
+      + '<span style="font-size:10pt;color:#555">熊本県阿蘇郡</span></div>'
+      + '<div class="stamp">' + (needStamp ? '収入印紙' : '収入印紙<br>(不要)') + '</div></div>'
+      + '</div>'
+      + '<div class="cut"><span>✂ ここで切り取ってお渡しください / 여기서 잘라 손님께 드립니다</span></div>'
+      + '<div class="note"><b>控え / 보관용</b> — ' + tag + ' ' + rcEsc(o.repName || '') + ' · 発行 ' + today + ' · ' + rcYen(amount) + ' · ' + forWhat + '<br>'
+      + (needStamp
+          ? '⚠ <b>現金で5万円以上</b>のお受け取りです — <b>収入印紙</b>を貼付し、消印してください。'
+          : '※ 収入印紙は不要です(カード決済、または現金5万円未満)。')
+      + '</div></div></body></html>';
+    var w = global.open('', '_blank');
+    if (!w) { rcToast(R.popup, true); return; }
+    w.document.write(html); w.document.close();
+  }
+
+  //  페이지마다 토스트 구현이 다르다 → 있으면 쓰고 없으면 alert
+  function rcToast(msg, isErr) {
+    try { if (typeof global.toast === 'function') { global.toast(msg, isErr ? 'err' : 'warn'); return; } } catch (e) {}
+    global.alert(msg);
+  }
+
+  //  발행 팝업(宛名·但し書き·금액) — 페이지 CSS에 기대지 않게 전부 inline 스타일
+  global.__so_receipt = function (opts) {
+    opts = opts || {};
+    var R = RC_I18N[LANG] || RC_I18N.ja;
+    var paid = Math.round(Number(opts.paid) || 0);
+    var cash = Math.round(Number(opts.cash) || 0);
+    var bg = document.createElement('div');
+    bg.setAttribute('data-so-receipt', '1');
+    bg.style.cssText = 'position:fixed;inset:0;background:rgba(40,39,34,.42);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
+    var ip = 'width:100%;padding:8px 10px;border:1px solid #c9cec2;border-radius:6px;font-size:13px;font-family:inherit;background:#fff;color:#262f26';
+    var hint = 'font-size:11.5px;color:#6b7166;font-weight:600;display:block;margin-bottom:4px';
+    bg.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:430px;width:100%;max-height:86vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.25);padding:18px 20px">'
+      + '<h3 style="margin:0 0 2px;font-size:15px;font-weight:800;color:#647548">' + rcEsc(R.title) + '</h3>'
+      + '<div style="font-size:13px;font-weight:800;color:#647548;margin-bottom:10px">' + rcEsc(opts.tag || '') + ' ' + rcEsc(opts.repName || '') + '</div>'
+      + '<label style="' + hint + '">' + rcEsc(R.to) + '</label>'
+      + '<input id="so-rc-to" type="text" value="' + rcEsc(opts.repName || '') + '" placeholder="' + rcEsc(R.toPh) + '" style="' + ip + ';margin-bottom:9px">'
+      + '<label style="' + hint + '">' + rcEsc(R.forLbl) + '</label>'
+      + '<select id="so-rc-for" style="' + ip + ';margin-bottom:9px">'
+      + RC_FORS.map(function (v) { return '<option value="' + rcEsc(v) + '">' + rcEsc(v) + '</option>'; }).join('')
+      + '</select>'
+      + '<label style="' + hint + '">' + rcEsc(R.amt) + ' <span style="font-weight:400">— ' + rcEsc(R.amtHint) + '</span></label>'
+      + '<input id="so-rc-amt" type="number" min="0" step="1" value="' + paid + '" style="' + ip + ';margin-bottom:6px">'
+      + (paid <= 0 ? '<div style="font-size:11.5px;color:#b13b2c;font-weight:700;margin-bottom:6px">' + rcEsc(R.noPaid) + '</div>' : '')
+      + '<div style="font-size:11.5px;color:#6b7166;margin-bottom:12px">' + rcEsc(R.stamp) + '</div>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+      + '<button type="button" id="so-rc-x" style="font-family:inherit;font-size:12px;font-weight:700;border-radius:7px;padding:6px 13px;border:1px solid #c9cec2;background:#fff;color:#4a5147;cursor:pointer">' + rcEsc(R.close) + '</button>'
+      + '<button type="button" id="so-rc-go" style="font-family:inherit;font-size:12px;font-weight:700;border-radius:7px;padding:6px 13px;border:1px solid #647548;background:#647548;color:#fff;cursor:pointer">' + rcEsc(R.make) + '</button>'
+      + '</div></div>';
+    document.body.appendChild(bg);
+    var close = function () { bg.remove(); };
+    bg.querySelector('#so-rc-x').addEventListener('click', close);
+    bg.addEventListener('click', function (e) { if (e.target === bg) close(); });
+    bg.querySelector('#so-rc-go').addEventListener('click', function () {
+      var to = (bg.querySelector('#so-rc-to').value || '').trim();
+      var fr = bg.querySelector('#so-rc-for').value || '';
+      var amt = Math.round(Number(bg.querySelector('#so-rc-amt').value || 0));
+      if (amt <= 0) { rcToast(R.needAmt, false); return; }
+      close();
+      rcPrint({ tag: opts.tag, repName: opts.repName, no: opts.no, to: to, forWhat: fr, amount: amt, cash: cash }, R);
+    });
+  };
+
   // ── 목록 검색(공용) ──────────────────────────────────────────────────
   //  긴 목록은 눈으로 찾게 두지 않는다(§3-1). 컨테이너 안의 '행'을 글자로 걸러낸다.
   //  화면이 다시 그려져도 자동으로 다시 걸러지도록 MutationObserver 를 건다.
@@ -1970,7 +2114,7 @@
     'menu.html': '<h4>이 화면이 하는 일</h4>메뉴 품목 관리(장소·라인별).<h4>계산·판정</h4><ul><li><b>코드 자동채번</b>=장소 prefix+번호(<code>FR1</code>·<code>GS1</code>).</li><li>이미 적용된 코드는 <b>잠금</b>(수정 불가).</li><li>모든 변경은 이력(change_log)에 기록.</li></ul><h4>주요 용어</h4><b>장소(venue)</b>=판매처·코드 prefix / <b>라인(category)</b>=정산 집계 기준(<code>숙박</code>은 화면에 「룸」 표시).<h4>권한·데이터</h4>menu 영역. menu_items.',
     'board.html': '<h4>이 화면이 하는 일</h4>부서 <b>공지</b> + <b>오늘 요약</b>(JST 기준 체크인·아웃·주문·매출 집계).<h4>권한·데이터</h4>읽기=로그인 전원 / 공지 쓰기·핀·정렬=admin·manager / <b>삭제=작성자 본인 또는 마스터(admin)</b>.',
     'groupcodes.html': '<h4>이 화면이 하는 일</h4><b>회원 마스터(개인정보)</b> 관리 + 빈코드 피커. <b>groupcodes 영역(admin 또는 부여받은 담당자)</b>.<h4>계산·판정</h4><ul><li>그룹코드 3자리=<b>등급 prefix + 영문(18종) + 가나(33종)</b>.</li><li><b>빈코드 피커</b>: 등급별 18×33 그리드 — <b>초록=빈 코드</b>(0명, 바로 배정) / <b>앰버=합류 가능</b>(1~3명) / 회색=4명+.</li></ul><h4>주요 용어</h4>F풀=비회원. 등급 prefix=다이아[D·M]·골드[G]·EWRC[E·W·R·C] 등.<h4>권한·데이터</h4><b>groupcodes 영역(PII)</b> — admin.html에서 신뢰 담당자에게만 부여. member_codes.',
-    'frontdesk.html': '<h4>이 화면이 하는 일</h4>실시간 <b>도착·출발·재실</b> + 팀별 방번호·잔액·메모 통합 현황. 프론트=바=레스토랑 한 화면(테이블 관리는 미도입 — 명패는 계속 출력).<h4>계산·판정</h4><ul><li>🛬체크인=<code>dep===오늘</code> / 🛫체크아웃=<code>arr===오늘</code> / 🏨체류중(연박)=그 사이 / 🍽석식=그날 묵는 전원.</li><li><b>목록 순서 = 체크아웃 → 체크인 → 체류중</b>(2026-08) — 방을 비워야 청소·다음 체크인이 이어지므로 먼저 처리할 일이 위에 옵니다.</li><li><b>체크인은 인천편·부산편으로 나눠 보입니다</b> — 도착 시각·안내가 완전히 달라 항공편(항공편 코드 우선, 없으면 출발지) 기준으로 소구분합니다. 체크아웃·체류중은 나누지 않습니다.</li><li>잔액=청구−결제 합산. <b>KPI 클릭→해당 라인 스크롤</b>.</li><li><b>숙소 칩</b>으로 리스트·KPI 필터.</li></ul><h4>🍽 오늘 석식</h4>석식 카드를 누르면 <b>그날 석식 명단이 열립니다</b>. 인원은 <b>夕食オーダー(석식 오더표)와 같은 규칙</b>으로, 그날 묵는 인원에서 <b>조기퇴실</b>과 <b>업그레이드 인분</b>(기본 석식이 안 나감)을 뺀 수입니다. 각 팀에 <b>조기퇴실 −N · UP −N · 別注 · ⚠알레르기 · 🔗운영팀</b> 표시가 붙고, <b>夕食除外</b> 팀은 아래에 <b>사유와 함께 따로</b> 모입니다(합계에서 제외). 석식 화면에서 정리한 내용이 그대로 보이므로 프론트에서 따로 확인할 필요가 없습니다.<h4>실시간 반영</h4>POS에서 주문·결제가 들어오면 이 화면이 <b>약 25초마다 자동 갱신</b>돼 잔액·미수에 바로 반영됩니다(비고/메모 입력 중엔 건너뜀). 즉시 보려면 ↻로 새로고침. ※다른 <b>월/날짜</b>를 보고 있으면 그 주문 팀이 안 보일 수 있어요 — 주문한 팀의 체류월로 맞추세요.<h4>운영 상태 한눈에</h4>팀 상세에 각 섹션 입력이 배지로 모입니다 — <b>💎회원(등급) · 🛫조기퇴실 · 🍽夕食除外 · ✂석식분리 · 🔗운영팀 · 🔔확인필요</b>(💎은 팀 내 회원 수·등급을 서열 없이 라벨 그대로)(🔔은 클릭 시 해당 처리화면으로). 여러 화면을 안 돌아도 한 팀의 상태를 한 곳에서 확인.<h4>비고·메모·팀 라벨 인라인 편집</h4>팀 클릭 → 상세에서 <b>비고(운영)·메모·팀 라벨을 그 자리에서 바로 입력</b>(입력칸을 벗어나면 자동 저장, 변경이력 기록). 팀 라벨은 <b>現地手配書에 인쇄</b>되며 비우면 엠클릭 값을 씁니다. 별도 메모 페이지 없이 일하는 화면에서 남기고, 現地手配書·재실 현황과 같은 event_notes를 공유합니다.<h4>객실 쪽지</h4>팀 상세 머리글 바로 아래에 그 팀이 쓰는 <b>객실의 열린 쪽지</b>(🐛벌레·🔧설비·📌기타)가 함께 뜹니다. 등록·완료는 <b>객실청소</b> 화면에서 합니다.<h4>바로가기</h4>팀 클릭 → 상세에서 <b>정산</b>(그 팀 자동 열기)·<b>방배정</b>(그 날짜)로 점프.<h4>🔔 확인 필요(후속 조치)</h4>조기 퇴실 등으로 <b>다른 메뉴에 후속 작업</b>(예: 정산 환불)이 생기면 상단 패널에 모입니다. <b>[처리하기]</b>로 해당 화면(딥링크)으로 바로 가고, 끝내면 <b>[완료]</b>로 닫습니다. 미완료 N건은 랜딩 <b>🔔 배지</b>에도 떠서 어느 PC에서든 보입니다. 로그인한 담당자 누구나 완료할 수 있습니다.<h4>체크아웃 처리</h4><b>🛫 오늘 체크아웃</b> 섹션에서 처리합니다 — 팀 상세의 <b>[✓ 체크아웃]</b>(1건), 행 <b>체크박스 + [선택 체크아웃]</b>(여러 건), <b>[오늘 퇴실 전체]</b>(검색 중이면 보이는 것만). 처리된 팀은 흐리게 + <b>체크아웃 완료</b> 배지. 잘못 눌렀으면 상세에서 <b>[↩ 체크아웃 취소]</b>.<br>⚠ <b>정산완료 판정은 이 버튼</b>입니다(잔액 0 자동판정 아님 — 아무것도 안 산 팀은 입실 첫날부터 잔액 0이라 도착하자마자 처리돼 버립니다). <b>잔액이 남아도 막지 않습니다</b>(후불·B2B 이월) — 금액을 보여주고 확인만 받습니다. 체크아웃하면 <b>주문·청구 QR이 만료</b>됩니다.<h4>팀 묶음 코드</h4>現地手配書에서 묶은 팀은 <b>대표팀 코드+팀번호</b>(<code>DFな-Y1</code>·<code>DFな-Y2</code>)로 표시됩니다 — 네임택·룸키 라벨 등 인쇄물과 같은 코드입니다. <b>검색은 원래 코드</b>(<code>FSネ</code>)<b>로도 찾힙니다.</b> 저장된 데이터는 바뀌지 않습니다.<h4>권한·데이터</h4>front(프론트 데스크) 영역. 읽기 집계(데이터 변경 없음) · 확인 필요(followups)는 로그인 전원 읽기/완료. 체크아웃은 <code>guests.check_status</code>(체크인전/체크인/체크아웃)를 RPC <code>set_check_status</code>로 갱신(front·room·settle 영역, 변경이력 기록).',
+    'frontdesk.html': '<h4>이 화면이 하는 일</h4>실시간 <b>도착·출발·재실</b> + 팀별 방번호·잔액·메모 통합 현황. 프론트=바=레스토랑 한 화면(테이블 관리는 미도입 — 명패는 계속 출력).<h4>계산·판정</h4><ul><li>🛬체크인=<code>dep===오늘</code> / 🛫체크아웃=<code>arr===오늘</code> / 🏨체류중(연박)=그 사이 / 🍽석식=그날 묵는 전원.</li><li><b>목록 순서 = 체크아웃 → 체크인 → 체류중</b>(2026-08) — 방을 비워야 청소·다음 체크인이 이어지므로 먼저 처리할 일이 위에 옵니다.</li><li><b>체크인은 인천편·부산편으로 나눠 보입니다</b> — 도착 시각·안내가 완전히 달라 항공편(항공편 코드 우선, 없으면 출발지) 기준으로 소구분합니다. 체크아웃·체류중은 나누지 않습니다.</li><li>잔액=청구−결제 합산. <b>KPI 클릭→해당 라인 스크롤</b>.</li><li><b>숙소 칩</b>으로 리스트·KPI 필터.</li></ul><h4>🍽 오늘 석식</h4>석식 카드를 누르면 <b>그날 석식 명단이 열립니다</b>. 인원은 <b>夕食オーダー(석식 오더표)와 같은 규칙</b>으로, 그날 묵는 인원에서 <b>조기퇴실</b>과 <b>업그레이드 인분</b>(기본 석식이 안 나감)을 뺀 수입니다. 각 팀에 <b>조기퇴실 −N · UP −N · 別注 · ⚠알레르기 · 🔗운영팀</b> 표시가 붙고, <b>夕食除外</b> 팀은 아래에 <b>사유와 함께 따로</b> 모입니다(합계에서 제외). 석식 화면에서 정리한 내용이 그대로 보이므로 프론트에서 따로 확인할 필요가 없습니다.<h4>실시간 반영</h4>POS에서 주문·결제가 들어오면 이 화면이 <b>약 25초마다 자동 갱신</b>돼 잔액·미수에 바로 반영됩니다(비고/메모 입력 중엔 건너뜀). 즉시 보려면 ↻로 새로고침. ※다른 <b>월/날짜</b>를 보고 있으면 그 주문 팀이 안 보일 수 있어요 — 주문한 팀의 체류월로 맞추세요.<h4>운영 상태 한눈에</h4>팀 상세에 각 섹션 입력이 배지로 모입니다 — <b>💎회원(등급) · 🛫조기퇴실 · 🍽夕食除外 · ✂석식분리 · 🔗운영팀 · 🔔확인필요</b>(💎은 팀 내 회원 수·등급을 서열 없이 라벨 그대로)(🔔은 클릭 시 해당 처리화면으로). 여러 화면을 안 돌아도 한 팀의 상태를 한 곳에서 확인.<h4>비고·메모·팀 라벨 인라인 편집</h4>팀 클릭 → 상세에서 <b>비고(운영)·메모·팀 라벨을 그 자리에서 바로 입력</b>(입력칸을 벗어나면 자동 저장, 변경이력 기록). 팀 라벨은 <b>現地手配書에 인쇄</b>되며 비우면 엠클릭 값을 씁니다. 별도 메모 페이지 없이 일하는 화면에서 남기고, 現地手配書·재실 현황과 같은 event_notes를 공유합니다.<h4>객실 쪽지</h4>팀 상세 머리글 바로 아래에 그 팀이 쓰는 <b>객실의 열린 쪽지</b>(🐛벌레·🔧설비·📌기타)가 함께 뜹니다. 등록·완료는 <b>객실청소</b> 화면에서 합니다.<h4>🧾 領収書 발행</h4>팀 상세의 <b>[🧾 領収書]</b> 로 <b>이 화면에서 바로</b> 발행합니다 — 손님이 그 자리에서 요구하는 것이라 정산 화면까지 가지 않습니다. <b>금액 기본값은 이미 받은 금액</b>(領収書는 받은 돈의 증거라 청구액이 아닙니다) — 받은 금액이 없으면 안내가 뜨고, 금액을 직접 넣어야 발행됩니다. <b>収入印紙는 현금 수령 5만엔 이상일 때만</b> 인쇄물이 판정해 표기합니다(카드 결제는 불요). 양식·팝업은 정산 화면과 <b>같은 한 벌</b>이라 어디서 뽑아도 같습니다.<h4>바로가기</h4>팀 클릭 → 상세에서 <b>정산</b>(그 팀 자동 열기)·<b>방배정</b>(그 날짜)로 점프. <b>결제 기록·정산 마감·御請求書·월 매출 요약·워크인</b>은 정산 화면에 있습니다(팀 단위가 아니거나 금전 처리라 분리).<h4>🔔 확인 필요(후속 조치)</h4>조기 퇴실 등으로 <b>다른 메뉴에 후속 작업</b>(예: 정산 환불)이 생기면 상단 패널에 모입니다. <b>[처리하기]</b>로 해당 화면(딥링크)으로 바로 가고, 끝내면 <b>[완료]</b>로 닫습니다. 미완료 N건은 랜딩 <b>🔔 배지</b>에도 떠서 어느 PC에서든 보입니다. 로그인한 담당자 누구나 완료할 수 있습니다.<h4>체크아웃 처리</h4><b>🛫 오늘 체크아웃</b> 섹션에서 처리합니다 — 팀 상세의 <b>[✓ 체크아웃]</b>(1건), 행 <b>체크박스 + [선택 체크아웃]</b>(여러 건), <b>[오늘 퇴실 전체]</b>(검색 중이면 보이는 것만). 처리된 팀은 흐리게 + <b>체크아웃 완료</b> 배지. 잘못 눌렀으면 상세에서 <b>[↩ 체크아웃 취소]</b>.<br>⚠ <b>정산완료 판정은 이 버튼</b>입니다(잔액 0 자동판정 아님 — 아무것도 안 산 팀은 입실 첫날부터 잔액 0이라 도착하자마자 처리돼 버립니다). <b>잔액이 남아도 막지 않습니다</b>(후불·B2B 이월) — 금액을 보여주고 확인만 받습니다. 체크아웃하면 <b>주문·청구 QR이 만료</b>됩니다.<h4>팀 묶음 코드</h4>現地手配書에서 묶은 팀은 <b>대표팀 코드+팀번호</b>(<code>DFな-Y1</code>·<code>DFな-Y2</code>)로 표시됩니다 — 네임택·룸키 라벨 등 인쇄물과 같은 코드입니다. <b>검색은 원래 코드</b>(<code>FSネ</code>)<b>로도 찾힙니다.</b> 저장된 데이터는 바뀌지 않습니다.<h4>권한·데이터</h4>front(프론트 데스크) 영역. 읽기 집계(데이터 변경 없음) · 확인 필요(followups)는 로그인 전원 읽기/완료. 체크아웃은 <code>guests.check_status</code>(체크인전/체크인/체크아웃)를 RPC <code>set_check_status</code>로 갱신(front·room·settle 영역, 변경이력 기록).',
     'admin.html': '<h4>이 화면이 하는 일</h4>계정 <b>역할·영역 지정</b> + 가입요청 처리. <b>마스터 전용</b>.<h4>계산·판정</h4><ul><li>역할 <b>admin / manager / staff</b> + 영역(step1·room·settle·pos·kitchen·menu·notes·<b>stats</b>).</li><li><b>admin(마스터)=전 통과</b> / <b>manager·staff=지정 영역만</b> — 역할은 구분이고, 화면 노출·접근은 <b>지정한 영역만</b>(매니저도 자동통과 안 함). 경영 통계(stats)=admin 또는 stats 지정자.</li></ul><h4>비밀번호 재설정</h4>담당자가 비밀번호를 잊으면 <b>로그인 화면의 「비밀번호를 잊으셨나요?」</b>로 본인이 재설정 메일을 받을 수 있습니다(마스터 개입 불필요). 메일이 안 오면 Dashboard <b>Authentication → Users → ⋯ → Send password recovery</b>로 발송하거나 비밀번호를 직접 지정하세요. ⚠ 링크는 1회용·만료 있음.<h4>권한·데이터</h4>admin 전용. user_access·access_requests.',
     'stats.html': '<h4>이 화면이 하는 일</h4>대표·부서장용 <b>월/연 통합 통계</b>. 기간(이번 달·올해·작년·최근 12개월·범위)을 고르면 입도·매출·가동률·고객구성을 한 화면에 집계합니다. <b>읽기 전용</b>(데이터 변경 없음).<h4>계산·판정</h4><ul><li><b>입도(送客)</b>=현지 체크인(<code>dep_date</code>) 기준·인원=<b>예약 인원</b>. 숙소별·출발지(ICN/PUS)별 분해.</li><li><b>B2B 매출</b>=인원×박수×숙소단가+인원×¥6,000(야마나미·쿠주 14,000 / 간지 16,000 / 시즈 17,000).</li><li><b>현장 매출</b>=charges(취소 제외·JST 기준), <b>현금/카드/미지정</b> 분리 + 구분별.</li><li><b>회원 비율</b>=member_grade·member_class·member_div 3컬럼 OR(하나라도 회원이면 회원), 등급별.</li><li><b>객실 가동률</b>=사용 침대-박 ÷ (가동 객실 정원×기간 일수). 체크인 월 귀속 <b>근사치</b>.</li></ul><h4>📅 캘린더 보기</h4>상단 <b>[📅 캘린더]</b>로 <b>월/연 체류 현황</b>을 봅니다. 월 보기 = 한 칸이 하루, 큰 숫자가 <b>그날 밤 묵는 인원</b>이고 그 옆에 <b>팀 수</b>, 아래에 🛬체크인·🛫체크아웃(팀·인원)이 붙습니다. 색이 진할수록 인원이 많고, 날짜를 누르면 그날 <b>프론트 데스크</b>로 갑니다. 연 보기 = 월별 연인박·팀수·최다 인원. <b>예약 기준</b>이라 방배정 전 팀도 포함됩니다(홈 화면 「지금 체류」 띠와 같은 기준).<h4>주요 용어</h4>B2B(메리트 선계약)와 현장 매출은 <b>별개</b>. 가동률은 침대(정원) 기준.<h4>권한·데이터</h4><b>stats 영역</b> — admin 또는 stats 지정자만(매니저 자동통과 아님). 집계 RPC <code>exec_stats</code>(서버 합산, security definer).',
     'visitor_stats.html': '<h4>이 화면이 하는 일</h4><b>방문 통계(골프장 협회·현청 보고용)</b>. 기간(일·주·월·연 단위 토글)을 골라 <b>회원/비회원 방문객 수</b>를 집계합니다. <b>읽기 전용</b>.<h4>계산·판정</h4><ul><li><b>방문</b>=일행 1인 1체류(현지 체크인 <code>dep_date</code> 기준)=1연인원.</li><li><b>회원 판정</b>=고객등급·회원권구분·회원구분 3컬럼 OR(하나라도 회원이면 회원).</li><li><b>성별·나이대(만나이 10세 구간)·개인 회원별 방문 횟수</b> 분해.</li><li>営業日報의 <b>韓国メンバー/韓国ビジター(宿泊)</b>에 대응.</li></ul><h4>주요 용어</h4>경영 통계(돈)와 <b>분리</b> — 여기는 인원 보고 전용.<h4>권한·데이터</h4><b>report 영역</b> — admin 또는 report 지정자만. 집계 RPC <code>visitor_stats</code>(서버 합산, security definer).',
