@@ -70,7 +70,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=20.5">
 </head>
 <body data-so-area="print">
 <div class="topbar so-bar">
@@ -101,7 +101,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=36"></script><!-- 공유 도메인 규칙(숙소 라벨·박수 등) -->
-<script src="../assets/saizen-ops.js?v=20.4"></script>
+<script src="../assets/saizen-ops.js?v=20.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -354,9 +354,13 @@ async function load(){
     const gmap={}; (gs.data||[]).forEach(g=>{ gmap[g.event_seq]=g; });
     // 3) 투숙자 이름(guest_members)
     const mids=[...new Set(rooms.map(r=>r.member_id).filter(Boolean))];
-    const mm=mids.length? await pagedIn('guest_members','id,event_seq,seq_in_team,name_kr,name_en,passenger_id','id',mids) : {data:[]};
+    const mm=mids.length? await pagedIn('guest_members','id,event_seq,seq_in_team,name_kr,name_en,passenger_id,person_tag','id',mids) : {data:[]};
     if(mm.error) throw mm.error;
     const mmap={}; (mm.data||[]).forEach(m=>{ mmap[m.id]=m; });
+    // 팀 기준 태그(개인 순번 뺀 "FMカ-Y") — 묶음 통일 태그의 base. 手配書·航空カバー와 같은 소스.
+    const ptagBySeq={};
+    (mm.data||[]).slice().sort((a,b)=>(a.seq_in_team||0)-(b.seq_in_team||0))
+      .forEach(m=>{ if(m.person_tag && !ptagBySeq[m.event_seq]) ptagBySeq[m.event_seq]=m.person_tag; });
     // 3.5) 인별 출발지(혼합 출발지 팀 지원) — 없으면 예약(팀) 출발지로 폴백
     const seqsForPx=[...new Set(rooms.map(r=>r.event_seq))];
     const px=seqsForPx.length? await pagedIn('passengers','id,event_seq,origin,dep_flight','event_seq',seqsForPx) : {data:[]};
@@ -396,6 +400,66 @@ async function load(){
       l.cat=nightCat(l.n);
       return l;
     });
+
+    // 4.5) 팀 묶음(現地手配書 print_overrides.team_group) = 대표 기준코드+팀번호로 통일
+    //   航空カバー·ネームタグ와 같은 규칙(DRな-Y1 · DRな-Y2). 묶음 상대가 다른 달이어도
+    //   번호가 맞도록 그룹 전원을 달과 무관하게 조회한다.
+    try{
+      const lseqs=[...new Set(LABELS.map(l=>String(l.eventSeq)))];
+      const OVR={};
+      for(let i=0;i<lseqs.length;i+=400){ const ch=lseqs.slice(i,i+400);
+        const {data:ov}=await supa.from('print_overrides').select('event_seq,team_group').in('event_seq',ch);
+        (ov||[]).forEach(o=>{ if(o.team_group) OVR[o.event_seq]=o; });
+      }
+      const gkeys=[...new Set(Object.values(OVR).map(o=>o.team_group))];
+      if(gkeys.length && window.SZCore && SZCore.orderGroup && SZCore.teamTagN && SZCore.tagStripSeq){
+        const {data:allOv}=await supa.from('print_overrides')
+          .select('event_seq,team_group,team_group_rep,team_group_seq').in('team_group',gkeys);
+        const ovRows=allOv||[];
+        // 이 화면(그 달 체크인)에 없는 팀도 번호 자리를 차지 → 기준코드·입국일 보강
+        const need=[...new Set(ovRows.map(r=>String(r.event_seq)))].filter(x=>!gmap[x]);
+        const ext={};
+        for(let i=0;i<need.length;i+=200){ const ch=need.slice(i,i+200);
+          const {data:g2}=await supa.from('guests').select('event_seq,group_code,team_tag,bookings!inner(dep_date)').in('event_seq',ch);
+          (g2||[]).forEach(g=>{ ext[g.event_seq]={dep:(g.bookings||{}).dep_date||'', tag:g.group_code||g.team_tag||''}; });
+          const {data:m2}=await supa.from('guest_members').select('event_seq,person_tag,seq_in_team').in('event_seq',ch).order('seq_in_team');
+          (m2||[]).forEach(m=>{ const e=ext[m.event_seq]; if(e && !e.ptag && m.person_tag) e.ptag=m.person_tag; });
+        }
+        const strip=t=>SZCore.tagStripSeq(t||'');
+        const GRP={}, _seen=new Set();
+        ovRows.forEach(r=>{
+          const k=r.team_group+'|'+r.event_seq; if(_seen.has(k)) return; _seen.add(k);   // 중복=번호 밀림
+          const g=gmap[r.event_seq], e=ext[r.event_seq]||{};
+          (GRP[r.team_group]=GRP[r.team_group]||[]).push({
+            seq:String(r.event_seq), rep:!!r.team_group_rep,
+            gseq:(r.team_group_seq==null?null:r.team_group_seq),
+            dep: g?((g.bookings||{}).dep_date||''):(e.dep||''),
+            tag: strip(g?(ptagBySeq[r.event_seq]||g.group_code||g.team_tag||''):(e.ptag||e.tag||''))
+          });
+        });
+        Object.keys(GRP).forEach(k=>{
+          let all=GRP[k]; if(!all||all.length<2) return;
+          // 같은 태그코드를 쓰는 다른 시기 묶음이 합쳐지는 것 방지(번호 밀림)
+          const anch=LABELS.find(l=>all.some(x=>x.seq===String(l.eventSeq)));
+          if(SZCore.clusterOf && anch){
+            const cl=SZCore.clusterOf(all.map(x=>({...x,event_seq:x.seq})), String(anch.eventSeq));
+            if(cl && cl.length>=2) all=cl;
+          }
+          if(all.length<2) return;
+          const rep=all.find(x=>x.rep); if(!rep||!rep.tag) return;   // 대표 미지정(구 묶음)=원래 태그 유지
+          const base=rep.tag;
+          const hasManual=all.every(x=>x.gseq!=null);
+          const ordered = hasManual
+            ? all.slice().sort((a,b)=>(a.gseq-b.gseq)||(Number(a.seq)-Number(b.seq)))
+            : SZCore.orderGroup(all.map(x=>({event_seq:x.seq,dep:x.dep})), rep.seq)
+                    .map(o=>all.find(x=>x.seq===String(o.event_seq))).filter(Boolean);
+          ordered.forEach((x,i)=>{
+            const tg=SZCore.teamTagN(base,i+1);
+            LABELS.forEach(l=>{ if(String(l.eventSeq)===x.seq) l.code=tg; });
+          });
+        });
+      }
+    }catch(e){ console.warn('묶음 태그 통일 실패:', e && e.message); }
 
     // 5) 그 달 체크인(입국)인데 방배정이 하나도 없는 팀 — 라벨이 안 나오므로 경고
     const assigned=new Set(rooms.map(r=>r.event_seq));
