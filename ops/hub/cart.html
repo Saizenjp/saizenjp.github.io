@@ -166,7 +166,7 @@
   .cxbox .row{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #f0d8d2;font-size:12.5px}
   .cxbox .row:first-of-type{border-top:0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=23.9">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=24.0">
 </head>
 <body data-so-area="golf">
 <div class="topbar so-bar">
@@ -197,7 +197,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=37"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
-<script src="../assets/saizen-ops.js?v=23.9"></script>
+<script src="../assets/saizen-ops.js?v=24.0"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -237,6 +237,8 @@ const L={
     paxEarlyT:n=>`早期帰国済み ${n}名（room.html 🛫）— 人数はそのまま、確認用の表示のみ`, paxEarly:n=>`早退-${n}`,
     mmBadge:(c,r)=>`⚠ ${c}→${r}台`, mmT:(p,c,r)=>`人数(${p}名)の規則では ${r}台ですが ${c}台で保存されています。人数が変わった可能性 — 確認して［合わせる］を押すと ${r}台に直します(料金も連動)。`,
     mmFix:'合わせる', mmFixed:(r)=>`${r}台に修正しました`, mmNone:'規則と一致しないチームはありません',
+    adjDone:(n)=>`人数の変更に合わせて ${n}件の台数を自動調整しました（料金も連動）`,
+    mmManualT:'手入力の台数です。人数が変わっても自動では変更しません — 確認して［合わせる］を押してください。',
     wd:['日','月','火','水','木','金','土'], calNone:'ラウンドなし',
     courseRule:'規則', courseGrp:'組編成',
     vDay:'日別', vMonth:'月別 割当状況', month:'月',
@@ -300,6 +302,8 @@ const L={
     paxEarlyT:n=>`조기퇴실 ${n}명(room.html 🛫) — 신청 인원은 그대로 두고 확인용 표시만`, paxEarly:n=>`조기퇴실-${n}`,
     mmBadge:(c,r)=>`⚠ ${c}→${r}대`, mmT:(p,c,r)=>`인원(${p}명) 규칙으로는 ${r}대인데 ${c}대로 저장돼 있습니다. 인원이 바뀐 것으로 보입니다 — 확인 후 [맞추기]를 누르면 ${r}대로 고칩니다(요금도 따라 바뀝니다).`,
     mmFix:'맞추기', mmFixed:(r)=>`${r}대로 수정했습니다`, mmNone:'규칙과 어긋난 팀 없음',
+    adjDone:(n)=>`인원 변경에 맞춰 ${n}건의 대수를 자동 조정했습니다(요금도 연동)`,
+    mmManualT:'사람이 직접 입력한 대수입니다. 인원이 바뀌어도 자동으로 바꾸지 않습니다 — 확인 후 [맞추기]를 누르세요.',
     wd:['일','월','화','수','목','금','토'], calNone:'라운딩 없음',
     courseRule:'규칙', courseGrp:'조편성',
     vDay:'일별', vMonth:'월별 배정현황', month:'월',
@@ -363,6 +367,8 @@ const L={
     paxEarlyT:n=>`${n} already departed early (room.html 🛫) — pax count unchanged, display only`, paxEarly:n=>`early-${n}`,
     mmBadge:(c,r)=>`⚠ ${c}→${r}`, mmT:(p,c,r)=>`The rule for ${p} pax gives ${r} cart(s) but ${c} is saved. The party size likely changed — press [Fix] to set it to ${r} (the charge follows).`,
     mmFix:'Fix', mmFixed:(r)=>`Set to ${r}`, mmNone:'No team differs from the rule',
+    adjDone:(n)=>`Adjusted ${n} entr${n===1?'y':'ies'} to match the new party size (charges follow)`,
+    mmManualT:'This quantity was entered by hand, so it is never changed automatically — review and press [Fix].',
     wd:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], calNone:'no rounds',
     courseRule:'rule', courseGrp:'grouping',
     vDay:'Daily', vMonth:'Monthly assignment', month:'Month',
@@ -594,8 +600,10 @@ async function load(){
                 return; }                                // 그날 라운딩 없음 — 아래 진단 줄에 남긴다
       const grp=GG[b.event_seq]||{}; const bk=CB[b.event_seq]||{};
       const qty={}, src={}; let memo='', cx=0, nos='';
+      let autoQty=true;   // 대수 출처(SQL 122) — 규칙이 넣은 값이면 인원 변경 시 자동으로 맞춘다
       TYPES.forEach(t=>{ const r=bk[t.code]; qty[t.code]=r?r.qty:0;
-        if(r){ src[t.code]=r.source; memo=memo||r.note||''; cx+=(+r.cancelled||0); nos=nos||r.cart_nos||''; } });
+        if(r){ src[t.code]=r.source; memo=memo||r.note||''; cx+=(+r.cancelled||0); nos=nos||r.cart_nos||'';
+               if(r.auto_qty===false) autoQty=false; } });
       let srcOne=Object.values(src)[0]||'pre';
       // 저장된 배정이 없으면 규칙(SZCore)으로 자동 채운다 — 화면은 클릭 없이 바로 정답.
       // 비고 표기 판정: sure=집계 · maybe=재확인(집계 제외) · none=없음 (Min 2026-08)
@@ -617,10 +625,14 @@ async function load(){
       }
       // ⚠ 인원이 바뀌면 규칙 대수도 바뀐다. 이미 저장된 날은 규칙과 어긋난 것만 알린다(자동 변경 없음).
       //   취소분이 있는 날은 사람이 일부러 줄인 것이므로 제외.
-      let mismatch=null;
+      let mismatch=null, autoFix=null;
       if(saved && _ruleCode && !cx){
         const cur=+qty[_ruleCode]||0;
-        if(cur && cur!==_ruleQty) mismatch={code:_ruleCode, cur, rule:_ruleQty};
+        if(cur && cur!==_ruleQty){
+          //  규칙이 넣은 값이면 인원이 바뀐 것이므로 화면이 알아서 맞춘다(사람이 정한 값은 건드리지 않는다)
+          if(autoQty) autoFix={code:_ruleCode, cur, rule:_ruleQty};
+          else        mismatch={code:_ruleCode, cur, rule:_ruleQty};
+        }
       }
       ROWS.push({
         seq:b.event_seq, tag:GT[b.event_seq]||g.team_tag||g.group_code||'', rep:b.rep_name||'', accom,
@@ -631,7 +643,7 @@ async function load(){
         holes:row.holes, note:row.note,
         holesLabel:(/\+9H/.test(row.note||'') ? '27H(18+9)' : row.holes+'H'),   // 평일은 18홀+9홀 서비스
         grpCourse:grp.course_code||'', tee:grp.tee_time||'', cartNo:grp.cart_no||'',
-        qty, cx, cxScope:'day', src:srcOne, memo, nos, auto, earlyN:EARLYN[b.event_seq]||0, mismatch,
+        qty, cx, cxScope:'day', src:srcOne, memo, nos, auto, earlyN:EARLYN[b.event_seq]||0, mismatch, autoFix, autoQty,
         mainCode:(TYPES.find(t=>(+qty[t.code]||0)>0)||TYPES.find(t=>t.code==='electric')||TYPES[0]||{}).code,
         base:(function(){ const c=(TYPES.find(t=>(+qty[t.code]||0)>0)||TYPES.find(t=>t.code==='electric')||TYPES[0]||{}).code;
                           return (+qty[c]||0)+(+cx||0); })(),   // 원래 신청 대수(취소 전) — 취소 칸 상한
@@ -651,6 +663,7 @@ async function load(){
     DIRTY.clear();
     $('#stat').textContent=`${ROWS.length}${lang()==='en'?' teams':'팀'}`;
     renderStock(); renderTable();
+    autoAdjust();           // 인원이 바뀐 팀의 대수를 규칙에 맞게 자동 조정(사람이 정한 값은 제외)
     autoConfirm();          // 규칙대로 계산된 신청을 자동 확정 → 정산 청구까지 자동으로 이어진다
 
   }catch(e){
@@ -851,6 +864,31 @@ function grpBadge(r){
 //   · 사람이 고친 값(DIRTY)·이미 저장된 행은 건드리지 않는다.
 //   · 재조회를 하지 않아 화면이 깜빡이지 않는다(멱등 — 같은 날 다시 열어도 한 번만 쓴다).
 let AUTOCF=false;
+// ── 인원이 바뀌면 대수도 따라간다 ────────────────────────────────────────
+//  규칙이 넣은 값(auto_qty=true)만 조정한다. 사람이 직접 입력한 대수는 건드리지 않고
+//  ⚠ 배지로만 알린다(그 판단은 사람 몫). 취소분이 있는 날도 제외.
+//  요금(cart_sync_charge)은 대수를 바꾸면 트리거가 알아서 다시 계산한다.
+let ADJUSTING=false;
+async function autoAdjust(){
+  if(!supa || ADJUSTING) return;
+  const targets=ROWS.filter(r=>r.autoFix && !DIRTY.has(r.seq));
+  if(!targets.length) return;
+  ADJUSTING=true;
+  try{
+    const by=curUser()||null;
+    const ups=targets.map(r=>({play_date:DATE, event_seq:r.seq, cart_code:r.autoFix.code,
+      qty:r.autoFix.rule, cancelled:0, source:r.src||'pre', note:r.memo||null,
+      created_by:by, auto_qty:true}));
+    const {error}=await supa.from('cart_bookings').upsert(ups,{onConflict:'play_date,event_seq,cart_code,source'});
+    if(error) throw error;
+    targets.forEach(r=>{ r.qty[r.autoFix.code]=r.autoFix.rule;
+      r.orig=JSON.stringify({qty:r.qty,src:r.src,memo:r.memo}); r.autoFix=null; });
+    renderStock(); renderTable();
+    toast(tx('adjDone')(targets.length),'ok');
+  }catch(e){ console.warn('autoAdjust', e && e.message || e); }
+  finally{ ADJUSTING=false; }
+}
+
 async function autoConfirm(){
   if(!supa || AUTOCF) return;
   const targets=ROWS.filter(r=>r.auto && !DIRTY.has(r.seq) && TYPES.some(t=>(+r.qty[t.code]||0)>0));
@@ -862,7 +900,7 @@ async function autoConfirm(){
       TYPES.forEach(t=>{
         const q=+r.qty[t.code]||0;
         if(q>0) ups.push({play_date:DATE,event_seq:r.seq,cart_code:t.code,qty:q,cancelled:0,
-                          source:r.src||'pre',note:r.memo||null,created_by:by});
+                          source:r.src||'pre',note:r.memo||null,created_by:by,auto_qty:true});
       });
     });
     if(ups.length){
@@ -938,7 +976,7 @@ function renderTable(){
       <td class="l">${esc(r.rep)}</td>
       <td class="l">${esc(accomL(r.accom))}</td>
       <td>${r.pax}${r.earlyN?`<span class="bdg no" title="${esc(tx('paxEarlyT')(r.earlyN))}">${esc(tx('paxEarly')(r.earlyN))}</span>`:''}`
-      +`${r.mismatch?`<span class="bdg no mm" title="${esc(tx('mmT')(r.pax,r.mismatch.cur,r.mismatch.rule))}">${esc(tx('mmBadge')(r.mismatch.cur,r.mismatch.rule))}</span>`
+      +`${r.mismatch?`<span class="bdg no mm" title="${esc(tx('mmT')(r.pax,r.mismatch.cur,r.mismatch.rule)+' '+tx('mmManualT'))}">${esc(tx('mmBadge')(r.mismatch.cur,r.mismatch.rule))}</span>`
         +`<button class="btn xs ghost noprint" type="button" data-mmfix="${i}" title="${esc(tx('mmT')(r.pax,r.mismatch.cur,r.mismatch.rule))}">${esc(tx('mmFix'))}</button>`:''}</td>
       <td><span class="ox ${(r.elec||(+r.qty.electric||0)>0)?'y':'n'}" title="${esc((r.elec?tx('elecReqT'):(r.elecKind==='maybe'?tx('elecMaybeT'):tx('oxNoT')))+(r.remarkLocal?' — '+r.remarkLocal:''))}">${(r.elec||(+r.qty.electric||0)>0)?'○':'×'}</span></td>
       <td><select class="inp course-sel ${r.ruleCourse==='九重高原CC'?'kuju':''}" data-course="${i}" title="${esc(tx('courseT'))}">
@@ -978,7 +1016,10 @@ function renderTable(){
   box.querySelectorAll('[data-disp]').forEach(el=>el.addEventListener('click',e=>{ e.stopPropagation(); openDispatch(el.dataset.disp); }));
   box.querySelectorAll('tr[data-i]').forEach(tr=>{
     const r=ROWS[+tr.dataset.i];
-    tr.querySelectorAll('[data-q]').forEach(el=>el.addEventListener('input',()=>{ r.qty[el.dataset.q]=Math.max(0,+el.value||0); mark(r); renderStock(); }));
+    tr.querySelectorAll('[data-q]').forEach(el=>el.addEventListener('input',()=>{
+      r.qty[el.dataset.q]=Math.max(0,+el.value||0);
+      r.autoQty=false; r.autoFix=null; r.mismatch=null;   // 사람이 정한 값 → 이후 자동 변경하지 않는다
+      mark(r); renderStock(); }));
     tr.querySelectorAll('[data-f]').forEach(el=>el.addEventListener('input',()=>{ r[el.dataset.f]=el.value; mark(r); }));
     const cs=tr.querySelector('[data-course]');
     if(cs) cs.addEventListener('change',()=>saveCourse(r, cs.value));
@@ -1051,7 +1092,7 @@ async function persistRows(rows, okMsg){
     TYPES.forEach(t=>{
       const q=+r.qty[t.code]||0;
       const cxq=(t===TYPES[0])?(+r.cx||0):0;
-      if(q>0||cxq>0) ups.push({play_date:DATE,event_seq:r.seq,cart_code:t.code,qty:q,cancelled:cxq,source:r.src||'pre',note:r.memo||null,created_by:by});
+      if(q>0||cxq>0) ups.push({play_date:DATE,event_seq:r.seq,cart_code:t.code,qty:q,cancelled:cxq,source:r.src||'pre',note:r.memo||null,created_by:by,auto_qty:(r.autoQty!==false)});
       else dels.push({seq:r.seq,code:t.code});
     });
     if(r.cxScope==='all' && (+r.cx||0)>0){

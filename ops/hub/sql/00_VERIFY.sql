@@ -194,6 +194,7 @@ from (
   union all select 120,'120 재고 부서별','inv_dept_area(dept→영역) 함수', case when exists(select 1 from pg_proc where proname='inv_dept_area') then '✅ 있음' else '❌ 없음 (120) — 골프·청소 등은 저장이 안 된다' end
   union all select 120,'120 재고 부서별','inv_items 쓰기 = 그 부서 영역만', case when exists(select 1 from pg_policies where tablename='inv_items' and policyname='inv_items_ins' and qual is null and with_check like '%inv_dept_area%') then '✅ 적용' else '❌ 미적용 (120)' end
   union all select 121,'121 데이터 검수','같은 회원 두 번 등록 점검(member_dup)', case when exists(select 1 from pg_proc where proname='data_audit' and prosrc like '%member_dup%') then '✅ 적용' else '❌ 미적용 (121)' end
+  union all select 122,'122 카트 대수 출처','cart_bookings.auto_qty (인원 변경 시 자동 조정)', case when exists(select 1 from information_schema.columns where table_name='cart_bookings' and column_name='auto_qty') then '✅ 있음' else '❌ 없음 (122)' end
 ) t
 order by ord, 항목;
 
