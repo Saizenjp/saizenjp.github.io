@@ -163,7 +163,7 @@
      왼쪽으로 밀렸다가 제자리로 튀었다(Min 2026-08). 세로 이동만 남긴다. */
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=23.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=23.5">
 </head>
 <body data-so-area="settle">
 <div class="topbar so-bar">
@@ -226,7 +226,7 @@
 
 <script src="../assets/qrcode-generator.js?v=1"></script>
 <script src="../assets/saizen-core.js?v=37"></script>
-<script src="../assets/saizen-ops.js?v=23.4"></script>
+<script src="../assets/saizen-ops.js?v=23.5"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -257,7 +257,7 @@ const L={
     voidBtn:'取消', noCharges:'請求内訳がありません。', noPays:'支払内訳がありません。',
     personPrefix:'個人', teamEventUnit:'チーム(行事)単位',
     thCat:'区分', thDesc:'内訳', thQty:'数量', thUnit:'単価', thSub:'小計', thTax:'消費税', thTotal:'合計',
-    phUnit:'単価(税込・最終価格)', thMethod:'方法', thAmount:'金額', thDate:'日付', thBy:'担当',
+    phUnit:'単価(税込・最終価格)', thMethod:'方法', thAmount:'金額', thDate:'日時', thBy:'担当',
     calcTotal:'合計(税込)', calcPretax:'税抜', calcIntax:'内税',
     needQtyUnit:'単価・数量を入力してください', chargeAdded:'請求を追加しました', voidConfirmCharge:'この請求を取消(無効化)しますか？',
     voidFail:'取消失敗', chargeVoided:'請求を取消しました', needPayAmount:'支払金額を入力してください', payAddFail:'支払追加失敗',
@@ -298,7 +298,7 @@ const L={
     voidBtn:'취소', noCharges:'청구 내역이 없습니다.', noPays:'결제 내역이 없습니다.',
     personPrefix:'개인', teamEventUnit:'팀(행사) 단위',
     thCat:'구분', thDesc:'내역', thQty:'수량', thUnit:'단가', thSub:'소계', thTax:'소비세', thTotal:'합계',
-    phUnit:'단가(税込·최종가)', thMethod:'수단', thAmount:'금액', thDate:'일자', thBy:'담당',
+    phUnit:'단가(税込·최종가)', thMethod:'수단', thAmount:'금액', thDate:'일시', thBy:'담당',
     calcTotal:'합계(税込)', calcPretax:'세전', calcIntax:'内税',
     needQtyUnit:'단가·수량을 입력하세요', chargeAdded:'청구 추가됨', voidConfirmCharge:'이 청구를 취소(무효화)할까요?',
     voidFail:'취소 실패', chargeVoided:'청구 취소됨', needPayAmount:'결제 금액을 입력하세요', payAddFail:'결제 추가 실패',
@@ -339,7 +339,7 @@ const L={
     voidBtn:'Void', noCharges:'No charges.', noPays:'No payments.',
     personPrefix:'Person', teamEventUnit:'Team (event) level',
     thCat:'Category', thDesc:'Description', thQty:'Qty', thUnit:'Unit', thSub:'Subtotal', thTax:'Tax', thTotal:'Total',
-    phUnit:'Unit price (incl. tax · final)', thMethod:'Method', thAmount:'Amount', thDate:'Date', thBy:'By',
+    phUnit:'Unit price (incl. tax · final)', thMethod:'Method', thAmount:'Amount', thDate:'Date · time', thBy:'By',
     calcTotal:'Total (incl. tax)', calcPretax:'pre-tax', calcIntax:'incl. tax',
     needQtyUnit:'Enter unit price · qty', chargeAdded:'Charge added', voidConfirmCharge:'Void this charge?',
     voidFail:'Void failed', chargeVoided:'Charge voided', needPayAmount:'Enter payment amount', payAddFail:'Add payment failed',
@@ -385,6 +385,13 @@ const ACCOM_DEFAULT=['야마나미리조트','쿠주힐즈'];   // 기본 = 야�
 function evNo(seq){ const v=state.noBySeq&&state.noBySeq[seq]; return (v!=null&&v!=='')?v:seq; }
 
 function yen(n){ return '¥'+Number(n||0).toLocaleString('ja-JP'); }
+//  받은 일시 — 프론트는 공용 계정이라 「누가 받았는지」는 이 시각과 근무표로 확인한다.
+function payWhen(ts){
+  if(!ts) return '';
+  const d=new Date(ts); if(isNaN(d)) return String(ts).slice(0,16).replace('T',' ');
+  const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
+}
 function taxOf(gross){ gross=Number(gross||0); return gross - Math.round(gross/(1+TAX_RATE)); }  // 内税(포함된 소비세)
 function nowYM(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
 function toast(msg,cls){
@@ -697,7 +704,7 @@ function renderDetail(){
     <tr class="${p.voided?'voided':''}">
       <td>${methodLabel(p.method)}</td>
       <td class="num">${yen(p.amount)}</td>
-      <td>${(p.paid_at||'').slice(0,10)}</td>
+      <td class="mono">${esc(payWhen(p.paid_at))}</td>
       <td>${p.received_by||''}</td>
       <td>${p.voided?'':'<button class="vbtn" data-void-pay="'+p.id+'">'+tx('voidBtn')+'</button>'}</td>
     </tr>`).join('') || '<tr><td colspan="5" class="empty-hint">'+tx('noPays')+'</td></tr>';
