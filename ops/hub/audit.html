@@ -138,7 +138,7 @@ const $=s=>document.querySelector(s);
 let supa=null, myRole=null, RESULT=null;
 
 // 체크 메타(순서·심각도는 RPC가 주지만, 라벨/설명/조치는 화면 i18n)
-const CHECKS=['seq_gap','count_mismatch','dup_tag','orphan_room','room_over'];
+const CHECKS=['seq_gap','count_mismatch','dup_tag','orphan_room','room_over','member_dup'];
 
 const L={
   ja:{
@@ -164,6 +164,8 @@ const L={
     f_orphan_room:'対処: 該当 rooms 行を再割当または削除。通常FKで発生しない(0が正常)。',
     n_room_over:'客室 定員超過', d_room_over:'同一客室・重なる宿泊日で割当人数の合計が定員を超過(ダブルブッキング)。',
     f_room_over:'対処: 方배정(room.html)で該当客室を確認し再配置。定員ガードで新規は発生しない(0が正常)。',
+    n_member_dup:'同一会員の二重登録', d_member_dup:'会員の識別キーは「氏名＋生年6桁」。生年が1桁でも違うと別人として登録され、同じ方が2行になる(Mクリックの入力誤り)。氏名とグループコードが同じなら実質同一人物。',
+    f_member_dup:'対処: ①Mクリック会員管理で正しい生年を確認 ②誤っている予約の生年を修正 ③再import(step1) ④その後に残った古い行を削除。⚠ 先に行だけ消すと、次のimportでその方のコードが一致せず「コード未保有」に戻り、別コードが振られる恐れがあります。',
     // 묶음 그룹코드 조회
     gTitle:'グループコード照会', gBtn:'照会', gAll:'全グループ点検', gPh:'コード・代表者・行事番号',
     gDesc:'まとめたチームの「統一コード・順番」を、読み込み範囲に関係なくグループ全員基準で計算して表示します。現地手配書・航空カバーが印刷する値と同じです。',
@@ -198,6 +200,8 @@ const L={
     f_orphan_room:'조치: 해당 rooms 행 재배정 또는 삭제. 보통 FK로 발생 안 함(0이 정상).',
     n_room_over:'방 정원 초과', d_room_over:'같은 객실·겹치는 숙박일에 배정 인원 합이 정원 초과(더블부킹).',
     f_room_over:'조치: 방배정(room.html)에서 해당 객실 확인·재배치. 정원 가드로 신규는 발생 안 함(0이 정상).',
+    n_member_dup:'같은 회원 두 번 등록', d_member_dup:'회원 식별키가 「이름+생년 6자리」입니다. 생년이 한 자리만 달라도 다른 사람으로 등록되어 같은 분이 두 줄이 됩니다(엠클릭 입력 오타). 이름과 그룹코드가 같으면 사실상 동일인입니다.',
+    f_member_dup:'조치: ①엠클릭 회원관리에서 올바른 생년 확인 ②틀린 예약의 생년을 수정 ③재임포트(step1) ④그 뒤 남은 옛 행을 삭제. ⚠ 행부터 지우면 다음 임포트에서 그분 코드가 매칭되지 않아 「코드 미보유」로 돌아가고 다른 코드가 배정될 수 있습니다.',
     gTitle:'묶음 그룹코드 조회', gBtn:'조회', gAll:'전체 묶음 점검', gPh:'코드 · 대표자 · 행사번호',
     gDesc:'묶은 팀의 「통일코드·순번」을 로드 범위와 무관하게 그룹 전원 기준으로 계산해 보여줍니다. 現地手配書·航空カバー가 인쇄하는 값과 같습니다.',
     gLoading:'조회 중…', gNone:'해당 없음', gNeedQ:'검색어를 입력하세요.',
@@ -229,6 +233,8 @@ const L={
     f_dup_tag:'Fix: Re-import the team. Nametag display is already corrected by auto-renumber.',
     n_orphan_room:'Broken-link room assignment', d_orphan_room:'The assigned person is missing from guest_members (broken FK) — assignment left after roster deletion.',
     f_orphan_room:'Fix: Reassign or delete the rooms row. Normally prevented by FK (0 is normal).',
+    n_member_dup:'Same member registered twice', d_member_dup:'A member is identified by name + 6-digit birth date. One wrong digit registers them as a different person, so the same guest appears twice (a typo in the booking system). Same name and same group code means it is really one person.',
+    f_member_dup:'Fix: (1) confirm the correct birth date in the member master, (2) correct it on the wrong booking, (3) re-import (step1), (4) only then delete the leftover row. ⚠ Deleting the row first breaks the match on the next import — the member falls back to “no code” and may be given a different one.',
     n_room_over:'Room over capacity', d_room_over:'Assigned pax on overlapping nights for one room exceeds capacity (double-booking).',
     f_room_over:'Fix: Check the room in room.html and reassign. Capacity guard prevents new ones (0 is normal).',
     gTitle:'Group code lookup', gBtn:'Look up', gAll:'Check all groups', gPh:'code · rep name · event no.',
@@ -486,7 +492,8 @@ function render(){
     const cntTxt=n===0?tx('okNone'):`${n} ${sev==='error'?tx('rowsUnit'):tx('teamsUnit')}`;
     let samps='';
     if(n>0 && Array.isArray(r.samples) && r.samples.length){
-      const rows=r.samples.map(s=>`<div class="samp"><span class="es">#${esc(s.event_seq)}</span><span>${esc(s.detail||'')}</span></div>`).join('');
+      //  행사번호가 없는 점검(회원 중복 등)은 「#0」 대신 번호칸을 비운다
+      const rows=r.samples.map(s=>`<div class="samp">${Number(s.event_seq)?`<span class="es">#${esc(s.event_seq)}</span>`:''}<span>${esc(s.detail||'')}</span></div>`).join('');
       const more=(n>r.samples.length)?`<div class="more">${esc(tx('moreN')(n-r.samples.length))}</div>`:'';
       samps=`<div class="samps">${rows}${more}</div>`;
     }

@@ -193,6 +193,7 @@ from (
   union all select 119,'119 RPC 권한','손님 QR 청구서 guest_bill 은 anon 유지', case when has_function_privilege('anon','public.guest_bill(text)','EXECUTE') then '✅ 유지' else '❌ 막혔다 — 손님 청구서가 안 열린다 (119)' end
   union all select 120,'120 재고 부서별','inv_dept_area(dept→영역) 함수', case when exists(select 1 from pg_proc where proname='inv_dept_area') then '✅ 있음' else '❌ 없음 (120) — 골프·청소 등은 저장이 안 된다' end
   union all select 120,'120 재고 부서별','inv_items 쓰기 = 그 부서 영역만', case when exists(select 1 from pg_policies where tablename='inv_items' and policyname='inv_items_ins' and qual is null and with_check like '%inv_dept_area%') then '✅ 적용' else '❌ 미적용 (120)' end
+  union all select 121,'121 데이터 검수','같은 회원 두 번 등록 점검(member_dup)', case when exists(select 1 from pg_proc where proname='data_audit' and prosrc like '%member_dup%') then '✅ 적용' else '❌ 미적용 (121)' end
 ) t
 order by ord, 항목;
 

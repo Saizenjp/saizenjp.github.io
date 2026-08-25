@@ -1,0 +1,45 @@
+-- ============================================================================
+-- 121_data_audit_member_dup.sql — 데이터 검수에 「같은 회원 두 번 등록」 추가
+--
+--  배경: 회원 식별키 = 이름 + 생년 6자리(member_key). 생년이 한 자리라도 다르면
+--        시스템은 다른 사람으로 본다 → 같은 분이 두 줄이 되고, 「코드 미보유 회원」에
+--        새로 떠서 코드가 또 배정된다(엠클릭 생년 입력 오타에서 시작).
+--        이름과 그룹코드가 같으면 사실상 동일인이므로 그 조합으로 찾아낸다.
+--
+--  ⚠ 조치 순서가 중요하다(행부터 지우면 안 된다):
+--     ① 엠클릭 회원관리에서 올바른 생년 확인
+--     ② 틀린 예약의 생년 수정
+--     ③ step1 재임포트 → 그 사람이 올바른 키로 매칭
+--     ④ 그 뒤 남은 옛 행 삭제
+--     먼저 행만 지우면 다음 임포트에서 매칭이 끊겨 「코드 미보유」로 돌아가고
+--     평생 코드와 다른 코드가 배정될 수 있다.
+--
+--  data_audit() 전체를 다시 만든다(멱등). 기존 5개 점검은 그대로, ⑥만 추가.
+--  실제 정의는 Supabase 에 적용된 것이 정본 — 이 파일은 기록·재적용용.
+--  수동 실행 또는 MCP apply_migration. 번호 121.
+-- ============================================================================
+--  ⑥ 추가되는 부분만 발췌(전체 함수는 82_data_audit.sql + 이 블록):
+--
+--   res := res || jsonb_build_object(
+--     'key','member_dup','sev','warn',
+--     'count',(select count(*) from (
+--         select name_kr, code from member_codes
+--         where code is not null and name_kr is not null
+--         group by name_kr, code having count(*) > 1) t),
+--     'samples',(select coalesce(jsonb_agg(jsonb_build_object('event_seq',0,'detail',detail)),'[]'::jsonb) from (
+--         select (name_kr || ' · ' || code || ' · 생년 '
+--                 || string_agg(right(member_key,6), ' / ' order by member_key)) as detail
+--         from member_codes
+--         where code is not null and name_kr is not null
+--         group by name_kr, code having count(*) > 1
+--         order by name_kr limit 20) s)
+--   );
+--
+--  ⚠ 전체 함수 본문은 길어 여기 중복 기재하지 않는다. 재적용이 필요하면
+--    82_data_audit.sql 의 본문에 위 블록을 return 직전에 넣어 실행한다.
+-- ============================================================================
+
+-- 확인용(권한 없이 로직만 점검):
+--   select name_kr, code, count(*), string_agg(right(member_key,6),' / ')
+--   from member_codes where code is not null and name_kr is not null
+--   group by name_kr, code having count(*) > 1;
