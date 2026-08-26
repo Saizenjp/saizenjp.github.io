@@ -61,7 +61,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=24.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=24.6">
 </head>
 <body data-so-area="print">
 <div class="topbar so-bar">
@@ -92,7 +92,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=37"></script><!-- 공유 도메인 규칙(숙소 라벨·박수 등) -->
-<script src="../assets/saizen-ops.js?v=24.5"></script>
+<script src="../assets/saizen-ops.js?v=24.6"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -538,6 +538,13 @@ function roomSize(no){
   const len=String(no||'').length;
   if(len<=6) return 1; if(len<=8) return .82; if(len<=11) return .66; return .52;
 }
+// 라벨에 찍을 이름 — 3인 이상이면 **대표 1인만**(Min 2026-08).
+//  이름을 다 넣으면 글씨가 작아져 되레 안 보인다. 인원은 방번호 옆 「N名」으로 이미 보인다.
+//  순서는 명단 순(seq_in_team)이라 첫 사람이 그 방의 대표다.
+function labelNames(names){
+  const a=(names||[]).filter(Boolean);
+  return a.length>=3 ? [a[0]] : a;
+}
 // 이름 길이에 따라 자동 축소(방 최대 4명까지 한 줄에)
 function nameSize(names){
   const len=names.join(' ').length;
@@ -557,10 +564,10 @@ function printLabels(){
   const SAFE=4;   // mm — 사방 여유
   const PSC=Math.min((210-SAFE*2)/210, (297-SAFE*2)/297);
   const cell=l=> l? `<div class="ks-cell"><div class="ks-body">
-      <div class="ks-top"><span class="ks-code" style="color:${catColor(l.cat)}">${esc(l.code)}</span><span class="ks-names" style="font-size:calc(var(--fn) * ${nameSize(l.names)})">${esc(l.names.join(' '))}</span></div>
+      <div class="ks-top"><span class="ks-code" style="color:${catColor(l.cat)}">${esc(l.code)}</span><span class="ks-names" style="font-size:calc(var(--fn) * ${nameSize(labelNames(l.names))})">${esc(labelNames(l.names).join(' '))}</span></div>
       <div class="ks-room"><span class="ks-rno" style="font-size:${(roomSize(l.roomNo)*100).toFixed(0)}%">${esc(roomLabel(l.roomNo))}</span><span class="ks-pax">${l.pax}名</span></div>
       <div class="ks-stay">${esc(stayText(l))}</div>
-      <div class="ks-meta"><span class="ks-port" style="color:${portColor(l.port)}">${esc(l.port||'')}</span><span class="ks-nt" style="color:${catColor(l.cat)};border-color:${catColor(l.cat)}">${l.n}泊</span></div>
+      <div class="ks-meta"><span class="ks-port" style="color:${portColor(l.port)}">${esc(l.port||'')}</span><span class="ks-sep">/</span><span class="ks-nt" style="color:${catColor(l.cat)}">${l.n}泊</span></div>
     </div></div>` : '<div class="ks-cell ks-empty"></div>';
   const sizeLabel=`${s.label} · ${lang()==='ja'?'1枚':lang()==='en'?'per sheet':'1장'} ${PER}${lang()==='en'?'':'면'}`;
   const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>ルームキー ラベル — ${esc(YM)}</title>
@@ -585,19 +592,19 @@ function printLabels(){
      미리보기와 인쇄가 같게(WYSIWYG). 칸이 맞붙어 선이 겹쳐도 0.4pt 점선이라 두꺼워 보이지 않는다. */
   .ks-cell{width:${s.w}mm;height:${s.h}mm;overflow:hidden;border:.4pt dashed #9a9a9a;display:flex;align-items:center;justify-content:center;padding:${s.h>=50?'2.5mm 3mm':'0.9mm 2.2mm'}}
   .ks-empty{background:repeating-linear-gradient(45deg,#fafafa,#fafafa 6px,#f0f0f0 6px,#f0f0f0 12px)}
-  .ks-body{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:${s.h>=50?'2mm':'1.2mm'}}
+  .ks-body{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:${s.h>=50?'2.6mm':'2.1mm'}}
   .ks-top{flex:none;display:flex;align-items:baseline;justify-content:center;gap:1.6mm;width:100%;white-space:nowrap;overflow:hidden}
   .ks-code{font-family:'Arial','Meiryo',sans-serif;font-weight:800;letter-spacing:.3px;line-height:1;font-size:1em}
   .ks-names{font-weight:700;line-height:1}
   .ks-room{flex:none;font-family:'Arial','Meiryo',sans-serif;font-weight:800;line-height:1.08;letter-spacing:.5px;display:flex;align-items:baseline;justify-content:center;gap:1.6mm;white-space:nowrap;overflow:hidden;width:100%}
   .ks-rno{white-space:nowrap}
   .ks-pax{font-family:'Meiryo',sans-serif;font-weight:700;font-size:.38em}
-  .ks-stay{flex:none;font-weight:800;line-height:1.15;white-space:nowrap;padding:0 .5mm;margin-top:.9mm}
-  .ks-meta{flex:none;display:flex;align-items:center;justify-content:center;gap:2.6mm;line-height:1.1;margin-top:1.7mm}
-  /* 泊수 네모칸 — CJK 글자는 line-height 1.1 이면 칸 선 위로 삐져나온다(테두리·글자 겹침).
-     줄높이를 넉넉히 주고 위아래 여백을 확보해 선과 글자가 닿지 않게 한다. */
-  .ks-nt{font-weight:800;border:.8pt solid currentColor;border-radius:1mm;padding:.35mm 1.3mm;font-size:.86em;
-    line-height:1.5;display:inline-block}
+  .ks-stay{flex:none;font-weight:800;line-height:1.15;white-space:nowrap;padding:0 .5mm}
+  .ks-meta{flex:none;display:flex;align-items:baseline;justify-content:center;gap:1.4mm;line-height:1.15}
+  /* 泊수 — 네모칸 없이 「PUS / 3泊」 처럼 구분선으로만 나눈다(Min 2026-08).
+     색은 박수별 구분색 그대로 — 멀리서 색으로 알아본다. */
+  .ks-nt{font-weight:800;font-size:.92em;line-height:1.15}
+  .ks-sep{color:#999;font-weight:600;font-size:.85em;line-height:1.15}
   .ks-port{font-family:'Arial',sans-serif;font-weight:800;letter-spacing:.2px;font-size:1em}
   /* 크기별 타이포 — 가로가 길어 방번호 한 줄이 넉넉히 들어간다 */
   .s-70x37 .ks-cell{--fn:.92em}
