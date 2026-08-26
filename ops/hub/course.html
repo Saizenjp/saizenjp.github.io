@@ -216,7 +216,7 @@
     color:#fff;border-radius:8px;padding:4px 12px;cursor:pointer}
   .ckok:hover{background:var(--accentDeep)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=24.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=24.3">
 </head>
 <body data-so-area="golf">
 <div class="topbar so-bar">
@@ -246,7 +246,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=37"></script>
-<script src="../assets/saizen-ops.js?v=24.2"></script>
+<script src="../assets/saizen-ops.js?v=24.3"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -266,6 +266,7 @@ function rotLabel(start, holes){ return rotOf(start,holes).map(courseL).join('�
 const L={
   ja:{ step:'コース割当表', connHint:'接続情報はこのブラウザにのみ保存されます。',
     qPh:'🔎 タグコード・代表者・同行者名・イベント番号で検索', qHit:(n)=>`該当 ${n}組`, qNone:'該当なし',
+    wkTag:'当日', wkHint:'当日ゴルフのお客様(宿泊なし) — 名簿がないため組編成は必ずご確認ください',
     kjH:'九重高原CC へ行くチーム', kjT:'この表は やまなみCC の割当表です。平日のガンジーホテル泊は九重高原CCのため、ここには枠を取りません。現場で九重高原がラウンドできない日だけ「やまなみへ」で移してください。',
     kjNone:'この日はありません', kjN:n=>`${n}チーム`, kjMove:'やまなみへ', kjBack:'九重高原へ戻す',
     kjMoved:(t)=>`${t} を やまなみCC に移しました`, kjBacked:(t)=>`${t} を 九重高原CC に戻しました`,
@@ -312,6 +313,7 @@ const L={
     thTee:'ティ', totalG:n=>`計 ${n}組`, holesU:'H' },
   ko:{ step:'코스 배정표', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
     qPh:'🔎 태그코드·대표자·팀원 이름·행사번호로 검색', qHit:(n)=>`검색 ${n}조`, qNone:'검색 결과 없음',
+    wkTag:'당일', wkHint:'당일 골프 손님(숙박 없음) — 명단이 없어 조편성은 반드시 확인해야 합니다',
     kjH:'구주고원CC 로 가는 팀', kjT:'이 표는 야마나미CC 배정표입니다. 평일 간지호텔 숙박 팀은 구주고원CC로 가므로 여기서 자리를 잡지 않습니다. 현장에서 구주고원 라운딩이 안 되는 날만 [야마나미로]를 눌러 옮기세요.',
     kjNone:'이 날짜는 없습니다', kjN:n=>`${n}팀`, kjMove:'야마나미로', kjBack:'구주고원으로 되돌리기',
     kjMoved:(t)=>`${t} 을(를) 야마나미CC 로 옮겼습니다`, kjBacked:(t)=>`${t} 을(를) 구주고원CC 로 되돌렸습니다`,
@@ -358,6 +360,7 @@ const L={
     thTee:'티오프', totalG:n=>`합계 ${n}조`, holesU:'H' },
   en:{ step:'Course assignment', connHint:'Connection info is stored only in this browser.',
     qPh:'🔎 Search tag code, rep, member name, event no.', qHit:(n)=>`${n} groups`, qNone:'No match',
+    wkTag:'Day', wkHint:'Day golfer (no stay) — no roster, so grouping must be confirmed by hand',
     kjH:'Teams playing Kuju Kogen CC', kjT:'This sheet is for Yamanami CC. Weekday guests at Ganji Hotel play Kuju Kogen, so they take no slot here. Move a team only when Kuju Kogen cannot be played that day.',
     kjNone:'None on this date', kjN:n=>`${n} teams`, kjMove:'To Yamanami', kjBack:'Back to Kuju Kogen',
     kjMoved:(t)=>`${t} moved to Yamanami CC`, kjBacked:(t)=>`${t} moved back to Kuju Kogen CC`,
@@ -460,6 +463,7 @@ let MONTHG={};       // 날짜 → [{event_seq,course_code,slot_no,capacity}]  �
 let CQ='';   // 검색어(태그코드·대표자·팀원 이름·행사번호) — 목록·조를 좁힌다
 let HOLESM={}, ABSM={};   // 라운딩 예외(홀수 수기지정 · 개인 불참) — SQL 106
 let PCM={};   // 그날 그 팀의 실제 골프장 수기 지정(play_course, SQL 99) — 규칙보다 우선
+let WALK={};  // 당일 골프 손님(워크인) 부가정보 — 홀수·희망 티오프·연락처
 //  접이식 패널 펼침 상태 — 재렌더가 잦아 화면 밖에 보관한다(키=패널 이름)
 const FOLD={};            // ex(라운딩 예외) · un(미배정) · ex2(제외)
 function foldOpen(k,dflt){ return FOLD[k]==null?!!dflt:!!FOLD[k]; }
@@ -609,6 +613,21 @@ async function load(){
         rep:b.rep_name||'', isPus: oriMap[b.event_seq]!=null?oriMap[b.event_seq]:SZCore.isPus(b.origin,''),
         pax: cnt[b.event_seq]||0 };
     }).filter(t=>t.pax>0);
+    // 당일 골프 손님(워크인, SQL 123) — 숙박 예약에 없으므로 따로 읽어 같은 모양으로 붙인다.
+    //  하루짜리 체류(dep=arr=그날)로 두면 golfRows 가 그날 1행만 만든다.
+    WALK={};
+    try{
+      const {data:wk}=await supa.from('walkins')
+        .select('event_seq,walk_date,name,pax,holes,tee_pref,course,phone,note')
+        .gte('walk_date',start).lte('walk_date',end);
+      (wk||[]).forEach(w=>{
+        const d=dstr(w.walk_date);
+        WALK[w.event_seq]={holes:w.holes||18, tee:w.tee_pref||'', course:w.course||'', phone:w.phone||'', note:w.note||''};
+        TEAMS.push({ seq:w.event_seq, dep:d, arr:d, accom:'', walkin:true,
+          tag:tx('wkTag'), rep:w.name||('#'+w.event_seq), isPus:false, pax:w.pax||1 });
+        ROSTER[w.event_seq]=[];   // 명단 없음 — 조원은 사람이 확인해서 넣는다
+      });
+    }catch(e){}   // 테이블 미적용이면 조용히 넘어간다
     _todCache={};
     await loadMonthState();
     const ax=golfDates();
@@ -629,11 +648,15 @@ async function load(){
 }
 
 // 그 팀이 그날 라운딩하는가 + 홀수 — 규칙은 SZCore.golfRows 단일 진실원
-function rowFor(t,date){ return SZCore.golfRows({dep:t.dep,arr:t.arr,accom:t.accom}, t.isPus).find(r=>r.date===date)||null; }
+function rowFor(t,date){
+  if(t && t.walkin) return (t.dep===date)? {date, course:'やまなみCC', holes:(WALK[t.seq]||{}).holes||18, note:'当日'} : null;
+  return SZCore.golfRows({dep:t.dep,arr:t.arr,accom:t.accom}, t.isPus).find(r=>r.date===date)||null;
+}
 // 그날 그 팀이 실제로 가는 골프장 — 수기 지정(play_course)이 규칙보다 우선.
 //  주말·공휴일은 규칙(isNonWorkday)이 이미 야마나미로 계산한다.
 //  현장에서 구주고원 라운딩이 안 되는 날만 사람이 야마나미로 옮긴다.
 function venueOf(t,date){
+  if(t && t.walkin) return 'やまなみCC';   // 당일 골프 손님은 여기서 친다
   const ov=(PCM[date]||{})[String(t.seq)];
   if(ov) return ov;
   const r=rowFor(t,date); return r?r.course:'';
@@ -841,7 +864,10 @@ function fillTeamMembers(seq){
   let i=0;
   gs.forEach(g=>{ g.members=roster.slice(i, i+(g.pax||4)); i+=(g.pax||4); });
 }
-function needsCheck(g){ return teamPax(g.seq)>=5 && g.src!=='manual'; }
+//  워크인은 명단(guest_members)이 없어 조원을 자동으로 채울 수 없다 →
+//   인원이 적어도 사람이 한 번 확인해야 한다(5명 이상 팀과 같은 이유).
+function isWalkinSeq(seq){ const t=TEAMS.find(x=>String(x.seq)===String(seq)); return !!(t&&t.walkin); }
+function needsCheck(g){ return (isWalkinSeq(g.seq) || teamPax(g.seq)>=5) && g.src!=='manual'; }
 
 // ── 구주고원CC 로 가는 팀 ────────────────────────────────────────────────
 //  이 표는 야마나미CC 배정표라 그 팀들은 자리를 잡지 않는다.

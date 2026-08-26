@@ -132,6 +132,18 @@
   .paybox .plist{margin-top:7px;font-size:11.5px;color:var(--text2);line-height:1.7;border-top:1px dashed var(--border2);padding-top:6px}
   .paybox .plist b{font-family:var(--mono)}
   .paybox .deny2{font-size:12px;color:var(--err);font-weight:700}
+  /* 당일 골프 손님 접수 — 이 화면엔 모달이 없어 여기서 정의한다 */
+  .modal-bg{position:fixed;inset:0;background:rgba(40,39,34,.42);z-index:60;display:flex;align-items:center;justify-content:center;padding:20px}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;max-width:460px;width:100%;
+    max-height:88vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.24);padding:20px 22px}
+  .modal h3{margin:0 0 4px;font-size:15.5px;font-weight:800;color:var(--accent)}
+  .modal .mh{font-size:12.5px;color:var(--text2);line-height:1.65;margin-bottom:14px}
+  .mrow{display:flex;gap:9px;align-items:center;margin-bottom:9px;flex-wrap:wrap}
+  .mrow label{flex:0 0 92px;font-size:12.5px;font-weight:700;color:var(--text2)}
+  .mrow input,.mrow select{flex:1;min-width:110px;font-family:inherit;font-size:13.5px;padding:8px 10px;
+    border:1px solid var(--border2);border-radius:7px;background:var(--surface);color:var(--text)}
+  .mrow input[type=number]{font-family:var(--mono);font-weight:700;text-align:right;flex:0 0 84px}
+  .mact{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
   .trow .bal{margin-left:auto;font-family:var(--mono);font-weight:800;font-size:13px}
   .trow .bal.due{color:var(--err)} .trow .bal.zero{color:var(--muted)}
   .trow .accom{font-size:11px;color:var(--muted)}
@@ -178,7 +190,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=24.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=24.3">
 </head>
 <body data-so-area="front">
 <div class="topbar so-bar">
@@ -210,6 +222,7 @@
   <button class="btn ghost sm" id="d-next" type="button">▶</button>
   <button class="btn ghost sm" id="d-today" type="button">今日</button>
   <button class="btn sm" id="btn-reload" type="button" disabled>↻</button>
+  <button class="btn sm" id="btn-daygolf" type="button" disabled></button>
   <span class="hint" id="day-label" style="margin-left:auto"></span>
 </div>
 
@@ -226,7 +239,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=37"></script>
-<script src="../assets/saizen-ops.js?v=24.2"></script>
+<script src="../assets/saizen-ops.js?v=24.3"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -246,6 +259,12 @@ const L={
     secDine:'🍽 本日夕食', secDineEx:'🍽 夕食除外', dineHint:'夕食オーダーで整理した内容（除外・早期退室・アップグレード）を反映しています',
     dnEco:n=>`早期退室 −${n}`, dnUp:n=>`UP −${n}`, dnAdd:n=>`別注 ${n}`, dnAlg:n=>`⚠ アレルギー ${n}`, dnGrp:'運営チーム', dnEx:'除外',
     secIn:'🛬 本日チェックイン', secOut:'🛫 本日チェックアウト', secStay:'🏨 滞在中(連泊)', portICN:'仁川便', portPUS:'釜山便', noAccom:'宿泊未定',
+    wgBtn:'⛳ 当日ゴルフのお客様', wgTitle:'当日ゴルフのお客様 受付', wgHint:'ご宿泊なしでラウンドされるお客様です。受け付けるとコース割当表に出て、組編成の確認待ちに入ります。',
+    wgName:'お名前', wgNamePh:'例) 田中 様', wgPax:'人数', wgHoles:'ホール数', wgTee:'ご希望ティ', wgTeePh:'例) 07:20',
+    wgCourse:'ご希望コース', wgCourseAuto:'自動で割当', wgPhone:'ご連絡先(任意)', wgNote:'備考(任意)',
+    wgGo:'受け付ける', wgCancel:'やめる', wgNeedPax:'人数をご入力ください',
+    wgOk:(t,n)=>`${t} ${n}名を受け付けました — コース割当表でご確認ください`, wgFail:e=>'受付に失敗しました: '+e,
+    wgToday:'本日の当日ゴルフ', wgNone:'本日はありません', wgQr:'📱 QRカード', wgTag:'当日',
     connectFirst:'先に接続してください', coDone:'チェックアウト済', btnCo:'✓ チェックアウト', btnCoUndo:'↩ チェックアウト取消', btnCoSel:(n)=>`✓ 選択 ${n}件 チェックアウト`, btnCoAll:'✓ 本日退室 全件',
     coNone:'チェックアウトするチームを選択してください', coConfirm:(n)=>`${n}チームをチェックアウト処理しますか？`,
     coDue:(n,a)=>`未決済 ${n}チーム（${a}）が含まれています。そのまま進めますか？`, coOk:(n)=>`${n}チーム チェックアウト`, coFail:'チェックアウト失敗: ',
@@ -286,6 +305,12 @@ const L={
     secDine:'🍽 오늘 석식', secDineEx:'🍽 석식 제외', dineHint:'夕食オーダー에서 정리한 내용(제외·조기퇴실·업그레이드)을 그대로 반영합니다',
     dnEco:n=>`조기퇴실 −${n}`, dnUp:n=>`UP −${n}`, dnAdd:n=>`別注 ${n}`, dnAlg:n=>`⚠ 알레르기 ${n}`, dnGrp:'운영팀', dnEx:'제외',
     secIn:'🛬 오늘 체크인', secOut:'🛫 오늘 체크아웃', secStay:'🏨 체류중(연박)', portICN:'인천편', portPUS:'부산편', noAccom:'숙소 미정',
+    wgBtn:'⛳ 당일 골프 손님', wgTitle:'당일 골프 손님 접수', wgHint:'숙박 없이 라운딩만 하시는 손님입니다. 접수하면 코스 배정표에 나타나고 조편성 확인 대기로 들어갑니다.',
+    wgName:'이름', wgNamePh:'예) 田中 님', wgPax:'인원', wgHoles:'홀수', wgTee:'희망 티오프', wgTeePh:'예) 07:20',
+    wgCourse:'희망 코스', wgCourseAuto:'자동 배정', wgPhone:'연락처(선택)', wgNote:'비고(선택)',
+    wgGo:'접수', wgCancel:'취소', wgNeedPax:'인원을 입력하세요',
+    wgOk:(t,n)=>`${t} ${n}명 접수 — 코스 배정표에서 확인하세요`, wgFail:e=>'접수 실패: '+e,
+    wgToday:'오늘 당일 골프', wgNone:'오늘은 없습니다', wgQr:'📱 QR카드', wgTag:'당일',
     connectFirst:'먼저 연결하세요', coDone:'체크아웃 완료', btnCo:'✓ 체크아웃', btnCoUndo:'↩ 체크아웃 취소', btnCoSel:(n)=>`✓ 선택 ${n}팀 체크아웃`, btnCoAll:'✓ 오늘 퇴실 전체',
     coNone:'체크아웃할 팀을 선택하세요', coConfirm:(n)=>`${n}팀을 체크아웃 처리할까요?`,
     coDue:(n,a)=>`미결제 ${n}팀(${a})이 포함되어 있습니다. 그래도 진행할까요?`, coOk:(n)=>`${n}팀 체크아웃`, coFail:'체크아웃 실패: ',
@@ -326,6 +351,12 @@ const L={
     secDine:'🍽 Dinner today', secDineEx:'🍽 Excluded from dinner', dineHint:'Mirrors what was arranged on the 夕食オーダー screen (exclusions, early checkout, upgrades)',
     dnEco:n=>`early out −${n}`, dnUp:n=>`UP −${n}`, dnAdd:n=>`extra ${n}`, dnAlg:n=>`⚠ allergy ${n}`, dnGrp:'Op-team', dnEx:'excluded',
     secIn:'🛬 Check-in today', secOut:'🛫 Check-out today', secStay:'🏨 In-house (staying)', portICN:'Incheon', portPUS:'Busan', noAccom:'No lodging',
+    wgBtn:'⛳ Day golfer', wgTitle:'Register a day golfer', wgHint:'A guest who plays without staying. Once registered they appear on the course sheet and wait for grouping confirmation.',
+    wgName:'Name', wgNamePh:'e.g. Tanaka', wgPax:'Guests', wgHoles:'Holes', wgTee:'Preferred tee', wgTeePh:'e.g. 07:20',
+    wgCourse:'Preferred course', wgCourseAuto:'Assign automatically', wgPhone:'Phone (optional)', wgNote:'Note (optional)',
+    wgGo:'Register', wgCancel:'Cancel', wgNeedPax:'Enter the number of guests',
+    wgOk:(t,n)=>`Registered ${t} (${n}) — check the course sheet`, wgFail:e=>'Registration failed: '+e,
+    wgToday:'Day golfers today', wgNone:'None today', wgQr:'📱 QR card', wgTag:'Day',
     connectFirst:'Connect first', coDone:'Checked out', btnCo:'✓ Check out', btnCoUndo:'↩ Undo check-out', btnCoSel:(n)=>`✓ Check out ${n} selected`, btnCoAll:'✓ All departures today',
     coNone:'Select teams to check out', coConfirm:(n)=>`Check out ${n} team(s)?`,
     coDue:(n,a)=>`${n} team(s) with an outstanding balance (${a}) are included. Proceed anyway?`, coOk:(n)=>`${n} team(s) checked out`, coFail:'Check-out failed: ',
@@ -392,6 +423,7 @@ function applyStatic(){
   $('#t-datelbl').textContent=tx('dateLbl');
   $('#d-prev').title=tx('prevDay'); $('#d-next').title=tx('nextDay');
   $('#d-today').textContent=tx('today'); $('#btn-reload').textContent=tx('reload');
+  { const g=$('#btn-daygolf'); if(g){ g.textContent=tx('wgBtn'); g.title=tx('wgHint'); } }
   $('#t-accomlbl').textContent=tx('accomLbl');
   $('#team-search').placeholder=tx('searchPh');
   const emp=$('#t-empty'); if(emp) emp.textContent=tx('emptyConnect');
@@ -417,7 +449,8 @@ async function connect(){
     const {error}=await supa.from('bookings').select('event_seq',{count:'exact',head:true});
     if(error)throw error;
     state.conn='ok';refreshConn();btn.disabled=false;
-    $('#btn-reload').disabled=false; await loadCustomerDisplay(); await load(); startAutoRefresh();
+    $('#btn-reload').disabled=false; { const g=$('#btn-daygolf'); if(g) g.disabled=false; }
+    await loadCustomerDisplay(); await load(); startAutoRefresh();
   }catch(e){state.conn='fail';refreshConn();toast(tx('connFail')+': '+e.message,'err');btn.disabled=false;supa=null;}
 }
 // POS 주문·결제가 프론트에 바로 뜨도록 주기적 자동 갱신(모니터링 화면이라 안전).
@@ -919,6 +952,77 @@ async function openReceiptFD(t){
   }catch(e){ toast(tx('rcLoadFail'),'warn'); }   // 합계(t.paid)로라도 진행 — 발행 자체는 막지 않는다
   __so_receipt({ tag:t.tag||t.tagOrig||'', repName:t.rep||'', no:t.no!=null?t.no:t.seq, paid, cash });
 }
+// ── 당일 골프 손님(워크인) 접수 ─────────────────────────────────────────
+//  Min 확인: 워크인은 전부 골프를 치러 오는 손님이다(밥만 먹고 가는 손님은 없다).
+//   → 접수하면 코스 배정표에 나타나고, 명단이 없어 자동 조편성이 안 되므로
+//     「조편성 재확인」으로 들어간다. 등록은 프론트에서 받는다(Min 결정).
+//   숙박 예약(bookings)에는 넣지 않는다 — step1 월 동기화가 「파일에 없는 팀」으로 지운다.
+function openDayGolf(){
+  if(!supa){ toast(tx('connectFirst'),'warn'); return; }
+  const day=state.day||isoToday();
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  const cOpts=[['',tx('wgCourseAuto')],['aso','아소 / 阿蘇'],['sobo','소보 / 祖母'],['kuju','쿠주 / 久住']];
+  bg.innerHTML=`<div class="modal">
+    <h3>${esc(tx('wgTitle'))}</h3>
+    <div class="mh">${esc(tx('wgHint'))}</div>
+    <div class="mrow"><label>${esc(tx('wgName'))}</label>
+      <input id="wg-name" type="text" placeholder="${esc(tx('wgNamePh'))}"></div>
+    <div class="mrow"><label>${esc(tx('wgPax'))}</label>
+      <input id="wg-pax" type="number" min="1" step="1" value="1">
+      <label style="flex:0 0 auto">${esc(tx('wgHoles'))}</label>
+      <select id="wg-holes" style="flex:0 0 96px">
+        <option value="18">18H</option><option value="9">9H</option><option value="27">27H</option></select></div>
+    <div class="mrow"><label>${esc(tx('wgTee'))}</label>
+      <input id="wg-tee" type="text" placeholder="${esc(tx('wgTeePh'))}"></div>
+    <div class="mrow"><label>${esc(tx('wgCourse'))}</label>
+      <select id="wg-course">${cOpts.map(([v,t])=>`<option value="${v}">${esc(t)}</option>`).join('')}</select></div>
+    <div class="mrow"><label>${esc(tx('wgPhone'))}</label>
+      <input id="wg-phone" type="text"></div>
+    <div class="mrow"><label>${esc(tx('wgNote'))}</label>
+      <input id="wg-note" type="text"></div>
+    <div class="mact">
+      <button class="btn ghost sm" id="wg-x" type="button">${esc(tx('wgCancel'))}</button>
+      <button class="btn sm" id="wg-go" type="button">${esc(tx('wgGo'))}</button>
+    </div></div>`;
+  document.body.appendChild(bg);
+  const close=()=>bg.remove();
+  bg.querySelector('#wg-x').addEventListener('click',close);
+  bg.addEventListener('click',e=>{ if(e.target===bg) close(); });
+  bg.querySelector('#wg-name').focus();
+  bg.querySelector('#wg-go').addEventListener('click',async()=>{
+    const pax=Math.round(Number(bg.querySelector('#wg-pax').value||0));
+    if(!(pax>0)){ toast(tx('wgNeedPax'),'warn'); return; }
+    const btn=bg.querySelector('#wg-go'); btn.disabled=true;
+    try{
+      const name=(bg.querySelector('#wg-name').value||'').trim();
+      const {data,error}=await supa.rpc('walkin_open',{
+        p_name:name||null, p_pax:pax, p_venue:'golf', p_date:day,
+        p_holes:Number(bg.querySelector('#wg-holes').value)||18,
+        p_tee:(bg.querySelector('#wg-tee').value||'').trim()||null,
+        p_course:(bg.querySelector('#wg-course').value||'')||null,
+        p_phone:(bg.querySelector('#wg-phone').value||'').trim()||null });
+      if(error) throw error;
+      const seq=(data&&data.event_seq)||0;
+      const note=(bg.querySelector('#wg-note').value||'').trim();
+      if(note&&seq){ try{ await supa.from('walkins').update({note}).eq('event_seq',seq); }catch(_){} }
+      if(seq) await issueWalkinToken(seq);       // 주문·입장 확인용 QR
+      close();
+      toast(tx('wgOk')(name||('#'+seq), pax),'ok');
+      await load();
+    }catch(e){ toast(tx('wgFail')(e.message||e),'err'); btn.disabled=false; }
+  });
+}
+//  QR 토큰 — 숙박 팀과 같은 방식(order_tokens). 실패해도 접수는 살린다.
+async function issueWalkinToken(seq){
+  try{
+    const tok=(window.crypto&&crypto.randomUUID)?crypto.randomUUID().replace(/-/g,'').slice(0,16)
+             :(Date.now().toString(36)+Math.random().toString(36).slice(2,10));
+    await supa.from('order_tokens').upsert(
+      {event_seq:seq, token:tok, created_by:(window.__so_getUser&&__so_getUser())||null},
+      {onConflict:'event_seq'});
+  }catch(e){ console.warn('walkin token', e&&e.message||e); }
+}
+
 // ── 카운터 손님 태블릿(pos_customer.html) 연동 ────────────────────────────
 //  프런트에서 팀을 고르고 「손님 화면 표시」 → pos_display(station) 에 기록.
 //  태블릿은 그 행을 폴링해 그 팀 계산서만 읽기전용으로 띄운다(41_pos_display.sql).
@@ -982,6 +1086,7 @@ window.onSaizenLangChange=function(){ applyStatic(); if(state.teams.length||stat
 /* ── 부팅 ── */
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-reload').addEventListener('click',load);
+$('#btn-daygolf').addEventListener('click',openDayGolf);
 $('#d-prev').addEventListener('click',()=>shiftDay(-1));
 $('#d-next').addEventListener('click',()=>shiftDay(1));
 $('#d-today').addEventListener('click',()=>{$('#day-pick').value=isoToday();if(supa)load();});
