@@ -200,7 +200,6 @@ from (
   union all select 124,'124 송영 배차','transfer_dispatch(차량·기사·출발시각)', case when to_regclass('public.transfer_dispatch') is not null then '✅ 있음' else '❌ 없음 (124)' end
   union all select 125,'125 손님 QR 오늘 라운딩','guest_today()', case when exists(select 1 from pg_proc where proname='guest_today') then '✅ 있음' else '❌ 없음 (125)' end
   union all select 125,'125 손님 QR 오늘 라운딩','guest_today 는 anon 실행(손님 비로그인)', case when has_function_privilege('anon','public.guest_today(text)','EXECUTE') then '✅ 유지' else '❌ 막혔다 — 손님 화면이 안 열린다 (125)' end
-  union all select 126,'126 쿠주 단가 15,000','exec_stats 가 출발일 기준 단가', case when exists(select 1 from pg_proc where proname='exec_stats' and prosrc like '%2026-09-01%') then '✅ 적용' else '❌ 미적용 — 9월 이후 쿠주 매출이 낮게 나온다 (126)' end
 ) t
 order by ord, 항목;
 

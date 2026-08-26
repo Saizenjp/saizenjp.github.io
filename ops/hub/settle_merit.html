@@ -90,7 +90,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=25.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=25.7">
 </head>
 <body data-so-area="settle">
 <div class="topbar so-bar">
@@ -120,14 +120,13 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=40"></script>
-<script src="../assets/saizen-ops.js?v=25.8"></script>
+<script src="../assets/saizen-core.js?v=39"></script>
+<script src="../assets/saizen-ops.js?v=25.7"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DEDS=[], EXTRAS={}, EXLIST=[];
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
-//  단가 표는 saizen-core(SZCore.accomRate) 하나뿐이다 — 여기에 사본을 두면 계약이 바뀔 때
-//  한쪽만 고쳐져 금액이 어긋난다(쿠주 15,000 변경 때 실제로 사본이 남아 있었다).
+const ACCOM_RATE={'야마나미리조트':14000,'쿠주힐즈':14000,'간지호텔':16000,'시즈노야도 료칸':16000};
 const TRANSPORT_PER=6000;
 const DED_TYPES=['보증금 예약 쿠폰','장기숙박 쿠폰','야마나미 이용권','포인트','싱글차지 선납','기타 선납'];
 // 팀별 가산/차감(기타) 유형 — 저장은 한국어, 표시만 번역
@@ -260,8 +259,7 @@ function accIdx(ac){ const i=ACCOM_ORDER.indexOf(ac); return i===-1?99:i; }
 
 // /app/ parseProduct 기반(룸타입·박수·단가). ⚠ "야마나미CC"(코스명)가 거의 모든 상품명에 들어가
 //   쿠주("장기숙박형 별장전용")가 야마나미로 오분류되므로 쿠주·간지·시즈를 먼저, 야마나미는 폴백.
-//  단가는 출발일 기준이다(쿠주힐즈는 2026-09-01 출발건부터 15,000) → dep 을 함께 받는다.
-function parseProduct(name, dep){
+function parseProduct(name){
   name=String(name||'');
   const accom=SZCore.accomFromProduct(name);   // 숙박지 판정 = saizen-core 단일 진실원(쿠주-first)
   let roomType='';
@@ -272,7 +270,7 @@ function parseProduct(name, dep){
     if(name.includes('소형트윈'))roomType='호텔 소형트윈'; else if(name.includes('트윈'))roomType='호텔 트윈';
     else if(name.includes('돔하우스'))roomType='돔하우스'; else if(name.includes('별장'))roomType='관내별장'; else roomType='호텔 트윈';
   }
-  const rate=SZCore.accomRate(accom, dep);   // 단가 테이블 = saizen-core 단일 진실원(exec_stats SQL도 동일 식)
+  const rate=SZCore.accomRate(accom);   // 단가 테이블 = saizen-core 단일 진실원(exec_stats SQL도 동일 식)
   const m=name.match(/(\d+)박/); const nights=m?parseInt(m[1]):0;
   return {accom,roomType,nights,rate};
 }
@@ -399,7 +397,7 @@ async function load(){
       (ex||[]).forEach(x=>{ (EXTRAS[x.event_seq]=EXTRAS[x.event_seq]||[]).push(x); EXLIST.push(x); });
     }catch(_){}
     ROWS=(bs||[]).map((b,i)=>{
-      const pp=parseProduct(b.product_name, b.dep_date);
+      const pp=parseProduct(b.product_name);
       const accom=GMAP[b.event_seq]||pp.accom||'';
       const dep=fmtDate(b.dep_date), arr=fmtDate(b.arr_date);
       let nights=pp.nights;
@@ -409,7 +407,7 @@ async function load(){
       const _pcnt=PCNT[b.event_seq]||0, _bpax=b.pax||0;
       const pax=Math.max(_pcnt,_bpax);
       const paxWarn=(_pcnt>0 && _bpax>0 && _pcnt!==_bpax)?{pcnt:_pcnt,bpax:_bpax}:null;
-      const rate=accom?(pp.rate||SZCore.accomRate(accom,dep)||0):0;   // 단가 = 출발일 기준
+      const rate=accom?(pp.rate||ACCOM_RATE[accom]||0):0;
       const rateWarn=accom?(rate>0?'':'단가 미등록'):'';
       const stay=accom?pax*nights*rate:0, transport=accom?pax*TRANSPORT_PER:0;
       const extra=(EXTRAS[b.event_seq]||[]).reduce((s,x)=>s+(x.is_add?1:-1)*(Number(x.amount)||0),0);   // 가산(+)/차감(-) 합
@@ -433,7 +431,7 @@ function renderAll(){
   $('#boxes').innerHTML=ACCOM_ORDER.map(a=>{ const g=rows.filter(r=>r.accom===a); if(!g.length)return '';
     const s=g.reduce((x,r)=>x+r.stay,0), tr=g.reduce((x,r)=>x+r.transport,0), ex=g.reduce((x,r)=>x+r.extra,0), tot=g.reduce((x,r)=>x+r.total,0);
     return `<div class="sbox"><div class="lab">${esc(accomL(a))}</div>
-      <div class="sr"><span>${esc(tx('rate'))}</span><span class="v">${[...new Set(g.map(r=>r.rate))].filter(Boolean).map(v=>yen(v)).join(' · ')||'-'}${esc(tx('perPaxNight'))}</span></div>
+      <div class="sr"><span>${esc(tx('rate'))}</span><span class="v">${yen(ACCOM_RATE[a])}${esc(tx('perPaxNight'))}</span></div>
       <div class="sr"><span>${esc(tx('cntLabel'))}</span><span class="v">${tx('cntPaxV')(g.length,g.reduce((x,r)=>x+r.pax,0))}</span></div>
       <div class="sr"><span>${esc(tx('lodgeFee'))}</span><span class="v">${yen(s)}</span></div>
       <div class="sr"><span>${esc(tx('transFee'))}</span><span class="v">${yen(tr)}</span></div>
