@@ -61,7 +61,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=24.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=24.5">
 </head>
 <body data-so-area="print">
 <div class="topbar so-bar">
@@ -92,7 +92,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=37"></script><!-- 공유 도메인 규칙(숙소 라벨·박수 등) -->
-<script src="../assets/saizen-ops.js?v=24.4"></script>
+<script src="../assets/saizen-ops.js?v=24.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -182,6 +182,15 @@ function ymLast(ym){ const [y,m]=ym.split('-').map(Number); return `${y}-${Strin
 function pd(s){ const m=String(s||'').match(/(\d{4})-(\d{2})-(\d{2})/); return m?new Date(+m[1],+m[2]-1,+m[3]):null; }
 // 인쇄용 날짜 = 8/5(水) — 요일은 현장 운영대로 일본어 고정
 function mdw(s){ const d=pd(s); return d?`${d.getMonth()+1}/${d.getDate()}(${WD_JA[d.getDay()]})`:'-'; }
+//  라벨에 찍을 태그코드 — 한 방에 두 팀이면 둘 다 적는다(어느 팀 키인지 알아야 한다)
+function labelCode(l){
+  const cs=(l.seqs||[]).map(sq=>l.codeBySeq[sq]).filter(Boolean);
+  const uniq=[...new Set(cs)];
+  return uniq.length? uniq.join(' / ') : (l.code||'');
+}
+// 출발지 색 — 航空カバー와 같은 값(인천=파랑 / 부산=차분한 벽돌색)
+const PORT_COLOR={ICN:'#1A4D8F',PUS:'#B0574F'};
+function portColor(p){ const k=String(p||'').trim().toUpperCase(); return PORT_COLOR[k]||'#333'; }
 function nights(ci,co){ const a=pd(ci),b=pd(co); if(!a||!b) return 0; return Math.max(0,Math.round((b-a)/86400000)); }
 // 3·4·7박은 정형 패턴, 그 외(1·2·5·6·8박+ …)는 모두 '특이 패턴' 한 묶음(Min 2026-08)
 function nightCat(n){ if(n===3)return '3'; if(n===4)return '4'; if(n===7)return '7'; return 'etc'; }
@@ -342,13 +351,17 @@ async function load(){
     if(px.error) throw px.error;
     const pmap={}; (px.data||[]).forEach(x=>{ pmap[x.id]=x; });
 
-    // 4) 라벨 단위로 묶기 = 같은 팀 · 같은 방 · 같은 체류구간(분할 체류는 각각 별도 라벨)
+    // 4) 라벨 단위로 묶기 = **같은 방 · 같은 체류구간** (분할 체류는 각각 별도 라벨)
+    //   ⚠ 키에 event_seq 를 넣지 않는다 — 키홀더는 방마다 하나다.
+    //     한 방에 두 팀이 함께 묵으면(비고로 같이 배정한 일행 등) 예전엔 팀마다 라벨이 갈려
+    //     같은 방 번호가 두 장 나왔다(싱글룸처럼 보임). 이제 한 장에 두 팀을 함께 적는다.
     const byKey={};
     rooms.forEach(r=>{
-      const k=`${r.event_seq}|${r.inventory_id}|${r.check_in}|${r.check_out}`;
+      const k=`${r.inventory_id}|${r.check_in}|${r.check_out}`;
       const g=gmap[r.event_seq]||{};
       if(!byKey[k]) byKey[k]={
-        eventSeq:r.event_seq, roomNo:r.room_no||'', facility:r.facility||'',
+        eventSeq:r.event_seq, seqs:[], codeBySeq:{},
+        roomNo:r.room_no||'', facility:r.facility||'',
         ci:r.check_in, co:r.check_out,
         code:g.group_code||g.team_tag||'', rep:(g.bookings&&g.bookings.rep_name)||'',
         // 룸키 라벨의 숙소 = 실제로 배정된 객실의 시설(rooms.facility).
@@ -358,6 +371,11 @@ async function load(){
         members:[]
       };
       const m=mmap[r.member_id]; if(m) byKey[k].members.push(m);
+      //  그 방에 든 팀들 — 두 팀이 함께 묵으면 태그코드를 둘 다 적는다
+      if(byKey[k].seqs.indexOf(r.event_seq)<0){
+        byKey[k].seqs.push(r.event_seq);
+        byKey[k].codeBySeq[r.event_seq]=g.group_code||g.team_tag||'';
+      }
       const _b=g.bookings||{};
       if(!byKey[k].bk) byKey[k].bk={origin:_b.origin||'',airline:_b.airline||''};
     });
@@ -371,6 +389,7 @@ async function load(){
         if(p) st.add(SZCore.originPort(p.origin||'', p.dep_flight||'')); });
       if(!st.size){ const bk=l.bk||{}; st.add(SZCore.originPort(bk.origin||'', bk.airline||'')); }
       l.ports=[...st]; l.port=l.ports.length===1?l.ports[0]:l.ports.join('/');
+      l.code=labelCode(l);
       l.n=nights(l.ci,l.co);
       l.cat=nightCat(l.n);
       return l;
@@ -380,7 +399,7 @@ async function load(){
     //   航空カバー·ネームタグ와 같은 규칙(DRな-Y1 · DRな-Y2). 묶음 상대가 다른 달이어도
     //   번호가 맞도록 그룹 전원을 달과 무관하게 조회한다.
     try{
-      const lseqs=[...new Set(LABELS.map(l=>String(l.eventSeq)))];
+      const lseqs=[...new Set(LABELS.flatMap(l=>(l.seqs&&l.seqs.length?l.seqs:[l.eventSeq]).map(String)))];
       const OVR={};
       for(let i=0;i<lseqs.length;i+=400){ const ch=lseqs.slice(i,i+400);
         const {data:ov}=await supa.from('print_overrides').select('event_seq,team_group').in('event_seq',ch);
@@ -430,7 +449,11 @@ async function load(){
                     .map(o=>all.find(x=>x.seq===String(o.event_seq))).filter(Boolean);
           ordered.forEach((x,i)=>{
             const tg=SZCore.teamTagN(base,i+1);
-            LABELS.forEach(l=>{ if(String(l.eventSeq)===x.seq) l.code=tg; });
+            //  한 방에 두 팀이 있을 수 있으므로 팀별 코드를 갈아끼우고 라벨 코드를 다시 만든다
+            LABELS.forEach(l=>{
+              if((l.seqs||[]).some(sq=>String(sq)===x.seq)){ l.codeBySeq[x.seq]=tg; l.code=labelCode(l); }
+              else if(String(l.eventSeq)===x.seq) l.code=tg;
+            });
           });
         });
       }
@@ -528,11 +551,16 @@ function printLabels(){
   const mx=(210-s.w*s.cols)/2, my=(297-s.h*s.rows)/2;
   const slots=[...list];   // A4 라벨지는 항상 1번 칸부터(Min 2026-08 — 시작칸 설정 폐지)
   const pages=[]; for(let i=0;i<slots.length;i+=PER){ const pg=slots.slice(i,i+PER); while(pg.length<PER) pg.push(null); pages.push(pg); }
+  //  프린터는 종이 가장자리에 인쇄하지 못한다(보통 3~5mm). 격자가 A4 를 여백 없이 꽉 채우므로
+  //   맨 윗줄 이름이 잘리고 좌우가 넘쳤다 → **비율은 그대로 두고** 전체를 살짝 줄여 안쪽으로 넣는다.
+  //   칸 크기의 비율(52.5:37.125)과 칸 사이 관계는 변하지 않는다.
+  const SAFE=4;   // mm — 사방 여유
+  const PSC=Math.min((210-SAFE*2)/210, (297-SAFE*2)/297);
   const cell=l=> l? `<div class="ks-cell"><div class="ks-body">
       <div class="ks-top"><span class="ks-code" style="color:${catColor(l.cat)}">${esc(l.code)}</span><span class="ks-names" style="font-size:calc(var(--fn) * ${nameSize(l.names)})">${esc(l.names.join(' '))}</span></div>
       <div class="ks-room"><span class="ks-rno" style="font-size:${(roomSize(l.roomNo)*100).toFixed(0)}%">${esc(roomLabel(l.roomNo))}</span><span class="ks-pax">${l.pax}名</span></div>
       <div class="ks-stay">${esc(stayText(l))}</div>
-      <div class="ks-meta"><span class="ks-port">${esc(l.port||'')}</span><span class="ks-nt" style="color:${catColor(l.cat)};border-color:${catColor(l.cat)}">${l.n}泊</span></div>
+      <div class="ks-meta"><span class="ks-port" style="color:${portColor(l.port)}">${esc(l.port||'')}</span><span class="ks-nt" style="color:${catColor(l.cat)};border-color:${catColor(l.cat)}">${l.n}泊</span></div>
     </div></div>` : '<div class="ks-cell ks-empty"></div>';
   const sizeLabel=`${s.label} · ${lang()==='ja'?'1枚':lang()==='en'?'per sheet':'1장'} ${PER}${lang()==='en'?'':'면'}`;
   const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>ルームキー ラベル — ${esc(YM)}</title>
@@ -545,10 +573,14 @@ function printLabels(){
   .ks-toolbar button{padding:8px 20px;background:#15803D;color:#fff;border:none;border-radius:5px;font-size:13px;font-weight:600;cursor:pointer}
   .ks-toolbar .ks-close{background:#999}
   .ks-container{padding:20px}
-  .ks-page{width:210mm;height:297mm;margin:0 auto 20px;background:#fff;padding:${my}mm ${mx}mm;
-    display:grid;grid-template-columns:repeat(${s.cols},${s.w}mm);grid-template-rows:repeat(${s.rows},${s.h}mm);
+  /* 페이지는 A4 그대로, 격자는 비율을 유지한 채 살짝 줄여 가운데에 — 가장자리 잘림 방지 */
+  .ks-page{width:210mm;height:297mm;margin:0 auto 20px;background:#fff;
+    display:flex;align-items:center;justify-content:center;overflow:hidden;
     box-shadow:0 2px 12px rgba(0,0,0,.08);page-break-after:always}
   .ks-page:last-child{page-break-after:auto}
+  .ks-grid{width:${s.w*s.cols}mm;height:${s.h*s.rows}mm;padding:${my}mm ${mx}mm;
+    display:grid;grid-template-columns:repeat(${s.cols},${s.w}mm);grid-template-rows:repeat(${s.rows},${s.h}mm);
+    transform:scale(${PSC.toFixed(4)});transform-origin:center center}
   /* 절취선 — 잘라 쓰는 라벨이라 인쇄에도 자르는 선이 나와야 한다(Min 2026-08).
      미리보기와 인쇄가 같게(WYSIWYG). 칸이 맞붙어 선이 겹쳐도 0.4pt 점선이라 두꺼워 보이지 않는다. */
   .ks-cell{width:${s.w}mm;height:${s.h}mm;overflow:hidden;border:.4pt dashed #9a9a9a;display:flex;align-items:center;justify-content:center;padding:${s.h>=50?'2.5mm 3mm':'0.9mm 2.2mm'}}
@@ -595,7 +627,7 @@ function printLabels(){
     <button onclick="window.print()">🖨 ${esc(tx('pvPrint'))}</button>
     <button class="ks-close" onclick="window.close()">✕ ${esc(tx('pvClose'))}</button>
   </div>
-  <div class="ks-container">${pages.map(pg=>`<div class="ks-page s-${SIZE}">${pg.map(cell).join('')}</div>`).join('')}</div>
+  <div class="ks-container">${pages.map(pg=>`<div class="ks-page"><div class="ks-grid s-${SIZE}">${pg.map(cell).join('')}</div></div>`).join('')}</div>
   <script>
   // 줄별 자동 축소 — 태그코드+이름(3명)·긴 방이름·긴 날짜가 칸을 넘지 않게 실제로 재서 줄인다.
   //  (글자수 계산식만으론 한글·가나·영문 혼합 폭을 못 맞춘다)
