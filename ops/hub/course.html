@@ -216,7 +216,7 @@
     color:#fff;border-radius:8px;padding:4px 12px;cursor:pointer}
   .ckok:hover{background:var(--accentDeep)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=24.1">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=24.2">
 </head>
 <body data-so-area="golf">
 <div class="topbar so-bar">
@@ -246,7 +246,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=37"></script>
-<script src="../assets/saizen-ops.js?v=24.1"></script>
+<script src="../assets/saizen-ops.js?v=24.2"></script>
 <script>
 const $=s=>document.querySelector(s);
 // 코스 3개 = 같은 시간대에 동시 출발(현장 게시판과 같은 배열 순서)
@@ -266,6 +266,10 @@ function rotLabel(start, holes){ return rotOf(start,holes).map(courseL).join('�
 const L={
   ja:{ step:'コース割当表', connHint:'接続情報はこのブラウザにのみ保存されます。',
     qPh:'🔎 タグコード・代表者・同行者名・イベント番号で検索', qHit:(n)=>`該当 ${n}組`, qNone:'該当なし',
+    kjH:'九重高原CC へ行くチーム', kjT:'この表は やまなみCC の割当表です。平日のガンジーホテル泊は九重高原CCのため、ここには枠を取りません。現場で九重高原がラウンドできない日だけ「やまなみへ」で移してください。',
+    kjNone:'この日はありません', kjN:n=>`${n}チーム`, kjMove:'やまなみへ', kjBack:'九重高原へ戻す',
+    kjMoved:(t)=>`${t} を やまなみCC に移しました`, kjBacked:(t)=>`${t} を 九重高原CC に戻しました`,
+    kjMovedIn:'やまなみへ移動', kjFail:e=>'変更に失敗: '+e,
     exH:'ラウンド例外(ホール数・不参加)', exT:'この日だけの例外です。ホール数を選ぶと自動計算より優先し、名前を押すとその人は不参加になります。印刷物にも出ます。',
     exHoleSet:'ホール数指定', exRule:'ルール', exNoPlay:'ラウンドなし', exHoles:h=>`${h}H`, exAbsent:'不参加', exAbsN:n=>`不参加 ${n}名`,
     exSetN:n=>`例外 ${n}チーム`, exSetNone:'例外なし',
@@ -308,6 +312,10 @@ const L={
     thTee:'ティ', totalG:n=>`計 ${n}組`, holesU:'H' },
   ko:{ step:'코스 배정표', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
     qPh:'🔎 태그코드·대표자·팀원 이름·행사번호로 검색', qHit:(n)=>`검색 ${n}조`, qNone:'검색 결과 없음',
+    kjH:'구주고원CC 로 가는 팀', kjT:'이 표는 야마나미CC 배정표입니다. 평일 간지호텔 숙박 팀은 구주고원CC로 가므로 여기서 자리를 잡지 않습니다. 현장에서 구주고원 라운딩이 안 되는 날만 [야마나미로]를 눌러 옮기세요.',
+    kjNone:'이 날짜는 없습니다', kjN:n=>`${n}팀`, kjMove:'야마나미로', kjBack:'구주고원으로 되돌리기',
+    kjMoved:(t)=>`${t} 을(를) 야마나미CC 로 옮겼습니다`, kjBacked:(t)=>`${t} 을(를) 구주고원CC 로 되돌렸습니다`,
+    kjMovedIn:'야마나미로 이동', kjFail:e=>'변경 실패: '+e,
     exH:'라운딩 예외(홀수·불참)', exT:'이 날짜에만 적용되는 예외입니다. 홀수를 고르면 자동 계산보다 우선하고, 이름을 누르면 그 사람은 불참으로 표시됩니다. 인쇄물에도 나옵니다.',
     exHoleSet:'홀수 지정', exRule:'규칙대로', exNoPlay:'라운딩 안 함', exHoles:h=>`${h}H`, exAbsent:'불참', exAbsN:n=>`불참 ${n}명`,
     exSetN:n=>`예외 ${n}팀`, exSetNone:'예외 없음',
@@ -350,6 +358,10 @@ const L={
     thTee:'티오프', totalG:n=>`합계 ${n}조`, holesU:'H' },
   en:{ step:'Course assignment', connHint:'Connection info is stored only in this browser.',
     qPh:'🔎 Search tag code, rep, member name, event no.', qHit:(n)=>`${n} groups`, qNone:'No match',
+    kjH:'Teams playing Kuju Kogen CC', kjT:'This sheet is for Yamanami CC. Weekday guests at Ganji Hotel play Kuju Kogen, so they take no slot here. Move a team only when Kuju Kogen cannot be played that day.',
+    kjNone:'None on this date', kjN:n=>`${n} teams`, kjMove:'To Yamanami', kjBack:'Back to Kuju Kogen',
+    kjMoved:(t)=>`${t} moved to Yamanami CC`, kjBacked:(t)=>`${t} moved back to Kuju Kogen CC`,
+    kjMovedIn:'moved to Yamanami', kjFail:e=>'Change failed: ',
     exH:'Round exceptions (holes · absentees)', exT:'Applies to this date only. Picking holes overrides the automatic rule; tapping a name marks that person absent. Both appear on the printout.',
     exHoleSet:'Holes set', exRule:'By rule', exNoPlay:'No round', exHoles:h=>`${h}H`, exAbsent:'Absent', exAbsN:n=>`${n} absent`,
     exSetN:n=>`${n} team(s) with exceptions`, exSetNone:'no exceptions',
@@ -447,6 +459,7 @@ function touch(){ clearTimeout(SAVET); SAVET=setTimeout(()=>{ save(true); },900)
 let MONTHG={};       // 날짜 → [{event_seq,course_code,slot_no,capacity}]  그 달 저장된 조
 let CQ='';   // 검색어(태그코드·대표자·팀원 이름·행사번호) — 목록·조를 좁힌다
 let HOLESM={}, ABSM={};   // 라운딩 예외(홀수 수기지정 · 개인 불참) — SQL 106
+let PCM={};   // 그날 그 팀의 실제 골프장 수기 지정(play_course, SQL 99) — 규칙보다 우선
 //  접이식 패널 펼침 상태 — 재렌더가 잦아 화면 밖에 보관한다(키=패널 이름)
 const FOLD={};            // ex(라운딩 예외) · un(미배정) · ex2(제외)
 function foldOpen(k,dflt){ return FOLD[k]==null?!!dflt:!!FOLD[k]; }
@@ -617,6 +630,16 @@ async function load(){
 
 // 그 팀이 그날 라운딩하는가 + 홀수 — 규칙은 SZCore.golfRows 단일 진실원
 function rowFor(t,date){ return SZCore.golfRows({dep:t.dep,arr:t.arr,accom:t.accom}, t.isPus).find(r=>r.date===date)||null; }
+// 그날 그 팀이 실제로 가는 골프장 — 수기 지정(play_course)이 규칙보다 우선.
+//  주말·공휴일은 규칙(isNonWorkday)이 이미 야마나미로 계산한다.
+//  현장에서 구주고원 라운딩이 안 되는 날만 사람이 야마나미로 옮긴다.
+function venueOf(t,date){
+  const ov=(PCM[date]||{})[String(t.seq)];
+  if(ov) return ov;
+  const r=rowFor(t,date); return r?r.course:'';
+}
+//  이 화면은 야마나미CC 배정표다 — 구주고원으로 가는 팀은 자리를 잡지 않는다.
+function atYamanami(t,date){ return venueOf(t,date)==='やまなみCC'; }
 function holesOn(t,date){ const r=rowFor(t,date); if(!r) return 0;
   const ov=holesOv(date,t.seq); if(ov) return ov;   // 담당자가 지정한 홀수가 규칙보다 우선(Min 2026-08)
   // 평일 체류일은 18H + 9H 서비스 = 27H
@@ -625,9 +648,14 @@ function golfDates(){ const s=new Set();
   TEAMS.forEach(t=>SZCore.golfRows({dep:t.dep,arr:t.arr,accom:t.accom},t.isPus).forEach(r=>{ if(r.date.slice(0,7)===YM) s.add(r.date); }));
   return [...s].sort(); }
 let _todCache={};
+function clearTodCache(){ _todCache={}; }
 function teamsOnDate(date){
   if(_todCache[date]) return _todCache[date];
-  return (_todCache[date]=TEAMS.filter(t=>!!rowFor(t,date)));
+  return (_todCache[date]=TEAMS.filter(t=>!!rowFor(t,date) && atYamanami(t,date)));
+}
+//  그날 구주고원CC 로 가는 팀(= 이 배정표에서 빠지는 팀). 현장 사정으로 옮길 때 여기서 고른다.
+function teamsAtKuju(date){
+  return TEAMS.filter(t=>!!rowFor(t,date) && venueOf(t,date)==='九重高原CC');
 }
 // 이름 표기 — 일본어 화면이면 가타카나(표시 전용, 검색은 원문도 같이 건다)
 function pn(kr,en){ return window.__so_pname?__so_pname(kr,en):(kr||en||''); }
@@ -635,7 +663,7 @@ function isLate(t){ return String(t.accom||'').indexOf('쿠주')>=0; }
 
 // 그 달의 저장된 조·제외를 한 번에 읽어 날짜 칩 배지(미배정 N)를 만든다.
 async function loadMonthState(){
-  MONTHG={}; SKIPM={}; HOLESM={}; ABSM={};
+  MONTHG={}; SKIPM={}; HOLESM={}; ABSM={}; PCM={};
   const {start,end}=monthBounds(YM);
   try{
     let from=0;
@@ -651,6 +679,11 @@ async function loadMonthState(){
     const {data}=await supa.from('golf_skips').select('play_date,event_seq').gte('play_date',start).lte('play_date',end);
     (data||[]).forEach(x=>{ const d=dstr(x.play_date); (SKIPM[d]=SKIPM[d]||new Set()).add(String(x.event_seq)); });
   }catch(e){}
+  // 골프장 수기 지정(SQL 99) — 현장에서 구주고원 라운딩이 안 되는 날 야마나미로 옮긴 기록
+  try{
+    const {data}=await supa.from('play_course').select('play_date,event_seq,course').gte('play_date',start).lte('play_date',end);
+    (data||[]).forEach(x=>{ const d=dstr(x.play_date); (PCM[d]=PCM[d]||{})[String(x.event_seq)]=x.course; });
+  }catch(e){}   // 테이블 미적용이면 규칙대로
   // 라운딩 예외(SQL 106) — 팀 홀수 수기 지정 · 개인 불참
   try{
     const {data}=await supa.from('golf_holes').select('play_date,event_seq,holes,note').gte('play_date',start).lte('play_date',end);
@@ -809,6 +842,47 @@ function fillTeamMembers(seq){
   gs.forEach(g=>{ g.members=roster.slice(i, i+(g.pax||4)); i+=(g.pax||4); });
 }
 function needsCheck(g){ return teamPax(g.seq)>=5 && g.src!=='manual'; }
+
+// ── 구주고원CC 로 가는 팀 ────────────────────────────────────────────────
+//  이 표는 야마나미CC 배정표라 그 팀들은 자리를 잡지 않는다.
+//  현장에서 구주고원 라운딩이 안 되는 날만 사람이 야마나미로 옮긴다(play_course).
+function kujuHTML(){
+  if(!DATESEL) return '';
+  const away=teamsAtKuju(DATESEL);
+  const moved=TEAMS.filter(t=>((PCM[DATESEL]||{})[String(t.seq)])==='やまなみCC');
+  const row=(t,back)=>`<button type="button" class="mchip" data-${back?'kjback':'kjmove'}="${t.seq}"
+      title="${esc(back?tx('kjBack'):tx('kjMove'))}">${esc(t.tag||'')} ${esc(pn(t.rep,''))}
+      <b>${back?esc(tx('kjBack')):esc(tx('kjMove'))}</b></button>`;
+  const body=`<div class="legend" style="margin:0 0 8px">${esc(tx('kjT'))}</div>`
+    + (away.length? `<div class="un-list">${away.map(t=>row(t,false)).join('')}</div>`
+                  : `<div class="cnt" style="color:var(--muted)">${esc(tx('kjNone'))}</div>`)
+    + (moved.length? `<div class="legend" style="margin:10px 0 6px">${esc(tx('kjMovedIn'))}</div>
+                      <div class="un-list">${moved.map(t=>row(t,true)).join('')}</div>` : '');
+  return fold('kj', tx('kjH'),
+    away.length?`<span class="so-fsum">${tx('kjN',away.length)}</span>`:`<span class="so-fsum">${tx('kjNone')}</span>`,
+    body, foldOpen('kj',false)||qOn());
+}
+//  골프장 수기 지정 저장 — 옮기면 그 팀이 배정표에 나타나고, 되돌리면 사라진다.
+async function setVenue(seq, course){
+  if(!DATESEL||!supa) return;
+  const t=TEAMS.find(x=>String(x.seq)===String(seq)); if(!t) return;
+  try{
+    if(course){
+      const {error}=await supa.from('play_course')
+        .upsert({play_date:DATESEL, event_seq:seq, course, changed_by:(window.__so_getUser&&__so_getUser())||null},
+                {onConflict:'play_date,event_seq'});
+      if(error) throw error;
+      (PCM[DATESEL]=PCM[DATESEL]||{})[String(seq)]=course;
+    }else{
+      const {error}=await supa.from('play_course').delete().eq('play_date',DATESEL).eq('event_seq',seq);
+      if(error) throw error;
+      if(PCM[DATESEL]) delete PCM[DATESEL][String(seq)];
+    }
+    clearTodCache();                       // 그날 팀 목록이 바뀐다
+    toast(course? tx('kjMoved')(t.tag||seq) : tx('kjBacked')(t.tag||seq),'ok');
+    await loadBoard(DATESEL);              // 자리 배정을 다시 계산
+  }catch(e){ toast(tx('kjFail')(e.message||e),'err'); }
+}
 // 그날 라운딩하지 않는 팀 — 규칙(상품명)으로는 라운딩일이지만 실제로는 안 나가는 경우.
 //  제외하면 자동 배정에서 빠지고, 이미 잡힌 조도 표에서 내린다(성수기 티오프 자리 확보).
 // 제외로 넘기기(조를 다 뺐을 때 자동 호출)
@@ -999,6 +1073,7 @@ ${chkTeams.length?`
       skipped.length?`<span class="so-fsum on">${tx('exclN',skipped.length)}</span>`:`<span class="so-fsum">${tx('exclNone')}</span>`,
       `<div class="un-list">${skHTML}</div>`,
       foldOpen('ex2',false)||qOn())}</div>
+    <div class="panel" id="kj-panel">${kujuHTML()}</div>
     <div class="panel" id="ex-panel">${exceptionsHTML()}</div>
     <div class="panel" id="roster-panel">${rosterHTML()}</div>
     <div class="panel">
@@ -1023,6 +1098,9 @@ ${chkTeams.length?`
   //  표 위 인쇄 버튼 — 재렌더마다 새로 만들어지므로 여기서 연결한다(상단 툴바 버튼과 같은 동작)
   { const pb=$('#btn-print2');
     if(pb) pb.addEventListener('click',printBoard); }
+  //  구주고원 ↔ 야마나미 이동(현장 예외)
+  document.querySelectorAll('[data-kjmove]').forEach(b=>b.addEventListener('click',()=>setVenue(b.dataset.kjmove,'やまなみCC')));
+  document.querySelectorAll('[data-kjback]').forEach(b=>b.addEventListener('click',()=>setVenue(b.dataset.kjback,null)));
   { const mb=$('#btn-more-slots');
     if(mb) mb.addEventListener('click',()=>{ SLOTS=makeSlots(MAX_SLOT_N); render(); touch(); toast(tx('slotsAdded'),'ok'); }); }
   { const lb=$('#btn-less-slots');
