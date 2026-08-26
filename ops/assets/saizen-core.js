@@ -187,17 +187,26 @@
   // ── B2B(메리트↔사이젠 선계약) 정산 ──────────────────────────────────────
   //  ⚠ 현장 추가요금(추가라운드·미니바 등)과 별개. settle_merit·exec_stats 가 같은 식.
   //  숙소별 1인1박 단가. 미등록(빈값·미매칭)=0 → 호출부가 '단가 미등록' 경고/기본값 처리.
-  function accomRate(accom) {
+  //  ⚠ 단가는 **출발일(dep_date) 기준**이다. 계약이 바뀌면 그 시점 출발건부터 적용되고
+  //     지난 달 정산은 그때 단가 그대로여야 한다(소급하면 이미 보낸 청구와 어긋난다).
+  //  변경 이력:
+  //   · 2026-09-01 출발건부터 **쿠주힐즈 15,000**(Min 2026-08).
+  //     그전에는 15,000에서 1박당 1,000을 빼 14,000을 받는 구조였는데, 차감 없이
+  //     전액을 메리트에서 송금받는 것으로 바뀌었다.
+  var KUJU_15K_FROM = '2026-09-01';
+  function accomRate(accom, depDate) {
     var s = String(accom == null ? '' : accom);
-    if (/쿠주|久住|구주|장기숙박|별장전용/.test(s)) return 14000;
+    var d = String(depDate == null ? '' : depDate).slice(0, 10);
+    if (/쿠주|久住|구주|장기숙박|별장전용/.test(s)) return (d && d >= KUJU_15K_FROM) ? 15000 : 14000;
     if (/간지/.test(s)) return 16000;
     if (/시즈|료칸/.test(s)) return 16000;
     if (/야마나미|돔하우스|별장|소보|아소/.test(s)) return 14000;
     return 0;
   }
   // 숙박비 = 인원×박수×단가 / 송영비 = 인원×6,000. {rate,lodge,transport,total}.
-  function b2bFees(pax, nights, accom) {
-    var p = Number(pax) || 0, n = Number(nights) || 0, rate = accomRate(accom);
+  //  depDate 를 넘기면 그 출발일 기준 단가로 계산한다(안 넘기면 변경 전 단가).
+  function b2bFees(pax, nights, accom, depDate) {
+    var p = Number(pax) || 0, n = Number(nights) || 0, rate = accomRate(accom, depDate);
     var lodge = p * n * rate, transport = p * 6000;
     return { rate: rate, lodge: lodge, transport: transport, total: lodge + transport };
   }

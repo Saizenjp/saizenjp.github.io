@@ -282,3 +282,29 @@ test('airportLabel / accomColor: 세 인쇄물 표기가 한 곳에서 나온다
   assert.equal(SZCore.accomPrefix('쿠주힐즈'), 'K');
   assert.equal(SZCore.accomPrefix(''), '');
 });
+
+//  B2B 단가는 **출발일 기준**이다 — 계약이 바뀌어도 지난 달 정산은 그때 단가 그대로여야 한다.
+//  2026-09-01 출발건부터 쿠주힐즈 15,000(그전 14,000 = 15,000에서 1박당 1,000 차감하던 구조).
+test('accomRate — 쿠주힐즈 15,000 (2026-09 출발건부터)', () => {
+  assert.equal(SZCore.accomRate('쿠주힐즈', '2026-08-31'), 14000);
+  assert.equal(SZCore.accomRate('쿠주힐즈', '2026-09-01'), 15000);
+  assert.equal(SZCore.accomRate('쿠주힐즈', '2026-10-05'), 15000);
+  assert.equal(SZCore.accomRate('쿠주힐즈'), 14000);              // 날짜를 안 주면 변경 전 단가
+  // 상품명 표기(장기숙박형 별장전용)도 같은 규칙
+  assert.equal(SZCore.accomRate('장기숙박형 별장전용', '2026-09-02'), 15000);
+  // 다른 숙소는 그대로
+  assert.equal(SZCore.accomRate('야마나미리조트', '2026-09-10'), 14000);
+  assert.equal(SZCore.accomRate('간지호텔', '2026-09-10'), 16000);
+  assert.equal(SZCore.accomRate('시즈노야도 료칸', '2026-09-10'), 16000);
+});
+
+test('b2bFees — 쿠주 3명 4박, 9월 출발', () => {
+  const before = SZCore.b2bFees(3, 4, '쿠주힐즈', '2026-08-20');
+  const after  = SZCore.b2bFees(3, 4, '쿠주힐즈', '2026-09-20');
+  assert.equal(before.rate, 14000);
+  assert.equal(before.lodge, 3 * 4 * 14000);
+  assert.equal(after.rate, 15000);
+  assert.equal(after.lodge, 3 * 4 * 15000);
+  assert.equal(after.transport, 3 * 6000);                       // 송영비는 그대로
+  assert.equal(after.total - before.total, 3 * 4 * 1000);        // 차이 = 인원×박수×1,000
+});
