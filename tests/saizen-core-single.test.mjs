@@ -74,7 +74,10 @@ test('singleCount — 비고에 적힌 싱글 방 수', () => {
   assert.equal(SZCore.singleCount('4방 싱글'), 4);                    // 숫자가 앞에 오는 표기
   assert.equal(SZCore.singleCount('싱글룸 현지에서 배정예정'), 0);     // 수량이 안 적혀 있으면 0
   assert.equal(SZCore.singleCount('트윈 2방'), 0);                    // 싱글 얘기가 아니면 0
-  assert.equal(SZCore.singleCount('싱글룸 대기'), 0);                  // 대기·불가는 세지 않는다
+  //  대기·불가여도 **수량은 낸다** — 몇 방짜리 요청인지 알아야 준비가 된다(Min 2026-08).
+  assert.equal(SZCore.singleCount('싱글룸 4개 대기'), 4);
+  assert.equal(SZCore.singleCount('싱글 2실 불가'), 2);
+  assert.equal(SZCore.singleCount('싱글룸 대기'), 0);                  // 수량이 안 적혀 있으면 0
   assert.equal(SZCore.singleCount(''), 0);
   assert.equal(SZCore.singleCount(null), 0);
   //  싱글과 멀리 떨어진 숫자는 끌어오지 않는다
@@ -88,4 +91,12 @@ test('singleOnsite — 누가 쓸지는 현장에서 정하는 건', () => {
   assert.equal(SZCore.singleOnsite('싱글 4방 확정'), false);          // 수량만 적힌 건 아니다
   assert.equal(SZCore.singleOnsite('현지에서 배정예정'), false);       // 싱글 얘기가 아니면 아니다
   assert.equal(SZCore.singleOnsite(''), false);
+});
+
+test('singleTentative — 아직 확정이 아닌 요청은 그 낱말을 돌려준다', () => {
+  assert.equal(SZCore.singleTentative('싱글룸 4개 대기'), '대기');
+  assert.equal(SZCore.singleTentative('싱글 2실 불가'), '불가');
+  assert.equal(SZCore.singleTentative('싱글 4방 확정'), '');
+  assert.equal(SZCore.singleTentative('트윈 대기'), '');        // 싱글 얘기가 아니면 빈값
+  assert.equal(SZCore.singleTentative(''), '');
 });

@@ -480,10 +480,11 @@
   //  「싱글 4방」 — 방 수만 뽑는다. 누가 쓸지는 현장에서 정해도 **몇 방인지는 계약된 수량**이라
   //  그것만은 미리 알 수 있다(Min 2026-08). pax 와 같은지는 따지지 않는다(singlePlan 과 다른 점).
   //   「싱글룸 4개」·「싱글 4실」·「싱글 4방」·「シングル4室」·「싱글룸 4명」 → 4
+  //  ⚠ 「대기·불가·보류」가 섞여 있어도 **수량은 낸다**(Min 2026-08) — 확정이 아니어도
+  //    몇 방이 필요한 요청인지는 알아야 준비가 된다. 확정 여부는 singleTentative() 로 따로.
   function singleCount(text) {
     var t = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
     if (!SG_WORD.test(t)) return 0;
-    if (SG_BLOCK.test(t)) return 0;
     var best = 0;
     //  싱글이라는 말과 숫자가 **가까이** 있을 때만 센다 — 멀면 다른 이야기의 숫자다.
     var re = /(싱글|1인실|일인실|독방|シングル|single)[^0-9\n]{0,6}(\d{1,2})\s*(개|방|실|명|인|室|部屋)/gi;
@@ -497,6 +498,13 @@
   }
   //  「싱글룸 현지에서 배정예정」 — 수량은 정해졌고 **누가 쓸지만** 현장에서 정하는 경우.
   //  자동배정이 손대면 안 되고, 당일 아침에 사람이 채워야 한다.
+  //  아직 확정이 아닌 요청 — 그 낱말을 그대로 돌려준다(화면에 이유를 보여주려고).
+  function singleTentative(text) {
+    var t = String(text == null ? '' : text);
+    if (!SG_WORD.test(t)) return '';
+    var m = t.match(SG_BLOCK);
+    return m ? m[0] : '';
+  }
   var SG_ONSITE = /(현지|현장)\s*(에서)?\s*(배정|지정|결정)|(배정|지정|결정)\s*예정|現地\s*で\s*(割|決)/;
   function singleOnsite(text) {
     var t = String(text == null ? '' : text);
@@ -923,6 +931,7 @@
     cartFreeDay: cartFreeDay,
     singlePlan: singlePlan,
     singleCount: singleCount,
+    singleTentative: singleTentative,
     singleOnsite: singleOnsite,
     cartPlan: cartPlan,
     cartQtyFromRemark: cartQtyFromRemark,

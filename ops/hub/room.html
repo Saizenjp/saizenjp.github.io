@@ -422,6 +422,7 @@
   /* 싱글 진행 — 필요 N방 중 지금 M방. 다 채우면 초록 */
   .sgp{font-size:10.5px;font-weight:800;color:#8a5a00;background:#fdf4e3;border:1px solid #e6d3a3;border-radius:5px;padding:1px 6px}
   .sgp.ok{color:#1d6b3f;background:#e9f4ec;border-color:#b6dcc3}
+  .sgp.tent{color:#8a2a1c;background:#fbeeeb;border-color:#e3bdb4}   /* 아직 확정이 아닌 요청 */
   .rs-item b{font-size:13px}
   .rs-en{color:var(--text2)}
   .rs-tag{font-family:var(--mono);font-weight:700;color:var(--accent2)}
@@ -517,7 +518,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=25.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=25.4">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -646,8 +647,8 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-core.js?v=38"></script>
-<script src="../assets/saizen-ops.js?v=25.3"></script>
+<script src="../assets/saizen-core.js?v=39"></script>
+<script src="../assets/saizen-ops.js?v=25.4"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -716,6 +717,7 @@ const L={
     pickSearch:'名前・タグコード・行事番号で検索', pickNoHit:'該当なし',
     sgBadge:'シングル指定', sgBadgeT:'備考にシングル指定 — 誰が単独か特定できないため手動割当',
     sgProg:(need,have)=>`シングル ${need}室 必要 · 現在 ${have}室`, sgProgT:'備考に書かれたシングルの室数と、いま割り当てた室数',
+    sgTent:(need,have,why)=>`シングル ${need}室 希望(${why}) · 現在 ${have}室`, sgTentT:why=>`備考に「${why}」とあり まだ確定ではありません — 室数だけ先に表示しています`,
     sgOnsite:'現地割当', sgOnsiteT:'どなたが使うかは現地で決める — 当日に割り当てます',
     holdCatSgWait:'現地割当 待ち', holdFixSgWait:'室数は決まっています — 当日、どなたが使うかを決めて割り当ててください',
     hdRmk:'備考', hdRmkLocal:'現地備考',
@@ -976,6 +978,7 @@ const L={
     pickSearch:'이름·태그코드·행사번호 검색', pickNoHit:'검색 결과 없음',
     sgBadge:'싱글 지정', sgBadgeT:'비고에 싱글 지정 — 누가 단독인지 특정할 수 없어 수기 배정',
     sgProg:(need,have)=>`싱글 ${need}방 필요 · 지금 ${have}방`, sgProgT:'비고에 적힌 싱글 방 수와, 지금 배정한 방 수',
+    sgTent:(need,have,why)=>`싱글 ${need}방 요청(${why}) · 지금 ${have}방`, sgTentT:why=>`비고에 「${why}」라고 적혀 아직 확정이 아닙니다 — 몇 방짜리 요청인지만 먼저 보여줍니다`,
     sgOnsite:'현장 배정', sgOnsiteT:'누가 쓸지는 현장에서 정하는 건 — 당일에 배정합니다',
     holdCatSgWait:'현장 배정 대기', holdFixSgWait:'방 수는 정해져 있습니다 — 당일에 누가 쓸지 정해 배정하세요',
     hdRmk:'비고', hdRmkLocal:'현지비고',
@@ -1229,6 +1232,7 @@ const L={
     pickSearch:'Search name · tag code · booking no.', pickNoHit:'No match',
     sgBadge:'Single requested', sgBadgeT:'Remarks mention a single room — we cannot tell who, so assign manually',
     sgProg:(need,have)=>`Singles ${need} needed · ${have} now`, sgProgT:'Single rooms written in the remarks vs. rooms assigned so far',
+    sgTent:(need,have,why)=>`Singles ${need} requested (${why}) · ${have} now`, sgTentT:why=>`The remarks say "${why}" — not confirmed yet; showing the requested count only`,
     sgOnsite:'On-site', sgOnsiteT:'Who takes them is decided on site — assign on the day',
     holdCatSgWait:'Waiting for on-site assignment', holdFixSgWait:'The room count is fixed — decide who takes them and assign on the day',
     hdRmk:'Remarks', hdRmkLocal:'On-site remarks',
@@ -2140,9 +2144,14 @@ function singleHave(g){
   return seen.size;
 }
 //  「싱글 4방 필요 · 지금 2방」 — 다 채우면 초록.
+//   비고에 대기·불가·보류가 섞여 아직 확정이 아닌 요청도 **수량은 보여준다**(Min 2026-08)
+//   — 몇 방짜리 요청인지 알아야 준비가 된다. 대신 그 낱말을 함께 띄워 확정이 아님을 알린다.
 function singleProgHtml(g){
   const need=singleNeed(g); if(!need) return '';
   const have=singleHave(g), done=have>=need;
+  const why=(window.SZCore&&SZCore.singleTentative)
+    ? SZCore.singleTentative([g.remark_local,g.remark].filter(Boolean).join('\n')) : '';
+  if(why) return `<span class="sgp tent" title="${esc(tx('sgTentT',why))}">${esc(tx('sgTent',need,have,why))}</span>`;
   return `<span class="sgp${done?' ok':''}" title="${esc(tx('sgProgT'))}">${esc(tx('sgProg',need,have))}</span>`;
 }
 function singleNote(g){
