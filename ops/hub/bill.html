@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title>SaiZen · ご精算確認 / 결제 내역</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../assets/saizen-core.js?v=37"></script>
 <style>
   :root{
     --bg:#f4f6f2; --surface:#ffffff; --line:#d8ddce; --text:#23291d; --text2:#5d6650; --muted:#8b937c;
@@ -54,6 +55,32 @@
   .trow.settled .val{color:var(--ok)}
   .note{text-align:center;color:var(--muted);font-size:13px;margin-top:22px;line-height:1.6}
   .upd{text-align:center;color:var(--muted);font-size:11px;margin-top:10px}
+  /* 탭 — 오늘 안내 / 결제 내역. 손님 폰이라 크게. */
+  .tabs{display:flex;gap:6px;margin:-2px 0 16px}
+  .tabs button{flex:1;font-family:inherit;font-size:14.5px;font-weight:800;padding:11px 8px;border-radius:10px;
+    border:1px solid var(--line);background:var(--surface);color:var(--text2);cursor:pointer}
+  .tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  /* 오늘 라운딩 */
+  .day{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 15px;margin-bottom:12px}
+  .day.tm{background:transparent;border-style:dashed}
+  .day .dh{display:flex;align-items:baseline;gap:8px;border-bottom:1px solid var(--line);padding-bottom:9px;margin-bottom:11px}
+  .day .dh .dt{font-size:18px;font-weight:800}
+  .day .dh .dw{font-size:13px;font-weight:700;color:var(--muted)}
+  .day .dh .tdy{margin-left:auto;font-size:11.5px;font-weight:800;color:#fff;background:var(--accent);border-radius:99px;padding:3px 10px}
+  .day .dh .tmr{margin-left:auto;font-size:11.5px;font-weight:800;color:var(--text2);background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 9px}
+  .rd{padding:11px 0;border-bottom:1px dashed var(--line)}
+  .rd:last-child{border-bottom:0;padding-bottom:0}
+  .rd .top{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+  .rd .tee{font-family:var(--mono);font-size:27px;font-weight:800;color:var(--accent);line-height:1}
+  .rd .crs{font-size:17px;font-weight:800}
+  .rd .hl{font-size:13px;font-weight:800;color:var(--accent2)}
+  .rd .cart{margin-left:auto;font-size:13px;font-weight:800;color:var(--text2);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:4px 10px}
+  .rd .mem{margin-top:8px;font-size:14.5px;font-weight:600;color:var(--text2);line-height:1.6}
+  .rd .mem b{color:var(--text);font-weight:800}
+  .rd .mem s{color:var(--muted);font-weight:600}
+  .rd .memlab{font-size:11.5px;font-weight:800;color:var(--muted);margin-right:5px}
+  .day .none{font-size:15px;font-weight:700;color:var(--muted);padding:6px 0;line-height:1.6}
+  .day .none.off{color:var(--text2)}
   /* 직원 바 — 같은 QR을 직원이 스캔했을 때만(로그인 세션 감지) 노출. 손님에겐 안 보임. */
   #staffbar{display:none;align-items:center;gap:8px;flex-wrap:wrap;background:#eef3e6;border-bottom:2px solid var(--accent);padding:9px 14px}
   #staffbar .sb-t{font-size:12px;font-weight:800;color:var(--accent);margin-right:auto}
@@ -85,21 +112,39 @@ const T={
        loading:'불러오는 중…', noToken:'QR 정보가 없습니다', noTokenSub:'체크인 때 받으신 QR을 다시 스캔해 주세요.',
        invalid:'유효하지 않은 QR입니다', invalidSub:'프런트에 문의해 주세요.', errH:'일시적으로 불러오지 못했습니다', errSub:'잠시 후 다시 시도합니다.', updated:'업데이트',
        expired:'이용이 종료된 QR입니다', expiredSub:'체크아웃 후에는 조회할 수 없습니다. 문의사항은 프런트로 연락해 주세요.',
-       sbStaff:'직원 모드', sbOrder:'POS 주문', sbSettle:'정산' },
+       sbStaff:'직원 모드', sbOrder:'POS 주문', sbSettle:'정산',
+       tabToday:'오늘 라운딩', tabBill:'결제 내역', today:'오늘', tomorrow:'내일',
+       teeLbl:'티오프', cartN:n=>`${n}번 카트`, holesN:n=>`${n}홀`, withLbl:'같은 조',
+       rdNone:'조편성 준비 중입니다. 확정되면 여기에 표시됩니다.',
+       rdOff:'이 날은 라운딩 일정이 없습니다.', rdSkip:'이 날은 라운딩을 하지 않습니다.',
+       rdKuju:'구주고원CC 라운딩입니다. 시간은 프런트에서 안내해 드립니다.',
+       dow:['일','월','화','수','목','금','토'] },
   ja:{ title:'ご精算確認', guest:'お客様', item:'品目', qty:'数量', amount:'金額', honor:'様', room:n=>`${n}号室`,
        noLines:'まだご請求はありません。', subtotal:'ご請求合計', paid:'お支払い済', due:'未払い残高',
        settled:'全額お支払い済 ✓', note:'※ リアルタイムで反映されます。お支払いはフロント／スタッフが承ります。',
        loading:'読み込み中…', noToken:'QR情報がありません', noTokenSub:'チェックイン時のQRをもう一度スキャンしてください。',
        invalid:'無効なQRです', invalidSub:'フロントへお問い合わせください。', errH:'一時的に読み込めませんでした', errSub:'しばらくして再試行します。', updated:'更新',
        expired:'ご利用済みのQRです', expiredSub:'チェックアウト後はご確認いただけません。お問い合わせはフロントまで。',
-       sbStaff:'スタッフモード', sbOrder:'POS 注文', sbSettle:'精算' },
+       sbStaff:'スタッフモード', sbOrder:'POS 注文', sbSettle:'精算',
+       tabToday:'本日のラウンド', tabBill:'ご精算', today:'本日', tomorrow:'明日',
+       teeLbl:'スタート', cartN:n=>`${n}番カート`, holesN:n=>`${n}ホール`, withLbl:'同じ組',
+       rdNone:'組合せを準備中です。確定しましたらこちらに表示されます。',
+       rdOff:'この日はラウンドのご予定がありません。', rdSkip:'この日はラウンドされません。',
+       rdKuju:'九重高原CCでのラウンドです。時間はフロントよりご案内いたします。',
+       dow:['日','月','火','水','木','金','土'] },
   en:{ title:'Your Bill', guest:'Guest', item:'Item', qty:'Qty', amount:'Amount', honor:'', room:n=>`Room ${n}`,
        noLines:'No charges yet.', subtotal:'Subtotal', paid:'Paid', due:'Balance due',
        settled:'Fully paid ✓', note:'※ Updates in real time. Staff will assist with payment.',
        loading:'Loading…', noToken:'No QR data', noTokenSub:'Please scan the QR from your check-in again.',
        invalid:'Invalid QR', invalidSub:'Please ask the front desk.', errH:'Temporarily unavailable', errSub:'Retrying shortly.', updated:'Updated',
        expired:'This QR has expired', expiredSub:'Not viewable after checkout. Please contact the front desk with any questions.',
-       sbStaff:'Staff mode', sbOrder:'POS order', sbSettle:'Settlement' }
+       sbStaff:'Staff mode', sbOrder:'POS order', sbSettle:'Settlement',
+       tabToday:'Today\'s round', tabBill:'Your bill', today:'Today', tomorrow:'Tomorrow',
+       teeLbl:'Tee off', cartN:n=>`Cart ${n}`, holesN:n=>`${n} holes`, withLbl:'Your group',
+       rdNone:'Pairings are being prepared. They will appear here once confirmed.',
+       rdOff:'No round scheduled for this day.', rdSkip:'No round on this day.',
+       rdKuju:'You play at Kuju Kogen CC. The front desk will advise your tee time.',
+       dow:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] }
 };
 let lang=localStorage.getItem('saizen_lang')||'ko'; if(!T[lang]) lang='ko';
 // 토큰: ?t= 우선, URL 전체가 토큰만인 구형도 허용
@@ -121,8 +166,83 @@ document.documentElement.lang=lang;
 
 function stateView(big,sub){ $('#body').innerHTML=`<div class="state"><div class="big">${esc(big)}</div><div class="sub">${esc(sub||'')}</div></div>`; }
 
-function renderBill(d){
+//  탭 = 오늘 라운딩 / 결제 내역. 손님이 QR 하나로 둘 다 본다(Min 2026-08).
+let TAB=localStorage.getItem('saizen_bill_tab')||'today';
+let BILL=null, TODAY=null;
+
+function headHtml(){
+  const L=T[lang], d=BILL||{};
+  const repName=d.rep_name?`${esc(d.rep_name)}${esc(L.honor)}`:esc(L.guest);
+  const rooms=Array.isArray(d.rooms)?d.rooms:[];
+  const ttl = TAB==='today' ? L.tabToday : L.title;
+  return `<div class="bhead"><span class="rep">${repName}</span>`
+    +`${d.tag?`<span class="tag">${esc(d.tag)}</span>`:''}`
+    +`${rooms.length?`<span class="room">${esc(rooms.map(L.room).join(' · '))}</span>`:''}`
+    +`<span class="ttl">${esc(ttl)}</span></div>`;
+}
+function tabsHtml(){
+  if(!TODAY||TODAY.ok!==true) return '';
   const L=T[lang];
+  return `<div class="tabs">`
+    +`<button data-tab="today" class="${TAB==='today'?'on':''}">${esc(L.tabToday)}</button>`
+    +`<button data-tab="bill" class="${TAB==='bill'?'on':''}">${esc(L.tabBill)}</button></div>`;
+}
+
+// ── 오늘 라운딩 ──
+//  홀수(9/18/27)는 담당자 지정이 있으면 그것, 없으면 SZCore.golfRows 규칙(단일 진실원).
+function golfRowFor(date){
+  try{
+    if(!TODAY||!window.SZCore) return null;
+    const isPus=SZCore.isPus(TODAY.origin||'', TODAY.dep_flight||'');
+    return SZCore.golfRows({dep:TODAY.dep_date,arr:TODAY.arr_date,accom:TODAY.accom}, isPus)
+      .find(r=>r.date===date)||null;
+  }catch(e){ return null; }
+}
+function holesFor(day){
+  if(day && day.holes) return day.holes;
+  const r=golfRowFor(day&&day.date); if(!r) return null;
+  return /\+9H/.test(r.note||'') ? 27 : r.holes;
+}
+function dayCard(day,isToday){
+  const L=T[lang];
+  const dt=new Date(String(day.date)+'T00:00:00');
+  const head=`<div class="dh"><span class="dt">${dt.getMonth()+1}/${dt.getDate()}</span>`
+    +`<span class="dw">${esc(L.dow[dt.getDay()]||'')}</span>`
+    +`<span class="${isToday?'tdy':'tmr'}">${esc(isToday?L.today:L.tomorrow)}</span></div>`;
+  const rounds=Array.isArray(day.rounds)?day.rounds:[];
+  const row=golfRowFor(day.date);
+  let body;
+  if(day.skip)            body=`<div class="none off">${esc(L.rdSkip)}</div>`;
+  else if(rounds.length){
+    const hl=holesFor(day);
+    body=rounds.map(r=>{
+      const crs = lang==='ja' ? (r.course_ja||r.course_ko||'') : (r.course_ko||r.course_ja||'');
+      const mem=(Array.isArray(r.members)?r.members:[]).filter(m=>m&&m.name).map(m=>{
+        const nm=esc(m.name);
+        return m.absent ? `<s>${nm}</s>` : (m.own?`<b>${nm}</b>`:nm);
+      }).join(' · ');
+      return `<div class="rd"><div class="top">`
+        +`${r.tee_time?`<span class="tee">${esc(r.tee_time)}</span>`:''}`
+        +`<span class="crs">${esc(crs)}</span>`
+        +`${hl?`<span class="hl">${esc(L.holesN(hl))}</span>`:''}`
+        +`${r.cart_no?`<span class="cart">${esc(L.cartN(r.cart_no))}</span>`:''}`
+        +`</div>${mem?`<div class="mem"><span class="memlab">${esc(L.withLbl)}</span>${mem}</div>`:''}</div>`;
+    }).join('');
+  }
+  else if(!row)                          body=`<div class="none off">${esc(L.rdOff)}</div>`;
+  else if(row.course==='九重高原CC')      body=`<div class="none">${esc(L.rdKuju)}</div>`;
+  else                                   body=`<div class="none">${esc(L.rdNone)}</div>`;
+  return `<div class="day${isToday?'':' tm'}">${head}${body}</div>`;
+}
+function todayPane(){
+  const days=(TODAY&&Array.isArray(TODAY.days))?TODAY.days:[];
+  if(!days.length) return `<div class="nolines">${esc(T[lang].rdOff)}</div>`;
+  return days.map((d,i)=>dayCard(d,i===0)).join('');
+}
+
+// ── 결제 내역 ──
+function billPane(){
+  const L=T[lang], d=BILL||{};
   const gross=Number(d.gross||0), paid=Number(d.paid||0), due=Number(d.balance||0);
   const lines=Array.isArray(d.lines)?d.lines:[];
   const rows = lines.length ? lines.map(l=>{
@@ -132,11 +252,7 @@ function renderBill(d){
   const dueRow = due>0
     ? `<div class="trow due"><span class="lab">${esc(L.due)}</span><span class="val">${yen(due)}</span></div>`
     : `<div class="trow due settled"><span class="lab">${esc(L.due)}</span><span class="val">${esc(L.settled)}</span></div>`;
-  const repName=d.rep_name?`${esc(d.rep_name)}${esc(L.honor)}`:esc(L.guest);
-  const rooms=Array.isArray(d.rooms)?d.rooms:[];
-  $('#body').innerHTML=`
-    <div class="bhead"><span class="rep">${repName}</span>${d.tag?`<span class="tag">${esc(d.tag)}</span>`:''}${rooms.length?`<span class="room">${esc(rooms.map(L.room).join(' · '))}</span>`:''}<span class="ttl">${esc(L.title)}</span></div>
-    <table class="lines">
+  return `<table class="lines">
       <thead><tr><th>${esc(L.item)}</th><th class="c">${esc(L.qty)}</th><th class="r">${esc(L.amount)}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
@@ -145,8 +261,19 @@ function renderBill(d){
       ${paid>0?`<div class="trow paid"><span class="lab">${esc(L.paid)}</span><span class="val">−${yen(paid)}</span></div>`:''}
       ${dueRow}
     </div>
-    <div class="note">${esc(L.note)}</div>
-    <div class="upd">${esc(L.updated)} ${hhmm()}</div>`;
+    <div class="note">${esc(L.note)}</div>`;
+}
+
+function curSig(){ return lang+'|'+TAB+'|'+JSON.stringify(BILL)+'|'+JSON.stringify(TODAY); }
+function render(){
+  const L=T[lang];
+  if(!TODAY||TODAY.ok!==true) TAB='bill';           // 일정 RPC 없거나 실패 → 결제 내역만(구버전 호환)
+  const pane = TAB==='today' ? todayPane() : billPane();
+  $('#body').innerHTML=headHtml()+tabsHtml()+pane+`<div class="upd">${esc(L.updated)} ${hhmm()}</div>`;
+  document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
+    TAB=b.dataset.tab; try{ localStorage.setItem('saizen_bill_tab',TAB); }catch(e){}
+    render(); lastSig=curSig();          // 탭만 바꾼 것이라 다음 폴링에서 다시 그리지 않는다
+  }));
 }
 
 async function tick(){
@@ -154,8 +281,13 @@ async function tick(){
   if(!TOKEN){ if(lastSig!=='no'){ stateView(L.noToken,L.noTokenSub); lastSig='no'; } return; }
   if(!supa){ try{ supa=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ return; } }
   try{
-    const {data,error}=await supa.rpc('guest_bill',{p_token:TOKEN});
-    if(error) throw error;
+    //  일정 RPC(125)는 실패해도 결제 내역은 보여야 한다 → 따로 잡는다.
+    const [bill, today] = await Promise.all([
+      supa.rpc('guest_bill',{p_token:TOKEN}),
+      supa.rpc('guest_today',{p_token:TOKEN}).catch(()=>({data:null}))
+    ]);
+    if(bill.error) throw bill.error;
+    const data=bill.data;
     // 만료(SQL 92) = 담당자 체크아웃 처리 or 퇴실+7일 백스톱 → 폴링 중단하고 '이용 종료' 안내.
     //   ※직원 바(#staffbar)는 order_tokens 를 따로 읽으므로 만료 후에도 POS·정산 딥링크는 그대로 동작.
     if(data && data.expired===true){
@@ -164,8 +296,9 @@ async function tick(){
       return;
     }
     if(!data || data.ok!==true){ if(lastSig!=='inv'){ stateView(L.invalid,L.invalidSub); lastSig='inv'; } return; }
-    const sig=lang+'|'+JSON.stringify(data);
-    if(sig!==lastSig){ renderBill(data); lastSig=sig; }
+    BILL=data; TODAY=(today&&today.data&&today.data.ok===true)?today.data:null;
+    const sig=curSig();
+    if(sig!==lastSig){ render(); lastSig=sig; }
   }catch(e){ if(lastSig!=='err'){ stateView(L.errH,L.errSub); lastSig='err'; } }
 }
 
