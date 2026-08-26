@@ -104,7 +104,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=24.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=24.4">
 </head>
 <body data-so-area="print front">
 <div class="topbar so-bar">
@@ -135,7 +135,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=37"></script>
-<script src="../assets/saizen-ops.js?v=24.3"></script>
+<script src="../assets/saizen-ops.js?v=24.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -710,15 +710,26 @@ function printSheet(){
   const SHORT={'간지호텔':'ガンジー','야마나미리조트':'やまなみ','구주고원CC':'九重高原'};
   const shortJa=a=>SHORT[String(a||'').trim()]||accomJa(a);
   const acHTML=a=>`<b style="color:${accomColor(a)}">${esc(shortJa(a))}</b>`;
+  const md=v=>{ const d=pd(v); return d?`${d.getMonth()+1}/${d.getDate()}`:''; };   // 귀국일 표기용
   // 행선지(=숙소)별 인원 소계 — 배차 대수를 여기서 바로 읽는다
   const subtotal=rows=>{
     const m={}; rows.forEach(r=>{ const k=r.accom||''; m[k]=(m[k]||0)+r.pax; });
     return Object.keys(m).sort((a,b)=>accomOrd(a)-accomOrd(b))
       .map(k=>`${acHTML(k)} <u>${m[k]}</u>名`).join('　·　');
   };
-  const dispatch=`<div class="dp"><span>車両 <i>차량</i></span><em></em>
-      <span>ドライバー <i>기사</i></span><em></em><span>出発 <i>출발</i></span><em class="s"></em>
-      <span>特記 <i>특이사항</i></span><em class="sp"></em></div>`;
+  //  배차 기입란 — 「차량·기사·출발시각」은 한 몸이라 한 줄로 묶는다(Min 2026-08).
+  //   행선지가 갈리면 버스도 갈리므로 **숙소(행선지)별 한 줄**. 줄 수 = 필요한 최소 대수.
+  const dispatchFor=rows=>{
+    const m={}; (rows||[]).forEach(r=>{ const k=r.accom||''; m[k]=(m[k]||0)+r.pax; });
+    const ks=Object.keys(m).sort((a,b)=>accomOrd(a)-accomOrd(b));
+    const line=k=>`<div class="dp">
+        <span class="to">${k?acHTML(k):'—'} <u>${m[k]||0}</u>名</span>
+        <span>車両 <i>차량</i></span><em class="v"></em>
+        <span>ドライバー <i>기사</i></span><em class="dr"></em>
+        <span>出発 <i>출발</i></span><em class="s"></em></div>`;
+    return (ks.length?ks:['']).map(line).join('')
+      + `<div class="dp note"><span>特記 <i>특이사항</i></span><em class="sp"></em></div>`;
+  };
 
   // 체류중은 왕복 한 줄(⇔) — 화면은 아침·저녁 두 다리로 나누지만 종이는 팀당 한 줄이다
   const stayBy={};
@@ -735,7 +746,8 @@ function printSheet(){
   const teamRows=rows=>`<div class="tl">`+rows
     .sort((a,b)=>accomOrd(a.accom)-accomOrd(b.accom)||String(a.tag).localeCompare(String(b.tag)))
     .map(r=>`<div class="tr"><span class="c" style="color:${accomColor(r.accom)}">${esc(r.tag)}</span>
-      <span class="r">${esc(r.rep||'-')}</span><span class="p">${r.pax}</span><span class="m"></span></div>`).join('')
+      <span class="r">${esc(r.rep||'-')}</span><span class="p">${r.pax}</span>
+      <span class="d">${r.arr?esc(md(r.arr))+'帰':''}</span><span class="m"></span></div>`).join('')
     +`</div>`;
 
   // ── IN / OUT = 便(항공편) 카드. 배차는 便 단위로 정해진다 ──
@@ -757,7 +769,7 @@ function printSheet(){
             <span class="rt">${esc(cityDir(p0Port,kind)[0])}<i>${esc(cityDir(p0Port,kind)[1])}</i></span>
             <span class="nn">${g.rows.length}チーム · ${gp}名</span>
             <span class="sb">${subtotal(g.rows)}</span></div>
-          ${dispatch}
+          ${dispatchFor(g.rows)}
           ${teamRows(g.rows)}
         </div>`; }).join('')}
     </div>`;
@@ -780,7 +792,7 @@ function printSheet(){
         return `<div class="fl">
           <div class="fl-h"><b>${acHTML(g.accom)} ⇔ ${course}</b>
             <span class="sb">${g.rows.length}チーム · <u>${gp}</u>名</span></div>
-          ${dispatch}
+          ${dispatchFor(g.rows)}
           ${teamRows(g.rows)}
         </div>`; }).join('')}
     </div>`;
@@ -816,15 +828,24 @@ function printSheet(){
     padding:calc(1mm * var(--fs)) 2.5mm;break-after:avoid;page-break-after:avoid;white-space:nowrap;overflow:hidden}
   .fl-h b{font-size:calc(12pt * var(--fs));font-weight:800}
   .fl-h .tm{font-size:calc(12pt * var(--fs));font-weight:800}
-  .fl-h .rt{font-size:calc(10.5pt * var(--fs));font-weight:800;color:#111}
-  .fl-h .rt i{font-size:calc(8pt * var(--fs));font-weight:600;font-style:normal;color:#555;margin-left:3px}
-  .fl-h .nn{font-size:calc(9.5pt * var(--fs));font-weight:700}
+  /*  머리줄 크기 — 출발지(서울입국)와 팀수·인원을 키우고, 숙소명은 그만큼 줄인다(Min 2026-08).
+      이전엔 숙소명이 .fl-h b(12pt)를 물려받아 출발지(10.5pt)보다 커서 눈이 먼저 그쪽으로 갔다. */
+  .fl-h .rt{font-size:calc(13pt * var(--fs));font-weight:800;color:#111}
+  .fl-h .rt i{font-size:calc(9.5pt * var(--fs));font-weight:700;font-style:normal;color:#444;margin-left:3px}
+  .fl-h .nn{font-size:calc(12pt * var(--fs));font-weight:800}
   .fl-h .sb{margin-left:auto;font-size:calc(9pt * var(--fs));white-space:nowrap}
+  .fl-h .sb b{font-size:calc(10.5pt * var(--fs))}
   .fl-h .sb u{text-decoration:none;font-weight:800;font-family:Consolas,'SZJpMono',monospace;font-size:calc(10.5pt * var(--fs))}
-  .dp{display:flex;align-items:center;gap:2mm;padding:calc(1mm * var(--fs)) 2.5mm;border-bottom:0.6pt solid #111}
+  /* 배차 기입란 — 행선지별 한 줄(차량·기사·출발이 한 세트). 마지막 줄만 特記 */
+  .dp{display:flex;align-items:center;gap:2mm;padding:calc(0.9mm * var(--fs)) 2.5mm;border-bottom:0.5pt dotted #777}
+  .dp.note{border-bottom:0.6pt solid #111}
   .dp span{font-size:calc(8pt * var(--fs));font-weight:700;white-space:nowrap}
   .dp span i{font-style:normal;font-weight:600;color:#555;font-size:calc(6.5pt * var(--fs));margin-left:1px}
+  .dp .to{flex:0 0 30mm;font-size:calc(9pt * var(--fs))}
+  .dp .to u{text-decoration:none;font-family:Consolas,'SZJpMono',monospace;font-weight:800}
   .dp em{flex:1.3;border-bottom:0.8pt solid #111;height:calc(4.6mm * var(--fs))}
+  .dp em.v{flex:1.1}
+  .dp em.dr{flex:1.3}
   .dp em.s{flex:0 0 18mm}
   .dp em.sp{flex:1.8;border-bottom-style:dashed}
   .tr{display:flex;align-items:baseline;gap:1.6mm;padding:calc(0.7mm * var(--fs)) 2mm}
@@ -835,7 +856,10 @@ function printSheet(){
   .tr .r{flex:1 1 auto;min-width:0;font-size:calc(12.5pt * var(--fs));font-weight:700;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .tr .p{flex:0 0 9mm;text-align:center;font-size:calc(13pt * var(--fs));font-weight:800}
-  .tr .m{flex:0 0 20mm;border-bottom:0.4pt dotted #999;height:calc(4mm * var(--fs))}
+  /* 귀국일 — 기사가 「이 팀이 언제 나가는지」를 표에서 바로 본다 */
+  .tr .d{flex:0 0 15mm;text-align:right;font-family:Consolas,'SZJpMono',monospace;
+    font-size:calc(9.5pt * var(--fs));font-weight:700;color:#333;white-space:nowrap}
+  .tr .m{flex:0 0 17mm;border-bottom:0.4pt dotted #999;height:calc(4mm * var(--fs))}
   @media print{ @page{size:A4 portrait;margin:0} body{background:#fff} .bar{display:none}
     .page{margin:0;width:auto;min-height:auto;padding:8mm 10mm} }
 </style></head><body>
