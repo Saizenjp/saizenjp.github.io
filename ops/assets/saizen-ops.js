@@ -2352,6 +2352,75 @@
     onScroll();
   }
 
+  // ── 오른쪽 빠른 이동 레일 (Min 2026-08) ──────────────────────────────────
+  //  아래로 한참 끌어야 하는 목록에서, 오른쪽에 항목 목차를 띄워 바로 건너뛴다.
+  //  쓰는 쪽: __so_quickNav({ container:'#list', item:'.flcard', label: el => '09:25 TW287' })
+  //   · 항목이 3개 미만이거나 화면이 좁으면(<1100px) 뜨지 않는다 — 없는 게 나은 상황.
+  //   · 목록을 다시 그리면 MutationObserver 가 알아서 다시 만든다.
+  //   · 지금 보고 있는 항목은 IntersectionObserver 로 강조한다.
+  function quickNav(opts) {
+    opts = opts || {};
+    var cont = typeof opts.container === 'string' ? document.querySelector(opts.container) : opts.container;
+    if (!cont) return null;
+    var itemSel = opts.item || ':scope > *';
+    var labelFn = opts.label || function (el) { return (el.textContent || '').trim().slice(0, 8); };
+    var MIN = opts.min || 3;
+    var rail = document.getElementById('so-qnav');
+    if (!rail) {
+      rail = document.createElement('nav');
+      rail.id = 'so-qnav';
+      rail.setAttribute('aria-label', '빠른 이동');
+      rail.style.cssText = 'position:fixed;right:10px;top:50%;transform:translateY(-50%);z-index:55;'
+        + 'display:none;flex-direction:column;gap:3px;max-height:74vh;overflow:auto;padding:6px 5px;'
+        + 'background:rgba(255,255,255,.92);border:1px solid var(--border,#d2d8cc);border-radius:11px;'
+        + 'box-shadow:0 6px 18px rgba(20,40,15,.14);scrollbar-width:none';
+      document.body.appendChild(rail);
+    }
+    var io = null;
+    function build() {
+      var items = [].slice.call(cont.querySelectorAll(itemSel));
+      if (io) { io.disconnect(); io = null; }
+      if (items.length < MIN || window.innerWidth < 1100) { rail.style.display = 'none'; rail.innerHTML = ''; return; }
+      rail.innerHTML = '';
+      var btns = [];
+      items.forEach(function (el, i) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = String(labelFn(el, i) || (i + 1));
+        b.title = String((opts.title ? opts.title(el, i) : b.textContent) || '');
+        b.style.cssText = 'font-family:inherit;font-size:10.5px;font-weight:800;line-height:1.15;'
+          + 'max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+          + 'padding:5px 7px;border-radius:7px;border:1px solid transparent;background:transparent;'
+          + 'color:var(--text2,#5d6650);cursor:pointer;text-align:right';
+        b.addEventListener('click', function () {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        rail.appendChild(b); btns.push(b);
+      });
+      rail.style.display = 'flex';
+      // 지금 보고 있는 항목 강조 + 레일 안에서도 그 버튼이 보이게
+      io = new IntersectionObserver(function (ents) {
+        ents.forEach(function (e) {
+          var i = items.indexOf(e.target); if (i < 0 || !btns[i]) return;
+          if (e.isIntersecting) {
+            btns.forEach(function (x) { x.style.background = 'transparent'; x.style.color = 'var(--text2,#5d6650)'; x.style.borderColor = 'transparent'; });
+            btns[i].style.background = 'var(--accent,#647548)'; btns[i].style.color = '#fff';
+            var r = btns[i].getBoundingClientRect(), rr = rail.getBoundingClientRect();
+            if (r.top < rr.top || r.bottom > rr.bottom) btns[i].scrollIntoView({ block: 'nearest' });
+          }
+        });
+      }, { rootMargin: '-15% 0px -70% 0px' });
+      items.forEach(function (el) { io.observe(el); });
+    }
+    build();
+    var t = null;
+    var mo = new MutationObserver(function () { clearTimeout(t); t = setTimeout(build, 120); });
+    mo.observe(cont, { childList: true, subtree: false });
+    window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(build, 200); }, { passive: true });
+    return { rebuild: build, destroy: function () { mo.disconnect(); if (io) io.disconnect(); rail.remove(); } };
+  }
+  window.__so_quickNav = quickNav;
+
   function boot() {
     mountHead();
     if (handleAuthRedirect()) { applyLang(); return; }   // 초대/재설정 모드면 비번 설정만
