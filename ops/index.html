@@ -87,7 +87,7 @@
   .foot b{color:var(--text2)}
   .foot code{font-family:var(--mono);font-size:11px;background:var(--surface3);padding:1px 6px;border-radius:4px;color:var(--text2)}
 </style>
-<link rel="stylesheet" href="assets/saizen-ops.css?v=25.0">
+<link rel="stylesheet" href="assets/saizen-ops.css?v=25.1">
 </head>
 <body>
 <div class="topbar so-bar">
@@ -140,10 +140,10 @@
     <span style="flex:none;font-size:12px;color:var(--muted);white-space:nowrap" data-i18n="ix_boardOpen"></span>
   </a>
 
-  <!-- 주간 날씨(아소) — Open-Meteo 공개 API(키 불필요). 라운딩·송영 참고용 -->
+  <!-- 시간별 날씨(아소) — Open-Meteo 공개 API(키 불필요). 지금부터 24시간(자정 넘어 내일까지 이어짐) -->
   <div id="wx-strip" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:10px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <b style="font-size:12.5px;color:var(--accent)" data-i18n="ix_wxTitle">🗻 야마나미 오늘 시간별 날씨</b>
+      <b style="font-size:12.5px;color:var(--accent)" data-i18n="ix_wxTitle">🗻 야마나미 시간별 날씨</b>
       <span id="wx-meta" style="font-size:11px;color:var(--muted)"></span>
     </div>
     <div id="wx-days" style="display:flex;gap:6px;overflow-x:auto"></div>
@@ -441,7 +441,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/saizen-ops.js?v=25.0"></script>
+<script src="assets/saizen-ops.js?v=25.1"></script>
 <script>
 // ── 랜딩 게이트: 미로그인=안내 / 로그인=허용 카드만 표시 ──
 (function(){
@@ -701,18 +701,28 @@
     if(c>=80&&c<=82) return ['🌧️','소나기']; if(c>=85&&c<=86) return ['🌨️','눈']; if(c>=95) return ['⛈️','뇌우'];
     return ['·',''];
   }
+  //  지금 시각부터 24시간 — 자정을 넘기면 그대로 내일로 이어진다(Min 2026-08).
+  //  예전엔 오늘 것만 받아서 저녁이면 칸이 서너 개만 남고 밤에는 아예 비었다.
   var url='https://api.open-meteo.com/v1/forecast?latitude='+LAT+'&longitude='+LON
-    +'&hourly=temperature_2m,weather_code,precipitation_probability&timezone=Asia%2FTokyo&forecast_days=1';
+    +'&hourly=temperature_2m,weather_code,precipitation_probability&timezone=Asia%2FTokyo&forecast_days=2';
   fetch(url).then(function(r){return r.json();}).then(function(d){
     if(!d||!d.hourly||!d.hourly.time) return;
     var H=d.hourly;
-    // 현재 JST 시각(보는 사람 시간대와 무관하게 리조트 기준)
-    var nowH=parseInt(new Date().toLocaleString('en-US',{timeZone:'Asia/Tokyo',hour:'2-digit',hour12:false}),10);
-    var html='';
-    for(var i=0;i<H.time.length;i++){
-      var hh=parseInt(H.time[i].slice(11,13),10);
-      if(hh<nowH) continue;                              // 지난 시간 제외(지금부터 자정까지)
-      var w=wmap(H.weather_code[i]), cur=hh===nowH;
+    // 리조트(JST) 기준 지금 — 보는 사람 시간대와 무관
+    var jst=new Date().toLocaleString('sv-SE',{timeZone:'Asia/Tokyo'});   // 'YYYY-MM-DD HH:MM:SS'
+    var fromKey=jst.slice(0,10)+'T'+jst.slice(11,13);                     // 이 시각부터
+    var html='', n=0, prevDay='';
+    for(var i=0;i<H.time.length && n<24;i++){
+      if(H.time[i].slice(0,13) < fromKey) continue;
+      var day=H.time[i].slice(0,10), hh=parseInt(H.time[i].slice(11,13),10);
+      if(prevDay && day!==prevDay){                                       // 날이 바뀌는 자리에 칸막이
+        html+='<div style="flex:0 0 auto;align-self:stretch;display:flex;flex-direction:column;justify-content:center;'
+          +'padding:0 9px;margin:0 2px;border-left:2px solid var(--border)">'
+          +'<div style="font-size:10.5px;font-weight:800;color:var(--accent2);white-space:nowrap">'+t('ix_wxTmr')+'</div>'
+          +'<div style="font-size:10px;color:var(--muted);white-space:nowrap">'+(+day.slice(5,7))+'/'+(+day.slice(8,10))+'</div></div>';
+      }
+      prevDay=day; n++;
+      var w=wmap(H.weather_code[i]), cur=(n===1);
       var pp=H.precipitation_probability?H.precipitation_probability[i]:null;
       html+='<div style="flex:0 0 auto;min-width:62px;text-align:center;padding:6px 4px;border-radius:8px;'
         +(cur?'background:var(--accentSoft,#e4ecd9);':'')+'">'

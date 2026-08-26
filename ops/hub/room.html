@@ -404,9 +404,9 @@
      그래서 폭을 줄여서라도 한 줄에 붙인다. */
   .rnote{margin-left:5px;font-size:12px;cursor:help}
   .rsearch{position:relative;display:flex;align-items:center;gap:6px;margin-left:auto;min-width:0;flex:0 1 auto}
-  .rsearch #room-search{width:210px;max-width:34vw;font-size:12px;padding:5px 9px}
-  .rsearch #room-search:focus{width:320px}
-  @media(max-width:1200px){ .rsearch #room-search{width:150px} }
+  /*  누를 때마다 칸이 늘었다 줄었다 하면 옆 버튼이 밀려 눈이 따라가야 한다 → 고정 폭(Min 2026-08). */
+  .rsearch #room-search{width:250px;max-width:34vw;font-size:12px;padding:5px 9px}
+  @media(max-width:1200px){ .rsearch #room-search{width:170px} }
   #room-search-cnt{font-size:11px;color:var(--muted)}
   /* 검색창이 상단바 오른쪽 끝에 있으므로 결과 패널도 **오른쪽 기준**으로 붙인다.
      예전엔 left:20px 이라 오른쪽 끝에서 560px 짜리 패널이 화면 밖으로 흘러 내용이 잘렸다(Min 2026-08). */
@@ -418,6 +418,7 @@
   .rs-item>*{min-width:0;overflow-wrap:anywhere}
   .rs-item:first-child{border-top:none}
   .rs-item:hover{background:var(--surface2)}
+  .rs-item.seen{background:var(--accentSoft,#eef3e6)}   /* 방금 눌러 본 줄 */
   .rs-item b{font-size:13px}
   .rs-en{color:var(--text2)}
   .rs-tag{font-family:var(--mono);font-weight:700;color:var(--accent2)}
@@ -513,7 +514,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=25.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=25.1">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -643,7 +644,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=37"></script>
-<script src="../assets/saizen-ops.js?v=25.0"></script>
+<script src="../assets/saizen-ops.js?v=25.1"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -5494,7 +5495,7 @@ try{ applyStaticRoom(); }catch(e){}
 (function(){
   const inp=document.getElementById('room-search'); if(!inp) return;
   const box=document.getElementById('room-search-results'), cnt=document.getElementById('room-search-cnt');
-  let timer=null;
+  let timer=null, lastPick='';
   function run(){
     const q=(inp.value||'').trim().toLowerCase();
     if(!q){ box.classList.remove('on'); box.innerHTML=''; cnt.textContent=''; return; }
@@ -5530,7 +5531,8 @@ try{ applyStaticRoom(); }catch(e){}
     const total=hits.length+unhits.length;
     cnt.textContent = total ? `${total}건${total>40?' · 40건씩 표시':''}` : '결과 없음';
     const aHtml=hits.slice(0,40).map(h=>{ const r=h.r;
-      return `<div class="rs-item" data-inv="${r.inventory_id}" data-date="${r.check_in||''}">
+      const cur=(lastPick===(r.inventory_id+'|'+(r.check_in||'')));
+      return `<div class="rs-item${cur?' seen':''}" data-inv="${r.inventory_id}" data-date="${r.check_in||''}">
         <b>${_lsEsc(h.nameKr||h.gcode||'-')}</b>${h.nameEn?`<span class="rs-en">${_lsEsc(h.nameEn)}</span>`:''}
         <span class="rs-tag">${_lsEsc(h.tag||h.gcode)}</span>${h.eno?`<span class="rs-eno">#${_lsEsc(h.eno)}</span>`:''}
         <span class="rs-loc">→ ${_lsEsc(r.facility||'')} ${_lsEsc(r.room_no||'')} · ${fmtMD(r.check_in)}~${fmtMD(r.check_out)}</span>
@@ -5544,11 +5546,20 @@ try{ applyStaticRoom(); }catch(e){}
     box.innerHTML = (aHtml+uHtml) || '<div class="rs-empty">일치하는 사람이 없습니다.</div>';
     box.classList.add('on');
   }
-  inp.addEventListener('input',()=>{ clearTimeout(timer); timer=setTimeout(run,120); });
-  inp.addEventListener('focus',()=>{ if(inp.value.trim()) run(); });
+  //  한 사람이 여러 방·여러 날짜에 걸쳐 나오면 결과를 연달아 눌러 보게 된다.
+  //  그때 검색어를 다시 치게 하지 않는다 — 칸을 누르면 그대로 다시 펼친다(Min 2026-08).
+  let lastQ='';
+  function reopen(){
+    if(!inp.value.trim() && lastQ) inp.value=lastQ;   // 값이 저절로 사라졌을 때만 되살린다
+    if(inp.value.trim()) run();                        // ✕로 직접 지운 경우엔 lastQ 도 ''
+  }
+  inp.addEventListener('input',()=>{ lastQ=inp.value; clearTimeout(timer); timer=setTimeout(run,120); });
+  inp.addEventListener('focus',reopen);
+  inp.addEventListener('click',reopen);                // 이미 포커스가 있으면 focus 는 안 온다
   box.addEventListener('click',e=>{
     const it=e.target.closest('.rs-item'); if(!it) return;
     const invId=it.dataset.inv, date=it.dataset.date||state.from;
+    lastPick=(invId||'')+'|'+(date||'');            // 다시 열면 방금 본 줄을 표시해 준다
     box.classList.remove('on');
     if(invId) jumpToRoom(invId, date);            // 배정된 사람 → 그 방으로(카드·표 보기 공용)
     else {                                          // 미배정 → 방이 없으니 그 날짜로만 이동
