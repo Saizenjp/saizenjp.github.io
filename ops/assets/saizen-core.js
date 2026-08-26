@@ -477,6 +477,32 @@
     return { kind: 'unsure', mixed: mixed };
   }
 
+  //  「싱글 4방」 — 방 수만 뽑는다. 누가 쓸지는 현장에서 정해도 **몇 방인지는 계약된 수량**이라
+  //  그것만은 미리 알 수 있다(Min 2026-08). pax 와 같은지는 따지지 않는다(singlePlan 과 다른 점).
+  //   「싱글룸 4개」·「싱글 4실」·「싱글 4방」·「シングル4室」·「싱글룸 4명」 → 4
+  function singleCount(text) {
+    var t = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+    if (!SG_WORD.test(t)) return 0;
+    if (SG_BLOCK.test(t)) return 0;
+    var best = 0;
+    //  싱글이라는 말과 숫자가 **가까이** 있을 때만 센다 — 멀면 다른 이야기의 숫자다.
+    var re = /(싱글|1인실|일인실|독방|シングル|single)[^0-9\n]{0,6}(\d{1,2})\s*(개|방|실|명|인|室|部屋)/gi;
+    var m;
+    while ((m = re.exec(t))) { var n = Number(m[2]); if (n > 0 && n <= 30 && n > best) best = n; }
+    if (best) return best;
+    //  숫자가 앞에 오는 표기 — 「4방 싱글」·「4名 シングル」
+    var re2 = /(\d{1,2})\s*(개|방|실|명|인|室|部屋)[^0-9\n]{0,6}(싱글|1인실|일인실|독방|シングル|single)/gi;
+    while ((m = re2.exec(t))) { var n2 = Number(m[1]); if (n2 > 0 && n2 <= 30 && n2 > best) best = n2; }
+    return best;
+  }
+  //  「싱글룸 현지에서 배정예정」 — 수량은 정해졌고 **누가 쓸지만** 현장에서 정하는 경우.
+  //  자동배정이 손대면 안 되고, 당일 아침에 사람이 채워야 한다.
+  var SG_ONSITE = /(현지|현장)\s*(에서)?\s*(배정|지정|결정)|(배정|지정|결정)\s*예정|現地\s*で\s*(割|決)/;
+  function singleOnsite(text) {
+    var t = String(text == null ? '' : text);
+    return SG_WORD.test(t) && SG_ONSITE.test(t);
+  }
+
   function cartFreeDay(team, date) {
     var d = String(date == null ? '' : date).slice(0, 10);
     if (!team || !d) return false;
@@ -896,6 +922,8 @@
     buildRounding: buildRounding,
     cartFreeDay: cartFreeDay,
     singlePlan: singlePlan,
+    singleCount: singleCount,
+    singleOnsite: singleOnsite,
     cartPlan: cartPlan,
     cartQtyFromRemark: cartQtyFromRemark,
     parseCartNos: parseCartNos,

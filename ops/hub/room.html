@@ -419,6 +419,9 @@
   .rs-item:first-child{border-top:none}
   .rs-item:hover{background:var(--surface2)}
   .rs-item.seen{background:var(--accentSoft,#eef3e6)}   /* 방금 눌러 본 줄 */
+  /* 싱글 진행 — 필요 N방 중 지금 M방. 다 채우면 초록 */
+  .sgp{font-size:10.5px;font-weight:800;color:#8a5a00;background:#fdf4e3;border:1px solid #e6d3a3;border-radius:5px;padding:1px 6px}
+  .sgp.ok{color:#1d6b3f;background:#e9f4ec;border-color:#b6dcc3}
   .rs-item b{font-size:13px}
   .rs-en{color:var(--text2)}
   .rs-tag{font-family:var(--mono);font-weight:700;color:var(--accent2)}
@@ -514,7 +517,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=25.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=25.3">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -643,8 +646,8 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-core.js?v=37"></script>
-<script src="../assets/saizen-ops.js?v=25.2"></script>
+<script src="../assets/saizen-core.js?v=38"></script>
+<script src="../assets/saizen-ops.js?v=25.3"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -712,6 +715,9 @@ const L={
     pinOnly:'📌 直接割当のみ',
     pickSearch:'名前・タグコード・行事番号で検索', pickNoHit:'該当なし',
     sgBadge:'シングル指定', sgBadgeT:'備考にシングル指定 — 誰が単独か特定できないため手動割当',
+    sgProg:(need,have)=>`シングル ${need}室 必要 · 現在 ${have}室`, sgProgT:'備考に書かれたシングルの室数と、いま割り当てた室数',
+    sgOnsite:'現地割当', sgOnsiteT:'どなたが使うかは現地で決める — 当日に割り当てます',
+    holdCatSgWait:'現地割当 待ち', holdFixSgWait:'室数は決まっています — 当日、どなたが使うかを決めて割り当ててください',
     hdRmk:'備考', hdRmkLocal:'現地備考',
     sgWhyNames:n=>`単独は ${n}(名簿と一致)`, sgWhyPart:'滞在の一部だけシングル', sgWhyUnsure:'誰が単独か未指定', sgWhyMixed:'(ツイン混在 — 要確認)',
     sgAuto:'全員シングル → 自動で1人1室',
@@ -969,6 +975,9 @@ const L={
     pinOnly:'📌 직접 배정만',
     pickSearch:'이름·태그코드·행사번호 검색', pickNoHit:'검색 결과 없음',
     sgBadge:'싱글 지정', sgBadgeT:'비고에 싱글 지정 — 누가 단독인지 특정할 수 없어 수기 배정',
+    sgProg:(need,have)=>`싱글 ${need}방 필요 · 지금 ${have}방`, sgProgT:'비고에 적힌 싱글 방 수와, 지금 배정한 방 수',
+    sgOnsite:'현장 배정', sgOnsiteT:'누가 쓸지는 현장에서 정하는 건 — 당일에 배정합니다',
+    holdCatSgWait:'현장 배정 대기', holdFixSgWait:'방 수는 정해져 있습니다 — 당일에 누가 쓸지 정해 배정하세요',
     hdRmk:'비고', hdRmkLocal:'현지비고',
     sgWhyNames:n=>`단독은 ${n}(명단과 일치)`, sgWhyPart:'체류 일부만 싱글', sgWhyUnsure:'누가 단독인지 미지정', sgWhyMixed:'(트윈 섞임 — 확인 필요)',
     sgAuto:'전원 싱글 → 자동으로 1인 1실',
@@ -1219,6 +1228,9 @@ const L={
     pinOnly:'📌 Direct only',
     pickSearch:'Search name · tag code · booking no.', pickNoHit:'No match',
     sgBadge:'Single requested', sgBadgeT:'Remarks mention a single room — we cannot tell who, so assign manually',
+    sgProg:(need,have)=>`Singles ${need} needed · ${have} now`, sgProgT:'Single rooms written in the remarks vs. rooms assigned so far',
+    sgOnsite:'On-site', sgOnsiteT:'Who takes them is decided on site — assign on the day',
+    holdCatSgWait:'Waiting for on-site assignment', holdFixSgWait:'The room count is fixed — decide who takes them and assign on the day',
     hdRmk:'Remarks', hdRmkLocal:'On-site remarks',
     sgWhyNames:n=>`single: ${n} (matched roster)`, sgWhyPart:'only part of the stay', sgWhyUnsure:'who is alone is not stated', sgWhyMixed:'(twin mixed in — check)',
     sgAuto:'all single → auto 1 person per room',
@@ -2102,6 +2114,37 @@ function noteLinkedHtml(g, editable){
   return `<div class="hd-nt loc" style="margin-top:6px;display:block">
       <span class="k">${tx('wzLinked')}</span>${ts.map(block).join('')}</div>`;
 }
+//  싱글은 「누가 쓸지」는 현장에서 정하더라도 「몇 방인지」는 계약된 수량이다(Min 2026-08).
+//  그 수량을 비고에서 뽑아 두면 당일 아침에 **몇 방 중 몇 방을 채웠는지**가 보인다.
+function singleNeed(g){
+  if(!g) return 0;
+  const t=[g.remark_local,g.remark].filter(Boolean).join('\n');
+  let n=(window.SZCore&&SZCore.singleCount)?SZCore.singleCount(t):0;
+  if(!n){   // 「싱글: 홍길동, 김철수」처럼 이름으로 적혀 있으면 그 인원 수가 곧 방 수
+    const sp=(window.SZCore&&SZCore.singlePlan)
+      ? SZCore.singlePlan(t, g.pax, (state.members[g.event_seq]||[]).map(m=>({id:m.id,name:m.name_kr||''}))) : null;
+    if(sp&&sp.kind==='names') n=(sp.names||[]).length;
+    else if(sp&&sp.kind==='all') n=Number(sp.n)||0;
+  }
+  return n;
+}
+function isSingleInv(inv){ return /싱글|single|シングル/i.test(String((inv&&inv.room_type)||'')); }
+function singleHave(g){
+  if(!g) return 0;
+  const seen=new Set();
+  (state.rooms||[]).forEach(r=>{
+    if(String(r.event_seq)!==String(g.event_seq)) return;
+    const inv=invById(r.inventory_id)||{};
+    if(isSingleInv(inv)) seen.add(String(r.inventory_id));
+  });
+  return seen.size;
+}
+//  「싱글 4방 필요 · 지금 2방」 — 다 채우면 초록.
+function singleProgHtml(g){
+  const need=singleNeed(g); if(!need) return '';
+  const have=singleHave(g), done=have>=need;
+  return `<span class="sgp${done?' ok':''}" title="${esc(tx('sgProgT'))}">${esc(tx('sgProg',need,have))}</span>`;
+}
 function singleNote(g){
   if(!g) return '';
   const t=[g.remark_local,g.remark].filter(Boolean).join(' / ');
@@ -2114,7 +2157,10 @@ function dispatchPopup(seq){
 }
 function singleBadgeHtml(g){
   const note=singleNote(g); if(!note) return '';
+  const onsite=(window.SZCore&&SZCore.singleOnsite)?SZCore.singleOnsite(note):false;
   return `<span class="sgb" title="${esc(tx('sgBadgeT'))}">${tx('sgBadge')}</span>`
+    +(onsite?`<span class="sgb" style="background:#8a5a00" title="${esc(tx('sgOnsiteT'))}">${tx('sgOnsite')}</span>`:'')
+    +singleProgHtml(g)
     +`<button class="btn xs ghost sg-doc" type="button" data-seq="${g.event_seq}" title="${esc(tx('sgDocT'))}">${tx('sgDoc')}</button>`
     +`<span class="sgn" title="${esc(note)}">${esc(note.length>60?note.slice(0,60)+'…':note)}</span>`;
 }
@@ -2207,7 +2253,7 @@ function wzBody(){
           <b style="font-family:var(--mono);color:var(--accent);font-size:14px">${esc(gc)}</b>
           <span class="mbadge ${isNon?'mb-non':'mb-mem'}">${isNon?t('rm_nonmember'):t('rm_member')}</span>
           ${String(g.status||'').includes('대기')?`<span class="sgb" style="background:#7a5aa8" title="${esc(tx('waitBadgeT'))}">${tx('waitBadge')}</span>`:''}
-          ${note?`<span class="sgb">${tx('sgBadge')}</span>`:''}
+          ${note?`<span class="sgb">${tx('sgBadge')}</span>`:''}${note?singleProgHtml(g):''}
           <span style="margin-left:auto;font-weight:800;color:var(--err)">${tx('leftOf',left,g.pax)}</span>
         </div>
         <div style="font-size:12px;color:var(--text2);margin-top:3px">${fmtMD(g.dep)}→${fmtMD(g.arr)} · ${teamNights(g)}${tx('nightUnit')} · ${esc(g.rep||'')} · ${esc(g.accom||'')}</div>
@@ -4025,6 +4071,7 @@ function openHoldsModal(){
   //   예전엔 사유 문자열만 줄줄이 나와 "뭘 어떻게 하라는지" 알 수 없었다(Min 2026-08).
   const RULES=[
     ['oddTeam',  tx('holdCatOddTeam'),  tx('holdFixOddTeam'),  'splitOdd'],
+    ['sgWait',   tx('holdCatSgWait'),   tx('holdFixSgWait'),   null],
     ['single',   tx('holdCatSingle'),   tx('holdFixSingle'),   'singleRemark'],
     ['sgStale',  tx('holdCatSgStale'),  tx('holdFixSgStale'),  null],
     ['noRoster', tx('holdCatNoRoster'), tx('holdFixNoRoster'), null],
@@ -4080,7 +4127,7 @@ function openHoldsModal(){
         <b style="font-family:var(--mono);color:var(--accent);font-size:14px">${esc(gc)}</b>
         <span class="mbadge ${isNon?'mb-non':'mb-mem'}">${isNon?t('rm_nonmember'):t('rm_member')}</span>
         ${String(g.status||'').includes('대기')?`<span class="sgb" style="background:#7a5aa8" title="${esc(tx('waitBadgeT'))}">${tx('waitBadge')}</span>`:''}
-        ${note?`<span class="sgb">${tx('sgBadge')}</span>`:''}
+        ${note?`<span class="sgb">${tx('sgBadge')}</span>`:''}${note?singleProgHtml(g):''}
         <span style="margin-left:auto;font-weight:800;color:var(--err)">${rosterN?tx('leftOf',left,g.pax):tx('rosterNone')+' · '+g.pax+tx('nameUnit')}</span>
       </div>
       <div style="font-size:12px;color:var(--text2);margin-top:3px">${fmtMD(g.dep)}→${fmtMD(g.arr)} · ${teamNights(g)}${tx('nightUnit')} · ${esc(g.rep||'')} · ${esc(g.accom||'')}</div>
@@ -4828,7 +4875,11 @@ async function autoAssign(){
             roster.map(m=>({id:m.id,name:m.name_kr||''})))
         : (/싱글|single|シングル/i.test((g.remark_local||'')+' '+(g.remark||''))?{kind:'unsure'}:null);
       if(_sp && _sp.kind!=='blocked' && !AUTO_OPTS.singleRemark){
-        holds.push(mkHold(tx('holdSingle',gc)+singleWhy(_sp),g,'single',_sp)); continue;
+        //  「현지에서 배정예정」처럼 **누가 쓸지만** 현장에서 정하는 건은 따로 모은다 —
+        //  당일 아침에 이 분류만 열어 0으로 맞추면 된다(Min 2026-08).
+        const _onsite=(window.SZCore&&SZCore.singleOnsite)
+          && SZCore.singleOnsite((g.remark_local||'')+'\n'+(g.remark||''));
+        holds.push(mkHold(tx('holdSingle',gc)+singleWhy(_sp),g,_onsite?'sgWait':'single',_sp)); continue;
       }
       // ── 청소 효율 박수→층 규칙: 야마나미 호텔동(floorOnly) 팀만 허용 층으로 제한 ──
       //   허용 층이 없거나(규칙 외 박수+유동층 만석) 만석이면 hold(객실부족) → 수기 배정으로.
