@@ -711,17 +711,23 @@ function renderDateChips(){
 }
 
 let FILLED=false;
+let LOADSEQ=0;   // 마지막으로 시작된 loadBoard 번호(뒤늦게 깨어난 호출을 가려내는 표식)
 async function loadBoard(date, skipAuto){
+  const myLoad=++LOADSEQ;
+  const stale=()=>myLoad!==LOADSEQ;   // 내가 도는 사이 새 요청이 시작됐나
   BOARD=[]; DBIDS=[]; SELG=null; SKIP=new Set(); DRAG=null; SLOTS=STD_SLOTS.slice(); FILLED=false;
   try{
     const {data:sk}=await supa.from('golf_skips').select('event_seq').eq('play_date',date);
+    if(stale()) return;
     (sk||[]).forEach(x=>SKIP.add(String(x.event_seq)));
   }catch(e){ /* 표가 없으면 제외 없음으로 */ }
+  if(stale()) return;
   try{
     const {data:grps,error}=await supa.from('golf_groups')
       .select('id,event_seq,course_code,tee_time,slot_no,label,capacity,cart_no,note,assign_source')
       .eq('play_date',date).order('slot_no',{nullsFirst:false});
     if(error) throw error;
+    if(stale()) return;               // 늦게 온 응답 — 다른 날짜가 이미 올라와 있다
     const teams=teamsOnDate(date);
     const ghost=[];
     (grps||[]).forEach(g=>{
@@ -742,6 +748,7 @@ async function loadBoard(date, skipAuto){
     const gids=BOARD.map(g=>g.id).filter(Boolean);
     if(gids.length){
       const gm=await pagedIn('golf_group_members','group_id,member_id,event_seq,seq','group_id',gids);
+      if(stale()) return;
       const byG={}; (gm||[]).forEach(x=>{ (byG[x.group_id]=byG[x.group_id]||[]).push(x); });
       BOARD.forEach(g=>{
         g.members=(byG[g.id]||[]).sort((a,b)=>(a.seq||0)-(b.seq||0)).map(x=>{
@@ -762,20 +769,23 @@ async function loadBoard(date, skipAuto){
     if(need.length){ need.forEach(fillTeamMembers); if(!TV) FILLED=true; }
   }catch(e){ /* 없으면 빈 표 */ }
   // 저장된 조가 기본 17자리를 넘으면 표를 그만큼 늘려야 보인다(연장 줄)
+  if(stale()) return;
   ensureSlots(BOARD.reduce((m,g)=>Math.max(m,g.slot||0),0));
   render();
   // 배정이 모자란 날이면 빈 자리에만 자동으로 채운다(기존 조는 그대로 — 수기 조정 보호)
-  if(!TV && !skipAuto && missOn(date)>0){
+  //  ⚠ 여기서부터는 DB 에 쓴다 — 늦게 온 호출이 남의 날짜를 덮지 않도록 반드시 확인 후 진행
+  if(!TV && !skipAuto && !stale() && missOn(date)>0){
     const {rows,slots}=planDate(date, BOARD.map(g=>({event_seq:g.seq,course_code:g.course,slot_no:g.slot,capacity:g.pax})), 0);
     if(rows.length){
       SLOTS=slots;
       rows.forEach(r=>BOARD.push({ seq:r.seq, course:r.course, slot:r.slot, tee:r.tee, pax:r.pax,
         tag:r.tag, rep:r.rep, holes:r.holes, late:r.late, cart:'', note:'', src:'auto', members:[] }));
       [...new Set(rows.map(r=>r.seq))].forEach(fillTeamMembers);
+      if(stale()) return;
       render();
       await save();
     }
-  } else if(FILLED && !TV){ await save(true); }
+  } else if(FILLED && !TV && !stale()){ await save(true); }
 }
 
 function isSkip(seq){ return SKIP.has(String(seq)); }
