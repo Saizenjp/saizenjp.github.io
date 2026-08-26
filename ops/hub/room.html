@@ -518,7 +518,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=25.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=25.6">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -648,7 +648,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=25.5"></script>
+<script src="../assets/saizen-ops.js?v=25.6"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -2356,10 +2356,16 @@ function wzBody(){
   // 비고·현지비고를 **맨 위에** — 이걸 보고 누구를 체크할지 정한다(싱글 요청·별관 지정 등, Min 2026-08)
   const notes=noteRows(g);
   const sgb=(typeof singleBadgeHtml==='function' && singleNote(g)) ? singleBadgeHtml(g) : '';
-  // 비고에 적힌 다른 팀 사람 중 아직 미배정인 사람 — 같은 방(같은 트윈·같은 싱글)에 같이 넣어야 하는
+  // 비고에 적힌 다른 팀 사람 — 같은 방(같은 트윈·같은 싱글)에 같이 넣어야 하는
   // 예약 분리 케이스가 있다(예: "팀 A,B / 트윈: A팀원+B팀원 / 싱글: ...", Min 2026-08).
   // 체크박스만 이 팀 것과 같은 방식(.wz-m)으로 추가하면 assignMembers가 각자 event_seq로 알아서 저장한다.
-  const linkedUn=noteLinkedPeople(g).filter(p=>!p.rooms.length);
+  //  ⚠ 후보는 **그 팀 미배정 전원**이다(Min 2026-08). 예전엔 비고에 이름이 적힌 사람만 골라
+  //    같은 팀 동행자(예 양정애)가 빠져 있었다 — 같이 넣어야 할 사람을 못 고르는 셈이었다.
+  const linkedUn=noteLinkedTeams(g).flatMap(t=>t.roster
+    .filter(p=>!p.rooms.length)
+    .map(p=>({nm:p.nm, mid:p.mid, gc:t.gc, eno:t.eno, hit:p.hit})));
+  //  이름이 겹치면(동명이인) 행사번호까지 보여 준다
+  linkedUn.forEach(p=>{ p.dup = linkedUn.filter(x=>x.nm===p.nm).length>1; });
   return `<div style="padding:8px 0">
     ${(notes||sgb)?`<div style="background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:7px 10px;margin-bottom:10px">${sgb}${notes}${noteLinkedHtml(g,true)}</div>`:''}
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:9px">
@@ -2372,7 +2378,7 @@ function wzBody(){
     ${linkedUn.length?`<div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin:-4px 0 9px">
       <span style="font-size:11px;font-weight:800;color:var(--accent2)">${tx('wzLinkedPick')}</span>
       ${linkedUn.map(p=>`<label style="display:inline-flex;align-items:center;gap:5px;background:var(--surface2);border:1px dashed var(--accent2);border-radius:7px;padding:4px 9px;font-size:12.5px;cursor:pointer">
-        <input type="checkbox" class="wz-m" data-mid="${esc(String(p.mid))}"><b>${esc(p.nm)}</b>
+        <input type="checkbox" class="wz-m" data-mid="${esc(String(p.mid))}"><b${p.hit?' style="color:var(--accent2)"':''}>${esc(p.nm)}</b>
         <span style="font-size:10px;color:var(--muted)">(${esc(p.gc)})</span>
         ${p.dup&&p.eno?`<span style="font-size:10px;font-family:var(--mono);color:var(--err);font-weight:800" title="${esc(tx('wzLnkDup'))}">#${esc(p.eno)}</span>`:''}</label>`).join('')}
     </div>`:''}
