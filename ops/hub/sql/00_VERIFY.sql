@@ -197,6 +197,7 @@ from (
   union all select 122,'122 카트 대수 출처','cart_bookings.auto_qty (인원 변경 시 자동 조정)', case when exists(select 1 from information_schema.columns where table_name='cart_bookings' and column_name='auto_qty') then '✅ 있음' else '❌ 없음 (122)' end
   union all select 123,'123 당일 골프 손님','walkins 골프 칸(holes·tee_pref·course)', case when exists(select 1 from information_schema.columns where table_name='walkins' and column_name='holes') then '✅ 있음' else '❌ 없음 (123)' end
   union all select 123,'123 당일 골프 손님','order_tokens 가 워크인 번호도 받는다(bookings FK 해제)', case when not exists(select 1 from pg_constraint where conrelid='order_tokens'::regclass and conname='order_tokens_event_seq_fkey') then '✅ 해제됨' else '❌ FK 남아 있음 (123)' end
+  union all select 124,'124 송영 배차','transfer_dispatch(차량·기사·출발시각)', case when to_regclass('public.transfer_dispatch') is not null then '✅ 있음' else '❌ 없음 (124)' end
 ) t
 order by ord, 항목;
 
