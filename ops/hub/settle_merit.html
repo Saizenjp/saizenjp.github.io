@@ -90,7 +90,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=25.7">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=25.8">
 </head>
 <body data-so-area="settle">
 <div class="topbar so-bar">
@@ -121,12 +121,13 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=25.7"></script>
+<script src="../assets/saizen-ops.js?v=25.8"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DEDS=[], EXTRAS={}, EXLIST=[];
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
-const ACCOM_RATE={'야마나미리조트':14000,'쿠주힐즈':14000,'간지호텔':16000,'시즈노야도 료칸':16000};
+//  단가 표는 saizen-core(SZCore.accomRate) 하나뿐이다 — 여기에 사본을 두면 계약이 바뀔 때
+//  한쪽만 고쳐져 화면에 보이는 단가와 실제 계산 금액이 어긋난다.
 const TRANSPORT_PER=6000;
 const DED_TYPES=['보증금 예약 쿠폰','장기숙박 쿠폰','야마나미 이용권','포인트','싱글차지 선납','기타 선납'];
 // 팀별 가산/차감(기타) 유형 — 저장은 한국어, 표시만 번역
@@ -407,7 +408,7 @@ async function load(){
       const _pcnt=PCNT[b.event_seq]||0, _bpax=b.pax||0;
       const pax=Math.max(_pcnt,_bpax);
       const paxWarn=(_pcnt>0 && _bpax>0 && _pcnt!==_bpax)?{pcnt:_pcnt,bpax:_bpax}:null;
-      const rate=accom?(pp.rate||ACCOM_RATE[accom]||0):0;
+      const rate=accom?(pp.rate||SZCore.accomRate(accom)||0):0;   // 단가 = 공용 모듈 단일 진실원
       const rateWarn=accom?(rate>0?'':'단가 미등록'):'';
       const stay=accom?pax*nights*rate:0, transport=accom?pax*TRANSPORT_PER:0;
       const extra=(EXTRAS[b.event_seq]||[]).reduce((s,x)=>s+(x.is_add?1:-1)*(Number(x.amount)||0),0);   // 가산(+)/차감(-) 합
@@ -431,7 +432,7 @@ function renderAll(){
   $('#boxes').innerHTML=ACCOM_ORDER.map(a=>{ const g=rows.filter(r=>r.accom===a); if(!g.length)return '';
     const s=g.reduce((x,r)=>x+r.stay,0), tr=g.reduce((x,r)=>x+r.transport,0), ex=g.reduce((x,r)=>x+r.extra,0), tot=g.reduce((x,r)=>x+r.total,0);
     return `<div class="sbox"><div class="lab">${esc(accomL(a))}</div>
-      <div class="sr"><span>${esc(tx('rate'))}</span><span class="v">${yen(ACCOM_RATE[a])}${esc(tx('perPaxNight'))}</span></div>
+      <div class="sr"><span>${esc(tx('rate'))}</span><span class="v">${[...new Set(g.map(r=>r.rate))].filter(Boolean).map(v=>yen(v)).join(' · ')||'-'}${esc(tx('perPaxNight'))}</span></div>
       <div class="sr"><span>${esc(tx('cntLabel'))}</span><span class="v">${tx('cntPaxV')(g.length,g.reduce((x,r)=>x+r.pax,0))}</span></div>
       <div class="sr"><span>${esc(tx('lodgeFee'))}</span><span class="v">${yen(s)}</span></div>
       <div class="sr"><span>${esc(tx('transFee'))}</span><span class="v">${yen(tr)}</span></div>
