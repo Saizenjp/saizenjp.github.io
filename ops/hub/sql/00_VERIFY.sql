@@ -203,6 +203,8 @@ from (
   union all select 126,'126 예약 추이','booking_snapshots', case when to_regclass('public.booking_snapshots') is not null then '✅ 있음' else '❌ 없음 (126)' end
   union all select 126,'126 예약 추이','매일 자정 스냅샷(pg_cron)', case when exists(select 1 from cron.job where jobname='booking_snapshot_daily' and active) then '✅ 돌고 있음' else '❌ 안 돈다 — 추이가 안 쌓인다 (126)' end
   union all select 126,'126 예약 추이','booking_trend()', case when exists(select 1 from pg_proc where proname='booking_trend') then '✅ 있음' else '❌ 없음 (126)' end
+  union all select 127,'127 마샬 Ai 명단','marshal_player_no(그날 고정 번호)', case when to_regclass('public.marshal_player_no') is not null then '✅ 있음' else '❌ 없음 (127)' end
+  union all select 127,'127 마샬 Ai 명단','marshal_assign_player_no()', case when exists(select 1 from pg_proc where proname='marshal_assign_player_no') then '✅ 있음' else '❌ 없음 (127)' end
 ) t
 order by ord, 항목;
 

@@ -89,7 +89,7 @@
   .course-kuju{border-left:4px solid #5e3a86}
   .deny{padding:34px;text-align:center;color:var(--muted)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=25.9">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=26.0">
 </head>
 <body data-so-area="golf">
 <div class="topbar so-bar">
@@ -117,7 +117,7 @@
 <main id="content"></main>
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=25.9"></script>
+<script src="../assets/saizen-ops.js?v=26.0"></script>
 <script>
 const $=s=>document.querySelector(s);
 const COURSES=[ {code:'aso',ko:'아소',ja:'阿蘇',pop:1}, {code:'sobo',ko:'소보',ja:'祖母',pop:2}, {code:'kuju',ko:'쿠주',ja:'久住',pop:3} ];
@@ -134,7 +134,11 @@ const L={
     savedN:n=>`${n}組を保存しました`, saveFail:'保存失敗: ', loadFail:'読み込み失敗', capFull:'この組は満員です(最大4名)',
     selNone:'先に人を選んでください', person:'名', teamUnit:'チーム', connOk:'接続済', notConn:'未接続', connBtn:'接続',
     connecting:'接続中…', connFail:'接続失敗', needUrlKey:'URL·keyが必要', loginNeed:'先にログインしてください',
-    grp:'組', unassigned:n=>`未編成 ${n}名` },
+    grp:'組', unassigned:n=>`未編成 ${n}名`,
+    mrBtn:'⬇ マーシャルAi 名簿', mrT:'マーシャルAi(テクノクラフト)へ取り込むプレーヤファイル(CSV・Shift-JIS)を書き出します',
+    mrNoCart:n=>`カート番号が未入力の組が ${n} 組あります — カート番号は必須項目です`,
+    mrNoEng:n=>`英文名のない方が ${n} 名います — その方はローマ字が出せません`,
+    mrDone:(g,p)=>`${g}組 ${p}名 を書き出しました`, mrNone:'書き出す組がありません', mrFail:'書き出し失敗: ' },
   ko:{ step:'골프 조편성', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', monthSel:'월 선택',
     daySel:'라운딩 날짜', dayNote:'※ 상품명으로 라운딩 날짜 자동 추출(입국ICN·체류중·귀국PUS).',
     poolH:'미편성', groupsH:'조', addGrp:'＋ 새 조', autoTeam:'🪄 자동 조편성', clearAll:'🧹 전체 비우기', autoManualHint:n=>`${n}팀은 5명 이상 — 수기로 조편성 하세요`,
@@ -144,7 +148,12 @@ const L={
     savedN:n=>`${n}개 조 저장했습니다`, saveFail:'저장 실패: ', loadFail:'불러오기 실패', capFull:'이 조는 만원입니다(최대 4명)',
     selNone:'먼저 인원을 선택하세요', person:'명', teamUnit:'팀', connOk:'연결됨', notConn:'미연결', connBtn:'연결',
     connecting:'연결 중…', connFail:'연결 실패', needUrlKey:'URL·key 필요', loginNeed:'먼저 로그인하세요',
-    grp:'조', unassigned:n=>`미편성 ${n}명` },
+    grp:'조', unassigned:n=>`미편성 ${n}명` ,
+    mrBtn:'⬇ 마샬 Ai 명단', mrT:'마샬 Ai(테크노크래프트)에 넣을 플레이어 파일(CSV·Shift-JIS)을 내려받습니다',
+    mrNoCart:n=>`카트번호가 비어 있는 조가 ${n}개 있습니다 — 카트번호는 필수입니다`,
+    mrNoEng:n=>`영문명이 없는 분이 ${n}명 있습니다 — 그분은 로마자로 못 냅니다`,
+    mrDone:(g,p)=>`${g}조 ${p}명을 내려받았습니다`, mrNone:'내보낼 조가 없습니다', mrFail:'내보내기 실패: '
+  },
   en:{ step:'Golf grouping', connHint:'Connection info is stored only in this browser.', monthSel:'Month',
     daySel:'Round date', dayNote:'※ Round days auto-derived from product (arrival ICN · during stay · departure PUS).',
     poolH:'Unassigned', groupsH:'Groups', addGrp:'＋ New group', autoTeam:'🪄 Auto grouping', clearAll:'🧹 Clear all', autoManualHint:n=>`${n} team(s) have 5+ — group manually`,
@@ -154,7 +163,11 @@ const L={
     savedN:n=>`Saved ${n} groups`, saveFail:'Save failed: ', loadFail:'Load failed', capFull:'This group is full (max 4)',
     selNone:'Select people first', person:'', teamUnit:'teams', connOk:'Connected', notConn:'Not connected', connBtn:'Connect',
     connecting:'Connecting…', connFail:'Connection failed', needUrlKey:'URL·key required', loginNeed:'Please log in first',
-    grp:'G', unassigned:n=>`${n} unassigned` }
+    grp:'G', unassigned:n=>`${n} unassigned`,
+    mrBtn:'⬇ Marshal Ai roster', mrT:'Export the player file (CSV, Shift-JIS) for Marshal Ai (Tecraft)',
+    mrNoCart:n=>`${n} group(s) have no cart number — it is a required field`,
+    mrNoEng:n=>`${n} player(s) have no English name — they cannot be romanised`,
+    mrDone:(g,p)=>`Exported ${g} groups / ${p} players`, mrNone:'Nothing to export', mrFail:'Export failed: ' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; const v=d[k]; return v!=null?v:(L.ja[k]!=null?L.ja[k]:k); }
@@ -216,6 +229,7 @@ function renderUI(){
         <span class="cnt" id="stat"></span>
         <button class="btn sm" id="btn-save" type="button" disabled>${tx('save')}</button>
         <button class="btn sm ghost" id="btn-print" type="button" disabled>${tx('print')}</button>
+        <button class="btn sm ghost" id="btn-marshal" type="button" disabled title="${esc(tx('mrT'))}">${tx('mrBtn')}</button>
       </div>
       <div class="row" style="margin-top:9px">
         <span class="cnt">${tx('daySel')}</span>
@@ -228,6 +242,7 @@ function renderUI(){
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);DATESEL=null;load();});
   $('#btn-save').addEventListener('click',saveBoard);
   $('#btn-print').addEventListener('click',printSheet);
+  $('#btn-marshal').addEventListener('click',downloadMarshal);
 }
 
 async function pagedIn(table, cols, key, vals){
@@ -310,6 +325,80 @@ async function loadBoard(date){
   renderBoard();
 }
 
+// ── 마샬 Ai 플레이어 파일 (테크노크래프트 フロント系システム IF v6.0.2) ──────────
+//  한 조 = 한 줄 19칸. 문자코드 **Shift-JIS(CP932)** · 줄끝 **CRLF**(스펙 2장 기본사양).
+//  ① 카트번호(필수·0 금지) ②③④ 컴페번호·플레이어번호·이름 ×4 ⑤⑥ 캐디 ⑦ 스코어입력종별
+//  ⑧ 스타트 예정 코스 ⑨ 스타트 예정시각(hhmm) ⑩ 컴페명
+//  ⚠ 플레이어번호는 그날 고정이어야 한다 — 바뀌면 그때까지의 스코어가 지워진다(스펙 주의문).
+//    그래서 marshal_player_no 에 한 번 준 번호를 붙들어 둔다(SQL 127).
+function _cp932(ch){
+  const cp=ch.codePointAt(0);
+  if(cp<0x80) return [cp];                                            // ASCII
+  if(cp>=0xFF61&&cp<=0xFF9F) return [cp-0xFF61+0xA1];                 // 반각 가타카나(1바이트)
+  if(cp>=0x3041&&cp<=0x3093){ const b=0x829F+(cp-0x3041); return [b>>8,b&0xFF]; }   // 히라가나
+  if(cp>=0x30A1&&cp<=0x30F6){ let b2=0x40+(cp-0x30A1); if(b2>=0x7F) b2++; return [0x83,b2]; } // 가타카나
+  const X={0x30FC:[0x81,0x5B],0x30FB:[0x81,0x45],0x3000:[0x81,0x40],0xFF0D:[0x81,0x7C]};
+  return X[cp]||[0x3F];                                               // 옮길 수 없는 글자는 '?'
+}
+function cp932Bytes(str){
+  const out=[]; for(const ch of String(str==null?'':str)) out.push(..._cp932(ch));
+  return new Uint8Array(out);
+}
+//  「KIM OK JU」 → 「KimOkJu」 (샘플 파일과 같은 표기)
+function mrName(eng){
+  return String(eng||'').trim().toLowerCase().split(/[^A-Za-z]+/).filter(Boolean)
+    .map(w=>w[0].toUpperCase()+w.slice(1)).join('');
+}
+//  태그코드에서 그룹코드 3자만(영문2+가나1) — 샘플이 「WKﾓ」 형태다
+function mrTag(t){ const m=String(t||'').match(/([A-Za-z]{2}[ぁ-ゖァ-ヶｦ-ﾝ])/); return m?m[1]:''; }   // 가나 = 히라가나·가타카나(전각/반각) 모두
+function mrCsvCell(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }
+async function downloadMarshal(){
+  const btn=$('#btn-marshal'); if(!DATESEL||!GROUPS.length){ toast(tx('mrNone'),'warn'); return; }
+  const gs=GROUPS.filter(g=>(g.members||[]).length);
+  if(!gs.length){ toast(tx('mrNone'),'warn'); return; }
+  if(btn) btn.disabled=true;
+  try{
+    // ① 그날 고정 플레이어번호 확보(없는 사람만 새로 받는다)
+    const ids=[]; gs.forEach(g=>g.members.forEach(m=>{ if(m.id&&ids.indexOf(m.id)<0) ids.push(m.id); }));
+    const {data:nos,error}=await supa.rpc('marshal_assign_player_no',{p_date:DATESEL,p_ids:ids});
+    if(error) throw error;
+    const NO={}; (nos||[]).forEach(r=>{ NO[r.member_id]=r.player_no; });
+    // ② 한 조 = 한 줄
+    let noCart=0, noEng=0, people=0;
+    const lines=gs.map(g=>{
+      const cart=String(g.cart||'').replace(/[^0-9]/g,'');
+      if(!cart||cart==='0') noCart++;
+      const tag=mrTag((g.members[0]&&g.members[0].tag)||'');
+      const f=[cart];
+      for(let i=0;i<4;i++){
+        const m=g.members[i];
+        if(!m){ f.push('','',''); continue; }
+        people++;
+        const nm=mrName(m.eng); if(!nm) noEng++;
+        f.push(String(m.seq||''), String(NO[m.id]||''), mrCsvCell((nm||'?')+(tag?('-'+tag):'')));
+      }
+      f.push('','');                                  // ⑤⑥ 캐디
+      f.push('0');                                    // ⑦ 스코어 입력 종별
+      f.push('0');                                    // ⑧ 스타트 예정 코스(27H는 협의 전 — 현행과 같이 0)
+      f.push(String(Number(String(g.tee||'').replace(':',''))||''));   // ⑨ hhmm
+      f.push(mrCsvCell(tag));                         // ⑩ 컴페명
+      return f.join(',');
+    });
+    const text=lines.join('\r\n')+'\r\n';
+    const blob=new Blob([cp932Bytes(text)],{type:'text/csv'});
+    const d=new Date(), z=n=>String(n).padStart(2,'0');
+    const stamp=`${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`;
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download=`${stamp}PlayerFile.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },400);
+    toast(tx('mrDone')(gs.length,people),'ok');
+    if(noCart) toast(tx('mrNoCart')(noCart),'warn');
+    if(noEng)  toast(tx('mrNoEng')(noEng),'warn');
+  }catch(e){ toast(tx('mrFail')+(e.message||e),'err'); }
+  finally{ if(btn) btn.disabled=false; }
+}
+
 function assignedIds(){ const s=new Set(); GROUPS.forEach(g=>g.members.forEach(m=>s.add(m.id))); return s; }
 function poolMembers(){ const a=assignedIds(); return ROSTER.filter(m=>!a.has(m.id)); }
 
@@ -324,6 +413,7 @@ function wireGrpSearch(){
 function renderBoard(){
   const box=$('#board'); if(!box)return;
   $('#btn-save').disabled=!DATESEL; $('#btn-print').disabled=!(DATESEL&&GROUPS.length);
+  { const b=$('#btn-marshal'); if(b) b.disabled=!(DATESEL&&GROUPS.length); }
   if(!DATESEL){ box.innerHTML=`<div class="panel"><div class="deny">${tx('noDay')}</div></div>`; return; }
   const teams=teamsOnDate(DATESEL);
   if(!teams.length){ box.innerHTML=`<div class="panel"><div class="deny">${tx('noData')}</div></div>`; return; }
