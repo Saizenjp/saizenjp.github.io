@@ -200,6 +200,9 @@ from (
   union all select 124,'124 송영 배차','transfer_dispatch(차량·기사·출발시각)', case when to_regclass('public.transfer_dispatch') is not null then '✅ 있음' else '❌ 없음 (124)' end
   union all select 125,'125 손님 QR 오늘 라운딩','guest_today()', case when exists(select 1 from pg_proc where proname='guest_today') then '✅ 있음' else '❌ 없음 (125)' end
   union all select 125,'125 손님 QR 오늘 라운딩','guest_today 는 anon 실행(손님 비로그인)', case when has_function_privilege('anon','public.guest_today(text)','EXECUTE') then '✅ 유지' else '❌ 막혔다 — 손님 화면이 안 열린다 (125)' end
+  union all select 126,'126 예약 추이','booking_snapshots', case when to_regclass('public.booking_snapshots') is not null then '✅ 있음' else '❌ 없음 (126)' end
+  union all select 126,'126 예약 추이','매일 자정 스냅샷(pg_cron)', case when exists(select 1 from cron.job where jobname='booking_snapshot_daily' and active) then '✅ 돌고 있음' else '❌ 안 돈다 — 추이가 안 쌓인다 (126)' end
+  union all select 126,'126 예약 추이','booking_trend()', case when exists(select 1 from pg_proc where proname='booking_trend') then '✅ 있음' else '❌ 없음 (126)' end
 ) t
 order by ord, 항목;
 
