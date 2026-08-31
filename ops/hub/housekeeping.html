@@ -100,10 +100,8 @@
   .kpi.work.done .v{color:var(--ok)}
   /* 위 KPI 행도 층 칩처럼 고정 — 스크롤해도 진행 상황이 계속 보인다(Min 2026-08).
      panel 밖으로 뺀 이유: panel 안에 있으면 그 짧은 박스 끝에서 고정이 풀린다(층 목록까지 못 따라옴). */
-  .kpis{position:sticky;top:var(--hkTop2,100px);z-index:16;background:var(--surface);
-        border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;
-        box-shadow:0 1px 3px rgba(15,23,42,.04)}
-  @media print{ .kpis{position:static;box-shadow:none;border:none;padding:0} }
+  .kpis{background:var(--surface);border-top:1px solid var(--border2);padding:10px 12px}
+  @media print{ .kpis{border:none;padding:0} }
 
   /* 층 섹션 */
   .flr{margin-bottom:16px;border:1px solid var(--border2);border-radius:11px;overflow:hidden;background:var(--surface)}
@@ -113,6 +111,13 @@
   .flr-h .fst{margin-left:auto;display:flex;gap:9px;flex-wrap:wrap;font-size:12px;font-weight:700}
   .flr-h .fst b{font-family:var(--mono)}
   .flr-h .car{color:var(--muted);width:14px;display:inline-block}
+  .flr.fold .rcards, .flr.fold .hkt{display:none}
+  .kpi.foldable{cursor:pointer;user-select:none}
+  .kpi.foldable:hover{border-color:var(--accent)}
+  .kpi.off{opacity:.45}
+  .kpi.off .v{text-decoration:line-through}
+  .kpi .fx{font-size:10px;font-weight:800;color:var(--err)}
+  @media print{ .flr.fold .rcards, .flr.fold .hkt{display:revert} .kpi.off{opacity:1} }
   .hkt{width:100%;border-collapse:collapse}
   .hkt th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:6px 10px;text-align:left;
     font-size:10.5px;font-weight:800;letter-spacing:.03em;color:var(--text2);white-space:nowrap}
@@ -216,11 +221,14 @@
   .rc-notes{margin-top:5px}
   .rc.s-vacant .rc-b{min-height:34px;color:var(--muted);font-size:12px}
   /* 층 칩 줄 = 화면 위에 고정(스크롤해도 따라옴). 지금 보는 층이 켜지고, 누르면 그 층으로 이동 */
-  .zbar{position:sticky;top:var(--hkTop,54px);z-index:20;background:var(--surface);
-        border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:12px;
-        display:flex;align-items:center;gap:8px;box-shadow:0 2px 8px rgba(15,23,42,.08)}
+  /*  고정 덩어리 = 층 칩 + 요약. 둘을 한 상자로 붙여 사이가 벌어지지 않게 한다. */
+  .hkstick{position:sticky;top:var(--hkTop,54px);z-index:20;background:var(--surface);
+        border:1px solid var(--border);border-radius:12px;margin-bottom:12px;
+        box-shadow:0 2px 10px rgba(15,23,42,.10);overflow:hidden}
+  .zbar{background:var(--surface);padding:8px 12px;
+        display:flex;align-items:center;gap:8px}
   .zchips{display:flex;gap:6px;flex-wrap:wrap;overflow-x:auto;scrollbar-width:thin}
-  @media print{ .zbar{position:static;box-shadow:none} }
+  @media print{ .hkstick{position:static;box-shadow:none;border:none} .zbar{padding:0} }
   .zchip{font-size:14px;font-weight:800;padding:7px 15px;border-radius:9px;border:1px solid var(--border2);
     background:var(--surface);color:var(--text2);cursor:pointer;user-select:none}
   .zchip:hover{border-color:var(--accent)}
@@ -244,7 +252,7 @@
     .flr+.flr{page-break-before:always}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=26.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=26.6">
 </head>
 <body data-so-area="hk">
 <div class="topbar so-bar">
@@ -293,7 +301,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=26.5"></script>
+<script src="../assets/saizen-ops.js?v=26.6"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -321,6 +329,7 @@ const L={
     sortPrio:'優先順', sortNo:'部屋番号順', sortT:'並び替え',
     title:'客室清掃 割当表', readonly:'閲覧のみ（変更はフロント事務所）',
     kTurn:'ターンオーバー', kOut:'退室', kStay:'連泊', kIn:'入室', kVacant:'空室', kOoo:'閉鎖',
+    foldT:'押すとこの状態の部屋を折りたたみ／展開', foldOff:'折りたたみ中', foldFloorT:'押すとこの階を折りたたみ／展開',
     kPax:'滞在人数', kPaxIn:'入室人数', kPaxOut:'退室人数', paxU:'名', paxN:(p)=>`${p}名`,
     roomsU:'室', hkOff:'清掃対象外', hkOffT:'ガンジーホテル・志津の宿は外部委託のため、この画面では扱いません。',
     sTurn:'退室→入室', sOut:'退室', sStay:'連泊', sIn:'入室', sVacant:'空室', sOoo:'閉鎖',
@@ -355,6 +364,7 @@ const L={
     sortPrio:'우선순', sortNo:'호수순', sortT:'정렬',
     title:'객실 청소 배정표', readonly:'보기 전용 (변경은 프론트 사무실)',
     kTurn:'턴오버', kOut:'퇴실', kStay:'연박', kIn:'입실', kVacant:'공실', kOoo:'폐쇄',
+    foldT:'눌러서 이 상태 방을 접기/펴기', foldOff:'접힘', foldFloorT:'눌러서 이 층 접기/펴기',
     kPax:'체류 인원', kPaxIn:'입실 인원', kPaxOut:'퇴실 인원', paxU:'명', paxN:(p)=>`${p}명`,
     roomsU:'실', hkOff:'청소 제외', hkOffT:'간지호텔·시즈노야도는 외부 위탁이라 이 화면에서 다루지 않습니다.',
     sTurn:'퇴실→입실', sOut:'퇴실', sStay:'연박', sIn:'입실', sVacant:'공실', sOoo:'폐쇄',
@@ -389,6 +399,7 @@ const L={
     sortPrio:'Priority', sortNo:'Room no.', sortT:'Sort',
     title:'Housekeeping worksheet', readonly:'Read-only (changes at the front office)',
     kTurn:'Turnover', kOut:'Departure', kStay:'Stayover', kIn:'Arrival', kVacant:'Vacant', kOoo:'Out of order',
+    foldT:'Tap to fold / unfold rooms in this state', foldOff:'folded', foldFloorT:'Tap to fold / unfold this floor',
     kPax:'Guests in house', kPaxIn:'Arriving', kPaxOut:'Departing', paxU:' pax', paxN:(p)=>`${p} pax`,
     roomsU:' rooms', hkOff:'not cleaned here', hkOffT:'The Guernsey Hotel and Shizu-no-Yado are outsourced and are not handled on this screen.',
     sTurn:'Out → In', sOut:'Departure', sStay:'Stayover', sIn:'Arrival', sVacant:'Vacant', sOoo:'Closed',
@@ -553,13 +564,17 @@ function renderUI(){
         <button type="button" class="chip${SORT==='no'?' on':''}" data-sort="no">${tx('sortNo')}</button>
       </div>
     </div>
-    <div class="zbar" id="zbar">
-      <span class="lbl">${tx('floorSel')}</span><span id="zchips" class="zchips"></span>
-    </div>
     <div class="panel" style="margin-bottom:10px">
       <h3>${tx('title')} <span class="cnt" style="font-weight:700;color:var(--muted)">· ${tx('readonly')}</span></h3>
     </div>
-    <div class="kpis" id="kpis"></div>
+    <!--  층 칩과 요약을 **한 덩어리**로 붙여 고정한다(Min 2026-08).
+          예전엔 둘이 따로 sticky 라 사이가 벌어지고 카드가 그 틈으로 비쳤다. -->
+    <div class="hkstick" id="hkstick">
+      <div class="zbar" id="zbar">
+        <span class="lbl">${tx('floorSel')}</span><span id="zchips" class="zchips"></span>
+      </div>
+      <div class="kpis" id="kpis"></div>
+    </div>
     <div class="panel" style="margin-top:10px">
       <div class="lgd noprint"><span>${tx('lgd')}</span><span style="color:var(--muted)">${tx('teeHint')}</span></div>
       ${NOROOM?`<div class="noprint noroom">⚠ ${tx('noRoomWarn')(NOROOM)} <a href="room.html?ym=${esc(DATE.slice(0,7))}&date=${esc(DATE)}">${tx('noRoomGo')}</a></div>`:''}
@@ -612,10 +627,7 @@ function syncStickyTop(){
   const tb=document.querySelector('.topbar');
   const topH=tb?Math.round(tb.getBoundingClientRect().height):54;
   document.documentElement.style.setProperty('--hkTop', topH+'px');
-  // KPI 행은 층 칩(zbar) 바로 아래에 고정 — zbar 자체 높이(칩 줄바꿈 등으로 가변)를 더한다
-  const zb=document.querySelector('.zbar');
-  const zbH=zb?Math.round(zb.getBoundingClientRect().height):46;
-  document.documentElement.style.setProperty('--hkTop2', (topH+zbH)+'px');
+  //  KPI 는 이제 층 칩과 한 상자(.hkstick)라 따로 계산할 것이 없다.
 }
 function renderZoneChips(groups,keys){
   const box=$('#zchips'); if(!box) return;
@@ -631,10 +643,27 @@ function renderZoneChips(groups,keys){
     const z=b.dataset.z||'';
     if(!z){ window.scrollTo({top:0,behavior:'smooth'}); setZoneChip(''); return; }
     const el=document.getElementById('fl-'+cssId(z));
-    if(el){ const bar=document.querySelector('.zbar'); const off=(bar?bar.getBoundingClientRect().bottom:0)+8;
+    if(el){ const bar=document.querySelector('.hkstick'); const off=(bar?bar.getBoundingClientRect().bottom:0)+8;
       window.scrollTo({top:window.scrollY+el.getBoundingClientRect().top-off, behavior:'smooth'}); }
     setZoneChip(z);
   }));
+}
+//  요약 타일 = 상태 접기 · 층 머리줄 = 그 층 접기. 목록을 다시 그릴 때마다 다시 건다.
+function wireFolds(){
+  document.querySelectorAll('#kpis .kpi.foldable').forEach(el=>{
+    const go=()=>toggleStatus(el.dataset.st);
+    el.addEventListener('click',go);
+    el.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } });
+  });
+  document.querySelectorAll('#floors [data-fold]').forEach(el=>{
+    el.addEventListener('click',e=>{
+      if(e.target.closest('.allb')) return;           // 층 일괄 버튼은 접기와 무관
+      const k=el.dataset.fold;
+      if(FOLD.has(k)) FOLD.delete(k); else FOLD.add(k);
+      const blk=el.closest('.flr'); if(blk){ blk.classList.toggle('fold',FOLD.has(k)); }
+      const car=el.querySelector('.car'); if(car) car.textContent=FOLD.has(k)?'▸':'▾';
+    });
+  });
 }
 // 층 이름 → 안전한 id (한글·공백 그대로 쓰면 querySelector 가 깨진다)
 function cssId(z){ return 'z'+String(z||'').replace(/[^\w가-힣]/g,'_'); }
@@ -652,8 +681,8 @@ let _zSpy=null;
 function wireZoneSpy(){
   if(_zSpy) _zSpy.disconnect();
   if(!('IntersectionObserver' in window)) return;
-  const bar=document.querySelector('.zbar');
-  const top=(bar?bar.getBoundingClientRect().height:0)+70;
+  const bar=document.querySelector('.hkstick');
+  const top=(bar?bar.getBoundingClientRect().height:0)+16;
   _zSpy=new IntersectionObserver(es=>{
     const vis=es.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];
     if(vis) setZoneChip(vis.target.dataset.zone||'');
@@ -905,7 +934,8 @@ function render(){
 
   // 층(zone) 단위 — 청소팀은 층을 맡아 움직인다
   const groups={};
-  recs.forEach(r=>{ const k=zoneKeyOf(r);
+  //  접어 둔 상태(요약 타일에서 끈 것)는 목록에서 뺀다 — 요약 숫자는 전체 기준 그대로 둔다.
+  recs.filter(stVisible).forEach(r=>{ const k=zoneKeyOf(r);
     (groups[k]=groups[k]||{fac:r.inv.facility||'', zone:r.inv.zone||r.inv.facility||'', list:[]}).list.push(r); });
   const keys=Object.keys(groups).sort((a,b)=>{
     const A=groups[a], B=groups[b];
@@ -932,6 +962,7 @@ function render(){
   box.querySelectorAll('[data-ndone]').forEach(b=>b.addEventListener('click',ev=>{
     ev.stopPropagation(); doneNote(b.dataset.ndone);
   }));
+  wireFolds();                 // 요약 타일·층 머리줄 접기
   wireZoneSpy(); syncStickyTop();
 }
 
@@ -959,20 +990,33 @@ function wireNoteModal(){
   if(inp) inp.addEventListener('keydown',e=>{ if(e.key==='Enter') saveNote(); });
   applyNoteUI();
 }
+//  태블릿에서는 한 화면에 다 안 들어온다 — 지금 안 볼 상태는 접어 둔다(Min 2026-08).
+//   요약 타일을 누르면 그 상태 방이 목록에서 빠지고, 타일은 흐려진다. 다시 누르면 돌아온다.
+let STHIDE=new Set();
+let FOLD=new Set();          // 접어 둔 층·동 (다시 그려도 유지)
+function stVisible(r){ return !STHIDE.has(r.status); }
+function toggleStatus(st){
+  if(!st) return;
+  if(STHIDE.has(st)) STHIDE.delete(st); else STHIDE.add(st);
+  render();
+}
 function renderKpis(recs){
   const box=$('#kpis'); if(!box) return;
   const c={turn:0,out:0,stay:0,in:0,vacant:0,ooo:0};
   recs.forEach(r=>{ c[r.status]++; });
-  const kpi=(cls,k,v,u)=>`<div class="kpi ${cls}"><div class="k">${esc(k)}</div><div class="v">${v}<span class="u">${esc(u||'')}</span></div></div>`;
+  //  st 를 주면 눌러서 접을 수 있는 타일이 된다(인원·진행 타일은 그대로 둔다).
+  const kpi=(cls,k,v,u,st)=>`<div class="kpi ${cls}${st?' foldable':''}${st&&STHIDE.has(st)?' off':''}"${st?` data-st="${esc(st)}" role="button" tabindex="0" title="${esc(tx('foldT'))}"`:''}>`
+    +`<div class="k">${esc(k)}${st&&STHIDE.has(st)?` <span class="fx">${esc(tx('foldOff'))}</span>`:''}</div>`
+    +`<div class="v">${v}<span class="u">${esc(u||'')}</span></div></div>`;
   // 청소·타월 진행 카드 — 숫자가 빨강이면 아직 남음, N/N(또는 대상 0건)이 되면 초록으로 바뀐다(Min 2026-08)
   const kpiProg=(k,d,t)=>{ const done=t===0||d===t;
     return `<div class="kpi work${done?' done':''}"><div class="k">${esc(k)}</div><div class="v">${d}/${t}</div></div>`; };
   box.innerHTML=
-     kpi('turn',tx('kTurn'),c.turn,tx('roomsU'))
-    +kpi('out', tx('kOut'), c.out, tx('roomsU'))
-    +kpi('stay',tx('kStay'),c.stay,tx('roomsU'))
-    +kpi('inn', tx('kIn'),  c.in,  tx('roomsU'))
-    +kpi('',    tx('kVacant'),c.vacant,tx('roomsU'))
+     kpi('turn',tx('kTurn'),c.turn,tx('roomsU'),'turn')
+    +kpi('out', tx('kOut'), c.out, tx('roomsU'),'out')
+    +kpi('stay',tx('kStay'),c.stay,tx('roomsU'),'stay')
+    +kpi('inn', tx('kIn'),  c.in,  tx('roomsU'),'in')
+    +kpi('',    tx('kVacant'),c.vacant,tx('roomsU'),'vacant')
     +(c.ooo?kpi('',tx('kOoo'),c.ooo,tx('roomsU')):'')
     // 인원 — 그날 밤 묵는 사람 수(입·퇴실 인원은 있을 때만). 방 수만으로는 규모가 안 보인다.
     + (()=>{ const sum=(f)=>recs.reduce((s,r)=>s+f(r),0);
@@ -1008,8 +1052,10 @@ function floorHtml(g,key){
     return String(a.inv.room_no).localeCompare(String(b.inv.room_no),undefined,{numeric:true});
   });
   const badge=(cls,lab,n)=>n?`<span class="st ${cls}" style="font-size:10.5px;padding:2px 7px">${esc(lab)} ${n}</span>`:'';
-  return `<div class="flr" id="fl-${cssId(key)}" data-zone="${esc(key)}">
-    <div class="flr-h">
+  const fold=FOLD.has(key);
+  return `<div class="flr${fold?' fold':''}" id="fl-${cssId(key)}" data-zone="${esc(key)}">
+    <div class="flr-h" data-fold="${esc(key)}" title="${esc(tx('foldFloorT'))}">
+      <span class="car">${fold?'▸':'▾'}</span>
       <span>${esc(zoneL(g.zone))}</span><span class="fac">${esc(accomL(g.fac))}</span>
       <span class="fst">
         ${badge('turn',tx('sTurn'),c.turn)}${badge('out',tx('sOut'),c.out)}
