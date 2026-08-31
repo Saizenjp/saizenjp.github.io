@@ -109,6 +109,12 @@
   table.oc tr.una td.rh{font-weight:800;font-size:12px;color:#8f2d24}
   table.oc tr.una td.c{font-size:12px;font-weight:800;cursor:default}
   table.oc tr.una td.c.none{color:#e3bdb8;font-weight:600}
+  /* 싱글 신청 줄 — 비고에서 뽑은 요청 수량(배정 결과가 아니다) */
+  table.oc tr.sgr td{background:#fdf6e7;color:#6b5312;border-top:1px dashed #e6d3a3}
+  table.oc tr.sgr td.rh{font-weight:800;font-size:12px;color:#6b5312}
+  table.oc tr.sgr td.c{font-size:12.5px;font-weight:800;cursor:default}
+  table.oc tr.sgr td.c.none{color:#d8cba6;font-weight:600}
+  table.oc tr.sgr td.c i.tent{font-style:normal;font-size:10.5px;font-weight:800;color:#a8442f;margin-left:2px}
   table.oc tr.wait td{background:#f2f0f7;color:#4a3d63;border-top:1px dashed #b9aed4}
   table.oc tr.wait td.rh{font-weight:800;font-size:12px;color:#4a3d63}
   table.oc tr.wait td.c{font-size:12px;font-weight:800;cursor:default}
@@ -129,7 +135,7 @@
   table.dt tr:hover td{background:var(--surface2)}
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=26.1">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=26.2">
 </head>
 <body data-so-area="room">
 <div class="topbar so-bar">
@@ -161,7 +167,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=26.1"></script>
+<script src="../assets/saizen-ops.js?v=26.2"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -185,6 +191,8 @@ const L={
     unaRowH:'未割当', unaT:(t,p)=>`未割当 ${t}チーム / ${p}名`,
     lgUna:'未割当 — まだ部屋が決まっていない人数。この行がある日は表の使用数にその分が入っておらず、「予約可」も出しません。',
     lgWait:'待機予約 — 満室でもお受けした未確定の予約(客室は押さえていません)', waitRowH:'待機予約', waitT:(t,p)=>`待機 ${t}チーム / ${p}名`,
+    sgrRowH:'シングル希望', sgrT:(r,t)=>`シングル希望 ${r}室`+(t?` ＋未確定 ${t}室`:'')+' (備考より)',
+    lgSgr:'シングル希望 — 備考に書かれたシングルの室数。赤い数字は「待機・不可」等の未確定分',
     nights:n=>`${n}泊`, roomsN:n=>`${n}室`, paxN:n=>`${n}名`,
     thRow:'施設・ルームタイプ', own:'保有',
     dtTitle:d=>`${d} の内訳`, dtNone:'この日この客室タイプに滞在中のチームはありません。',
@@ -211,6 +219,8 @@ const L={
     unaRowH:'미배정', unaT:(t,p)=>`미배정 ${t}팀 / ${p}명`,
     lgUna:'미배정 — 아직 방을 못 받은 인원입니다. 이 줄이 있는 날짜는 표의 사용 수에 그 인원이 빠져 있고, 「예약 가능」도 표시하지 않습니다(들어갈 방이 정해지지 않아서).',
     lgWait:'대기 예약 — 만실이어도 받아 둔 미확정 예약(객실을 잡고 있지 않습니다)', waitRowH:'대기 예약', waitT:(t,p)=>`대기 ${t}팀 / ${p}명`,
+    sgrRowH:'싱글 신청', sgrT:(r,t)=>`싱글 신청 ${r}방`+(t?` ＋미확정 ${t}방`:'')+' (비고 기준)',
+    lgSgr:'싱글 신청 — 비고에 적힌 싱글 방 수. 빨간 숫자는 「대기·불가」처럼 아직 확정이 아닌 분량',
     nights:n=>`${n}박`, roomsN:n=>`${n}실`, paxN:n=>`${n}명`,
     thRow:'숙소 · 룸타입', own:'보유',
     dtTitle:d=>`${d} 상세`, dtNone:'이 날 이 룸타입에 체류 중인 팀이 없습니다.',
@@ -237,6 +247,8 @@ const L={
     unaRowH:'Unassigned', unaT:(t,p)=>`unassigned ${t} teams / ${p} pax`,
     lgUna:'Unassigned — guests with no room yet. On those dates the used count excludes them and no “bookable” badge is shown.',
     lgWait:'Waitlist — taken even when full, not confirmed (holds no room)', waitRowH:'Waitlist', waitT:(t,p)=>`Waitlist ${t} teams / ${p} pax`,
+    sgrRowH:'Singles asked', sgrT:(r,t)=>`${r} single room(s) requested`+(t?` + ${t} unconfirmed`:'')+' (from remarks)',
+    lgSgr:'Singles asked — single rooms written in the remarks. The red number is the unconfirmed part (waitlisted / declined)',
     nights:n=>`${n} nights`, roomsN:n=>`${n} rooms`, paxN:n=>`${n}`,
     thRow:'Facility · room type', own:'Stock',
     dtTitle:d=>`${d} detail`, dtNone:'No team staying in this room type on this date.',
@@ -261,7 +273,7 @@ function fmt(d){ return SZCore.fmtDate(d); }
 const ACCOM_ORDER=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
 function accomIdx(a){ const i=ACCOM_ORDER.indexOf(a); return i<0?99:i; }
 
-let supa=null, INV=[], ROOMS=[], TEAM={}, DAYS=[], ROWS=[], SEL=null, WAIT={};
+let supa=null, INV=[], ROOMS=[], TEAM={}, DAYS=[], ROWS=[], SEL=null, WAIT={}, SGR={};
 let YMS=[thisYM(), shiftYM(thisYM(),1)];       // 이어보기(복수 월)
 // 기본 = 숙소 단위 한 행 + 인원을 트윈(2인 1실)으로 환산한 객실 수(Min 2026-08:
 //  "야마나미리조트는 그냥 야마나미리조트로, 인원 수로 트윈 잡고 갯수만. 방별로 쪼개지 말고.
@@ -329,6 +341,7 @@ function renderUI(){
         <span><i class="x"></i>${tx('lgOver')}</span>
         <span><i class="bkl">3박</i>${tx('lgBook')}</span>
         <span><i class="u" style="background:#fdeceb;border-color:#e0a49d"></i>${tx('lgUna')}</span>
+        <span><i class="w" style="background:#fdf6e7;border-color:#e6d3a3"></i>${tx('lgSgr')}</span>
         <span><i class="w"></i>${tx('lgWait')}</span>
       </div>
     </div>
@@ -459,6 +472,39 @@ async function load(){
         cell.teams++; cell.pax+=Number(b.pax)||0; if(cell.reps.length<6) cell.reps.push(b.rep_name||'');
       }
     });
+    // 5) 싱글 신청 — 비고에 적힌 **싱글 방 수**를 그날 밤마다 더한다(Min 2026-08).
+    //    표의 「싱글」 행은 배정된 **결과**라, 배정 전에는 신청이 얼마나 들어왔는지 볼 수가 없었다.
+    //    ⚠ 대기 예약은 방을 안 잡으므로 여기서도 뺀다(표의 다른 줄과 같은 기준).
+    SGR={};
+    {
+      const sb=await paged((a,b)=>supa.from('bookings')
+        .select('event_seq,dep_date,arr_date,rep_name,status,remark,remark_local')
+        .lt('dep_date',to).gt('arr_date',from).order('event_seq').range(a,b));
+      if(sb.error) throw sb.error;
+      const cand=(sb.data||[]).filter(b=>!String(b.status||'').includes('대기'))
+        .map(b=>{ const t=[b.remark_local,b.remark].filter(Boolean).join('\n');
+          return {b, n:(SZCore.singleCount?SZCore.singleCount(t):0),
+                     why:(SZCore.singleTentative?SZCore.singleTentative(t):'')}; })
+        .filter(x=>x.n>0);
+      const sseqs=cand.map(x=>x.b.event_seq);
+      const SACC={};
+      for(let i=0;i<sseqs.length;i+=300){
+        const {data:gs}=await supa.from('guests').select('event_seq,accom').in('event_seq',sseqs.slice(i,i+300));
+        (gs||[]).forEach(g=>{ SACC[g.event_seq]=g.accom||''; });
+      }
+      cand.forEach(x=>{
+        const fac=SACC[x.b.event_seq]||''; if(!fac) return;
+        const c=SZCore.parseLocalDate(x.b.dep_date), e=SZCore.parseLocalDate(x.b.arr_date);
+        if(isNaN(c)||isNaN(e)) return;
+        for(const d=new Date(c); d<e; d.setDate(d.getDate()+1)){
+          const ds=fmt(d); if(!DAYS.includes(ds)) continue;
+          const m=(SGR[fac]=SGR[fac]||{});
+          const cell=(m[ds]=m[ds]||{rooms:0, tent:0, teams:[]});
+          if(x.why) cell.tent+=x.n; else cell.rooms+=x.n;
+          if(cell.teams.length<8) cell.teams.push((x.b.rep_name||'')+' '+x.n+(x.why?('('+x.why+')'):''));
+        }
+      });
+    }
     buildRows();
     renderAccomChips();
     $('#stat').textContent=tx('statN')(ROWS.length,DAYS.length);
@@ -581,6 +627,19 @@ function waitRow(fac){
   }).join('');
   return `<tr class="wait"><td class="rh">${tx('waitRowH')}</td>${tds}</tr>`;
 }
+//  싱글 신청 줄 — 비고에 적힌 싱글 방 수(배정 전에도 보인다). 확정과 미확정을 나눠 센다.
+function sgrRow(fac){
+  const m=SGR[fac]; if(!m || !Object.keys(m).length) return '';
+  let prevM='';
+  const tds=DAYS.map(d=>{
+    const ms=d.slice(0,7)!==prevM; prevM=d.slice(0,7);
+    const c=m[d];
+    if(!c||(!c.rooms&&!c.tent)) return `<td class="c none${ms?' mstart':''}">·</td>`;
+    const t=tx('sgrT')(c.rooms,c.tent)+(c.teams.length?' — '+c.teams.join(', '):'');
+    return `<td class="c${ms?' mstart':''}" title="${esc(t)}">${c.rooms||'·'}${c.tent?`<i class="tent">+${c.tent}</i>`:''}</td>`;
+  }).join('');
+  return `<tr class="sgr"><td class="rh">${tx('sgrRowH')}</td>${tds}</tr>`;
+}
 //  미배정 줄 — 방을 아직 못 받은 인원(표의 사용 수에는 안 들어간다)
 function unaRow(fac){
   const m=UNA[fac]; if(!m || !Object.keys(m).length) return '';
@@ -628,7 +687,7 @@ function renderGrid(){
     body.push(`<tr><td class="rh"><span class="rt">${esc(BYTYPE?r.type:accomL(r.facility))}</span><span class="own">${esc(tx('own'))} ${r.own}</span></td>${tds}</tr>`);
     // 그 숙소의 마지막 행 뒤에 대기 예약 줄(방을 안 잡는 예약이라 팀·인원으로)
     const nxt=rows[rows.indexOf(r)+1];
-    if(!nxt || nxt.facility!==r.facility){ body.push(unaRow(r.facility)); body.push(waitRow(r.facility)); }
+    if(!nxt || nxt.facility!==r.facility){ body.push(sgrRow(r.facility)); body.push(unaRow(r.facility)); body.push(waitRow(r.facility)); }
   });
   // 합계 행
   const tot=DAYS.map((d,i)=>rows.reduce((n,r)=>n+r.days[i].r+(r.days[i].need||0),0));
