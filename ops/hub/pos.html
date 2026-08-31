@@ -122,6 +122,20 @@
   .mst.st-bar,.cl-st.st-bar{color:#1A4D8F;background:#eaf0f8;border-color:#bcd0e8}
   .cl-st{margin-left:6px;font-size:10px;font-weight:800;border-radius:5px;padding:1px 6px;border:1px solid transparent}
   .cart-dest{font-size:12px;font-weight:800;color:var(--text2);padding:6px 0;border-bottom:1px dashed var(--border)}
+  /* 하단 패널 탭 · 오늘 주문 표 */
+  .kotabs{display:flex;gap:5px}
+  .kotab{font-family:inherit;font-size:12px;font-weight:800;padding:5px 11px;border-radius:8px;
+    border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer}
+  .kotab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  table.daytbl{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.daytbl th,table.daytbl td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+  table.daytbl th{font-size:11px;font-weight:800;color:var(--text2);background:var(--surface2);white-space:nowrap}
+  table.daytbl td.dl-t,table.daytbl td.dl-tm,table.daytbl td.dl-a,table.daytbl td.dl-q{font-family:var(--mono);white-space:nowrap}
+  table.daytbl td.dl-tm{font-weight:800;color:var(--accent)}
+  table.daytbl .dl-q,table.daytbl .dl-a{text-align:right}
+  table.daytbl td.dl-w{color:var(--muted);white-space:nowrap}
+  table.daytbl .dl-p{font-size:10px;font-weight:800;color:var(--accent2);margin-left:5px}
+  table.daytbl tfoot td{font-weight:800;border-bottom:none;background:var(--surface2)}
   /* 방 머리글 = 그 방 전원 한 번에 고르기 */
   .proom-h{display:flex;align-items:center;gap:8px;width:100%;font-family:inherit;text-align:left;cursor:pointer;
     border:1px solid var(--border2);background:var(--surface2);border-radius:8px;padding:5px 10px;margin-bottom:5px}
@@ -227,7 +241,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.3">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -327,12 +341,17 @@
 
 <!-- 주문 현황 — 주방 접수/완료를 프론트가 실시간 확인(오늘 전체) -->
 <div class="wrap" id="ko-status" style="display:none;margin-top:6px">
-  <div class="sec-title" style="display:flex;align-items:center;gap:10px">
+  <div class="sec-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <span id="ko-title"></span>
     <span class="pill" id="ko-meta"></span>
-    <button class="btn ghost sm" id="ko-refresh" type="button" style="margin-left:auto">↻</button>
+    <span class="kotabs" id="ko-tabs" style="margin-left:auto">
+      <button type="button" class="kotab" data-kov="tickets"></button>
+      <button type="button" class="kotab" data-kov="day"></button>
+    </span>
+    <button class="btn ghost sm" id="ko-refresh" type="button">↻</button>
   </div>
   <div id="ko-list"></div>
+  <div id="day-list" style="display:none"></div>
 </div>
 
 <div id="toast"></div>
@@ -409,7 +428,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=27.2"></script>
+<script src="../assets/saizen-ops.js?v=27.3"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -451,6 +470,9 @@ const L={
     koTitle:'注文状況', allVenues:'全体',
     stKitchen:'厨房へ', stBar:'バーへ',
     roomPick:'この部屋 全員', roomPickOff:'選択解除', roomPickT:'この部屋のお客様をまとめて選ぶ／外す',
+    koTabTickets:'厨房・バー', koTabDay:'本日の注文', dayEmpty:'この日の注文はありません。',
+    dayTime:'時刻', dayTeam:'チーム', dayItem:'品目', dayQty:'数量', dayAmt:'金額', dayWho:'担当', dayTo:'送り先',
+    daySplit:'個人', dayTotal:(n)=>`${n}件`,
     vRestaurant:'レストラン', vBanquet:'コンベンションホール', vProshop:'ゴルフショップ', vFront:'フロント売店', vEtc:'その他',
     oFront:'フロント売店', oRestaurant:'レストラン·コンベンションホール', oGolf:'ゴルフショップ' },
   ko:{ noTeamHead:'팀 미선택 — 계산할 때 고릅니다', pickTeamFirst:'메뉴를 먼저 담고, 계산에서 [팀 선택]을 누르세요',
@@ -482,6 +504,9 @@ const L={
     koTitle:'주문 현황', allVenues:'전체',
     stKitchen:'주방으로', stBar:'바로',
     roomPick:'이 방 전체', roomPickOff:'선택 해제', roomPickT:'이 방 손님을 한 번에 고르기/해제',
+    koTabTickets:'주방·바', koTabDay:'오늘 주문', dayEmpty:'이 날 주문이 없습니다.',
+    dayTime:'시각', dayTeam:'팀', dayItem:'품목', dayQty:'수량', dayAmt:'금액', dayWho:'담당', dayTo:'전송',
+    daySplit:'개인', dayTotal:(n)=>`${n}건`,
     vRestaurant:'레스토랑', vBanquet:'컨벤션 홀', vProshop:'골프샵', vFront:'프론트 매점', vEtc:'기타',
     oFront:'프론트 매점', oRestaurant:'레스토랑·컨벤션 홀', oGolf:'골프샵' },
   en:{ noTeamHead:'No team yet — pick it at checkout', pickTeamFirst:'Add items first, then press [Pick team] at checkout',
@@ -513,6 +538,9 @@ const L={
     koTitle:'Order status', allVenues:'All',
     stKitchen:'to kitchen', stBar:'to bar',
     roomPick:'Whole room', roomPickOff:'Clear', roomPickT:'Select or clear everyone in this room',
+    koTabTickets:'Kitchen·Bar', koTabDay:'Today\'s orders', dayEmpty:'No orders on this day.',
+    dayTime:'Time', dayTeam:'Team', dayItem:'Item', dayQty:'Qty', dayAmt:'Amount', dayWho:'By', dayTo:'To',
+    daySplit:'personal', dayTotal:(n)=>`${n} lines`,
     vRestaurant:'Restaurant', vBanquet:'Convention hall', vProshop:'Pro shop', vFront:'Front shop', vEtc:'Other',
     oFront:'Front shop', oRestaurant:'Restaurant·Convention hall', oGolf:'Pro shop' }
 };
@@ -566,6 +594,9 @@ function applyStatic(){
   const dp=$('#btn-day-prev'); if(dp) dp.title=tx('prevDay');
   const dn=$('#btn-day-next'); if(dn) dn.title=tx('nextDay');
   const kt=$('#ko-title'); if(kt) kt.textContent=tx('koTitle');
+  { const tb=document.getElementById('ko-tabs');
+    if(tb){ const a1=tb.querySelector('[data-kov="tickets"]'), a2=tb.querySelector('[data-kov="day"]');
+      if(a1) a1.textContent=tx('koTabTickets'); if(a2) a2.textContent=tx('koTabDay'); } }
   const cb=$('#btn-cust-display'); if(cb) cb.title=tx('custOnTitle');
   const wb=$('#btn-walkin'); if(wb){ wb.textContent=tx('wiBtn'); wb.title=tx('wiHint'); }
   renderWalkinPay();
@@ -587,7 +618,7 @@ async function connect(){
     $('#btn-load').disabled=false;
     await loadMenu();
     await loadTeams();
-    $('#ko-status').style.display=''; koRefresh(); startKoPoll();
+    $('#ko-status').style.display=''; setKoView(koView); startKoPoll();
   }catch(e){
     setConn(tx('connFail'),'err');
     toast(tx('connFailToast')(e.message),'err');
@@ -1346,7 +1377,7 @@ async function sendCart(){
     state.runningGross+=total; $('#oh-run').textContent=yen(state.runningGross);
     { const box=$('#run-list'); if(box && box.style.display!=='none'){ box.style.display='none'; toggleRunList(); } }
     state.cart=[]; renderCart(); renderWalkinPay();
-    if(tickets.length) koRefresh();   // 방금 보낸 주문이 현황에 바로 뜨도록
+    koRefreshAny();   // 방금 보낸 주문이 아래 목록에 바로 뜨도록(티켓 없는 매점 품목도)
   }catch(e){
     toast(tx('sendFail')(e.message),'err'); $('#btn-send').disabled=false;
   }
@@ -1354,7 +1385,65 @@ async function sendCart(){
 
 // ── 주문 현황(주방 접수/완료 확인) — 오늘 전체, 폴링 ──
 let koTimer=null;
-function startKoPoll(){ stopKoPoll(); koTimer=setInterval(koRefresh,7000); }
+//  하단 패널 두 갈래 — 'tickets'=주방·바 진행 상태(기존) / 'day'=그날 들어온 주문 전부.
+//   매점 품목은 티켓이 안 생겨 기존 화면에는 안 보였다. 마감 때 「오늘 뭐가 얼마나 나갔나」를
+//   보려면 charges 를 그날치로 읽어야 한다(Min 2026-08).
+let koView='tickets';
+function koRefreshAny(){ return koView==='day'?dayRefresh():koRefresh(); }
+function setKoView(v){
+  koView=v;
+  document.querySelectorAll('#ko-tabs .kotab').forEach(b=>b.classList.toggle('active',b.dataset.kov===v));
+  $('#ko-list').style.display=(v==='tickets')?'':'none';
+  $('#day-list').style.display=(v==='day')?'':'none';
+  koRefreshAny();
+}
+//  그날 이 매장에서 들어온 청구 전부(취소 제외). 매장을 고정해 열었으면 그 매장 것만.
+async function dayRefresh(){
+  const box=$('#day-list'); if(!supa||!box) return;
+  const d=state.date||isoToday();
+  const vs=outletVenues();
+  let q=supa.from('charges')
+    .select('id,event_seq,charged_at,description,qty,unit_price,amount,tax,source,link_ref,created_by,member_id')
+    .gte('charged_at', d+'T00:00:00').lt('charged_at', d+'T23:59:59.999')
+    .eq('voided',false).order('charged_at',{ascending:false});
+  if(vs) q=q.in('source', vs);
+  const {data,error}=await q;
+  if(error){ box.innerHTML=`<div class="empty-hint" style="padding:10px">${escP(error.message)}</div>`; return; }
+  dayRender(data||[]);
+}
+//  전송처는 charges 에 없다 — link_ref('menu:<id>') 로 메뉴를 되짚어 표시만 한다.
+function dayStationOf(c){
+  const m=String(c.link_ref||'').match(/^menu:(\d+)$/); if(!m) return '';
+  const mi=(state.menu||[]).find(x=>String(x.id)===m[1]);
+  return mi?(mi.station||''):'';
+}
+function dayRender(rows){
+  const box=$('#day-list');
+  if(!rows.length){ box.innerHTML=`<div class="empty-hint" style="padding:10px">${escP(tx('dayEmpty'))}</div>`; return; }
+  const hhmm=(iso)=>{ const t2=String(iso||''); const m=t2.match(/T(\d{2}):(\d{2})/); return m?`${m[1]}:${m[2]}`:''; };
+  const teamOf=(seq)=>{ const tm=(state.teams||[]).find(x=>String(x.event_seq)===String(seq));
+    return tm?teamTag(tm):('#'+seq); };
+  let sum=0, qty=0;
+  const body=rows.map(c=>{
+    const gross=Number(c.amount||0)+Number(c.tax||0); sum+=gross; qty+=Number(c.qty||0);
+    const st=dayStationOf(c), stl=stLabel(st);
+    return `<tr><td class="dl-t">${escP(hhmm(c.charged_at))}</td>
+      <td class="dl-tm">${escP(teamOf(c.event_seq))}</td>
+      <td>${escP(c.description||'')}${c.member_id?`<span class="dl-p">${escP(tx('daySplit'))}</span>`:''}</td>
+      <td class="dl-q">${Number(c.qty||0)}</td>
+      <td class="dl-a">${yen(gross)}</td>
+      <td class="dl-w">${escP(c.created_by||'')}</td>
+      <td>${stl?`<span class="cl-st st-${escP(st)}">${escP(stl)}</span>`:''}</td></tr>`;
+  }).join('');
+  box.innerHTML=`<table class="daytbl"><thead><tr>
+      <th>${escP(tx('dayTime'))}</th><th>${escP(tx('dayTeam'))}</th><th>${escP(tx('dayItem'))}</th>
+      <th class="dl-q">${escP(tx('dayQty'))}</th><th class="dl-a">${escP(tx('dayAmt'))}</th>
+      <th>${escP(tx('dayWho'))}</th><th>${escP(tx('dayTo'))}</th></tr></thead>
+    <tbody>${body}</tbody>
+    <tfoot><tr><td colspan="3">${escP(tx('dayTotal')(rows.length))}</td>
+      <td class="dl-q">${qty}</td><td class="dl-a">${yen(sum)}</td><td colspan="2"></td></tr></tfoot></table>`;
+}
+function startKoPoll(){ stopKoPoll(); koTimer=setInterval(koRefreshAny,7000); }
 function stopKoPoll(){ if(koTimer){clearInterval(koTimer);koTimer=null;} }
 async function koRefresh(){
   if(!supa) return;
@@ -1543,6 +1632,8 @@ async function scanResolve(raw){
 
 // ── 하드웨어 스캐너(HID 키보드 모드) — 공용 헬퍼(saizen-ops __so_hidScan)에 위임.
 //   스캐너를 꽂기만 하면 어느 화면·어느 포커스에서 스캔해도 그 팀이 바로 열린다.
+{ const tabs=document.getElementById('ko-tabs');
+  if(tabs) tabs.querySelectorAll('.kotab').forEach(b=>b.addEventListener('click',()=>setKoView(b.dataset.kov))); }
 if(window.__so_hidScan) __so_hidScan(function(raw){
   markHidScanner();                      // 리더기로 읽혔다 = 이 PC 엔 리더기가 있다
   if(supa) scanResolve(raw);
