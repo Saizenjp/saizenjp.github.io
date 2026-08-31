@@ -96,12 +96,22 @@
   .runlist tfoot td{font-weight:800;border-bottom:none}
   .runlist .who{color:var(--muted);font-size:11.5px}
   .runlist .empty{color:var(--muted);font-size:12.5px;padding:6px 2px}
-  .order-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:14px}
-  .order-head .ot{font-size:20px;font-weight:800}
-  .order-head .ot .otag{font-family:var(--mono);color:var(--accent)}
+  /*  전송해도 팀이 그대로 남는다(Min 2026-08 결정) → **지금 누구 주문인지**가 눈에 박혀야
+      다음 손님 것을 앞 팀에 붙이는 사고가 안 난다. 그래서 머리줄을 크게·진하게 세운다. */
+  .order-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--accentSoft,#eef3e6);
+    border:1px solid var(--accent);border-left:7px solid var(--accent);border-radius:12px;
+    padding:14px 18px;margin-bottom:14px}
+  .order-head.none{background:var(--surface2);border-color:var(--border);border-left-color:var(--border);border-left-style:dashed}
+  .order-head .ot{font-size:20px;font-weight:800;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .order-head .ot .otag{font-family:var(--mono);color:var(--accent);font-size:30px;letter-spacing:.5px;line-height:1.1}
+  .order-head.none .ot .otag{display:none}
+  .order-head .ot .orep{font-size:19px;color:var(--text)}
+  .order-head.none .ot .orep{font-size:16px;color:var(--muted);font-weight:700}
+  .order-head .ot .osub{font-size:12.5px;color:var(--text2);font-weight:700}
   .order-head .orun{margin-left:auto;font-size:13px;color:var(--text2);font-weight:700}
   .order-head .orun b{font-family:var(--mono);color:var(--text);font-size:16px}
 
+  #btn-send .sbt{display:block;font-family:var(--mono);font-size:13px;font-weight:800;opacity:.92;margin-top:2px;letter-spacing:.4px}
   .order-stage{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
   @media(max-width:880px){.order-stage{grid-template-columns:1fr}}
 
@@ -201,7 +211,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=26.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=26.4">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -260,7 +270,7 @@
   <!-- 2단계: 주문 입력 -->
   <div id="order-view" style="display:none">
     <div class="order-head">
-      <div class="ot"><span class="otag" id="oh-tag"></span> <span id="oh-rep"></span></div>
+      <div class="ot"><span class="otag" id="oh-tag"></span><span class="orep" id="oh-rep"></span><span class="osub" id="oh-sub"></span></div>
       <div class="orun"><span data-i18n="po_runningTotal"></span> <b id="oh-run">¥0</b></div>
       <button class="btn ghost sm" id="btn-run-list" type="button" style="margin-left:8px"></button>
       <button class="btn ghost sm" id="btn-cust-display" type="button" style="margin-left:10px"></button>
@@ -382,7 +392,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=26.3"></script>
+<script src="../assets/saizen-ops.js?v=26.4"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -689,6 +699,8 @@ function showOrderView(){
   $('#btn-back').style.display='none';
   $('#oh-tag').textContent='';
   $('#oh-rep').textContent=tx('noTeamHead');
+  { const sb=$('#oh-sub'); if(sb) sb.textContent=''; }
+  { const oh=document.querySelector('.order-head'); if(oh) oh.classList.add('none'); }
   $('#oh-run').textContent=yen(0);
   const rl=$('#run-list'); if(rl){ rl.style.display='none'; rl.innerHTML=''; }
   renderVenueTabs(); renderGrpTabs(); renderSubChips(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); updateSendBtn();
@@ -697,7 +709,12 @@ function showOrderView(){
 function updateSendBtn(){
   const b=$('#btn-send'); if(!b) return;
   if(!state.team){ b.innerHTML=tx('btnPickTeam'); b.disabled=!state.cart.length; }
-  else { b.innerHTML=t('po_send'); b.disabled=!state.cart.length; }   // innerHTML = 후리가나 루비 렌더(textContent 면 태그가 글자로 보인다)
+  else {
+    // innerHTML = 후리가나 루비 렌더(textContent 면 태그가 글자로 보인다)
+    //  버튼에도 팀을 박아 둔다 — 누르기 직전에 반드시 눈에 들어오게(Min 2026-08).
+    b.innerHTML=t('po_send')+'<span class="sbt">'+escP(teamTag(state.team))+'</span>';
+    b.disabled=!state.cart.length;
+  }
   const bk=$('#btn-back'); if(bk){ bk.style.display=state.team?'':'none'; bk.textContent=tx('changeTeam'); }
 }
 
@@ -842,7 +859,9 @@ async function selectTeam(tm){
   $('#order-view').style.display='';
   $('#btn-back').style.display='';
   $('#oh-tag').textContent=teamTag(tm);
-  $('#oh-rep').textContent=(tm.rep||'')+'  ·  #'+teamNo(tm);
+  $('#oh-rep').textContent=(tm.rep||'');
+  { const sb=$('#oh-sub'); if(sb) sb.textContent=[tm.accom||'', tm.pax?(tm.pax+tx('confPplUnit')):'', '#'+teamNo(tm)].filter(Boolean).join('  ·  '); }
+  { const oh=document.querySelector('.order-head'); if(oh) oh.classList.remove('none'); }
   $('#oh-run').textContent=yen(state.runningGross);
   const rl=$('#run-list'); if(rl){ rl.style.display='none'; rl.innerHTML=''; }
   const rb=$('#btn-run-list'); if(rb) rb.textContent=tx('runShow');
