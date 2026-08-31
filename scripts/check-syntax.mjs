@@ -78,9 +78,38 @@ for (const f of files) {
   }
 }
 
-if (errors || undef) {
+// ── 여러 줄 객체 리터럴 첫 줄의 // 주석 검사 ─────────────────────────────
+//  문법은 멀쩡한데 **그 줄 뒤의 속성이 통째로 주석 처리**되는 부류를 잡는다.
+//  실제 사고: pos.html 의 `let state={ …, grp:null,  // 설명  team:null, cart:[], … }`
+//    → cart 가 사라져 renderCart 가 죽고 화면엔 「연결 실패」로만 보였다(2026-08).
+//  판정: `let/const/var 이름 = {` 로 시작하는 줄에 //주석이 있고, 그 줄에서 { 가 닫히지 않으면 오류.
+let midline = 0;
+for (const f of files) {
+  const html = readFileSync(f, 'utf8');
+  const code = [...html.matchAll(RE)].map((m) => m[1]).join('\n');
+  if (!code.trim()) continue;
+  code.split('\n').forEach((line, i) => {
+    if (!/^\s*(const|let|var)\s+[\w$]+\s*=\s*[{[]/.test(line)) return;
+    //  문자열 리터럴을 먼저 지우고 본다 — 값 안의 // 나 괄호에 속지 않게.
+    const bare = line
+      .replace(/'(?:[^'\\]|\\.)*'/g, "''")
+      .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+      .replace(/`(?:[^`\\]|\\.)*`/g, '``');
+    if (bare.indexOf('//') < 0) return;
+    const opens = (bare.match(/[{[]/g) || []).length;
+    const closes = (bare.match(/[}\]]/g) || []).length;
+    if (opens > closes) {
+      midline++;
+      console.error(`✗ ${f}:${i + 1} 여러 줄 객체 첫 줄에 //주석 — 뒤따르는 속성이 통째로 주석 처리됩니다.`);
+      console.error(`   ${line.trim().slice(0, 110)}`);
+    }
+  });
+}
+
+if (errors || undef || midline) {
   if (errors) console.error(`\n✗ 문법 오류 ${errors}건 — 위 위치를 확인하세요.`);
   if (undef) console.error(`✗ 미정의 헬퍼 ${undef}건 — 위 파일에 정의를 추가하세요.`);
+  if (midline) console.error(`✗ 주석에 먹힌 속성 ${midline}건 — 주석을 윗줄로 올리세요.`);
   process.exit(1);
 }
-console.log('✓ 전체 인라인 스크립트 문법 검사 통과 · 공용 헬퍼 정의 확인');
+console.log('✓ 전체 인라인 스크립트 문법 검사 통과 · 공용 헬퍼 정의 · 주석에 먹힌 속성 확인');
