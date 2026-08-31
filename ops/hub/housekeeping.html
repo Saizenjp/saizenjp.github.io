@@ -111,6 +111,12 @@
   .flr-h .fst{margin-left:auto;display:flex;gap:9px;flex-wrap:wrap;font-size:12px;font-weight:700}
   .flr-h .fst b{font-family:var(--mono)}
   .flr-h .car{color:var(--muted);width:14px;display:inline-block}
+  /* 층마다 남은 일 — 전체 요약과 같은 0/N. 다 끝나면 초록 */
+  .flr-h .fprog{font-size:12px;font-weight:800;font-family:var(--mono);color:var(--err);
+    background:#fbeeeb;border:1px solid #e3bdb4;border-radius:6px;padding:2px 8px}
+  .flr-h .fprog.done{color:var(--ok);background:#e9f4ec;border-color:#b6dcc3}
+  .flr.fold .rcards, .flr.fold .hkt{display:none}
+  @media print{ .flr.fold .rcards, .flr.fold .hkt{display:revert} }
   .hkt{width:100%;border-collapse:collapse}
   .hkt th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:6px 10px;text-align:left;
     font-size:10.5px;font-weight:800;letter-spacing:.03em;color:var(--text2);white-space:nowrap}
@@ -245,7 +251,7 @@
     .flr+.flr{page-break-before:always}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=26.7">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=26.8">
 </head>
 <body data-so-area="hk">
 <div class="topbar so-bar">
@@ -294,7 +300,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=26.7"></script>
+<script src="../assets/saizen-ops.js?v=26.8"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -322,6 +328,7 @@ const L={
     sortPrio:'優先順', sortNo:'部屋番号順', sortT:'並び替え',
     title:'客室清掃 割当表', readonly:'閲覧のみ（変更はフロント事務所）',
     kTurn:'ターンオーバー', kOut:'退室', kStay:'連泊', kIn:'入室', kVacant:'空室', kOoo:'閉鎖',
+    foldFloorT:'押すとこの階を折りたたみ／展開',
     kPax:'滞在人数', kPaxIn:'入室人数', kPaxOut:'退室人数', paxU:'名', paxN:(p)=>`${p}名`,
     roomsU:'室', hkOff:'清掃対象外', hkOffT:'ガンジーホテル・志津の宿は外部委託のため、この画面では扱いません。',
     sTurn:'退室→入室', sOut:'退室', sStay:'連泊', sIn:'入室', sVacant:'空室', sOoo:'閉鎖',
@@ -356,6 +363,7 @@ const L={
     sortPrio:'우선순', sortNo:'호수순', sortT:'정렬',
     title:'객실 청소 배정표', readonly:'보기 전용 (변경은 프론트 사무실)',
     kTurn:'턴오버', kOut:'퇴실', kStay:'연박', kIn:'입실', kVacant:'공실', kOoo:'폐쇄',
+    foldFloorT:'눌러서 이 층 접기/펴기',
     kPax:'체류 인원', kPaxIn:'입실 인원', kPaxOut:'퇴실 인원', paxU:'명', paxN:(p)=>`${p}명`,
     roomsU:'실', hkOff:'청소 제외', hkOffT:'간지호텔·시즈노야도는 외부 위탁이라 이 화면에서 다루지 않습니다.',
     sTurn:'퇴실→입실', sOut:'퇴실', sStay:'연박', sIn:'입실', sVacant:'공실', sOoo:'폐쇄',
@@ -390,6 +398,7 @@ const L={
     sortPrio:'Priority', sortNo:'Room no.', sortT:'Sort',
     title:'Housekeeping worksheet', readonly:'Read-only (changes at the front office)',
     kTurn:'Turnover', kOut:'Departure', kStay:'Stayover', kIn:'Arrival', kVacant:'Vacant', kOoo:'Out of order',
+    foldFloorT:'Tap to fold / unfold this floor',
     kPax:'Guests in house', kPaxIn:'Arriving', kPaxOut:'Departing', paxU:' pax', paxN:(p)=>`${p} pax`,
     roomsU:' rooms', hkOff:'not cleaned here', hkOffT:'The Guernsey Hotel and Shizu-no-Yado are outsourced and are not handled on this screen.',
     sTurn:'Out → In', sOut:'Departure', sStay:'Stayover', sIn:'Arrival', sVacant:'Vacant', sOoo:'Closed',
@@ -637,6 +646,18 @@ function renderZoneChips(groups,keys){
       window.scrollTo({top:window.scrollY+el.getBoundingClientRect().top-off, behavior:'smooth'}); }
     setZoneChip(z);
   }));
+}
+//  층 머리줄을 누르면 그 층 방 목록만 접힌다. 목록을 다시 그릴 때마다 다시 건다.
+function wireFloorFold(){
+  document.querySelectorAll('#floors [data-fold]').forEach(el=>{
+    el.addEventListener('click',e=>{
+      if(e.target.closest('.allb')) return;           // 층 일괄 버튼은 접기와 무관
+      const k=el.dataset.fold;
+      if(FOLD.has(k)) FOLD.delete(k); else FOLD.add(k);
+      const blk=el.closest('.flr'); if(blk) blk.classList.toggle('fold',FOLD.has(k));
+      const car=el.querySelector('.car'); if(car) car.textContent=FOLD.has(k)?'▸':'▾';
+    });
+  });
 }
 // 층 이름 → 안전한 id (한글·공백 그대로 쓰면 querySelector 가 깨진다)
 function cssId(z){ return 'z'+String(z||'').replace(/[^\w가-힣]/g,'_'); }
@@ -934,6 +955,7 @@ function render(){
   box.querySelectorAll('[data-ndone]').forEach(b=>b.addEventListener('click',ev=>{
     ev.stopPropagation(); doneNote(b.dataset.ndone);
   }));
+  wireFloorFold();             // 층 머리줄 = 그 층 접기
   wireZoneSpy(); syncStickyTop();
 }
 
@@ -961,6 +983,9 @@ function wireNoteModal(){
   if(inp) inp.addEventListener('keydown',e=>{ if(e.key==='Enter') saveNote(); });
   applyNoteUI();
 }
+//  층·동 접기 — 다 치운 층은 접어 두고 남은 층만 본다(태블릿에서 화면이 짧아진다, Min 2026-08).
+//   접어도 머리줄의 상태 배지·청소 진행은 그대로 보인다. 다시 그려도 접은 층은 유지된다.
+let FOLD=new Set();
 function renderKpis(recs){
   const box=$('#kpis'); if(!box) return;
   const c={turn:0,out:0,stay:0,in:0,vacant:0,ooo:0};
@@ -991,8 +1016,12 @@ function renderKpis(recs){
 }
 
 function floorHtml(g,key){
-  const clean=g.list.filter(r=>r.status!=='ooo'&&r.status!=='vacant').length;
   const fpax=g.list.reduce((s,r)=>s+r.paxNight,0);   // 그 층에서 그날 밤 묵는 인원
+  //  그 층에 **할 일이 몇 개 남았는지** — 전체 요약과 같은 0/N 표기(Min 2026-08).
+  //   층만 보고도 「여기 아직 5개 남았네」가 읽히게. 다 끝나면 초록으로 바뀐다.
+  const fCl=g.list.filter(needsClean), fTw=g.list.filter(needsTowel);
+  const fCd=fCl.filter(r=>r.cleanDone).length, fTd=fTw.filter(r=>r.towelDone).length;
+  const prog=(lab,d,t)=>t?`<span class="fprog${d===t?' done':''}">${esc(lab(d,t))}</span>`:'';
   const c={turn:0,out:0,stay:0,in:0};
   g.list.forEach(r=>{ if(c[r.status]!==undefined) c[r.status]++; });
   const list=g.list.slice().sort((a,b)=>{
@@ -1010,13 +1039,16 @@ function floorHtml(g,key){
     return String(a.inv.room_no).localeCompare(String(b.inv.room_no),undefined,{numeric:true});
   });
   const badge=(cls,lab,n)=>n?`<span class="st ${cls}" style="font-size:10.5px;padding:2px 7px">${esc(lab)} ${n}</span>`:'';
-  return `<div class="flr" id="fl-${cssId(key)}" data-zone="${esc(key)}">
-    <div class="flr-h">
+  const fold=FOLD.has(key);
+  return `<div class="flr${fold?' fold':''}" id="fl-${cssId(key)}" data-zone="${esc(key)}">
+    <div class="flr-h" data-fold="${esc(key)}" title="${esc(tx('foldFloorT'))}">
+      <span class="car">${fold?'▸':'▾'}</span>
       <span>${esc(zoneL(g.zone))}</span><span class="fac">${esc(accomL(g.fac))}</span>
       <span class="fst">
         ${badge('turn',tx('sTurn'),c.turn)}${badge('out',tx('sOut'),c.out)}
         ${badge('stay',tx('sStay'),c.stay)}${badge('in',tx('sIn'),c.in)}
-        <span class="cnt">${esc(tx('floorStat')(clean))}${fpax?esc(' · '+tx('paxN')(fpax)):''}</span>
+        ${prog(tx('hkProg'),fCd,fCl.length)}${prog(tx('hkTowelProg'),fTd,fTw.length)}
+        <span class="cnt">${fpax?esc(tx('paxN')(fpax)):''}</span>
       </span>
       ${(()=>{  // 층 단위 일괄 — 청소 대상 방을 한 번에 완료/취소(Min 2026-08)
         const cl=list.filter(needsClean);
