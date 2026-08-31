@@ -201,7 +201,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=26.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=26.3">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -339,7 +339,13 @@
       <button class="btn ghost sm" id="qr-close" type="button">✕</button>
     </div>
     <div style="padding:16px 18px">
+      <div id="qr-wait" style="display:none;text-align:center;padding:26px 12px;border:2px dashed var(--accent);border-radius:12px;background:var(--accentSoft,#eef3e6)">
+        <div style="font-size:34px;line-height:1">🔳</div>
+        <div id="qr-wait-t" style="font-size:15px;font-weight:800;color:var(--accent);margin-top:6px"></div>
+        <div id="qr-wait-s" style="font-size:12px;color:var(--text2);margin-top:4px"></div>
+      </div>
       <div id="qr-reader" style="width:100%;border-radius:10px;overflow:hidden"></div>
+      <button type="button" id="qr-usecam" class="btn ghost sm" style="display:none;margin-top:8px;width:100%"></button>
       <div id="qr-status" style="font-size:12.5px;color:var(--text2);margin-top:8px;min-height:18px"></div>
       <div style="display:flex;gap:6px;margin-top:10px">
         <input class="inp" id="qr-manual-in" type="text" autocomplete="off" style="flex:1">
@@ -376,7 +382,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=26.2"></script>
+<script src="../assets/saizen-ops.js?v=26.3"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -399,7 +405,8 @@ const L={
     connFail:'接続失敗', connFailBtn:'接続失敗・再試行', connFailToast:e=>'接続失敗: '+e+' (精算SQL 09・11・12 実行・key確認)',
     menuLoadFail:e=>'メニュー読み込み失敗: '+e, needConn:'先に接続してください', teamLoadFail:e=>'チーム読み込み失敗: '+e,
     stayToast:(d,n)=>`${d} · 滞在 ${n}チーム`, deepFound:(t)=>`QRのチームを選択: ${t}`, deepNotFound:'QRのチームがこの日付の滞在にありません — 日付をご確認ください',
-    qrOpenFail:'カメラを起動できません — 閉じてチーム検索で探してください', qrScanning:'QRをかざしてください…', qrNoMatch:'該当チームなし(無効なQR)', qrTeamGone:'そのチームが見つかりません', qrMatched:t=>`${t} を選択しました`, qrEmpty:'コードを入力してください', qrTagDup:'タグコードが重複 — 一覧から選択してください', confTitle:'このチームで合っていますか？', confHonor:'様', confPplUnit:'名', confRoster:'名簿（お名前をご確認ください）', confHint:'お客様のお名前・部屋番号をご確認のうえ進めてください。', confYes:'✓ はい、このチームです', confNo:'いいえ',
+    qrOpenFail:'カメラを起動できません — リーダーでスキャンするか、検索で探してください',
+    qrHidWait:'カードをリーダーにかざしてください', qrHidWaitSub:'読み取ると そのチームが自動で選ばれます', qrUseCam:'📷 カメラで読み取る', qrScanning:'QRをかざしてください…', qrNoMatch:'該当チームなし(無効なQR)', qrTeamGone:'そのチームが見つかりません', qrMatched:t=>`${t} を選択しました`, qrEmpty:'コードを入力してください', qrTagDup:'タグコードが重複 — 一覧から選択してください', confTitle:'このチームで合っていますか？', confHonor:'様', confPplUnit:'名', confRoster:'名簿（お名前をご確認ください）', confHint:'お客様のお名前・部屋番号をご確認のうえ進めてください。', confYes:'✓ はい、このチームです', confNo:'いいえ',
     custOnTitle:'このチームの請求を客先確認画面に表示/解除', custShow:'🖥 お客様画面表示', custHide:'🖥 表示を消す',
     custShown:'お客様画面に表示しました', custCleared:'お客様画面を消しました', custFail:e=>'お客様画面表示失敗: '+e,
     teamFallback:s=>'チーム'+s, member:'会', unassigned:'未配室',
@@ -427,7 +434,8 @@ const L={
     connFail:'연결 실패', connFailBtn:'연결 실패 · 재시도', connFailToast:e=>'연결 실패: '+e+' (정산 SQL 09·11·12 실행·키 확인)',
     menuLoadFail:e=>'메뉴 로드 실패: '+e, needConn:'먼저 연결하세요', teamLoadFail:e=>'팀 로드 실패: '+e,
     stayToast:(d,n)=>`${d} · 체류 ${n}팀`, deepFound:(t)=>`QR 팀 자동선택: ${t}`, deepNotFound:'QR의 팀이 이 날짜 체류 목록에 없습니다 — 날짜를 확인해 주세요',
-    qrOpenFail:'카메라를 열 수 없습니다 — 닫고 팀 검색으로 찾으세요', qrScanning:'QR을 비춰주세요…', qrNoMatch:'해당 팀 없음(무효 QR)', qrTeamGone:'그 팀을 찾을 수 없습니다', qrMatched:t=>`${t} 선택됨`, qrEmpty:'코드를 입력하세요', qrTagDup:'태그코드 중복 — 목록에서 선택하세요', confTitle:'이 팀이 맞습니까?', confHonor:' 님', confPplUnit:'명', confRoster:'명단(이름을 확인하세요)', confHint:'손님 이름·방번호를 확인한 뒤 진행하세요.', confYes:'✓ 예, 이 팀이 맞습니다', confNo:'아니오',
+    qrOpenFail:'카메라를 열 수 없습니다 — 리더기로 스캔하거나 검색으로 찾으세요',
+    qrHidWait:'손님 카드를 리더기에 대세요', qrHidWaitSub:'읽히면 그 팀이 자동으로 선택됩니다', qrUseCam:'📷 카메라로 읽기', qrScanning:'QR을 비춰주세요…', qrNoMatch:'해당 팀 없음(무효 QR)', qrTeamGone:'그 팀을 찾을 수 없습니다', qrMatched:t=>`${t} 선택됨`, qrEmpty:'코드를 입력하세요', qrTagDup:'태그코드 중복 — 목록에서 선택하세요', confTitle:'이 팀이 맞습니까?', confHonor:' 님', confPplUnit:'명', confRoster:'명단(이름을 확인하세요)', confHint:'손님 이름·방번호를 확인한 뒤 진행하세요.', confYes:'✓ 예, 이 팀이 맞습니다', confNo:'아니오',
     custOnTitle:'이 팀 계산서를 손님 확인 화면에 표시/해제', custShow:'🖥 손님 화면 표시', custHide:'🖥 표시 끄기',
     custShown:'손님 화면에 표시했습니다', custCleared:'손님 화면을 비웠습니다', custFail:e=>'손님 화면 표시 실패: '+e,
     teamFallback:s=>'팀'+s, member:'회', unassigned:'미배정',
@@ -455,7 +463,8 @@ const L={
     connFail:'Connection failed', connFailBtn:'Failed · retry', connFailToast:e=>'Connection failed: '+e+' (run settlement SQL 09·11·12 / check key)',
     menuLoadFail:e=>'Menu load failed: '+e, needConn:'Connect first', teamLoadFail:e=>'Team load failed: '+e,
     stayToast:(d,n)=>`${d} · ${n} teams in-house`, deepFound:(t)=>`QR team selected: ${t}`, deepNotFound:'QR team is not in-house on this date — please check the date',
-    qrOpenFail:'Cannot open camera — close and use team search', qrScanning:'Hold the QR to the camera…', qrNoMatch:'No matching team (invalid QR)', qrTeamGone:'That team was not found', qrMatched:t=>`${t} selected`, qrEmpty:'Enter a code', qrTagDup:'Tag code is ambiguous — pick from the list', confTitle:'Is this the right team?', confHonor:'', confPplUnit:' ppl', confRoster:'Roster (please check the name)', confHint:'Confirm the guest name and room number before proceeding.', confYes:'✓ Yes, this team', confNo:'No',
+    qrOpenFail:'Cannot open camera — scan with the reader, or use search',
+    qrHidWait:'Hold the guest card to the reader', qrHidWaitSub:'The team is selected automatically once it reads', qrUseCam:'📷 Use the camera', qrScanning:'Hold the QR to the camera…', qrNoMatch:'No matching team (invalid QR)', qrTeamGone:'That team was not found', qrMatched:t=>`${t} selected`, qrEmpty:'Enter a code', qrTagDup:'Tag code is ambiguous — pick from the list', confTitle:'Is this the right team?', confHonor:'', confPplUnit:' ppl', confRoster:'Roster (please check the name)', confHint:'Confirm the guest name and room number before proceeding.', confYes:'✓ Yes, this team', confNo:'No',
     custOnTitle:'Show/clear this team’s bill on the customer display', custShow:'🖥 Show customer display', custHide:'🖥 Turn off',
     custShown:'Shown on customer display', custCleared:'Customer display cleared', custFail:e=>'Customer display failed: '+e,
     teamFallback:s=>'Team'+s, member:'M', unassigned:'No room',
@@ -1330,21 +1339,40 @@ function closeConfirm(){ $('#conf-modal').style.display='none'; _confTm=null; }
 // ── 손님 QR 스캔 → 그 팀 자동 선택 ──
 let _qr=null;
 function qrStatus(msg){ const el=$('#qr-status'); if(el) el.textContent=msg||''; }
-async function openScan(){
+//  이 PC 에 하드웨어 QR 리더기가 있는가 — 한 번이라도 리더기로 읽히면 기억한다.
+//   프런트 PC 는 카메라가 없거나 쓸 일이 없어서, 열 때마다 「카메라를 열 수 없습니다」가
+//   뜨면 고장처럼 보인다. 리더기가 있는 PC 는 카메라를 아예 켜지 않는다(Min 2026-08).
+function hasHidScanner(){ try{ return localStorage.getItem('saizen_hid_scanner')==='1'; }catch(e){ return false; } }
+function markHidScanner(){ try{ localStorage.setItem('saizen_hid_scanner','1'); }catch(e){} }
+async function openScan(useCam){
   if(!supa){ toast(tx('needConn'),'warn'); return; }
   $('#qr-modal').style.display='flex';
-  $('#qr-manual-in').value=''; qrStatus(tx('qrScanning'));
+  $('#qr-manual-in').value='';
   $('#qr-manual-in').placeholder=tx('qrFindPh');
   const ht=$('#qr-hint-txt'); if(ht) ht.textContent=tx('qrFindHint');
   const hb=$('#qr-hits'); if(hb) hb.innerHTML='';
   const ba=$('#qr-browse-all'); if(ba) ba.textContent=tx('qrBrowseAll');
+  const wait=$('#qr-wait'), cam=$('#qr-reader'), useBtn=$('#qr-usecam');
+  //  리더기가 있는 PC 는 카메라를 켜지 않고 「카드를 대세요」로 기다린다.
+  //   (전역 HID 입력은 모달과 무관하게 늘 살아 있다 — 그냥 대면 읽힌다)
+  if(hasHidScanner() && !useCam){
+    if(wait){ wait.style.display=''; $('#qr-wait-t').textContent=tx('qrHidWait'); $('#qr-wait-s').textContent=tx('qrHidWaitSub'); }
+    if(cam) cam.style.display='none';
+    if(useBtn){ useBtn.style.display=''; useBtn.textContent=tx('qrUseCam'); }
+    qrStatus('');
+    return;
+  }
+  if(wait) wait.style.display='none';
+  if(cam) cam.style.display='';
+  if(useBtn) useBtn.style.display='none';
+  qrStatus(tx('qrScanning'));
   try{
     if(!window.Html5Qrcode) throw new Error('lib');
     _qr=new Html5Qrcode('qr-reader');
     await _qr.start({facingMode:'environment'}, {fps:10, qrbox:{width:220,height:220}},
       (decoded)=>{ scanResolve(decoded); },  // 성공 콜백
       ()=>{});                               // 프레임 실패는 무시
-  }catch(e){ _qr=null; qrStatus(tx('qrOpenFail')); }   // 카메라 불가 → 수기입력 안내
+  }catch(e){ _qr=null; qrStatus(tx('qrOpenFail')); }   // 카메라 불가 → 리더기·검색 안내
 }
 async function stopScan(){
   if(_qr){ try{ await _qr.stop(); }catch(_){} try{ _qr.clear(); }catch(_){} _qr=null; }
@@ -1410,7 +1438,11 @@ async function scanResolve(raw){
 
 // ── 하드웨어 스캐너(HID 키보드 모드) — 공용 헬퍼(saizen-ops __so_hidScan)에 위임.
 //   스캐너를 꽂기만 하면 어느 화면·어느 포커스에서 스캔해도 그 팀이 바로 열린다.
-if(window.__so_hidScan) __so_hidScan(function(raw){ if(supa) scanResolve(raw); });
+if(window.__so_hidScan) __so_hidScan(function(raw){
+  markHidScanner();                      // 리더기로 읽혔다 = 이 PC 엔 리더기가 있다
+  if(supa) scanResolve(raw);
+});
+$('#qr-usecam').addEventListener('click',()=>openScan(true));
 
 // ── 부팅 ──
 $('#btn-connect').addEventListener('click',connect);
