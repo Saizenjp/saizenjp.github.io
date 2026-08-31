@@ -112,6 +112,16 @@
   .order-head .orun b{font-family:var(--mono);color:var(--text);font-size:16px}
 
   #btn-send .sbt{display:block;font-family:var(--mono);font-size:13px;font-weight:800;opacity:.92;margin-top:2px;letter-spacing:.4px}
+  /* 전송처 — 탭·메뉴 카드·장바구니에 같은 말로. 주방은 주황, 바는 남색 */
+  .gtab .gst{margin-left:6px;font-size:10.5px;font-weight:800;color:var(--accent2)}
+  .gtab.active .gst{color:#fff;opacity:.9}
+  .menu-btn{position:relative}
+  .menu-btn .mst{position:absolute;right:6px;bottom:6px;font-size:10px;font-weight:800;
+    border-radius:5px;padding:1px 6px;border:1px solid transparent}
+  .mst.st-kitchen,.cl-st.st-kitchen{color:#8a5a00;background:#fdf4e3;border-color:#e6d3a3}
+  .mst.st-bar,.cl-st.st-bar{color:#1A4D8F;background:#eaf0f8;border-color:#bcd0e8}
+  .cl-st{margin-left:6px;font-size:10px;font-weight:800;border-radius:5px;padding:1px 6px;border:1px solid transparent}
+  .cart-dest{font-size:12px;font-weight:800;color:var(--text2);padding:6px 0;border-bottom:1px dashed var(--border)}
   .order-stage{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
   @media(max-width:880px){.order-stage{grid-template-columns:1fr}}
 
@@ -211,7 +221,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.1">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -289,7 +299,8 @@
         <div class="payer" id="payer"></div>
         <div class="cart-body" id="cart-body"><div class="cart-empty" data-i18n="po_cartEmpty"></div></div>
         <div class="cart-foot">
-          <div class="tr"><span data-i18n="po_subtotal"></span><span class="v" id="cart-sub">¥0</span></div>
+          <div class="cart-dest" id="cart-dest" style="display:none"></div>
+        <div class="tr"><span data-i18n="po_subtotal"></span><span class="v" id="cart-sub">¥0</span></div>
           <div class="tr"><span data-i18n="po_tax"></span><span class="v" id="cart-tax">¥0</span></div>
           <div class="tr grand"><span data-i18n="po_total"></span><span class="v" id="cart-total">¥0</span></div>
           <button class="btn big" id="btn-send" type="button" disabled data-i18n="po_send"></button>
@@ -392,7 +403,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=27.0"></script>
+<script src="../assets/saizen-ops.js?v=27.1"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -432,6 +443,7 @@ const L={
     splitN:n=>'個人 '+n+'名', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n}品目 ${amt} 送信${kn?` · 厨房 ${kn}件`:''}`,
     sendFail:e=>'送信失敗: '+e+' — カートはそのまま残っています。つながってから[注文送信]をもう一度押してください', cartRestored:n=>`前回のカート ${n}件を戻しました`,
     koTitle:'注文状況', allVenues:'全体',
+    stKitchen:'厨房へ', stBar:'バーへ',
     vRestaurant:'レストラン', vBanquet:'コンベンションホール', vProshop:'ゴルフショップ', vFront:'フロント売店', vEtc:'その他',
     oFront:'フロント売店', oRestaurant:'レストラン·コンベンションホール', oGolf:'ゴルフショップ' },
   ko:{ noTeamHead:'팀 미선택 — 계산할 때 고릅니다', pickTeamFirst:'메뉴를 먼저 담고, 계산에서 [팀 선택]을 누르세요',
@@ -461,6 +473,7 @@ const L={
     splitN:n=>'개인 '+n+'명', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n}품목 ${amt} 전송됨${kn?` · 주방 ${kn}건`:''}`,
     sendFail:e=>'전송 실패: '+e+' — 장바구니는 그대로 있습니다. 연결되면 [주문 전송]을 다시 누르세요', cartRestored:n=>`이전 장바구니 ${n}건을 되살렸습니다`,
     koTitle:'주문 현황', allVenues:'전체',
+    stKitchen:'주방으로', stBar:'바로',
     vRestaurant:'레스토랑', vBanquet:'컨벤션 홀', vProshop:'골프샵', vFront:'프론트 매점', vEtc:'기타',
     oFront:'프론트 매점', oRestaurant:'레스토랑·컨벤션 홀', oGolf:'골프샵' },
   en:{ noTeamHead:'No team yet — pick it at checkout', pickTeamFirst:'Add items first, then press [Pick team] at checkout',
@@ -490,6 +503,7 @@ const L={
     splitN:n=>n+' people', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n} items ${amt} sent${kn?` · kitchen ${kn}`:''}`,
     sendFail:e=>'Send failed: '+e+' — your cart is still here. Press [Send order] again once you are back online', cartRestored:n=>`Restored ${n} item(s) from your last cart`,
     koTitle:'Order status', allVenues:'All',
+    stKitchen:'to kitchen', stBar:'to bar',
     vRestaurant:'Restaurant', vBanquet:'Convention hall', vProshop:'Pro shop', vFront:'Front shop', vEtc:'Other',
     oFront:'Front shop', oRestaurant:'Restaurant·Convention hall', oGolf:'Pro shop' }
 };
@@ -503,7 +517,7 @@ function venueLabel(v){ const k=VENUE_TXK[v]; return k?tx(k):v; }
 // 매장(outlet) = venue 묶음. ?outlet= 로 해당 매장만 노출. 라벨은 언어별, venues 는 DB 키 그대로.
 const OUTLETS={
   front:     {labelKey:'oFront',      venues:['front']},
-  restaurant:{labelKey:'oRestaurant', venues:['restaurant','banquet','front']},   // 바·주방·프론트 품목을 이 한 화면에서(Min 2026-08)
+  restaurant:{labelKey:'oRestaurant', venues:['restaurant','banquet']},   // 그 자리에서 파는 것만 — 다른 매장 품목은 안 섞는다(Min 2026-08)
   golf:      {labelKey:'oGolf',       venues:['proshop']}
 };
 function outletLabel(o){ return tx(OUTLETS[o].labelKey); }
@@ -512,7 +526,7 @@ const _outletParam=new URLSearchParams(location.search).get('outlet')||'';
 //   ?seq=<event_seq> · 그 날짜 체류 목록에 있으면 바로 주문 화면으로.
 let _deepSeq=(new URLSearchParams(location.search).get('seq')||'').trim();
 let _autoScanDone=false;   // 진입 QR 자동 오픈은 최초 1회만(날짜 이동마다 뜨면 번거롭다)
-let state={ date:'', teams:[], menu:[], venue:'__all__', grp:'__all__', sub:'__all__', team:null, folioId:null, runningGross:0, cart:[], showList:false,
+let state={ date:'', teams:[], menu:[], venue:'__all__', grp:null, sub:'__all__',   // grp=null → 첫 렌더에서 그 매장 주력 분류로 정한다 team:null, folioId:null, runningGross:0, cart:[], showList:false,
   roster:[], payerMode:'split', payerSel:new Set(), memberFolio:{},
   outlet:(OUTLETS[_outletParam]?_outletParam:null), teamQ:'', activeSeqs:new Set(), members:[], roomsBySeq:{}, accomSel:null };
 const ACCOM_ALL=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
@@ -1048,6 +1062,16 @@ function renderVenueTabs(){
   });
 }
 
+//  전송처(station) = 그 품목이 **어디로 가는지**. 주방 KDS·바 화면에 티켓이 뜨는 기준이다.
+//   화면 곳곳(탭·메뉴 카드·장바구니)에 같은 말로 붙여, 누르기 전에도 보낸 뒤에도 어디로 갔는지 안다.
+const ST_TXK={kitchen:'stKitchen', bar:'stBar'};
+function stLabel(st){ return ST_TXK[st]?tx(ST_TXK[st]):''; }
+//  한 그룹이 한 곳으로만 가면 그 이름을 탭에 붙인다(마실 것=바 / 먹는 것=주방).
+//   섞여 있으면 붙이지 않는다 — 틀린 말을 하느니 아무 말도 안 하는 게 낫다.
+function groupStation(list){
+  const st=[...new Set(list.map(m=>m.station||'none'))];
+  return st.length===1?st[0]:'';
+}
 // 주문 화면 분류(menu_group·sub) — 정산 구분(category)과 별개다. SQL 111.
 //  큰 구분 = 마실 것 / 먹는 것 / 기타, 소분류 = 술 종류 · 주문 성격.
 const POS_GRP_ORDER=['음료','음식','기타'];
@@ -1080,11 +1104,22 @@ function renderGrpTabs(){
   const list=venueMenu();
   const grps=[...new Set(list.map(m=>m.menu_group||'기타'))].sort((a,b)=>ordOf(POS_GRP_ORDER,a)-ordOf(POS_GRP_ORDER,b));
   if(grps.length<=1){ box.innerHTML=''; state.grp='__all__'; return; }
+  //  기본은 **그 매장에서 제일 많이 쓰는 분류**(품목이 가장 많은 것) — 열자마자 바로 담기 시작한다(Min 2026-08).
+  //   「전체」는 다른 매장 것까지 섞여 길고 잘못 누르기 쉬워 기본으로 두지 않는다.
+  if(state.grp==null){
+    let best=grps[0], bn=-1;
+    grps.forEach(g=>{ const n=list.filter(m=>(m.menu_group||'기타')===g).length; if(n>bn){ bn=n; best=g; } });
+    state.grp=best;
+  }
   if(state.grp!=='__all__' && !grps.includes(state.grp)) state.grp='__all__';
   const allL=(window.__so_plain?__so_plain(t('po_allVenues')):t('po_allVenues'));
-  const tabs=[['__all__',allL,list.length]].concat(grps.map(g=>[g,posGrpLabel(g),list.filter(m=>(m.menu_group||'기타')===g).length]));
-  box.innerHTML=tabs.map(([g,label,n])=>
-    `<button type="button" class="gtab${state.grp===g?' active':''}" data-g="${escP(g)}">${escP(label)}<span class="gc">${n}</span></button>`).join('');
+  const tabs=[['__all__',allL,list.length,'']].concat(grps.map(g=>{
+    const gl=list.filter(m=>(m.menu_group||'기타')===g);
+    return [g,posGrpLabel(g),gl.length,stLabel(groupStation(gl))];
+  }));
+  box.innerHTML=tabs.map(([g,label,n,st])=>
+    `<button type="button" class="gtab${state.grp===g?' active':''}" data-g="${escP(g)}">${escP(label)}<span class="gc">${n}</span>`
+    +(st?`<span class="gst">${escP(st)}</span>`:'')+`</button>`).join('');
   box.querySelectorAll('[data-g]').forEach(b=>b.addEventListener('click',()=>{
     state.grp=b.dataset.g; state.sub='__all__'; renderGrpTabs(); renderSubChips(); renderMenu();
   }));
@@ -1117,7 +1152,8 @@ function renderMenu(){
     b.innerHTML=`<span class="mcat cat-${m.category}"></span>
       ${m.code?`<span class="mcode">${m.code}</span>`:''}
       <div><div class="mja">${m.name_ja||''}</div>${m.name_ko?`<div class="mko">${m.name_ko}</div>`:''}</div>
-      <div class="mprice">${Number(m.unit_price)>0?yen(m.unit_price):t('po_manualPrice')}</div>`;
+      <div class="mprice">${Number(m.unit_price)>0?yen(m.unit_price):t('po_manualPrice')}</div>
+      ${stLabel(m.station)?`<span class="mst st-${escP(m.station)}">${escP(stLabel(m.station))}</span>`:''}`;
     b.addEventListener('click',()=>addToCart(m));
     return b;
   };
@@ -1164,7 +1200,9 @@ function renderCart(hitKey){
   if(!state.cart.length){ body.innerHTML='<div class="cart-empty">'+t('po_cartEmpty')+'</div>'; }
   else state.cart.forEach(l=>{
     const row=document.createElement('div'); row.className='cart-line'+(l.key===hitKey?' hit':'');
-    row.innerHTML=`<div class="cl-name">${l.name_ja}${l.name_ko?` <span class="cl-ko">${l.name_ko}</span>`:''}</div>
+    row.innerHTML=`<div class="cl-name">${l.name_ja}${l.name_ko?` <span class="cl-ko">${l.name_ko}</span>`:''}`
+      +(stLabel(l.station)?`<span class="cl-st st-${escP(l.station)}">${escP(stLabel(l.station))}</span>`:'')
+      +`</div>
       <div class="qtybox">
         <button class="qbtn" data-minus="${l.key}">−</button>
         <span class="qn">${l.qty}</span>
@@ -1179,6 +1217,12 @@ function renderCart(hitKey){
   const hd=document.getElementById('cart-cnt');
   if(hd){ const q=state.cart.reduce((s,l)=>s+l.qty,0);
     hd.textContent = q?tx('cartCount')(state.cart.length,q):''; }
+  //  보내기 전에 「어디로 몇 개 가는지」 — 잘못 담았으면 여기서 걸린다.
+  { const sm=$('#cart-dest'); if(sm){
+      const by={}; state.cart.forEach(l=>{ const k=l.station||'none'; by[k]=(by[k]||0)+l.qty; });
+      const parts=['kitchen','bar'].filter(k=>by[k]).map(k=>`${stLabel(k)} ${by[k]}`);
+      sm.textContent=parts.join('  ·  '); sm.style.display=parts.length?'':'none';
+    } }
   body.querySelectorAll('[data-minus]').forEach(b=>b.addEventListener('click',()=>changeQty(b.dataset.minus,-1)));
   body.querySelectorAll('[data-plus]').forEach(b=>b.addEventListener('click',()=>changeQty(b.dataset.plus,1)));
   body.querySelectorAll('[data-rm]').forEach(b=>b.addEventListener('click',()=>removeLine(b.dataset.rm)));
