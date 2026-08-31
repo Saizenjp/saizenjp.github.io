@@ -122,6 +122,12 @@
   .mst.st-bar,.cl-st.st-bar{color:#1A4D8F;background:#eaf0f8;border-color:#bcd0e8}
   .cl-st{margin-left:6px;font-size:10px;font-weight:800;border-radius:5px;padding:1px 6px;border:1px solid transparent}
   .cart-dest{font-size:12px;font-weight:800;color:var(--text2);padding:6px 0;border-bottom:1px dashed var(--border)}
+  /* 방 머리글 = 그 방 전원 한 번에 고르기 */
+  .proom-h{display:flex;align-items:center;gap:8px;width:100%;font-family:inherit;text-align:left;cursor:pointer;
+    border:1px solid var(--border2);background:var(--surface2);border-radius:8px;padding:5px 10px;margin-bottom:5px}
+  .proom-h:hover{border-color:var(--accent)}
+  .proom-h.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .proom-h .proom-a{margin-left:auto;font-size:11px;font-weight:800;opacity:.85}
   .order-stage{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
   @media(max-width:880px){.order-stage{grid-template-columns:1fr}}
 
@@ -221,7 +227,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.1">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.2">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -403,7 +409,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=27.1"></script>
+<script src="../assets/saizen-ops.js?v=27.2"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -444,6 +450,7 @@ const L={
     sendFail:e=>'送信失敗: '+e+' — カートはそのまま残っています。つながってから[注文送信]をもう一度押してください', cartRestored:n=>`前回のカート ${n}件を戻しました`,
     koTitle:'注文状況', allVenues:'全体',
     stKitchen:'厨房へ', stBar:'バーへ',
+    roomPick:'この部屋 全員', roomPickOff:'選択解除', roomPickT:'この部屋のお客様をまとめて選ぶ／外す',
     vRestaurant:'レストラン', vBanquet:'コンベンションホール', vProshop:'ゴルフショップ', vFront:'フロント売店', vEtc:'その他',
     oFront:'フロント売店', oRestaurant:'レストラン·コンベンションホール', oGolf:'ゴルフショップ' },
   ko:{ noTeamHead:'팀 미선택 — 계산할 때 고릅니다', pickTeamFirst:'메뉴를 먼저 담고, 계산에서 [팀 선택]을 누르세요',
@@ -474,6 +481,7 @@ const L={
     sendFail:e=>'전송 실패: '+e+' — 장바구니는 그대로 있습니다. 연결되면 [주문 전송]을 다시 누르세요', cartRestored:n=>`이전 장바구니 ${n}건을 되살렸습니다`,
     koTitle:'주문 현황', allVenues:'전체',
     stKitchen:'주방으로', stBar:'바로',
+    roomPick:'이 방 전체', roomPickOff:'선택 해제', roomPickT:'이 방 손님을 한 번에 고르기/해제',
     vRestaurant:'레스토랑', vBanquet:'컨벤션 홀', vProshop:'골프샵', vFront:'프론트 매점', vEtc:'기타',
     oFront:'프론트 매점', oRestaurant:'레스토랑·컨벤션 홀', oGolf:'골프샵' },
   en:{ noTeamHead:'No team yet — pick it at checkout', pickTeamFirst:'Add items first, then press [Pick team] at checkout',
@@ -504,6 +512,7 @@ const L={
     sendFail:e=>'Send failed: '+e+' — your cart is still here. Press [Send order] again once you are back online', cartRestored:n=>`Restored ${n} item(s) from your last cart`,
     koTitle:'Order status', allVenues:'All',
     stKitchen:'to kitchen', stBar:'to bar',
+    roomPick:'Whole room', roomPickOff:'Clear', roomPickT:'Select or clear everyone in this room',
     vRestaurant:'Restaurant', vBanquet:'Convention hall', vProshop:'Pro shop', vFront:'Front shop', vEtc:'Other',
     oFront:'Front shop', oRestaurant:'Restaurant·Convention hall', oGolf:'Pro shop' }
 };
@@ -1021,10 +1030,18 @@ function renderPayer(){
         return String(a).localeCompare(String(b),undefined,{numeric:true});
       });
       const grouped = keys.length>1 || (keys.length===1 && keys[0]);
+      //  손님은 「1908호로 달아주세요」라고 말한다 → **방 머리글을 누르면 그 방 전원**이 한 번에
+      //  체크된다(Min 2026-08). 새 지불 방식(호수 계정)을 만들지 않는다 — 방 인원이 2명이면
+      //  지금 규칙대로 2인 분할이 되어 결과가 같고, 정산·체크아웃이 복잡해지지 않는다.
       const chips = grouped
-        ? keys.map(rn=>`<div class="proom"><div class="proom-h">${rn?escP(rn):tx('noRoom')}`
-            +`<span class="proom-n">${groups[rn].length}${t('po_cntPpl')}</span></div>`
-            +`<div class="payer-roster">${groups[rn].map(chipOf).join('')}</div></div>`).join('')
+        ? keys.map(rn=>{
+            const ids=groups[rn].map(m=>String(m.id));
+            const allOn=ids.length&&ids.every(id=>state.payerSel.has(id));
+            return `<div class="proom"><button type="button" class="proom-h${allOn?' on':''}" data-room="${escP(rn)}"`
+              +` title="${escP(tx('roomPickT'))}">${rn?escP(rn):tx('noRoom')}`
+              +`<span class="proom-n">${groups[rn].length}${t('po_cntPpl')}</span>`
+              +`<span class="proom-a">${escP(allOn?tx('roomPickOff'):tx('roomPick'))}</span></button>`
+              +`<div class="payer-roster">${groups[rn].map(chipOf).join('')}</div></div>`; }).join('')
         : `<div class="payer-roster">${state.roster.map(chipOf).join('')}</div>`;
       const k=state.payerSel.size;
       const hint=k===0?tx('pickPayer'):(k===1?tx('payerOne'):tx('payerN')(k));
@@ -1036,6 +1053,13 @@ function renderPayer(){
   box.innerHTML=h;
   box.querySelectorAll('[data-pm]').forEach(b=>b.addEventListener('click',()=>{
     state.payerMode=b.dataset.pm; if(state.payerMode==='team') state.payerSel.clear(); renderPayer();
+  }));
+  box.querySelectorAll('[data-room]').forEach(b=>b.addEventListener('click',()=>{
+    const rn=b.dataset.room, rby=state.roomByMember||{};
+    const ids=state.roster.filter(m=>(rby[String(m.id)]||'')===rn).map(m=>String(m.id));
+    const allOn=ids.length&&ids.every(id=>state.payerSel.has(id));
+    ids.forEach(id=>{ if(allOn) state.payerSel.delete(id); else state.payerSel.add(id); });
+    renderPayer();
   }));
   box.querySelectorAll('[data-mid]').forEach(b=>b.addEventListener('click',()=>{
     const id=String(b.dataset.mid);
