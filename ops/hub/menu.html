@@ -86,7 +86,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.7">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.8">
 </head>
 <body data-so-area="menu">
 <div class="topbar so-bar">
@@ -116,6 +116,7 @@
 
 <datalist id="venue-list">
   <option value="restaurant"></option><option value="banquet"></option>
+  <option value="front"></option><option value="golf"></option>
   <option value="proshop"></option><option value="etc"></option>
 </datalist>
 
@@ -172,7 +173,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=27.7"></script>
+<script src="../assets/saizen-ops.js?v=27.8"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 메뉴 관리(menu_items CRUD)  · POS/KDS 단가·station 마스터
@@ -198,7 +199,7 @@ const L={
     actInsert:'追加', actUpdate:'修正', actDelete:'削除',
     flCode:'コード', flNameJa:'日本語名', flNameKo:'韓国語名', flCat:'区分', flVenue:'場所', flStation:'station', flPrice:'単価', flSort:'並び順', flActive:'有効',
     catRound:'ラウンド', catFb:'飲食', catRoom:'ルーム', catProshop:'ゴルフショップ', catEtc:'その他',
-    venRestaurant:'レストラン', venProshop:'ゴルフショップ', venBanquet:'コンベンションホール', venEtc:'その他', all:'全体' },
+    venRestaurant:'レストラン', venFront:'フロント売店', venGolf:'ゴルフ場 プレー料金', venProshop:'ゴルフショップ(商品)', venBanquet:'コンベンションホール', venEtc:'その他', all:'全体' },
   ko:{ phCode:'자동', tipNextCode:'장소에 맞는 다음 코드 생성(FR1·GS1…)', phNameKo:'생맥주',
     saveAll:'💾 전체 저장', saveVenue:'💾 이 장소 전체 저장', tipCodeLock:'적용된 코드는 수정 불가',
     histTitle:'🕘 수정 이력', histEmptyConnect:'연결 후 표시됩니다.', histEmptyNone:'아직 수정 이력이 없습니다.',
@@ -213,7 +214,7 @@ const L={
     actInsert:'추가', actUpdate:'수정', actDelete:'삭제',
     flCode:'코드', flNameJa:'日本語名', flNameKo:'한국어명', flCat:'구분', flVenue:'장소', flStation:'station', flPrice:'단가', flSort:'정렬', flActive:'활성',
     catRound:'라운딩', catFb:'식음', catRoom:'룸', catProshop:'골프샵', catEtc:'기타',
-    venRestaurant:'레스토랑', venProshop:'골프샵', venBanquet:'컨벤션 홀', venEtc:'기타', all:'전체' },
+    venRestaurant:'레스토랑', venFront:'프론트 매점', venGolf:'골프장 플레이 요금', venProshop:'프로샵(상품)', venBanquet:'컨벤션 홀', venEtc:'기타', all:'전체' },
   en:{ phCode:'Auto', tipNextCode:'Generate next code for this venue (FR1·GS1…)', phNameKo:'생맥주',
     saveAll:'💾 Save all', saveVenue:'💾 Save this venue', tipCodeLock:'Applied code cannot be edited',
     histTitle:'🕘 Change history', histEmptyConnect:'Shown after connecting.', histEmptyNone:'No change history yet.',
@@ -228,7 +229,7 @@ const L={
     actInsert:'Add', actUpdate:'Edit', actDelete:'Delete',
     flCode:'Code', flNameJa:'Name (JA)', flNameKo:'Name (KO)', flCat:'Category', flVenue:'Venue', flStation:'station', flPrice:'Price', flSort:'Sort', flActive:'Active',
     catRound:'Round', catFb:'F&B', catRoom:'Room', catProshop:'Pro shop', catEtc:'Other',
-    venRestaurant:'Restaurant', venProshop:'Pro shop', venBanquet:'Convention hall', venEtc:'Other', all:'All' }
+    venRestaurant:'Restaurant', venFront:'Front shop', venGolf:'Golf play fees', venProshop:'Pro shop (goods)', venBanquet:'Convention hall', venEtc:'Other', all:'All' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; const v=d[k]!==undefined?d[k]:(L.ja[k]||k); return v; }
@@ -252,10 +253,15 @@ const STATIONS=['kitchen','bar','none'];
 let state={ items:[], venueFilter:'__all' };
 
 // ── 장소(venue) 레지스트리: 저장값(key)은 그대로, 화면은 라벨(언어별), 신규코드는 prefix+번호 ──
+//  ⚠ 골프는 **둘로 갈린다** — 플레이 요금(golf)과 상품(proshop).
+//    플레이 요금은 재고가 없고 체재비 배부의 기준가가 되지만, 프로샵 상품은 재고가 붙는다.
+//    섞어 두면 나중에 떼어내기가 더 번거롭다(Min 2026-09).
 const VENUES=[
+  {key:'front',      txkey:'venFront',      prefix:'FT'},
   {key:'restaurant', txkey:'venRestaurant', prefix:'FR'},
-  {key:'proshop',    txkey:'venProshop',    prefix:'GS'},
   {key:'banquet',    txkey:'venBanquet',    prefix:'BQ'},
+  {key:'golf',       txkey:'venGolf',       prefix:'GF'},
+  {key:'proshop',    txkey:'venProshop',    prefix:'GS'},
   {key:'etc',        txkey:'venEtc',        prefix:'ET'},
 ];
 const VENUE_BY_KEY=Object.fromEntries(VENUES.map(v=>[v.key,v]));
@@ -278,7 +284,7 @@ function nextCode(venueKey){
 }
 // station(조리 위치) 자동 기본값: 프론트·골프샵 매점=none, 식음=kitchen, 그 외=none.
 function autoStation(cat,venue){
-  if(venue==='front'||venue==='proshop') return 'none';
+  if(venue==='front'||venue==='proshop'||venue==='golf') return 'none';
   return cat==='식음' ? 'kitchen' : 'none';
 }
 let lastAuto='';

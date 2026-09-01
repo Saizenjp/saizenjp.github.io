@@ -49,6 +49,15 @@
   .conn .hint{font-size:11px;color:var(--muted)}
 
   .toolbar{padding:10px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  /* 매장 전환 탭 — 프론트가 각 부서로 넘겨 주는 자리라 손가락으로 누를 크기(44px+)로 둔다 */
+  .otabs{display:flex;gap:8px;padding:10px 20px 0;flex-wrap:wrap;align-items:center}
+  .otab{min-height:46px;padding:0 18px;border:1.5px solid var(--border);border-radius:11px;
+    background:var(--surface);font-size:15px;font-weight:800;color:var(--text);cursor:pointer;
+    display:inline-flex;align-items:center;gap:7px}
+  .otab:hover{border-color:var(--accent);color:var(--accent)}
+  .otab.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .otab .ocnt{font-size:12px;font-weight:700;opacity:.75}
+  .otabh{font-size:12.5px;font-weight:700;color:var(--text2);margin-right:2px}
   .toolbar label{font-size:12px;color:var(--text2);font-weight:600}
   .toolbar .hint{font-size:11px;color:var(--muted)}
 
@@ -251,7 +260,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.7">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.8">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -278,6 +287,10 @@
   <button class="btn sm" id="btn-connect" type="button" data-i18n="btnConnectShort"></button>
   <span class="hint" data-i18n="st_connHint"></span>
 </div>
+
+<!-- 매장 전환 — 프론트에서 9홀 추가·카트를 받을 때 그 섹션으로 들어가 계산한다(Min 2026-09).
+     매장마다 파는 것이 다르니 품목을 섞지 않고, 자리를 옮기듯 탭으로 넘어간다. -->
+<div class="otabs" id="otabs"></div>
 
 <div class="toolbar">
   <span class="pill" id="outlet-tag" style="display:none;background:var(--accentSoft);color:var(--accent);border-color:#b4cda0;font-size:13px"></span>
@@ -438,7 +451,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=27.7"></script>
+<script src="../assets/saizen-ops.js?v=27.8"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -485,8 +498,9 @@ const L={
     koTabTickets:'厨房・バー', koTabDay:'本日の注文', dayEmpty:'この日の注文はありません。',
     dayTime:'時刻', dayTeam:'チーム', dayItem:'品目', dayQty:'数量', dayAmt:'金額', dayWho:'担当', dayTo:'送り先',
     daySplit:'個人', dayTotal:(n)=>`${n}件`,
-    vRestaurant:'レストラン', vBanquet:'コンベンションホール', vProshop:'ゴルフショップ', vFront:'フロント売店', vEtc:'その他',
-    oFront:'フロント売店', oRestaurant:'レストラン·コンベンションホール', oGolf:'ゴルフショップ' },
+    vRestaurant:'レストラン', vBanquet:'コンベンションホール', vGolf:'プレー料金', vProshop:'ゴルフショップ', vFront:'フロント売店', vEtc:'その他',
+    oFront:'フロント売店', oRestaurant:'レストラン·コンベンションホール', oGolf:'ゴルフ場',
+    otHead:'売り場', otSwitchWarn:'カートに未送信の注文があります。売り場を移るとカートは空になります。よろしいですか？' },
   ko:{ noTeamHead:'팀 미선택 — 계산할 때 고릅니다', pickTeamFirst:'메뉴를 먼저 담고, 계산에서 [팀 선택]을 누르세요',
     listHidden:'팀 목록은 숨겨져 있습니다', listHiddenSub:'QR을 스캔하거나, 위 검색창에 태그코드·이름·방번호를 입력하세요.', listShow:'목록 보기', listHide:'목록 숨기기',
     wiBtn:'＋ 워크인', wiTitle:'워크인 전표', wiHint:'예약 없이 오신 손님(현장 손님)의 주문을 여기서 받습니다. 예약 데이터에는 들어가지 않습니다.', wiName:'이름(선택)', wiPax:'인원', wiGo:'전표 열기', wiCancel:'취소', wiOpened:(t)=>`${t} 전표를 열었습니다`, wiFail:e=>'워크인 전표 생성 실패: '+e, wiTag:'워크인', wiPayTitle:'그 자리에서 결제', wiPayHint:'워크인은 이 자리에서 받습니다. 금액을 확인하고 마감하세요.', wiPayCash:'현금', wiPayCard:'카드', wiPayGo:'받고 마감', wiPayDone:(m,a)=>`${m} ${a} 수령 — 마감했습니다`, wiPayFail:e=>'결제 실패: '+e, wiPayNone:'청구가 없습니다', qrHits:n=>`${n}건`, qrFindPh:'태그코드·이름·방번호 / QR 코드', qrFindHint:'QR이 안 되면 이 칸에 태그코드·이름·방번호를 입력하면 후보가 나옵니다.', qrBrowseAll:'목록에서 찾기',
@@ -521,8 +535,9 @@ const L={
     koTabTickets:'주방·바', koTabDay:'오늘 주문', dayEmpty:'이 날 주문이 없습니다.',
     dayTime:'시각', dayTeam:'팀', dayItem:'품목', dayQty:'수량', dayAmt:'금액', dayWho:'담당', dayTo:'전송',
     daySplit:'개인', dayTotal:(n)=>`${n}건`,
-    vRestaurant:'레스토랑', vBanquet:'컨벤션 홀', vProshop:'골프샵', vFront:'프론트 매점', vEtc:'기타',
-    oFront:'프론트 매점', oRestaurant:'레스토랑·컨벤션 홀', oGolf:'골프샵' },
+    vRestaurant:'레스토랑', vBanquet:'컨벤션 홀', vGolf:'플레이 요금', vProshop:'골프샵', vFront:'프론트 매점', vEtc:'기타',
+    oFront:'프론트 매점', oRestaurant:'레스토랑·컨벤션 홀', oGolf:'골프장',
+    otHead:'매장', otSwitchWarn:'담아 둔 주문이 있습니다. 매장을 옮기면 장바구니가 비워집니다. 옮길까요?' },
   en:{ noTeamHead:'No team yet — pick it at checkout', pickTeamFirst:'Add items first, then press [Pick team] at checkout',
     listHidden:'Team list is hidden', listHiddenSub:'Scan a QR code, or type a tag code, name or room number in the search box above.', listShow:'Show list', listHide:'Hide list',
     wiBtn:'＋ Walk-in', wiTitle:'Walk-in ticket', wiHint:'Take orders from guests with no booking. This does not touch reservation data.', wiName:'Name (optional)', wiPax:'Guests', wiGo:'Open ticket', wiCancel:'Cancel', wiOpened:(t)=>`Opened ticket ${t}`, wiFail:e=>'Could not create walk-in ticket: '+e, wiTag:'Walk-in', wiPayTitle:'Settle now', wiPayHint:'Walk-ins pay here. Check the amount and close the ticket.', wiPayCash:'Cash', wiPayCard:'Card', wiPayGo:'Take payment & close', wiPayDone:(m,a)=>`${m} ${a} received — closed`, wiPayFail:e=>'Payment failed: '+e, wiPayNone:'Nothing charged yet', qrHits:n=>`${n} found`, qrFindPh:'Tag code · name · room no. / QR code', qrFindHint:'If the QR will not read, type a tag code, name or room number here to see matches.', qrBrowseAll:'Browse full list',
@@ -557,23 +572,53 @@ const L={
     koTabTickets:'Kitchen·Bar', koTabDay:'Today\'s orders', dayEmpty:'No orders on this day.',
     dayTime:'Time', dayTeam:'Team', dayItem:'Item', dayQty:'Qty', dayAmt:'Amount', dayWho:'By', dayTo:'To',
     daySplit:'personal', dayTotal:(n)=>`${n} lines`,
-    vRestaurant:'Restaurant', vBanquet:'Convention hall', vProshop:'Pro shop', vFront:'Front shop', vEtc:'Other',
-    oFront:'Front shop', oRestaurant:'Restaurant·Convention hall', oGolf:'Pro shop' }
+    vRestaurant:'Restaurant', vBanquet:'Convention hall', vGolf:'Play fees', vProshop:'Pro shop', vFront:'Front shop', vEtc:'Other',
+    oFront:'Front shop', oRestaurant:'Restaurant·Convention hall', oGolf:'Golf course',
+    otHead:'Outlet', otSwitchWarn:'The cart still has unsent items. Switching outlets clears it. Continue?' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,lang()):(a||''); }   // 숙소·구역 표시 라벨(ja/ko/en) = saizen-core 단일 진실원
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
 
 // venue = DB 저장값(영문 키: restaurant/banquet/proshop/front/etc). 저장 유지, 표시만 번역.
-const VENUE_TXK={restaurant:'vRestaurant',banquet:'vBanquet',proshop:'vProshop',front:'vFront',etc:'vEtc'};
+const VENUE_TXK={restaurant:'vRestaurant',banquet:'vBanquet',golf:'vGolf',proshop:'vProshop',front:'vFront',etc:'vEtc'};
 function venueLabel(v){ const k=VENUE_TXK[v]; return k?tx(k):v; }
 // 매장(outlet) = venue 묶음. ?outlet= 로 해당 매장만 노출. 라벨은 언어별, venues 는 DB 키 그대로.
+//  ⚠ 골프는 **플레이 요금(golf)** 과 **상품(proshop)** 둘 다 — 플레이 요금은 재고가 없고,
+//    프로샵 상품은 재고가 붙는다. 저장은 갈라 두고 화면에서만 한 매장으로 묶는다.
 const OUTLETS={
   front:     {labelKey:'oFront',      venues:['front']},
   restaurant:{labelKey:'oRestaurant', venues:['restaurant','banquet']},   // 그 자리에서 파는 것만 — 다른 매장 품목은 안 섞는다(Min 2026-08)
-  golf:      {labelKey:'oGolf',       venues:['proshop']}
+  golf:      {labelKey:'oGolf',       venues:['golf','proshop']}
 };
+const OUTLET_ORDER=['front','restaurant','golf'];
 function outletLabel(o){ return tx(OUTLETS[o].labelKey); }
+//  매장 전환 — 프론트는 손님이 무엇이든 말하는 자리라 **각 부서로 넘겨 주는 허브**다(Min 2026-09).
+//  품목을 한 화면에 섞지 않고, 그 부서 탭으로 들어가 계산한다. 그러면 청구의 source 가
+//  그 부서로 남아 부서별 실적이 저절로 맞는다(누가 입력했는지는 created_by 에 남는다).
+function switchOutlet(o){
+  if(!OUTLETS[o] || o===state.outlet) return;
+  if(state.cart&&state.cart.length && !confirm(tx('otSwitchWarn'))) return;
+  state.cart=[]; state.outlet=o;
+  state.venue='__all__'; state.grp=null; state.sub='__all__';
+  try{
+    const u=new URL(location.href); u.searchParams.set('outlet',o);
+    history.replaceState(null,'',u.toString());     // 새로고침해도 그 매장으로 열린다
+  }catch(e){}
+  applyOutlet(); renderOutletTabs();
+  renderVenueTabs(); renderGrpTabs(); renderSubChips(); renderMenu(); renderCart(); updateSendBtn();
+  loadActive().then(()=>{ try{ renderTeams(); }catch(e){} });
+  koRefreshAny&&koRefreshAny();
+}
+function renderOutletTabs(){
+  const box=document.getElementById('otabs'); if(!box) return;
+  //  매장을 안 고르고 연 POS(?outlet= 없음)는 전 매장 합산 화면이라 탭을 켜지 않는다.
+  if(!state.outlet){ box.innerHTML=''; box.style.display='none'; return; }
+  box.style.display='';
+  box.innerHTML=`<span class="otabh">${escP(tx('otHead'))}</span>`
+    +OUTLET_ORDER.map(o=>`<button type="button" class="otab${o===state.outlet?' on':''}" data-o="${o}">${escP(outletLabel(o))}</button>`).join('');
+  box.querySelectorAll('[data-o]').forEach(b=>b.addEventListener('click',()=>switchOutlet(b.dataset.o)));
+}
 const _outletParam=new URLSearchParams(location.search).get('outlet')||'';
 // 팀 QR(bill.html?t=…)을 직원이 스캔 → [POS 주문] 링크로 넘어올 때 그 팀 자동선택(1회 소비).
 //   ?seq=<event_seq> · 그 날짜 체류 목록에 있으면 바로 주문 화면으로.
@@ -1002,7 +1047,7 @@ async function walkinOpen(){
   try{
     const {data,error}=await supa.rpc('walkin_open',{
       p_date: state.date||isoToday(), p_name: name||null, p_pax: pax,
-      p_venue: (state.outlet==='golf'?'proshop':(state.outlet==='front'?'front':'restaurant'))
+      p_venue: (state.outlet==='golf'?'golf':(state.outlet==='front'?'front':'restaurant'))
     });
     if(error) throw error;
     const r=(typeof data==='string')?JSON.parse(data):data;
@@ -1753,13 +1798,13 @@ $('#btn-send').addEventListener('click',sendCart);
 $('#ko-refresh').addEventListener('click',koRefresh);
 $('#date-pick').value=isoToday();
 applyStatic();
-applyOutlet();
+applyOutlet(); renderOutletTabs();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
 window.onSaizenLangChange=function(){
   try{
-    applyStatic(); applyOutlet();
+    applyStatic(); applyOutlet(); renderOutletTabs();
     // ⚠ 팀을 안 고른 상태(메뉴 먼저 담는 기본 화면)에서도 다시 그려야 한다.
     //   이전엔 팀이 있을 때만 다시 그려서, 언어를 바꿔도 메뉴·카트·머리글이 한국어로 남았다.
     if(state.menu.length){ renderVenueTabs(); renderGrpTabs(); renderSubChips(); renderMenu(); }
