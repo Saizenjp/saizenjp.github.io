@@ -1451,26 +1451,53 @@
   //    __so_receipt({tag:'FAあ-Y', repName:'김철수', no:12345, paid:24000, cash:24000})
   //  paid = 이미 받은 금액(기본 금액) · cash = 그중 현금 — 収入印紙 판정에 쓴다.
   var RC_I18N = {
-    ja: { title:'領収書の発行', to:'宛名', toPh:'例) 株式会社○○ / お客様名', forLbl:'但し書き',
+    ja: { title:'領収書の発行', plang:'印刷する言語(画面の言語とは別)', to:'宛名', toPh:'例) 株式会社○○ / お客様名', forLbl:'但し書き',
           amt:'金額(税込)', amtHint:'既定=お受け取り済みの金額',
           noPaid:'まだ入金がありません — 金額を直接ご入力ください',
           stamp:'※ 現金でのお受け取りが5万円以上の場合は収入印紙が必要です(カード決済は不要)',
           make:'領収書を作成', close:'閉じる', needAmt:'金額を入力してください',
           print:'印刷', closeX:'閉じる', popup:'ポップアップがブロックされました — 許可が必要です' },
-    ko: { title:'領収書 발행', to:'받는 분(宛名)', toPh:'예) 株式会社○○ / 손님 성함', forLbl:'但し書き(명목)',
+    ko: { title:'領収書 발행', plang:'인쇄물 언어 (화면 언어와 별개)', to:'받는 분(宛名)', toPh:'예) 株式会社○○ / 손님 성함', forLbl:'但し書き(명목)',
           amt:'금액(税込)', amtHint:'기본값 = 이미 받은 금액',
           noPaid:'아직 받은 금액이 없습니다 — 금액을 직접 입력하세요',
           stamp:'※ 현금 수령이 5만엔 이상이면 수입인지가 필요합니다(카드 결제는 불요)',
           make:'領収書 만들기', close:'닫기', needAmt:'금액을 입력하세요',
           print:'인쇄', closeX:'닫기', popup:'팝업 차단 — 허용 필요' },
-    en: { title:'Issue a receipt (領収書)', to:'Payer name', toPh:'e.g. Company name / guest name', forLbl:'For (但し書き)',
+    en: { title:'Issue a receipt (領収書)', plang:'Printed language (independent of the UI)', to:'Payer name', toPh:'e.g. Company name / guest name', forLbl:'For (但し書き)',
           amt:'Amount (tax incl.)', amtHint:'Defaults to the amount already received',
           noPaid:'No payment recorded yet — enter the amount directly',
           stamp:'※ A revenue stamp is required for cash receipts of ¥50,000 or more (not for card payments)',
           make:'Create receipt', close:'Close', needAmt:'Enter the amount',
           print:'Print', closeX:'Close', popup:'Popup blocked — please allow' }
   };
-  var RC_FORS = ['ご利用代金として', 'ご宿泊代として', 'ご飲食代として', 'ゴルフ代として'];
+  //  ── 인쇄물 문구는 **화면 언어와 무관**하게 고른다(Min 2026-08) ──────────────
+  //   손님은 한국분이 대부분이라 기본은 한국어. 일본 회계 제출용이면 日本語 로 바꿔 뽑는다.
+  //   ⚠ 領収書 는 일본 세무 문서라, 한국어로 뽑아도 **제목·발행처는 일본어를 함께** 남긴다.
+  var RC_PLANG_KEY = 'saizen_receipt_lang';
+  function rcPLang() {
+    try { var v = localStorage.getItem(RC_PLANG_KEY); if (v === 'ko' || v === 'ja') return v; } catch (e) {}
+    return 'ko';                                   // 기본 = 한국어
+  }
+  var RC_PRINT = {
+    ko: { doc:'영 수 증', docSub:'領収書', issued:'발행일', no:'No.', hon:'님',
+          forLbl:'내역', said:'위 금액을 정히 영수하였습니다.',
+          net:'공급가', tax:'소비세(10%)', sum:'합계(세금 포함)',
+          stampOn:'수입인지', stampOff:'수입인지<br>(불요)',
+          cut:'✂ 여기서 잘라 손님께 드립니다',
+          keepH:'보관용(控え)', issuedBy:'발행',
+          warnOn:'⚠ <b>현금 5만엔 이상</b> 수령입니다 — <b>수입인지</b>를 붙이고 소인해 주세요.',
+          warnOff:'※ 수입인지는 필요 없습니다(카드 결제 또는 현금 5만엔 미만).',
+          fors:['이용 대금', '숙박 대금', '식음 대금', '골프 대금'] },
+    ja: { doc:'領 収 書', docSub:'', issued:'発行日', no:'No.', hon:'様',
+          forLbl:'但', said:'上記正に領収いたしました。',
+          net:'税抜', tax:'消費税(10%)', sum:'合計(税込)',
+          stampOn:'収入印紙', stampOff:'収入印紙<br>(不要)',
+          cut:'✂ ここで切り取ってお渡しください',
+          keepH:'控え', issuedBy:'発行',
+          warnOn:'⚠ <b>現金で5万円以上</b>のお受け取りです — <b>収入印紙</b>を貼付し、消印してください。',
+          warnOff:'※ 収入印紙は不要です(カード決済、または現金5万円未満)。',
+          fors:['ご利用代金として', 'ご宿泊代として', 'ご飲食代として', 'ゴルフ代として'] }
+  };
   var RC_TAX = 0.10;   // 内税(표시가에 포함된 소비세)
 
   function rcEsc(v) {
@@ -1481,7 +1508,8 @@
   function rcYen(n) { return '¥' + Number(n || 0).toLocaleString('ja-JP'); }
 
   //  실제 인쇄물 — A4 위쪽이 손님용, 절취선 아래가 控え(보관용)
-  function rcPrint(o, R) {
+  function rcPrint(o, R, plang) {
+    var P = RC_PRINT[plang] || RC_PRINT.ko;
     var today = new Date().toISOString().slice(0, 10);
     var amount = Math.round(Number(o.amount) || 0);
     var net = Math.round(amount / (1 + RC_TAX)), tax = amount - net;
@@ -1515,26 +1543,24 @@
       + '.note{font-size:9pt;color:#444;line-height:1.7}.note b{color:#111}'
       + '@media print{ body{background:#fff} .toolbar{display:none} .sheet{margin:0;width:auto;min-height:auto;padding:14mm 16mm} }'
       + '</style></head><body>'
-      + '<div class="toolbar"><h1>領収書</h1><div class="meta">' + tag + ' · ' + to + ' · ' + today + '</div><div style="flex:1"></div>'
+      + '<div class="toolbar"><h1>' + rcEsc(P.docSub || P.doc) + '</h1><div class="meta">' + tag + ' · ' + to + ' · ' + today + '</div><div style="flex:1"></div>'
       + '<button onclick="window.print()">🖨 ' + rcEsc(R.print) + '</button>'
       + '<button class="c" onclick="window.close()">✕ ' + rcEsc(R.closeX) + '</button></div>'
       + '<div class="sheet"><div class="rc">'
-      + '<h2>領 収 書</h2>'
-      + '<div class="no"><span>発行日 ' + today + '</span><span>No. ' + rcEsc(String(o.no == null ? '' : o.no)) + '</span></div>'
-      + '<div class="to">' + to + ' <small>様</small></div>'
+      + '<h2>' + rcEsc(P.doc) + (P.docSub ? '<span style="font-size:13pt;letter-spacing:2px;margin-left:6mm;color:#444">' + rcEsc(P.docSub) + '</span>' : '') + '</h2>'
+      + '<div class="no"><span>' + rcEsc(P.issued) + ' ' + today + '</span><span>' + rcEsc(P.no) + ' ' + rcEsc(String(o.no == null ? '' : o.no)) + '</span></div>'
+      + '<div class="to">' + to + ' <small>' + rcEsc(P.hon) + '</small></div>'
       + '<div class="amt">' + rcYen(amount) + ' -</div>'
-      + '<div class="for">但 <b>' + forWhat + '</b></div>'
-      + '<div class="said">上記正に領収いたしました。</div>'
-      + '<div class="brk"><span>税抜 ' + rcYen(net) + '</span><span>消費税(10%) ' + rcYen(tax) + '</span><span>合計(税込) ' + rcYen(amount) + '</span></div>'
+      + '<div class="for">' + rcEsc(P.forLbl) + ' <b>' + forWhat + '</b></div>'
+      + '<div class="said">' + rcEsc(P.said) + '</div>'
+      + '<div class="brk"><span>' + rcEsc(P.net) + ' ' + rcYen(net) + '</span><span>' + rcEsc(P.tax) + ' ' + rcYen(tax) + '</span><span>' + rcEsc(P.sum) + ' ' + rcYen(amount) + '</span></div>'
       + '<div class="foot"><div class="issuer"><b>アソ ヤマナミリゾート</b><br>株式会社SaiZen<br>'
       + '<span style="font-size:10pt;color:#555">熊本県阿蘇郡</span></div>'
-      + '<div class="stamp">' + (needStamp ? '収入印紙' : '収入印紙<br>(不要)') + '</div></div>'
+      + '<div class="stamp">' + (needStamp ? P.stampOn : P.stampOff) + '</div></div>'
       + '</div>'
-      + '<div class="cut"><span>✂ ここで切り取ってお渡しください / 여기서 잘라 손님께 드립니다</span></div>'
-      + '<div class="note"><b>控え / 보관용</b> — ' + tag + ' ' + rcEsc(o.repName || '') + ' · 発行 ' + today + ' · ' + rcYen(amount) + ' · ' + forWhat + '<br>'
-      + (needStamp
-          ? '⚠ <b>現金で5万円以上</b>のお受け取りです — <b>収入印紙</b>を貼付し、消印してください。'
-          : '※ 収入印紙は不要です(カード決済、または現金5万円未満)。')
+      + '<div class="cut"><span>' + rcEsc(P.cut) + '</span></div>'
+      + '<div class="note"><b>' + rcEsc(P.keepH) + '</b> — ' + tag + ' ' + rcEsc(o.repName || '') + ' · ' + rcEsc(P.issuedBy) + ' ' + today + ' · ' + rcYen(amount) + ' · ' + forWhat + '<br>'
+      + (needStamp ? P.warnOn : P.warnOff)
       + '</div></div></body></html>';
     var w = global.open('', '_blank');
     if (!w) { rcToast(R.popup, true); return; }
@@ -1551,6 +1577,7 @@
   global.__so_receipt = function (opts) {
     opts = opts || {};
     var R = RC_I18N[LANG] || RC_I18N.ja;
+    var plang = rcPLang();                       // 인쇄물 언어 — 화면 언어와 별개(기본 한국어)
     var paid = Math.round(Number(opts.paid) || 0);
     var cash = Math.round(Number(opts.cash) || 0);
     var bg = document.createElement('div');
@@ -1563,10 +1590,18 @@
       + '<div style="font-size:13px;font-weight:800;color:#647548;margin-bottom:10px">' + rcEsc(opts.tag || '') + ' ' + rcEsc(opts.repName || '') + '</div>'
       + '<label style="' + hint + '">' + rcEsc(R.to) + '</label>'
       + '<input id="so-rc-to" type="text" value="' + rcEsc(opts.repName || '') + '" placeholder="' + rcEsc(R.toPh) + '" style="' + ip + ';margin-bottom:9px">'
+      + '<label style="' + hint + '">' + rcEsc(R.plang) + '</label>'
+      + '<div id="so-rc-lang" style="display:flex;gap:6px;margin-bottom:10px">'
+      + ['ko', 'ja'].map(function (L2) {
+          var on = (plang === L2);
+          return '<button type="button" data-pl="' + L2 + '" style="flex:1;font-family:inherit;font-size:13px;font-weight:800;'
+            + 'padding:9px 10px;min-height:42px;border-radius:8px;cursor:pointer;border:1.5px solid ' + (on ? '#647548' : '#c9cec2') + ';'
+            + 'background:' + (on ? '#647548' : '#fff') + ';color:' + (on ? '#fff' : '#4a5147') + '">'
+            + (L2 === 'ko' ? '한국어' : '日本語') + '</button>';
+        }).join('')
+      + '</div>'
       + '<label style="' + hint + '">' + rcEsc(R.forLbl) + '</label>'
-      + '<select id="so-rc-for" style="' + ip + ';margin-bottom:9px">'
-      + RC_FORS.map(function (v) { return '<option value="' + rcEsc(v) + '">' + rcEsc(v) + '</option>'; }).join('')
-      + '</select>'
+      + '<select id="so-rc-for" style="' + ip + ';margin-bottom:9px"></select>'
       + '<label style="' + hint + '">' + rcEsc(R.amt) + ' <span style="font-weight:400">— ' + rcEsc(R.amtHint) + '</span></label>'
       + '<input id="so-rc-amt" type="number" min="0" step="1" value="' + paid + '" style="' + ip + ';margin-bottom:6px">'
       + (paid <= 0 ? '<div style="font-size:11.5px;color:#b13b2c;font-weight:700;margin-bottom:6px">' + rcEsc(R.noPaid) + '</div>' : '')
@@ -1576,6 +1611,28 @@
       + '<button type="button" id="so-rc-go" style="font-family:inherit;font-size:12px;font-weight:700;border-radius:7px;padding:6px 13px;border:1px solid #647548;background:#647548;color:#fff;cursor:pointer">' + rcEsc(R.make) + '</button>'
       + '</div></div>';
     document.body.appendChild(bg);
+    //  但し書き 목록은 고른 인쇄 언어를 따라간다(인쇄물에 그대로 찍히는 글이라).
+    var selFor = bg.querySelector('#so-rc-for');
+    function fillFors() {
+      var cur = selFor.value;
+      var list = (RC_PRINT[plang] || RC_PRINT.ko).fors;
+      selFor.innerHTML = list.map(function (v) { return '<option value="' + rcEsc(v) + '">' + rcEsc(v) + '</option>'; }).join('');
+      if (list.indexOf(cur) >= 0) selFor.value = cur;
+    }
+    fillFors();
+    bg.querySelectorAll('#so-rc-lang [data-pl]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        plang = b.dataset.pl;
+        try { localStorage.setItem(RC_PLANG_KEY, plang); } catch (e) {}
+        bg.querySelectorAll('#so-rc-lang [data-pl]').forEach(function (x) {
+          var on = (x.dataset.pl === plang);
+          x.style.borderColor = on ? '#647548' : '#c9cec2';
+          x.style.background = on ? '#647548' : '#fff';
+          x.style.color = on ? '#fff' : '#4a5147';
+        });
+        fillFors();
+      });
+    });
     var close = function () { bg.remove(); };
     bg.querySelector('#so-rc-x').addEventListener('click', close);
     bg.addEventListener('click', function (e) { if (e.target === bg) close(); });
@@ -1585,7 +1642,7 @@
       var amt = Math.round(Number(bg.querySelector('#so-rc-amt').value || 0));
       if (amt <= 0) { rcToast(R.needAmt, false); return; }
       close();
-      rcPrint({ tag: opts.tag, repName: opts.repName, no: opts.no, to: to, forWhat: fr, amount: amt, cash: cash }, R);
+      rcPrint({ tag: opts.tag, repName: opts.repName, no: opts.no, to: to, forWhat: fr, amount: amt, cash: cash }, R, plang);
     });
   };
 
@@ -2160,7 +2217,7 @@
     'dinner.html': '<h4>이 화면이 하는 일</h4>날짜별 <b>夕食オーダー</b>(A3) + 조·중·석 <b>식수 자동집계</b> + <b>レストラン名札</b> 인쇄.<h4>계산·판정</h4><ul><li>식수=숙소 그룹별 규칙. <b>석식=그날 묵는 전원</b>.</li><li><b>조기 퇴실 반영</b>: 방배정에서 🛫 조기 퇴실 처리한 인원은 끼니 경계대로 자동 차감 — <b>퇴실일 아침까지는 포함</b>, 점심·저녁부터 제외. 인쇄 명단·합계에 <code>早期退室 −N</code> 표기.</li><li><b>レストラン名札 = 운영팀 단위 합석</b>: 現地手配書에서 묶은 운영팀(team_group)이 <b>명패 1장으로 자동 합석</b>(대표자·태그 모두 표기·인원 합산). 같은 운영팀 중 <b>석식만 따로</b> 낼 팀은 「✂ 석식 분리」로 단독 명패로 뺀다(「↩ 합석 복원」 되돌림). 식수 집계는 그대로(각 팀 인원 유지).</li><li><b>제외(병합)</b>: 한 팀 지우고 다른 팀에 인원 취합 → 명단·식수에서 빠짐(묶기와 달리 명단에서 사라짐).</li></ul><h4>別注 → 정산 자동청구</h4>단가가 있는 <b>추가·업그레이드 別注를 등록하면 그 팀 御請求書(정산)에 자동으로 청구</b>가 잡힙니다(업그레이드=차액, 알레르기=청구 없음). 별주를 수정·삭제하면 청구도 자동으로 따라갑니다(DB 트리거). 팀 정산 계정이 없으면 자동 개설됩니다.<h4>주요 용어</h4>태그코드. レストラン名札은 운영팀(現地手配書) 단위 합석 · 「석식 분리」로 운영팀 중 그 팀만 단독 명패.<h4>권한·데이터</h4>print(인쇄) 영역. 태그·인원·묶기 저장은 print 또는 room 권한 필요. 別注 청구는 charges(트리거가 생성, 정산은 settle/pos 영역에서 열람).',
     'shizu.html': '<h4>이 화면이 하는 일</h4><b>志津の宿 予約表</b>(시즈노야도 료칸 객실 예약표)를 만들고 <b>객실 배정 보드</b>로 개인 단위 배정합니다. 7객실=本館 4(志津·合歓·北條·山法師)·別棟 3(吉祥·瑞雲·馬酔木).<h4>배정</h4><ul><li><b>객실 배정 보드</b>: 왼쪽 미배정에서 인원 선택 → 오른쪽 객실 클릭으로 배정. 이름 클릭=이동·✕=미배정·드래그도 가능. <b>배정·이동·해제·전체비우기·자동배정은 모두 직후 <u>↩ 되돌리기</u></b>(10초 토스트)로 전단계 복원. 여러 명 이동 시 정원(3)에 막힌 인원은 <b>건너뜀 N</b>으로 알리며, 그대로 섞였다면 ↩로 되돌리세요. <b>검색</b>(이름·영문명·대표자·행사번호)으로 찾아 그 날짜로 점프.</li><li><b>🪄 월별 자동배정</b>: 표시 중인 <b>그 달만</b> 배정(다른 달 무영향). <b>2인 페어·빈 방만</b> 채우고 홀수 1명·3인은 미배정으로 둠(수기 보완). <b>순서 — 일반팀: 本館 201·202·204(志津·合歓·山法師) → 203(北條) → 離れ 301·302·303(吉祥·瑞雲·馬酔木). 別棟 선호팀: 離れ(吉祥·瑞雲·馬酔木) 먼저→本館→北條. 北條(203)는 완전 최후가 아니라 <u>本館 중 후순위</u>(別棟보다 먼저)</b>.<br><b>고령자 우선</b> — 팀 처리 순서가 <b>팀 최고령 나이 내림차순</b>(동률이면 예약순)이라, 어르신이 있는 팀이 계단 적은 <b>本館(2층)</b>을 먼저 가져가고 젊은 팀이 離れ로 밀립니다. 나이=그 팀 <b>체크인일 기준 만나이</b>의 팀 내 최댓값(생년월일 없으면 맨 뒤). ⚠ <b>別棟 선호팀은 나이와 무관하게 離れ 우선</b> — 사전 요청이 나이보다 앞섭니다.</li><li><b>정원 2 + 강제 1명</b>: 수기로 최대 3인까지. 3인 방은 「3/2 超過」로 붉게 표시.</li><li><b>번들예약</b>(시즈+야마나미·시즈+간지 등 한 예약)은 예약기간 전체가 아니라 <b>실제 시즈 숙박 구간만</b> 미배정(未) 계산(현지비고 「M/D-M/D 시즈」 파싱·배정된 방 기준). 미배정 목록은 <b>숙소가 시즈인 팀 + 상품명에 시즈가 든 번들예약 팀</b>을 함께 봅니다 — 번들은 숙소가 야마나미/간지로 기록돼 있어, 이게 없으면 <b>배정을 푸는 순간 목록에서 사라져</b> 다시 배정할 수 없었습니다.</li></ul><h4>메모·표기</h4><ul><li><b>参考事項</b>=<b>현장 직접입력</b>(트리플룸·합팀 등 현장 필요한 것만 일본어로, 방 칸 클릭·팀 단위 자동 저장). ※한국 현지비고 자동표시는 폐지(한국어라 현장 무의미) — 긴 특이사항은 담당자에게 직접 전달. <b>現地메모</b>=방 칸 클릭해 직접 입력(팀 단위·자동 저장).</li><li><b>♨ 별채(내탕)</b>: 현지비고에 별채신청·내탕신청·온천신청 등 키워드가 있으면 別棟 방에 ♨ 자동 표기. 사전신청=<b>+2,000엔/인·박=19,000엔</b>(별채 3방·메리트 B2B).</li><li><b>現地예약 구분</b>: 메리트 B2B가 아닌 <b>현장 워크인 예약</b>은 <b>「現地」 배지</b>로 표시(배정보드·미리보기·인쇄 공통) — 현장에서 한눈에 구분.</li><li>날짜 칩에 <b>入N/出N</b>(체크인/체크아웃 팀)·<b>未N</b>(미배정). 월 선택↔보드 사이에 그날 <b>체크인/체크아웃 팀 요약</b>.</li><li><b>📌 현지 전달사항</b>(체크인/체크아웃 목록 바로 아래): 그 날짜에 묵는 팀 중 <b>현장이 미리 알아야 할 게 있는 팀만</b> 모아 보여줍니다. 자동 배지 — <b>콤보 체류</b>(시즈+간지·시즈+야마나미 등 복수 숙박지)·<b>별채 신청</b>·<b>트리플</b>·<b>식사·알러지</b>·<b>기타</b>. 소스=엠클릭 현지비고·비고 + 현장 입력(참고사항·現地메모) + 상품명. <b>원문을 그대로 함께 표시</b>하므로 배지는 눈에 띄게 하는 용도이고 판단은 원문을 보고 하십시오.</li></ul><h4>출력</h4>화면 예약표를 <b>그대로 인쇄</b>(팝업 없음·2일/장·큰 글씨)·날짜별 인쇄. 全角 표기.<h4>권한·데이터</h4><b>shizu 영역</b>(admin.html에서 지정). rooms·guest_members·passengers 읽기 + shizu_team_memo(現地메모)·shizu_memo 쓰기(shizu/room 영역).',
     'inventory.html': '<h4>이 화면이 하는 일</h4><b>부서별 재고·사입 관리</b>. 품목별 현재고·적정재고·부족 알림 + 입출고 원장 + 거래처·단가.<h4>부서</h4>재고는 <b>부서마다 따로</b> 쥡니다 — <b>F&B · 객실 · 청소/린넨 · 골프/카트 · 프론트/사무 · 시즈노야도</b>. 상단 탭으로 옮기면 주소(<code>?dept=</code>)도 같이 바뀌어 <b>즐겨찾기·새로고침해도 그 부서로 열립니다</b>. 홈 하단 <b>「재고 · 사입」</b> 섹션에서 부서 카드로 바로 들어올 수도 있습니다.<h4>흐름</h4><ul><li>품목에 <b>+입고 / −사용 / 실사</b> 기록 → 현재고 자동 갱신 + 원장(최근 이력)에 남음.</li><li>현재고가 적정재고 미만이면 <b>부족 알림</b>.</li><li>입고에 <b>거래처·단가</b>를 넣으면 그 달 <b>사입액</b>이 집계됩니다.</li></ul><h4>권한·데이터</h4><b>자기 부서 재고만 고칠 수 있습니다</b> — F&B=kitchen · 객실=room · 청소=hk · 골프=golf · 프론트=front · 시즈=shizu 영역(부서와 같은 이름). <b>보는 것은 로그인한 전원</b>이 가능합니다(다른 부서 재고를 참고할 수 있게). 서버(RLS)도 같은 기준으로 막습니다. inv_items·inv_txns·inv_suppliers.',
-    'settle.html': '<h4>이 화면이 하는 일</h4>체크아웃 <b>명세서(御請求書)</b>. 팀별 청구·결제·잔액.<h4>실시간 반영</h4>POS 주문·결제가 <b>약 20초마다 자동 반영</b>됩니다(열어둔 계산서에 새 청구가 바로 추가, 목록 잔액도 갱신). 모달·입력 중엔 방해하지 않게 건너뜁니다. 안 보이면 보고 있는 <b>월(session)</b>이 그 팀과 같은지 확인하세요.<h4>계산·판정</h4><ul><li><b>잔액=청구합계−결제합계</b>.</li><li>미개설 팀=청구 0=<b>잔액 ¥0</b>(클릭하면 청구 추가, 계정 자동개설).</li><li>개인 분할이 있으면 folio 묶음(팀+개인 합계).</li></ul><h4>주요 용어</h4>현장 추가요금(추가라운드·미니바 등) — B2B 선계약과 <b>별개</b>.<h4>領収書(영수증)</h4>손님이 領収書를 달라고 하면 팀 상세의 <b>[🧾 領収書]</b>. <b>宛名(받는 분)·但し書き(명목)·금액</b>을 정해 발행합니다 — <b>금액 기본값은 이미 받은 금액</b>입니다(領収書는 받은 돈의 증거라 청구액이 아닙니다). A4 위쪽에 인쇄되고 <b>절취선</b> 아래에 控え(보관용)가 남습니다. <b>収入印紙</b>는 <b>현금 수령 5만엔 이상</b>일 때만 필요하며(카드 결제는 불요) 인쇄물이 어느 쪽인지 알려 줍니다.<h4>QR 스캐너</h4>프론트에 <b>QR 스캐너</b>가 꽂혀 있으면 손님 카드를 찍는 것만으로 <b>그 팀 청구서가 바로 열립니다</b>(어느 칸에 커서가 있든 됩니다). 이 달 목록에 없는 팀이면 월을 확인하라고 알립니다.<h4>팀 묶음 코드</h4>現地手配書에서 묶은 팀은 <b>대표팀 코드+팀번호</b>로 표시하되, 정산 화면에서는 <b>원래 코드를 괄호로 병기</b>합니다(<code>DFな-Y2 (FSネ)</code>) — 엠클릭·B2B 명세와 대조해야 하기 때문입니다. 손님에게 나가는 <b>御請求書·領収書는 통일 코드 하나만</b> 찍힙니다. <b>검색은 원래 코드로도 찾힙니다.</b><h4>워크인</h4>예약 없이 오신 손님(POS <b>[＋ 워크인]</b>)의 전표도 이 목록에 <b>「워크인」</b>으로 함께 나옵니다. 御請求書·領収書·검색·일일 매출이 예약 팀과 똑같이 동작합니다. 보통은 POS에서 그 자리에 마감되므로 여기서는 <b>확인·영수증 재발행</b> 용도입니다.<h4>권한·데이터</h4>settle 영역. folios·charges·payments.',
+    'settle.html': '<h4>이 화면이 하는 일</h4>체크아웃 <b>명세서(御請求書)</b>. 팀별 청구·결제·잔액.<h4>실시간 반영</h4>POS 주문·결제가 <b>약 20초마다 자동 반영</b>됩니다(열어둔 계산서에 새 청구가 바로 추가, 목록 잔액도 갱신). 모달·입력 중엔 방해하지 않게 건너뜁니다. 안 보이면 보고 있는 <b>월(session)</b>이 그 팀과 같은지 확인하세요.<h4>계산·판정</h4><ul><li><b>잔액=청구합계−결제합계</b>.</li><li>미개설 팀=청구 0=<b>잔액 ¥0</b>(클릭하면 청구 추가, 계정 자동개설).</li><li>개인 분할이 있으면 folio 묶음(팀+개인 합계).</li></ul><h4>주요 용어</h4>현장 추가요금(추가라운드·미니바 등) — B2B 선계약과 <b>별개</b>.<h4>領収書(영수증)</h4>손님이 領収書를 달라고 하면 팀 상세의 <b>[🧾 領収書]</b>. <b>宛名(받는 분)·但し書き(명목)·금액</b>을 정해 발행합니다 — <b>금액 기본값은 이미 받은 금액</b>입니다(領収書는 받은 돈의 증거라 청구액이 아닙니다). A4 위쪽에 인쇄되고 <b>절취선</b> 아래에 控え(보관용)가 남습니다. <b>인쇄물 언어는 화면 언어와 따로</b> 고릅니다 — 발행창의 <b>[한국어] [日本語]</b>. <b>기본은 한국어</b>이고(손님이 한국분이라), 일본 회계에 내실 것이면 日本語로 바꿔 뽑으면 됩니다. 고른 언어는 그 기기에 기억되고, <b>但し書き(명목) 목록도 그 언어를 따라갑니다</b>. 한국어로 뽑아도 제목 옆에 <b>領収書</b>를 함께 남깁니다(일본 세무 문서라서요). <b>収入印紙</b>는 <b>현금 수령 5만엔 이상</b>일 때만 필요하며(카드 결제는 불요) 인쇄물이 어느 쪽인지 알려 줍니다.<h4>QR 스캐너</h4>프론트에 <b>QR 스캐너</b>가 꽂혀 있으면 손님 카드를 찍는 것만으로 <b>그 팀 청구서가 바로 열립니다</b>(어느 칸에 커서가 있든 됩니다). 이 달 목록에 없는 팀이면 월을 확인하라고 알립니다.<h4>팀 묶음 코드</h4>現地手配書에서 묶은 팀은 <b>대표팀 코드+팀번호</b>로 표시하되, 정산 화면에서는 <b>원래 코드를 괄호로 병기</b>합니다(<code>DFな-Y2 (FSネ)</code>) — 엠클릭·B2B 명세와 대조해야 하기 때문입니다. 손님에게 나가는 <b>御請求書·領収書는 통일 코드 하나만</b> 찍힙니다. <b>검색은 원래 코드로도 찾힙니다.</b><h4>워크인</h4>예약 없이 오신 손님(POS <b>[＋ 워크인]</b>)의 전표도 이 목록에 <b>「워크인」</b>으로 함께 나옵니다. 御請求書·領収書·검색·일일 매출이 예약 팀과 똑같이 동작합니다. 보통은 POS에서 그 자리에 마감되므로 여기서는 <b>확인·영수증 재발행</b> 용도입니다.<h4>권한·데이터</h4>settle 영역. folios·charges·payments.',
     'settle_merit.html': '<h4>이 화면이 하는 일</h4>메리트↔사이젠 <b>B2B 선계약</b> 정산표.<h4>계산·판정</h4><ul><li><b>숙박비=인원×박수×숙소단가</b>(야마나미·쿠주 14,000 / 간지 16,000 / 시즈 16,000).</li><li><b>송영비=인원×¥6,000</b>.</li><li>인원=<b>실제 명단 수</b>(예약 pax보다 우선). 차감·비고만 별도 저장.</li></ul><h4>주요 용어</h4>B2B(현장 추가요금과 혼동 금지).<h4>권한·데이터</h4>settle 영역.',
     'pos.html': '<h4>이 화면이 하는 일</h4>주문 입력(간이 POS). 팀 기본 + 개인 분할.<h4>어느 매장 화면인지</h4>주소의 <code>?outlet=</code> 에 따라 <b>머리 배지와 탭 제목이 그 매장 이름</b>으로 바뀝니다 — <b>레스토랑·컨벤션 홀 POS</b> · <b>프론트 매점 POS</b> · <b>골프샵 POS</b>. <b>각 POS 는 그 자리에서 파는 품목만</b> 보여줍니다 — 다른 매장 물건이 섞이면 잘못 누르기 쉽습니다.<h4>어디로 전송되는지 세 군데에 같이 씁니다</h4>품목마다 <b>주방으로 / 바로</b>가 붙습니다(전송 없는 매점 품목엔 안 붙습니다).<ul><li><b>분류 탭</b> — 「마실 것 28 <b>바로</b>」 「먹는 것 14 <b>주방으로</b>」. 한 분류가 한 곳으로만 가면 그 이름을 붙이고, 섞여 있으면 안 붙입니다(틀린 말을 하느니 아무 말도 안 하는 게 낫습니다).</li><li><b>메뉴 카드</b> — 오른쪽 아래에 작은 배지. 주방은 주황, 바는 남색.</li><li><b>장바구니</b> — 줄마다 배지가 붙고, 합계 위에 <b>「주방으로 2 · 바로 3」</b> 요약이 나옵니다. <b>보내기 전에 여기서 잘못 담은 것이 걸립니다.</b></li></ul><b>기본으로 열리는 탭은 그 매장에서 제일 많이 쓰는 분류</b>입니다(품목이 가장 많은 것) — 열자마자 바로 담기 시작할 수 있습니다. <b>「전체」는 눌러야 나옵니다</b> — 목록이 길고 잘못 누르기 쉬워 기본으로 두지 않았습니다. 품목의 <b>제공처(주방/바/없음)</b>에 따라 주방 KDS 로 티켓이 갈지가 정해지고, 그건 <b>메뉴 관리</b>에서 지정합니다.<h4>흐름 = 메뉴 먼저, 팀은 계산에서</h4>화면을 열면 <b>메뉴가 바로</b> 나옵니다. 주문받은 대로 <b>메뉴를 담고</b> → 버튼이 <b>[👥 팀 선택(계산)]</b> 으로 바뀌면 눌러 <b>팀을 고르고</b>(검색·QR) → 지불 방식(팀 공통/개인 지정)을 확인한 뒤 <b>[주문 전송]</b>. 팀을 고르는 동안 <b>담은 메뉴는 그대로</b> 남습니다. QR을 먼저 스캔하면 팀이 미리 잡힌 상태로 시작합니다(기존과 동일). 팀을 잘못 골랐으면 상단 <b>[👥 팀 변경]</b>.<h4>전송해도 팀은 그대로 남습니다</h4>같은 팀이 추가 주문하면 바로 담아서 또 보내면 되고, 누계가 계속 쌓입니다. 다만 <b>다음 손님으로 넘어갈 때 팀을 바꾸지 않으면 앞 팀에 붙습니다</b> — 그래서 지금 누구 주문인지가 눈에 박히도록 <b>상단 머리줄을 올리브 띠로 크게</b> 세우고(태그코드·대표자·숙소·인원·행사번호), <b>[주문 전송] 버튼에도 팀 태그</b>를 함께 찍었습니다. 팀이 없을 때는 머리줄이 회색 점선으로 바뀝니다. <b>다음 손님 카드를 그냥 스캔하면 팀이 바뀝니다</b> — 이게 가장 안전한 습관입니다.<h4>오늘 무엇이 나갔나 — 하단 두 갈래</h4>화면 맨 아래 패널에 탭이 둘 있습니다.<ul><li><b>[주방·바]</b> — 그날 주방·바로 나간 주문의 <b>진행 상태</b>(대기 → 조리중 → 완료). 7초마다 갱신.</li><li><b>[오늘 주문]</b> — 그날 <b>이 매장에서 들어온 청구 전부</b>를 시각·팀·품목·수량·<b>금액</b>·담당·전송처로. 맨 아래에 <b>건수와 금액 합계</b>. <b>티켓이 안 생기는 매점 품목까지 전부</b> 나오고, 취소한 청구는 빠집니다. 날짜를 바꾸면 그날 것을 봅니다 — 마감 때 「오늘 뭐가 얼마나 나갔나」를 여기서 봅니다.</li></ul><h4>전송 다음에 할 일은 없습니다</h4>POS 쪽에서 「완료」를 누를 것은 없습니다. 전송하면 <b>정산 청구</b>와 <b>주방 티켓</b>이 동시에 만들어지고, 그다음은 <b>주방 화면에서 [접수] → [완료]</b> 입니다. 그 진행은 POS 하단 <b>「주문 현황」</b>에 <b>대기 → 조리중 → 완료</b> 배지로 7초마다 갱신되어 보입니다. 돈은 체크아웃 때 <b>현장 정산</b>에서 받습니다.<h4>손가락으로 누르는 화면</h4>POS 는 태블릿이 기준이라 <b>눌리는 것은 모두 44px 이상</b>으로 맞췄습니다 — 메뉴 카드·분류 탭·소분류 칩·수량 ＋/−·삭제·지불 방식·이름 칩·방 머리글·하단 탭. 특히 <b>수량 ＋/− 와 삭제 ✕</b>가 작아 잘못 눌리기 쉬웠던 것을 키웠습니다.<h4>누가 낼지 — 팀 공통 · 개인 · 방 단위</h4><b>팀 공통</b>은 팀 계산서에, <b>개인 지정</b>은 고른 사람에게 답니다(여러 명이면 그 인원수로 나눕니다). 명단은 <b>방별로 묶여</b> 나오는데, <b>방 머리글(1908호 2명)을 누르면 그 방 전원이 한 번에</b> 골라집니다 — 손님이 「1908호로 달아주세요」 할 때 한 번만 누르면 됩니다. 다시 누르면 해제되고, 두 방을 겹쳐 고를 수도 있습니다. <b>방 단위 계정을 따로 만들지는 않았습니다</b> — 방 인원이 2명이면 지금 규칙대로 2인 분할이 되어 결과가 같고, 정산·체크아웃이 복잡해지지 않습니다.<h4>팀 목록은 기본으로 감춰둡니다</h4>카운터 화면에 다른 손님의 이름·방번호가 그대로 보이면 안 되므로, 팀 선택 화면은 <b>목록을 펼치지 않습니다</b>. <b>QR 스캔</b>하거나 <b>검색창에 태그코드·대표자·이름·방번호</b>를 넣으면 해당 팀만 나옵니다. 꼭 훑어봐야 할 때만 <b>[목록 보기]</b>로 펼치고, <b>[목록 숨기기]</b>로 다시 닫습니다 — 접는 버튼은 <b>목록 위와 아래 양쪽</b>에 있습니다(다 내려가지 않고도 접히게). QR 모달 안의 입력칸도 같은 검색이라(태그코드·이름·방번호) <b>그 창에서 바로</b> 팀을 고를 수 있습니다.<h4>QR로 팀 선택</h4><b>스캐너(추천)</b> — 2D 이미저를 <b>HID(키보드) 모드</b>로 연결해두면, <b>어느 화면에 있든 스캔하는 순간</b> 그 팀이 바로 열립니다. 버튼도 모달도 필요 없습니다(스캐너가 키보드처럼 입력하고 끝에 Enter 를 보내는 것을 감지 — 8자 이상·글자 간격 50ms 미만이면 스캔으로 판정하므로 사람이 치는 글자와 섞이지 않고, 검색창에 커서가 있어도 그 칸에 토큰이 남지 않습니다). ⚠ <b>1D 레이저 스캐너는 QR을 못 읽습니다</b> — 2D 이미저여야 합니다. 스캐너가 없어도 <b>토큰을 키보드로 치고 Enter</b> 하면 같은 경로로 동작합니다.<br><b>리더기가 있는 PC 는 카메라를 켜지 않습니다</b> — 리더기로 한 번이라도 읽히면 그 브라우저가 기억해서, 이후 <b>[주문 전송]</b>(팀 미선택 시) 이나 <b>[📷 QR 스캔]</b>을 눌러도 카메라 대신 <b>「손님 카드를 리더기에 대세요」</b> 화면으로 열립니다. 카메라가 없는 프런트 PC 에서 「카메라를 열 수 없습니다」가 뜨는 것을 없앴습니다(Min 2026-08). 그 화면에서 <b>[📷 카메라로 읽기]</b>를 누르면 카메라로 전환할 수 있습니다.<br><b>카메라</b> — <b>[📷 QR 스캔]</b>으로 태블릿 카메라 스캔(빛·초점 영향을 받아 스캐너보다 느립니다). 카메라가 안 되면 같은 모달의 <b>입력칸에 코드를 넣고 [확인]</b>. 폰 기본 카메라로 찍어 <b>청구 페이지가 열린 경우</b>에도, 직원이 로그인 상태면 그 화면 상단에 <b>직원 모드</b> 바가 떠서 [POS 주문]으로 넘어오면 <b>그 팀이 자동 선택</b>됩니다(<code>?seq=</code>). 두 경로 모두 그날 체류 목록에 없어도 그 팀을 직접 찾아 엽니다. 손님이 스캔하면 직원 모드 바는 보이지 않습니다. 이후 주문은 기존과 동일(주방 티켓·정산 청구로 반영).<h4>명단·주문 목록 보기</h4><b>「이 팀이 맞습니까?」 확인창</b>과 <b>개인 지정 명단</b>은 <b>방별로 묶여</b> 나옵니다(1908호 장인호·박재홍 / 1910호 …). 방배정이 없는 사람은 맨 뒤 「방배정 없음」으로 모입니다. 메뉴를 누르면 <b>무엇이 몇 개 담겼는지 안내</b>가 뜨고 그 줄이 잠깐 밝아집니다. 카트 제목에 <b>건수·개수</b>, 줄마다 <b>단가×수량</b>과 <b>줄 금액</b>이 따로 표시됩니다.<h4>계산·판정</h4><ul><li><b>분할</b>: 팀공통 / 특정 1인 / N분의1 → charges + 개인 folio 자동 생성.</li><li><b>주방 티켓</b>=분할 무관 <b>풀수량·팀단위</b>.</li><li>회원 배지=고객등급·회원권구분·회원구분 3컬럼 OR.</li></ul><h4>주요 용어</h4>매장(outlet)=프론트/레스토랑·컨벤션 홀/골프샵.<h4>팀 묶음 코드</h4>現地手配書에서 묶은 팀은 <b>대표팀 코드+팀번호</b>(<code>DFな-Y1</code>·<code>DFな-Y2</code>)로 표시됩니다 — 네임택·룸키 라벨 등 인쇄물과 같은 코드입니다. <b>검색은 원래 코드</b>(<code>FSネ</code>)<b>로도 찾힙니다.</b> 저장된 데이터는 바뀌지 않습니다.<h4>워크인(예약 없는 손님)</h4>팀 선택 화면의 <b>[＋ 워크인]</b>으로 <b>예약 없이 오신 손님</b>의 주문을 받습니다. 이름(선택)·인원만 넣으면 전표가 열리고, 주문·주방 티켓은 예약 팀과 똑같이 흐릅니다. <b>계산은 그 자리에서</b> — 장바구니 아래 <b>현금/카드 → [받고 마감]</b>으로 잔액 전액을 받고 전표를 닫습니다(프론트까지 안 보내도 됩니다). ⚠ 워크인은 <b>예약 데이터에 들어가지 않습니다</b>(엠클릭 재등록으로 지워지지 않게). 정산 화면에서도 「워크인」으로 함께 보입니다.<h4>인터넷이 끊기면</h4>화면 맨 위에 <b>빨간 띠</b>가 뜹니다. 이때는 주문 전송·저장이 <b>안 됩니다</b> — 종이에 적어 두고 연결된 뒤 입력하세요. <b>장바구니는 없어지지 않습니다</b>: 담아둔 것은 태블릿을 꺼도·새로고침해도 남고, 전송에 실패해도 그대로 있으니 연결되면 <b>[주문 전송]만 다시</b> 누르면 됩니다.<h4>권한·데이터</h4>pos 영역. charges·folios.',
     'kitchen.html': '<h4>이 화면이 하는 일</h4>주방·바 <b>주문 티켓 화면(KDS)</b>.<h4>계산·판정</h4><ul><li>티켓 <b>신규 → 접수 → 완료</b> 3단계(접수 시 담당 기록).</li><li>품목별 <b>조리 라우팅</b>(station): 주방/바/프론트.</li></ul><h4>팀 묶음 코드</h4>現地手配書에서 묶은 팀은 <b>대표팀 코드+팀번호</b>(<code>DFな-Y1</code>·<code>DFな-Y2</code>)로 표시됩니다 — 네임택·룸키 라벨 등 인쇄물과 같은 코드입니다. <b>검색은 원래 코드</b>(<code>FSネ</code>)<b>로도 찾힙니다.</b> 저장된 데이터는 바뀌지 않습니다.<h4>권한·데이터</h4>kitchen 영역. kitchen_tickets.',
