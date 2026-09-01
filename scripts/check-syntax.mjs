@@ -30,6 +30,11 @@ for (const f of files) {
   const html = readFileSync(f, 'utf8');
   const matches = [...html.matchAll(RE)];
   matches.forEach((m, i) => {
+    //  JS 가 아닌 <script> 는 건너뛴다 — 구조화 데이터(application/ld+json)·템플릿 등.
+    //  JSON-LD 를 JS 로 파싱하면 `"@context":` 가 라벨로 읽혀 무조건 문법 오류가 난다.
+    const type = /\btype\s*=\s*["']?([^"'\s>]+)/i.exec(m[0])?.[1]?.toLowerCase();
+    const isJs = !type || /^(text\/javascript|application\/javascript|module)$/.test(type);
+    if (!isJs) return;
     const code = m[1];
     if (!code.trim()) return;
     scripts++;
