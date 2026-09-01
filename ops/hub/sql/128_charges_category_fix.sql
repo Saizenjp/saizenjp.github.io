@@ -1,0 +1,11 @@
+-- 128_charges_category_fix.sql  —  charges.category 중복 CHECK 정리
+--
+--  charges.category 에 CHECK 이 **두 개** 걸려 있었다.
+--   · charges_category_check (옛것) = 라운딩·식음·숙박·기타       ← 골프샵 없음
+--   · charges_category_chk   (09)  = 라운딩·식음·숙박·골프샵·기타
+--  둘 다 살아 있으면 AND 로 평가돼 **골프샵 청구가 통째로 거부**된다(운영 DB 실측).
+--  프로샵 상품을 팔기 시작하면 그 자리에서 「주문 실패」가 난다 — 팔기 전에 없앤다.
+--  남기는 쪽은 menu_items 와 같은 값을 가진 09 의 chk.
+--
+--  멱등. Supabase SQL Editor 수동 실행 가능(MCP 적용 완료 2026-09).
+alter table charges drop constraint if exists charges_category_check;
