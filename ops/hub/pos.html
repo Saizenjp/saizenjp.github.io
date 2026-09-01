@@ -251,7 +251,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.7">
 </head>
 <body data-so-area="pos">
 <div class="topbar so-bar">
@@ -438,7 +438,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=27.6"></script>
+<script src="../assets/saizen-ops.js?v=27.7"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -480,6 +480,8 @@ const L={
     koTitle:'注文状況', allVenues:'全体',
     stKitchen:'厨房へ', stBar:'バーへ',
     roomPick:'この部屋につける', roomPickOff:'外す', roomPickT:'この部屋の代表お一人につけます(2人で割ると同じ品目が2行になります)',
+    activeHere:(v)=>`「注文中」は ${v} で注文が入ったチームです(他の売店の注文は含みません)`,
+    activeAll:'「注文中」は全売店の注文を合わせた数です',
     koTabTickets:'厨房・バー', koTabDay:'本日の注文', dayEmpty:'この日の注文はありません。',
     dayTime:'時刻', dayTeam:'チーム', dayItem:'品目', dayQty:'数量', dayAmt:'金額', dayWho:'担当', dayTo:'送り先',
     daySplit:'個人', dayTotal:(n)=>`${n}件`,
@@ -514,6 +516,8 @@ const L={
     koTitle:'주문 현황', allVenues:'전체',
     stKitchen:'주방으로', stBar:'바로',
     roomPick:'이 방으로', roomPickOff:'해제', roomPickT:'이 방 대표 1명에게 답니다(2명으로 나누면 같은 품목이 두 줄로 찍힙니다)',
+    activeHere:(v)=>`「주문중」은 ${v} 에서 주문이 들어간 팀입니다(다른 매장 주문은 안 셉니다)`,
+    activeAll:'「주문중」은 전 매장 주문을 합친 수입니다',
     koTabTickets:'주방·바', koTabDay:'오늘 주문', dayEmpty:'이 날 주문이 없습니다.',
     dayTime:'시각', dayTeam:'팀', dayItem:'품목', dayQty:'수량', dayAmt:'금액', dayWho:'담당', dayTo:'전송',
     daySplit:'개인', dayTotal:(n)=>`${n}건`,
@@ -548,6 +552,8 @@ const L={
     koTitle:'Order status', allVenues:'All',
     stKitchen:'to kitchen', stBar:'to bar',
     roomPick:'Charge to room', roomPickOff:'Clear', roomPickT:'Charges to the room\'s first guest (splitting by 2 prints each item twice)',
+    activeHere:(v)=>`"Ordering" counts teams with an order at ${v} only`,
+    activeAll:'"Ordering" counts orders across all outlets',
     koTabTickets:'Kitchen·Bar', koTabDay:'Today\'s orders', dayEmpty:'No orders on this day.',
     dayTime:'Time', dayTeam:'Team', dayItem:'Item', dayQty:'Qty', dayAmt:'Amount', dayWho:'By', dayTo:'To',
     daySplit:'personal', dayTotal:(n)=>`${n} lines`,
@@ -736,14 +742,20 @@ async function loadMembers(){
   }
 }
 
-// 이번 체류에 이미 주문이 있는(=진행중) 팀 event_seq 집합
+// 「주문중」 = **이 매장에서** 주문이 들어간 팀(Min 2026-08).
+//  예전엔 folio 잔액(v_folio_balance)을 봐서, 프론트에서만 주문한 팀도 레스토랑 POS 에
+//  「주문중」으로 떠 혼선이 생겼다. 매장은 제 주문만 관리한다.
+//  ※ 매장을 안 고르고 연 POS(?outlet= 없음)는 예전처럼 전 매장을 합쳐 본다.
 async function loadActive(){
   state.activeSeqs=new Set();
   const seqs=state.teams.map(x=>x.event_seq);
   if(!seqs.length||!supa) return;
   try{
-    const {data}=await supa.from('v_folio_balance').select('event_seq,gross_total').in('event_seq',seqs);
-    (data||[]).forEach(f=>{ if(Number(f.gross_total||0)>0) state.activeSeqs.add(f.event_seq); });
+    const vs=outletVenues();
+    let q=supa.from('charges').select('event_seq').in('event_seq',seqs).eq('voided',false);
+    if(vs) q=q.in('source',vs);
+    const {data}=await q;
+    (data||[]).forEach(c=>{ if(c.event_seq!=null) state.activeSeqs.add(c.event_seq); });
   }catch(e){}
 }
 
@@ -869,7 +881,9 @@ function renderTeams(){
   //   목록을 늘 펼쳐두면 카운터 화면에 남의 팀 이름·방번호가 그대로 노출된다(Min 2026-08).
   //   기본은 감추고, 직원이 필요할 때만 [목록 보기]로 펼친다.
   $('#team-cnt').innerHTML=`${pool.length}${t('po_cntTeam')}`;
-  if(ac) ac.innerHTML=state.activeSeqs.size?(''+t('po_active')+' '+state.activeSeqs.size):'';
+  //  「주문중」은 이 매장 기준이라, 어느 매장인지 커서에 알려 준다(다른 매장 것과 헷갈리지 않게)
+  if(ac){ ac.innerHTML=state.activeSeqs.size?(''+t('po_active')+' '+state.activeSeqs.size):'';
+    ac.title=state.outlet?tx('activeHere')(outletLabel(state.outlet)):tx('activeAll'); }
   if(!pool.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
   if(!state.showList){
     box.innerHTML=`<div class="listhide">
