@@ -205,6 +205,7 @@ from (
   union all select 126,'126 예약 추이','booking_trend()', case when exists(select 1 from pg_proc where proname='booking_trend') then '✅ 있음' else '❌ 없음 (126)' end
   union all select 127,'127 마샬 Ai 명단','marshal_player_no(그날 고정 번호)', case when to_regclass('public.marshal_player_no') is not null then '✅ 있음' else '❌ 없음 (127)' end
   union all select 127,'127 마샬 Ai 명단','marshal_assign_player_no()', case when exists(select 1 from pg_proc where proname='marshal_assign_player_no') then '✅ 있음' else '❌ 없음 (127)' end
+  union all select 130,'130 경영 통계','가동률 = 예약 기준(배정 기준 아님)', case when exists(select 1 from pg_proc where proname='exec_stats' and prosrc like '%occ_book%') then '✅ 적용' else '🔴 미적용 (130) — 가동률이 방배정 진척을 재고 있다' end
   union all select 129,'129 데이터 검수','방배정이 예약 마지막 밤을 못 덮는 팀(stay_gap)', case when exists(select 1 from pg_proc where proname='data_audit' and prosrc like '%stay_gap%') then '✅ 적용' else '❌ 미적용 (129)' end
   union all select 128,'128 청구 구분','옛 CHECK 제거(남아 있으면 골프샵 청구가 거부된다)', case when not exists(select 1 from pg_constraint where conrelid='charges'::regclass and conname='charges_category_check') then '✅ 정리됨' else '🔴 남아 있다 — 프로샵 상품을 팔면 주문 실패 (128)' end
 ) t

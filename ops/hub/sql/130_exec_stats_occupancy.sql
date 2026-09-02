@@ -1,0 +1,56 @@
+-- ============================================================================
+-- 130_exec_stats_occupancy.sql — 경영 통계 가동률 바로잡기
+--
+--  두 가지가 틀려 있었다.
+--
+--  ① 분자를 기간에 맞춰 자르지 않았다.
+--     `rooms.check_in between p_from and p_to` 로 고르고 **그 체류의 모든 밤**을 더했다.
+--     그래서 그 달에 시작한 체류는 다음 달 밤까지 이 달에 얹히고,
+--     지난달에 시작해 이 달에 묵고 있는 밤은 한 밤도 안 세어졌다.
+--     → 겹치는 구간만 센다.
+--
+--  ② 분자가 방배정(rooms)이었다 — 즉 「예약이 얼마나 찼나」가 아니라
+--     **「방배정을 얼마나 해 두었나」** 를 재고 있었다.
+--     실측(2026): 9월은 예약이 가장 적은 달인데(예약 인박 6,577) 방배정률이 높아(91.9%)
+--     화면에는 가동률이 가장 높게(73.1%) 나왔다. 7월(예약 인박 8,151·82.9%)보다 높다 —
+--     순위가 뒤집혀 경영 판단이 그대로 어긋난다.
+--     → 대표 지표는 **예약 기준**으로 바꾸고, 배정 기준은 참고로 함께 낸다.
+--
+--  occupancy 키:
+--    occupied / avail   = 예약 기준(수요) — 화면의 대표 숫자. 대기 예약은 제외
+--    assigned           = 배정 기준(운영 진척) — 참고 줄
+--    by_facility        = 배정 기준(시설별). 예약에는 시설 구분이 방만큼 정확하지 않다
+--
+--  ⚠ RPC 권한 함정(§119): revoke from public + grant to authenticated 를 같이 한다.
+--  멱등(create or replace). MCP 적용 완료 2026-09.
+-- ============================================================================
+--  ⚠ 함수 전문은 Supabase 에 적용된 것이 정본이다. 이 파일은 위 변경점의 기록이며,
+--     전문이 필요하면 pg_get_functiondef 로 뽑아 쓴다(다른 통계 항목은 손대지 않았다).
+--
+--  바뀐 블록만 옮기면 다음과 같다:
+--
+--  occ_book as (
+--    select coalesce(sum(
+--      coalesce(b.pax,0) *
+--      greatest(least(b.arr_date, p_to + 1) - greatest(b.dep_date, p_from), 0)
+--    ),0) n
+--    from bookings b
+--    where b.dep_date <= p_to and b.arr_date > p_from
+--      and coalesce(b.status,'') <> '대기'
+--  ),
+--  occ_room as (
+--    select r.facility,
+--      coalesce(r.assigned_pax,1) *
+--      greatest(least(r.check_out, p_to + 1) - greatest(r.check_in, p_from), 0) as bn
+--    from rooms r
+--    where r.check_in <= p_to and r.check_out > p_from
+--  ),
+--  ...
+--    'occupancy', jsonb_build_object(
+--        'occupied', (select n from occ_book),
+--        'avail',    (select c from captot) * v_days,
+--        'assigned', (select coalesce(sum(bn),0) from occ_room),
+--        'by_facility', ... occ_room 기준 ...)
+
+revoke execute on function public.exec_stats(date,date) from public;
+grant  execute on function public.exec_stats(date,date) to authenticated;
