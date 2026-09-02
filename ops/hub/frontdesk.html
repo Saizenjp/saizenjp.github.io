@@ -212,7 +212,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.9">
 </head>
 <body data-so-area="front">
 <div class="topbar so-bar">
@@ -261,7 +261,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=27.8"></script>
+<script src="../assets/saizen-ops.js?v=27.9"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -529,7 +529,11 @@ async function load(){
   $('#day-label').textContent=day.slice(5).replace('-','/')+wd(day);
   try{
     // 그 날 걸치는 팀(월경계 포함): dep<=day && arr>=day  (출발 당일도 포함)
-    const {data:bs,error:e1}=await supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax,product_name,origin,airline').lte('dep_date',day).gte('arr_date',day);
+    //  ⚠ 대기 예약은 뺀다 — 메리트투어가 만실이어도 받아 두는 예약이고,
+    //    **출국 전까지 정리되는** 예약이다. 현장에 오지 않으므로 체크인·재실·석식·잔액
+    //    어디에도 들어가면 안 된다(가동률·일별 체류·캘린더도 같은 규칙).
+    //    확정 전 대기 팀을 챙기는 자리는 방배정 화면이다(거기엔 「대기예약」으로 남는다).
+    const {data:bs,error:e1}=await supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax,product_name,origin,airline').lte('dep_date',day).gte('arr_date',day).neq('status','대기');
     if(e1)throw e1;
     const seqs=(bs||[]).map(b=>b.event_seq);
     const G={},R={},RINV={},BAL={},NOTE={},MEM={},MEMQ={},ECO={},EARLY={},OVR={},FU={},MB={},ADD={};

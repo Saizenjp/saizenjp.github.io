@@ -90,7 +90,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.9">
 </head>
 <body data-so-area="settle">
 <div class="topbar so-bar">
@@ -121,10 +121,11 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=39"></script>
-<script src="../assets/saizen-ops.js?v=27.8"></script>
+<script src="../assets/saizen-ops.js?v=27.9"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DEDS=[], EXTRAS={}, EXLIST=[];
+let WAITN=0, WAITPAX=0;   // 청구에서 제외한 대기 예약(팀·인원)
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
 //  단가 표는 saizen-core(SZCore.accomRate) 하나뿐이다 — 여기에 사본을 두면 계약이 바뀔 때
 //  한쪽만 고쳐져 화면에 보이는 단가와 실제 계산 금액이 어긋난다.
@@ -149,6 +150,7 @@ const L={
     rate:'単価', perPaxNight:'/人/泊', cntLabel:'件数', lodgeFee:'宿泊費', transFee:'送迎費', subtotal:'合計',
     noData:'表示するデータなし', loading:'読み込み中…', noMonthData:'当月のデータなし', loadFail:'読み込み失敗',
     cntN:n=>n+'件', cntPaxN:(c,p)=>c+'件 / '+p+'名', detailNoData:'データなし',
+    waitExcl:(n,p)=>`⚠ 待機予約 ${n}件(${p}名)は請求から除外`,
     grossB2B:'総売上(B2B)', dedTotal:'控除合計', net:'精算額(Net)', lodgeTrans:'宿泊 / 送迎', cntPax:'件数 / 人数',
     cntPaxV:(c,p)=>c+'件 / '+p+'名',
     dedEmpty:'控除項目がありません。[＋ 項目追加]を押して追加してください。',
@@ -175,6 +177,7 @@ const L={
     rate:'단가', perPaxNight:'/인/박', cntLabel:'건수', lodgeFee:'숙박비', transFee:'송영비', subtotal:'합계',
     noData:'표시할 데이터 없음', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', loadFail:'로드 실패',
     cntN:n=>n+'건', cntPaxN:(c,p)=>c+'건 / '+p+'명', detailNoData:'데이터 없음',
+    waitExcl:(n,p)=>`⚠ 대기 예약 ${n}팀(${p}명)은 청구에서 제외`,
     grossB2B:'총 매출(B2B)', dedTotal:'차감 합계', net:'정산액(Net)', lodgeTrans:'숙박 / 송영', cntPax:'건수 / 인원',
     cntPaxV:(c,p)=>c+'건 / '+p+'명',
     dedEmpty:'차감 항목이 없습니다. [＋ 항목 추가]를 눌러 추가하세요.',
@@ -200,6 +203,7 @@ const L={
     rate:'Unit price', perPaxNight:'/pax/night', cntLabel:'Count', lodgeFee:'Lodging', transFee:'Transfer', subtotal:'Total',
     noData:'No data to show', loading:'Loading…', noMonthData:'No data for this month', loadFail:'Load failed',
     cntN:n=>n+' items', cntPaxN:(c,p)=>c+' items / '+p+' ppl', detailNoData:'No data',
+    waitExcl:(n,p)=>`⚠ ${n} waitlisted (${p} ppl) excluded from billing`,
     grossB2B:'Gross (B2B)', dedTotal:'Deduction total', net:'Net', lodgeTrans:'Lodging / Transfer', cntPax:'Items / Pax',
     cntPaxV:(c,p)=>c+' items / '+p+' ppl',
     dedEmpty:'No deductions. Press [＋ Add item] to add.',
@@ -417,7 +421,8 @@ async function load(){
         rate, rateWarn, stay, transport, extra, total:stay+transport+extra, remark:REM[b.event_seq]||'' };
     }).filter(r=>r.accom);
     ACCOMSEL.clear();
-    $('#stat').textContent=tx('cntN')(ROWS.length);
+    $('#stat').textContent=tx('cntN')(ROWS.length)
+      + (WAITN? ' · '+tx('waitExcl')(WAITN,WAITPAX) : '');
     renderAccomChips(); renderAll();
   }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
