@@ -312,7 +312,7 @@ const L = {
     codeMatchFail:'· member_codesマッチ失敗(SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ 会員 ${mem}チーム · 非会員Fプール ${nm}チーム${full?` · プール枯渇 ${full}チーム`:''}`,
      ghostGuard:(n)=>`⚠ ${n}チームは名簿整理を保留(キー不一致の疑い) — コンソールに番号`,
-    ghostCleaned:(n)=>`名簿から外れた ${n}件を整理`, paxCleaned:(n)=>`原本名簿の重複 ${n}件を整理`, autoGroup:(n)=>`備考「チーム:…」で ${n}件 自動グループ化(手配書・夕食)`, repFixed:(n)=>`既存グループ ${n}件 の代表を会員に更新`, shizuAuto:(n)=>`志津の宿 未配置 ${n}名を空室へ自動配置`,
+    phRenamed:(n)=>`無記名の席 ${n}件が名前を得たので同じ行を引き継ぎ`, ghostCleaned:(n)=>`名簿から外れた ${n}件を整理`, paxCleaned:(n)=>`原本名簿の重複 ${n}件を整理`, autoGroup:(n)=>`備考「チーム:…」で ${n}件 自動グループ化(手配書・夕食)`, repFixed:(n)=>`既存グループ ${n}件 の代表を会員に更新`, shizuAuto:(n)=>`志津の宿 未配置 ${n}名を空室へ自動配置`,
     syncCleaned:(months,del)=>`✓ ${months} 残存チーム ${del}個整理 — ファイル基準で最新化`,
     syncKept:n=>`· 残存チーム ${n}個 — データ累積(削除しない)`,
     syncDelFail:'· 残存整理失敗: ',
@@ -368,7 +368,7 @@ const L = {
     codeMatchFail:'· member_codes 매칭 실패(22번 SQL?): ',
     guestsSummary:(mem,nm,full)=>`  └ 회원 ${mem}팀 · 비회원 F풀 ${nm}팀${full?` · 풀소진 ${full}팀`:''}`,
      ghostGuard:(n)=>`⚠ ${n}팀은 명단 정리를 보류했습니다(키 불일치 의심) — 콘솔에 행사번호`,
-    ghostCleaned:(n)=>`명단에서 빠진 ${n}건 정리`, paxCleaned:(n)=>`원본 명단 중복 ${n}건 정리`, autoGroup:(n)=>`비고 「팀:…」로 ${n}건 자동 묶기(手配書·夕食)`, repFixed:(n)=>`기존 묶음 ${n}건 대표를 회원으로 교정`, shizuAuto:(n)=>`시즈노야도 미배정 ${n}명을 빈 방에 자동 배정`,
+    phRenamed:(n)=>`무기명 자리 ${n}건이 이름을 얻어 같은 줄 이어받음`, ghostCleaned:(n)=>`명단에서 빠진 ${n}건 정리`, paxCleaned:(n)=>`원본 명단 중복 ${n}건 정리`, autoGroup:(n)=>`비고 「팀:…」로 ${n}건 자동 묶기(手配書·夕食)`, repFixed:(n)=>`기존 묶음 ${n}건 대표를 회원으로 교정`, shizuAuto:(n)=>`시즈노야도 미배정 ${n}명을 빈 방에 자동 배정`,
     syncCleaned:(months,del)=>`✓ ${months} 잔존 팀 ${del}개 정리 — 파일 기준 최신화`,
     syncKept:n=>`· 잔존 팀 ${n}개 — 데이터 누적(삭제 안 함)`,
     syncDelFail:'· 잔존 정리 실패: ',
@@ -424,7 +424,7 @@ const L = {
     codeMatchFail:'· member_codes match failed (SQL 22?): ',
     guestsSummary:(mem,nm,full)=>`  └ Members ${mem} teams · Non-member F-pool ${nm} teams${full?` · Pool exhausted ${full} teams`:''}`,
      ghostGuard:(n)=>`⚠ Skipped roster cleanup for ${n} team(s) (key mismatch suspected) — see console`,
-    ghostCleaned:(n)=>`Cleaned ${n} rows no longer on the roster`, paxCleaned:(n)=>`Removed ${n} duplicate source-roster rows`, autoGroup:(n)=>`Auto-grouped ${n} team-group(s) from 「팀:…」 remark`, repFixed:(n)=>`Upgraded rep to member on ${n} existing group(s)`, shizuAuto:(n)=>`Auto-placed ${n} unassigned Shizu guest(s) into empty rooms`,
+    phRenamed:(n)=>`${n} unnamed seat(s) received a name — kept the same row`, ghostCleaned:(n)=>`Cleaned ${n} rows no longer on the roster`, paxCleaned:(n)=>`Removed ${n} duplicate source-roster rows`, autoGroup:(n)=>`Auto-grouped ${n} team-group(s) from 「팀:…」 remark`, repFixed:(n)=>`Upgraded rep to member on ${n} existing group(s)`, shizuAuto:(n)=>`Auto-placed ${n} unassigned Shizu guest(s) into empty rooms`,
     syncCleaned:(months,del)=>`✓ ${months} cleaned ${del} leftover team(s) — synced to the file`,
     syncKept:n=>`· ${n} leftover team(s) — data accumulated (not deleted)`,
     syncDelFail:'· Leftover cleanup failed: ',
@@ -1125,6 +1125,23 @@ async function run(){
     log(`✓ ${t('s1_dyn_log_guests')} ${stat['guests']}${t('s1_dyn_teams')}`,'ok');
     log(tx('guestsSummary')(memCnt,nmCnt,nmFull),'dim');
 
+    // 「무기명|#N」 자리가 같은 자리번호의 진짜 사람으로 바뀌었을 때, 옛 줄을 이어받을 계획을 세운다(순수 함수).
+    //   조건: 새 키는 이름|생년 이고 / 같은 팀에 새 키 줄이 아직 없고 / 같은 자리번호의 무기명 줄이 있다.
+    //   ⚠ 무기명 줄이 그대로 무기명으로 오는 자리(새 키도 무기명|#N)는 건드리지 않는다.
+    function planPlaceholderRenames(newRows, existingRows){
+      const byTeam={};
+      existingRows.forEach(r=>{ (byTeam[r.event_seq]=byTeam[r.event_seq]||{keys:new Set(),seat:{}}); byTeam[r.event_seq].keys.add(r.person_key);
+        if(/^무기명\|#\d+$/.test(String(r.person_key))) byTeam[r.event_seq].seat[r.seq_in_team]=r; });
+      const out=[], used=new Set();
+      newRows.forEach(n=>{
+        const t=byTeam[n.event_seq]; if(!t) return;
+        if(/^무기명\|#/.test(String(n.person_key))) return;      // 여전히 무기명 → 그대로
+        if(t.keys.has(n.person_key)) return;                       // 이미 그 사람 줄이 있다
+        const ph=t.seat[n.seq_in_team]; if(!ph || used.has(ph.id)) return;
+        used.add(ph.id); out.push({id:ph.id, event_seq:n.event_seq, oldKey:ph.person_key, newKey:n.person_key});
+      });
+      return out;
+    }
     // ── 4) guest_members (개인) — 운영대상 팀의 passengers로 생성 ──
     const guestSeqSet = new Set(guestRows.map(g=>g.event_seq));
     const gmRows = [];
@@ -1172,6 +1189,24 @@ async function run(){
         seen.add(k);
       }
     }
+    // ── 「무기명」 자리가 이름을 얻으면 **같은 줄을 이어받는다** (2026-09 검수) ──────
+    //   엠클릭에서 처음엔 이름 없이 오고(키 = 무기명|#자리), 나중에 이름·생년이 채워지면
+    //   키가 이름|생년 으로 바뀐다. 그대로 upsert 하면 **새 줄이 생기고 옛 줄이 유령**이 된다.
+    //   유령 청소는 ① 절반 넘게 지우면 「키 불일치」로 보류(옛 줄이 남아 방을 두 개 차지)
+    //   ② 보류 안 되면 옛 줄이 방과 함께 지워진다 — 어느 쪽도 틀리다.
+    //   실측: 7팀 25줄이 이 모양으로 남아 자동배정 방을 이중으로 잡고 있었다.
+    //   해법: upsert 전에, 같은 팀·같은 자리번호의 「무기명|#N」 줄이 있고 새 키 줄이 아직 없으면
+    //   그 줄의 키를 새 키로 **바꿔 둔다** → upsert 가 같은 줄을 갱신하고 id·방배정이 그대로 남는다.
+    try {
+      const seqs=[...new Set(gmRows.map(r=>r.event_seq))];
+      const existing=[];
+      for(let i=0;i<seqs.length;i+=120){ const chunk=seqs.slice(i,i+120); let pg=0;
+        while(true){ const {data,error}=await supa.from('guest_members').select('id,event_seq,seq_in_team,person_key').in('event_seq',chunk).range(pg,pg+999);
+          if(error||!data||!data.length) break; existing.push(...data); if(data.length<1000) break; pg+=1000; } }
+      const renames = planPlaceholderRenames(gmRows, existing);
+      for(const rn of renames){ await supa.from('guest_members').update({person_key:rn.newKey}).eq('id',rn.id); }
+      if(renames.length) log(`✓ ${t('s1_dyn_log_members')} ${tx('phRenamed')(renames.length)}`,'dim');
+    } catch(_){ /* 이어받기 실패는 임포트를 막지 않는다 — 그 경우 아래 유령 청소가 처리한다 */ }
     // 충돌키 = (event_seq, person_key) — 같은 사람이면 자리번호가 바뀌어도 **같은 행**을 갱신한다.
     //   → 방배정(rooms.member_id)·골프 조·개인 청구가 그 사람에게 그대로 붙어 있는다.
     runProgress(tx('stpGm'));

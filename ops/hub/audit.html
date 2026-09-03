@@ -139,7 +139,8 @@ let supa=null, myRole=null, RESULT=null;
 
 // 체크 메타(순서·심각도는 RPC가 주지만, 라벨/설명/조치는 화면 i18n)
 const CHECKS=['seq_gap','count_mismatch','dup_tag','orphan_room','room_over','member_dup','stay_gap',
-  'stat_pax','stat_nights','charge_future','wait_leak','occ_check','sales_check'];   // 뒤 6개 = 통계 검산(132)
+  'stat_pax','stat_nights','charge_future','wait_leak','occ_check','sales_check',   // 통계 검산(132)
+  'placeholder_stale'];   // 무기명 자리가 이름을 얻은 뒤 남은 옛 줄(133)
 
 const L={
   ja:{
@@ -168,6 +169,8 @@ const L={
     n_member_dup:'同一会員の二重登録', d_member_dup:'会員の識別キーは「氏名＋生年6桁」。生年が1桁でも違うと別人として登録され、同じ方が2行になる(Mクリックの入力誤り)。氏名とグループコードが同じなら実質同一人物。',
     n_stay_gap:'客室割当が予約より短い', d_stay_gap:'予約の最終泊を埋める客室割当がありません。客室割当は予約に自動で追従しません — 予約が延びても、最初に1泊少なく入れても、そのまま残ります(実例: 4泊5日なのに3泊で入っていた)。到着してから「泊まる部屋がない」で気づくことになります。',
     f_stay_gap:'対処: 方배정(room.html)でその日付を開き、最終泊を割り当てる。※コンボ商品の前半が空いているのは正常なので、この検査は最終泊だけを見ます。',
+    n_placeholder_stale:'名前が付いた後に残った「無記名」の行', d_placeholder_stale:'最初は名前なしで登録された席(無記名|#N)が、後で名前を得たのに古い行が残っている。同じ人が客室を二つ占める。2026-09に7チーム25行が見つかり、step1が同じ行を引き継ぐよう直した。',
+    f_placeholder_stale:'対処: その月を再登録(step1)すると自動で引き継ぐ。残る場合は開発に連絡。',
     n_stat_pax:'予約人数 ≠ 名簿', d_stat_pax:'予約の人数(bookings.pax)と実際の名簿(passengers)が合わない。B2B精算は名簿と予約の大きい方で請求するため、ずれは過少/過大請求の元。',
     f_stat_pax:'対処: Mクリックの予約人数か名簿を確認して再import。',
     n_stat_nights:'滞在泊数 ≠ 商品名の「N泊」', d_stat_nights:'到着日−出発日の泊数と、商品名(nights_label)の「N泊」が合わない。B2B請求の泊数根拠が二つあり食い違う。',
@@ -218,6 +221,8 @@ const L={
     n_member_dup:'같은 회원 두 번 등록', d_member_dup:'회원 식별키가 「이름+생년 6자리」입니다. 생년이 한 자리만 달라도 다른 사람으로 등록되어 같은 분이 두 줄이 됩니다(엠클릭 입력 오타). 이름과 그룹코드가 같으면 사실상 동일인입니다.',
     n_stay_gap:'방배정이 예약보다 짧음', d_stay_gap:'예약 마지막 밤을 덮는 방배정이 없습니다. 방배정은 예약을 자동으로 따라가지 않습니다 — 예약이 늘어나도, 처음 넣을 때 하루를 놓쳐도 그대로 남습니다(실제 사례: 4박5일인데 3박으로 들어가 있었음). 손님이 도착해서야 「잘 방이 없다」로 드러납니다.',
     f_stay_gap:'조치: 방배정(room.html)에서 그 날짜를 열어 마지막 밤을 배정. ※콤보 상품은 앞 구간이 다른 숙소라 비어 있는 것이 정상이므로, 이 검사는 마지막 밤만 봅니다.',
+    n_placeholder_stale:'이름 붙은 뒤 남은 「무기명」 줄', d_placeholder_stale:'처음엔 이름 없이 등록된 자리(무기명|#N)가 나중에 이름을 얻었는데 옛 줄이 남아 있습니다. 같은 사람이 방을 두 개 차지합니다. 2026-09에 7팀 25줄이 발견되어 step1이 같은 줄을 이어받도록 고쳤습니다.',
+    f_placeholder_stale:'조치: 그 달을 다시 등록(step1)하면 자동으로 이어받습니다. 남으면 개발에 알리세요.',
     n_stat_pax:'예약 인원 ≠ 명단', d_stat_pax:'예약 인원(bookings.pax)과 실제 명단(passengers)이 다릅니다. B2B 정산은 명단과 예약 중 큰 쪽으로 청구하므로, 어긋나면 과소/과다 청구의 씨앗입니다.',
     f_stat_pax:'조치: 엠클릭의 예약 인원 또는 명단을 확인해 재임포트.',
     n_stat_nights:'체류 박수 ≠ 상품명의 「N박」', d_stat_nights:'도착일−출발일 박수와 상품명(nights_label)의 「N박」이 다릅니다. B2B 청구의 박수 근거가 둘이라 어긋나면 어느 쪽이 맞는지 확인이 필요합니다.',
@@ -265,6 +270,8 @@ const L={
     n_member_dup:'Same member registered twice', d_member_dup:'A member is identified by name + 6-digit birth date. One wrong digit registers them as a different person, so the same guest appears twice (a typo in the booking system). Same name and same group code means it is really one person.',
     n_stay_gap:'Room assignment shorter than the booking', d_stay_gap:'No room covers the last night of the booking. Room assignments never follow the booking automatically — if the stay is extended, or a night is missed when it is first entered, it just stays that way (real case: a 4-night stay entered as 3). It surfaces only when the guest arrives and has no room.',
     f_stay_gap:'Fix: open that date in room.html and assign the last night. Note: for combo products the earlier segment is at another property, so this check looks only at the final night.',
+    n_placeholder_stale:'Unnamed placeholder rows left after naming', d_placeholder_stale:'A seat first imported without a name (무기명|#N) later received a name, but the old row remained — the same person holds two rooms. 7 teams / 25 rows were found in 2026-09; step1 now reuses the row.',
+    f_placeholder_stale:'Fix: re-register that month (step1) and the row is reused automatically. If it persists, tell the developer.',
     n_stat_pax:'Booked pax ≠ roster', d_stat_pax:'Booked pax (bookings.pax) differs from the actual roster (passengers). B2B billing uses the larger of the two, so a gap seeds under/over-billing.',
     f_stat_pax:'Fix: check pax or roster in the booking system and re-import.',
     n_stat_nights:'Stay nights ≠ product “N泊”', d_stat_nights:'Nights from dates (arrival−departure) differ from the “N泊” in the product name. Two sources for B2B billing nights disagree.',
