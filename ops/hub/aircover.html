@@ -236,7 +236,7 @@ async function load(){
   try{
     const {data:gs,error:e1}=await supa.from('guests')
       .select('event_seq,group_code,accom,accom_prefix,pax,bookings!inner(rep_name,dep_date,arr_date,origin,pax,session_ym)')
-      .eq('session_ym',YM);
+      .eq('session_ym',YM).neq('bookings.status','대기');
     if(e1) throw e1;
     const gmap={}; (gs||[]).forEach(g=>{ const b=g.bookings||{}; gmap[g.event_seq]={accom:g.accom,accom_prefix:g.accom_prefix,pax:g.pax||b.pax||0,dep:b.dep_date,arr:b.arr_date,origin:b.origin}; });
     const seqs=Object.keys(gmap).map(Number);
@@ -283,7 +283,7 @@ async function load(){
         const need=[...new Set(ovRows.map(r=>r.event_seq))].filter(s2=>!gmap[s2]);
         const ext={};
         for(let i=0;i<need.length;i+=200){ const ch=need.slice(i,i+200);
-          const {data:g2}=await supa.from('guests').select('event_seq,group_code,pax,bookings!inner(dep_date,pax)').in('event_seq',ch);
+          const {data:g2}=await supa.from('guests').select('event_seq,group_code,pax,bookings!inner(dep_date,pax)').in('event_seq',ch).neq('bookings.status','대기');
           (g2||[]).forEach(g=>{ const b=g.bookings||{}; ext[g.event_seq]={dep:b.dep_date||'', tag:g.group_code||'', pax:g.pax||b.pax||0}; });
           const {data:m2}=await supa.from('guest_members').select('event_seq,person_tag,seq_in_team').in('event_seq',ch).order('seq_in_team');
           (m2||[]).forEach(m=>{ const e=ext[m.event_seq]; if(e&&!e.ptag&&m.person_tag) e.ptag=m.person_tag; });

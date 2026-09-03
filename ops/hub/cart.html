@@ -540,7 +540,7 @@ async function load(){
     // 2) 그 날짜에 체류 중인 팀(입국<=날짜<=귀국) — 라운딩 여부는 규칙으로 거른다
     const bs=await paged((a,b)=>supa.from('bookings')
       .select('event_seq,rep_name,dep_date,arr_date,origin,airline,pax,remark,remark_local,team_label')
-      .lte('dep_date',DATE).gte('arr_date',DATE).order('event_seq').range(a,b));
+      .lte('dep_date',DATE).gte('arr_date',DATE).neq('status','대기').order('event_seq').range(a,b));
     if(bs.error) throw bs.error;
     // ⚠ 위 조회는 arr_date 가 null 이면 걸리지 않는다(귀국일 인식 실패 등) → 통째로 사라진다.
     //   그런 팀도 따로 찾아 진단 줄에 올린다(Min 2026-08: "같이 들어온 팀인데 왜 안 나오냐").
@@ -548,7 +548,7 @@ async function load(){
     try{
       const {data:nd}=await supa.from('bookings')
         .select('event_seq,rep_name,dep_date,arr_date')
-        .lte('dep_date',DATE).is('arr_date',null);
+        .lte('dep_date',DATE).is('arr_date',null).neq('status','대기');
       NODATE=nd||[];
     }catch(e){}
     const seqs=(bs.data||[]).map(b=>b.event_seq);
@@ -1152,7 +1152,7 @@ async function loadMonth(){
     const b=ymBounds(YM);
     const bs=await paged((a,z)=>supa.from('bookings')
       .select('event_seq,rep_name,dep_date,arr_date,origin,airline,pax,remark_local')
-      .lte('dep_date',b.to).gte('arr_date',b.from).order('event_seq').range(a,z));
+      .lte('dep_date',b.to).gte('arr_date',b.from).neq('status','대기').order('event_seq').range(a,z));
     if(bs.error) throw bs.error;
     const seqs=(bs.data||[]).map(x=>x.event_seq);
     const GM={}, PX={};

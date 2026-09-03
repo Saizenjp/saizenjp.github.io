@@ -369,11 +369,19 @@ async function load(){
   if(!supa)return;
   $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-xlsx').disabled=true; { const p=$('#btn-print'); if(p)p.disabled=true; }
   try{
-    const {data:bs,error:e1}=await supa.from('bookings')
+    //  대기 포함 조회 → 아래에서 뺀다. 몇 팀을 뺐는지 화면에 적어야 하므로 여기서는 전부 읽는다.
+    const {data:bsAll,error:e1}=await supa.from('bookings')
       .select('event_seq,event_no,status,member_type,rep_name,dep_date,arr_date,nights_label,product_name,pax')
-      .eq('session_ym',YM);
+      .eq('session_ym',YM) /* 대기: 아래 filter 로 제외(WAITN 표시용으로 전부 읽음) */;
     if(e1)throw e1;
-    const seqs=(bs||[]).map(b=>b.event_seq);
+    //  ⚠ 대기 예약은 청구에서 뺀다 — 메리트투어가 만실이어도 받아 두는 예약이고
+    //    **출국 전까지 정리되는** 예약이라 실제로 오지 않는다. 넣으면 안 온 손님을 청구하게 된다.
+    //    (실측 2026-10: 대기 40팀 157명 = 숙박 ¥11,488,000 + 송영 ¥942,000 과다청구)
+    //    조용히 빼지 않는다 — 몇 팀을 뺐는지 건수 옆에 적어, 확정 처리가 안 된 것이 있으면 담당자가 알아챈다.
+    const bs=(bsAll||[]).filter(b=>String(b.status||'').trim()!=='대기');
+    WAITN=(bsAll||[]).length-bs.length;
+    WAITPAX=(bsAll||[]).filter(b=>String(b.status||'').trim()==='대기').reduce((n,b)=>n+(Number(b.pax)||0),0);
+    const seqs=bs.map(b=>b.event_seq);
     if(!seqs.length){ ROWS=[]; DEDS=[]; EXTRAS={}; EXLIST=[]; $('#stat').textContent=tx('noMonthData'); ACCOMSEL.clear(); renderAccomChips(); renderAll(); return; }
     // guests(accom), passengers(실제 인원·英文名), settle_remarks(비고)
     const GMAP={}, PCNT={}, ENG={}, REM={};

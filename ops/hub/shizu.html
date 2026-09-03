@@ -611,8 +611,8 @@ async function load(){
       //   사라져 다시 배정할 입구가 없어진다(실제 사고: 박영철·전외윤).
       const GSEL='event_seq,accom,bookings!inner(dep_date,arr_date,product_name,remark_local,event_no,rep_name,origin,airline)';
       const [r1,r2]=await Promise.all([
-        supa.from('guests').select(GSEL).eq('accom',FACILITY),
-        supa.from('guests').select(GSEL).ilike('bookings.product_name','%시즈%')
+        supa.from('guests').select(GSEL).eq('accom',FACILITY).neq('bookings.status','대기'),
+        supa.from('guests').select(GSEL).ilike('bookings.product_name','%시즈%').neq('bookings.status','대기')
       ]);
       const _seen=new Set(); const tgs=[];
       [...(r1.data||[]),...(r2.data||[])].forEach(g=>{ if(_seen.has(g.event_seq))return; _seen.add(g.event_seq); tgs.push(g); });
@@ -1074,7 +1074,7 @@ async function autoAssignShizu(){
   if(!supa||!SHZ_INV){ toast(tx('connFail'),'err'); return; }
   const {start,end}=monthBounds(YM);
   try{
-    const {data:gs}=await supa.from('guests').select('event_seq,accom,bookings!inner(dep_date,arr_date)').eq('accom',FACILITY);
+    const {data:gs}=await supa.from('guests').select('event_seq,accom,bookings!inner(dep_date,arr_date)').eq('accom',FACILITY).neq('bookings.status','대기');
     const teams=(gs||[]).map(g=>({seq:g.event_seq,dep:String((g.bookings||{}).dep_date||'').slice(0,10),arr:String((g.bookings||{}).arr_date||'').slice(0,10)}))
       .filter(t=>t.dep&&t.arr&&t.dep<=end&&t.arr>start);
     if(!teams.length){ toast(tx('autoNone'),'warn'); return; }
@@ -1424,7 +1424,7 @@ async function loadHist(reset){
     // 신규 등록(시즈 상품, created_at desc)
     if(!_cxDoneR){
       const {data,error}=await supa.from('bookings').select('event_seq,event_no,rep_name,pax,dep_date,arr_date,product_name,created_at')
-        .ilike('product_name','%시즈노야도%').order('created_at',{ascending:false}).range(_rgRaw,_rgRaw+CX_PAGE-1);
+        .ilike('product_name','%시즈노야도%').neq('status','대기').order('created_at',{ascending:false}).range(_rgRaw,_rgRaw+CX_PAGE-1);
       if(error) throw error;
       const batch=data||[]; _rgRaw+=batch.length; if(batch.length<CX_PAGE) _cxDoneR=true;
       batch.forEach(b=>{ _histRows.push({ts:b.created_at||'', html:_rgRowHtml(b)}); });

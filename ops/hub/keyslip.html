@@ -340,7 +340,7 @@ async function load(){
     // 2) 팀(guests+bookings) — 그 달 체크인 팀 + 미배정 점검용으로 그 달 입국 팀도 함께
     const gs=await paged((a,b)=>supa.from('guests')
       .select('event_seq,group_code,team_tag,accom,bookings!inner(rep_name,dep_date,arr_date,origin,airline)')
-      .lte('bookings.dep_date',to).gt('bookings.arr_date',from).order('event_seq').range(a,b));
+      .lte('bookings.dep_date',to).gt('bookings.arr_date',from).neq('bookings.status','대기').order('event_seq').range(a,b));
     if(gs.error) throw gs.error;
     const gmap={}; (gs.data||[]).forEach(g=>{ gmap[g.event_seq]=g; });
     // 3) 투숙자 이름(guest_members)
@@ -421,7 +421,7 @@ async function load(){
         const need=[...new Set(ovRows.map(r=>String(r.event_seq)))].filter(x=>!gmap[x]);
         const ext={};
         for(let i=0;i<need.length;i+=200){ const ch=need.slice(i,i+200);
-          const {data:g2}=await supa.from('guests').select('event_seq,group_code,team_tag,bookings!inner(dep_date)').in('event_seq',ch);
+          const {data:g2}=await supa.from('guests').select('event_seq,group_code,team_tag,bookings!inner(dep_date)').in('event_seq',ch).neq('bookings.status','대기');
           (g2||[]).forEach(g=>{ ext[g.event_seq]={dep:(g.bookings||{}).dep_date||'', tag:g.group_code||g.team_tag||''}; });
           const {data:m2}=await supa.from('guest_members').select('event_seq,person_tag,seq_in_team').in('event_seq',ch).order('seq_in_team');
           (m2||[]).forEach(m=>{ const e=ext[m.event_seq]; if(e && !e.ptag && m.person_tag) e.ptag=m.person_tag; });

@@ -451,7 +451,7 @@ async function load(){
     { let pg=0; for(;;){
         let q=supa.from('bookings')
           .select('event_seq,event_no,rep_name,member_type,dep_date,arr_date,nights_label,origin,airline,product_name,pax,remark,remark_local,team_label,session_ym')
-          .lte('dep_date',RTO).gte('arr_date',RFROM).order('event_seq').range(pg,pg+999);
+          .lte('dep_date',RTO).gte('arr_date',RFROM).neq('status','대기').order('event_seq').range(pg,pg+999);
         const {data,error}=await q; if(error)throw error;
         (data||[]).forEach(b=>bs.push(b)); if(!data||data.length<1000)break; pg+=1000;
     } }
@@ -546,7 +546,7 @@ async function load(){
         const need=[...new Set(ovRows.map(r=>r.event_seq))].filter(s2=>!inView[s2]);
         const ext={};
         for(let i=0;i<need.length;i+=200){ const ch=need.slice(i,i+200);
-          const {data:g2}=await supa.from('guests').select('event_seq,group_code,bookings!inner(dep_date)').in('event_seq',ch);
+          const {data:g2}=await supa.from('guests').select('event_seq,group_code,bookings!inner(dep_date)').in('event_seq',ch).neq('bookings.status','대기');
           (g2||[]).forEach(g=>{ ext[g.event_seq]={dep:(g.bookings||{}).dep_date||'', tag:g.group_code||''}; });
           const {data:m2}=await supa.from('guest_members').select('event_seq,person_tag,seq_in_team').in('event_seq',ch).order('seq_in_team');
           (m2||[]).forEach(m=>{ const e=ext[m.event_seq]; if(e&&!e.ptag&&m.person_tag) e.ptag=m.person_tag; });
