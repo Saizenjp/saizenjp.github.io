@@ -1,0 +1,21 @@
+-- ============================================================================
+-- 132_audit_stats_selfcheck.sql — 데이터 검수에 「통계 검산」 6종 추가
+--
+--  배경(2026-09 검수): 가동률·오늘 매출·현장 매출·B2B 청구가 조용히 틀려 있었다.
+--  화면 식과 별개로 SQL 을 직접 짜서 대조하니 바로 어긋났다 — 그 대조를 사람이 아니라
+--  [재검수] 버튼이 하게 만든다. 대표 숫자마다 **다른 모양의 두 번째 계산**을 두고 어긋나면 빨갛게.
+--
+--  ⑧ stat_pax      예약 인원(bookings.pax) ≠ 실제 명단(passengers) — 명단이 있는 팀만
+--  ⑨ stat_nights   (arr−dep) ≠ 상품명·nights_label 의 「N박」 — B2B 청구 박수 근거
+--  ⑩ charge_future 미래 날짜 청구 — 카트처럼 예정으로 잡히는 것. 정보성, 「현장 매출」 읽을 때 참고
+--  ⑪ wait_leak     대기 예약에 방·청구·계산서·카트가 붙어 있음 — 대기는 현장에 오지 않는다
+--  ⑫ occ_check     이번 달 가동률 분자를 두 방식(겹치는 밤 곱셈 / 날짜를 펼쳐 합산)으로 — 달라야 할 이유가 없다
+--  ⑬ sales_check   청구 합계 ≠ 계산서(v_folio_balance) 합계 / 계산서 없는 청구
+--
+--  ⚠ 함수 전문은 Supabase 에 적용된 것이 정본(MCP apply_migration 2026-09).
+--     ①~⑦ 은 129 파일의 전문과 같고, 그 뒤에 ⑧~⑬ 블록이 붙는다.
+--     재적용이 필요하면 pg_get_functiondef('public.data_audit()'::regprocedure) 로 뽑는다.
+--  ⚠ RPC 권한 함정(§119): revoke from public + grant to authenticated.
+-- ============================================================================
+revoke execute on function public.data_audit() from public;
+grant  execute on function public.data_audit() to authenticated;

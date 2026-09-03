@@ -45,6 +45,13 @@
   - `/ops/` localStorage: `saizen_sb_url`/`saizen_sb_key`(Supabase 접속정보) · `saizen_lang`(화면 언어 ja/ko/en) · `saizen_dispatch_mask`(手配書 마스킹) · `saizen_last_email`.
   - ⚠ 옛 `/app/` localStorage 키(`manualData`·`memberMasterMap`·`tagCodeManualMap` 등)는 **더 이상 쓰지 않는다**(도구 삭제). 그 수기 입력(테이블No·끼니제외 등)은 ops로 이관되지 않았다.
 
+## 3-3. 숫자는 두 번 계산한다 (Min 2026-09 「검수에 더 신경써봐」)
+- **집계(SQL·화면 KPI)를 새로 만들거나 고치면, 반드시 다른 모양의 쿼리로 한 번 더 계산해 실제 DB 값과 대조**한다. 통과했다는 말은 그 대조 결과(두 숫자)를 보고한다는 뜻이다.
+- 대조는 사람이 한 번 하고 끝내지 않는다 — **`data_audit()`의 「통계 검산」에 짝을 넣어** [재검수]가 계속 보게 한다(SQL 132: occ_check·sales_check 등).
+- 배경: 2026-09 검수에서 가동률(방배정 진척을 재고 있었음)·오늘 매출(UTC 날짜)·현장 매출(미래분 혼입)·B2B 청구(대기 포함, 10월 1,243만 엔 과다)가 **조용히 틀려 있었다**. 문법·i18n·단위테스트는 전부 통과한 상태였다 — 집계는 그 검사가 닿지 않는다.
+- 시간대: DB 는 UTC. 날짜 비교는 항상 `(ts at time zone 'Asia/Tokyo')::date`.
+- 대기 예약(`bookings.status='대기'`)은 현장에 오지 않는다 — bookings 를 읽는 모든 자리에 제외 필터(`scripts/check-wait.mjs` 가 강제). 예외는 step1·room·audit 뿐.
+
 ## 3-2. 저장소에 넣지 않는 것 (Min 결정 2026-08)
 - **이 저장소는 공개(public)이고, GitHub Pages 로 서비스되므로 저장소에 넣은 파일은 사이트 주소로도 받아진다.**
   저장소를 비공개로 바꿔도 **사이트는 계속 공개**다(사이트 접근 제한은 Enterprise 전용).

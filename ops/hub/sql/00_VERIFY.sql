@@ -205,6 +205,7 @@ from (
   union all select 126,'126 예약 추이','booking_trend()', case when exists(select 1 from pg_proc where proname='booking_trend') then '✅ 있음' else '❌ 없음 (126)' end
   union all select 127,'127 마샬 Ai 명단','marshal_player_no(그날 고정 번호)', case when to_regclass('public.marshal_player_no') is not null then '✅ 있음' else '❌ 없음 (127)' end
   union all select 127,'127 마샬 Ai 명단','marshal_assign_player_no()', case when exists(select 1 from pg_proc where proname='marshal_assign_player_no') then '✅ 있음' else '❌ 없음 (127)' end
+  union all select 132,'132 통계 검산','data_audit 에 occ_check·sales_check 등 검산 6종', case when exists(select 1 from pg_proc where proname='data_audit' and prosrc like '%sales_check%') then '✅ 적용' else '❌ 미적용 (132)' end
   union all select 131,'131 통계 시간대','today_summary 가 JST 로 날짜를 자르는가', case when exists(select 1 from pg_proc where proname='today_summary' and prosrc like '%at time zone ''Asia/Tokyo'')::date = today%') then '✅ 적용' else '🔴 미적용 (131) — 심야 주문이 어제로 잡힌다' end
   union all select 131,'131 예정 매출','현장 매출에서 미래 날짜 청구 분리(onsite_future)', case when exists(select 1 from pg_proc where proname='exec_stats' and prosrc like '%onsite_future%') then '✅ 적용' else '❌ 미적용 (131)' end
   union all select 130,'130 경영 통계','가동률 = 예약 기준(배정 기준 아님)', case when exists(select 1 from pg_proc where proname='exec_stats' and prosrc like '%occ_book%') then '✅ 적용' else '🔴 미적용 (130) — 가동률이 방배정 진척을 재고 있다' end

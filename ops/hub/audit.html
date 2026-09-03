@@ -80,7 +80,7 @@
   .gok{display:inline-block;background:var(--accentSoft);color:var(--ok);border:1px solid #b4cda0;border-radius:5px;padding:1px 8px;font-size:11px;font-weight:800}
   .gsum{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=27.9">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=28.0">
 </head>
 <body data-so-area="admin">
 <div class="topbar so-bar">
@@ -128,7 +128,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=27.9"></script>
+<script src="../assets/saizen-ops.js?v=28.0"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 데이터 검수(마스터 전용). 82_data_audit.sql 의 data_audit() RPC 호출.
@@ -138,7 +138,8 @@ const $=s=>document.querySelector(s);
 let supa=null, myRole=null, RESULT=null;
 
 // 체크 메타(순서·심각도는 RPC가 주지만, 라벨/설명/조치는 화면 i18n)
-const CHECKS=['seq_gap','count_mismatch','dup_tag','orphan_room','room_over','member_dup','stay_gap'];
+const CHECKS=['seq_gap','count_mismatch','dup_tag','orphan_room','room_over','member_dup','stay_gap',
+  'stat_pax','stat_nights','charge_future','wait_leak','occ_check','sales_check'];   // 뒤 6개 = 통계 검산(132)
 
 const L={
   ja:{
@@ -167,6 +168,18 @@ const L={
     n_member_dup:'同一会員の二重登録', d_member_dup:'会員の識別キーは「氏名＋生年6桁」。生年が1桁でも違うと別人として登録され、同じ方が2行になる(Mクリックの入力誤り)。氏名とグループコードが同じなら実質同一人物。',
     n_stay_gap:'客室割当が予約より短い', d_stay_gap:'予約の最終泊を埋める客室割当がありません。客室割当は予約に自動で追従しません — 予約が延びても、最初に1泊少なく入れても、そのまま残ります(実例: 4泊5日なのに3泊で入っていた)。到着してから「泊まる部屋がない」で気づくことになります。',
     f_stay_gap:'対処: 方배정(room.html)でその日付を開き、最終泊を割り当てる。※コンボ商品の前半が空いているのは正常なので、この検査は最終泊だけを見ます。',
+    n_stat_pax:'予約人数 ≠ 名簿', d_stat_pax:'予約の人数(bookings.pax)と実際の名簿(passengers)が合わない。B2B精算は名簿と予約の大きい方で請求するため、ずれは過少/過大請求の元。',
+    f_stat_pax:'対処: Mクリックの予約人数か名簿を確認して再import。',
+    n_stat_nights:'滞在泊数 ≠ 商品名の「N泊」', d_stat_nights:'到着日−出発日の泊数と、商品名(nights_label)の「N泊」が合わない。B2B請求の泊数根拠が二つあり食い違う。',
+    f_stat_nights:'対処: Mクリックの日付か商品名を確認して再import。',
+    n_charge_future:'未来日付の請求', d_charge_future:'電動カートのように予約時点で作られ、プレー日で記録される請求。「現場売上」に予定分として混ざる。経営統計は「うち予定」として分けて表示。',
+    f_charge_future:'異常ではありません — 「現場売上」を読むときの参考。取消済みは含みません。',
+    n_wait_leak:'待機予約に客室・請求が付いている', d_wait_leak:'「待機」は満室でも受け付ける予約で、出国前に整理されるため現場には来ない。客室割当・請求・伝票・カートが付いていれば状態の矛盾。',
+    f_wait_leak:'対処: 確定に変わったのなら再import。待機のままなら付いたものを外す。',
+    n_occ_check:'稼働率の検算', d_occ_check:'今月の予約人泊を二通り(重なる泊の掛け算 / 日付を展開して合算)で計算して比べる。違う理由はないので、違えば計算式のバグ。',
+    f_occ_check:'0が正常。1なら経営統計の稼働率を信用せず、開発に連絡。',
+    n_sales_check:'売上の検算', d_sales_check:'請求(charges)の合計と伝票(v_folio_balance)の合計が同じか、伝票のない請求がないか。精算画面と統計が同じお金を見ているかの確認。',
+    f_sales_check:'0が正常。伝票のない請求があればその請求はどこにも集計されない — 開発に連絡。',
     f_member_dup:'対処: ①Mクリック会員管理で正しい生年を確認 ②誤っている予約の生年を修正 ③再import(step1) ④その後に残った古い行を削除。⚠ 先に行だけ消すと、次のimportでその方のコードが一致せず「コード未保有」に戻り、別コードが振られる恐れがあります。',
     // 묶음 그룹코드 조회
     gTitle:'グループコード照会', gBtn:'照会', gAll:'全グループ点検', gPh:'コード・代表者・行事番号',
@@ -205,6 +218,18 @@ const L={
     n_member_dup:'같은 회원 두 번 등록', d_member_dup:'회원 식별키가 「이름+생년 6자리」입니다. 생년이 한 자리만 달라도 다른 사람으로 등록되어 같은 분이 두 줄이 됩니다(엠클릭 입력 오타). 이름과 그룹코드가 같으면 사실상 동일인입니다.',
     n_stay_gap:'방배정이 예약보다 짧음', d_stay_gap:'예약 마지막 밤을 덮는 방배정이 없습니다. 방배정은 예약을 자동으로 따라가지 않습니다 — 예약이 늘어나도, 처음 넣을 때 하루를 놓쳐도 그대로 남습니다(실제 사례: 4박5일인데 3박으로 들어가 있었음). 손님이 도착해서야 「잘 방이 없다」로 드러납니다.',
     f_stay_gap:'조치: 방배정(room.html)에서 그 날짜를 열어 마지막 밤을 배정. ※콤보 상품은 앞 구간이 다른 숙소라 비어 있는 것이 정상이므로, 이 검사는 마지막 밤만 봅니다.',
+    n_stat_pax:'예약 인원 ≠ 명단', d_stat_pax:'예약 인원(bookings.pax)과 실제 명단(passengers)이 다릅니다. B2B 정산은 명단과 예약 중 큰 쪽으로 청구하므로, 어긋나면 과소/과다 청구의 씨앗입니다.',
+    f_stat_pax:'조치: 엠클릭의 예약 인원 또는 명단을 확인해 재임포트.',
+    n_stat_nights:'체류 박수 ≠ 상품명의 「N박」', d_stat_nights:'도착일−출발일 박수와 상품명(nights_label)의 「N박」이 다릅니다. B2B 청구의 박수 근거가 둘이라 어긋나면 어느 쪽이 맞는지 확인이 필요합니다.',
+    f_stat_nights:'조치: 엠클릭의 날짜 또는 상품명을 확인해 재임포트.',
+    n_charge_future:'미래 날짜 청구', d_charge_future:'전기카트처럼 예약 시점에 만들어지고 라운딩 날짜로 기록되는 청구입니다. 「현장 매출」에 예정분으로 섞입니다. 경영 통계는 「이 중 예정」으로 따로 표시합니다.',
+    f_charge_future:'이상은 아닙니다 — 「현장 매출」을 읽을 때 참고. 취소분은 포함하지 않습니다.',
+    n_wait_leak:'대기 예약에 방·청구가 붙음', d_wait_leak:'「대기」는 만실이어도 받아 두는 예약이고 출국 전까지 정리되어 현장에 오지 않습니다. 방배정·청구·계산서·카트가 붙어 있으면 상태가 어긋난 것입니다.',
+    f_wait_leak:'조치: 확정으로 바뀐 것이면 재임포트. 대기 그대로면 붙은 것을 떼어냅니다.',
+    n_occ_check:'가동률 검산', d_occ_check:'이번 달 예약 인박을 두 방식(겹치는 밤 곱셈 / 날짜를 펼쳐 합산)으로 계산해 비교합니다. 달라야 할 이유가 없으므로, 다르면 계산식 버그입니다.',
+    f_occ_check:'0이 정상. 1이면 경영 통계의 가동률을 믿지 말고 개발에 알리세요.',
+    n_sales_check:'매출 검산', d_sales_check:'청구(charges) 합계와 계산서(v_folio_balance) 합계가 같은지, 계산서 없는 청구가 없는지. 정산 화면과 통계가 같은 돈을 보고 있는지 확인합니다.',
+    f_sales_check:'0이 정상. 계산서 없는 청구가 있으면 그 돈은 어디에도 집계되지 않습니다 — 개발에 알리세요.',
     f_member_dup:'조치: ①엠클릭 회원관리에서 올바른 생년 확인 ②틀린 예약의 생년을 수정 ③재임포트(step1) ④그 뒤 남은 옛 행을 삭제. ⚠ 행부터 지우면 다음 임포트에서 그분 코드가 매칭되지 않아 「코드 미보유」로 돌아가고 다른 코드가 배정될 수 있습니다.',
     gTitle:'묶음 그룹코드 조회', gBtn:'조회', gAll:'전체 묶음 점검', gPh:'코드 · 대표자 · 행사번호',
     gDesc:'묶은 팀의 「통일코드·순번」을 로드 범위와 무관하게 그룹 전원 기준으로 계산해 보여줍니다. 現地手配書·航空カバー가 인쇄하는 값과 같습니다.',
@@ -240,6 +265,18 @@ const L={
     n_member_dup:'Same member registered twice', d_member_dup:'A member is identified by name + 6-digit birth date. One wrong digit registers them as a different person, so the same guest appears twice (a typo in the booking system). Same name and same group code means it is really one person.',
     n_stay_gap:'Room assignment shorter than the booking', d_stay_gap:'No room covers the last night of the booking. Room assignments never follow the booking automatically — if the stay is extended, or a night is missed when it is first entered, it just stays that way (real case: a 4-night stay entered as 3). It surfaces only when the guest arrives and has no room.',
     f_stay_gap:'Fix: open that date in room.html and assign the last night. Note: for combo products the earlier segment is at another property, so this check looks only at the final night.',
+    n_stat_pax:'Booked pax ≠ roster', d_stat_pax:'Booked pax (bookings.pax) differs from the actual roster (passengers). B2B billing uses the larger of the two, so a gap seeds under/over-billing.',
+    f_stat_pax:'Fix: check pax or roster in the booking system and re-import.',
+    n_stat_nights:'Stay nights ≠ product “N泊”', d_stat_nights:'Nights from dates (arrival−departure) differ from the “N泊” in the product name. Two sources for B2B billing nights disagree.',
+    f_stat_nights:'Fix: check dates or product name in the booking system and re-import.',
+    n_charge_future:'Future-dated charges', d_charge_future:'Charges created at booking time and dated to the play day (electric carts). They mix into “on-site revenue” as upcoming amounts; the exec stats show them as “incl. upcoming”.',
+    f_charge_future:'Not an error — context for reading on-site revenue. Voided charges excluded.',
+    n_wait_leak:'Waitlisted booking has rooms/charges', d_wait_leak:'“Waitlisted” bookings are taken even when full and are resolved before departure — they never arrive. Rooms, charges, folios or carts attached to one means the status is out of sync.',
+    f_wait_leak:'Fix: re-import if it became confirmed; otherwise detach what was attached.',
+    n_occ_check:'Occupancy cross-check', d_occ_check:'This month’s booked person-nights computed two ways (overlap multiplication / day-by-day expansion). They must be equal; a difference means a formula bug.',
+    f_occ_check:'0 is normal. If 1, do not trust the occupancy figure and tell the developer.',
+    n_sales_check:'Revenue cross-check', d_sales_check:'Sum of charges vs sum of folios (v_folio_balance), and charges without a folio. Confirms the settlement screen and the stats look at the same money.',
+    f_sales_check:'0 is normal. A charge without a folio is counted nowhere — tell the developer.',
     f_member_dup:'Fix: (1) confirm the correct birth date in the member master, (2) correct it on the wrong booking, (3) re-import (step1), (4) only then delete the leftover row. ⚠ Deleting the row first breaks the match on the next import — the member falls back to “no code” and may be given a different one.',
     n_room_over:'Room over capacity', d_room_over:'Assigned pax on overlapping nights for one room exceeds capacity (double-booking).',
     f_room_over:'Fix: Check the room in room.html and reassign. Capacity guard prevents new ones (0 is normal).',
