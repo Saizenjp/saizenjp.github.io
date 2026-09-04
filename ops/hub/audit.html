@@ -80,7 +80,7 @@
   .gok{display:inline-block;background:var(--accentSoft);color:var(--ok);border:1px solid #b4cda0;border-radius:5px;padding:1px 8px;font-size:11px;font-weight:800}
   .gsum{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=28.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=28.4">
 </head>
 <body data-so-area="admin">
 <div class="topbar so-bar">
@@ -128,7 +128,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=28.3"></script>
+<script src="../assets/saizen-ops.js?v=28.4"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 데이터 검수(마스터 전용). 82_data_audit.sql 의 data_audit() RPC 호출.
@@ -141,7 +141,8 @@ let supa=null, myRole=null, RESULT=null;
 const CHECKS=['seq_gap','count_mismatch','dup_tag','orphan_room','room_over','member_dup','stay_gap',
   'stat_pax','stat_nights','charge_future','wait_leak','occ_check','sales_check',   // 통계 검산(132)
   'placeholder_stale',    // 무기명 자리가 이름을 얻은 뒤 남은 옛 줄(133)
-  'dinner_check'];        // 안내 모니터 석식 합계 = 夕食 규칙 재계산(134)
+  'dinner_check',         // 안내 모니터 석식 합계 = 夕食 규칙 재계산(134)
+  'lobby_check'];         // 로비 모니터 환영판·출발 인원 = 예약 재계산(135)
 
 const L={
   ja:{
@@ -173,6 +174,7 @@ const L={
     n_placeholder_stale:'名前が付いた後に残った「無記名」の行', d_placeholder_stale:'最初は名前なしで登録された席(無記名|#N)が、後で名前を得たのに古い行が残っている。同じ人が客室を二つ占める。2026-09に7チーム25行が見つかり、step1が同じ行を引き継ぐよう直した。',
     f_placeholder_stale:'対処: その月を再登録(step1)すると自動で引き継ぐ。残る場合は開発に連絡。',
     n_dinner_check:'案内モニターの夕食合計 = 再計算', d_dinner_check:'ロビー・2Fモニターが出す今日の夕食人数(signage_dinner)を、別の形の集計(宿泊中−除外−早期退室)で計算し直して照合。', f_dinner_check:'不一致なら開発に連絡(モニターの人数が夕食オーダーとずれる)。',
+    n_lobby_check:'ロビーモニターの到着・出発人数 = 再計算', d_lobby_check:'ロビーの歓迎板(本日チェックイン)と出発案内(本日・明日の帰国便)の人数を、予約・名簿から別の形で計算し直して照合。', f_lobby_check:'不一致なら開発に連絡。',
     n_stat_pax:'予約人数 ≠ 名簿', d_stat_pax:'予約の人数(bookings.pax)と実際の名簿(passengers)が合わない。B2B精算は名簿と予約の大きい方で請求するため、ずれは過少/過大請求の元。',
     f_stat_pax:'対処: Mクリックの予約人数か名簿を確認して再import。',
     n_stat_nights:'滞在泊数 ≠ 商品名の「N泊」', d_stat_nights:'到着日−出発日の泊数と、商品名(nights_label)の「N泊」が合わない。B2B請求の泊数根拠が二つあり食い違う。',
@@ -226,6 +228,7 @@ const L={
     n_placeholder_stale:'이름 붙은 뒤 남은 「무기명」 줄', d_placeholder_stale:'처음엔 이름 없이 등록된 자리(무기명|#N)가 나중에 이름을 얻었는데 옛 줄이 남아 있습니다. 같은 사람이 방을 두 개 차지합니다. 2026-09에 7팀 25줄이 발견되어 step1이 같은 줄을 이어받도록 고쳤습니다.',
     f_placeholder_stale:'조치: 그 달을 다시 등록(step1)하면 자동으로 이어받습니다. 남으면 개발에 알리세요.',
     n_dinner_check:'안내 모니터 석식 합계 = 재계산', d_dinner_check:'로비·2층 모니터가 내보내는 오늘 석식 인원(signage_dinner)을 다른 모양의 집계(묵는 팀 − 제외 − 조기퇴실)로 다시 계산해 대조합니다.', f_dinner_check:'불일치면 개발에 알리세요(모니터 인원이 夕食オーダー와 어긋납니다).',
+    n_lobby_check:'로비 모니터 도착·출발 인원 = 재계산', d_lobby_check:'로비 환영판(오늘 체크인)과 출발 안내(오늘·내일 귀국 便)의 인원을 예약·명단에서 다른 모양으로 다시 계산해 대조합니다.', f_lobby_check:'불일치면 개발에 알리세요.',
     n_stat_pax:'예약 인원 ≠ 명단', d_stat_pax:'예약 인원(bookings.pax)과 실제 명단(passengers)이 다릅니다. B2B 정산은 명단과 예약 중 큰 쪽으로 청구하므로, 어긋나면 과소/과다 청구의 씨앗입니다.',
     f_stat_pax:'조치: 엠클릭의 예약 인원 또는 명단을 확인해 재임포트.',
     n_stat_nights:'체류 박수 ≠ 상품명의 「N박」', d_stat_nights:'도착일−출발일 박수와 상품명(nights_label)의 「N박」이 다릅니다. B2B 청구의 박수 근거가 둘이라 어긋나면 어느 쪽이 맞는지 확인이 필요합니다.',
@@ -276,6 +279,7 @@ const L={
     n_placeholder_stale:'Unnamed placeholder rows left after naming', d_placeholder_stale:'A seat first imported without a name (무기명|#N) later received a name, but the old row remained — the same person holds two rooms. 7 teams / 25 rows were found in 2026-09; step1 now reuses the row.',
     f_placeholder_stale:'Fix: re-register that month (step1) and the row is reused automatically. If it persists, tell the developer.',
     n_dinner_check:'Signage dinner total = recomputed', d_dinner_check:'Recomputes tonight’s dinner head-count shown on the lobby / 2F monitors (signage_dinner) with a differently shaped query (staying − excluded − early departures) and compares.', f_dinner_check:'If they differ, tell the developer (the monitor would disagree with the dinner order).',
+    n_lobby_check:'Lobby signage arrivals/departures = recomputed', d_lobby_check:'Recomputes the lobby welcome board (today’s check-ins) and departures pane (today/tomorrow outbound flights) head-counts from bookings and rosters with a different query and compares.', f_lobby_check:'If they differ, tell the developer.',
     n_stat_pax:'Booked pax ≠ roster', d_stat_pax:'Booked pax (bookings.pax) differs from the actual roster (passengers). B2B billing uses the larger of the two, so a gap seeds under/over-billing.',
     f_stat_pax:'Fix: check pax or roster in the booking system and re-import.',
     n_stat_nights:'Stay nights ≠ product “N泊”', d_stat_nights:'Nights from dates (arrival−departure) differ from the “N泊” in the product name. Two sources for B2B billing nights disagree.',

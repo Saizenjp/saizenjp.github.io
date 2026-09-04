@@ -73,7 +73,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=28.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=28.4">
 </head>
 <body data-so-area="board">
 <div class="topbar so-bar">
@@ -113,6 +113,7 @@
       <div class="opts">
         <label><span data-i18n="bd_deptLabel"></span> <select class="inp" id="w-dept" style="width:auto;padding:6px 9px"></select></label>
         <label><input type="checkbox" id="w-pin"> <span data-i18n="bd_pin"></span></label>
+        <label title="" id="w-guest-wrap"><input type="checkbox" id="w-guest"> <span data-i18n="bd_guest"></span></label>
         <label id="w-pinuntil-wrap" style="display:none;font-size:12px;color:var(--text2)"><span id="t-pinuntil-lbl"></span> <input type="date" class="inp" id="w-pinuntil" style="width:auto;padding:5px 8px"></label>
         <button class="btn" id="w-post" type="button" style="margin-left:auto" data-i18n="bd_post"></button>
       </div>
@@ -128,7 +129,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=28.3"></script>
+<script src="../assets/saizen-ops.js?v=28.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -138,7 +139,7 @@ const L={
     connRetry:'接続・再試行', notConn:'未接続', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
     needLoginMsg:'ログインが必要です。上部の[ログイン]後に再接続してください。',
     connFail:'接続失敗', connFailHint:'(SQL 21 実行を確認)',
-    todaySummary:'本日のサマリー', pinUntilLbl:'固定期間（まで）', pinShort:'固定～',
+    todaySummary:'本日のサマリー', pinUntilLbl:'固定期間（まで）', pinShort:'固定～', guestBadgeT:'ロビー案内モニターに表示中', guestOnDone:'ロビーモニターに表示します', guestOffDone:'ロビーモニターから外しました',
     dragReorder:'ドラッグして並び替え',
     annLoadFail:'お知らせ読み込み失敗', reordered:'並び替えました', reorderFail:'並び順の保存失敗',
     pinUntilFail:'固定期間の保存失敗', pinUntilSet:'固定期間を設定しました', pinUntilOff:'固定期間を解除',
@@ -148,7 +149,7 @@ const L={
     connRetry:'연결·재시도', notConn:'미연결', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
     needLoginMsg:'로그인이 필요합니다. 상단 [로그인] 후 다시 연결하세요.',
     connFail:'연결 실패', connFailHint:'(SQL 21 실행 확인)',
-    todaySummary:'오늘 요약', pinUntilLbl:'고정 기간(까지)', pinShort:'고정~',
+    todaySummary:'오늘 요약', pinUntilLbl:'고정 기간(까지)', pinShort:'고정~', guestBadgeT:'로비 안내 모니터에 표시 중', guestOnDone:'로비 모니터에 표시합니다', guestOffDone:'로비 모니터에서 뺐습니다',
     dragReorder:'드래그하여 순서 변경',
     annLoadFail:'공지 로드 실패', reordered:'순서 변경됨', reorderFail:'순서 저장 실패',
     pinUntilFail:'고정 기간 저장 실패', pinUntilSet:'고정 기간 설정됨', pinUntilOff:'고정 기간 해제',
@@ -158,7 +159,7 @@ const L={
     connRetry:'Connect · retry', notConn:'Not connected', needUrlKey:'URL·key required', needLogin:'Login required',
     needLoginMsg:'Login required. Sign in at the top, then connect again.',
     connFail:'Connection failed', connFailHint:'(check SQL 21 was run)',
-    todaySummary:'Today summary', pinUntilLbl:'Pinned until', pinShort:'Pin ~',
+    todaySummary:'Today summary', pinUntilLbl:'Pinned until', pinShort:'Pin ~', guestBadgeT:'Shown on the lobby signage', guestOnDone:'Now shown on the lobby monitor', guestOffDone:'Removed from the lobby monitor',
     dragReorder:'Drag to reorder',
     annLoadFail:'Failed to load announcements', reordered:'Reordered', reorderFail:'Failed to save order',
     pinUntilFail:'Failed to save pin period', pinUntilSet:'Pin period set', pinUntilOff:'Pin period cleared',
@@ -287,17 +288,20 @@ function renderAnns(){
         <span class="at">${esc(a.title)}</span>
         ${act&&a.pin_until?`<span class="pinuntil-meta">📌 ~${fmtTs(a.pin_until).slice(0,10)}</span>`:''}
         <span class="dbadge${a.dept?'':' all'}">${deptLabel(a.dept)}</span>
+        ${a.for_guests?`<span class="dbadge" style="background:var(--accent);color:#fff" title="${esc(tx('guestBadgeT'))}">${esc(t('bd_guestBadge'))}</span>`:''}
         <span class="ameta">${esc(a.author||'')} · ${fmtTs(a.created_at)}</span>
       </div>
       ${a.body?`<div class="abody">${esc(a.body)}</div>`:''}
       ${canWrite?`<div class="actions">
         <button class="btn sm ghost" data-pin="${a.id}">${a.pinned?t('bd_unpin'):t('bd_doPin')}</button>
+        <button class="btn sm ghost" data-guest="${a.id}">${a.for_guests?t('bd_guestOff'):t('bd_guestOn')}</button>
         ${a.pinned?`<label class="pinperiod">${esc(tx('pinShort'))} <input type="date" data-pinuntil="${a.id}" value="${a.pin_until?String(a.pin_until).slice(0,10):''}"></label>`:''}
         ${canDelAnn(a)?`<button class="btn sm danger" data-del="${a.id}">${t('bd_del')}</button>`:''}
       </div>`:''}
     </div>`;}).join('');
   if(canWrite){
     box.querySelectorAll('[data-pin]').forEach(b=>b.addEventListener('click',()=>togglePin(b.dataset.pin)));
+    box.querySelectorAll('[data-guest]').forEach(b=>b.addEventListener('click',()=>toggleGuest(b.dataset.guest)));
     box.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>delAnn(b.dataset.del)));
     box.querySelectorAll('[data-pinuntil]').forEach(inp=>inp.addEventListener('change',()=>setPinUntil(inp.dataset.pinuntil, inp.value)));
     if(canDrag) wireDrag(box);
@@ -333,17 +337,24 @@ async function setPinUntil(id,val){
 }
 
 async function postAnn(){
-  const title=$('#w-title').value.trim(), body=$('#w-body').value.trim(), pinned=$('#w-pin').checked;
+  const title=$('#w-title').value.trim(), body=$('#w-body').value.trim(), pinned=$('#w-pin').checked, for_guests=!!($('#w-guest')&&$('#w-guest').checked);
   if(!title){ toast(tx('needTitle'),'err'); return; }
   const author=authorName();
   const dept=($('#w-dept')&&$('#w-dept').value)||null;
   const pu=$('#w-pinuntil')&&$('#w-pinuntil').value;
   const pin_until=(pinned&&pu)?new Date(pu+'T23:59:59').toISOString():null;
-  const {error}=await supa.from('announcements').insert({title,body,pinned,author,author_uid:myUid,dept,pin_until,sort_order:0});
+  const {error}=await supa.from('announcements').insert({title,body,pinned,author,author_uid:myUid,dept,pin_until,sort_order:0,for_guests});
   if(error){ toast(tx('postFail')+': '+error.message,'err'); return; }
-  $('#w-title').value=''; $('#w-body').value=''; $('#w-pin').checked=false;
+  $('#w-title').value=''; $('#w-body').value=''; $('#w-pin').checked=false; if($('#w-guest')) $('#w-guest').checked=false;
   if($('#w-pinuntil')){ $('#w-pinuntil').value=''; $('#w-pinuntil-wrap').style.display='none'; }
   toast(tx('posted'),'ok'); loadAnns();
+}
+// 손님 모니터(로비 signage.html) 표시 토글 — SQL 135 for_guests. 손님이 보는 문구이므로 한·일 병기로 쓴다.
+async function toggleGuest(id){
+  const a=anns.find(x=>String(x.id)===String(id)); if(!a) return;
+  const {error}=await supa.from('announcements').update({for_guests:!a.for_guests,updated_at:new Date().toISOString()}).eq('id',id);
+  if(error){ toast(tx('postFail')+': '+error.message,'err'); return; }
+  toast(a.for_guests?tx('guestOffDone'):tx('guestOnDone'),'ok'); loadAnns();
 }
 async function togglePin(id){
   const a=anns.find(x=>String(x.id)===String(id)); if(!a) return;
