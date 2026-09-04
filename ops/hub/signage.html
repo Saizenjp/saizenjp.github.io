@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>석식 안내 · 夕食のご案内</title>
+<!--
+  안내 모니터(디지털 사이니지) — 로비·2층 엘리베이터 앞 TV 에 켜 두는 전체화면.
+  · 로그인 없음: signage_dinner(date) RPC(SQL 134) 만 부른다 — 오늘·내일만 답하고 방번호·연락처는 안 준다.
+  · saizen-ops.js 는 싣지 않는다(상단바·로그인 카드가 화면을 가린다). 공용은 saizen-core.js(순수 규칙)만.
+  · ?screen=dinner (기본) · ?date=YYYY-MM-DD (시험용) · ?cut=21 (이 시각 이후엔 내일 석식) · ?refresh=60 (초)
+  · 표기 원칙(Min): 손님용 = 한국어 우선 · 한·일 병기.
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../assets/saizen-core.js?v=40"></script>
+<style>
+  :root{ --bg:#10160e; --panel:#182115; --line:#3a4d31; --ink:#f4f7ee; --ink2:#d3e4c2; --muted:#93a585; --gold:#ffe9a8; --acc:#a9d18b;
+         --mono:'SFMono-Regular',Consolas,Menlo,'SZJpMono',monospace; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:var(--bg);color:var(--ink);overflow:hidden;cursor:none}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic','Hiragino Sans','Yu Gothic',system-ui,sans-serif;display:flex;flex-direction:column;padding:2.2vh 2.6vw;gap:1.6vh}
+  .hd{display:flex;align-items:baseline;gap:2vw;border-bottom:.4vh solid #7f9a5f;padding-bottom:1vh}
+  .hd .t{font-size:3.6vh;font-weight:800;letter-spacing:.05vw}
+  .hd .t small{font-size:2.4vh;font-weight:800;color:var(--ink2);margin-left:1vw}
+  .hd .d{font-size:3vh;font-weight:800;color:var(--ink2)}
+  .hd .d b{color:var(--gold);margin-right:.8vw}
+  .hd .c{margin-left:auto;font-size:3.8vh;font-weight:800;font-family:var(--mono);color:var(--gold)}
+  .hero{display:grid;grid-template-columns:1.25fr 1fr;gap:1.6vw;align-items:stretch}
+  .box{background:var(--panel);border:.25vh solid var(--line);border-radius:1.2vh;padding:1.8vh 2vw}
+  .box .lb{font-size:2.1vh;font-weight:800;color:var(--muted);letter-spacing:.1vw}
+  .venue .ko{font-size:9vh;font-weight:900;line-height:1.05;color:#fff;margin-top:.6vh}
+  .venue .ja{font-size:4.2vh;font-weight:800;color:var(--acc);margin-top:.4vh}
+  .venue.unset .ko{font-size:4.6vh;color:var(--ink2)}
+  .venue.unset .ja{font-size:3vh}
+  .time{display:flex;flex-direction:column;justify-content:center}
+  .time .tm{font-size:7.4vh;font-weight:900;font-family:var(--mono);color:var(--gold);line-height:1.1}
+  .time .menu{font-size:2.9vh;font-weight:800;color:var(--ink2);margin-top:1vh}
+  .time .menu b{color:#fff}
+  .note{font-size:2.8vh;font-weight:800;color:#fff;background:#384d2a;border-left:.9vw solid var(--acc);padding:1vh 1.4vw;border-radius:.8vh}
+  .list{flex:1;min-height:0;display:grid;gap:.5vh .9vw;align-content:start;grid-auto-flow:column}
+  .row{display:flex;align-items:center;gap:.6vw;background:var(--panel);border:.2vh solid var(--line);border-radius:.8vh;padding:.55vh .9vw;font-size:var(--fs,2.6vh);white-space:nowrap;overflow:hidden}
+  .row .tag{font-family:var(--mono);font-weight:800;color:var(--gold);min-width:6.2em}
+  .row .nm{font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis}
+  .row .nm i{font-style:normal;font-size:.72em;color:var(--ink2);margin-left:.3em}
+  .row .px{margin-left:auto;font-weight:800;color:var(--ink2);font-size:.85em}
+  .row .px b{color:#fff;font-size:1.15em}
+  .row.k{border-color:#5d7c4a;background:#1d2a19}
+  .ft{display:flex;gap:2vw;align-items:center;font-size:2vh;font-weight:800;color:var(--muted);border-top:.2vh solid var(--line);padding-top:.9vh}
+  .ft .tot{color:var(--ink2)}
+  .ft .tot b{color:#fff;font-size:1.2em}
+  .ft .pg{color:var(--acc)}
+  .ft .upd{margin-left:auto;font-family:var(--mono)}
+  .ft .upd.err{color:#ffb4a6}
+  .none{grid-column:1/-1;text-align:center;color:var(--ink2);font-size:3.4vh;padding:8vh 0}
+</style>
+</head>
+<body>
+  <div class="hd">
+    <div class="t">석식 안내<small>夕食のご案内</small></div>
+    <div class="d" id="hd-date"></div>
+    <div class="c" id="clock">--:--</div>
+  </div>
+  <div class="hero">
+    <div class="box venue unset" id="venue">
+      <div class="lb">석식 장소 · 夕食会場</div>
+      <div class="ko" id="v-ko">준비 중</div>
+      <div class="ja" id="v-ja">準備中</div>
+    </div>
+    <div class="box time">
+      <div class="lb">시간 · 時間</div>
+      <div class="tm" id="v-time">—</div>
+      <div class="menu" id="v-menu"></div>
+    </div>
+  </div>
+  <div class="note" id="note" hidden></div>
+  <div class="list" id="list"><div class="none">불러오는 중… / 読み込み中…</div></div>
+  <div class="ft">
+    <div class="tot" id="tot"></div>
+    <div class="pg" id="pg"></div>
+    <div class="upd" id="upd"></div>
+  </div>
+<script>
+const $=s=>document.querySelector(s);
+const Q=new URLSearchParams(location.search);
+const _cut=parseInt(Q.get('cut'),10); const CUT_H=isNaN(_cut)?21:Math.max(0,Math.min(23,_cut));   // 이 시각(JST) 이후엔 내일 석식
+const REFRESH=Math.max(15,parseInt(Q.get('refresh')||'60',10)||60);
+const PAGE_ROWS=72;   // 한 화면 최대 줄 — 넘으면 12초마다 넘김
+const SB_URL=localStorage.getItem('saizen_sb_url')||'https://wzfmloivrolpwpiuyhbs.supabase.co';
+const SB_KEY=localStorage.getItem('saizen_sb_key')||'sb_publishable_W76Uh3D9gRPjPoxHwl-LYw_dR9BIj6L';   // publishable(공개용) — saizen-ops.js 기본값과 같다
+const VENUE={restaurant:{ko:'레스토랑',ja:'レストラン'},convention:{ko:'컨벤션홀',ja:'コンベンションホール'}};
+const WD_KO=['일','월','화','수','목','금','토'], WD_JA=['日','月','火','水','木','金','土'];
+let supa=null, DATA=null, PAGE=0, PAGES=1, LASTOK='';
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function jst(){ const n=new Date(); return new Date(n.getTime()+(n.getTimezoneOffset()+540)*60000); }   // 모니터 PC 시간대와 무관하게 JST
+function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+// 표시 대상 날짜: ?date 우선, 없으면 오늘 — CUT_H 이후엔 내일(저녁이 끝난 뒤 내일 것을 미리)
+function targetDate(){
+  const f=Q.get('date'); if(f&&/^\d{4}-\d{2}-\d{2}$/.test(f)) return f;
+  const n=jst(); if(n.getHours()>=CUT_H){ n.setDate(n.getDate()+1); }
+  return ymd(n);
+}
+function dateLabel(iso){ const d=new Date(iso+'T00:00:00'); const m=d.getMonth()+1, day=d.getDate(), w=d.getDay();
+  return `${m}월 ${day}일 (${WD_KO[w]}) <small style="font-size:.75em;color:var(--muted)">${m}月${day}日(${WD_JA[w]})</small>`; }
+
+function tick(){ const n=jst(); $('#clock').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'); }
+
+async function load(){
+  const date=targetDate();
+  try{
+    if(!supa) supa=window.supabase.createClient(SB_URL,SB_KEY);
+    const {data,error}=await supa.rpc('signage_dinner',{p_date:date});
+    if(error) throw error;
+    if(!data||data.ok===false) throw new Error((data&&data.reason)||'no data');
+    DATA=data; PAGE=0; LASTOK=$('#clock').textContent; render();
+    $('#upd').className='upd'; $('#upd').textContent=LASTOK+' 갱신';
+  }catch(e){
+    $('#upd').className='upd err'; $('#upd').textContent='⚠ 갱신 실패 '+$('#clock').textContent+(LASTOK?' · 마지막 '+LASTOK:'');
+    if(!DATA){ $('#list').innerHTML='<div class="none">데이터를 불러오지 못했습니다<br>データを取得できませんでした</div>'; }
+  }
+}
+function render(){
+  const d=DATA; if(!d) return;
+  const isTomorrow=d.date!==d.today;
+  $('#hd-date').innerHTML=(isTomorrow?'<b>내일 · 明日</b>':'<b>오늘 · 本日</b>')+dateLabel(d.date);
+  const v=VENUE[d.venue];
+  const vb=$('#venue'); vb.classList.toggle('unset',!v);
+  $('#v-ko').textContent=v?v.ko:'장소는 프론트에 문의해 주세요';
+  $('#v-ja').textContent=v?v.ja:'会場はフロントへお尋ねください';
+  const tm=[d.start_time,d.end_time].filter(Boolean).join(' 〜 ');
+  $('#v-time').textContent=tm||'—';
+  const base=(window.SZCore&&SZCore.baseDinner)?SZCore.baseDinner(d.date):'';
+  $('#v-menu').innerHTML=base?`오늘의 기본 석식 · 本日の基本夕食<br><b>${esc(base)}</b>`:'';
+  const nt=$('#note'); if(d.note){ nt.hidden=false; nt.textContent=d.note; } else nt.hidden=true;
+  const teams=Array.isArray(d.teams)?d.teams:[];
+  PAGES=Math.max(1,Math.ceil(teams.length/PAGE_ROWS));
+  const slice=teams.slice(PAGE*PAGE_ROWS,(PAGE+1)*PAGE_ROWS);
+  const list=$('#list');
+  if(!slice.length){ list.style.cssText=''; list.innerHTML='<div class="none">오늘 석식 명단이 없습니다<br>本日の夕食予約はありません</div>'; }
+  else{
+    // 열 수 = 12줄/열 기준(최대 6열), 글자는 열이 늘수록 작게 — 한 화면에 다 들어가게
+    const n=slice.length, cols=n<=6?1:Math.min(6,Math.max(2,Math.ceil(n/12))), rows=Math.ceil(n/cols);
+    const fs=[0,3.2,3.0,2.7,2.45,2.2,2.0][cols]||2.0;
+    list.style.cssText=`grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${rows},auto);--fs:${fs}vh`;
+    list.innerHTML=slice.map(t=>`<div class="row ${t.accom==='쿠주힐즈'?'k':''}"><span class="tag">${esc(t.tag||'')}</span><span class="nm">${esc(t.rep||'')}<i>様</i>${t.teams>1?`<i>+${t.teams-1}</i>`:''}</span><span class="px"><b>${esc(t.pax)}</b>名</span></div>`).join('');
+  }
+  $('#tot').innerHTML=`<b>${d.units||0}</b>팀 · <b>${d.total||0}</b>명 <span style="color:var(--muted)">/ ${d.units||0}チーム · ${d.total||0}名</span>`;
+  $('#pg').textContent=PAGES>1?`${PAGE+1} / ${PAGES}`:'';
+}
+function flip(){ if(PAGES>1){ PAGE=(PAGE+1)%PAGES; render(); } }
+async function keepAwake(){ try{ if(navigator.wakeLock) await navigator.wakeLock.request('screen'); }catch(e){} }
+
+tick(); setInterval(tick,1000);
+load(); setInterval(load,REFRESH*1000); setInterval(flip,12000);
+keepAwake(); document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ keepAwake(); load(); } });
+// 화면을 한 번 클릭하면 전체화면(키오스크 설정이 없는 PC 용)
+document.addEventListener('click',()=>{ try{ if(!document.fullscreenElement) document.documentElement.requestFullscreen(); }catch(e){} });
+</script>
+</body>
+</html>

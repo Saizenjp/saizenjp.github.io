@@ -598,6 +598,15 @@
     }).length;
   }
 
+  // ── 요일별 기본 석식(야마나미 레스토랑) — 夕食オーダー(dinner.html)·안내 모니터(signage.html) 공용 ──
+  //  getDay: 0=日 … 6=土. 메뉴가 바뀌면 여기 한 곳만 고친다.
+  var BASE_DINNER = ['海鮮鍋', '国産豚バラ焼', 'メウンタン(辛魚鍋)', '牛プルコギコース', '海鮮スンドゥブチゲ', '国産豚バラ焼', '黒豚しゃぶしゃぶ'];
+  function baseDinner(date) {
+    var d = parseLocalDate(date);
+    if (!d || isNaN(d)) return '';
+    return BASE_DINNER[d.getDay()] || '';
+  }
+
   // ── 식수 규칙 (朝/昼/夕, 숙소 그룹별) ───────────────────────────────────────
   //  /app/ 와 dinner.html 에 중복됐던 핵심 규칙의 단일 진실원.
   //  OFFSITE(간지·시즈)=요일 규칙 / 그 외(야마나미·쿠주)=체류 규칙.
@@ -949,6 +958,8 @@
     FLOOR_FLEX: FLOOR_FLEX,
     allowedFloors: allowedFloors,
     mealGoneCount: mealGoneCount,
+    BASE_DINNER: BASE_DINNER,
+    baseDinner: baseDinner,
     MEAL_OFFSITE: MEAL_OFFSITE,
     mealOffsite: mealOffsite,
     mealPlan: mealPlan,
