@@ -179,6 +179,7 @@ const VENUE={restaurant:{ko:'레스토랑',ja:'レストラン'},convention:{ko:
 const WD_KO=['일','월','화','수','목','금','토'], WD_JA=['日','月','火','水','木','金','土'];
 const LAT=32.95, LON=131.12;   // 홈 날씨와 같은 좌표(아소 야마나미 리조트 인근)
 let supa=null, DATA=null, PAGE=0, PAGES=1, LASTOK='', WX=null, WXAT=0;
+let COURSE=null;   // 로비: 코스 배정표(signage_course)도 같이 돌린다 — 아침 로비 문의 감소(Min)
 let PANES=[], PI=0;   // 로비: 지금 돌릴 화면 목록·현재 인덱스
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -205,6 +206,7 @@ async function load(){
     const {data,error}=await supa.rpc(SCREEN==='lobby'?'signage_lobby':SCREEN==='course'?'signage_course':'signage_dinner',{p_date:date});
     if(error) throw error;
     if(!data||data.ok===false) throw new Error((data&&data.reason)||'no data');
+    if(SCREEN==='lobby'){ try{ const c=await supa.rpc('signage_course',{p_date:date}); COURSE=(c.data&&c.data.ok!==false)?c.data:null; }catch(e){ COURSE=null; } }   // 코스 표는 실패해도 로비는 돈다
     DATA=data; PAGE=0; setUpd(true);
     if(SCREEN==='lobby') renderLobby(); else if(SCREEN==='course') renderCourse(); else render();
   }catch(e){
@@ -279,6 +281,9 @@ function renderLobby(){
   $('#tot').innerHTML=`체크인 <b>${d.welcome_teams||0}</b>팀 · 석식 <b>${dn.total||0}</b>명`;
   // 돌릴 화면 — 내용 없는 것은 뺀다
   const list=['p-welcome'];
+  // 코스 배정표 — 오늘 아직 나갈 조가 남아 있을 때만(다 나가면 빠진다)
+  const cr=COURSE?paintCourse(COURSE):null;
+  if(cr&&cr.upcoming) list.push('p-course');
   if(deps.length) list.push('p-depart');
   list.push('p-dsum');
   if(WX) list.push('p-weather');
@@ -293,10 +298,9 @@ const COURSES=[{code:'aso',ko:'아소',ja:'阿蘇'},{code:'sobo',ko:'소보',ja:
 const CROT={aso:['aso','sobo','kuju'],sobo:['sobo','kuju','aso'],kuju:['kuju','aso','sobo']};   // 27H = 3코스 순환(course.html 과 같다)
 const CNAME=Object.fromEntries(COURSES.map(c=>[c.code,c]));
 function slotTee(n){ const t=6*60+50+7*((+n||1)-1); return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0'); }   // 06:50 부터 7분 간격 = SZCore.teeSlots
-function renderCourse(){
-  const d=DATA; if(!d) return;
+// 표를 #crs 에 그리고 {rows,nextRow,now,upcoming} 을 돌려준다 — 코스 화면(단독)과 로비 로테이션이 같이 쓴다
+function paintCourse(d){
   const isTomorrow=d.date!==d.today;
-  $('#hd-date').innerHTML=(isTomorrow?'<b>내일 · 明日</b>':'<b>오늘 · 本日</b>')+dateLabel(d.date);
   const gs=Array.isArray(d.groups)?d.groups:[];
   const bySlot={}; gs.forEach(g=>{ (bySlot[g.slot]=bySlot[g.slot]||{slot:g.slot,tee:g.tee||slotTee(g.slot),cells:{}}).cells[g.course]=g; });
   let rows=Object.values(bySlot).sort((a,b)=>a.slot-b.slot);
@@ -314,8 +318,15 @@ function renderCourse(){
       rows.map(r=>`<tr class="${past(r)?'past':''}${r===nextRow?' next':''}"><td class="tee">${esc(r.tee)}</td>${COURSES.map(c=>{ const g=r.cells[c.code]; if(!g) return '<td></td>';
         return `<td><b>${esc(g.tag||'')}</b>${g.gno?`<i>${g.gno}조·${g.gno}組目</i>`:''}${g.rep?`<span class="nm">${esc(g.rep)}<i>様</i></span>`:''}<span class="pax">${esc(g.pax)}名</span></td>`; }).join('')}</tr>`).join('')}</tbody></table>`;
   }
+  return {rows, nextRow, now, upcoming: rows.length>0 && (!now || !!nextRow)};
+}
+function renderCourse(){
+  const d=DATA; if(!d) return;
+  const isTomorrow=d.date!==d.today;
+  $('#hd-date').innerHTML=(isTomorrow?'<b>내일 · 明日</b>':'<b>오늘 · 本日</b>')+dateLabel(d.date);
+  const r=paintCourse(d);
   $('#tot').innerHTML=`<b>${d.n||0}</b>조 · <b>${d.total||0}</b>명 <span style="color:var(--muted)">/ ${d.n||0}組 · ${d.total||0}名</span>`;
-  $('#pg').textContent=nextRow&&now?`▶ ${nextRow.tee} 곧 출발 · まもなくスタート`:'';
+  $('#pg').textContent=r.nextRow&&r.now?`▶ ${r.nextRow.tee} 곧 출발 · まもなくスタート`:'';
   showPane('p-course');
 }
 
