@@ -205,6 +205,8 @@ from (
   union all select 126,'126 예약 추이','booking_trend()', case when exists(select 1 from pg_proc where proname='booking_trend') then '✅ 있음' else '❌ 없음 (126)' end
   union all select 127,'127 마샬 Ai 명단','marshal_player_no(그날 고정 번호)', case when to_regclass('public.marshal_player_no') is not null then '✅ 있음' else '❌ 없음 (127)' end
   union all select 127,'127 마샬 Ai 명단','marshal_assign_player_no()', case when exists(select 1 from pg_proc where proname='marshal_assign_player_no') then '✅ 있음' else '❌ 없음 (127)' end
+  union all select 136,'136 코스 모니터','signage_course() anon 실행 허용', case when exists(select 1 from pg_proc where proname='signage_course') and has_function_privilege('anon','public.signage_course(date)','execute') then '✅ 적용' else '❌ 미적용 (136) — 코스 모니터가 빈 화면' end
+  union all select 136,'136 통계 검산','data_audit course_check(코스 모니터 인원 재계산)', case when exists(select 1 from pg_proc where proname='data_audit' and prosrc like '%course_check%') then '✅ 적용' else '❌ 미적용 (136)' end
   union all select 135,'135 로비 모니터','signage_lobby() anon 실행 허용', case when exists(select 1 from pg_proc where proname='signage_lobby') and has_function_privilege('anon','public.signage_lobby(date)','execute') then '✅ 적용' else '❌ 미적용 (135) — 로비 화면이 빈 화면' end
   union all select 135,'135 손님 공지','announcements.for_guests', case when exists(select 1 from information_schema.columns where table_name='announcements' and column_name='for_guests') then '✅ 있음' else '❌ 없음 (135)' end
   union all select 135,'135 통계 검산','data_audit lobby_check(환영판·출발 인원 재계산)', case when exists(select 1 from pg_proc where proname='data_audit' and prosrc like '%lobby_check%') then '✅ 적용' else '❌ 미적용 (135)' end
