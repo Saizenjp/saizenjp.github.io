@@ -56,7 +56,7 @@
 
       /* index (허브 랜딩) */
       ix_envBadge: 'Yamanami',
-      ix_heroH: 'Yamanami '+r('統合','とうごう')+r('運営','うんえい')+'プラットフォーム',
+      ix_heroH: 'Yamanami '+r('運営','うんえい')+r('管理','かんり')+'システム',
 
 
       ix_g1H: r('データ','')+r('準備','じゅんび'),
@@ -425,7 +425,7 @@
       btnConnectShort: '연결',
 
       ix_envBadge: 'Yamanami',
-      ix_heroH: 'Yamanami 통합 운영 플랫폼',
+      ix_heroH: 'Yamanami 운영 관리 시스템',
 
 
       ix_g1H: '데이터 준비',
@@ -792,7 +792,7 @@
 
       /* index */
       ix_envBadge: 'Yamanami',
-      ix_heroH: 'Yamanami Integrated Operations Platform',
+      ix_heroH: 'Yamanami Operations Management System',
 
 
       ix_g1H: 'Data Prep',
