@@ -205,6 +205,7 @@ from (
   union all select 126,'126 예약 추이','booking_trend()', case when exists(select 1 from pg_proc where proname='booking_trend') then '✅ 있음' else '❌ 없음 (126)' end
   union all select 127,'127 마샬 Ai 명단','marshal_player_no(그날 고정 번호)', case when to_regclass('public.marshal_player_no') is not null then '✅ 있음' else '❌ 없음 (127)' end
   union all select 127,'127 마샬 Ai 명단','marshal_assign_player_no()', case when exists(select 1 from pg_proc where proname='marshal_assign_player_no') then '✅ 있음' else '❌ 없음 (127)' end
+  union all select 139,'139 anon RPC','anon 실행 가능 security definer = 12개(손님QR 2·권한헬퍼 6·안내모니터 4)', (select case when count(*)=12 then '✅ 12개' else '🔴 '||count(*)||'개 — 목록 확인(139)' end from pg_proc p where p.pronamespace='public'::regnamespace and p.prosecdef and has_function_privilege('anon', p.oid, 'execute'))
   union all select 138,'138 권한 세부 영역','area_tree 표(자식→부모) 33행', case when (select count(*) from area_tree) = 33 then '✅ 33행' else '❌ 행수 다름 (138) — saizen-core AREA_TREE 와 대조' end
   union all select 138,'138 권한 세부 영역','has_any_area 가 area_expand 를 쓰는가', case when exists(select 1 from pg_proc where proname='has_any_area' and prosrc like '%area_expand%') then '✅ 적용' else '🔴 미적용 (138) — 자식 키만 가진 사람이 DB 쓰기 거부됨' end
   union all select 138,'138 경영 통계','exec_stats 가 stats_mgmt 자식 키를 인정하는가', case when exists(select 1 from pg_proc where proname='exec_stats' and prosrc like '%stats_mgmt%') then '✅ 적용' else '❌ 미적용 (138) — 경영통계 자식 키만으론 집계 거부' end
