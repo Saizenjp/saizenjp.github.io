@@ -49,6 +49,15 @@
   .prof{display:flex;flex-direction:column;gap:5px;min-width:160px}
   .prof .psm{font-size:12px;padding:5px 8px;width:160px}
   .rolesel{min-width:108px}
+  /* 접근 카드는 기본 접힘(Min 2026-09: 늘 펼쳐져 있어 줄이 길어짐) — 요약 칩만 보이고 클릭하면 체크박스 */
+  details.afold{max-width:460px}
+  details.afold>summary{padding:2px 0;font-size:12px;color:var(--text2);font-weight:700;flex-wrap:wrap;gap:4px 8px}
+  details.afold[open]>summary{margin-bottom:6px}
+  .asum{display:inline-flex;flex-wrap:wrap;gap:3px 5px;align-items:center}
+  .asum .ak{font-size:11px;font-weight:700;color:var(--muted);margin-right:2px}
+  .asum .ac{font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--accentSoft);color:var(--accent);border:1px solid var(--border)}
+  .asum .ac.r{background:#f6efdc;color:#9a7322}
+  .asum .anone{font-size:11.5px;color:var(--muted);font-weight:600}
   .areas{display:flex;flex-wrap:wrap;gap:10px 14px;max-width:460px}
   .areas label{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);white-space:nowrap}
   /* 이름·설명이 길어도 [수정][보기]는 오른쪽 같은 줄에 — 설명만 아래로 접힌다 */
@@ -75,7 +84,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=28.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=28.9">
 </head>
 <body data-so-area="admin">
 <div class="topbar so-bar">
@@ -117,7 +126,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=28.8"></script>
+<script src="../assets/saizen-ops.js?v=28.9"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 권한 관리(마스터 전용). 18_access_control.sql 의 RPC를 호출.
@@ -152,7 +161,7 @@ const L={
     needConnLogin:'ログインが必要です。', needConnLoginSub:'右上の[ログイン]でマスターアカウントにログインしてから再接続してください。',
     adminOnly:'マスター(管理者)専用ページです。', currentRole:'現在の役割: ', noAccess:' · アクセス権限がありません。',
     noAccounts:'アカウントがありません。',
-    thAccount:'アカウント(メール)', thProfile:'氏名・部署・役職', thRole:'役割', thCards:'アクセスカード', thEdit:'編集', thView:'閲覧',
+    thAccount:'アカウント(メール)', thProfile:'氏名・部署・役職', thRole:'役割', thCards:'アクセスカード', thEdit:'編集', thView:'閲覧', sumEdit:'編集', sumRead:'閲覧', sumNone:'カード権限なし — 開いて指定', foldT:'クリックしてカードを開閉',
     phName:'氏名(担当者)', phTitle:'役職(例: 課長)',
     deptNone:'(部署なし)', deptAll:'部署全体', allCardsMaster:'全カードアクセス(マスター)',
     save:'保存', toastSaved:'保存しました', toastSaveFail:'保存失敗: ',
@@ -207,7 +216,7 @@ const L={
     needConnLogin:'로그인이 필요합니다.', needConnLoginSub:'상단 우측 [로그인]으로 마스터 계정 로그인 후 다시 연결하세요.',
     adminOnly:'마스터(관리자) 전용 페이지입니다.', currentRole:'현재 역할: ', noAccess:' · 접근 권한이 없습니다.',
     noAccounts:'계정이 없습니다.',
-    thAccount:'계정(이메일)', thProfile:'이름·부서·직급', thRole:'역할', thCards:'접근 카드', thEdit:'수정', thView:'보기',
+    thAccount:'계정(이메일)', thProfile:'이름·부서·직급', thRole:'역할', thCards:'접근 카드', thEdit:'수정', thView:'보기', sumEdit:'수정', sumRead:'보기', sumNone:'카드 권한 없음 — 펼쳐서 지정', foldT:'클릭해 카드 목록 펼치기/접기',
     phName:'이름(작성자)', phTitle:'직급(예: 과장)',
     deptNone:'(부서 없음)', deptAll:'부서 전체', allCardsMaster:'전 카드 접근(마스터)',
     save:'저장', toastSaved:'저장됨', toastSaveFail:'저장 실패: ',
@@ -257,7 +266,7 @@ const L={
     needConnLogin:'Login required.', needConnLoginSub:'Log in with a Master account via [Login] at the top-right, then reconnect.',
     adminOnly:'Master (admin) only page.', currentRole:'Current role: ', noAccess:' · No access permission.',
     noAccounts:'No accounts.',
-    thAccount:'Account (email)', thProfile:'Name · dept · title', thRole:'Role', thCards:'Access cards', thEdit:'Edit', thView:'View',
+    thAccount:'Account (email)', thProfile:'Name · dept · title', thRole:'Role', thCards:'Access cards', thEdit:'Edit', thView:'View', sumEdit:'Edit', sumRead:'View', sumNone:'No card access — expand to grant', foldT:'Click to expand / collapse the card list',
     phName:'Name (staff)', phTitle:'Title (e.g. Manager)',
     deptNone:'(no dept)', deptAll:'Whole dept', allCardsMaster:'All-card access (Master)',
     save:'Save', toastSaved:'Saved', toastSaveFail:'Save failed: ',
@@ -291,6 +300,26 @@ function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||
 // ── 데이터 키(저장값)는 불변 — 라벨만 언어별로 파생 ──
 const AREA_KEYS=['step1','groupcodes','room','hk','print','shizu','golf','front','settle','pos','kitchen','menu','stats','report','watch','board'];
 function AREA_LABEL_(k){ return tx('a_'+k)||k; }
+// 접근 카드 셀 — 기본 접힘(details) + 요약 칩(수정/보기 영역 이름). 마스터는 전 카드라 접이식 없이 안내문만.
+function areasCellHTML(role, areas, reads){
+  if(role==='admin') return `<div class="areas dim" data-areas><span class="allnote">${esc(tx('allCardsMaster'))}</span></div>`;
+  return `<details class="so-fold afold" title="${esc(tx('foldT'))}"><summary><span class="so-fsum asum"></span></summary><div class="areas" data-areas>${buildAreas(areas,reads)}</div></details>`;
+}
+//  요약 칩 = 지금 체크된 상태(저장 전이라도 바로 반영) — 접힌 채로 누가 무엇을 가졌는지 보인다
+function areaSummaryHTML(scope){
+  const w=[...scope.querySelectorAll('[data-area]')].filter(c=>c.checked).map(c=>c.dataset.area);
+  const wset=new Set(w);
+  const r=[...scope.querySelectorAll('[data-read-area]')].filter(c=>c.checked).map(c=>c.dataset.readArea).filter(a=>!wset.has(a));
+  if(!w.length && !r.length) return `<span class="anone">${esc(tx('sumNone'))}</span>`;
+  const chips=(keys,cls)=>keys.map(k=>`<span class="ac${cls?' '+cls:''}">${esc(AREA_LABEL_(k))}</span>`).join('');
+  return (w.length?`<span class="ak">${esc(tx('sumEdit'))} ${w.length}</span>${chips(w,'')}`:'')
+       + (r.length?`<span class="ak" style="margin-left:6px">${esc(tx('sumRead'))} ${r.length}</span>${chips(r,'r')}`:'');
+}
+function wireSummary(scope){
+  const dt=scope.closest('details'); if(!dt) return; const sum=dt.querySelector('.asum'); if(!sum) return;
+  const upd=()=>{ sum.innerHTML=areaSummaryHTML(scope); sum.classList.toggle('on', !!scope.querySelector('[data-area]:checked,[data-read-area]:checked')); };
+  scope.addEventListener('change',upd); upd();
+}
 function AREA_CARDS_(k){ return tx('ac_'+k)||''; }
 // 마스터급 중요 영역 — 권한관리 목록에서 🔒 배지로 한눈에 구분(보통 마스터 본인에게만 부여).
 const HIGH_AREAS=new Set(['watch']);
@@ -400,24 +429,25 @@ function render(){
         <input class="inp psm" data-f="title" value="${esc(u.title||'')}" placeholder="${esc(tx('phTitle'))}">
       </div></td>
       <td><select class="inp rolesel" data-f="role">${roleOpts}</select></td>
-      <td><div class="areas${showAreas?'':' dim'}" data-areas>${showAreas?areaBoxes:`<span class="allnote">${esc(tx('allCardsMaster'))}</span>`}</div></td>
+      <td>${areasCellHTML(u.role, u.areas||[], u.read_areas||[])}</td>
       <td><button class="btn sm" data-save>${esc(tx('save'))}</button>${blockBtn?'<br>'+blockBtn:''}</td>
     </tr>`;
   });
   html+='</tbody></table>';
   box.innerHTML=html;
-  box.querySelectorAll('[data-areas]').forEach(ar=>{ if(ar.querySelector('[data-area]')){ wireAreaExclusive(ar); wireDeptAll(ar); } });
+  box.querySelectorAll('[data-areas]').forEach(ar=>{ if(ar.querySelector('[data-area]')){ wireAreaExclusive(ar); wireDeptAll(ar); wireSummary(ar); } });
   // 역할 변경 시 카드 영역 활성/비활성 토글
   box.querySelectorAll('select[data-f="role"]').forEach(sel=>{
     sel.addEventListener('change',()=>{
-      const tr=sel.closest('tr'); const ar=tr.querySelector('[data-areas]');
+      const tr=sel.closest('tr'); const ar=tr.querySelector('[data-areas]'); const td=ar.closest('td');
       if(sel.value!=='admin'){
-        ar.classList.remove('dim');
-        if(!ar.querySelector('[data-area]')){   // allnote 상태면 체크박스 생성(기존 체크는 보존)
-          ar.innerHTML=buildAreas([],[]); wireDeptAll(ar);
-        }
+        if(!ar.querySelector('[data-area]')){   // allnote 상태면 접이식 체크박스로 새로 그린다(마스터→일반)
+          td.innerHTML=areasCellHTML(sel.value,[],[]);
+          const nar=td.querySelector('[data-areas]'); wireAreaExclusive(nar); wireDeptAll(nar); wireSummary(nar);
+          const dt=td.querySelector('details'); if(dt) dt.open=true;   // 지정하러 바꾼 것이니 바로 펼쳐 둔다
+        } else ar.classList.remove('dim');   // 기존 체크는 보존
       }else{
-        ar.classList.add('dim'); ar.innerHTML=`<span class="allnote">${esc(tx('allCardsMaster'))}</span>`;
+        td.innerHTML=areasCellHTML('admin',[],[]);
       }
     });
   });
