@@ -125,9 +125,9 @@
   .ycard .bar{height:7px;background:var(--surface3);border-radius:99px;overflow:hidden;margin-top:7px}
   .ycard .bar i{display:block;height:100%;background:var(--accent)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=29.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=29.1">
 </head>
-<body data-so-area="stats">
+<body data-so-area="stats_mgmt staycal">
 <div class="topbar so-bar">
   <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
   <span class="step" id="t-step">경영 통계</span>
@@ -176,7 +176,8 @@
 </main>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=29.0"></script>
+<script src="../assets/saizen-core.js?v=41"></script>
+<script src="../assets/saizen-ops.js?v=29.1"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, DATA=null;
@@ -320,6 +321,7 @@ async function connect(){
 }
 
 async function run(){
+  if(CAL_ONLY) return;   // 캘린더 전용 권한은 집계(금액)를 부르지 않는다
   if(!supa){ toast(tx('connFail'),'warn'); return; }
   const f=$('#d-from').value, t=$('#d-to').value;
   if(!f||!t){ return; }
@@ -628,7 +630,9 @@ function renderTrend(){
   c.querySelectorAll('[data-trd]').forEach(b=>b.addEventListener('click',()=>{ TRDAYS=+b.dataset.trd; loadTrend(); }));
 }
 
+let CAL_ONLY=false;   // 「일별 체류 현황(staycal)」만 가진 사람 — 캘린더 외 화면(금액)은 잠근다
 function setView(v){
+  if(CAL_ONLY && v!=='cal') v='cal';
   VIEW=v;
   $('#v-sum').classList.toggle('on',v==='sum');
   $('#v-cal').classList.toggle('on',v==='cal');
@@ -659,6 +663,18 @@ if($('#sb-url').value && $('#sb-key').value) connect();
 // 홈의 「지금 체류」 띠에서 넘어오면 캘린더로 시작
 { const _v=new URLSearchParams(location.search).get('view');
   if(_v==='cal') setView('cal'); else if(_v==='trend') setView('trend'); }
+// 세부 권한: 경영통계(stats_mgmt) 없이 일별 체류 현황(staycal)만 있으면 캘린더만 보이고 요약·추이·집계 버튼은 감춘다
+//  (서버의 exec_stats·booking_trend 도 stats_mgmt/stats 만 통과시키므로 금액은 화면 밖에서도 못 본다)
+function applyCalOnly(acc){
+  if(!acc || !window.SZCore || !SZCore.areaAllowed) return;
+  if(SZCore.areaAllowed(acc,['stats_mgmt'])) return;
+  if(!SZCore.areaAllowed(acc,['staycal'])) return;
+  CAL_ONLY=true;
+  ['v-sum','v-trend','btn-run'].forEach(id=>{ const e=document.getElementById(id); if(e) e.style.display='none'; });
+  document.querySelectorAll('.chip[data-q]').forEach(e=>{ e.style.display='none'; });
+  setView('cal');
+}
+if(window.__so_meAccess) __so_meAccess().then(applyCalOnly).catch(()=>{});
 </script>
 </body>
 </html>

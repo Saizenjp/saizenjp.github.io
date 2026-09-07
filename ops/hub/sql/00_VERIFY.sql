@@ -205,6 +205,9 @@ from (
   union all select 126,'126 예약 추이','booking_trend()', case when exists(select 1 from pg_proc where proname='booking_trend') then '✅ 있음' else '❌ 없음 (126)' end
   union all select 127,'127 마샬 Ai 명단','marshal_player_no(그날 고정 번호)', case when to_regclass('public.marshal_player_no') is not null then '✅ 있음' else '❌ 없음 (127)' end
   union all select 127,'127 마샬 Ai 명단','marshal_assign_player_no()', case when exists(select 1 from pg_proc where proname='marshal_assign_player_no') then '✅ 있음' else '❌ 없음 (127)' end
+  union all select 138,'138 권한 세부 영역','area_tree 표(자식→부모) 33행', case when (select count(*) from area_tree) = 33 then '✅ 33행' else '❌ 행수 다름 (138) — saizen-core AREA_TREE 와 대조' end
+  union all select 138,'138 권한 세부 영역','has_any_area 가 area_expand 를 쓰는가', case when exists(select 1 from pg_proc where proname='has_any_area' and prosrc like '%area_expand%') then '✅ 적용' else '🔴 미적용 (138) — 자식 키만 가진 사람이 DB 쓰기 거부됨' end
+  union all select 138,'138 경영 통계','exec_stats 가 stats_mgmt 자식 키를 인정하는가', case when exists(select 1 from pg_proc where proname='exec_stats' and prosrc like '%stats_mgmt%') then '✅ 적용' else '❌ 미적용 (138) — 경영통계 자식 키만으론 집계 거부' end
   union all select 137,'137 직원 모니터','signage_office() anon 실행 허용(오늘만)', case when exists(select 1 from pg_proc where proname='signage_office') and has_function_privilege('anon','public.signage_office(date)','execute') then '✅ 적용' else '❌ 미적용 (137) — 직원 화면이 빈 화면' end
   union all select 137,'137 통계 검산','data_audit office_check(체크인·재실 인원 재계산)', case when exists(select 1 from pg_proc where proname='data_audit' and prosrc like '%office_check%') then '✅ 적용' else '❌ 미적용 (137)' end
   union all select 136,'136 코스 모니터','signage_course() anon 실행 허용', case when exists(select 1 from pg_proc where proname='signage_course') and has_function_privilege('anon','public.signage_course(date)','execute') then '✅ 적용' else '❌ 미적용 (136) — 코스 모니터가 빈 화면' end

@@ -607,6 +607,46 @@
     return BASE_DINNER[d.getDay()] || '';
   }
 
+  // ── 접근 권한 트리(세부 영역) — admin.html·페이지 가드·랜딩 게이트·SQL area_tree(138) 의 단일 진실원 ──
+  //  부모 = 기존 DB 영역 키(RLS 정책이 쓰는 그룹) · 자식 = 카드(화면) 단위 키.
+  //  판정: 자식 키를 가지면 그 화면만, 부모 키를 가지면 그 그룹 전 화면. 자식 하나라도 가지면 DB 쓰기는 그룹(부모) 수준으로 열린다
+  //  (RLS 정책은 그룹 키로 검사하므로 — 세부 구분은 화면·카드 단위, DB 보호는 그룹 단위. ⚠ 돈이 걸린 RPC 는 자식 키를 직접 검사한다).
+  var AREA_TREE = {
+    print:   ['nametag', 'keyslip', 'aircover', 'dispatch', 'dinner', 'qrcards', 'transfer', 'notice', 'signage'],
+    front:   ['frontdesk', 'inv_front'],
+    room:    ['room_assign', 'occupancy', 'roomstats', 'inv_room'],
+    hk:      ['housekeeping', 'inv_hk'],
+    golf:    ['course', 'cart', 'inv_golf'],
+    kitchen: ['kds', 'kds_front', 'inv_fnb'],
+    pos:     ['pos_front', 'pos_golf', 'pos_restaurant', 'pos_customer'],
+    settle:  ['settle_onsite', 'settle_merit'],
+    stats:   ['stats_mgmt', 'staycal'],
+    shizu:   ['shizu_sheet', 'inv_shizu']
+  };
+  var AREA_PARENT = {};
+  Object.keys(AREA_TREE).forEach(function (p) { AREA_TREE[p].forEach(function (c) { AREA_PARENT[c] = p; }); });
+  //  보유 키 목록 → 부모(그룹 전체)면 자식 전부, 자식이면 부모도 포함한 실효 키 목록
+  function areaExpand(keys) {
+    var out = {}; (keys || []).forEach(function (k) { if (k) out[k] = 1; });
+    (keys || []).forEach(function (k) {
+      if (AREA_TREE[k]) AREA_TREE[k].forEach(function (c) { out[c] = 1; });
+      if (AREA_PARENT[k]) out[AREA_PARENT[k]] = 1;
+    });
+    return Object.keys(out);
+  }
+  //  acc={role,areas,read_areas} · keys=[…](하나라도 맞으면 통과) → 'write' | 'read' | null
+  function areaAllowed(acc, keys) {
+    if (!acc) return null;
+    if (acc.role === 'admin') return 'write';
+    var ks = Array.isArray(keys) ? keys : String(keys || '').split(/[\s,]+/).filter(Boolean);
+    if (!ks.length) return null;
+    var w = areaExpand(acc.areas || []);
+    if (ks.some(function (k) { return w.indexOf(k) >= 0; })) return 'write';
+    var r = areaExpand((acc.areas || []).concat(acc.read_areas || []));
+    if (ks.some(function (k) { return r.indexOf(k) >= 0; })) return 'read';
+    return null;
+  }
+
   // ── 식수 규칙 (朝/昼/夕, 숙소 그룹별) ───────────────────────────────────────
   //  /app/ 와 dinner.html 에 중복됐던 핵심 규칙의 단일 진실원.
   //  OFFSITE(간지·시즈)=요일 규칙 / 그 외(야마나미·쿠주)=체류 규칙.
@@ -960,6 +1000,10 @@
     mealGoneCount: mealGoneCount,
     BASE_DINNER: BASE_DINNER,
     baseDinner: baseDinner,
+    AREA_TREE: AREA_TREE,
+    AREA_PARENT: AREA_PARENT,
+    areaExpand: areaExpand,
+    areaAllowed: areaAllowed,
     MEAL_OFFSITE: MEAL_OFFSITE,
     mealOffsite: mealOffsite,
     mealPlan: mealPlan,
