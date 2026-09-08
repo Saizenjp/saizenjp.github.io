@@ -436,7 +436,7 @@
   //   unsure  = 「싱글룸 1개」처럼 개수만 있거나 트윈이 섞였다 → 수기.
   //  ⚠ 싱글룸은 추가요금(대부분 현지지불)이라 잘못 잡으면 방배정만이 아니라 청구가 틀어진다.
   //    애매하면 언제나 사람에게 넘긴다.
-  var SG_WORD  = /싱글|single|シングル|1인실|일인실|독방/i;
+  var SG_WORD  = /싱글|single|シングル|1인실|일인실|독방|독실/i;   // 「독실」도 싱글(Min 2026-09: 앞으로 5인 팀은 독실·싱글룸·1인실 등으로 꼭 적는다)
   var SG_BLOCK = /대기|불가|어려울|어렵|만실|취소|보류/;
   var SG_MIX   = /트윈|ツイン|더블|ダブル|트리플|トリプル/;
   var SG_ALL   = /전원|전부|모두|全員/;
@@ -445,7 +445,7 @@
     if (!SG_WORD.test(t)) return null;
     //  싱글 얘기가 들어 있는 줄만 본다. 단 현장은 「싱글 룸」 머리줄 아래에 이름만 죽 적기도 하므로
     //  머리줄이 나오면 다른 룸타입 머리줄(트윈룸 등)이 나올 때까지 이어지는 줄도 함께 본다.
-    var SG_HEAD = /^(싱글|1인실|일인실|독방|シングル|single)\s*(룸|room|ルーム)?\s*[:：]?$/i;
+    var SG_HEAD = /^(싱글|1인실|일인실|독방|독실|シングル|single)\s*(룸|room|ルーム)?\s*[:：]?$/i;
     var MIX_HEAD = /^(트윈|더블|트리플|ツイン|ダブル|トリプル|twin|double|triple)\s*(룸|room|ルーム)?\s*[:：]?$/i;
     var sgTxt = '', inSg = false;
     t.split('\n').forEach(function (raw) {
@@ -487,12 +487,12 @@
     if (!SG_WORD.test(t)) return 0;
     var best = 0;
     //  싱글이라는 말과 숫자가 **가까이** 있을 때만 센다 — 멀면 다른 이야기의 숫자다.
-    var re = /(싱글|1인실|일인실|독방|シングル|single)[^0-9\n]{0,6}(\d{1,2})\s*(개|방|실|명|인|室|部屋)/gi;
+    var re = /(싱글|1인실|일인실|독방|독실|シングル|single)[^0-9\n]{0,6}(\d{1,2})\s*(개|방|실|명|인|室|部屋)/gi;
     var m;
     while ((m = re.exec(t))) { var n = Number(m[2]); if (n > 0 && n <= 30 && n > best) best = n; }
     if (best) return best;
     //  숫자가 앞에 오는 표기 — 「4방 싱글」·「4名 シングル」
-    var re2 = /(\d{1,2})\s*(개|방|실|명|인|室|部屋)[^0-9\n]{0,6}(싱글|1인실|일인실|독방|シングル|single)/gi;
+    var re2 = /(\d{1,2})\s*(개|방|실|명|인|室|部屋)[^0-9\n]{0,6}(싱글|1인실|일인실|독방|독실|シングル|single)/gi;
     while ((m = re2.exec(t))) { var n2 = Number(m[1]); if (n2 > 0 && n2 <= 30 && n2 > best) best = n2; }
     return best;
   }
@@ -517,10 +517,12 @@
   //   ③ 이름   「싱글룸: 김OO, 이OO」·「싱글자: 김OO」·「김OO, 이OO님 싱글룸 사용」·「싱글룸 김OO」·
   //            「싱글 룸」 머리줄 아래 한 줄에 한 명씩 → 이름 수(2~4자 한글, 흔한 낱말(요청·사용…)은 제외)
   //   ④ 못 읽음 싱글 말은 있는데 수량이 없음(「싱글룸 :」·「싱글룸 요청」) → n=0, how='none' (화면은 「?」 비고 확인)
-  //  → {n, how:'num'|'all'|'names'|'none'|''}  ('' = 싱글 언급 자체가 없음)
+  //   ⑤ 홀수   싱글·트리플 언급이 없는데 인원이 홀수(5명 팀 등) → 남는 한 명 = 싱글 1방(how='odd', Min 2026-09).
+  //            실측 9~11월 홀수 팀 58팀 중 29팀은 비고가 없어 싱글 수요에서 빠져 있었다. 트리플 언급이 있으면 세지 않는다.
+  //  → {n, how:'num'|'all'|'names'|'none'|'odd'|''}  ('' = 싱글 수요 없음)
   //  ⚠ 어림 규칙이다 — 툴팁에 팀별 수를 같이 내어 사람이 대조할 수 있게 한다.
   var SG_STOP = /(요청|사용|희망|배정|신청|확인|현지|비용|추가|가능|불가|대기|보류|필요|예정|변경|지불|결제|안내|부탁|드립|입니|사전|좌석|호텔|리조트|트윈|더블|골프|숙박|쿠폰|카트|팀장|회원|객실|위탁|블럭|블록|전원|전부|모두|별도|개별|발권|진행|후|및)/;
-  var SG_HEAD2 = /^(싱글|1인실|일인실|독방|シングル|single)\s*(룸|room|ルーム)?\s*(사용자|자)?\s*[:：]?$/i;
+  var SG_HEAD2 = /^(싱글|1인실|일인실|독방|독실|シングル|single)\s*(룸|room|ルーム)?\s*(사용자|자)?\s*[:：]?$/i;
   var MIX_HEAD2 = /^(트윈|더블|트리플|ツイン|ダブル|トリプル|twin|double|triple)\s*(룸|room|ルーム)?\s*[:：]?$/i;
   function _sgNames(seg) {
     var s = String(seg || '').replace(/\([^)]*\)/g, ' ').replace(/（[^）]*）/g, ' ');
@@ -531,15 +533,21 @@
     });
     return out;
   }
+  //  트리플은 현장이 비고에 꼭 적는다(Min): 「트리플」·「3인 1실」·「3인실」·「3명 1실」·「3人1室」
+  var SG_TRIPLE = /트리플|トリプル|triple|3\s*(인|명|人)\s*(1\s*)?(실|室|룸|방)/i;
   function singleRequested(text, pax) {
     var t = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
-    if (!SG_WORD.test(t)) return { n: 0, how: '' };
+    if (!SG_WORD.test(t)) {
+      var px = Number(pax) || 0;
+      if (px > 0 && px % 2 === 1 && !SG_TRIPLE.test(t)) return { n: 1, how: 'odd' };
+      return { n: 0, how: '' };
+    }
     var n = singleCount(t);
     if (n > 0) return { n: n, how: 'num' };
     var m = t.match(/(\d{1,2})\s*(싱글|シングル)/);                                   // 「2싱글 + 1트윈」·「1싱글 사용」
     if (!m) m = t.match(/(?:싱글|シングル)[^0-9\n]{0,6}(\d{1,2})\s*룸/);               // 「싱글룸 1룸 12층으로」
     if (m && Number(m[1]) > 0 && Number(m[1]) <= 30) return { n: Number(m[1]), how: 'num' };
-    if (/(전원|전부|모두|全員)\s*[가-힣]{0,3}\s*(싱글|シングル|1인실|일인실|독방)/.test(t) || /(싱글|シングル)[^\n]{0,6}(전원|전부|모두|全員)/.test(t)) {
+    if (/(전원|전부|모두|全員)\s*[가-힣]{0,3}\s*(싱글|シングル|1인실|일인실|독방|독실)/.test(t) || /(싱글|シングル)[^\n]{0,6}(전원|전부|모두|全員)/.test(t)) {
       var p = Number(pax) || 0;
       return p > 0 ? { n: p, how: 'all' } : { n: 0, how: 'none' };
     }
@@ -554,7 +562,7 @@
       if (SG_HEAD2.test(line)) { inSg = true; block = 0; return; }
       if (!SG_WORD.test(line)) return;
       var i = line.search(SG_WORD);
-      var after = line.slice(i).replace(/^(싱글|シングル|1인실|일인실|독방|single)\s*(룸|room|ルーム)?\s*(사용자|자|使用者)?\s*[:：\/]?\s*/i, '');
+      var after = line.slice(i).replace(/^(싱글|シングル|1인실|일인실|독방|독실|single)\s*(룸|room|ルーム)?\s*(사용자|자|使用者)?\s*[:：\/]?\s*/i, '');
       var c = Math.max(_sgNames(after), _sgNames(line.slice(0, i)));
       if (c > best) best = c;
     });

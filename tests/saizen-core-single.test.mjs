@@ -125,6 +125,15 @@ test('singleRequested — 숫자·전원·이름 나열·못 읽음', () => {
   assert.deepEqual(r('싱글룸 :', 4), { n: 0, how: 'none' });                              // 수량 없음 → ?
   assert.deepEqual(r('팀:이규호,김정선\n싱글룸 요청', 4), { n: 0, how: 'none' });
   assert.deepEqual(r('싱글룸 현지에서 배정예정', 4), { n: 0, how: 'none' });
-  assert.deepEqual(r('전기카트 신청입니다.', 4), { n: 0, how: '' });                       // 싱글 언급 없음
+  assert.deepEqual(r('전기카트 신청입니다.', 4), { n: 0, how: '' });                       // 싱글 언급 없음·짝수
+  assert.deepEqual(r('전기카트 신청입니다.', 5), { n: 1, how: 'odd' });                    // 홀수 팀 = 남는 한 명 싱글 1방
+  assert.deepEqual(r('', 1), { n: 1, how: 'odd' });                                          // 1인 팀도 싱글
+  assert.deepEqual(r('트리플 1실 희망', 5), { n: 0, how: '' });                             // 트리플로 간다고 했으면 안 셈
+  assert.deepEqual(r('3인 1실 요청', 5), { n: 0, how: '' });                               // 현장 표기 「3인 1실」도 트리플
+  assert.deepEqual(r('3인1실', 3), { n: 0, how: '' });
+  assert.deepEqual(r('독실 1개(비용 현지지불)', 5), { n: 1, how: 'num' });                    // 「독실」= 싱글
+  assert.deepEqual(r('독실: 김장원', 5), { n: 1, how: 'names' });
+  assert.equal(SZCore.singleCount('독실 2개'), 2);
+  assert.deepEqual(r('3인 투어로 1인 싱글룸 요청', 3), { n: 1, how: 'num' });               // 언급 있으면 비고 수만(중복 없음)
   assert.deepEqual(r('전원 싱글룸', 0), { n: 0, how: 'none' });                           // 인원 모르면 못 읽음
 });
