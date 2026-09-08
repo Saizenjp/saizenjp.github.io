@@ -100,3 +100,31 @@ test('singleTentative — 아직 확정이 아닌 요청은 그 낱말을 돌려
   assert.equal(SZCore.singleTentative('트윈 대기'), '');        // 싱글 얘기가 아니면 빈값
   assert.equal(SZCore.singleTentative(''), '');
 });
+
+//  객실 여유 현황 「싱글 신청」 줄 — singleCount 가 못 읽는 실제 비고 표기까지(Min 2026-09, 9~11월 실측 표본)
+test('singleRequested — 숫자·전원·이름 나열·못 읽음', () => {
+  const r = (t, pax) => SZCore.singleRequested(t, pax);
+  assert.deepEqual(r('싱글룸 6개 사용(신팀장님 확인) 비용현지지불\nㄴ홍순배,정용식,이승천', 8), { n: 6, how: 'num' });
+  assert.deepEqual(r('2인 싱글룸 요청 (현지지불입니다)', 4), { n: 2, how: 'num' });
+  assert.deepEqual(r('2싱글 + 1트윈입니다.', 4), { n: 2, how: 'num' });                 // 단위 없는 숫자
+  assert.deepEqual(r('1싱글 사용 // 비용 현지결제입니다.', 3), { n: 1, how: 'num' });
+  assert.deepEqual(r('싱글룸 1룸 12층으로 요청(비용 현지지불)', 3), { n: 1, how: 'num' });   // 「룸」 단위
+  assert.deepEqual(r('전원 싱글룸', 4), { n: 4, how: 'all' });
+  assert.deepEqual(r('임채병팀 전원 싱글룸\n\n전원 싱글룸\n임채병, 정희용, 김윤영', 10), { n: 10, how: 'all' });
+  assert.deepEqual(r('전원싱글룸 요청(신팀장님 확인)', 3), { n: 3, how: 'all' });
+  assert.deepEqual(r('4명 전원싱글룸/전기카트 신청', 4), { n: 4, how: 'num' });          // 숫자가 있으면 숫자 우선
+  assert.deepEqual(r('싱글룸: 서윤연,박호율\n호텔 숙박 희망', 4), { n: 2, how: 'names' });
+  assert.deepEqual(r('싱글자: 박영애', 4), { n: 1, how: 'names' });
+  assert.deepEqual(r('싱글룸 : 옥영애', 3), { n: 1, how: 'names' });
+  assert.deepEqual(r('싱글룸 김장원', 3), { n: 1, how: 'names' });
+  assert.deepEqual(r('장혜정,백자영님 싱글룸 사용\n추가요금 현지결제 요청드립니다.', 4), { n: 2, how: 'names' });
+  assert.deepEqual(r('유성준님 싱글룸배정 (비용현지지불입니다)', 4), { n: 1, how: 'names' });
+  assert.deepEqual(r('싱글룸 사용자 / 이동현,홍명숙(신팀장님 확인)', 4), { n: 2, how: 'names' });
+  assert.deepEqual(r('싱글사용자 조승재\n\n※전원 리조트 요청', 6), { n: 1, how: 'names' });   // 「전원」이 싱글 옆이 아니면 전원 아님
+  assert.deepEqual(r('방배정\n트윈 룸\n이영인 정재훈\n정봉호 송병석\n\n싱글 룸\n홍석남\n홍승현\n방상석\n황정섭\n전원 air 별도', 8), { n: 4, how: 'names' });  // 머리줄 아래 이름
+  assert.deepEqual(r('싱글룸 :', 4), { n: 0, how: 'none' });                              // 수량 없음 → ?
+  assert.deepEqual(r('팀:이규호,김정선\n싱글룸 요청', 4), { n: 0, how: 'none' });
+  assert.deepEqual(r('싱글룸 현지에서 배정예정', 4), { n: 0, how: 'none' });
+  assert.deepEqual(r('전기카트 신청입니다.', 4), { n: 0, how: '' });                       // 싱글 언급 없음
+  assert.deepEqual(r('전원 싱글룸', 0), { n: 0, how: 'none' });                           // 인원 모르면 못 읽음
+});

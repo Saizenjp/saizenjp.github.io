@@ -510,6 +510,58 @@
     var t = String(text == null ? '' : text);
     return SG_WORD.test(t) && SG_ONSITE.test(t);
   }
+  //  「싱글 신청 수」 — 객실 여유 현황 「싱글 신청」 줄용. singleCount(숫자 표기)로 못 읽는 비고까지 센다(Min 2026-09).
+  //   실측(9~11월 75팀): 숫자 표기 36팀뿐, 「전원 싱글룸」 24팀·이름 나열 5팀·그 외 10팀은 0으로 빠져 있었다.
+  //   ① 숫자   「싱글 4방」·「2인 싱글룸」·「2싱글」·「싱글룸 1룸」 → 그 수
+  //   ② 전원   「전원 싱글룸」·「임채병팀 전원 싱글룸」 → 팀 인원(pax)
+  //   ③ 이름   「싱글룸: 김OO, 이OO」·「싱글자: 김OO」·「김OO, 이OO님 싱글룸 사용」·「싱글룸 김OO」·
+  //            「싱글 룸」 머리줄 아래 한 줄에 한 명씩 → 이름 수(2~4자 한글, 흔한 낱말(요청·사용…)은 제외)
+  //   ④ 못 읽음 싱글 말은 있는데 수량이 없음(「싱글룸 :」·「싱글룸 요청」) → n=0, how='none' (화면은 「?」 비고 확인)
+  //  → {n, how:'num'|'all'|'names'|'none'|''}  ('' = 싱글 언급 자체가 없음)
+  //  ⚠ 어림 규칙이다 — 툴팁에 팀별 수를 같이 내어 사람이 대조할 수 있게 한다.
+  var SG_STOP = /(요청|사용|희망|배정|신청|확인|현지|비용|추가|가능|불가|대기|보류|필요|예정|변경|지불|결제|안내|부탁|드립|입니|사전|좌석|호텔|리조트|트윈|더블|골프|숙박|쿠폰|카트|팀장|회원|객실|위탁|블럭|블록|전원|전부|모두|별도|개별|발권|진행|후|및)/;
+  var SG_HEAD2 = /^(싱글|1인실|일인실|독방|シングル|single)\s*(룸|room|ルーム)?\s*(사용자|자)?\s*[:：]?$/i;
+  var MIX_HEAD2 = /^(트윈|더블|트리플|ツイン|ダブル|トリプル|twin|double|triple)\s*(룸|room|ルーム)?\s*[:：]?$/i;
+  function _sgNames(seg) {
+    var s = String(seg || '').replace(/\([^)]*\)/g, ' ').replace(/（[^）]*）/g, ' ');
+    var out = 0;
+    s.split(/[,，、·\/\s]+/).forEach(function (tok) {
+      tok = tok.replace(/(님|씨|様)$/, '');
+      if (/^[가-힣]{2,4}$/.test(tok) && !SG_STOP.test(tok) && !/팀$/.test(tok)) out++;
+    });
+    return out;
+  }
+  function singleRequested(text, pax) {
+    var t = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+    if (!SG_WORD.test(t)) return { n: 0, how: '' };
+    var n = singleCount(t);
+    if (n > 0) return { n: n, how: 'num' };
+    var m = t.match(/(\d{1,2})\s*(싱글|シングル)/);                                   // 「2싱글 + 1트윈」·「1싱글 사용」
+    if (!m) m = t.match(/(?:싱글|シングル)[^0-9\n]{0,6}(\d{1,2})\s*룸/);               // 「싱글룸 1룸 12층으로」
+    if (m && Number(m[1]) > 0 && Number(m[1]) <= 30) return { n: Number(m[1]), how: 'num' };
+    if (/(전원|전부|모두|全員)\s*[가-힣]{0,3}\s*(싱글|シングル|1인실|일인실|독방)/.test(t) || /(싱글|シングル)[^\n]{0,6}(전원|전부|모두|全員)/.test(t)) {
+      var p = Number(pax) || 0;
+      return p > 0 ? { n: p, how: 'all' } : { n: 0, how: 'none' };
+    }
+    var best = 0, inSg = false, block = 0;
+    t.split('\n').forEach(function (raw) {
+      var line = raw.trim();
+      if (inSg) {                                   // 「싱글 룸」 머리줄 아래 이름 줄들
+        var c0 = line ? _sgNames(line) : 0;
+        if (!line || MIX_HEAD2.test(line) || !c0) { inSg = false; if (block > best) best = block; block = 0; }
+        else { block += c0; return; }
+      }
+      if (SG_HEAD2.test(line)) { inSg = true; block = 0; return; }
+      if (!SG_WORD.test(line)) return;
+      var i = line.search(SG_WORD);
+      var after = line.slice(i).replace(/^(싱글|シングル|1인실|일인실|독방|single)\s*(룸|room|ルーム)?\s*(사용자|자|使用者)?\s*[:：\/]?\s*/i, '');
+      var c = Math.max(_sgNames(after), _sgNames(line.slice(0, i)));
+      if (c > best) best = c;
+    });
+    if (block > best) best = block;
+    if (best > 0) return { n: best, how: 'names' };
+    return { n: 0, how: 'none' };
+  }
 
   function cartFreeDay(team, date) {
     var d = String(date == null ? '' : date).slice(0, 10);
@@ -985,6 +1037,7 @@
     singleCount: singleCount,
     singleTentative: singleTentative,
     singleOnsite: singleOnsite,
+    singleRequested: singleRequested,
     cartPlan: cartPlan,
     cartQtyFromRemark: cartQtyFromRemark,
     parseCartNos: parseCartNos,
