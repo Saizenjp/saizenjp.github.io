@@ -374,6 +374,10 @@ let TMEMO={};                  // event_seq → 팀 現地메모(현장 수기, 
 let TREF={};                   // event_seq → 팀 参考事項(현장 수기 일본어: 트리플룸·합팀 등, shizu_team_memo.ref_note)
 let REPEN={};                  // event_seq → 팀 대표 영문명(is_rep 우선, 없으면 최소 seq)
 let DATESEL=new Set();         // 선택 날짜(단일선택). 비어있으면 그 달 전체(예약표 전 날짜)
+// 딥링크 — 일별 체류 현황(occupancy)의 「시즈노야도 예약표 열기」: ?ym=YYYY-MM&date=YYYY-MM-DD → 그 달 로드 후 그 날짜 보드로 이동
+const _deepQ=new URLSearchParams(location.search);
+const _deepYm=/^\d{4}-\d{2}$/.test(_deepQ.get('ym')||'')?_deepQ.get('ym'):null;
+let _deepDate=/^\d{4}-\d{2}-\d{2}$/.test(_deepQ.get('date')||'')?_deepQ.get('date'):null;
 let RFROM='', RTO='';          // 달력 범위(월경계 이어보기). 비면 선택 월 전체(monthBounds).
 let BOOK={};                   // event_seq → {rep_name, remark, remark_local, remark_ja, remark_local_ja}
 let _trWarned=false;           // 번역 실패 토스트 1회만
@@ -474,7 +478,7 @@ async function connect(){
     if(!sess||!sess.session){ setConn(tx('loginNeed'),'err'); btn.textContent=tx('connect');btn.disabled=false;
       $('#content').innerHTML=`<div class="panel"><div class="deny">${tx('loginCard')}<small>${tx('loginCardSub')}</small></div></div>`; return; }
     setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
-    YM=YM||thisYM();
+    YM=YM||_deepYm||thisYM();
     renderUI(); load();
   }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
 }
@@ -642,6 +646,7 @@ async function load(){
     renderDateChips(); renderStats(); renderBoard(); renderPreview();
     $('#stat').textContent=`${ax.length}${lang()==='ja'?'日':lang()==='en'?'d':'일'}`;
     $('#btn-print').disabled=!ax.length;
+    if(_deepDate){ const d=_deepDate; _deepDate=null; if(ax.includes(d)) shzJump(d); }   // 딥링크 날짜 → 보드 포커스(1회)
     // translateRemarks();   // 参考事項을 현장 직접입력으로 전환(Min 2026-07) → 한국 현지비고 자동표시·DeepL 번역 미사용(bigoFor 잔존이나 미호출)
   }catch(e){ toast(tx('connFail')+': '+e.message,'err'); $('#stat').textContent=''; }
 }
