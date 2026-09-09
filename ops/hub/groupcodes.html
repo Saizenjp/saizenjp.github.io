@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 그룹코드 관리(마스터)</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
@@ -50,7 +51,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=30.1">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=30.2">
 </head>
 <body data-so-area="groupcodes">
 <div class="topbar so-bar">
@@ -81,7 +82,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=30.1"></script>
+<script src="../assets/saizen-ops.js?v=30.2"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -99,7 +100,7 @@ const L={
     denyAdmin:'マスター(管理者)専用です。', denyAdminSub:'会員マスターは個人情報のためマスターのみ管理します。',
     connFailToast:'接続失敗',
     // 회원 마스터 현황 바
-    masterTitle:'👥 会員マスター',
+    masterTitle:'👥 会員マスター', btnPairs:'⬇ 会員名簿 xlsx(正会員・指定会員 組)', pairsT:'タグコードごとに正会員と指定会員を1行に並べた名簿(全員)。個人情報 — 社外に出さない', pairsLoading:'名簿を読み込み中…', pairsDone:n=>`${n}名 出力`, pairsFail:'出力失敗',
     masterEmpty:'まだ登録された会員マスターがありません — 下の[一括登録]で会員_配置_現況をアップロードしてください。',
     masterRows:'行', masterMaster:'マスター', masterLearned:'学習', masterFirst:'初回登録', masterLast:'最終更新',
     // 회원 추가/수정
@@ -155,7 +156,7 @@ const L={
     denyLogin:'로그인이 필요합니다.', denyLoginSub:'상단 [로그인] 후 다시 연결하세요.',
     denyAdmin:'마스터(관리자) 전용입니다.', denyAdminSub:'회원 마스터는 개인정보라 마스터만 관리합니다.',
     connFailToast:'연결 실패',
-    masterTitle:'👥 회원 마스터',
+    masterTitle:'👥 회원 마스터', btnPairs:'⬇ 회원 명단 xlsx(정회원·지정회원 짝)', pairsT:'태그코드마다 정회원과 지정회원을 한 줄에 짝지은 명단(전원). 개인정보 — 외부 반출 금지', pairsLoading:'명단 읽는 중…', pairsDone:n=>`${n}명 출력`, pairsFail:'출력 실패',
     masterEmpty:'아직 등록된 회원 마스터가 없습니다 — 아래 [일괄 등록]으로 회원_배정_현황을 올리세요.',
     masterRows:'행', masterMaster:'마스터', masterLearned:'학습', masterFirst:'최초 등록', masterLast:'최근 갱신',
     addTitle:'회원 추가 / 수정',
@@ -206,7 +207,7 @@ const L={
     denyLogin:'Login required.', denyLoginSub:'Log in via [Login] above, then reconnect.',
     denyAdmin:'Master (admin) only.', denyAdminSub:'The member master is personal data, managed by master only.',
     connFailToast:'Connection failed',
-    masterTitle:'👥 Member master',
+    masterTitle:'👥 Member master', btnPairs:'⬇ Member list xlsx (primary + designated pairs)', pairsT:'One row per tag code pairing the primary member with designated members (everyone). PII — do not share externally', pairsLoading:'Loading list…', pairsDone:n=>`${n} people exported`, pairsFail:'Export failed',
     masterEmpty:'No member master registered yet — upload 회원_배정_현황 via [Bulk register] below.',
     masterRows:'rows', masterMaster:'master', masterLearned:'learned', masterFirst:'First registered', masterLast:'Last updated',
     addTitle:'Add / edit member',
@@ -438,6 +439,7 @@ function renderUI(){
     <div id="gc-regbar" style="display:none;align-items:center;flex-wrap:wrap;gap:8px 14px;background:#e3f8ec;border:1px solid #1fb257;border-left:4px solid #1fb257;border-radius:10px;padding:10px 16px;margin-bottom:14px;color:var(--text)">
       <span style="font-weight:800;color:#127a3b;white-space:nowrap">${esc(tx('masterTitle'))}</span>
       <span id="gc-regbar-info" style="font-size:12.5px"></span>
+      <button class="btn sm" id="btn-pairs" type="button" title="${esc(tx('pairsT'))}" style="margin-left:auto">${esc(tx('btnPairs'))}</button>
     </div>
     <div class="panel" id="un-panel" style="border-color:#e3bdb4">
       <h3>${esc(tx('unTitle'))} <span class="cnt" id="un-cnt"></span><button class="btn ghost sm" id="un-refresh" type="button" style="float:right">${esc(tx('unRefresh'))}</button></h3>
@@ -466,6 +468,7 @@ function renderUI(){
       <div id="gt-grid"><div class="cnt" style="color:var(--muted)">${esc(tx('unLoading'))}</div></div>
     </div>`;
   $('#btn-search').addEventListener('click',search);
+  $('#btn-pairs').addEventListener('click',downloadMemberPairs);
   $('#un-refresh').addEventListener('click',loadUnassigned);
   loadUnassigned();
   $('#mx-refresh').addEventListener('click',loadMismatch);
@@ -476,6 +479,50 @@ function renderUI(){
   if(!window._gcResynced){ window._gcResynced=true; gcResyncTags(); }   // 진입 1회 자동 태그 재동기화(밀린 것 정리)
   $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
   loadMasterStatus();
+}
+
+// ── 회원 명단 xlsx = 태그코드마다 정회원·지정회원 짝(Min 2026-09 「정회원과 지정회원 짝지어서 파일 하나」) ──
+//   같은 태그코드 = 같은 회원권(정회원 + 지정회원이 코드를 공유). mem_type(정회원/지정회원)은 2026-07 회원관리 파일로
+//   들어온 사람에게만 있고, 그 전에 등록된 대다수는 구분이 없다 → 「구분 미등록」 칸에 그대로 나열(코드 짝은 맞다).
+//   시트 1 = 코드별 한 줄, 시트 2 = 개인별 한 줄. 파일명 영문(회사 PC 한글 파일명 차단). 개인정보 — 저장소·채팅에 남기지 않는다.
+async function downloadMemberPairs(){
+  const btn=$('#btn-pairs'); if(!supa||!btn) return;
+  btn.disabled=true; const orig=btn.textContent; btn.textContent=tx('pairsLoading');
+  try{
+    const rows=[]; const SZ=1000;
+    for(let from=0;;from+=SZ){
+      const {data,error}=await supa.from('member_codes').select('member_key,code,name_kr,member_class,mem_no,mem_type,rep_name').order('code',{ascending:true,nullsFirst:false}).order('member_key').range(from,from+SZ-1);
+      if(error) throw error; rows.push(...(data||[])); if(!data||data.length<SZ) break;
+    }
+    const wb=buildMemberPairsWb(rows);
+    const d=new Date(), p=n=>String(n).padStart(2,'0');
+    XLSX.writeFile(wb, `member_pairs_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}.xlsx`);
+    toast(tx('pairsDone')(rows.length),'ok');
+  }catch(e){ console.error(e); toast(tx('pairsFail')+': '+(e.message||e),'err'); }
+  finally{ btn.disabled=false; btn.textContent=orig; }
+}
+//  순수 변환(검증용): member_codes 행 → 워크북. 정회원/지정회원/구분 미등록을 코드별로 모은다.
+function buildMemberPairsWb(rows){
+  const birth=k=>{ const m=String(k||'').match(/(\d{6})$/); return m?m[1]:''; };
+  const typ=r=>r.mem_type==='정회원'?'정회원':(r.mem_type==='지정회원'?'지정회원':'');
+  const by={}; const order=[];
+  rows.forEach(r=>{ const c=r.code||''; if(!by[c]){ by[c]={code:c,cls:new Set(),memno:new Set(),s:[],j:[],u:[]}; order.push(c); }
+    const g=by[c]; if(r.member_class) g.cls.add(r.member_class); if(r.mem_no) g.memno.add(r.mem_no);
+    const nm=(r.name_kr||'')+(birth(r.member_key)?'('+birth(r.member_key)+')':'');
+    (typ(r)==='정회원'?g.s:(typ(r)==='지정회원'?g.j:g.u)).push(nm); });
+  order.sort((a,b)=>(a===''?1:0)-(b===''?1:0) || a.localeCompare(b,'ja'));   // 코드 없는 사람은 맨 끝
+  const s1=[['태그코드','등급','회원번호','정회원','지정회원','구분 미등록','인원']];
+  const ko=(a,b)=>a.localeCompare(b,'ko');
+  order.forEach(c=>{ const g=by[c]; g.s.sort(ko); g.j.sort(ko); g.u.sort(ko); s1.push([c||'(코드 없음)', [...g.cls].join('/'), [...g.memno].join('/'), g.s.join(', '), g.j.join(', '), g.u.join(', '), g.s.length+g.j.length+g.u.length]); });
+  const s2=[['태그코드','이름','생년(6)','구분','등급','회원번호','정회원명']];
+  const rank=r=>typ(r)==='정회원'?0:(typ(r)==='지정회원'?1:2);
+  rows.slice().sort((a,b)=>order.indexOf(a.code||'')-order.indexOf(b.code||'') || rank(a)-rank(b) || String(a.name_kr||'').localeCompare(String(b.name_kr||'')))
+    .forEach(r=>s2.push([r.code||'', r.name_kr||'', birth(r.member_key), typ(r)||'미등록', r.member_class||'', r.mem_no||'', r.rep_name||'']));
+  const wb=XLSX.utils.book_new();
+  const w1=XLSX.utils.aoa_to_sheet(s1); w1['!cols']=[{wch:9},{wch:12},{wch:18},{wch:34},{wch:34},{wch:60},{wch:6}];
+  const w2=XLSX.utils.aoa_to_sheet(s2); w2['!cols']=[{wch:9},{wch:12},{wch:9},{wch:9},{wch:12},{wch:18},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,w1,'코드별'); XLSX.utils.book_append_sheet(wb,w2,'개인별');
+  return wb;
 }
 
 // ── 회원 마스터 등록 현황: 총 행수 + 최초 등록 / 최근 갱신 ──
