@@ -69,6 +69,8 @@
     color:var(--text2);border:1px solid var(--border);cursor:pointer;user-select:none}
   .chip:hover{border-color:var(--accent)}
   .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .chip[disabled]{opacity:.42;cursor:not-allowed;border-color:var(--border)}   /* 룸타입 칩 = 숙소를 먼저 고른 뒤에만(Min 2026-09) */
+  .lock{font-size:11.5px;font-weight:700;color:var(--muted)}
   .deny{padding:38px 20px;text-align:center;color:var(--muted);font-size:14px;font-weight:700}
 
   .tw{overflow:auto;max-height:74vh;border:1px solid var(--border2);border-radius:10px;background:var(--surface)}
@@ -93,7 +95,13 @@
   /* 「예약 가능」 = 그 날짜부터 표준 패턴(3·4·7박)대로 끝까지 방이 남아 있다 */
   table.oc td.c .nd{display:inline;font-family:var(--sans);font-style:normal;font-size:10px;
     font-weight:800;color:#b3382c;margin-left:1px;vertical-align:super}
-  table.oc td.c .cl{display:inline;font-family:var(--sans);font-style:normal;font-size:9px;font-weight:800;color:#8a6d1a;margin-left:2px;vertical-align:super}   /* 그날 폐쇄 객실 수 */
+  /* 그날 폐쇄 객실 수 — 작은 첨자로는 눈에 안 띄어(Min 2026-09) 칸에 주황 빗금 테두리 + 채운 배지로 */
+  table.oc td.c .cl{display:inline-block;font-family:var(--sans);font-style:normal;font-size:10px;font-weight:800;color:#fff;background:#c2410c;
+    border-radius:99px;padding:0 5px;margin-left:3px;line-height:15px;vertical-align:2px}
+  table.oc td.c.hascl{box-shadow:inset 0 0 0 2px #f97316}
+  table.oc td.c.hascl.zero{background:repeating-linear-gradient(135deg,#fff3e8 0 4px,#fde3cf 4px 8px);color:#9a3412}
+  .lgd i.cll{width:auto;height:auto;background:#c2410c;color:#fff;border:none;border-radius:99px;white-space:nowrap;
+    font-family:var(--sans);font-style:normal;font-size:10px;font-weight:800;padding:0 5px;line-height:15px;vertical-align:0}
   table.oc td.c .bk{display:block;font-family:var(--sans);font-style:normal;font-size:9px;font-weight:800;
     line-height:1.1;margin-top:1px;color:#0f6b34;letter-spacing:-.2px}
   /* 범례의 「3박」 표본 — 표 안 초록 라벨(.bk)과 같은 모양. ⚠ 범례 컨테이너는 .lgd (이전 선택자 .legend 는 안 맞아 13px 상자에 「3」만 갇혔다) */
@@ -138,7 +146,7 @@
   table.dt tr:hover td{background:var(--surface2)}
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=30.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=30.1">
 </head>
 <body data-so-area="occupancy">
 <div class="topbar so-bar">
@@ -170,7 +178,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=30.0"></script>
+<script src="../assets/saizen-ops.js?v=30.1"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -182,7 +190,7 @@ const L={
     loading:'集計中…', loadFail:'読み込み失敗', reload:'↻ 再読込', print:'🖨 印刷',
     title:'日別 滞在状況（使用 / 保有）',
     desc:'各マスの<b>上=その夜の使用室数</b>、<b>下=保有室数</b>。エムクリックの「ホテルブロック」は<b>残り</b>を見る表ですが、現場は<b>埋まった数</b>を見るのでこの向きにしています。マスを押すとその日入っているチームが下に出ます。<b>宿泊施設ごとに1行</b>。使用室数は<b>実際に使われた部屋数</b>(同じ部屋に複数チーム·複数名でも1室)。部屋タイプ別に分けたい場合は右上のチェック。',
-    months:'表示する月', accom:'宿泊施設', all:'全体', rtype:'ルームタイプ',
+    months:'表示する月', accom:'宿泊施設', all:'全体', rtype:'ルームタイプ', rtypeLock:'宿泊施設を先に選んでください',
     byType:'ルームタイプ別に見る', actRooms:n=>`実際の使用 ${n}室`, dtRooms:n=>`この日の使用: ${n}室`,
     lgFree:'余裕(残4+)', lgTight:'ひっ迫(残1〜3)', lgFull:'満室(ちょうど)', lgOver:'超過(対応が必要)',
     lgBook:'予約可 — その日から標準パターン(木→日3泊 · 日→木4泊 · 水→水7泊 / 久住ヒルズの7泊は日→日)で最後まで空室あり',
@@ -210,7 +218,7 @@ const L={
     loading:'집계 중…', loadFail:'로드 실패', reload:'↻ 새로고침', print:'🖨 인쇄',
     title:'일별 체류 현황 (사용 / 보유)',
     desc:'각 칸의 <b>위=그날 밤 사용 객실 수</b>, <b>아래=보유 객실 수</b>입니다. 엠클릭 「호텔 블록」은 <b>잔여</b>를 보는 표지만, 현장은 <b>채워진 수량</b>을 봐야 하므로 방향을 뒤집었습니다. 칸을 누르면 그날 들어 있는 팀이 아래에 나옵니다. <b>숙소당 한 행</b>이고, 사용 실수는 <b>실제로 쓰인 객실 수</b>입니다(같은 방에 두 팀·여러 명이 들어가도 1실). 룸타입별로 쪼개 보려면 오른쪽 위 체크(<b>디럭스 트윈 → 트윈 → 컴팩트트윈 → 싱글 → 아소별장 → 소보5동</b> 순). 칸의 빨간 <b>⁺숫자</b>는 <b>미배정이 쓸 방</b>(이미 받은 예약이라 함께 셉니다). 칸 아래 초록 <b>3박·4박·7박</b>은 <b>그날부터 표준 패턴대로 방이 끝까지 남아 있다 = 예약 가능</b>이라는 뜻입니다.',
-    months:'보는 달', accom:'숙소', all:'전체', rtype:'룸타입',
+    months:'보는 달', accom:'숙소', all:'전체', rtype:'룸타입', rtypeLock:'숙소를 먼저 선택하세요',
     byType:'룸타입별로 보기', actRooms:n=>`실제 사용 ${n}실`, dtRooms:n=>`이 날 사용: ${n}실`,
     lgFree:'여유(잔여 4+)', lgTight:'임박(잔여 1~3)', lgFull:'만실(딱 참)', lgOver:'초과(조치 필요)',
     lgBook:'예약 가능 — 그 날짜부터 표준 패턴(목→일 3박 · 일→목 4박 · 수→수 7박 / 쿠주힐즈 7박은 일→일)대로 끝까지 방이 남아 있음',
@@ -238,7 +246,7 @@ const L={
     loading:'Calculating…', loadFail:'Load failed', reload:'↻ Reload', print:'🖨 Print',
     title:'Daily occupancy (in use / stock)',
     desc:'Each cell shows <b>rooms in use that night</b> on top and <b>rooms in stock</b> below. The M-Click "hotel block" sheet tracks what is <b>left</b>; on site we need what is <b>filled</b>, so this table is inverted. Click a cell to list the teams staying that night. <b>One row per facility</b>; rooms in use are the <b>actual rooms occupied</b> (one room even if two teams or several guests share it). Tick the box at top right to split by room type.',
-    months:'Months', accom:'Lodging', all:'All', rtype:'Room type',
+    months:'Months', accom:'Lodging', all:'All', rtype:'Room type', rtypeLock:'Pick a lodging first',
     byType:'By room type', actRooms:n=>`${n} rooms actually used`, dtRooms:n=>`Rooms used this day: ${n}`,
     lgFree:'Free (4+ left)', lgTight:'Tight (1–3 left)', lgFull:'Full (exact)', lgOver:'Over (needs action)',
     lgBook:'Bookable — a standard stay can start here (Thu→Sun 3n · Sun→Thu 4n · Wed→Wed 7n; Kuju 7n is Sun→Sun)',
@@ -284,7 +292,8 @@ let YMS=[shiftYM(thisYM(),-1), thisYM(), shiftYM(thisYM(),1)];   // 이어보기
 //  "야마나미리조트는 그냥 야마나미리조트로, 인원 수로 트윈 잡고 갯수만. 방별로 쪼개지 말고.
 //   내년에는 다 쪼갤 수 있지만 올해는 어려움") → 룸타입별 보기는 체크박스로.
 let BYTYPE=true;    // 룸타입별 보기 = 기본 켬(Min 2026-09 「항시 체크」) — 호텔동만 타입으로 쪼개고 구역 줄은 그대로
-let UNA={};   // 숙소 → 날짜 → {teams,pax} 미배정 인원
+let UNA={};   // 숙소 → 날짜 → {teams,pax,need,reps,grp} 미배정 인원
+let UNAG={};  // 숙소|구역 → 날짜 → 미배정 필요실(돔하우스 상품=돔하우스 줄, 그 외 야마나미=호텔동)
 let ACCOMSEL=new Set();                         // 비면 전체
 let TYPESEL=new Set();                          // 룸타입(줄 라벨) 필터 — 비면 전체. 칩에 보유 수량 표기(Min 2026-09)
 
@@ -352,7 +361,7 @@ function renderUI(){
         <span><i class="u" style="background:#fdeceb;border-color:#e0a49d"></i>${tx('lgUna')}</span>
         <span><i class="w" style="background:#fdf6e7;border-color:#e6d3a3"></i>${tx('lgSgr')}</span>
         <span><i class="w"></i>${tx('lgWait')}</span>
-        <span><i class="bkl" style="color:#8a6d1a">🔒N</i>${tx('lgClosed')}</span>
+        <span><i class="cll">🔒N</i>${tx('lgClosed')}</span>
       </div>
     </div>
     <div class="panel">
@@ -394,13 +403,18 @@ function renderAccomChips(){
 // 룸타입 칩 = 지금 보이는 숙소의 줄 라벨(디럭스 트윈·트윈·…·아소별장·돔하우스)마다 보유 수량을 달아 다중 선택. 비면 전체.
 function renderTypeChips(){
   const box=$('#tchips'); if(!box) return;
+  //  숙소를 고르기 전에는 잠근다(Min 2026-09 「숙소 토글을 먼저 클릭해야 클릭할 수 있게」) — 전 숙소 라벨이 섞여 수량이 뜻을 잃는다.
+  const locked=!ACCOMSEL.size; if(locked) TYPESEL.clear();
   const rows=ROWS.filter(r=>!ACCOMSEL.size||ACCOMSEL.has(r.facility));
   const cnt={}; rows.forEach(r=>{ const l=r.label||accomL(r.facility); cnt[l]=(cnt[l]||0)+r.own; });
   const labels=Object.keys(cnt);
   [...TYPESEL].forEach(t=>{ if(!labels.includes(t)) TYPESEL.delete(t); });   // 보기 전환으로 사라진 라벨은 해제
-  box.innerHTML=`<button type="button" class="chip${TYPESEL.size?'':' on'}" data-t="">${esc(tx('all'))}</button>`
-    +labels.map(l=>`<button type="button" class="chip${TYPESEL.has(l)?' on':''}" data-t="${esc(l)}">${esc(l)} <b style="font-family:var(--mono)">${cnt[l]}</b></button>`).join('');
+  const dis=locked?' disabled':'';
+  box.innerHTML=`<button type="button" class="chip${TYPESEL.size||locked?'':' on'}" data-t=""${dis}>${esc(tx('all'))}</button>`
+    +labels.map(l=>`<button type="button" class="chip${TYPESEL.has(l)?' on':''}" data-t="${esc(l)}"${dis}>${esc(l)} <b style="font-family:var(--mono)">${cnt[l]}</b></button>`).join('')
+    +(locked?`<span class="lock">${esc(tx('rtypeLock'))}</span>`:'');
   box.querySelectorAll('[data-t]').forEach(b=>b.addEventListener('click',()=>{
+    if(locked) return;
     const t=b.dataset.t;
     if(!t) TYPESEL.clear(); else { if(TYPESEL.has(t)) TYPESEL.delete(t); else TYPESEL.add(t); }
     renderTypeChips(); renderGrid();
@@ -454,29 +468,41 @@ async function load(){
     // 3-2) 미배정 — 방을 아직 못 받은 인원. rooms 에 없으므로 **예약 인원과 대조해** 따로 센다.
     //   ⚠ 이 표는 배정된 방만 세므로, 미배정이 남아 있으면 실제보다 한산해 보인다(Min 지적 2026-08).
     //   그 숙소·그 날짜에 미배정이 있으면 「예약 가능」도 표시하지 않는다 — 들어갈 방이 아직 정해지지 않았기 때문.
-    UNA={};
+    //   ⚠ 예약은 **그 기간에 걸치는 bookings 전체**에서 읽는다 — 방을 하나도 못 받은 팀은 rooms 에 없으므로
+    //   rooms 의 팀 목록으로 bookings 를 찾으면 그 팀이 통째로 빠진다(2026-09 발견: 9~11월 야마나미 49팀이 안 보였다).
+    const RB=await paged((a,b)=>supa.from('bookings')
+      .select('event_seq,pax,dep_date,arr_date,rep_name,status,remark,remark_local,product_name')
+      .lt('dep_date',to).gt('arr_date',from).order('event_seq').range(a,b)) /* 대기 포함: 「대기 예약」 줄로 따로 보이고, 사용 집계는 isWait 로 뺀다 */;
+    if(RB.error) throw RB.error;
+    const RBOOK=(RB.data||[]).filter(b=>!String(b.status||'').includes('대기'));
+    const GACC={};   // event_seq → guests.accom (그 기간 예약 전부)
+    { const rs=[...new Set(RBOOK.map(b=>b.event_seq))];
+      for(let i=0;i<rs.length;i+=300){
+        const {data:gs}=await supa.from('guests').select('event_seq,accom').in('event_seq',rs.slice(i,i+300));
+        (gs||[]).forEach(g=>{ GACC[g.event_seq]=g.accom||''; }); } }
+    UNA={}; UNAG={};
     {
       const asgn={};   // event_seq → 배정된 사람 수
       ROOMS.forEach(r=>{ if(r.member_id!=null){ (asgn[r.event_seq]=asgn[r.event_seq]||new Set()).add(r.member_id); } });
       const need=[];
-      if(seqs.length){
-        const bb=await pagedIn('bookings','event_seq,pax,dep_date,arr_date,status,rep_name','event_seq',seqs);
-        (bb.data||[]).forEach(b=>{
-          if(String(b.status||'').includes('대기')) return;            // 대기는 별도 줄
-          const left=(Number(b.pax)||0)-((asgn[b.event_seq]&&asgn[b.event_seq].size)||0);
-          if(left>0) need.push({seq:b.event_seq, left, dep:b.dep_date, arr:b.arr_date});
-        });
-      }
+      RBOOK.forEach(b=>{
+        const left=(Number(b.pax)||0)-((asgn[b.event_seq]&&asgn[b.event_seq].size)||0);
+        if(left>0) need.push({seq:b.event_seq, left, dep:b.dep_date, arr:b.arr_date, rep:b.rep_name||'', product:b.product_name||''});
+      });
       const dset2=new Set(DAYS);
       need.forEach(n=>{
-        const fac=(TEAM[n.seq]&&TEAM[n.seq].accom)||''; if(!fac) return;
+        const fac=GACC[n.seq]||(TEAM[n.seq]&&TEAM[n.seq].accom)||''; if(!fac) return;
+        const grp=needGroup(fac, n.product);   // 미배정 필요실이 들어갈 구역(돔하우스 상품=돔하우스 줄, Min 2026-09)
         const c=SZCore.parseLocalDate(n.dep), e=SZCore.parseLocalDate(n.arr);
         if(isNaN(c)||isNaN(e)) return;
+        const rooms=Math.ceil(n.left/2);        // 2인 1실 기준(보수적)
         for(const d=new Date(c); d<e; d.setDate(d.getDate()+1)){
           const ds=fmt(d); if(!dset2.has(ds)) continue;
-          const m=(UNA[fac]=UNA[fac]||{}); const cell=(m[ds]=m[ds]||{teams:0,pax:0,need:0,reps:[]});
-          cell.teams++; cell.pax+=n.left; cell.need+=Math.ceil(n.left/2);   // 2인 1실 기준(보수적)
-          if(cell.reps.length<8) cell.reps.push((TEAM[n.seq]&&TEAM[n.seq].rep)||'');
+          const m=(UNA[fac]=UNA[fac]||{}); const cell=(m[ds]=m[ds]||{teams:0,pax:0,need:0,reps:[],grp:{}});
+          cell.teams++; cell.pax+=n.left; cell.need+=rooms;
+          if(cell.reps.length<8) cell.reps.push(n.rep);
+          const gc=(cell.grp[grp]=cell.grp[grp]||{teams:0,pax:0,need:0}); gc.teams++; gc.pax+=n.left; gc.need+=rooms;
+          const gk=fac+(grp?'|'+grp:''); const gm=(UNAG[gk]=UNAG[gk]||{}); gm[ds]=(gm[ds]||0)+rooms;
         }
       });
     }
@@ -512,23 +538,13 @@ async function load(){
     //    이전의 「대기·불가 = 미확정」 판단은 뺐다 — 줄 수 있을지의 판단은 담당자 몫이고, 표는 남은 수량만 보여 주면 된다.
     SGR={};
     {
-      const sb=await paged((a,b)=>supa.from('bookings')
-        .select('event_seq,pax,dep_date,arr_date,rep_name,status,remark,remark_local')
-        .lt('dep_date',to).gt('arr_date',from).order('event_seq').range(a,b)) /* 대기 포함: 「대기 예약」 줄로 따로 보이고, 사용 집계는 isWait 로 뺀다 */;
-      if(sb.error) throw sb.error;
-      const cand=(sb.data||[]).filter(b=>!String(b.status||'').includes('대기'))
+      const cand=RBOOK
         .map(b=>{ const t=[b.remark_local,b.remark].filter(Boolean).join('\n');
           const r=SZCore.singleRequested?SZCore.singleRequested(t,b.pax):{n:(SZCore.singleCount?SZCore.singleCount(t):0),how:'num'};
           return {b, n:r.n, how:r.how}; })
         .filter(x=>x.how);   // 싱글 수요가 있는 팀 전부 — 비고 언급 + 홀수 인원 팀(남는 한 명=싱글 1방). 수량을 못 읽은 팀은 「?」로
-      const sseqs=cand.map(x=>x.b.event_seq);
-      const SACC={};
-      for(let i=0;i<sseqs.length;i+=300){
-        const {data:gs}=await supa.from('guests').select('event_seq,accom').in('event_seq',sseqs.slice(i,i+300));
-        (gs||[]).forEach(g=>{ SACC[g.event_seq]=g.accom||''; });
-      }
       cand.forEach(x=>{
-        const fac=SACC[x.b.event_seq]||''; if(!fac) return;
+        const fac=GACC[x.b.event_seq]||''; if(!fac) return;
         const c=SZCore.parseLocalDate(x.b.dep_date), e=SZCore.parseLocalDate(x.b.arr_date);
         if(isNaN(c)||isNaN(e)) return;
         for(const d=new Date(c); d<e; d.setDate(d.getDate()+1)){
@@ -583,6 +599,12 @@ function zoneGroup(inv){
 function groupL(g){ const k={'호텔동':'grpHotel','돔하우스':'grpDome','소보별장':'grpSobo','소보5동':'grpSobo5','아소별장':'grpAso'}[g]; return k?tx(k):''; }
 function groupIdx(g){ const i=GROUP_ORDER.indexOf(g); return i<0?GROUP_ORDER.length:i; }
 // 행 = 숙소 → (구역) → 룸타입(호텔동만). 칸값 = 그 날 밤 사용 객실 수(중복 객실은 1실)·인원.
+//  미배정 팀이 들어갈 구역 — 상품명으로 판정(돔하우스 상품 → 돔하우스 줄). 그 외 야마나미는 호텔동, 다른 숙소는 구역 없음.
+//  ※ 2027년부터 상품명이 구역별로 확실히 갈리면(Min) 소보·아소별장도 같은 자리에서 늘린다.
+function needGroup(fac, product){
+  if(fac!=='야마나미리조트') return '';
+  return /돔하우스|ドームハウス|dome/i.test(String(product||''))?'돔하우스':'호텔동';
+}
 function rowKey(inv){ const g=zoneGroup(inv); const base=(inv.facility||'')+(g?'|'+g:''); return (BYTYPE && (g==='호텔동'||!g)) ? base+'|'+typeLabel(inv.room_type) : base; }
 //  그 객실이 그 날짜에 폐쇄인가(from<=d<=to)
 function closedOn(invId,d){ const a=CLOSED[invId]; if(!a) return null; for(const c of a){ if(c.from<=d && d<=c.to) return c; } return null; }
@@ -630,7 +652,8 @@ function buildRows(){
   //   방배정이 아직 안 됐을 뿐 손님은 온다. 세지 않으면 표가 실제보다 한산해 보이고
   //   「예약 가능」이 없는 방을 있다고 말하게 된다.
   //   필요 객실 수 = 팀마다 ceil(미배정 인원 ÷ 2) — 2인 1실 기준(트리플·별장은 덜 쓰므로 보수적).
-  const needAt=(f,d)=>{ const c=(UNA[f]||{})[d]; return c?(c.need||0):0; };
+  //   구역별(UNAG): 돔하우스 상품 팀의 필요실은 돔하우스 줄, 그 외 야마나미는 호텔동 줄(Min 2026-09 「돔하우스면 돔하우스 줄에」).
+  const needAt=(f,g,d)=>(UNAG[f+(g?'|'+g:'')]||{})[d]||0;
   //   숙소 단위 합계(룸타입별 보기에서도 「예약 가능」은 숙소 전체 잔여로 본다 —
   //   미배정이 어느 타입에 들어갈지는 배정 전에는 알 수 없다)
   //   합계 단위 = 숙소+구역(`aggKey`). 돔하우스·별장은 별개 상품이라 호텔동 잔여에 섞지 않는다(Min 2026-09 「돔하우스 수량은 호텔 쪽과 합치지 않아」).
@@ -640,9 +663,10 @@ function buildRows(){
     const a=(facAgg[aggKey(r)]=facAgg[aggKey(r)]||{own:0, used:DAYS.map(()=>0), closed:DAYS.map(()=>0)});
     a.own+=r.own; r.days.forEach((c,i)=>{ a.used[i]+=c.r; a.closed[i]+=(c.closed||0); });
   });
-  //   미배정 필요실은 숙소의 **대표 줄**(야마나미=호텔동, 그 외=유일한 줄)에만 더한다 — 구역이 여러 줄이라도 한 번만.
-  //   룸타입별 보기에서는 타입을 모르므로 미배정 줄로만 보여 준다.
-  if(!BYTYPE) ROWS.forEach(r=>{ if(r.group && r.group!=='호텔동') return; r.days.forEach((c,i)=>{ c.need=needAt(r.facility, DAYS[i]); }); });
+  //   미배정 필요실은 그 구역 줄에 더한다 — 호텔동은 룸타입별 보기에서 타입을 모르므로 숙소 보기일 때만(미배정 줄엔 항상),
+  //   돔하우스·별장 줄은 타입으로 안 쪼개므로 언제나 그 줄에 +N.
+  ROWS.forEach(r=>{ const hotel=(!r.group||r.group==='호텔동'); if(hotel && BYTYPE) return;
+    r.days.forEach((c,i)=>{ c.need=needAt(r.facility, r.group, DAYS[i]); }); });
 
   // ── 「예약 가능」 판정: 그 날짜부터 표준 패턴대로 묵을 방이 끝까지 남아 있는가 ──
   //   패턴 기간이 보고 있는 범위를 넘어가면 확인할 수 없으므로 표시하지 않는다.
@@ -658,8 +682,8 @@ function buildRows(){
         for(let k=0;k<p.n;k++){
           const dd=DAYS[i+k];
           if(r.own-(r.days[i+k].closed||0)-r.days[i+k].r-((r.days[i+k].need)||0)<1){ free=false; break; }   // 그 줄 잔여(폐쇄 차감)
-          const fa=facAgg[aggKey(r)];                                               // 그 구역 전체 잔여(미배정·폐쇄 차감) — 미배정 필요실은 호텔동(대표 줄)에만
-          const needG=(!r.group||r.group==='호텔동')?needAt(r.facility,dd):0;
+          const fa=facAgg[aggKey(r)];                                               // 그 구역 전체 잔여(미배정·폐쇄 차감) — 미배정 필요실도 구역별
+          const needG=needAt(r.facility,r.group,dd);
           if(fa && fa.own-fa.closed[i+k]-fa.used[i+k]-needG<1){ free=false; break; }
         }
         if(free) ok.push(p.n);
@@ -719,7 +743,9 @@ function unaRow(fac){
     const ms=d.slice(0,7)!==prevM; prevM=d.slice(0,7);
     const c=m[d];
     if(!c) return `<td class="c none${ms?' mstart':''}">·</td>`;
-    return `<td class="c${ms?' mstart':''}" title="${esc(tx('unaT')(c.teams,c.pax)+' · '+tx('roomsN')(c.need||0)+(c.reps.filter(Boolean).length?' — '+c.reps.filter(Boolean).join(', '):''))}">${c.teams}<span style="font-weight:600">(${c.pax})</span></td>`;
+    const gks=Object.keys(c.grp||{}).filter(g=>g);   // 구역별 내역(야마나미만) — 「호텔 2팀 4명 2실 · 돔하우스 1팀 2명 1실」
+    const gtxt=gks.length>1||(gks.length===1&&gks[0]!=='호텔동') ? ' ['+gks.map(g=>groupL(g)+' '+tx('unaT')(c.grp[g].teams,c.grp[g].pax)+' '+tx('roomsN')(c.grp[g].need)).join(' · ')+']' : '';
+    return `<td class="c${ms?' mstart':''}" title="${esc(tx('unaT')(c.teams,c.pax)+' · '+tx('roomsN')(c.need||0)+gtxt+(c.reps.filter(Boolean).length?' — '+c.reps.filter(Boolean).join(', '):''))}">${c.teams}<span style="font-weight:600">(${c.pax})</span></td>`;
   }).join('');
   return `<tr class="una"><td class="rh">${tx('unaRowH')}</td>${tds}</tr>`;
 }
@@ -755,7 +781,7 @@ function renderGrid(){
       const bk=(r.book&&r.book[i])||[];
       const bkHtml=bk.length?`<i class="bk">${bk.map(n=>n+tx('nightUnit')).join('·')}</i>`:'';
       const bkT=bk.length?' · '+tx('bookOkT')(bk.map(n=>tx('nights')(n)).join('·')):'';
-      return `<td class="c ${cls}${wk}${ms?' mstart':''}${sel}" data-k="${esc(r.key)}" data-d="${d}"
+      return `<td class="c ${cls}${wk}${ms?' mstart':''}${sel}${c.closed?' hascl':''}" data-k="${esc(r.key)}" data-d="${d}"
         title="${esc(accomL(r.facility)+(r.label?' · '+r.label:'')+' · '+d)} — ${esc(tx('roomsN')(shown))} / ${esc(tx('own'))} ${ownD}${c.closed?' ('+esc(tx('closedT')(c.closed))+')':''} · ${esc(tx('paxN')(c.p))}${nd?' · '+esc(tx('needT')(c.r,nd)):''}${(!BYTYPE&&c.act&&c.act!==c.r)?' · '+esc(tx('actRooms')(c.act)):''}${esc(bkT)}">${shown||'·'}${nd?'<i class="nd">+'+nd+'</i>':''}${clHtml}${bkHtml}</td>`;
     }).join('');
     body.push(`<tr><td class="rh"><span class="rt">${esc(r.label||accomL(r.facility))}</span><span class="own">${esc(tx('own'))} ${r.own}</span></td>${tds}</tr>`);
