@@ -95,13 +95,15 @@
   /* 「예약 가능」 = 그 날짜부터 표준 패턴(3·4·7박)대로 끝까지 방이 남아 있다 */
   table.oc td.c .nd{display:inline;font-family:var(--sans);font-style:normal;font-size:10px;
     font-weight:800;color:#b3382c;margin-left:1px;vertical-align:super}
-  /* 그날 폐쇄 객실 수 — 작은 첨자로는 눈에 안 띄어(Min 2026-09) 칸에 주황 빗금 테두리 + 채운 배지로 */
-  table.oc td.c .cl{display:inline-block;font-family:var(--sans);font-style:normal;font-size:10px;font-weight:800;color:#fff;background:#c2410c;
-    border-radius:99px;padding:0 5px;margin-left:3px;line-height:15px;vertical-align:2px}
-  table.oc td.c.hascl{box-shadow:inset 0 0 0 2px #f97316}
-  table.oc td.c.hascl.zero{background:repeating-linear-gradient(135deg,#fff3e8 0 4px,#fde3cf 4px 8px);color:#9a3412}
-  .lgd i.cll{width:auto;height:auto;background:#c2410c;color:#fff;border:none;border-radius:99px;white-space:nowrap;
-    font-family:var(--sans);font-style:normal;font-size:10px;font-weight:800;padding:0 5px;line-height:15px;vertical-align:0}
+  /* 그날 폐쇄 객실 — 칸 오른쪽 위 작은 주황 모서리 표시만(Min 2026-09 「아주 작은 마킹, 커서 올리면 알아볼 정도」). 객실·사유는 칸 툴팁 */
+  table.oc td.c{position:relative}
+  table.oc td.c.hascl::before{content:"";position:absolute;top:0;right:0;border-style:solid;border-width:0 8px 8px 0;border-color:transparent #c2410c transparent transparent}
+  .lgd i.cll{width:13px;height:13px;background:var(--surface);border:1px solid var(--border);border-radius:3px;position:relative;overflow:hidden;vertical-align:-2px}
+  .lgd i.cll::after{content:"";position:absolute;top:0;right:0;border-style:solid;border-width:0 7px 7px 0;border-color:transparent #c2410c transparent transparent}
+  /* 싱글 신청 통합 줄 = 룸타입 「싱글」 줄과 합침: 칸=신청 수(보유 대비 색), +N=미배정, ?=수량 못 읽음. 사용(배정 싱글)은 툴팁 */
+  table.oc tr.sgm td.rh .rt{color:#6b5312}
+  table.oc tr.sgm td.c i.tent{font-style:normal;font-size:10.5px;font-weight:800;color:#a8442f;margin-left:2px;vertical-align:super}
+  table.oc tr.sgm td.c i.unk{font-style:normal;font-size:10.5px;font-weight:800;color:#8a8a8a;margin-left:2px;vertical-align:super}
   table.oc td.c .bk{display:block;font-family:var(--sans);font-style:normal;font-size:9px;font-weight:800;
     line-height:1.1;margin-top:1px;color:#0f6b34;letter-spacing:-.2px}
   /* 범례의 「3박」 표본 — 표 안 초록 라벨(.bk)과 같은 모양. ⚠ 범례 컨테이너는 .lgd (이전 선택자 .legend 는 안 맞아 13px 상자에 「3」만 갇혔다) */
@@ -146,7 +148,7 @@
   table.dt tr:hover td{background:var(--surface2)}
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=30.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=30.5">
 </head>
 <body data-so-area="occupancy">
 <div class="topbar so-bar">
@@ -178,7 +180,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=30.4"></script>
+<script src="../assets/saizen-ops.js?v=30.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -201,8 +203,8 @@ const L={
     lgUna:'未割当 — まだ部屋が決まっていない人数です。この行がある日は表の使用数にその分が入っておらず、「予約可」も表示しません。',
     unaRowH:'未割当', unaT:(t,p)=>`未割当 ${t}チーム / ${p}名`,
     lgUna:'未割当 — まだ部屋が決まっていない人数。この行がある日は表の使用数にその分が入っておらず、「予約可」も出しません。',
-    lgWait:'待機予約 — 満室でもお受けした未確定の予約(客室は押さえていません)', lgClosed:'閉鎖 — その日閉鎖中の客室数(保有から除外・部屋割りで登録)', closedT:n=>`閉鎖 ${n}室`, grpHotel:'ホテル', grpDome:'ドームハウス', grpSobo:'祖母別荘', grpSobo5:'祖母5棟', grpAso:'阿蘇別荘', waitRowH:'待機予約', waitT:(t,p)=>`待機 ${t}チーム / ${p}名`,
-    sgrRowH:'シングル希望', sgrT:(r,u)=>`シングル希望 ${r}室`+(u?` ・ うち未割当 ${u}室`:'')+' (備考より)', sgrUnaN:u=>`未割当 ${u}`, sgrUnkN:k=>`備考確認 ${k}チーム(室数が読めない)`, sgrAllTag:'(全員)', sgrOddTag:'(奇数)',
+    lgWait:'待機予約 — 満室でもお受けした未確定の予約(客室は押さえていません)', lgClosed:'閉鎖 — 角の橙印=その日閉鎖中の客室あり(保有から除外・カーソルで客室・理由)', closedT:n=>`閉鎖 ${n}室`, grpHotel:'ホテル', grpDome:'ドームハウス', grpSobo:'祖母別荘', grpSobo5:'祖母5棟', grpAso:'阿蘇別荘', waitRowH:'待機予約', waitT:(t,p)=>`待機 ${t}チーム / ${p}名`,
+    sgrRowH:'シングル希望', sgrAsg:n=>`割当済シングル ${n}室`, sgrT:(r,u)=>`シングル希望 ${r}室`+(u?` ・ うち未割当 ${u}室`:'')+' (備考より)', sgrUnaN:u=>`未割当 ${u}`, sgrUnkN:k=>`備考確認 ${k}チーム(室数が読めない)`, sgrAllTag:'(全員)', sgrOddTag:'(奇数)',
     lgSgr:'シングル希望 — 備考のシングル室数(「全員シングル」=人数・名前の列挙=人数)＋備考なしの奇数人数チームは残り1名=1室。赤い +N はそのうち、その夜まだ1人使用の部屋がない室数。灰色 ? は室数が読めないチーム(備考確認)',
     nights:n=>`${n}泊`, roomsN:n=>`${n}室`, paxN:n=>`${n}名`,
     thRow:'施設・ルームタイプ', own:'保有',
@@ -229,8 +231,8 @@ const L={
     lgUna:'미배정 — 아직 방을 못 받은 인원입니다. 이 줄이 있는 날짜는 표의 사용 수에 그 인원이 빠져 있고, 「예약 가능」도 표시하지 않습니다(들어갈 방이 정해지지 않아서).',
     unaRowH:'미배정', unaT:(t,p)=>`미배정 ${t}팀 / ${p}명`,
     lgUna:'미배정 — 아직 방을 못 받은 인원입니다. 이 줄이 있는 날짜는 표의 사용 수에 그 인원이 빠져 있고, 「예약 가능」도 표시하지 않습니다(들어갈 방이 정해지지 않아서).',
-    lgWait:'대기 예약 — 만실이어도 받아 둔 미확정 예약(객실을 잡고 있지 않습니다)', lgClosed:'폐쇄 — 그날 폐쇄 중인 객실 수(보유에서 뺌 · 방배정 화면에서 등록)', closedT:n=>`폐쇄 ${n}실`, grpHotel:'호텔', grpDome:'돔하우스', grpSobo:'소보별장', grpSobo5:'소보5동', grpAso:'아소별장', waitRowH:'대기 예약', waitT:(t,p)=>`대기 ${t}팀 / ${p}명`,
-    sgrRowH:'싱글 신청', sgrT:(r,u)=>`싱글 신청 ${r}방`+(u?` · 그중 미배정 ${u}방`:'')+' (비고 기준)', sgrUnaN:u=>`미배정 ${u}`, sgrUnkN:k=>`비고 확인 ${k}팀(수량을 못 읽음)`, sgrAllTag:'(전원)', sgrOddTag:'(홀수)',
+    lgWait:'대기 예약 — 만실이어도 받아 둔 미확정 예약(객실을 잡고 있지 않습니다)', lgClosed:'폐쇄 — 모서리 주황 표시=그날 폐쇄 중인 객실 있음(보유에서 뺌 · 커서를 올리면 객실·사유)', closedT:n=>`폐쇄 ${n}실`, grpHotel:'호텔', grpDome:'돔하우스', grpSobo:'소보별장', grpSobo5:'소보5동', grpAso:'아소별장', waitRowH:'대기 예약', waitT:(t,p)=>`대기 ${t}팀 / ${p}명`,
+    sgrRowH:'싱글 신청', sgrAsg:n=>`배정된 싱글 ${n}실`, sgrT:(r,u)=>`싱글 신청 ${r}방`+(u?` · 그중 미배정 ${u}방`:'')+' (비고 기준)', sgrUnaN:u=>`미배정 ${u}`, sgrUnkN:k=>`비고 확인 ${k}팀(수량을 못 읽음)`, sgrAllTag:'(전원)', sgrOddTag:'(홀수)',
     lgSgr:'싱글 신청 — 비고의 싱글 방 수(「전원 싱글」=인원 · 이름 나열=명수) + 비고 없는 홀수 인원 팀은 남는 1명=1방. 빨간 +N 은 그중 그날 밤 아직 1인 사용 방이 없는 수. 회색 ? 는 수량을 못 읽은 팀(비고 확인)',
     nights:n=>`${n}박`, roomsN:n=>`${n}실`, paxN:n=>`${n}명`,
     thRow:'숙소 · 룸타입', own:'보유',
@@ -257,8 +259,8 @@ const L={
     lgUna:'Unassigned — guests without a room yet. On those dates the used count excludes them and no “bookable” badge is shown.',
     unaRowH:'Unassigned', unaT:(t,p)=>`unassigned ${t} teams / ${p} pax`,
     lgUna:'Unassigned — guests with no room yet. On those dates the used count excludes them and no “bookable” badge is shown.',
-    lgWait:'Waitlist — taken even when full, not confirmed (holds no room)', lgClosed:'Closed — rooms closed that day (excluded from stock · set on the room screen)', closedT:n=>`${n} closed`, grpHotel:'Hotel', grpDome:'Dome house', grpSobo:'Sobo villas', grpSobo5:'Sobo 5', grpAso:'Aso villa', waitRowH:'Waitlist', waitT:(t,p)=>`Waitlist ${t} teams / ${p} pax`,
-    sgrRowH:'Singles asked', sgrT:(r,u)=>`${r} single room(s) requested`+(u?` · ${u} not yet assigned`:'')+' (from remarks)', sgrUnaN:u=>`${u} unassigned`, sgrUnkN:k=>`check remarks: ${k} team(s) (count unreadable)`, sgrAllTag:'(all)', sgrOddTag:'(odd)',
+    lgWait:'Waitlist — taken even when full, not confirmed (holds no room)', lgClosed:'Closed — orange corner = rooms closed that day (excluded from stock · hover for room/reason)', closedT:n=>`${n} closed`, grpHotel:'Hotel', grpDome:'Dome house', grpSobo:'Sobo villas', grpSobo5:'Sobo 5', grpAso:'Aso villa', waitRowH:'Waitlist', waitT:(t,p)=>`Waitlist ${t} teams / ${p} pax`,
+    sgrRowH:'Singles asked', sgrAsg:n=>`${n} single rooms assigned`, sgrT:(r,u)=>`${r} single room(s) requested`+(u?` · ${u} not yet assigned`:'')+' (from remarks)', sgrUnaN:u=>`${u} unassigned`, sgrUnkN:k=>`check remarks: ${k} team(s) (count unreadable)`, sgrAllTag:'(all)', sgrOddTag:'(odd)',
     lgSgr:'Singles asked — single rooms from the remarks (“everyone single” = pax · listed names = count) + odd-sized teams without remarks count 1 (the leftover person). Red +N = those without a one-person room that night. Grey ? = count unreadable (check remarks)',
     nights:n=>`${n} nights`, roomsN:n=>`${n} rooms`, paxN:n=>`${n}`,
     thRow:'Facility · room type', own:'Stock',
@@ -361,7 +363,7 @@ function renderUI(){
         <span><i class="u" style="background:#fdeceb;border-color:#e0a49d"></i>${tx('lgUna')}</span>
         <span><i class="w" style="background:#fdf6e7;border-color:#e6d3a3"></i>${tx('lgSgr')}</span>
         <span><i class="w"></i>${tx('lgWait')}</span>
-        <span><i class="cll">🔒N</i>${tx('lgClosed')}</span>
+        <span><i class="cll"></i>${tx('lgClosed')}</span>
       </div>
     </div>
     <div class="panel">
@@ -773,7 +775,7 @@ function renderGrid(){
     return `<th class="${w===0?'sun':(w===6?'sat':'')}${isToday?' today':''}${ms?' mstart':''}">${ms?dt.getMonth()+1+'/':''}${dt.getDate()}<br><span style="font-weight:600">${esc(WD[w])}</span></th>`;
   }).join('');
   // 숙소가 바뀌는 첫 행 앞에 숙소 헤더 행
-  let lastFac=null; const body=[];
+  let lastFac=null; const body=[]; const mergedSgr={};   // 싱글 신청을 「싱글」 줄에 합친 숙소(끝의 별도 줄 생략)
   const facRows={}; rows.forEach(r=>{ facRows[r.facility]=(facRows[r.facility]||0)+1; });
   rows.forEach(r=>{
     if((BYTYPE || facRows[r.facility]>1) && r.facility!==lastFac){
@@ -781,24 +783,31 @@ function renderGrid(){
       body.push(`<tr class="fac"><td class="rh">${esc(accomL(r.facility))}</td><td colspan="${DAYS.length}"></td></tr>`);   // 구역별 보유는 각 줄에(합산 표기 없음 — 돔·별장은 호텔과 안 합친다)
     }
     prevM='';
+    const sgm=(r.type==='싱글') && !!(SGR[r.facility] && Object.keys(SGR[r.facility]).length);   // 싱글 줄 + 싱글 신청 통합
+    if(sgm) mergedSgr[r.facility]=true;
     const tds=r.days.map((c,i)=>{
       const d=DAYS[i]; const ms=d.slice(0,7)!==prevM; prevM=d.slice(0,7);
       const nd=c.need||0, shown=c.r+nd;          // 미배정도 이미 받은 예약 — 사용 수에 포함
       const ownD=r.own-(c.closed||0);            // 그날 보유 = 활성 객실 − 폐쇄
       const cls=shown?cellCls(shown,ownD):'zero';
-      const clHtml=c.closed?`<i class="cl" title="${esc(tx('closedT')(c.closed)+' — '+c.closedL.map(x=>x.room+(x.reason?'('+x.reason+')':'')).join(', '))}">🔒${c.closed}</i>`:'';
+      const clT=c.closed?' ('+tx('closedT')(c.closed)+' — '+c.closedL.map(x=>x.room+(x.reason?'('+x.reason+')':'')).join(', ')+')':'';   // 폐쇄=칸 모서리 표시 + 툴팁만
       const sel=(SEL&&SEL.key===r.key&&SEL.date===d)?' sel':'';
       const w=SZCore.parseLocalDate(d).getDay(), wk=(w===0||w===6)?' wk':'';
+      // 싱글 신청 통합 줄: 룸타입 「싱글」 줄에 싱글 신청(비고)을 얹는다 — 칸=신청 수, 색=보유(폐쇄 차감) 대비, +N=미배정, ?=수량 못 읽음(Min 2026-09 「두 줄 합치기」)
+      if(sgm){ const sc=(SGR[r.facility]||{})[d]||null; const req=sc?sc.rooms:0, una=sc?sc.una:0, unk=sc?sc.unk:0;
+        const scls=(req||unk)?cellCls(req,ownD):'zero';
+        const st=accomL(r.facility)+' · '+tx('sgrRowH')+' · '+d+' — '+tx('sgrT')(req,una)+' / '+tx('own')+' '+ownD+clT+' · '+tx('sgrAsg')(c.r)+(unk?' · '+tx('sgrUnkN')(unk):'')+(sc&&sc.teams.length?' — '+sc.teams.join(', '):'');
+        return `<td class="c ${scls}${wk}${ms?' mstart':''}${sel}${c.closed?' hascl':''}" data-k="${esc(r.key)}" data-d="${d}" title="${esc(st)}">${req||'·'}${una?`<i class="tent">+${una}</i>`:''}${unk?`<i class="unk">?</i>`:''}</td>`; }
       const bk=(r.book&&r.book[i])||[];
       const bkHtml=bk.length?`<i class="bk">${bk.map(n=>n+tx('nightUnit')).join('·')}</i>`:'';
       const bkT=bk.length?' · '+tx('bookOkT')(bk.map(n=>tx('nights')(n)).join('·')):'';
       return `<td class="c ${cls}${wk}${ms?' mstart':''}${sel}${c.closed?' hascl':''}" data-k="${esc(r.key)}" data-d="${d}"
-        title="${esc(accomL(r.facility)+(r.label?' · '+r.label:'')+' · '+d)} — ${esc(tx('roomsN')(shown))} / ${esc(tx('own'))} ${ownD}${c.closed?' ('+esc(tx('closedT')(c.closed))+')':''} · ${esc(tx('paxN')(c.p))}${nd?' · '+esc(tx('needT')(c.r,nd)):''}${(!BYTYPE&&c.act&&c.act!==c.r)?' · '+esc(tx('actRooms')(c.act)):''}${esc(bkT)}">${shown||'·'}${nd?'<i class="nd">+'+nd+'</i>':''}${clHtml}${bkHtml}</td>`;
+        title="${esc(accomL(r.facility)+(r.label?' · '+r.label:'')+' · '+d)} — ${esc(tx('roomsN')(shown))} / ${esc(tx('own'))} ${ownD}${esc(clT)} · ${esc(tx('paxN')(c.p))}${nd?' · '+esc(tx('needT')(c.r,nd)):''}${(!BYTYPE&&c.act&&c.act!==c.r)?' · '+esc(tx('actRooms')(c.act)):''}${esc(bkT)}">${shown||'·'}${nd?'<i class="nd">+'+nd+'</i>':''}${bkHtml}</td>`;
     }).join('');
-    body.push(`<tr><td class="rh"><span class="rt">${esc(r.label||accomL(r.facility))}</span><span class="own">${esc(tx('own'))} ${r.own}</span></td>${tds}</tr>`);
+    body.push(`<tr${sgm?' class="sgm"':''}><td class="rh"><span class="rt">${esc(sgm?tx('sgrRowH'):(r.label||accomL(r.facility)))}</span><span class="own">${esc(tx('own'))} ${r.own}</span></td>${tds}</tr>`);
     // 그 숙소의 마지막 행 뒤에 대기 예약 줄(방을 안 잡는 예약이라 팀·인원으로)
     const nxt=rows[rows.indexOf(r)+1];
-    if(!nxt || nxt.facility!==r.facility){ body.push(sgrRow(r.facility)); body.push(unaRow(r.facility)); body.push(waitRow(r.facility)); }
+    if(!nxt || nxt.facility!==r.facility){ if(!mergedSgr[r.facility]) body.push(sgrRow(r.facility)); body.push(unaRow(r.facility)); body.push(waitRow(r.facility)); }
   });
   // 합계 행
   const tot=DAYS.map((d,i)=>rows.reduce((n,r)=>n+r.days[i].r+(r.days[i].need||0),0));
