@@ -182,7 +182,7 @@ const L={
     loading:'集計中…', loadFail:'読み込み失敗', reload:'↻ 再読込', print:'🖨 印刷',
     title:'日別 滞在状況（使用 / 保有）',
     desc:'各マスの<b>上=その夜の使用室数</b>、<b>下=保有室数</b>。エムクリックの「ホテルブロック」は<b>残り</b>を見る表ですが、現場は<b>埋まった数</b>を見るのでこの向きにしています。マスを押すとその日入っているチームが下に出ます。<b>宿泊施設ごとに1行</b>。使用室数は<b>実際に使われた部屋数</b>(同じ部屋に複数チーム·複数名でも1室)。部屋タイプ別に分けたい場合は右上のチェック。',
-    months:'表示する月', accom:'宿泊施設', all:'全体',
+    months:'表示する月', accom:'宿泊施設', all:'全体', rtype:'ルームタイプ',
     byType:'ルームタイプ別に見る', actRooms:n=>`実際の使用 ${n}室`, dtRooms:n=>`この日の使用: ${n}室`,
     lgFree:'余裕(残4+)', lgTight:'ひっ迫(残1〜3)', lgFull:'満室(ちょうど)', lgOver:'超過(対応が必要)',
     lgBook:'予約可 — その日から標準パターン(木→日3泊 · 日→木4泊 · 水→水7泊 / 久住ヒルズの7泊は日→日)で最後まで空室あり',
@@ -210,7 +210,7 @@ const L={
     loading:'집계 중…', loadFail:'로드 실패', reload:'↻ 새로고침', print:'🖨 인쇄',
     title:'일별 체류 현황 (사용 / 보유)',
     desc:'각 칸의 <b>위=그날 밤 사용 객실 수</b>, <b>아래=보유 객실 수</b>입니다. 엠클릭 「호텔 블록」은 <b>잔여</b>를 보는 표지만, 현장은 <b>채워진 수량</b>을 봐야 하므로 방향을 뒤집었습니다. 칸을 누르면 그날 들어 있는 팀이 아래에 나옵니다. <b>숙소당 한 행</b>이고, 사용 실수는 <b>실제로 쓰인 객실 수</b>입니다(같은 방에 두 팀·여러 명이 들어가도 1실). 룸타입별로 쪼개 보려면 오른쪽 위 체크(<b>디럭스 트윈 → 트윈 → 컴팩트트윈 → 싱글 → 아소별장 → 소보5동</b> 순). 칸의 빨간 <b>⁺숫자</b>는 <b>미배정이 쓸 방</b>(이미 받은 예약이라 함께 셉니다). 칸 아래 초록 <b>3박·4박·7박</b>은 <b>그날부터 표준 패턴대로 방이 끝까지 남아 있다 = 예약 가능</b>이라는 뜻입니다.',
-    months:'보는 달', accom:'숙소', all:'전체',
+    months:'보는 달', accom:'숙소', all:'전체', rtype:'룸타입',
     byType:'룸타입별로 보기', actRooms:n=>`실제 사용 ${n}실`, dtRooms:n=>`이 날 사용: ${n}실`,
     lgFree:'여유(잔여 4+)', lgTight:'임박(잔여 1~3)', lgFull:'만실(딱 참)', lgOver:'초과(조치 필요)',
     lgBook:'예약 가능 — 그 날짜부터 표준 패턴(목→일 3박 · 일→목 4박 · 수→수 7박 / 쿠주힐즈 7박은 일→일)대로 끝까지 방이 남아 있음',
@@ -238,7 +238,7 @@ const L={
     loading:'Calculating…', loadFail:'Load failed', reload:'↻ Reload', print:'🖨 Print',
     title:'Daily occupancy (in use / stock)',
     desc:'Each cell shows <b>rooms in use that night</b> on top and <b>rooms in stock</b> below. The M-Click "hotel block" sheet tracks what is <b>left</b>; on site we need what is <b>filled</b>, so this table is inverted. Click a cell to list the teams staying that night. <b>One row per facility</b>; rooms in use are the <b>actual rooms occupied</b> (one room even if two teams or several guests share it). Tick the box at top right to split by room type.',
-    months:'Months', accom:'Lodging', all:'All',
+    months:'Months', accom:'Lodging', all:'All', rtype:'Room type',
     byType:'By room type', actRooms:n=>`${n} rooms actually used`, dtRooms:n=>`Rooms used this day: ${n}`,
     lgFree:'Free (4+ left)', lgTight:'Tight (1–3 left)', lgFull:'Full (exact)', lgOver:'Over (needs action)',
     lgBook:'Bookable — a standard stay can start here (Thu→Sun 3n · Sun→Thu 4n · Wed→Wed 7n; Kuju 7n is Sun→Sun)',
@@ -286,6 +286,7 @@ let YMS=[shiftYM(thisYM(),-1), thisYM(), shiftYM(thisYM(),1)];   // 이어보기
 let BYTYPE=true;    // 룸타입별 보기 = 기본 켬(Min 2026-09 「항시 체크」) — 호텔동만 타입으로 쪼개고 구역 줄은 그대로
 let UNA={};   // 숙소 → 날짜 → {teams,pax} 미배정 인원
 let ACCOMSEL=new Set();                         // 비면 전체
+let TYPESEL=new Set();                          // 룸타입(줄 라벨) 필터 — 비면 전체. 칩에 보유 수량 표기(Min 2026-09)
 
 async function connect(){
   const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
@@ -334,6 +335,9 @@ function renderUI(){
         <label class="cnt" style="display:flex;align-items:center;gap:5px;cursor:pointer">
           <input type="checkbox" id="ck-type"${BYTYPE?' checked':''}> ${tx('byType')}</label>
       </div>
+      <div class="row noprint" style="margin-top:6px">
+        <span class="lbl">${tx('rtype')}</span><span id="tchips" class="row" style="gap:6px"></span>
+      </div>
     </div>
     <div class="panel">
       <h3>${tx('title')}</h3>
@@ -357,7 +361,7 @@ function renderUI(){
     </div>`;
   $('#btn-reload').addEventListener('click',load);
   $('#btn-print').addEventListener('click',()=>window.print());
-  $('#ck-type').addEventListener('change',e=>{ BYTYPE=!!e.target.checked; buildRows(); renderGrid(); SEL=null; renderDetail(); });
+  $('#ck-type').addEventListener('change',e=>{ BYTYPE=!!e.target.checked; buildRows(); renderTypeChips(); renderGrid(); SEL=null; renderDetail(); });
   renderMonthChips();
 }
 
@@ -383,7 +387,23 @@ function renderAccomChips(){
     const a=b.dataset.a;
     if(!a) ACCOMSEL.clear();
     else { if(ACCOMSEL.has(a)) ACCOMSEL.delete(a); else ACCOMSEL.add(a); }
-    renderAccomChips(); renderGrid();
+    renderAccomChips(); renderTypeChips(); renderGrid();
+  }));
+}
+
+// 룸타입 칩 = 지금 보이는 숙소의 줄 라벨(디럭스 트윈·트윈·…·아소별장·돔하우스)마다 보유 수량을 달아 다중 선택. 비면 전체.
+function renderTypeChips(){
+  const box=$('#tchips'); if(!box) return;
+  const rows=ROWS.filter(r=>!ACCOMSEL.size||ACCOMSEL.has(r.facility));
+  const cnt={}; rows.forEach(r=>{ const l=r.label||accomL(r.facility); cnt[l]=(cnt[l]||0)+r.own; });
+  const labels=Object.keys(cnt);
+  [...TYPESEL].forEach(t=>{ if(!labels.includes(t)) TYPESEL.delete(t); });   // 보기 전환으로 사라진 라벨은 해제
+  box.innerHTML=`<button type="button" class="chip${TYPESEL.size?'':' on'}" data-t="">${esc(tx('all'))}</button>`
+    +labels.map(l=>`<button type="button" class="chip${TYPESEL.has(l)?' on':''}" data-t="${esc(l)}">${esc(l)} <b style="font-family:var(--mono)">${cnt[l]}</b></button>`).join('');
+  box.querySelectorAll('[data-t]').forEach(b=>b.addEventListener('click',()=>{
+    const t=b.dataset.t;
+    if(!t) TYPESEL.clear(); else { if(TYPESEL.has(t)) TYPESEL.delete(t); else TYPESEL.add(t); }
+    renderTypeChips(); renderGrid();
   }));
 }
 
@@ -523,7 +543,7 @@ async function load(){
       });
     }
     buildRows();
-    renderAccomChips();
+    renderAccomChips(); renderTypeChips();
     $('#stat').textContent=tx('statN')(ROWS.length,DAYS.length);
     renderGrid();
   }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+String(e&&e.message||e),'err'); }
@@ -705,7 +725,7 @@ function unaRow(fac){
 }
 function renderGrid(){
   const box=$('#grid'); if(!box) return;
-  const rows=ROWS.filter(r=>!ACCOMSEL.size||ACCOMSEL.has(r.facility));
+  const rows=ROWS.filter(r=>(!ACCOMSEL.size||ACCOMSEL.has(r.facility)) && (!TYPESEL.size||TYPESEL.has(r.label||accomL(r.facility))));
   if(!rows.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:14px">${tx('noData')}</div>`; return; }
   const WD=[0,1,2,3,4,5,6].map(i=>SZCore.weekday('2026-02-0'+(i+1),lang()));
   let prevM='';
@@ -821,7 +841,7 @@ function applyStatic(){
 }
 window.onSaizenLangChange=function(){
   applyStatic();
-  if(supa && $('#grid')){ renderUI(); renderAccomChips(); renderGrid(); renderDetail(); }
+  if(supa && $('#grid')){ renderUI(); renderAccomChips(); renderTypeChips(); renderGrid(); renderDetail(); }
 };
 
 $('#btn-connect').addEventListener('click',connect);
