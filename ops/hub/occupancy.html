@@ -613,9 +613,11 @@ function buildRows(){
   const needAt=(f,d)=>{ const c=(UNA[f]||{})[d]; return c?(c.need||0):0; };
   //   숙소 단위 합계(룸타입별 보기에서도 「예약 가능」은 숙소 전체 잔여로 본다 —
   //   미배정이 어느 타입에 들어갈지는 배정 전에는 알 수 없다)
+  //   합계 단위 = 숙소+구역(`aggKey`). 돔하우스·별장은 별개 상품이라 호텔동 잔여에 섞지 않는다(Min 2026-09 「돔하우스 수량은 호텔 쪽과 합치지 않아」).
+  const aggKey=r=>r.facility+(r.group?'|'+r.group:'');
   const facAgg={};
   ROWS.forEach(r=>{
-    const a=(facAgg[r.facility]=facAgg[r.facility]||{own:0, used:DAYS.map(()=>0), closed:DAYS.map(()=>0)});
+    const a=(facAgg[aggKey(r)]=facAgg[aggKey(r)]||{own:0, used:DAYS.map(()=>0), closed:DAYS.map(()=>0)});
     a.own+=r.own; r.days.forEach((c,i)=>{ a.used[i]+=c.r; a.closed[i]+=(c.closed||0); });
   });
   //   미배정 필요실은 숙소의 **대표 줄**(야마나미=호텔동, 그 외=유일한 줄)에만 더한다 — 구역이 여러 줄이라도 한 번만.
@@ -636,8 +638,9 @@ function buildRows(){
         for(let k=0;k<p.n;k++){
           const dd=DAYS[i+k];
           if(r.own-(r.days[i+k].closed||0)-r.days[i+k].r-((r.days[i+k].need)||0)<1){ free=false; break; }   // 그 줄 잔여(폐쇄 차감)
-          const fa=facAgg[r.facility];                                              // 숙소 전체 잔여(미배정·폐쇄 차감)
-          if(fa && fa.own-fa.closed[i+k]-fa.used[i+k]-needAt(r.facility,dd)<1){ free=false; break; }
+          const fa=facAgg[aggKey(r)];                                               // 그 구역 전체 잔여(미배정·폐쇄 차감) — 미배정 필요실은 호텔동(대표 줄)에만
+          const needG=(!r.group||r.group==='호텔동')?needAt(r.facility,dd):0;
+          if(fa && fa.own-fa.closed[i+k]-fa.used[i+k]-needG<1){ free=false; break; }
         }
         if(free) ok.push(p.n);
       });
@@ -718,8 +721,7 @@ function renderGrid(){
   rows.forEach(r=>{
     if((BYTYPE || facRows[r.facility]>1) && r.facility!==lastFac){
       lastFac=r.facility;
-      const fo=rows.filter(x=>x.facility===r.facility).reduce((n,x)=>n+x.own,0);
-      body.push(`<tr class="fac"><td class="rh">${esc(accomL(r.facility))}<span class="own">${esc(tx('own'))} ${fo}</span></td><td colspan="${DAYS.length}"></td></tr>`);
+      body.push(`<tr class="fac"><td class="rh">${esc(accomL(r.facility))}</td><td colspan="${DAYS.length}"></td></tr>`);   // 구역별 보유는 각 줄에(합산 표기 없음 — 돔·별장은 호텔과 안 합친다)
     }
     prevM='';
     const tds=r.days.map((c,i)=>{
