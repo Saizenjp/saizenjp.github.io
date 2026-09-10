@@ -518,7 +518,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=30.9">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=31.0">
 </head>
 <body data-so-area="room_assign">
 <div class="topbar so-bar">
@@ -648,7 +648,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=30.9"></script>
+<script src="../assets/saizen-ops.js?v=31.0"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -4961,18 +4961,20 @@ async function autoAssign(){
       }
       plans.push({g,route,roster,floorOrder,gc});
     }
-    // ── 관내별장 예약 → 소보별장 우선 (Min 2026-08, 올해 한정) ─────────────
-    //   소보별장 가용 = 2호·3호 트윈(2인) + 5호 4인 1동 → 하룻밤 최대 8명.
-    //   ① 일반고객으로만 구성된 관내별장 팀 먼저  ② 없으면 회원 포함 관내별장 팀
-    //   팀을 쪼개지 않는다 — 팀 전원이 들어갈 때만 소보로 보낸다(남으면 호텔로).
-    //   ※ 디럭스가 남아 있으면 일반고객도 디럭스로 채운다 — 그건 일반 패스의 폴백이 처리한다.
+    // ── 관내별장 예약 = 호텔 우선, 소보별장은 넘칠 때만 (Min 2026-09 「호텔이 비어 있으면 안 채우는 것이 원칙」) ──
+    //   2026 예약 기준: 관내별장 상품도 호텔에 먼저 넣고, 호텔이 다 차서 **팀 전원이 방을 못 받은 팀**만
+    //   소보별장(2호·3호 트윈 + 5호 4인 1동, 하룻밤 최대 8명)으로 보낸다. 그래서 호텔 패스가 끝난 뒤에 돈다.
+    //   (이전 2026-08 규칙 「소보별장 우선」은 폐기 — 소보는 수기 배정이나 넘친 마지막 팀들만.)
+    //   팀을 쪼개지 않는다 — 호텔에 일부만 들어간 팀은 소보로 안 보내고 보류(수기)로 남긴다.
+    //   ① 일반고객으로만 구성된 팀 먼저  ② 회원 포함 팀. 소보로도 안 되면 8명 팀만 아소별장 한 동.
     const soboPool=state.inventory.filter(r=>r.facility==='야마나미리조트' && (r.zone||'')==='소보별장' && r.active)
       .slice().sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
     // 아소별장(8인 1동)도 관내별장 예약을 받는다 — 소보로 다 안 들어가면 통째로 아소로(Min 2026-08)
     const asoPool=state.inventory.filter(r=>r.facility==='야마나미리조트' && (r.zone||'')==='아소별장' && r.active);
     function placeSobo(){
       if(!soboPool.length) return;
-      const cand=plans.filter(pl=>pl.g.sale_type==='관내별장' && !pl.done && pl.roster.length);
+      const placedIds=new Set(pending.map(r=>r.member_id));   // 호텔 패스에서 방을 받은 사람
+      const cand=plans.filter(pl=>pl.g.sale_type==='관내별장' && !pl.done && pl.roster.length && !pl.roster.some(m=>placedIds.has(m.id)));   // 전원 미배정 팀만
       const pure=cand.filter(pl=>!pl.roster.some(isMember));       // ① 일반만
       const rest=cand.filter(pl=>pl.roster.some(isMember));        // ② 회원 포함
       [...pure,...rest].forEach(pl=>{
@@ -4997,16 +4999,16 @@ async function autoAssign(){
             ? asoPool.find(inv=>((inv.max_capacity||inv.capacity)-dbUsedFor(inv,g.dep,g.arr,occ,pending))>=8) : null;
           if(!aso) return;                                          // 둘 다 안 되면 호텔로
           roster.forEach(m=>pending.push(mkRow(g,m,aso)));
-          pl.done=true; console.info(tx('soboNote',gc,roster.length));
+          pl.done=true; dropHolds(g.event_seq); console.info(tx('soboNote',gc,roster.length));
           return;
         }
         let i=0;
         rooms.forEach(({inv,take})=>{ for(let k=0;k<take;k++){ pending.push(mkRow(g,roster[i++],inv)); } });
-        pl.done=true;                                               // 이후 호텔 패스에서 제외
+        pl.done=true; dropHolds(g.event_seq);                       // 호텔 패스가 남긴 「만실」 보류를 지운다
         console.info(tx('soboNote',gc,roster.length));
       });
     }
-    // 방별 기간 점유(자동배정 내부용) — pending 반영
+    // 소보로 들어간 팀의 보류 메모(호텔 만실 등) 제거 — 이제 방이 있으므로
     function dbUsedFor(inv,dep,arr,occAll,pend){
       const rows=(occAll||[]).concat(pend||[]);
       return rows.filter(r=>r.inventory_id===inv.id && overlaps(dep,arr,r.check_in,r.check_out))
@@ -5014,8 +5016,9 @@ async function autoAssign(){
     }
 
     // 한 팀의 짝 배정. phase='member'|'general'. 회원/일반 짝은 disjoint → 이중배정 없음.
+    function dropHolds(seq){ for(let i=holds.length-1;i>=0;i--){ const h=holds[i]; if(h && typeof h==='object' && h.seq===seq) holds.splice(i,1); } }
     const placePlan=(plan,phase)=>{
-      if(plan.done) return;                     // 소보별장으로 이미 보낸 팀
+      if(plan.done) return;
       const {g,route,roster,floorOrder,gc}=plan;
       const flr = floorOrder ? (p=>poolByFloorOrder(p,floorOrder)) : (p=>p); // 호텔동만 허용 층으로 필터·정렬
       // ※ 싱글 지정 자동배정은 없앴다(Min 2026-08) — 비고에 싱글 언급이 있는 팀은
@@ -5063,9 +5066,9 @@ async function autoAssign(){
           placePairs(g, roster, flr(roomPool(route,'general')), null, route.fac, pending, holds, occ, floorOrder);
       }
     };
-    placeSobo();                                          // ⓞ 관내별장 예약 → 소보별장 우선(올해 한정)
     for(const plan of plans) placePlan(plan,'member');    // ① 회원 짝 먼저(전 팀, 예약순)
     for(const plan of plans) placePlan(plan,'general');   // ② 일반 짝(전 팀, 예약순)
+    placeSobo();                                          // ③ 호텔이 다 차서 전원 미배정인 관내별장 팀만 소보별장(→8명이면 아소별장)로(Min 2026-09)
 
     // 객실 마스터에 호수(room_no)가 비어 있는 방이 있으면 insert 가 통째로 실패한다
     //   (null value in column "room_no" violates not-null constraint).
