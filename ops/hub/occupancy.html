@@ -73,6 +73,8 @@
   .lock{font-size:11.5px;font-weight:700;color:var(--muted)}
   .deny{padding:38px 20px;text-align:center;color:var(--muted);font-size:14px;font-weight:700}
 
+  .tw-top{overflow-x:auto;overflow-y:hidden;height:14px;margin-bottom:2px}   /* 표 위 좌우 이동바(아래 스크롤과 동기, Min 2026-09) */
+  .tw-top>div{height:1px}
   .tw{overflow:auto;max-height:74vh;border:1px solid var(--border2);border-radius:10px;background:var(--surface)}
   table.oc{border-collapse:separate;border-spacing:0;font-size:12px;white-space:nowrap}
   table.oc th,table.oc td{border-right:1px solid #e7eaee;border-bottom:1px solid #e7eaee;padding:0}
@@ -113,6 +115,7 @@
   table.oc td.c.tight{background:#fbe6a8}
   table.oc td.c.full{background:#c8d4e6;color:#1f3a5f}                    /* 만실 = 딱 찼다(정상) */
   table.oc td.c.over{background:#c0392b;color:#fff;font-weight:800}        /* 초과 = 넘겼다(조치 필요) */
+  table.oc td.c.over .nd, table.oc td.c.over .tent, table.oc td.c.over .unk{color:#ffe1dc}   /* 빨간 칸 위의 +N 이 안 보이던 것 */
   table.oc td.c.over::after{content:"!";font-size:11px;vertical-align:super;margin-left:1px}
   table.oc td.c.zero{background:#fafbfc;color:#c9ced6;font-weight:600;font-size:13px}
   /* 대기 예약 줄 — 방을 차지하지 않는 예약이라 **객실 수가 아니라 팀·인원**으로 따로 보여준다 */
@@ -148,7 +151,7 @@
   table.dt tr:hover td{background:var(--surface2)}
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=30.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=30.6">
 </head>
 <body data-so-area="occupancy">
 <div class="topbar so-bar">
@@ -180,7 +183,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=30.5"></script>
+<script src="../assets/saizen-ops.js?v=30.6"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -296,6 +299,8 @@ let YMS=[shiftYM(thisYM(),-1), thisYM(), shiftYM(thisYM(),1)];   // 이어보기
 let BYTYPE=true;    // 룸타입별 보기 = 기본 켬(Min 2026-09 「항시 체크」) — 호텔동만 타입으로 쪼개고 구역 줄은 그대로
 let UNA={};   // 숙소 → 날짜 → {teams,pax,need,reps,grp} 미배정 인원
 let UNAG={};  // 숙소|구역 → 날짜 → 미배정 필요실(돔하우스 상품=돔하우스 줄, 그 외 야마나미=호텔동)
+let SX={};    // 숙소|구역 → 날짜 → 싱글 때문에 더 필요한 방(싱글 객실 없는 숙소: 싱글 1건=방 1개)
+let SGN={};   // 묶음 키 → 날짜 → {n:싱글 신청, una:혼자 쓰는 방 없는 수}
 let ACCOMSEL=new Set();                         // 비면 전체
 let TYPESEL=new Set();                          // 룸타입(줄 라벨) 필터 — 비면 전체. 칩에 보유 수량 표기(Min 2026-09)
 
@@ -353,6 +358,7 @@ function renderUI(){
     <div class="panel">
       <h3>${tx('title')}</h3>
       <div class="desc">${tx('desc')}</div>
+      <div class="tw-top" id="grid-top"><div></div></div>
       <div class="tw"><div id="grid"></div></div>
       <div class="lgd">
         <span><i class="f"></i>${tx('lgFree')}</span>
@@ -496,22 +502,61 @@ async function load(){
     const stays=(b,ds)=>String(b.dep_date).slice(0,10)<=ds && ds<String(b.arr_date).slice(0,10);
     const nightsOf=g=>{ const set=new Set(); g.forEach(b=>{ const c=SZCore.parseLocalDate(b.dep_date), e=SZCore.parseLocalDate(b.arr_date); if(isNaN(c)||isNaN(e)) return;
       for(const d=new Date(c); d<e; d.setDate(d.getDate()+1)){ const ds=fmt(d); if(DAYS.includes(ds)) set.add(ds); } }); return [...set].sort(); };
-    UNA={}; UNAG={};
+    // 5) 싱글 신청 — 비고에 적힌 **싱글 방 수**를 그날 밤마다 더한다(Min 2026-08).
+    //    표의 「싱글」 행은 배정된 **결과**라, 배정 전에는 신청이 얼마나 들어왔는지 볼 수가 없었다.
+    //    ⚠ 대기 예약은 방을 안 잡으므로 여기서도 뺀다(표의 다른 줄과 같은 기준).
+    //    빨간 +N = 신청한 싱글 중 **그날 밤 아직 싱글로 배정하지 않은 수**(신청 − 그 팀원 한 명만 들어간 방 수, Min 2026-09).
+    //    「배정된 싱글」= 타입 무관 1인 사용 방(싱글 객실이든 트윈 1인 사용이든) — 싱글 타입만 세면 트윈 1인 사용이 영영 미배정으로 남는다.
+    //    신청 수는 SZCore.singleRequested — 숫자 표기 외에 「전원 싱글」(=인원)·이름 나열·**홀수 인원 팀(남는 1명=1방, 트리플 언급 없을 때)** 도 센다. 못 읽으면 회색 「?」(비고 확인).
+    //    이전의 「대기·불가 = 미확정」 판단은 뺐다 — 줄 수 있을지의 판단은 담당자 몫이고, 표는 남은 수량만 보여 주면 된다.
+    SGR={}; SGN={};
+    {
+      //  묶음 단위: 그날 묵는 예약들의 인원을 합치고, 비고는 **서로 다른 문장마다 한 번씩** 읽어 가장 큰 수를 쓴다(같은 비고가 두 예약에 복사돼 있으면 한 번만).
+      const reqOf=(texts,pax)=>{ const ts=[...new Set(texts.map(t=>String(t||'').trim()).filter(Boolean))]; if(!ts.length) ts.push('');
+        let best={n:0,how:''}, none=false;
+        ts.forEach(t=>{ const r=SZCore.singleRequested?SZCore.singleRequested(t,pax):{n:(SZCore.singleCount?SZCore.singleCount(t):0),how:'num'};
+          if(r.how==='none') none=true; if((r.n||0)>best.n || (!best.how && r.how && r.how!=='none')) best={n:r.n||0,how:r.how}; });
+        if(!best.n && none) return {n:0,how:'none'}; return best; };
+      Object.entries(GROUPS).forEach(([gkey,g])=>{
+        const fac=GACC[g[0].event_seq]||''; if(!fac) return;
+        const rep=g[0].rep_name||'';
+        nightsOf(g).forEach(ds=>{
+          const on=g.filter(b=>stays(b,ds)); if(!on.length) return;
+          const pax=on.reduce((n,b)=>n+(Number(b.pax)||0),0);
+          const x=reqOf(on.map(b=>[b.remark_local,b.remark].filter(Boolean).join('\n')), pax);
+          if(!x.how) return;   // 싱글 수요 없음(짝수·언급 없음)
+          const m=(SGR[fac]=SGR[fac]||{});
+          const cell=(m[ds]=m[ds]||{rooms:0, una:0, unk:0, teams:[]});
+          if(x.how==='none'){ cell.unk++; if(cell.teams.length<10) cell.teams.push(rep+' ?'); return; }
+          const una=singleUnassigned(x.n, on.map(b=>b.event_seq), ds);
+          cell.rooms+=x.n; cell.una+=una;
+          (SGN[gkey]=SGN[gkey]||{})[ds]={n:x.n, una};   // 미배정 필요실 계산용(싱글 객실 없는 숙소 = 싱글 1건당 방 1개)
+          if(cell.teams.length<10) cell.teams.push(rep+(on.length>1?'+'+(on.length-1):'')+' '+x.n+(x.how==='all'?tx('sgrAllTag'):x.how==='odd'?tx('sgrOddTag'):'')+(una?('('+tx('sgrUnaN')(una)+')'):''));
+        });
+      });
+    }
+    UNA={}; UNAG={}; SX={};
     {
       const asgn={};   // event_seq → 배정된 사람 수
       ROOMS.forEach(r=>{ if(r.member_id!=null){ (asgn[r.event_seq]=asgn[r.event_seq]||new Set()).add(r.member_id); } });
       const leftOf=b=>Math.max(0,(Number(b.pax)||0)-((asgn[b.event_seq]&&asgn[b.event_seq].size)||0));
-      Object.values(GROUPS).forEach(g=>{
+      Object.entries(GROUPS).forEach(([gkey,g])=>{
         const fac=GACC[g[0].event_seq]||(TEAM[g[0].event_seq]&&TEAM[g[0].event_seq].accom)||''; if(!fac) return;
         const grp=needGroup(fac, g[0].product_name||'');   // 미배정 필요실이 들어갈 구역(돔하우스 상품=돔하우스 줄, Min 2026-09)
+        const gk=fac+(grp?'|'+grp:'');
+        const noSingle=!hasSingle(fac);   // 싱글 객실이 없는 숙소(간지·쿠주·시즈) = 싱글 1건은 트윈 1실을 혼자 쓰는 것 → 방 1개 더(Min 2026-09)
         nightsOf(g).forEach(ds=>{
-          const left=g.filter(b=>stays(b,ds)).reduce((n,b)=>n+leftOf(b),0); if(!left) return;
-          const rooms=Math.ceil(left/2);        // 2인 1실 기준(보수적) — 묶음 합계로 홀수 판정
+          const left=g.filter(b=>stays(b,ds)).reduce((n,b)=>n+leftOf(b),0);
+          const una=noSingle?(((SGN[gkey]||{})[ds]||{}).una||0):0;   // 아직 혼자 쓰는 방이 없는 싱글 신청 수
+          const base=Math.ceil(left/2);                              // 2인 1실 기준(보수적) — 묶음 합계로 홀수 판정
+          const rooms=noSingle?(Math.ceil(Math.max(0,left-una)/2)+una):base;   // 싱글 없는 숙소: 싱글 수 + 나머지÷2
+          if(rooms-base>0){ const sm=(SX[gk]=SX[gk]||{}); sm[ds]=(sm[ds]||0)+(rooms-base); }   // 싱글 때문에 더 필요한 방(배정된 팀의 방 쪼개기 포함)
+          if(!left) return;
           const m=(UNA[fac]=UNA[fac]||{}); const cell=(m[ds]=m[ds]||{teams:0,pax:0,need:0,reps:[],grp:{}});
           cell.teams++; cell.pax+=left; cell.need+=rooms;
           if(cell.reps.length<8) cell.reps.push(g[0].rep_name||'');
           const gc=(cell.grp[grp]=cell.grp[grp]||{teams:0,pax:0,need:0}); gc.teams++; gc.pax+=left; gc.need+=rooms;
-          const gk=fac+(grp?'|'+grp:''); const gm=(UNAG[gk]=UNAG[gk]||{}); gm[ds]=(gm[ds]||0)+rooms;
+          const gm=(UNAG[gk]=UNAG[gk]||{}); gm[ds]=(gm[ds]||0)+base;   // 2인 1실 기준분(싱글 추가분은 SX)
         });
       });
     }
@@ -538,38 +583,6 @@ async function load(){
         cell.teams++; cell.pax+=Number(b.pax)||0; if(cell.reps.length<6) cell.reps.push(b.rep_name||'');
       }
     });
-    // 5) 싱글 신청 — 비고에 적힌 **싱글 방 수**를 그날 밤마다 더한다(Min 2026-08).
-    //    표의 「싱글」 행은 배정된 **결과**라, 배정 전에는 신청이 얼마나 들어왔는지 볼 수가 없었다.
-    //    ⚠ 대기 예약은 방을 안 잡으므로 여기서도 뺀다(표의 다른 줄과 같은 기준).
-    //    빨간 +N = 신청한 싱글 중 **그날 밤 아직 싱글로 배정하지 않은 수**(신청 − 그 팀원 한 명만 들어간 방 수, Min 2026-09).
-    //    「배정된 싱글」= 타입 무관 1인 사용 방(싱글 객실이든 트윈 1인 사용이든) — 싱글 타입만 세면 트윈 1인 사용이 영영 미배정으로 남는다.
-    //    신청 수는 SZCore.singleRequested — 숫자 표기 외에 「전원 싱글」(=인원)·이름 나열·**홀수 인원 팀(남는 1명=1방, 트리플 언급 없을 때)** 도 센다. 못 읽으면 회색 「?」(비고 확인).
-    //    이전의 「대기·불가 = 미확정」 판단은 뺐다 — 줄 수 있을지의 판단은 담당자 몫이고, 표는 남은 수량만 보여 주면 된다.
-    SGR={};
-    {
-      //  묶음 단위: 그날 묵는 예약들의 인원을 합치고, 비고는 **서로 다른 문장마다 한 번씩** 읽어 가장 큰 수를 쓴다(같은 비고가 두 예약에 복사돼 있으면 한 번만).
-      const reqOf=(texts,pax)=>{ const ts=[...new Set(texts.map(t=>String(t||'').trim()).filter(Boolean))]; if(!ts.length) ts.push('');
-        let best={n:0,how:''}, none=false;
-        ts.forEach(t=>{ const r=SZCore.singleRequested?SZCore.singleRequested(t,pax):{n:(SZCore.singleCount?SZCore.singleCount(t):0),how:'num'};
-          if(r.how==='none') none=true; if((r.n||0)>best.n || (!best.how && r.how && r.how!=='none')) best={n:r.n||0,how:r.how}; });
-        if(!best.n && none) return {n:0,how:'none'}; return best; };
-      Object.values(GROUPS).forEach(g=>{
-        const fac=GACC[g[0].event_seq]||''; if(!fac) return;
-        const rep=g[0].rep_name||'';
-        nightsOf(g).forEach(ds=>{
-          const on=g.filter(b=>stays(b,ds)); if(!on.length) return;
-          const pax=on.reduce((n,b)=>n+(Number(b.pax)||0),0);
-          const x=reqOf(on.map(b=>[b.remark_local,b.remark].filter(Boolean).join('\n')), pax);
-          if(!x.how) return;   // 싱글 수요 없음(짝수·언급 없음)
-          const m=(SGR[fac]=SGR[fac]||{});
-          const cell=(m[ds]=m[ds]||{rooms:0, una:0, unk:0, teams:[]});
-          if(x.how==='none'){ cell.unk++; if(cell.teams.length<10) cell.teams.push(rep+' ?'); return; }
-          const una=singleUnassigned(x.n, on.map(b=>b.event_seq), ds);
-          cell.rooms+=x.n; cell.una+=una;
-          if(cell.teams.length<10) cell.teams.push(rep+(on.length>1?'+'+(on.length-1):'')+' '+x.n+(x.how==='all'?tx('sgrAllTag'):x.how==='odd'?tx('sgrOddTag'):'')+(una?('('+tx('sgrUnaN')(una)+')'):''));
-        });
-      });
-    }
     buildRows();
     renderAccomChips(); renderTypeChips();
     $('#stat').textContent=tx('statN')(ROWS.length,DAYS.length);
@@ -617,6 +630,8 @@ function needGroup(fac, product){
   if(fac!=='야마나미리조트') return '';
   return /돔하우스|ドームハウス|dome/i.test(String(product||''))?'돔하우스':'호텔동';
 }
+//  싱글 객실 타입이 있는 숙소(야마나미)만 싱글 신청을 따로 세운다 — 없는 숙소는 트윈 필요실에 합친다(Min 2026-09)
+function hasSingle(fac){ return INV.some(i=>i.facility===fac && typeLabel(i.room_type)==='싱글'); }
 function rowKey(inv){ const g=zoneGroup(inv); const base=(inv.facility||'')+(g?'|'+g:''); return (BYTYPE && (g==='호텔동'||!g)) ? base+'|'+typeLabel(inv.room_type) : base; }
 //  그 객실이 그 날짜에 폐쇄인가(from<=d<=to)
 function closedOn(invId,d){ const a=CLOSED[invId]; if(!a) return null; for(const c of a){ if(c.from<=d && d<=c.to) return c; } return null; }
@@ -665,7 +680,12 @@ function buildRows(){
   //   「예약 가능」이 없는 방을 있다고 말하게 된다.
   //   필요 객실 수 = 팀마다 ceil(미배정 인원 ÷ 2) — 2인 1실 기준(트리플·별장은 덜 쓰므로 보수적).
   //   구역별(UNAG): 돔하우스 상품 팀의 필요실은 돔하우스 줄, 그 외 야마나미는 호텔동 줄(Min 2026-09 「돔하우스면 돔하우스 줄에」).
-  const needAt=(f,g,d)=>(UNAG[f+(g?'|'+g:'')]||{})[d]||0;
+  //   + SX(싱글 객실 없는 숙소의 싱글 추가분) + 싱글 객실이 있는 숙소는 신청이 그날 싱글 보유(폐쇄 차감)를 넘는 만큼 트윈을 혼자 쓰게 되므로 초과분(sgOver)을 호텔 줄에(Min 2026-09).
+  const singleInv={}; INV.forEach(i=>{ if(typeLabel(i.room_type)==='싱글') (singleInv[i.facility]=singleInv[i.facility]||[]).push(i.id); });
+  const sgOver=(f,g,d)=>{ if(!(singleInv[f]&&singleInv[f].length) || (g&&g!=='호텔동')) return 0;
+    const c=(SGR[f]||{})[d]; if(!c||!c.rooms) return 0;
+    const stock=singleInv[f].filter(id=>!closedOn(id,d)).length; return Math.max(0,c.rooms-stock); };
+  const needAt=(f,g,d)=>((UNAG[f+(g?'|'+g:'')]||{})[d]||0)+((SX[f+(g?'|'+g:'')]||{})[d]||0)+sgOver(f,g,d);
   //   숙소 단위 합계(룸타입별 보기에서도 「예약 가능」은 숙소 전체 잔여로 본다 —
   //   미배정이 어느 타입에 들어갈지는 배정 전에는 알 수 없다)
   //   합계 단위 = 숙소+구역(`aggKey`). 돔하우스·별장은 별개 상품이라 호텔동 잔여에 섞지 않는다(Min 2026-09 「돔하우스 수량은 호텔 쪽과 합치지 않아」).
@@ -679,6 +699,11 @@ function buildRows(){
   //   돔하우스·별장 줄은 타입으로 안 쪼개므로 언제나 그 줄에 +N.
   ROWS.forEach(r=>{ const hotel=(!r.group||r.group==='호텔동'); if(hotel && BYTYPE) return;
     r.days.forEach((c,i)=>{ c.need=needAt(r.facility, r.group, DAYS[i]); }); });
+  //   룸타입별 보기: 타입으로 쪼갠 구역은 「트윈」 줄(없으면 첫 줄)에 — 싱글 객실 없는 숙소는 필요실 전부, 야마나미 호텔은 싱글 초과분만(미배정은 타입 미상이라 미배정 줄에).
+  if(BYTYPE){ const byG={}; ROWS.forEach(r=>{ if(!r.group||r.group==='호텔동'){ const k=r.facility+'|'+(r.group||''); (byG[k]=byG[k]||[]).push(r); } });
+    Object.values(byG).forEach(rs=>{ const t=rs.find(r=>r.type==='트윈')||rs.slice().sort((a,b)=>typeIdx(a.type)-typeIdx(b.type))[0]; if(!t) return;
+      const full=!hasSingle(t.facility);
+      t.days.forEach((c,i)=>{ c.need=full?needAt(t.facility,t.group,DAYS[i]):sgOver(t.facility,t.group,DAYS[i]); }); }); }
 
   // ── 「예약 가능」 판정: 그 날짜부터 표준 패턴대로 묵을 방이 끝까지 남아 있는가 ──
   //   패턴 기간이 보고 있는 범위를 넘어가면 확인할 수 없으므로 표시하지 않는다.
@@ -798,16 +823,19 @@ function renderGrid(){
         const scls=(req||unk)?cellCls(req,ownD):'zero';
         const st=accomL(r.facility)+' · '+tx('sgrRowH')+' · '+d+' — '+tx('sgrT')(req,una)+' / '+tx('own')+' '+ownD+clT+' · '+tx('sgrAsg')(c.r)+(unk?' · '+tx('sgrUnkN')(unk):'')+(sc&&sc.teams.length?' — '+sc.teams.join(', '):'');
         return `<td class="c ${scls}${wk}${ms?' mstart':''}${sel}${c.closed?' hascl':''}" data-k="${esc(r.key)}" data-d="${d}" title="${esc(st)}">${req||'·'}${una?`<i class="tent">+${una}</i>`:''}${unk?`<i class="unk">?</i>`:''}</td>`; }
+      // 싱글 객실 없는 숙소: 싱글 신청 내역은 이 줄 툴팁에(별도 줄 없음)
+      const sgc=(!hasSingle(r.facility) && c.need)?((SGR[r.facility]||{})[d]||null):null;
+      const sgT=sgc&&sgc.rooms?' · '+esc(tx('sgrT')(sgc.rooms,sgc.una)):'';
       const bk=(r.book&&r.book[i])||[];
       const bkHtml=bk.length?`<i class="bk">${bk.map(n=>n+tx('nightUnit')).join('·')}</i>`:'';
       const bkT=bk.length?' · '+tx('bookOkT')(bk.map(n=>tx('nights')(n)).join('·')):'';
       return `<td class="c ${cls}${wk}${ms?' mstart':''}${sel}${c.closed?' hascl':''}" data-k="${esc(r.key)}" data-d="${d}"
-        title="${esc(accomL(r.facility)+(r.label?' · '+r.label:'')+' · '+d)} — ${esc(tx('roomsN')(shown))} / ${esc(tx('own'))} ${ownD}${esc(clT)} · ${esc(tx('paxN')(c.p))}${nd?' · '+esc(tx('needT')(c.r,nd)):''}${(!BYTYPE&&c.act&&c.act!==c.r)?' · '+esc(tx('actRooms')(c.act)):''}${esc(bkT)}">${shown||'·'}${nd?'<i class="nd">+'+nd+'</i>':''}${bkHtml}</td>`;
+        title="${esc(accomL(r.facility)+(r.label?' · '+r.label:'')+' · '+d)} — ${esc(tx('roomsN')(shown))} / ${esc(tx('own'))} ${ownD}${esc(clT)} · ${esc(tx('paxN')(c.p))}${nd?' · '+esc(tx('needT')(c.r,nd)):''}${sgT}${(!BYTYPE&&c.act&&c.act!==c.r)?' · '+esc(tx('actRooms')(c.act)):''}${esc(bkT)}">${shown||'·'}${nd?'<i class="nd">+'+nd+'</i>':''}${bkHtml}</td>`;
     }).join('');
     body.push(`<tr${sgm?' class="sgm"':''}><td class="rh"><span class="rt">${esc(sgm?tx('sgrRowH'):(r.label||accomL(r.facility)))}</span><span class="own">${esc(tx('own'))} ${r.own}</span></td>${tds}</tr>`);
     // 그 숙소의 마지막 행 뒤에 대기 예약 줄(방을 안 잡는 예약이라 팀·인원으로)
     const nxt=rows[rows.indexOf(r)+1];
-    if(!nxt || nxt.facility!==r.facility){ if(!mergedSgr[r.facility]) body.push(sgrRow(r.facility)); body.push(unaRow(r.facility)); body.push(waitRow(r.facility)); }
+    if(!nxt || nxt.facility!==r.facility){ if(!mergedSgr[r.facility] && hasSingle(r.facility)) body.push(sgrRow(r.facility)); body.push(unaRow(r.facility)); body.push(waitRow(r.facility)); }   // 싱글 객실 없는 숙소는 트윈 줄 +N 에 합침
   });
   // 합계 행
   const tot=DAYS.map((d,i)=>rows.reduce((n,r)=>n+r.days[i].r+(r.days[i].need||0),0));
@@ -818,12 +846,23 @@ function renderGrid(){
     return `<td class="c${(w===0||w===6)?' wk':''}${ms?' mstart':''}">${v||'·'}</td>`; }).join('');
   body.push(`<tr class="sum"><td class="rh">${esc(tx('sumRow'))}<span class="own">${esc(tx('own'))} ${ownTot}</span></td>${totTds}</tr>`);
 
+  syncTopBar();
   box.innerHTML=`<table class="oc"><thead><tr><th class="rh">${esc(tx('thRow'))}</th>${head}</tr></thead><tbody>${body.join('')}</tbody></table>`;
   box.querySelectorAll('td.c[data-k]').forEach(td=>td.addEventListener('click',()=>{
     SEL={key:td.dataset.k, date:td.dataset.d}; renderGrid(); renderDetail();
   }));
 }
 
+// 표 위 좌우 이동바 = 표 스크롤 폭과 같은 빈 띠, 양쪽 scrollLeft 동기(넓은 표에서 아래까지 안 내려가도 좌우 이동)
+let _topSynced=false;
+function syncTopBar(){
+  const top=$('#grid-top'), tw=document.querySelector('.tw'); if(!top||!tw) return;
+  requestAnimationFrame(()=>{ const tbl=tw.querySelector('table'); top.firstElementChild.style.width=(tbl?tbl.scrollWidth:tw.scrollWidth)+'px'; top.scrollLeft=tw.scrollLeft; });
+  if(_topSynced) return; _topSynced=true;
+  let lock=false;
+  top.addEventListener('scroll',()=>{ if(lock) return; lock=true; tw.scrollLeft=top.scrollLeft; lock=false; });
+  tw.addEventListener('scroll',()=>{ if(lock) return; lock=true; top.scrollLeft=tw.scrollLeft; lock=false; });
+}
 // 칸 클릭 → 그날 그 룸타입에 든 팀
 function renderDetail(){
   const box=$('#detail'), ttl=$('#dt-title'); if(!box) return;
