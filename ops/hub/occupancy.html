@@ -158,7 +158,7 @@
   table.dt tr:hover td{background:var(--surface2)}
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=30.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=30.9">
 </head>
 <body data-so-area="occupancy">
 <div class="topbar so-bar">
@@ -190,7 +190,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=30.8"></script>
+<script src="../assets/saizen-ops.js?v=30.9"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -208,7 +208,7 @@ const L={
     lgBook:'予約可 — その日から標準パターン(木→日3泊 · 日→木4泊 · 水→水7泊 / 久住ヒルズの7泊は日→日)で最後まで空室あり',
     bookOkT:s=>`予約可 ${s}`, nightUnit:'泊',
     goAssign:'🛏 この日の客室割当を開く', goShizu:'🛏 志津の宿 予約表を開く(この日)',
-    needT:(a,n)=>`内訳: 割当済 ${a}室 + 未割当 ${n}室`,
+    needT:(a,n)=>`内訳: 割当済 ${a}室 + 未割当 ${n}室`, overT:n=>`保有より ${n}室 超過`,
     unaRowH:'未割当', unaT:(t,p)=>`未割当 ${t}チーム / ${p}名`,
     lgUna:'未割当 — まだ部屋が決まっていない人数です。この行がある日は表の使用数にその分が入っておらず、「予約可」も表示しません。',
     unaRowH:'未割当', unaT:(t,p)=>`未割当 ${t}チーム / ${p}名`,
@@ -236,7 +236,7 @@ const L={
     lgBook:'예약 가능 — 그 날짜부터 표준 패턴(목→일 3박 · 일→목 4박 · 수→수 7박 / 쿠주힐즈 7박은 일→일)대로 끝까지 방이 남아 있음',
     bookOkT:s=>`예약 가능 ${s}`, nightUnit:'박',
     goAssign:'🛏 이 날짜 방배정 열기', goShizu:'🛏 시즈노야도 예약표 열기(이 날짜)',
-    needT:(a,n)=>`내역: 배정 ${a}실 + 미배정 ${n}실`,
+    needT:(a,n)=>`내역: 배정 ${a}실 + 미배정 ${n}실`, overT:n=>`보유보다 ${n}실 초과`,
     unaRowH:'미배정', unaT:(t,p)=>`미배정 ${t}팀 / ${p}명`,
     lgUna:'미배정 — 아직 방을 못 받은 인원입니다. 이 줄이 있는 날짜는 표의 사용 수에 그 인원이 빠져 있고, 「예약 가능」도 표시하지 않습니다(들어갈 방이 정해지지 않아서).',
     unaRowH:'미배정', unaT:(t,p)=>`미배정 ${t}팀 / ${p}명`,
@@ -264,7 +264,7 @@ const L={
     lgBook:'Bookable — a standard stay can start here (Thu→Sun 3n · Sun→Thu 4n · Wed→Wed 7n; Kuju 7n is Sun→Sun)',
     bookOkT:s=>`bookable ${s}`, nightUnit:'n',
     goAssign:'🛏 Open room assignment for this date', goShizu:'🛏 Open the Shizunoyado sheet (this date)',
-    needT:(a,n)=>`breakdown: assigned ${a} + unassigned ${n}`,
+    needT:(a,n)=>`breakdown: assigned ${a} + unassigned ${n}`, overT:n=>`${n} over stock`,
     unaRowH:'Unassigned', unaT:(t,p)=>`unassigned ${t} teams / ${p} pax`,
     lgUna:'Unassigned — guests without a room yet. On those dates the used count excludes them and no “bookable” badge is shown.',
     unaRowH:'Unassigned', unaT:(t,p)=>`unassigned ${t} teams / ${p} pax`,
@@ -840,15 +840,23 @@ function renderGrid(){
       if(sgm){ const sc=(SGR[r.facility]||{})[d]||null; const req=sc?sc.rooms:0, una=sc?sc.una:0, unk=sc?sc.unk:0;
         const scls=(req||unk)?cellCls(req,ownD):'zero';
         const st=accomL(r.facility)+' · '+tx('sgrRowH')+' · '+d+' — '+tx('sgrT')(req,una)+' / '+tx('own')+' '+ownD+clT+' · '+tx('sgrAsg')(c.r)+(unk?' · '+tx('sgrUnkN')(unk):'')+(sc&&sc.teams.length?' — '+sc.teams.join(', '):'');
-        return `<td class="c ${scls}${wk}${ms?' mstart':''}${sel}${c.closed?' hascl':''}" data-k="${esc(r.key)}" data-d="${d}" title="${esc(st)}">${req||'·'}${una?`<i class="tent">+${una}</i>`:''}${unk?`<i class="unk">?</i>`:''}</td>`; }
+        const stOn=!!(req||unk||c.closed);   // 특이건(신청·못 읽음·폐쇄)만 툴팁(Min 2026-09)
+        return `<td class="c ${scls}${wk}${ms?' mstart':''}${sel}${c.closed?' hascl':''}" data-k="${esc(r.key)}" data-d="${d}"${stOn?` title="${esc(st)}"`:''}>${req||'·'}${una?`<i class="tent">+${una}</i>`:''}${unk?`<i class="unk">?</i>`:''}</td>`; }
       // 싱글 객실 없는 숙소: 싱글 신청 내역은 이 줄 툴팁에(별도 줄 없음)
       const sgc=(!hasSingle(r.facility) && c.need)?((SGR[r.facility]||{})[d]||null):null;
-      const sgT=sgc&&sgc.rooms?' · '+esc(tx('sgrT')(sgc.rooms,sgc.una)):'';
+      const sgT=sgc&&sgc.rooms?' · '+tx('sgrT')(sgc.rooms,sgc.una):'';
       const bk=(r.book&&r.book[i])||[];
       const bkHtml=bk.length?`<i class="bk">${bk.map(n=>n+tx('nightUnit')).join('·')}</i>`:'';
-      const bkT=bk.length?' · '+tx('bookOkT')(bk.map(n=>tx('nights')(n)).join('·')):'';
-      return `<td class="c ${cls}${wk}${ms?' mstart':''}${sel}${c.closed?' hascl':''}" data-k="${esc(r.key)}" data-d="${d}"
-        title="${esc(accomL(r.facility)+(r.label?' · '+r.label:'')+' · '+d)} — ${esc(tx('roomsN')(shown))} / ${esc(tx('own'))} ${ownD}${esc(clT)} · ${esc(tx('paxN')(c.p))}${nd?' · '+esc(tx('needT')(c.r,nd)):''}${sgT}${(!BYTYPE&&c.act&&c.act!==c.r)?' · '+esc(tx('actRooms')(c.act)):''}${esc(bkT)}">${shown||'·'}${nd?'<i class="nd">+'+nd+'</i>':''}${bkHtml}</td>`;
+      //  툴팁은 특이건에만(Min 2026-09 「배정된 팀은 아래에서 보니 특이건만 커서로」): 미배정(+어떤 팀)·초과·폐쇄·싱글 신청·비활성 방 사용
+      const notes=[];
+      if(nd){ const u=(UNA[r.facility]||{})[d]; const who=(u&&u.items||[]).filter(it=>!r.group||r.group==='호텔동'?true:true).map(it=>`${it.tag||'-'} ${it.rep}(${it.pax})`).join(', ');
+        notes.push(tx('needT')(c.r,nd)+(who?' — '+who:'')); }
+      if(cls==='over') notes.push(tx('overT')(shown-ownD));
+      if(c.closed) notes.push(clT.replace(/^ \(|\)$/g,''));
+      if(sgT) notes.push(sgT.replace(/^ · /,''));
+      if(!BYTYPE&&c.act&&c.act!==c.r) notes.push(tx('actRooms')(c.act));
+      const ttl=notes.length?` title="${esc(accomL(r.facility)+(r.label?' · '+r.label:'')+' · '+d+' — '+tx('roomsN')(shown)+' / '+tx('own')+' '+ownD)} · ${esc(notes.join(' · '))}"`:'';
+      return `<td class="c ${cls}${wk}${ms?' mstart':''}${sel}${c.closed?' hascl':''}" data-k="${esc(r.key)}" data-d="${d}"${ttl}>${shown||'·'}${nd?'<i class="nd">+'+nd+'</i>':''}${bkHtml}</td>`;
     }).join('');
     body.push(`<tr${sgm?' class="sgm"':''}><td class="rh"><span class="rt">${esc(sgm?tx('sgrRowH'):(r.label||accomL(r.facility)))}</span><span class="own">${esc(tx('own'))} ${r.own}</span></td>${tds}</tr>`);
     // 그 숙소의 마지막 행 뒤에 대기 예약 줄(방을 안 잡는 예약이라 팀·인원으로)
