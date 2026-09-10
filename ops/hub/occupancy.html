@@ -85,6 +85,11 @@
   table.oc thead th.mstart, table.oc td.c.mstart{border-left:3px solid var(--accent)}
   table.oc thead th.mstart .m1{font-weight:900;font-size:13.5px;letter-spacing:-.2px}
   table.oc thead th.mstart:not(.sun):not(.sat):not(.today) .m1{color:var(--text)}
+  .una-box{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 10px;padding:8px 10px;border:1px solid #f0c9c3;border-radius:8px;background:#fff6f4;font-size:12.5px}
+  .una-box .una-badge{color:#fff;background:var(--err);border-radius:6px;padding:2px 8px;font-weight:800;white-space:nowrap}
+  .una-box .una-it{white-space:nowrap;padding:2px 8px;border:1px solid #e7cfca;border-radius:6px;background:var(--surface);color:var(--text)}
+  .una-box .una-it .tg{font-family:var(--mono);font-weight:800;color:var(--accent2)}
+  .una-box .una-it .n{color:var(--err);font-weight:800;margin-left:2px}
   table.oc th.rh{position:sticky;left:0;z-index:4;background:#eef1f4;text-align:left;padding:6px 12px;min-width:230px;
     font-size:12.5px;font-weight:800;color:var(--text);border-bottom:2px solid var(--border2)}
   table.oc td.rh{position:sticky;left:0;z-index:2;background:var(--surface);text-align:left;padding:7px 12px;min-width:230px;
@@ -291,7 +296,7 @@ function fmt(d){ return SZCore.fmtDate(d); }
 const ACCOM_ORDER=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
 function accomIdx(a){ const i=ACCOM_ORDER.indexOf(a); return i<0?99:i; }
 
-let supa=null, INV=[], ROOMS=[], TEAM={}, DAYS=[], ROWS=[], SEL=null, WAIT={}, SGR={};
+let supa=null, INV=[], ROOMS=[], TEAM={}, GTAG={}, DAYS=[], ROWS=[], SEL=null, WAIT={}, SGR={};
 let INV_ALL=[];   // 비활성 객실 포함(사용 집계용 — 수기로 비활성 방에 넣어도 표에 보이게). 보유는 활성만.
 let CLOSED={};    // inventory_id → [{from,to,reason}] 객실 폐쇄(room_closures) — 그날 보유에서 뺀다
 let YMS=[shiftYM(thisYM(),-1), thisYM(), shiftYM(thisYM(),1)];   // 이어보기(복수 월) — 기본 = 전달·이번 달·다음 달(Min 2026-09)
@@ -486,10 +491,11 @@ async function load(){
     if(RB.error) throw RB.error;
     const RBOOK=(RB.data||[]).filter(b=>!String(b.status||'').includes('대기'));
     const GACC={};   // event_seq → guests.accom (그 기간 예약 전부)
+    GTAG={};         // event_seq → 태그코드(방을 하나도 못 받은 팀은 TEAM 에 없으므로 여기서 — 미배정 팀 표기용)
     { const rs=[...new Set(RBOOK.map(b=>b.event_seq))];
       for(let i=0;i<rs.length;i+=300){
-        const {data:gs}=await supa.from('guests').select('event_seq,accom').in('event_seq',rs.slice(i,i+300));
-        (gs||[]).forEach(g=>{ GACC[g.event_seq]=g.accom||''; }); } }
+        const {data:gs}=await supa.from('guests').select('event_seq,accom,group_code,team_tag').in('event_seq',rs.slice(i,i+300));
+        (gs||[]).forEach(g=>{ GACC[g.event_seq]=g.accom||''; GTAG[g.event_seq]=g.team_tag||g.group_code||''; }); } }
     // 3-3) 현지 수배서에서 묶은 팀(print_overrides.team_group) = 한 팀. 미배정·싱글 신청은 **묶음 단위**로 센다(Min 2026-09).
     //   예약이 두 건으로 갈린 한 팀은 같은 비고가 양쪽에 복사돼 싱글이 두 번 세어지고, 1명+3명이 예약별로 홀수라 싱글 2가 붙었다(9/10 32→24).
     const TG={}, TGREP={};
@@ -554,9 +560,11 @@ async function load(){
           const rooms=noSingle?(Math.ceil(Math.max(0,left-una)/2)+una):base;   // 싱글 없는 숙소: 싱글 수 + 나머지÷2
           if(rooms-base>0){ const sm=(SX[gk]=SX[gk]||{}); sm[ds]=(sm[ds]||0)+(rooms-base); }   // 싱글 때문에 더 필요한 방(배정된 팀의 방 쪼개기 포함)
           if(!left) return;
-          const m=(UNA[fac]=UNA[fac]||{}); const cell=(m[ds]=m[ds]||{teams:0,pax:0,need:0,reps:[],grp:{}});
+          const m=(UNA[fac]=UNA[fac]||{}); const cell=(m[ds]=m[ds]||{teams:0,pax:0,need:0,reps:[],items:[],grp:{}});
           cell.teams++; cell.pax+=left; cell.need+=rooms;
           if(cell.reps.length<8) cell.reps.push(g[0].rep_name||'');
+          // 어떤 팀인지(상세 패널용) — 예약 건별 태그·대표·방 없는 인원(Min 2026-09 「어떤 팀인지 표기까지」)
+          g.filter(b=>stays(b,ds)&&leftOf(b)>0).forEach(b=>{ if(cell.items.length<30) cell.items.push({seq:b.event_seq, tag:((TEAM[b.event_seq]||{}).tag)||GTAG[b.event_seq]||'', rep:b.rep_name||'', pax:leftOf(b), grp:gkey.startsWith('seq:')?'':gkey}); });
           const gc=(cell.grp[grp]=cell.grp[grp]||{teams:0,pax:0,need:0}); gc.teams++; gc.pax+=left; gc.need+=rooms;
           const gm=(UNAG[gk]=UNAG[gk]||{}); gm[ds]=(gm[ds]||0)+base;   // 2인 1실 기준분(싱글 추가분은 SX)
         });
@@ -884,8 +892,11 @@ function renderDetail(){
   const goHref=(isShizu?'shizu.html':'room.html')+`?ym=${encodeURIComponent(SEL.date.slice(0,7))}&date=${encodeURIComponent(SEL.date)}`;
   const goBtn=`<a class="btn sm" target="_blank" rel="noopener"
       href="${goHref}"
-      style="text-decoration:none">${esc(tx(isShizu?'goShizu':'goAssign'))}${una?` <b style="color:var(--err)">${esc(tx('unaT')(una.teams,una.pax))}</b>`:''}</a>`;
-  if(!rows.length){ box.innerHTML=`<div style="padding:6px 0 10px">${goBtn}</div><div class="cnt" style="color:var(--muted);padding:8px 0">${tx('dtNone')}</div>`; return; }
+      style="text-decoration:none">${esc(tx(isShizu?'goShizu':'goAssign'))}</a>`;
+  //  미배정은 버튼 밖의 빨간 배지로(초록 버튼 위 빨간 글씨는 안 보였다, Min 2026-09) + 어떤 팀인지 예약 건별로 나열
+  const unaHtml=una?`<div class="una-box"><b class="una-badge">${esc(tx('unaT')(una.teams,una.pax))}</b>${
+      (una.items||[]).map(it=>`<span class="una-it"${it.grp?` title="${esc(it.grp)}"`:''}><span class="tg">${esc(it.tag||'-')}</span> ${esc(it.rep)}<span class="n">(${it.pax})</span></span>`).join('')}</div>`:'';
+  if(!rows.length){ box.innerHTML=`<div style="padding:6px 0 10px">${goBtn}</div>${unaHtml}<div class="cnt" style="color:var(--muted);padding:8px 0">${tx('dtNone')}</div>`; return; }
   // 방 단위로 묶는다 — 같은 방에 두 팀이 들어가 있으면 한 줄에 함께(실수 계산과 일치)
   const g={};
   rows.forEach(r=>{
@@ -904,7 +915,7 @@ function renderDetail(){
       tag:ts.map(t=>t.tag).join(' + '), rep:ts.map(t=>`${t.rep}(${t.pax})`).join(' + '),
       ci:x.ci, co:x.co, multi:ts.length>1};
   }).sort((a,b)=>String(a.room).localeCompare(String(b.room),undefined,{numeric:true}));
-  box.innerHTML=`<div style="padding:6px 0 10px">${goBtn}</div><table class="dt"><thead><tr>
+  box.innerHTML=`<div style="padding:6px 0 10px">${goBtn}</div>${unaHtml}<table class="dt"><thead><tr>
       <th>${tx('cRoom')}</th><th>${tx('cTeam')}</th><th>${tx('cRep')}</th>
       <th>${tx('cPax')}</th><th>${tx('cStay')}</th><th>${tx('cAccom')}</th>
     </tr></thead><tbody>${list.map(x=>`<tr>
