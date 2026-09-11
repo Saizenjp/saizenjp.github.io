@@ -1714,6 +1714,13 @@ async function loadDay(){
   let to = $('#date-to').value || from;     // 종료 비우면 단일일
   if(!from){toast(tx('pickDate'),'warn');return;}
   if(to<from) to=from;                       // 종료<시작이면 단일일로 보정
+  // ── 로드 순번 가드(2026-09-11) ─────────────────────────────────────────────
+  //  달을 빠르게 넘기면(◀▶ 연타) 두 loadDay 가 동시에 돌아 state.guests 는 11월·state.rooms 는 10월처럼
+  //  섞인 채 자동배정이 실행됐고, 그 자동배정이 11월 배정 1,367명을 「대상 아님」으로 지웠다(2026-09-10 16:03).
+  //  → 나중 로드만 살린다(앞선 로드는 각 await 뒤에서 조용히 버림). 자동배정이 도는 중이면 끝날 때까지 기다린다.
+  const _my=++_loadSeq; const _stale=()=>_my!==_loadSeq;
+  if(_autoPromise){ try{ await _autoPromise; }catch(e){} }
+  if(_stale()) return;
   state.from=from; state.to=to; state.date=from; state.focus=from; state.days=new Set(); state.splitPending=null;   // 기준일=시작, 일별선택·분할모드 초기화
 
   // 점유 판정: dep_date <= to(범위끝) AND arr_date > from(범위시작)
@@ -1725,6 +1732,7 @@ async function loadDay(){
     .gt('bookings.arr_date',from)
     .order('event_seq'));
   if(gres.error){toast(tx('teamLoadFail',gres.error.message),'err');return;}
+  if(_stale()) return;
   const g=gres.data;
   state.guests=(g||[]).map(x=>({
     event_seq:x.event_seq, team_tag:x.team_tag, group_code:x.group_code,
@@ -1752,11 +1760,13 @@ async function loadDay(){
       try{ state.uni=(window.__so_groupTags? await __so_groupTags(supa,seqs) : {}); }catch(e){ state.uni={}; }
     }catch(e){}
   }
+  if(_stale()) return;
   state.rooms=[]; state.extRooms=[];
   state.members={};
   if(seqs.length){
     const rr=await pagedInSeq('rooms','*',seqs);
     if(rr.error){toast(tx('roomLoadFail',rr.error.message),'err');return;}
+    if(_stale()) return;
     state.rooms=dedupeById(rr.data||[]);
     // 다른 달 팀이 이 기간에 걸쳐 묵고 있는 배정(월경계) — 점유 계산·표시에 포함해야 한다.
     try{
@@ -1770,7 +1780,9 @@ async function loadDay(){
         .filter(r=>!mine.has(r.id) && !mineKey.has([r.inventory_id,r.member_id,r.check_in,r.check_out].join('|')))
         .map(r=>({...r,_ext:true}));
     }catch(e){ state.extRooms=[]; }
+    if(_stale()) return;
     const mm=await pagedInSeq('guest_members','id,event_seq,seq_in_team,person_key,passenger_id,name_kr,name_en,is_rep,member_grade,member_class,member_div,actual_dep,actual_dep_reason',seqs);
+    if(_stale()) return;
     if(mm.error){toast(tx('rosterLoadFail',mm.error.message),'warn');}
     else (mm.data||[]).forEach(x=>{(state.members[x.event_seq]=state.members[x.event_seq]||[]).push(x);});
     // 성별(男/女)은 passengers 에만 있다 — guest_members.passenger_id 로 붙인다(골프 화면과 같은 소스).
@@ -1780,6 +1792,7 @@ async function loadDay(){
       state.gender={};
       if(!px.error) (px.data||[]).forEach(p=>{ if(p.gender) state.gender[p.id]=p.gender; });
     }catch(e){ state.gender={}; }
+    if(_stale()) return;
     // ── 명단 중복 방어 (Min 2026-08) ──────────────────────────────────────
     //  guest_members 에 같은 사람이 두 번 들어온 데이터가 관측됐다(예: -1Y/-2Y 김명환).
     //  그대로 두면 미배정 인원이 2배로 부풀고 같은 사람이 두 방에 배정된다.
@@ -1834,6 +1847,7 @@ async function loadDay(){
     const nt=await supa.from('room_notes').select('inventory_id,kind,body').eq('done',false);
     (nt.data||[]).forEach(x=>{ (RNOTE[x.inventory_id]=RNOTE[x.inventory_id]||[]).push(x); });
   }catch(e){}
+  if(_stale()) return;
   state.sel=new Set();
   rebuildAssignMap();
   render();
@@ -4862,6 +4876,8 @@ function confirmFrozen(ids, what){
 // 월을 열 때 자동배정을 돌릴지 — 끄면 수기 전용(Min 2026-08)
 function autoRunOn(){ try{ return localStorage.getItem('saizen_room_autorun')!=='0'; }catch(e){ return true; } }
 let _autoRunning=false;
+let _autoPromise=null;   // 도는 중인 자동배정(loadDay 가 끝나기를 기다린다)
+let _loadSeq=0;          // loadDay 순번(마지막 것만 유효)
 // 자동배정이 도는 동안 하단에 「자동배정 중…」 — 끝나기 전에 방을 누르면 아직 빈 방으로 보인다.
 function autoBusyBar(on, pct, done, total){
   const old=document.getElementById('auto-busy'); if(old) old.remove();
@@ -4878,6 +4894,8 @@ async function autoAssign(){
   if(!state.guests||!state.guests.length){toast(tx('loadDateFirst'),'warn');return;}
   if(_autoRunning) return;
   _autoRunning=true;
+  let _autoDone=null; _autoPromise=new Promise(r=>{ _autoDone=r; });
+  const _seq0=_loadSeq;   // 이 자동배정이 기준으로 삼은 로드
   autoBusyBar(true);   // 도는 동안 화면에 표시(끝나기 전 방을 누르면 옛 상태로 열렸다 — Min 2026-08)
   try{
     // 0) 이동 추적용 — 재배치 '전' 각 인원의 방을 스냅샷(어디서→어디로 기록)
@@ -5135,6 +5153,9 @@ async function autoAssign(){
         });
       }
     }
+    // 점유원장 조회 중에 다른 달이 로드됐으면 지금 계산은 섞인 상태 기준일 수 있다 → DB 를 건드리지 않고 멈춘다
+    //  (새 로드가 끝나면 그쪽에서 자동배정이 다시 돈다)
+    if(_loadSeq!==_seq0){ console.warn('자동배정 중단: 로드가 바뀜'); return; }
     keepRows.forEach(r=>pushRoomRow(r));   // 유지되는 배정은 원래 id 그대로 화면에 되돌린다
     if(dropIds.length){
       const derr=await deleteRoomsByIds(dropIds);
@@ -5188,7 +5209,7 @@ async function autoAssign(){
     // 사유 모달은 자동으로 띄우지 않는다 — 화면 들어올 때마다 팝업이 뜨면 방해된다(Min 2026-08).
     //   상단 「미배정 N건 사유」 버튼으로 필요할 때 연다.
     if(holds.length) console.warn(tx('autoHoldsLog',holds.length)+holds.map(holdLine).join('\n'));
-  }finally{ _autoRunning=false; autoBusyBar(false); }
+  }finally{ _autoRunning=false; autoBusyBar(false); _autoPromise=null; if(_autoDone) _autoDone(); }
 }
 
 
