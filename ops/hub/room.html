@@ -518,7 +518,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=31.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=31.1">
 </head>
 <body data-so-area="room_assign">
 <div class="topbar so-bar">
@@ -648,7 +648,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=31.0"></script>
+<script src="../assets/saizen-ops.js?v=31.1"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -721,7 +721,7 @@ const L={
     sgOnsite:'現地割当', sgOnsiteT:'どなたが使うかは現地で決める — 当日に割り当てます',
     holdCatSgWait:'現地割当 待ち', holdFixSgWait:'室数は決まっています — 当日、どなたが使うかを決めて割り当ててください',
     hdRmk:'備考', hdRmkLocal:'現地備考',
-    sgWhyNames:n=>`単独は ${n}(名簿と一致)`, sgWhyPart:'滞在の一部だけシングル', sgWhyUnsure:'誰が単独か未指定', sgWhyMixed:'(ツイン混在 — 要確認)',
+    sgWhyNames:n=>`単独は ${n}(名簿と一致)`, sgWhyNoRoom:(need,free)=>`シングル室不足(${need}名必要・滞在中ずっと空くシングル ${free}室)`, sgAutoNote:'(全員シングル・氏名指定 → シングル室が確保できれば自動で1名1室)', sgWhyPart:'滞在の一部だけシングル', sgWhyAll:'全員シングル(シングル室のない施設 — 手動)', sgWhyUnsure:'誰が単独か未指定', sgWhyMixed:'(ツイン混在 — 要確認)',
     sgAuto:'全員シングル → 自動で1人1室',
     sgDoc:'手配書', sgDocT:'現地手配書をポップアップで開く(備考を確認して割り当て)',
     holdNoRoster:gc=>`${gc} 名簿未登録`,
@@ -982,7 +982,7 @@ const L={
     sgOnsite:'현장 배정', sgOnsiteT:'누가 쓸지는 현장에서 정하는 건 — 당일에 배정합니다',
     holdCatSgWait:'현장 배정 대기', holdFixSgWait:'방 수는 정해져 있습니다 — 당일에 누가 쓸지 정해 배정하세요',
     hdRmk:'비고', hdRmkLocal:'현지비고',
-    sgWhyNames:n=>`단독은 ${n}(명단과 일치)`, sgWhyPart:'체류 일부만 싱글', sgWhyUnsure:'누가 단독인지 미지정', sgWhyMixed:'(트윈 섞임 — 확인 필요)',
+    sgWhyNames:n=>`단독은 ${n}(명단과 일치)`, sgWhyNoRoom:(need,free)=>`싱글 객실 부족(${need}명 필요 · 체류 내내 빈 싱글 ${free}실)`, sgAutoNote:'(전원 싱글·이름 지정 → 싱글 객실이 확보되면 자동 1인 1실)', sgWhyPart:'체류 일부만 싱글', sgWhyAll:'전원 싱글(싱글 객실 없는 숙소 — 수기)', sgWhyUnsure:'누가 단독인지 미지정', sgWhyMixed:'(트윈 섞임 — 확인 필요)',
     sgAuto:'전원 싱글 → 자동으로 1인 1실',
     sgDoc:'수배서', sgDocT:'현지수배서를 팝업으로 열기(비고 확인 후 바로 배정)',
     holdNoRoster:gc=>`${gc} 명단미등록`,
@@ -1236,7 +1236,7 @@ const L={
     sgOnsite:'On-site', sgOnsiteT:'Who takes them is decided on site — assign on the day',
     holdCatSgWait:'Waiting for on-site assignment', holdFixSgWait:'The room count is fixed — decide who takes them and assign on the day',
     hdRmk:'Remarks', hdRmkLocal:'On-site remarks',
-    sgWhyNames:n=>`single: ${n} (matched roster)`, sgWhyPart:'only part of the stay', sgWhyUnsure:'who is alone is not stated', sgWhyMixed:'(twin mixed in — check)',
+    sgWhyNames:n=>`single: ${n} (matched roster)`, sgWhyNoRoom:(need,free)=>`not enough single rooms (${need} needed, ${free} free for the whole stay)`, sgAutoNote:'(all-single / named → auto 1 per room when single rooms are available)', sgWhyPart:'only part of the stay', sgWhyAll:'all single (no single rooms here — manual)', sgWhyUnsure:'who is alone is not stated', sgWhyMixed:'(twin mixed in — check)',
     sgAuto:'all single → auto 1 person per room',
     sgDoc:'Dispatch', sgDocT:'Open the local dispatch sheet in a popup',
     holdNoRoster:gc=>`${gc} roster not registered`,
@@ -4725,6 +4725,7 @@ function singleWhy(sp){
     return ' — '+tx('sgWhyNames',nm)+(sp.mixed?' '+tx('sgWhyMixed'):'');
   }
   if(sp.kind==='part')  return ' — '+tx('sgWhyPart');
+  if(sp.kind==='all')   return ' — '+tx('sgWhyAll');
   return ' — '+tx('sgWhyUnsure')+(sp.mixed?' '+tx('sgWhyMixed'):'');
 }
 function mkHold(t,g,cat,extra){ const h={ t, seq:g?g.event_seq:null, cat:cat||'etc' }; if(extra) h.sp=extra; return h; }
@@ -4804,9 +4805,10 @@ function placeGivenPairs(g,pairs,primaryPool,fallbackPool,label,pending,holds,oc
 //   splitOdd     : (예비) 3명 팀 분리 — 현재는 기본 동작이라 미사용
 //   allowSingle  : 싱글 방이 다 찼을 때 2인실을 1명이 단독 사용 — **기본 켜짐**(Min 2026-08:
 //                  "자동배정 한 번에 미배정 최소"). 방 낭비보다 미배정이 나쁘다.
-//   singleRemark : 비고에 「싱글」이라 적힌 팀도 자동으로 짝지어 배정.
-//                  **기본 꺼짐** — 누가 싱글인지 팀 단위 비고로는 특정할 수 없어
-//                  강행하면 싱글 요청자를 둘씩 묶어버린다. 보류 후 수기가 맞다.
+//   singleRemark : 비고에 「싱글」이라 적힌 팀도 자동으로 짝지어 배정(싱글 무시).
+//                  **기본 꺼짐** — 누가 싱글인지 특정 못 하는 팀을 강행하면 싱글 요청자를 둘씩 묶어버린다.
+//                  ※ 2026-09: 「전원 싱글」·「싱글룸: 이름」처럼 확실한 건은 꺼진 상태에서도
+//                     싱글 객실이 체류 내내 확보될 때만 자동 1인 1실(plans[].singles). 모자라면 보류.
 //  ※ 박수→층 규칙은 '우선순위'라 막지 않으므로 별도 옵션이 없다.
 const AUTO_OPT_DEFAULT={splitOdd:true, allowSingle:true, singleRemark:false};
 let AUTO_OPTS={...AUTO_OPT_DEFAULT};
@@ -4963,19 +4965,31 @@ async function autoAssign(){
         ? SZCore.singlePlan((g.remark_local||'')+'\n'+(g.remark||''), g.pax,
             roster.map(m=>({id:m.id,name:m.name_kr||''})))
         : (/싱글|single|シングル/i.test((g.remark_local||'')+' '+(g.remark||''))?{kind:'unsure'}:null);
-      if(_sp && _sp.kind!=='blocked' && !AUTO_OPTS.singleRemark){
-        //  「현지에서 배정예정」처럼 **누가 쓸지만** 현장에서 정하는 건은 따로 모은다 —
-        //  당일 아침에 이 분류만 열어 0으로 맞추면 된다(Min 2026-08).
-        const _onsite=(window.SZCore&&SZCore.singleOnsite)
-          && SZCore.singleOnsite((g.remark_local||'')+'\n'+(g.remark||''));
-        holds.push(mkHold(tx('holdSingle',gc)+singleWhy(_sp),g,_onsite?'sgWait':'single',_sp)); continue;
-      }
       // ── 청소 효율 박수→층 규칙: 야마나미 호텔동(floorOnly) 팀만 허용 층으로 제한 ──
       //   허용 층이 없거나(규칙 외 박수+유동층 만석) 만석이면 hold(객실부족) → 수기 배정으로.
       let floorOrder=null;
       if(route.floorOnly){
         floorOrder=nightFloors(teamNights(g), occ, pending);
         if(!floorOrder.length) floorOrder=null;   // 규칙 층이 없으면 층 우선순위 없이(전층) 진행 — 보류하지 않음
+      }
+      if(_sp && _sp.kind!=='blocked' && !AUTO_OPTS.singleRemark){
+        // ── 2026-09 (Min 「그 정도면 문제 발생은 줄지 않을까」): 해석이 확실한 두 종류만 자동 1인 1실 ──
+        //   · 「전원 싱글룸」·「4인 싱글룸」(인원과 같음)  → 팀 전원
+        //   · 「싱글룸: 김OO, 이OO」(명단과 일치)          → 그 사람들
+        //   조건 = 야마나미 호텔동 + **싱글 객실(정원 1)이 체류 내내 인원수만큼 비어 있을 때만**.
+        //   모자라면 팀 전체를 지금처럼 보류(트윈에 1명을 넣어 침대를 죽이는 판단은 사람 몫 — 8월 트윈 잠식 사고).
+        //   수량만 있는 「싱글룸 2개」·체류 일부·미확정 문구는 그대로 보류. 싱글차지(추가요금)는 자동 기록되지 않는다.
+        const _sgIds = _sp.kind==='all' ? roster.map(m=>m.id)
+                     : (_sp.kind==='names' ? (_sp.names||[]).map(x=>x&&x.id).filter(id=>roster.some(m=>m.id===id)) : []);
+        if(_sgIds.length && route.floorOnly){
+          const _set=new Set(_sgIds);
+          plans.push({g,route,roster,floorOrder,gc,singles:roster.filter(m=>_set.has(m.id)),sp:_sp}); continue;
+        }
+        //  「현지에서 배정예정」처럼 **누가 쓸지만** 현장에서 정하는 건은 따로 모은다 —
+        //  당일 아침에 이 분류만 열어 0으로 맞추면 된다(Min 2026-08).
+        const _onsite=(window.SZCore&&SZCore.singleOnsite)
+          && SZCore.singleOnsite((g.remark_local||'')+'\n'+(g.remark||''));
+        holds.push(mkHold(tx('holdSingle',gc)+singleWhy(_sp),g,_onsite?'sgWait':'single',_sp)); continue;
       }
       plans.push({g,route,roster,floorOrder,gc});
     }
@@ -5037,8 +5051,30 @@ async function autoAssign(){
     function dropHolds(seq){ for(let i=holds.length-1;i>=0;i--){ const h=holds[i]; if(h && typeof h==='object' && h.seq===seq) holds.splice(i,1); } }
     const placePlan=(plan,phase)=>{
       if(plan.done) return;
-      const {g,route,roster,floorOrder,gc}=plan;
+      const {g,route,floorOrder,gc}=plan;
+      let roster=plan.roster;
       const flr = floorOrder ? (p=>poolByFloorOrder(p,floorOrder)) : (p=>p); // 호텔동만 허용 층으로 필터·정렬
+      // ── 비고의 싱글 요청(전원·이름 지정) = 싱글 객실에 1인 1실, 회원 패스 맨 앞에서(2026-09) ──
+      //   체류 내내 빈 싱글이 인원수만큼 없으면 **팀 전체 보류**(일부만 넣지 않는다 — 나머지를 트윈에 혼자 두지 않기 위해).
+      if(phase==='member' && plan.singles && plan.singles.length){
+        const sgAll=roomPool({fac:route.fac, floorOnly:route.floorOnly, zone:route.zone, genTypes:SINGLE_TYPES},'general');
+        const sg=floorOrder?poolByFloorOrder(sgAll,floorOrder):sgAll;
+        const free=sgAll.filter(inv=>!roomClosure(inv.id,g.dep,g.arr) && !isSoloRoom(inv.id,g.dep,g.arr)
+                                  && roomUsedFor(inv.id,g.dep,g.arr,pending,occ)+1<=(inv.capacity||0)).length;
+        if(free<plan.singles.length){
+          holds.push(mkHold(tx('holdSingle',gc)+' — '+tx('sgWhyNoRoom',plan.singles.length,free),g,'single',plan.sp));
+          plan.done=true; return;
+        }
+        for(const m of plan.singles){
+          const inv=pickRoom(sg,g.dep,g.arr,1,pending,occ)||pickRoom(sgAll,g.dep,g.arr,1,pending,occ);
+          if(!inv){ holds.push(mkHold(tx('holdSingle',gc)+' — '+tx('sgWhyNoRoom',plan.singles.length,free),g,'single',plan.sp)); plan.done=true; return; }
+          pending.push(mkRow(g,m,inv));
+        }
+        const _ids=new Set(plan.singles.map(m=>m.id));
+        roster=plan.roster=roster.filter(m=>!_ids.has(m.id));
+        plan.singles=null;
+        if(!roster.length){ plan.done=true; return; }   // 전원 싱글 → 끝
+      }
       // ※ 싱글 지정 자동배정은 없앴다(Min 2026-08) — 비고에 싱글 언급이 있는 팀은
       //   plans 를 만드는 단계에서 이미 holds 로 빠진다. 여기 도달하는 팀은
       //   싱글 요청이 아니거나 blocked(대기·불가 등) 뿐이라 일반 로직만 남는다.
