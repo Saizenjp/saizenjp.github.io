@@ -518,7 +518,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=31.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=31.4">
 </head>
 <body data-so-area="room_assign">
 <div class="topbar so-bar">
@@ -648,7 +648,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=31.3"></script>
+<script src="../assets/saizen-ops.js?v=31.4"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -3144,7 +3144,11 @@ function roomMatch(r){ return _placeInScope(roomPlaceKeys(r), placeSel) && typeM
 //   ⚠ 보기 전용 필터 — 자동배정·정원판정·배정 피커(위저드)는 이 필터를 보지 않는다.
 let typeSelBy=Object.create(null);   // 장소키 → Set(방타입). 「야마나미 호텔의 싱글」처럼 숙소별로 고른다.
 let overOnly=false;                 // ⚠ 초과 칩 — 정원(capacity)을 넘긴 방만 모아 보기
-function typeKeyOf(r){ return r.room_type||''; }
+// 칩 묶음 = 일별 체류 현황과 같은 수량(Min 2026-09-14): 디럭스더블트윈 33 + 디럭스트윈 5 + 트리플 2(5층, 원래 디럭스 자리) = 「디럭스 트윈」 40 ·
+//   스탠다드 트윈 40 · 컴팩트트윈 20 · 더블 2 · 싱글 18. 보기 필터 전용 — 자동배정은 원래 room_type 을 그대로 쓴다.
+const TYPE_CHIP={'디럭스더블트윈':'디럭스 트윈','디럭스트윈':'디럭스 트윈','트리플':'디럭스 트윈','디럭스':'디럭스 트윈'};
+const TYPE_CHIP_ORDER=['디럭스 트윈','트윈','컴팩트트윈','더블','싱글'];
+function typeKeyOf(r){ const t=r.room_type||''; return TYPE_CHIP[t]||t; }
 function roomIsOver(r){ return roomUsedPax(r) > (r.capacity||0); }   // 표시 기준=정원(최대정원 아님)
 function anyTypeSel(){ for(const k in typeSelBy){ if(typeSelBy[k].size) return true; } return false; }
 function typeMatch(r){
@@ -3181,7 +3185,8 @@ function buildTypeBar(){
   const showTypes = placeSel.size>0;
   const multi=places.length>1;
   const groups=(showTypes?places:[]).map(k=>{
-    const types=Object.keys(byPlace[k]).sort((a,b)=>byPlace[k][b]-byPlace[k][a]||a.localeCompare(b));
+    const ord=t=>{ const i=TYPE_CHIP_ORDER.indexOf(t); return i<0?99:i; };
+    const types=Object.keys(byPlace[k]).sort((a,b)=>ord(a)-ord(b)||byPlace[k][b]-byPlace[k][a]||a.localeCompare(b));
     if(types.length<=1 && !multi) return '';       // 숙소 하나 + 타입 하나면 낼 게 없다
     const sel=typeSelBy[k];
     return (multi?`<span class="typlace">${esc(accomL(k))}</span>`:'')
