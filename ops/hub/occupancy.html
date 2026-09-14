@@ -158,7 +158,7 @@
   table.dt tr:hover td{background:var(--surface2)}
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=31.1">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=31.2">
 </head>
 <body data-so-area="occupancy">
 <div class="topbar so-bar">
@@ -190,7 +190,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=31.1"></script>
+<script src="../assets/saizen-ops.js?v=31.2"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -220,7 +220,7 @@ const L={
     thRow:'施設・ルームタイプ', own:'保有',
     dtTitle:d=>`${d} の内訳`, dtNone:'この日この客室タイプに滞在中のチームはありません。',
     dtPick:'マスを押すと、その日の内訳がここに出ます。',
-    cTeam:'チーム', cRep:'代表', cRoom:'部屋', cPax:'人数', cStay:'滞在', cAccom:'宿泊',
+    cTeam:'チーム', cRep:'代表', cGuests:'宿泊者', cRoom:'部屋', cPax:'人数', cStay:'滞在', cAccom:'宿泊',
     sumRow:'合計', noData:'データがありません。',
     statN:(r,d)=>`${r}行 · ${d}日` },
   ko:{ step:'일별 체류 현황', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', preConn:'연결 후 표시됩니다.',
@@ -248,7 +248,7 @@ const L={
     thRow:'숙소 · 룸타입', own:'보유',
     dtTitle:d=>`${d} 상세`, dtNone:'이 날 이 룸타입에 체류 중인 팀이 없습니다.',
     dtPick:'칸을 누르면 그날 상세가 여기에 나옵니다.',
-    cTeam:'팀', cRep:'대표', cRoom:'방', cPax:'인원', cStay:'체류', cAccom:'숙소',
+    cTeam:'팀', cRep:'대표', cGuests:'투숙자', cRoom:'방', cPax:'인원', cStay:'체류', cAccom:'숙소',
     sumRow:'합계', noData:'데이터가 없습니다.',
     statN:(r,d)=>`${r}행 · ${d}일` },
   en:{ step:'Daily occupancy', connHint:'Connection details are stored in this browser only.', preConn:'Shown after connecting.',
@@ -276,7 +276,7 @@ const L={
     thRow:'Facility · room type', own:'Stock',
     dtTitle:d=>`${d} detail`, dtNone:'No team staying in this room type on this date.',
     dtPick:'Click a cell to see the breakdown here.',
-    cTeam:'Team', cRep:'Rep', cRoom:'Room', cPax:'Pax', cStay:'Stay', cAccom:'Lodging',
+    cTeam:'Team', cRep:'Rep', cGuests:'Guests', cRoom:'Room', cPax:'Pax', cStay:'Stay', cAccom:'Lodging',
     sumRow:'Total', noData:'No data.',
     statN:(r,d)=>`${r} rows · ${d} days` }
 };
@@ -297,6 +297,7 @@ const ACCOM_ORDER=['야마나미리조트','쿠주힐즈','간지호텔','시즈
 function accomIdx(a){ const i=ACCOM_ORDER.indexOf(a); return i<0?99:i; }
 
 let supa=null, INV=[], ROOMS=[], TEAM={}, GTAG={}, DAYS=[], ROWS=[], SEL=null, WAIT={}, SGR={};
+let MNAME={};   // member_id → 이름(상세 「투숙자」 칸 — 방마다 실제 누가 들어갔는지, Min 2026-09)
 let INV_ALL=[];   // 비활성 객실 포함(사용 집계용 — 수기로 비활성 방에 넣어도 표에 보이게). 보유는 활성만.
 let CLOSED={};    // inventory_id → [{from,to,reason}] 객실 폐쇄(room_closures) — 그날 보유에서 뺀다
 let YMS=[shiftYM(thisYM(),-1), thisYM(), shiftYM(thisYM(),1)];   // 이어보기(복수 월) — 기본 = 전달·이번 달·다음 달(Min 2026-09)
@@ -468,6 +469,12 @@ async function load(){
       .lt('check_in',to).gt('check_out',from).order('event_seq').range(a,b));
     if(rm.error) throw rm.error;
     ROOMS=(rm.data||[]).filter(r=>invMap[r.inventory_id]);
+    // 2-1) 투숙자 이름 — 배정 행의 member_id 로 명단을 읽는다(상세 패널 「투숙자」 칸). 실패해도 표는 뜬다.
+    MNAME={};
+    try{ const ids=[...new Set(ROOMS.map(r=>r.member_id).filter(Boolean))];
+      for(let i=0;i<ids.length;i+=300){
+        const {data:ms}=await supa.from('guest_members').select('id,name_kr,name_en').in('id',ids.slice(i,i+300));
+        (ms||[]).forEach(m=>{ MNAME[m.id]=(m.name_kr||m.name_en||'').trim(); }); } }catch(e){ MNAME={}; }
 
     // 3) 팀 라벨(그룹코드·대표)
     const seqs=[...new Set(ROOMS.map(r=>r.event_seq))];
@@ -934,7 +941,8 @@ function renderDetail(){
   rows.forEach(r=>{
     const k=String(r.inventory_id);
     const t=TEAM[r.event_seq]||{};
-    if(!g[k]) g[k]={room:r.room_no||'', teams:{}, pax:0, ci:r.check_in, co:r.check_out, accom:t.accom||meta.facility};
+    if(!g[k]) g[k]={room:r.room_no||'', teams:{}, pax:0, ci:r.check_in, co:r.check_out, accom:t.accom||meta.facility, names:[]};
+    { const nm=MNAME[r.member_id]; if(nm && !g[k].names.includes(nm)) g[k].names.push(nm); }
     const key=r.event_seq;
     if(!g[k].teams[key]) g[k].teams[key]={tag:t.tag||'', rep:t.rep||'', pax:0, ci:r.check_in, co:r.check_out, dq:!!DOMEQ[key]};
     g[k].teams[key].pax++; g[k].pax++;
@@ -944,16 +952,17 @@ function renderDetail(){
   const list=Object.values(g).map(x=>{
     const ts=Object.values(x.teams);
     return {room:x.room, pax:x.pax, accom:x.accom,
-      tag:ts.map(t=>t.tag).join(' + '), rep:ts.map(t=>`${t.rep}(${t.pax})`).join(' + '),
+      tag:ts.map(t=>t.tag).join(' + '), rep:ts.map(t=>`${t.rep}(${t.pax})`).join(' + '), names:x.names.join(' · '),
       ci:x.ci, co:x.co, multi:ts.length>1, dq:ts.some(t=>t.dq)};
   }).sort((a,b)=>String(a.room).localeCompare(String(b.room),undefined,{numeric:true}));
   box.innerHTML=`<div style="padding:6px 0 10px">${goBtn}</div>${unaHtml}<table class="dt"><thead><tr>
-      <th>${tx('cRoom')}</th><th>${tx('cTeam')}</th><th>${tx('cRep')}</th>
+      <th>${tx('cRoom')}</th><th>${tx('cTeam')}</th><th>${tx('cRep')}</th><th>${tx('cGuests')}</th>
       <th>${tx('cPax')}</th><th>${tx('cStay')}</th><th>${tx('cAccom')}</th>
     </tr></thead><tbody>${list.map(x=>`<tr>
       <td class="m">${esc(x.room)}</td>
       <td><span class="tag">${esc(x.tag)}</span>${x.dq?` <b class="dqb" title="${esc(tx('domeQ'))}">${esc(tx('domeQ'))}</b>`:''}</td>
       <td>${esc(x.rep)}</td>
+      <td>${esc(x.names||'')}</td>
       <td class="m">${x.pax}</td>
       <td class="m">${esc((x.ci||'').slice(5))}~${esc((x.co||'').slice(5))}</td>
       <td>${esc(accomL(x.accom))}</td>
