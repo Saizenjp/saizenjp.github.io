@@ -518,7 +518,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=31.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=31.5">
 </head>
 <body data-so-area="room_assign">
 <div class="topbar so-bar">
@@ -648,7 +648,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=31.4"></script>
+<script src="../assets/saizen-ops.js?v=31.5"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -4630,6 +4630,17 @@ function poolByFloorOrder(pool, floorOrder){
   const r=inv=>{ const f=floorOf(inv); return rank.has(f) ? rank.get(f) : 1000-f; };  // 규칙 층 먼저 → 그 외 높은 층 순
   return pool.slice().sort((a,b)=>r(a)-r(b));
 }
+// ── 싱글 객실의 층 순서(Min 2026-09) ──
+//   싱글(정원 1)은 3·4·5·6·7층에만 있다(8층 이상 싱글은 소형트윈=컴팩트트윈으로 개조 → 18실).
+//   순서 = 박수→층 규칙의 층(7박 7·4층 / 3·4박 6·3층) → 5층(넘칠 때 쓰는 층) → 나머지(높은 층 순).
+//   규칙 층 순서(floorOrder) 뒤에 5층을 붙이기만 하면 poolByFloorOrder 가 그 순서대로 정렬한다.
+//   규칙 층이 없는 박수(유동층 12·8·5)는 5층이 이미 맨 앞이라 결과가 같다.
+const SINGLE_OVERFLOW_FLOOR=5;
+function singleFloorOrder(floorOrder){
+  const fo=(floorOrder||[]).slice();
+  if(fo.indexOf(SINGLE_OVERFLOW_FLOOR)<0) fo.push(SINGLE_OVERFLOW_FLOOR);
+  return fo;
+}
 // 자동배정에서 '가장 마지막에' 채우는 방(현장 요청). 시즈노야도 北條 = 청소·동선상 최후 사용.
 //   같은 풀 안에서 다른 방을 먼저 소진한 뒤에야 배정되도록 정렬 후순위로 민다(수기 배정엔 영향 없음).
 const AUTO_LAST_ROOMS={'시즈노야도 료칸':['北條']};
@@ -4840,7 +4851,7 @@ function placeLeftovers(g, route, leftovers, flr, pending, holds, occ, floorOrde
   if(!leftovers||!leftovers.length) return;
   const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq));
   const sgAll=roomPool({fac:route.fac, floorOnly:route.floorOnly, zone:route.zone, genTypes:SINGLE_TYPES},'general');
-  const sg=floorOrder?poolByFloorOrder(sgAll,floorOrder):sgAll;
+  const sg=route.floorOnly?poolByFloorOrder(sgAll,singleFloorOrder(floorOrder)):sgAll;   // 규칙 층 → 5층 → 나머지
   const hasSingleType=sgAll.length>0;     // 이 시설에 싱글 타입 방이 존재하는지(있는데 다 찼는지와는 다르다)
   for(const m of leftovers){
     let inv=pickRoom(sg,g.dep,g.arr,1,pending,occ);                       // 허용 층 싱글
@@ -5063,7 +5074,7 @@ async function autoAssign(){
       //   체류 내내 빈 싱글이 인원수만큼 없으면 **팀 전체 보류**(일부만 넣지 않는다 — 나머지를 트윈에 혼자 두지 않기 위해).
       if(phase==='member' && plan.singles && plan.singles.length){
         const sgAll=roomPool({fac:route.fac, floorOnly:route.floorOnly, zone:route.zone, genTypes:SINGLE_TYPES},'general');
-        const sg=floorOrder?poolByFloorOrder(sgAll,floorOrder):sgAll;
+        const sg=poolByFloorOrder(sgAll,singleFloorOrder(floorOrder));   // 규칙 층 싱글 → 5층 → 나머지(호텔동만 여기 온다)
         const free=sgAll.filter(inv=>!roomClosure(inv.id,g.dep,g.arr) && !isSoloRoom(inv.id,g.dep,g.arr)
                                   && roomUsedFor(inv.id,g.dep,g.arr,pending,occ)+1<=(inv.capacity||0)).length;
         if(free<plan.singles.length){
