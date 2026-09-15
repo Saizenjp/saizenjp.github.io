@@ -518,7 +518,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=32.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=32.4">
 </head>
 <body data-so-area="room_assign">
 <div class="topbar so-bar">
@@ -648,7 +648,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=32.3"></script>
+<script src="../assets/saizen-ops.js?v=32.4"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -787,7 +787,7 @@ const L={
     rangeNote:(focus)=>`カードは <b>${focus}</b> 一泊基準です。上の <b>日別</b> チップで日付を変え、期間全体の占有は <b>タイムライン</b> で見てください。`,
     flagIn:'チェックイン', flagCont:'連泊', over:'超過',
     lockOnT:'使用可 — クリックでロック(無効化)', lockOffT:'ロック(無効化) — クリックで使用可',
-    closedNote:(from,to,reason)=>`🔒 閉鎖 ${from}~${to}${reason?' · '+reason:''}`,
+    closedNote:(from,to,reason)=>`🔒 閉鎖 ${from}~${to}${reason?' · '+reason:''}`, closedSpan:(from,to,reason)=>`🔒 閉鎖期間 ${from}~${to}${reason?' · '+reason:''}`,
     deepNoRoom:'そのチームの割当部屋がこの日付にありません(未割当かも)',
     used:'使用', roomsUnit:'室', under:n=>`⚠定員未満 ${n}室`, floorplan:'平面図', floorplanT:'断面図(円形配置)を見る',
     clearZone:'クリア', clearZoneT:z=>`${z} 割当を全解除`, zoneLabel:z=>'— '+z,
@@ -1047,7 +1047,7 @@ const L={
     rangeNote:(focus)=>`카드는 <b>${focus}</b> 하룻밤 기준이에요. 위 <b>일별</b> 칩으로 날짜를 바꾸고, 기간 전체 점유는 <b>타임라인</b> 으로 보세요.`,
     flagIn:'체크인', flagCont:'연박', over:'초과',
     lockOnT:'사용 가능 — 클릭하면 잠금(비활성)', lockOffT:'잠금(비활성) — 클릭하면 사용 가능',
-    closedNote:(from,to,reason)=>`🔒 폐쇄 ${from}~${to}${reason?' · '+reason:''}`,
+    closedNote:(from,to,reason)=>`🔒 폐쇄 ${from}~${to}${reason?' · '+reason:''}`, closedSpan:(from,to,reason)=>`🔒 폐쇄 기간 ${from}~${to}${reason?' · '+reason:''}`,
     deepNoRoom:'그 팀의 배정된 방이 이 날짜에 없습니다(미배정일 수 있어요)',
     used:'사용', roomsUnit:'실', under:n=>`⚠정원미만 ${n}실`, floorplan:'평면도', floorplanT:'단면도(원형 배치) 보기',
     clearZone:'비우기', clearZoneT:z=>`${z} 배정 전체 해제`, zoneLabel:z=>'— '+z,
@@ -1301,7 +1301,7 @@ const L={
     rangeNote:(focus)=>`Card is based on the <b>${focus}</b> single night. Change the date via the <b>per-day</b> chips above; view whole-period occupancy in <b>Timeline</b>.`,
     flagIn:'Check-in', flagCont:'Staying', over:'Over',
     lockOnT:'Usable — click to lock (disable)', lockOffT:'Locked (disabled) — click to enable',
-    closedNote:(from,to,reason)=>`🔒 Closed ${from}~${to}${reason?' · '+reason:''}`,
+    closedNote:(from,to,reason)=>`🔒 Closed ${from}~${to}${reason?' · '+reason:''}`, closedSpan:(from,to,reason)=>`🔒 Closure ${from}~${to}${reason?' · '+reason:''}`,
     deepNoRoom:'No assigned room for this team on this date (may be unassigned)',
     used:'Used', roomsUnit:' rooms', under:n=>`⚠ under capacity ${n} rooms`, floorplan:'Floor plan', floorplanT:'View floor plan (circular layout)',
     clearZone:'Clear', clearZoneT:z=>`Release all assignments on ${z}`, zoneLabel:z=>'— '+z,
@@ -1586,6 +1586,16 @@ function roomOccAt(invId, d){
 function roomClosure(invId, dep, arr){
   return (state.closures||[]).find(c=>c.inventory_id===invId && dep<=c.to_date && arr>c.from_date) || null;
 }
+// 카드·표 줄에 그 방의 폐쇄 기간을 전부 표시(Min 2026-09-15 「카드에도 폐쇄 기간 같이 보이게」).
+//   기준일에 걸린 폐쇄=빨강 「🔒 폐쇄 M/D~M/D · 사유」, 그 밖(예정·지난)=주황 「🔒 폐쇄 기간 M/D~M/D · 사유」. 이미 끝난 폐쇄는 로드하지 않는다.
+function closureLines(inv, clo, tag){
+  const list=(state.closures||[]).filter(c=>c.inventory_id===inv.id).slice().sort((a,b)=>String(a.from_date).localeCompare(String(b.from_date)));
+  if(!list.length) return '';
+  return list.map(c=>{ const act=clo&&clo.id===c.id;
+    const txt=tx(act?'closedNote':'closedSpan', fmtMD(c.from_date), fmtMD(c.to_date), c.reason);
+    return tag==='div' ? `<div class="note" style="color:${act?'#b13b2c':'#c2410c'};font-weight:700">${txt}</div>`
+                       : `<span class="c-clo"${act?'':' style="color:#c2410c"'}>${txt}</span>`; }).join('');
+}
 // 기준 하룻밤(focus) 폐쇄 여부
 function roomClosedFocus(invId){
   const d=state.focus||state.from; if(!d) return null;
@@ -1835,10 +1845,11 @@ async function loadDay(){
       }
     }
   }
-  // 기간 폐쇄(잠금) 로드 — 범위에 겹치는 폐쇄(from_date<=to AND to_date>=from)
+  // 기간 폐쇄(잠금) 로드 — 범위 시작 이후에 끝나는 폐쇄 전부(이 달에 걸친 것 + 앞으로 예정된 것).
+  //   카드에 「이 방의 폐쇄 기간」을 늘 보여 주기 위해 예정분도 읽는다(Min 2026-09-15). 가드(roomClosure)는 겹침만 보므로 영향 없다.
   state.closures=[];
   try{
-    const cl=await supa.from('room_closures').select('*').lte('from_date',to).gte('to_date',from);
+    const cl=await supa.from('room_closures').select('*').gte('to_date',from).order('from_date');
     if(!cl.error) state.closures=cl.data||[];
   }catch(e){}
   // 객실 쪽지(열린 것만) — 청소 화면에서 남긴 벌레·고장 표시
@@ -2491,7 +2502,7 @@ function renderWizard(){
     //  층 규칙은 '제한'이 아니라 '우선순위'라 허용 층이 모자라면 나머지 층(높은 층 순)으로 이어진다.
     let _rank=null;
     try{
-      const fo=nightFloors(teamNights(g), state.rooms, []);
+      const fo=singleFloorOrder(nightFloors(teamNights(g), state.rooms, []));   // 싱글 방 = 규칙 층 → 5층 → 나머지(자동배정과 같은 순서, Min 2026-09)
       _rank=new Map((fo||[]).map((f,i)=>[f,i]));
     }catch(e){ _rank=null; }
     const _fr=inv=>{ const f=floorOf(inv); if(!_rank) return 0;
@@ -3662,7 +3673,7 @@ function renderRoom(inv){
     <div class="rn">${inv.room_no}${zonePin(inv)}${noteMark(inv)}</div>
     <div class="rt">${typeLabel(inv.room_type,inv.facility,inv.zone)}</div>
     ${inv.note?`<div class="note">${inv.note}</div>`:''}
-    ${clo?`<div class="note" style="color:#b13b2c;font-weight:700">${tx('closedNote',fmtMD(clo.from_date),fmtMD(clo.to_date),clo.reason)}</div>`:''}
+    ${closureLines(inv,clo,'div')}
     <div class="assigned">${chips}</div>
     ${usedPax>inv.capacity?`<span class="badge">${tx('over')}${usedPax>cap?'!':''}</span>`:''}`;
   wireRoomEl(div,inv);
@@ -3726,7 +3737,7 @@ function renderRoomRow(inv){
     <td class="c-no">${inv.room_no}${zonePin(inv)}${noteMark(inv)}<span class="lock" data-inv-id="${inv.id}" title="${inv.active?tx('lockOnT'):tx('lockOffT')}">${inv.active?'🔓':'🔒'}</span></td>
     <td class="c-ty">${typeLabel(inv.room_type,inv.facility,inv.zone)}</td>
     <td class="c-cap"><span${usedPax>inv.capacity?' style="color:var(--err);font-weight:800"':''}>${usedPax}/${inv.capacity}</span>${usedPax>inv.capacity?` <span class="badge">${tx('over')}${usedPax>cap?'!':''}</span>`:''}</td>
-    <td class="c-gu">${chips}${clo?`<span class="c-clo">${tx('closedNote',fmtMD(clo.from_date),fmtMD(clo.to_date),clo.reason)}</span>`:''}${inv.note?`<span class="c-clo" style="color:var(--muted);font-weight:600">${esc(inv.note)}</span>`:''}</td>`;
+    <td class="c-gu">${chips}${closureLines(inv,clo,'span')}${inv.note?`<span class="c-clo" style="color:var(--muted);font-weight:600">${esc(inv.note)}</span>`:''}</td>`;
   wireRoomEl(tr,inv);
   return tr;
 }
