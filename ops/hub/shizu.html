@@ -232,6 +232,7 @@
   .oc .x{cursor:pointer;color:var(--err);font-weight:800;border:none;background:none;font-size:12px;padding:0 2px;line-height:1}
   .oc.sel .x{color:#fff}
   .rm-closed{font-size:11px;color:var(--err);font-weight:700}
+  .rm-clsoon{font-size:10.5px;color:#c2410c;font-weight:700;margin-top:2px}   /* 예정 폐쇄(기준일 밖) — 카드에 기간 상시 표시(Min 2026-09-15) */
   /* 드래그&드롭 */
   .chip,.oc{cursor:grab}
   .chip:active,.oc:active{cursor:grabbing}
@@ -244,7 +245,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=32.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=32.5">
 </head>
 <body data-so-area="shizu_sheet">
 <div class="topbar so-bar">
@@ -284,7 +285,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=32.4"></script>
+<script src="../assets/saizen-ops.js?v=32.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(予約表 산출물·도메인 데이터는 일본어 유지) ──
@@ -301,7 +302,7 @@ const L={
     bedsLbl:(n,b,x)=>`この夜 必要ベッド ${n} / 保有 ${b}`+(x?`（＋トリプル希望 ${x}室）`:''), bedsShort:k=>`${k}名分 不足`, bedsT:'必要=その夜泊まる人数(未割当含む) · 保有=閉鎖を除く客室×2 · トリプル希望チームは1室3名まで',
     autoBtn:'🪄 月別 再配置', autoT:'その月の自動配置をいったん解いて新ルール(滞在の長い順・同チーム合流・トリプル・best-fit)で組み直す。手動配置は保持、直後に↩で戻せる。', autofillT:'未配置の人だけ空きに入れる(既存配置は動かさない)。', closeBtn:'🔒 客室閉鎖', closeBadgeT:'今月 閉鎖中の客室数', ciT:'チェックイン(チーム数)', coT:'チェックアウト(チーム数)', pvNoStay:'宿泊なし', pvOutN:n=>`${n}チーム チェックアウト`, turnoverH:'チェックイン / チェックアウト チーム', noteH:'現地伝達事項', noteNone:'該当なし', ntCombo:'コンボ滞在', ntAnnex:'別棟希望', ntTriple:'トリプル', ntMeal:'食事・アレルギー', ntEtc:'その他', searchPh:'🔎 名前・英文名・代表者・行事番号で検索', searchCnt:n=>`${n}件`, searchNone:'該当なし', autoNone:'自動割当する未配置がありません', autoConfirm:n=>`今月(表示中の月)の未配置 ${n}名を自動割当しますか？（2名1室・空室不足分は未配置。他の月には影響しません）`, autoDone:n=>`${n}名 自動割当`, autoHold:n=>`未配置 ${n}`, autoFail:'自動割当失敗: ', autofillBtn:'🪄 未配置のみ 配置', autofillDone:n=>`未配置 ${n}名を空室へ配置`, autofillNone:'配置できる未配置がありません(空室不足・奇数1名など)', rngLbl:'📅 期間', rngReset:'月に戻す', rngHint:'月をまたぐチーム(例 7月↔8月)を続けて見るには終了日を翌月まで広げてください。', teamOf:(r)=>`${r}様チーム`,
     unassignedN:n=>`未配置 ${n}名`, assignHere:'客室へ配置', unNone:'未配置はありません', apTitle:d=>`${d} 未配置の配置`, apHint:'2名1室が基本。空室・または既存の部屋に強制追加（最大3名）できます。', apSave:'配置する', apNone:'選択された人がいません', apDone:n=>`${n}名 配置しました`, apFail:'配置失敗: ',
-    closeTitle:'客室閉鎖(期間)', clReason:'事由(任意)', clClose:'閉じる', clAdd:'閉鎖 追加', clList:'閉鎖 一覧', clNone:'閉鎖なし', clNeed:'客室・期間を入力', clRangeErr:'終了日は開始日以降に', clDone:'閉鎖しました', clFail:'失敗: ', clRemoved:'解除しました', swapClosedT:'閉鎖された客室です',
+    clPeriod:(f,t,r)=>`🔒 閉鎖 ${f}~${t}${r?' · '+r:''}`, clUpcoming:(f,t,r)=>`🔒 閉鎖期間 ${f}~${t}${r?' · '+r:''}`, closeTitle:'客室閉鎖(期間)', clReason:'事由(任意)', clClose:'閉じる', clAdd:'閉鎖 追加', clList:'閉鎖 一覧', clNone:'閉鎖なし', clNeed:'客室・期間を入力', clRangeErr:'終了日は開始日以降に', clDone:'閉鎖しました', clFail:'失敗: ', clRemoved:'解除しました', swapClosedT:'閉鎖された客室です',
     statLoading:'読込中…', stayN:'宿泊者', onsenN:'温泉事前申請',
     nameUnit:'名', preNight:'人泊', noData:'表示する志津の宿の予約がありません(部屋割りで割当してください)。',
     onsenH:'別棟 温泉 事前申請', onsenHint:'— 別棟(吉祥·瑞雲·馬酔木)=客室内に個人風呂のある客室。<b>メリット事前申請チームは¥19,000/人泊</b>(客室料¥17,000+温泉¥2,000、<b>メリットB2B精算</b>)。未申請チームが現地配置後にお風呂を使う場合は<b>お湯張り +¥4,000/室泊(現地案内・受領)</b>。このパネルのチェック=B2B事前申請の集計(チーム単位)。',
@@ -322,7 +323,7 @@ const L={
     bedsLbl:(n,b,x)=>`이 밤 필요 침대 ${n} / 보유 ${b}`+(x?` (+트리플 요청 ${x}실)`:''), bedsShort:k=>`${k}명 부족`, bedsT:'필요=그날 밤 묵는 인원(미배정 포함) · 보유=폐쇄 제외 객실×2 · 트리플 요청 팀은 한 방 3명까지',
     autoBtn:'🪄 월별 재배치', autoT:'그 달 자동배정을 한 번 풀고 새 규칙(긴 체류 먼저·같은 팀 합류·트리플·best-fit)으로 다시 짭니다. 수기 배정은 유지, 직후 ↩ 되돌리기 가능.', autofillT:'미배정 인원만 빈 자리에 넣습니다(기존 배정은 안 움직임).', closeBtn:'🔒 객실 폐쇄', closeBadgeT:'이 달 폐쇄된 객실 수', ciT:'체크인(팀 수)', coT:'체크아웃(팀 수)', pvNoStay:'묵는 팀 없음', pvOutN:n=>`${n}팀 체크아웃`, turnoverH:'체크인 / 체크아웃 팀', noteH:'현지 전달사항', noteNone:'해당 없음', ntCombo:'콤보 체류', ntAnnex:'별채 신청', ntTriple:'트리플', ntMeal:'식사·알러지', ntEtc:'기타', searchPh:'🔎 이름·영문명·대표자·행사번호 검색', searchCnt:n=>`${n}건`, searchNone:'검색 결과 없음', autoNone:'자동배정할 미배정 인원이 없습니다', autoConfirm:n=>`이 달(표시 중인 월)의 미배정 ${n}명을 자동배정할까요? (2인 1실·객실 부족분은 미배정. 다른 달에는 영향 없음)`, autoDone:n=>`${n}명 자동배정`, autoHold:n=>`미배정 ${n}`, autoFail:'자동배정 실패: ', autofillBtn:'🪄 미배정만 배정', autofillDone:n=>`미배정 ${n}명을 빈 방에 배정`, autofillNone:'배정 가능한 미배정 인원이 없습니다(빈방 부족·홀수 1명 등)', rngLbl:'📅 기간', rngReset:'월로', rngHint:'월경계 팀(예: 7월↔8월)을 이어서 보려면 종료일을 다음 달까지 넓히세요.', teamOf:(r)=>`${r}様 팀`,
     unassignedN:n=>`미배정 ${n}명`, assignHere:'객실 배정', unNone:'미배정 인원이 없습니다', apTitle:d=>`${d} 미배정 배정`, apHint:'2인 1실이 기본. 빈방 또는 기존 방에 강제 추가(최대 3인)할 수 있습니다.', apSave:'배정', apNone:'선택된 인원이 없습니다', apDone:n=>`${n}명 배정했습니다`, apFail:'배정 실패: ',
-    closeTitle:'객실 폐쇄(기간)', clReason:'사유(선택)', clClose:'닫기', clAdd:'폐쇄 추가', clList:'폐쇄 목록', clNone:'폐쇄 없음', clNeed:'객실·기간을 입력', clRangeErr:'종료일은 시작일 이후로', clDone:'폐쇄했습니다', clFail:'실패: ', clRemoved:'해제했습니다', swapClosedT:'폐쇄된 객실입니다',
+    clPeriod:(f,t,r)=>`🔒 폐쇄 ${f}~${t}${r?' · '+r:''}`, clUpcoming:(f,t,r)=>`🔒 폐쇄 기간 ${f}~${t}${r?' · '+r:''}`, closeTitle:'객실 폐쇄(기간)', clReason:'사유(선택)', clClose:'닫기', clAdd:'폐쇄 추가', clList:'폐쇄 목록', clNone:'폐쇄 없음', clNeed:'객실·기간을 입력', clRangeErr:'종료일은 시작일 이후로', clDone:'폐쇄했습니다', clFail:'실패: ', clRemoved:'해제했습니다', swapClosedT:'폐쇄된 객실입니다',
     statLoading:'불러오는 중…', stayN:'숙박객', onsenN:'온천 사전신청',
     nameUnit:'명', preNight:'인·박', noData:'표시할 시즈노야도 예약이 없습니다(방배정에서 배정하세요).',
     onsenH:'別棟 온천 사전신청', onsenHint:'— 別棟(吉祥·瑞雲·馬酔木)=객실 내 개인 탕 객실. <b>메리트 사전신청 팀은 ¥19,000/인·박</b>(객실료 ¥17,000+온천 ¥2,000, <b>메리트 B2B 정산</b>). 사전신청 안 한 팀이 현장 배정 후 탕을 쓰려면 <b>물채우기 +¥4,000/방·박(현장 안내·수령)</b>. 이 패널의 체크=B2B 사전신청 집계(팀 단위).',
@@ -343,7 +344,7 @@ const L={
     bedsLbl:(n,b,x)=>`Beds needed tonight ${n} / available ${b}`+(x?` (+${x} triple request)`:''), bedsShort:k=>`${k} short`, bedsT:'Needed = people staying that night (incl. unassigned) · available = open rooms × 2 · triple-request teams may take 3 in one room',
     autoBtn:'🪄 Re-pack month', autoT:'Clears this month’s auto assignments and re-plans with the new rules (longest stays first, same-team join, triples, best-fit). Manual assignments are kept; undo is offered right after.', autofillT:'Only places unassigned people into free beds (existing assignments untouched).', closeBtn:'🔒 Close room', closeBadgeT:'Closed rooms this month', ciT:'Check-in (teams)', coT:'Check-out (teams)', pvNoStay:'No overnight stay', pvOutN:n=>`${n} team(s) checked out`, turnoverH:'Check-in / Check-out teams', noteH:'On-site notes', noteNone:'None', ntCombo:'Combo stay', ntAnnex:'Annex requested', ntTriple:'Triple', ntMeal:'Meal / allergy', ntEtc:'Other', searchPh:'🔎 Search name / Eng / rep / event no.', searchCnt:n=>`${n}`, searchNone:'No match', autoNone:'No unassigned guests to auto-assign', autoConfirm:n=>`Auto-assign ${n} unassigned guests for this month only? (2 per room; overflow left unassigned; other months unaffected)`, autoDone:n=>`${n} auto-assigned`, autoHold:n=>`unassigned ${n}`, autoFail:'Auto-assign failed: ', autofillBtn:'🪄 Fill unassigned', autofillDone:n=>`Placed ${n} unassigned into empty rooms`, autofillNone:'No unassigned could be placed (no empty room / odd single)', rngLbl:'📅 Range', rngReset:'Month', rngHint:'To view month-boundary teams (e.g. Jul↔Aug), extend the end date into the next month.', teamOf:(r)=>`${r}'s team`,
     unassignedN:n=>`${n} unassigned`, assignHere:'Assign to room', unNone:'No unassigned guests', apTitle:d=>`Assign unassigned · ${d}`, apHint:'2 per room by default. You can force-add to an empty or existing room (max 3).', apSave:'Assign', apNone:'No guests selected', apDone:n=>`${n} assigned`, apFail:'Assign failed: ',
-    closeTitle:'Close room (period)', clReason:'Reason (optional)', clClose:'Close', clAdd:'Add closure', clList:'Closures', clNone:'No closures', clNeed:'Enter room & period', clRangeErr:'End date must be ≥ start', clDone:'Closed', clFail:'Failed: ', clRemoved:'Removed', swapClosedT:'This room is closed',
+    clPeriod:(f,t,r)=>`🔒 Closed ${f}~${t}${r?' · '+r:''}`, clUpcoming:(f,t,r)=>`🔒 Closure ${f}~${t}${r?' · '+r:''}`, closeTitle:'Close room (period)', clReason:'Reason (optional)', clClose:'Close', clAdd:'Add closure', clList:'Closures', clNone:'No closures', clNeed:'Enter room & period', clRangeErr:'End date must be ≥ start', clDone:'Closed', clFail:'Failed: ', clRemoved:'Removed', swapClosedT:'This room is closed',
     statLoading:'Loading…', stayN:'Guests', onsenN:'Onsen pre-app.',
     nameUnit:'', preNight:'p-nights', noData:'No Shizu-no-Yado reservations to show (assign on the room screen).',
     onsenH:'Annex onsen pre-application', onsenHint:'— Annex (Kissho/Zuiun/Ashibi) = rooms with a private in-room bath. <b>Pre-applied teams (Merit): ¥19,000/person-night</b> (room ¥17,000 + onsen ¥2,000, <b>Merit B2B settlement</b>). Teams not pre-applied who want the bath filled on-site: <b>+¥4,000/room-night (on-site notice & collection)</b>. Checking here = B2B pre-application tally (per team).',
@@ -856,12 +857,16 @@ function renderBoardDay(date, showHd){
       const others=GUESTS.filter(g=>g.room_no===room && g.ci<selSpan.arr && selSpan.dep<g.co && g.co>date && !BSEL.has(g.member_id) && String(g.event_seq)!==String(selSeq));
       if(others.length){ others.sort((a,b)=>(a.ci||'').localeCompare(b.ci||'')); spanHit=others[0]; cls='empty spanbusy'; }
     }
-    const clReason=closed?((CLOSURES.find(c=>c.room_no===room&&c.from_date<=date&&date<=c.to_date)||{}).reason||''):'';
+    // 폐쇄 기간을 카드에 늘 보인다(Min 2026-09-15 「시즈 예약표 카드에도 폐쇄 기간 같이」): 기준일에 걸린 것=빨강(기간·사유), 그 밖 예정분=주황 줄. 끝난 폐쇄는 안 보임.
+    const _md=x=>{ const m=String(x||'').match(/^\d{4}-(\d{2})-(\d{2})/); return m?`${+m[1]}/${+m[2]}`:'-'; };
+    const clAll=CLOSURES.filter(c=>c.room_no===room && c.to_date>=date).sort((a,b)=>a.from_date.localeCompare(b.from_date));
+    const clCur=clAll.find(c=>c.from_date<=date && date<=c.to_date)||null;
+    const clSoon=clAll.filter(c=>c!==clCur).map(c=>`<div class="rm-clsoon">${esc(tx('clUpcoming')(_md(c.from_date),_md(c.to_date),c.reason||''))}</div>`).join('');
     const body=closed
-      ? `<div class="rm-closed">🔒 ${esc(clReason||tx('swapClosedT'))}</div>`
+      ? `<div class="rm-closed">${esc(clCur?tx('clPeriod')(_md(clCur.from_date),_md(clCur.to_date),clCur.reason||''):('🔒 '+tx('swapClosedT')))}</div>${clSoon}`
       : spanHit
       ? `<div class="rm-spanbusy">🛏 ${esc(nameOf(spanHit))}様 <small>${esc((spanHit.ci||'').slice(5))}~${esc((spanHit.co||'').slice(5))}</small><div class="rm-sb-lbl">${tx('spanBusyLbl')}</div></div>`
-      : (occ.length? occ.map(g=>{ const _rp=String((BOOK[g.event_seq]||{}).rep_name||'').trim(); return `<span class="oc${BSEL.has(g.member_id)?' sel':''}${isLocalSeq(g.event_seq)?' local':''}" draggable="true" ondragstart="bDragStart(event,'${g.member_id}')" title="${esc(_rp?tx('teamOf')(_rp):'')}">${isLocalSeq(g.event_seq)?'<span class="shz-loc">現地</span>':''}<span class="nm" onclick="event.stopPropagation();bToggleSel('${g.member_id}')">${esc(nameOf(g))}様</span><button class="x" onclick="event.stopPropagation();bUnassign('${g.member_id}')">✕</button></span>`; }).join('') : `<div class="cnt" style="color:var(--muted)">—</div>`);
+      : clSoon+(occ.length? occ.map(g=>{ const _rp=String((BOOK[g.event_seq]||{}).rep_name||'').trim(); return `<span class="oc${BSEL.has(g.member_id)?' sel':''}${isLocalSeq(g.event_seq)?' local':''}" draggable="true" ondragstart="bDragStart(event,'${g.member_id}')" title="${esc(_rp?tx('teamOf')(_rp):'')}">${isLocalSeq(g.event_seq)?'<span class="shz-loc">現地</span>':''}<span class="nm" onclick="event.stopPropagation();bToggleSel('${g.member_id}')">${esc(nameOf(g))}様</span><button class="x" onclick="event.stopPropagation();bUnassign('${g.member_id}')">✕</button></span>`; }).join('') : `<div class="cnt" style="color:var(--muted)">—</div>`);
     const act = closed ? '' : spanHit ? ` onclick="bSpanBusy()"` : ` onclick="bPlace('${room}','${date}')" ondragover="bDragOver(event,this)" ondragleave="bDragLeave(this)" ondrop="bDrop(event,'${room}','${date}')"`;
     return `<div class="rm ${cls}"${act}>
       <div class="rm-hd"><span class="rm-no">${SHZ_ROOMNO[room]||''}</span>${room}<span class="rm-zone${bz?' bz':''}">${bz?tx('annexLbl'):tx('mainLbl')}</span><span class="rm-cap${used>2?' over':''}">${spanHit?'🛏':used+'/2'}</span>${used>2?`<span class="rm-over">${tx('overLbl')}</span>`:''}</div>

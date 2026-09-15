@@ -389,6 +389,7 @@
   .zone-label .zstat{margin-left:auto;font-size:11.5px;color:var(--text2);font-weight:600}
   .zone-label .zstat .zwarn{color:var(--warn);font-weight:700}
   .team-card .cdates{font-size:11.5px;color:var(--text2);margin-top:3px;font-weight:600}
+  .team-card .cloc{display:inline-block;font-size:9px;font-weight:800;border:1px solid #999;border-radius:3px;padding:0 3px;color:#555;line-height:1.5;vertical-align:middle}   /* 현지예약 = 현장 수기 */
   .team-card .cdates .cnew{color:var(--accent);background:var(--accentSoft);border-radius:4px;padding:1px 5px;font-size:10px;margin-left:4px}
 
   /* 보기 토글 (카드 / 타임라인) */
@@ -518,7 +519,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=32.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=32.5">
 </head>
 <body data-so-area="room_assign">
 <div class="topbar so-bar">
@@ -648,7 +649,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=32.4"></script>
+<script src="../assets/saizen-ops.js?v=32.5"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -1878,6 +1879,8 @@ async function loadDay(){
 
 function guessSaleType(pname,accom){
   const s=String(pname||'');
+  // 현지예약(엠클릭 상품명 「○○ 현지예약」) = 현장이 직접 방을 정한다 — 자동배정 제외(Min 2026-09-15 「야마나미 현지예약도 현지에서 방배정」). 시즈 현지예약과 같은 판정.
+  if(/현지\s*예약/.test(s)) return '현지예약';
   if(accom==='야마나미리조트'){
     if(s.includes('소형트윈')) return '호텔 소형트윈';
     // 「돔하우스」·「여행사」 표기 예약은 모두 돔하우스 자동배정(Min 2026-08)
@@ -2728,7 +2731,7 @@ function renderUnassigned(){
       ${singleNote(g)?`<div class="tc-s" style="padding-top:0">${singleBadgeHtml(g)}</div>`:''}
       ${noteLine(g)}
       <div class="tc-s">${fmtMD(g.dep)} → ${fmtMD(g.arr)} · ${teamNights(g)}${tx('nightUnit')} · ${g.pax}${tx('nameUnit')}${g.isNewCheckin?` <b class="cnew">${tx('todayCheckin')}</b>`:''}
-        <br>${esc(g.accom||'')} · <b>${esc(g.sale_type||'')} → ${esc(ROOMTYPE_MAP[g.sale_type]||tx('onsiteFix'))}</b></div>
+        <br>${esc(g.accom||'')} · ${g.sale_type==='현지예약'?'<b class="cloc">現地</b> ':''}<b>${esc(g.sale_type||'')} → ${esc(ROOMTYPE_MAP[g.sale_type]||tx('onsiteFix'))}</b></div>
       <div class="roster">${rosterHtml}</div>
       ${doneN?`<button type="button" class="dtog" data-seq="${g.event_seq}">${tx('doneToggle',doneN,openDone)}</button>`:''}`;
     // 행 선택 토글 (행 어디를 눌러도 1회 토글). 체크박스/행 클릭 일원화.
@@ -4593,6 +4596,7 @@ const GEN_TYPES=['트윈','컴팩트트윈','더블'];
 const SINGLE_TYPES=['싱글'];          // 홀수로 남는 1명 전용(정원 1)
 function autoRoute(g){
   const st=g.sale_type, ac=g.accom;
+  if(st==='현지예약') return null;   // 현지예약 = 현장 수기(자동배정 제외, 미배정 목록에 「現地 · 현장지정」으로 남는다)
   if(ac==='야마나미리조트'){
     // 일반은 "스탠다드트윈 또는 컴팩트트윈" — 예약종류 무관하게 스탠다드 트윈 먼저·컴팩트트윈은 최후 폴백(Min 결정).
     //   (현장은 트윈·컴팩트트윈을 사실상 동급으로 보므로 소형트윈 예약도 트윈 우선 = 업그레이드, 컴팩트를 항상 마지막에 소진)
