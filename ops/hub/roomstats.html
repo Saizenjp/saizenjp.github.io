@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 방배정 통계(회원 객실등급)</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><!-- ⑤ 통보용 xlsx(연락처 포함) -->
 <style>
   :root{
     --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
@@ -71,7 +72,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=32.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=32.7">
 </head>
 <body data-so-area="roomstats">
 <div class="topbar so-bar">
@@ -102,7 +103,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=44"></script><!-- 회원 판정(3컬럼 OR)·박수→층 규칙 단일 진실원 -->
-<script src="../assets/saizen-ops.js?v=32.6"></script>
+<script src="../assets/saizen-ops.js?v=32.7"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -139,7 +140,7 @@ const L={
     t5:'⑤ 予約期間で絞り込み — その週の予約は会員がデラックスに入れたか',
     t5d:'エムクリックの<b>予約日</b>(reserved_at)がこの期間に入る予約だけを見ます。1週間分など、特定の受注分でデラックスが足りたかを確認するためのものです。',
     rsvRange:'予約日', rsvGo:'照会', rsvClear:'解除',
-    c5Rsv:'予約日', c5Team:'チーム', c5Rep:'代表', c5Dep:'入国', c5Nights:'泊', c5Mem:'会員', c5Grades:'入った等級', c5Dlx:'デラックス',
+    c5Rsv:'予約日', c5Team:'チーム', c5Rep:'代表', c5Dep:'入国', c5Nights:'泊', c5Mem:'会員', c5Grades:'入った等級', c5Dlx:'デラックス', c5Who:'スタンダード等の会員(部屋)', btnXlsx5:'⬇ 通知用 xlsx(連絡先付き)', xlsxNone:'期間を絞ってから出力してください', xlsxDone:n=>`${n}名を出力しました`, xh:{rsv:'予約日',seq:'行事番号',tag:'タグ',rep:'代表',dep:'入国',nights:'泊',name:'会員名',birth:'生年',room:'部屋',type:'客室タイプ',grade:'実質等級',phone:'本人連絡先',repPhone:'代表連絡先'}, xsNon:'スタンダード等', xsAll:'会員全員',
     t5none:'この期間の予約に、やまなみホテル棟の会員割当はありません。',
     t5sum:(t,m,d)=>`予約 ${t}件 · 会員 ${m}名 · デラックス ${d}名`,
     t5ok:'✅ この期間の会員は全員デラックスに入っています。',
@@ -178,7 +179,7 @@ const L={
     t5:'⑤ 예약 기간으로 좁혀보기 — 그 주 예약은 회원이 디럭스를 받았나',
     t5d:'엠클릭 <b>예약일</b>(reserved_at)이 이 기간에 들어간 예약만 봅니다. 1주일치처럼 특정 수주분에서 디럭스가 충분했는지 확인용입니다.',
     rsvRange:'예약일', rsvGo:'조회', rsvClear:'해제',
-    c5Rsv:'예약일', c5Team:'팀', c5Rep:'대표', c5Dep:'입국', c5Nights:'박', c5Mem:'회원', c5Grades:'받은 등급', c5Dlx:'디럭스',
+    c5Rsv:'예약일', c5Team:'팀', c5Rep:'대표', c5Dep:'입국', c5Nights:'박', c5Mem:'회원', c5Grades:'받은 등급', c5Dlx:'디럭스', c5Who:'스탠다드 등 회원(방)', btnXlsx5:'⬇ 통보용 xlsx(연락처 포함)', xlsxNone:'예약 기간을 먼저 좁혀 주세요', xlsxDone:n=>`${n}명을 내보냈습니다`, xh:{rsv:'예약일',seq:'행사번호',tag:'태그',rep:'대표',dep:'입국',nights:'박',name:'회원명',birth:'생년',room:'방',type:'객실타입',grade:'실질등급',phone:'본인 연락처',repPhone:'대표 연락처'}, xsNon:'스탠다드 등', xsAll:'회원 전체',
     t5none:'이 기간 예약에는 야마나미 호텔동 회원 배정이 없습니다.',
     t5sum:(t,m,d)=>`예약 ${t}건 · 회원 ${m}명 · 디럭스 ${d}명`,
     t5ok:'✅ 이 기간 회원은 전원 디럭스에 들어갔습니다.',
@@ -217,7 +218,7 @@ const L={
     t5:'⑤ Filter by booking date — did members in that week get deluxe?',
     t5d:'Looks only at bookings whose M-Click <b>booking date</b> (reserved_at) falls in this range. Use it to check whether deluxe was enough for one week of intake.',
     rsvRange:'Booking date', rsvGo:'Look up', rsvClear:'Clear',
-    c5Rsv:'Booked', c5Team:'Team', c5Rep:'Rep', c5Dep:'Arrival', c5Nights:'Nights', c5Mem:'Members', c5Grades:'Grades', c5Dlx:'Deluxe',
+    c5Rsv:'Booked', c5Team:'Team', c5Rep:'Rep', c5Dep:'Arrival', c5Nights:'Nights', c5Mem:'Members', c5Grades:'Grades', c5Dlx:'Deluxe', c5Who:'Non-deluxe members (room)', btnXlsx5:'⬇ Notify list xlsx (with phone)', xlsxNone:'Narrow the booking-date range first', xlsxDone:n=>`Exported ${n} members`, xh:{rsv:'Booked',seq:'Event',tag:'Tag',rep:'Rep',dep:'Arrival',nights:'Nights',name:'Member',birth:'Birth',room:'Room',type:'Room type',grade:'Grade',phone:'Phone',repPhone:'Rep phone'}, xsNon:'Non-deluxe', xsAll:'All members',
     t5none:'No Yamanami hotel-block member assignments among bookings in this range.',
     t5sum:(t,m,d)=>`${t} bookings · ${m} members · ${d} in deluxe`,
     t5ok:'✅ Every member from this range got a deluxe room.',
@@ -317,12 +318,14 @@ function renderUI(){
         <input class="inp" type="date" id="rsv-to" value="${RSV.to}">
         <button class="btn sm" id="rsv-go" type="button">${tx('rsvGo')}</button>
         <button class="btn sm ghost" id="rsv-clear" type="button">${tx('rsvClear')}</button>
+        <button class="btn sm" id="rsv-xlsx" type="button">${tx('btnXlsx5')}</button>
       </div>
       <div id="tbl5"></div></div>`;
   $('#y-prev').addEventListener('click',()=>{YEAR--;load();});
   $('#y-next').addEventListener('click',()=>{YEAR++;load();});
   $('#rsv-go').addEventListener('click',()=>{ RSV.from=$('#rsv-from').value||''; RSV.to=$('#rsv-to').value||''; renderRange(); });
   $('#rsv-clear').addEventListener('click',()=>{ RSV.from=''; RSV.to=''; $('#rsv-from').value=''; $('#rsv-to').value=''; renderRange(); });
+  $('#rsv-xlsx').addEventListener('click',downloadRangeXlsx);
 }
 
 async function load(){
@@ -346,9 +349,11 @@ async function load(){
     const gmR=await pagedIn('guest_members','id,event_seq,passenger_id,name_kr,member_grade,member_class,member_div','event_seq',seqs);
     if(gmR.error) throw gmR.error;
     const GM={}; (gmR.data||[]).forEach(m=>GM[m.id]=m);
-    const pxR=await pagedIn('passengers','id,name_kr,birth_yymmdd','event_seq',seqs);
+    const pxR=await pagedIn('passengers','id,event_seq,name_kr,birth_yymmdd,phone,is_rep','event_seq',seqs);
     if(pxR.error) throw pxR.error;
     const PX={}; (pxR.data||[]).forEach(p=>PX[p.id]=p);
+    const REPPH={}; (pxR.data||[]).forEach(p=>{ if(p.is_rep && p.phone && !REPPH[p.event_seq]) REPPH[p.event_seq]=p.phone; });   // 대표 연락처(통보용)
+    let TAG={}; try{ const gsR=await pagedIn('guests','event_seq,group_code,team_tag','event_seq',seqs); (gsR.data||[]).forEach(g=>{ TAG[g.event_seq]=g.team_tag||g.group_code||''; }); }catch(e){ TAG={}; }
 
     // 3-a) 호텔동 배정 전체(회원·일반 모두) — ④ 동반 일반고객 부족분 계산용
     const stays=[];
@@ -380,7 +385,8 @@ async function load(){
         rep: b.rep_name||'', dep: b.dep_date||'',
         ci:r.check_in, co:r.check_out,
         nights: Math.max(0,Math.round((new Date(r.check_out)-new Date(r.check_in))/864e5)),
-        key: name+(birth?'|'+birth:'|?'+r.event_seq), name
+        key: name+(birth?'|'+birth:'|?'+r.event_seq), name, birth,
+        roomType: inv.room_type||'', phone:(px&&px.phone)||'', repPhone: REPPH[r.event_seq]||'', tag: TAG[r.event_seq]||''   // ⑤ 통보용(연락처·실제 타입)
       });
     });
     DATA={rows, stays, dlxSupply};
@@ -534,8 +540,9 @@ function renderRange(){
   const pct=people.length?Math.round(noDlx.length/people.length*100):0;
   // 예약(팀) 단위 표
   const byTeam={};
-  rows.forEach(r=>{ const t=byTeam[r.eventSeq]||(byTeam[r.eventSeq]={seq:r.eventSeq,rsv:r.rsv,rep:r.rep,dep:r.dep,nights:r.nights,mem:0,grades:{}});
+  rows.forEach(r=>{ const t=byTeam[r.eventSeq]||(byTeam[r.eventSeq]={seq:r.eventSeq,rsv:r.rsv,rep:r.rep,dep:r.dep,nights:r.nights,mem:0,grades:{},who:[]});
     t.mem++; t.grades[r.grade]=(t.grades[r.grade]||0)+1;
+    if(r.grade!=='dlx'){ const w=`${r.name||'-'}(${r.roomNo||'-'})`; if(!t.who.includes(w)) t.who.push(w); }   // 디럭스 못 받은 회원 = 통보 대상(Min 2026-09-15)
     if(r.nights>t.nights) t.nights=r.nights; });
   const teams=Object.values(byTeam).sort((a,b)=>String(a.rsv).localeCompare(String(b.rsv))||a.seq-b.seq);
   const trs=teams.map(t=>{
@@ -550,6 +557,7 @@ function renderRange(){
       <td>${t.mem}</td>
       <td class="${dlx?'good':'bad'}">${dlx||'-'}</td>
       <td style="text-align:left;font-family:inherit">${esc(gr)}</td>
+      <td style="text-align:left;font-family:inherit" class="${t.who.length?'bad':''}">${esc(t.who.join(', '))}</td>
     </tr>`;
   }).join('');
   box.innerHTML =
@@ -559,8 +567,30 @@ function renderRange(){
       <div class="namelist">${noDlx.map(p=>`<span class="nm">${esc(p.name||'-')}<small>${p.stays}× · ${GRADES.filter(g=>p.grades[g]).map(g=>esc(tx(GKEY[g]))).join('/')}</small></span>`).join('')}</div>`:'')
     +`<table class="t"><thead><tr>
         <th>${tx('c5Rsv')}</th><th>${tx('c5Team')}</th><th>${tx('c5Rep')}</th><th>${tx('c5Dep')}</th>
-        <th>${tx('c5Nights')}</th><th>${tx('c5Mem')}</th><th>${tx('c5Dlx')}</th><th>${tx('c5Grades')}</th>
+        <th>${tx('c5Nights')}</th><th>${tx('c5Mem')}</th><th>${tx('c5Dlx')}</th><th>${tx('c5Grades')}</th><th>${tx('c5Who')}</th>
       </tr></thead><tbody>${trs}</tbody></table>`;
+}
+// ⑤ 통보용 xlsx — 예약일 구간의 회원 1명=1행(연락처 포함). 시트1=스탠다드 등(디럭스 못 받음, 통보 대상) · 시트2=회원 전체.
+//   실질 등급(3층 디럭스=스탠다드) 기준 — Min 2026-09-15 「3층 디럭스는 모두 스탠다드로 보는 게 맞아」. 파일명 영문(회사 PC 한글 파일명 차단).
+function rangeXlsxRows(){
+  if(!DATA||!DATA.rows.length) return [];
+  const {from,to}=RSV;
+  return DATA.rows.filter(r=> r.rsv && (!from||r.rsv>=from) && (!to||r.rsv<=to))
+    .sort((a,b)=>String(a.rsv).localeCompare(String(b.rsv))||a.eventSeq-b.eventSeq||String(a.name).localeCompare(String(b.name)))
+    .map(r=>({rsv:r.rsv, seq:r.eventSeq, tag:r.tag||'', rep:r.rep||'', dep:r.dep||'', nights:r.nights, name:r.name||'', birth:r.birth||'', room:r.roomNo||'', type:r.roomType||'', grade:tx(GKEY[r.grade]||'gEtc'), phone:r.phone||'', repPhone:r.repPhone||'', _dlx:r.grade==='dlx'}));
+}
+function downloadRangeXlsx(){
+  if(!RSV.from && !RSV.to){ toast(tx('xlsxNone'),'warn'); return; }
+  const all=rangeXlsxRows(); if(!all.length){ toast(tx('t5none'),'warn'); return; }
+  const H=tx('xh'); const keys=['rsv','seq','tag','rep','dep','nights','name','birth','room','type','grade','phone','repPhone'];
+  const sheet=list=>{ const aoa=[keys.map(k=>H[k])].concat(list.map(r=>keys.map(k=>r[k]))); const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=keys.map(k=>({wch:k==='name'||k==='rep'?12:k==='type'||k==='tag'?14:k==='phone'||k==='repPhone'?16:10})); return ws; };
+  const non=all.filter(r=>!r._dlx);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, sheet(non), tx('xsNon'));
+  XLSX.utils.book_append_sheet(wb, sheet(all), tx('xsAll'));
+  const f=(RSV.from||'').replace(/-/g,''), t=(RSV.to||'').replace(/-/g,'');
+  XLSX.writeFile(wb, `member_grade_${f||'all'}_${t||'all'}.xlsx`);
+  toast(tx('xlsxDone')(non.length),'ok');
 }
 
 function applyStatic(){
