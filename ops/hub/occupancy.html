@@ -145,6 +145,8 @@
   table.oc td.c.sel{outline:3px solid var(--accent);outline-offset:-3px}
   table.oc tr.sum td{background:#e3e7ec;font-weight:800;border-top:2px solid var(--border2)}
   table.oc tr.sum td.c{font-size:15px;color:var(--text)}
+  table.oc tr.sum.pax td{border-top:1px solid var(--border);background:#eceff3;font-weight:700}
+  table.oc tr.sum.pax td.c{font-size:13px;color:var(--text2)}
   table.oc tbody tr:hover td.rh{background:var(--accentSoft)}
   .lgd{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--text2);font-weight:700;margin-top:8px;align-items:center}
   .lgd i{display:inline-block;width:13px;height:13px;border-radius:3px;border:1px solid var(--border2);margin-right:4px;vertical-align:-2px;font-style:normal}
@@ -163,7 +165,7 @@
   table.dt tr.cl td .clb{display:inline-block;font-size:10.5px;font-weight:800;color:#fff;background:#c2410c;border-radius:5px;padding:1px 6px}
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=33.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=33.4">
 </head>
 <body data-so-area="occupancy">
 <div class="topbar so-bar">
@@ -195,7 +197,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=44"></script>
-<script src="../assets/saizen-ops.js?v=33.3"></script>
+<script src="../assets/saizen-ops.js?v=33.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -226,7 +228,7 @@ const L={
     dtTitle:d=>`${d} の内訳`, dtNone:'この日この客室タイプに滞在中のチームはありません。',
     dtPick:'マスを押すと、その日の内訳がここに出ます。',
     cTeam:'チーム', cRep:'代表', cGuests:'宿泊者', cRoom:'部屋', cPax:'人数', cStay:'滞在', cAccom:'宿泊', clRow:'閉鎖', dtClosed:n=>`うち閉鎖 ${n}室`,
-    sumRow:'合計', noData:'データがありません。',
+    sumRow:'合計', paxRow:'人数合計', paxSplit:(a,u)=>`配置 ${a}名 · 未配置 ${u}名`, noData:'データがありません。',
     statN:(r,d)=>`${r}行 · ${d}日` },
   ko:{ step:'일별 체류 현황', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', preConn:'연결 후 표시됩니다.',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패·재시도',
@@ -254,7 +256,7 @@ const L={
     dtTitle:d=>`${d} 상세`, dtNone:'이 날 이 룸타입에 체류 중인 팀이 없습니다.',
     dtPick:'칸을 누르면 그날 상세가 여기에 나옵니다.',
     cTeam:'팀', cRep:'대표', cGuests:'투숙자', cRoom:'방', cPax:'인원', cStay:'체류', cAccom:'숙소', clRow:'폐쇄', dtClosed:n=>`그중 폐쇄 ${n}실`,
-    sumRow:'합계', noData:'데이터가 없습니다.',
+    sumRow:'합계', paxRow:'인원 합계', paxSplit:(a,u)=>`배정 ${a}명 · 미배정 ${u}명`, noData:'데이터가 없습니다.',
     statN:(r,d)=>`${r}행 · ${d}일` },
   en:{ step:'Daily occupancy', connHint:'Connection details are stored in this browser only.', preConn:'Shown after connecting.',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
@@ -282,7 +284,7 @@ const L={
     dtTitle:d=>`${d} detail`, dtNone:'No team staying in this room type on this date.',
     dtPick:'Click a cell to see the breakdown here.',
     cTeam:'Team', cRep:'Rep', cGuests:'Guests', cRoom:'Room', cPax:'Pax', cStay:'Stay', cAccom:'Lodging', clRow:'Closed', dtClosed:n=>`of which closed ${n}`,
-    sumRow:'Total', noData:'No data.',
+    sumRow:'Total', paxRow:'Guests total', paxSplit:(a,u)=>`assigned ${a} · unassigned ${u}`, noData:'No data.',
     statN:(r,d)=>`${r} rows · ${d} days` }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
@@ -911,6 +913,15 @@ function renderGrid(){
     const w=SZCore.parseLocalDate(d).getDay();
     return `<td class="c${(w===0||w===6)?' wk':''}${ms?' mstart':''}">${v||'·'}</td>`; }).join('');
   body.push(`<tr class="sum"><td class="rh">${esc(tx('sumRow'))}<span class="own">${esc(tx('own'))} ${ownTot}</span></td>${totTds}</tr>`);
+  // 인원 합계 행(Min 2026-09-25 「인원 합계를 하단에」) — 그날 밤 보이는 숙소에 묵는 인원 = 배정된 사람 수 + 방을 아직 못 받은 인원(미배정 줄과 같은 수). 대기 예약·현지예약 미배정분은 안 들어간다.
+  const facs=[...new Set(rows.map(r=>r.facility))];
+  prevM='';
+  const paxTds=DAYS.map((d,i)=>{ const ms=d.slice(0,7)!==prevM; prevM=d.slice(0,7);
+    const a=rows.reduce((n,r)=>n+(r.days[i].p||0),0);
+    const u=facs.reduce((n,f)=>n+(((UNA[f]||{})[d]||{}).pax||0),0);
+    const w=SZCore.parseLocalDate(d).getDay();
+    return `<td class="c${(w===0||w===6)?' wk':''}${ms?' mstart':''}"${u?` title="${esc(tx('paxSplit')(a,u))}"`:''}>${(a+u)||'·'}</td>`; }).join('');
+  body.push(`<tr class="sum pax"><td class="rh">${esc(tx('paxRow'))}</td>${paxTds}</tr>`);
 
   syncTopBar();
   box.innerHTML=`<table class="oc"><thead><tr><th class="rh">${esc(tx('thRow'))}</th>${head}</tr></thead><tbody>${body.join('')}</tbody></table>`;
