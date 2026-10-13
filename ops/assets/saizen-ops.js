@@ -2188,7 +2188,7 @@
     f.appendChild(sep);
     var s2 = document.createElement('span');
     s2.style.cssText = 'font-size:10px;opacity:.85';
-    s2.textContent = '© ' + new Date().getFullYear() + ' Merit Tour · SaiZen';
+    s2.textContent = '© ' + new Date().getFullYear() + ' Merit Tour. All rights reserved.';
     f.appendChild(s2);
     document.body.appendChild(f);
   }
