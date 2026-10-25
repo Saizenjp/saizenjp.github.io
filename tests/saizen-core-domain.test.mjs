@@ -282,3 +282,17 @@ test('airportLabel / accomColor: 세 인쇄물 표기가 한 곳에서 나온다
   assert.equal(SZCore.accomPrefix('쿠주힐즈'), 'K');
   assert.equal(SZCore.accomPrefix(''), '');
 });
+
+test('golfRows: 귀국일(부산편) 라운딩은 오전 18H — 9H 폐기(Min 2026-10-25)', () => {
+  const team = { dep: '2026-11-04', arr: '2026-11-11', accom: '야마나미리조트' };
+  const pus = SZ.golfRows(team, true);
+  const last = pus.find(r => r.date === '2026-11-11');
+  assert.ok(last, '부산편은 귀국일에 라운딩이 있다');
+  assert.equal(last.holes, 18);
+  assert.equal(pus.find(r => r.date === '2026-11-04'), undefined, '부산편 입국일은 라운딩 없음');
+  const icn = SZ.golfRows(team, false);
+  assert.equal(icn.find(r => r.date === '2026-11-11'), undefined, '인천편은 귀국일 라운딩 없음');
+  assert.equal(icn.find(r => r.date === '2026-11-04').holes, 18, '인천편 입국일 18H');
+  // 체류 중 평일은 18H(+9H 서비스 표기), 주말은 18H
+  assert.equal(pus.find(r => r.date === '2026-11-05').holes, 18);
+});
