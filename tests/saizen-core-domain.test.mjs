@@ -296,3 +296,14 @@ test('golfRows: 귀국일(부산편) 라운딩은 오전 18H — 9H 폐기(Min 2
   // 체류 중 평일은 18H(+9H 서비스 표기), 주말은 18H
   assert.equal(pus.find(r => r.date === '2026-11-05').holes, 18);
 });
+
+// ── 일별 코스 로테이션(Min 2026-10-25 「매일 아소→소보→쿠주 순서로 로테이션」 = 팀 단위) ──
+test('nextStartCourse: 어제 출발 코스의 다음 코스(아소→소보→쿠주→아소), 기록 없으면 null', () => {
+  assert.equal(SZ.nextStartCourse('aso'), 'sobo');
+  assert.equal(SZ.nextStartCourse('sobo'), 'kuju');
+  assert.equal(SZ.nextStartCourse('kuju'), 'aso');
+  assert.equal(SZ.nextStartCourse(''), null);
+  assert.equal(SZ.nextStartCourse(null), null);
+  assert.equal(SZ.nextStartCourse('xyz'), null);
+  assert.deepEqual(SZ.GOLF_COURSES, ['aso', 'sobo', 'kuju']);   // 순환 순서 자체가 규칙이다
+});

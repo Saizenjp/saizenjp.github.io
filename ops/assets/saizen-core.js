@@ -344,6 +344,12 @@
   //   · **로테이션** = 같은 팀이 여러 날 라운딩하면 코스를 아소→소보→쿠주로 돌린다.
   //     체류 며칠째인지(dayIdx)로 시작 코스를 정하고, 팀마다 시작점을 어긋나게 해 한 코스에 몰리지 않게 한다.
   var GOLF_COURSES = ['aso', 'sobo', 'kuju'];
+  // 일별 코스 로테이션(Min 2026-10-25 「매일 아소→소보→쿠주 순서로 로테이션」 = 팀 단위 「가」).
+  //  어제 아소에서 출발한 팀은 오늘 소보, 소보→쿠주, 쿠주→아소. 어제 기록이 없으면 null(화면은 가장 덜 찬 코스).
+  function nextStartCourse(prev, courses) {
+    var cs = courses || GOLF_COURSES; var i = cs.indexOf(String(prev || ''));
+    if (i < 0) return null; return cs[(i + 1) % cs.length];
+  }
   //  teams: [{ seq, pax, dayIdx }]  (dayIdx = 그 팀의 체류 중 그날이 몇 번째 라운딩일인지, 0부터)
   //  opts : { courses, slots, cap }
   //  반환 : [{ seq, course, tee, slot, pax }]  — 조 단위(팀 하나가 여러 조가 될 수 있다)
@@ -1039,6 +1045,7 @@
     wantsElectricCart: wantsElectricCart,
     cartRemarkKind: cartRemarkKind,
     GOLF_COURSES: GOLF_COURSES,
+    nextStartCourse: nextStartCourse,
     buildRounding: buildRounding,
     cartFreeDay: cartFreeDay,
     singlePlan: singlePlan,
