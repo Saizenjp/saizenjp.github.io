@@ -53,6 +53,14 @@
   table.tedit td{border:1px solid var(--border);padding:4px 7px}
   table.tedit td.c{text-align:center}
   table.venue td{white-space:nowrap} table.venue .vb{font-size:12px;font-weight:700;padding:4px 10px;border-radius:99px;border:1px solid var(--border);background:var(--surface3);color:var(--text2);cursor:pointer} table.venue .vb.on{background:var(--accent);border-color:var(--accent);color:#fff} table.venue input{font:inherit;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface)} table.venue input.t{width:62px} table.venue input.n{width:220px} table.venue tr.today td{background:var(--accentSoft)}
+  /* 팀별 석식 장소(SQL 145) — 날짜 줄 아래 펼쳐지는 묶음 단위 지정 */
+  table.venue .vb.tvt{padding:3px 9px} table.venue .tvsum{color:var(--text2);font-weight:700}
+  table.venue tr.vteams td{background:var(--surface2);padding:8px 10px;white-space:normal}
+  .tvhd{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+  .tvrow{display:flex;gap:10px;align-items:center;padding:5px 0;border-top:1px dashed var(--border);flex-wrap:wrap}
+  .tvrow .mono{font-family:var(--mono);font-weight:800;color:var(--accent);min-width:72px}
+  .tvrow .tvrep{font-weight:700} .tvrow .tvrep small{color:var(--text2);font-weight:600}
+  .tvbtns{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap}
   table.tedit td.mono{font-family:var(--mono)}
   table.tedit input{border:1px solid var(--border2);border-radius:5px;padding:4px 6px;font-size:12px;font-family:inherit}
   .tgbadge{display:inline-block;font-size:10.5px;font-weight:700;color:#5a6b3e;background:#eef2e6;border:1px solid #cdd9bd;border-radius:5px;padding:1px 6px}
@@ -66,7 +74,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.1">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.2">
 </head>
 <body data-so-area="dinner">
 <div class="topbar so-bar">
@@ -97,7 +105,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=46"></script>
-<script src="../assets/saizen-ops.js?v=34.1"></script>
+<script src="../assets/saizen-ops.js?v=34.2"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(印刷 산출물·도메인 데이터는 미번역) ──
@@ -123,6 +131,9 @@ const L={
     dgHint:'レストラン名札は<b>運営チーム(現地手配書で設定)単位で自動合席</b>されます。',
     thIn:'入国', thFac:'施設', thRep:'代表者', thEng:'英文名', thTag:'タグコード', thPax:'人数', thTeam:'運営チーム', thTeamTitle:'運営チーム(現地手配書で設定)。レストラン名札はこの単位で合席。', thEx:'夕食除外', thExTitle:'夕食のみ控除(朝・昼食の食数は維持)',
     noTeam:'チームなし', exReleaseBtn:'夕食除外 解除', exBtn:'夕食除外', exReasonTitle:'夕食除外 理由',
+    tvH:'チーム別', tvSplit:'分かれる', tvDefault:'基本', tvBulk8:'8名以上→コンベンション', tvBulkNone:'対象チームなし(8名以上で未指定)', tvReset:'全て基本に',
+    tvSum:(r,c,n)=>`レストラン ${r}名 · コンベンション ${c}名${n?` · 未指定 ${n}名`:''}`,
+    tvHint:'日付の会場が基本。チームごとに別の会場を指定できます(8名などの団体はコンベンションホールが多い)。モニター・印刷・フロントの夕食一覧に反映。',
     pvNoDate:'出力する日付がありません。', baseDinner:'基本夕食', upgradeBadge:'別', upgradeNote:'人前 別途',
     statLoading:'読み込み中…', statNoData:'当該月データなし', statFail:'読み込み失敗', loadFail:'読み込み失敗',
     tNoConn:'先に接続してください', tNoDateTeam:'日付・チームを選択してください', tNoItem:'メニュー名/内容を入力してください',
@@ -153,6 +164,9 @@ const L={
     dgHint:'레스토랑 명패는 <b>운영팀(現地手配書에서 설정) 단위로 자동 합석</b>됩니다.',
     thIn:'入国', thFac:'施設', thRep:'代表者', thEng:'英文名', thTag:'タグコード', thPax:'人数', thTeam:'운영팀', thTeamTitle:'운영 팀(現地手配書에서 설정). 레스토랑 명패는 이 단위로 합석.', thEx:'夕食除外', thExTitle:'석식만 제외(朝·昼食 식수는 유지)',
     noTeam:'팀 없음', exReleaseBtn:'夕食除外 해제', exBtn:'夕食除外', exReasonTitle:'夕食除外 사유',
+    tvH:'팀별', tvSplit:'나뉨', tvDefault:'기본', tvBulk8:'8명 이상 → 컨벤션', tvBulkNone:'대상 팀 없음(8명 이상·미지정)', tvReset:'전부 기본으로',
+    tvSum:(r,c,n)=>`레스토랑 ${r}명 · 컨벤션 ${c}명${n?` · 미지정 ${n}명`:''}`,
+    tvHint:'날짜 장소가 기본이고, 팀마다 다른 장소를 지정할 수 있습니다(8명 같은 단체는 컨벤션홀이 많음). 모니터·인쇄·프론트 석식 목록에 반영됩니다.',
     pvNoDate:'출력할 날짜가 없습니다.', baseDinner:'기본 석식', upgradeBadge:'別', upgradeNote:'인분 별도',
     statLoading:'불러오는 중…', statNoData:'해당 월 데이터 없음', statFail:'로드 실패', loadFail:'로드 실패',
     tNoConn:'먼저 연결하세요', tNoDateTeam:'날짜·팀을 선택하세요', tNoItem:'메뉴명/내용을 입력하세요',
@@ -183,6 +197,9 @@ const L={
     dgHint:'The restaurant nameplate <b>auto-merges by operational team (set in 現地手配書)</b>.',
     thIn:'入国', thFac:'施設', thRep:'代表者', thEng:'Eng name', thTag:'タグコード', thPax:'人数', thTeam:'Team', thTeamTitle:'Operational team (set in 現地手配書). The nameplate merges by this unit.', thEx:'夕食除外', thExTitle:'Dinner only excluded (朝·昼食 counts kept)',
     noTeam:'No team', exReleaseBtn:'夕食除外 release', exBtn:'夕食除外', exReasonTitle:'夕食除外 reason',
+    tvH:'By team', tvSplit:'split', tvDefault:'Default', tvBulk8:'8+ → Convention', tvBulkNone:'No target team (8+ and unset)', tvReset:'All default',
+    tvSum:(r,c,n)=>`Restaurant ${r} · Convention ${c}${n?` · unset ${n}`:''}`,
+    tvHint:'The date venue is the default; override per team (large groups often use the Convention Hall). Shown on signage, print and the front desk dinner list.',
     pvNoDate:'No date to output.', baseDinner:'Base dinner', upgradeBadge:'sep', upgradeNote:' servings separate',
     statLoading:'Loading…', statNoData:'No data for this month', statFail:'Load failed', loadFail:'Load failed',
     tNoConn:'Connect first', tNoDateTeam:'Select date & team', tNoItem:'Enter menu name/detail',
@@ -198,6 +215,8 @@ function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
 let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set(), OVR={}, ADDONS=[], EARLY={}, _TGT=null;
 let VENUE={};   // 날짜 → dinner_venue 행(석식 장소·시간·한 줄 안내) — SQL 134. 안내 모니터(signage.html)가 같은 표를 읽는다.
+let TVEN={};    // 'YYYY-MM-DD|event_seq' → venue — 팀별 석식 장소(dinner_team_venue, SQL 145). 날짜 장소 위에 덮는 예외.
+const VOPEN=new Set();   // 「팀별」을 펼친 날짜
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
 // 食事 OFFSITE(간지·시즈) 규칙은 SZCore.mealPlan/mealOffsite 단일 진실원으로 이관
@@ -663,8 +682,39 @@ async function loadVenues(){
     if(error)throw error;
     (data||[]).forEach(r=>{ VENUE[fmtDate(r.dinner_date)]=r; });
   }catch(e){ toast(tx('venueFail')+': '+e.message,'err'); }
+  TVEN={};
+  try{
+    const {data:tv,error:e2}=await supa.from('dinner_team_venue').select('dinner_date,event_seq,venue').gte('dinner_date',ds[0]).lte('dinner_date',ds[ds.length-1]);
+    if(e2) throw e2;
+    (tv||[]).forEach(r=>{ TVEN[fmtDate(r.dinner_date)+'|'+r.event_seq]=r.venue; });
+  }catch(e){ /* SQL 145 미적용이면 팀별 지정 없이(날짜 장소만) */ }
   renderVenue();
 }
+// ── 팀별 석식 장소(SQL 145) — 날짜 장소가 기본, 묶음(team_group) 단위로 다른 장소를 지정 ──
+function dayVenue(date){ const v=VENUE[date]; return (v&&v.venue)||''; }
+function teamVenueOv(seq,date){ return TVEN[date+'|'+seq]||''; }
+function unitVenueOv(u,date){ const t=(u.teams||[]).find(x=>teamVenueOv(x.seq,date)); return t?teamVenueOv(t.seq,date):''; }   // 묶음 중 지정된 팀의 장소
+function venueShort(v){ return v==='restaurant'?'レ':v==='convention'?'コ':''; }   // 인쇄 会場 열 약호(머리글에 범례)
+// 그날 석식 단위(묶음) — 제외·전원 조기퇴실 제외, 숙소 필터 적용(인쇄·엑셀과 같은 집합)
+function dinnerUnitsOn(date){
+  const _accomSet=ACCOMSEL.size?ACCOMSEL:null;
+  const staying=TEAMS.filter(t=> !t.excluded && t.dep<=date && t.arr>date && (Math.max(0,(parseInt(t.pax,10)||0)-goneEarly(t.seq,date,'d'))>0));
+  return dinnerUnits(staying.slice().sort(teamSortByCode)).filter(u=>!_accomSet||_accomSet.has(u.accom));
+}
+// 장소별 팀·인원(夕食 기본 식수 기준 = 인원 − 조기퇴실 − 업그레이드 인분). split = 장소가 갈리는 날(두 장소 또는 팀별 지정 있음)
+function venueSplit(date){
+  const out={restaurant:{t:0,n:0},convention:{t:0,n:0},none:{t:0,n:0}};
+  const units=dinnerUnitsOn(date); let ov=false;
+  units.forEach(u=>{
+    const o=unitVenueOv(u,date); if(o) ov=true;
+    const v=o||dayVenue(date)||'none';
+    const pax=u.teams.reduce((s,x)=>{ const p=Math.max(0,(parseInt(x.pax,10)||0)-goneEarly(x.seq,date,'d')); return s+Math.max(0,p-Math.min(p,upQtyFor(date,x.seq))); },0);
+    out[v].t++; out[v].n+=pax; });
+  out.any=units.length>0;
+  out.split=(out.restaurant.t>0 && out.convention.t>0) || ov;
+  return out;
+}
+function venueSplitLine(d){ const vs=venueSplit(d); if(!vs.split) return ''; return ` · <span style="color:#B45309">レ ${vs.restaurant.n}名 ／ コ ${vs.convention.n}名${vs.none.t?` ／ 未指定 ${vs.none.n}名`:''}</span>`; }
 // 숙소 필터와 무관하게 그 달 팀이 묵는 모든 날짜(장소는 숙소별이 아니라 날짜별 하나)
 function allDatesAll(){ const set=new Set(); const {start,end}=monthBounds(YM);
   TEAMS.forEach(t=>{ if(!t.dep||!t.arr) return; for(let d=parseLocalDate(t.dep); fmtDate(d)<t.arr; d.setDate(d.getDate()+1)){ const k=fmtDate(d); if(k>=start&&k<=end) set.add(k); } });
@@ -673,13 +723,31 @@ function renderVenue(){
   const tb=$('#venue-tbl tbody'); if(!tb) return;
   const ds=allDatesAll(), td=today();
   if(!ds.length){ tb.innerHTML=`<tr><td style="color:var(--muted)">${tx('pvNoDate')}</td></tr>`; return; }
-  tb.innerHTML=ds.map(d=>{ const v=VENUE[d]||{}; const cur=v.venue||'';
-    return `<tr data-d="${d}" class="${d===td?'today':''}"><td><b>${SZCore.mdWd(d,lang())}</b>${d===td?` <span class="cnt">${tx('venueToday')}</span>`:''}</td>
+  tb.innerHTML=ds.map(d=>{ const v=VENUE[d]||{}; const cur=v.venue||''; const vs=venueSplit(d); const open=VOPEN.has(d);
+    const sum=vs.any?tx('tvSum')(vs.restaurant.n,vs.convention.n,vs.none.n):'';
+    const main=`<tr data-d="${d}" class="${d===td?'today':''}"><td><b>${SZCore.mdWd(d,lang())}</b>${d===td?` <span class="cnt">${tx('venueToday')}</span>`:''}</td>
       <td><button type="button" class="vb ${cur==='restaurant'?'on':''}" data-v="restaurant">${tx('venueRest')}</button> <button type="button" class="vb ${cur==='convention'?'on':''}" data-v="convention">${tx('venueConv')}</button>${cur?'':` <span class="cnt" style="color:var(--muted)">${tx('venueUnset')}</span>`}</td>
       <td>${tx('venueFrom')} <input class="t" data-f="start_time" value="${esc(v.start_time||'')}" placeholder="18:00" ${cur?'':'disabled'}> ${tx('venueTo')} <input class="t" data-f="end_time" value="${esc(v.end_time||'')}" placeholder="20:00" ${cur?'':'disabled'}></td>
-      <td><input class="n" data-f="note" value="${esc(v.note||'')}" placeholder="${tx('venueNote')}" ${cur?'':'disabled'}></td></tr>`; }).join('');
-  tb.querySelectorAll('.vb').forEach(b=>b.addEventListener('click',()=>{ const d=b.closest('tr').dataset.d; const v=(VENUE[d]&&VENUE[d].venue)===b.dataset.v?null:b.dataset.v; saveVenue(d,{venue:v}); }));
+      <td><input class="n" data-f="note" value="${esc(v.note||'')}" placeholder="${tx('venueNote')}" ${cur?'':'disabled'}></td>
+      <td><button type="button" class="vb tvt${open?' on':''}" data-tv="${d}">${tx('tvH')}${vs.split?` · ${tx('tvSplit')}`:''}</button>${sum?` <span class="cnt tvsum">${esc(sum)}</span>`:''}</td></tr>`;
+    if(!open) return main;
+    // 팀별(묶음 단위) 장소 — 날짜 장소가 기본, 다른 장소면 그 팀만 지정(묶음 전체에 같은 값을 쓴다)
+    const units=dinnerUnitsOn(d);
+    const rows=units.length? units.map(u=>{ const ov=unitVenueOv(u,d);
+      const pax=u.teams.reduce((s,x)=>s+Math.max(0,(parseInt(x.pax,10)||0)-goneEarly(x.seq,d,'d')),0);
+      const seqs=u.seqs.join(',');
+      const bt=(val,lbl)=>`<button type="button" class="vb tvb${(ov||'')===val?' on':''}" data-d="${d}" data-seqs="${seqs}" data-v="${val}">${lbl}</button>`;
+      return `<div class="tvrow"><span class="mono">${esc(u.tag)}</span><span class="tvrep">${esc(u.repName)}${u.teams.length>1?` <small>+${u.teams.length-1}</small>`:''}</span><span class="cnt">${esc(accomL(u.accom))} · ${pax}名</span>
+        <span class="tvbtns">${bt('',tx('tvDefault')+(cur&&!ov?` (${venueLabel(cur)})`:''))}${bt('restaurant',tx('venueRest'))}${bt('convention',tx('venueConv'))}</span></div>`;
+    }).join('') : `<div class="cnt" style="color:var(--muted)">${tx('noTeam')}</div>`;
+    return main+`<tr class="vteams" data-d="${d}"><td colspan="5"><div class="tvhd"><span class="desc" style="margin:0">${tx('tvHint')}</span><span style="flex:1"></span><button type="button" class="vb" data-tvbulk="${d}">${tx('tvBulk8')}</button><button type="button" class="vb" data-tvreset="${d}">${tx('tvReset')}</button></div>${rows}</td></tr>`;
+  }).join('');
+  tb.querySelectorAll('tr[data-d]:not(.vteams) .vb[data-v]:not(.tvb)').forEach(b=>b.addEventListener('click',()=>{ const d=b.closest('tr').dataset.d; const v=(VENUE[d]&&VENUE[d].venue)===b.dataset.v?null:b.dataset.v; saveVenue(d,{venue:v}); }));
   tb.querySelectorAll('input[data-f]').forEach(i=>i.addEventListener('change',()=>{ const d=i.closest('tr').dataset.d; saveVenue(d,{[i.dataset.f]:i.value.trim()||null}); }));
+  tb.querySelectorAll('.tvt').forEach(b=>b.addEventListener('click',()=>{ const d=b.dataset.tv; if(VOPEN.has(d)) VOPEN.delete(d); else VOPEN.add(d); renderVenue(); }));
+  tb.querySelectorAll('.tvb').forEach(b=>b.addEventListener('click',()=>saveTeamVenue(b.dataset.d, b.dataset.seqs.split(','), b.dataset.v||null)));
+  tb.querySelectorAll('[data-tvbulk]').forEach(b=>b.addEventListener('click',()=>bulkConvention(b.dataset.tvbulk)));
+  tb.querySelectorAll('[data-tvreset]').forEach(b=>b.addEventListener('click',()=>resetTeamVenues(b.dataset.tvreset)));
 }
 async function saveVenue(date,patch){
   const cur=VENUE[date]||{};
@@ -696,6 +764,33 @@ async function saveVenue(date,patch){
     toast(tx('venueSaved'),'ok');
   }catch(e){ toast(tx('venueFail')+': '+e.message,'err'); }
   renderVenue(); renderPreview();
+}
+// 팀별 장소 저장 — venue 없음(기본)=행 삭제 · 묶음은 seqs 전부 같은 값(모니터 RPC 는 대표 팀 값을 쓴다)
+async function saveTeamVenue(date, seqs, venue){
+  seqs=(seqs||[]).map(String).filter(Boolean); if(!seqs.length) return;
+  try{
+    if(!venue){
+      const {error}=await supa.from('dinner_team_venue').delete().eq('dinner_date',date).in('event_seq',seqs.map(Number)); if(error) throw error;
+      seqs.forEach(q=>{ delete TVEN[date+'|'+q]; });
+    }else{
+      const rows=seqs.map(q=>({dinner_date:date, event_seq:Number(q), venue, updated_by:curUser()||null}));
+      const {error}=await supa.from('dinner_team_venue').upsert(rows,{onConflict:'dinner_date,event_seq'}); if(error) throw error;
+      seqs.forEach(q=>{ TVEN[date+'|'+q]=venue; });
+    }
+    toast(tx('venueSaved'),'ok');
+  }catch(e){ toast(tx('venueFail')+': '+e.message,'err'); }
+  renderVenue(); renderPreview();
+}
+// 8명 이상(예약 인원 합) 묶음 중 아직 지정이 없는 팀 → 컨벤션홀. 규칙이 아니라 제안 버튼(Min: 단체는 컨벤션이 많다)
+async function bulkConvention(date){
+  const units=dinnerUnitsOn(date).filter(u=>(u.pax||0)>=8 && !unitVenueOv(u,date));
+  if(!units.length){ toast(tx('tvBulkNone'),'warn'); return; }
+  await saveTeamVenue(date, units.flatMap(u=>u.seqs), 'convention');
+}
+async function resetTeamVenues(date){
+  const seqs=Object.keys(TVEN).filter(k=>k.startsWith(date+'|')).map(k=>k.split('|')[1]);
+  if(!seqs.length) return;
+  await saveTeamVenue(date, seqs, null);
 }
 
 // 조기 퇴실(개인 actual_dep) 인원 차감 — 그날 그 끼니에 이미 떠난 사람 수.
@@ -739,7 +834,7 @@ function renderPreview(){
   box.innerHTML=dates.map(d=>{ const mc=mealCounts(d); const ad=addonsForDate(d);
     return `<div class="pv-day"><b>${d.slice(5).replace('-','/')}${getWD(d)}</b> · ${mc.teamCnt}チーム ${mc.dinnerN}名${mc.exTeamCnt?` <span style="color:var(--err);font-weight:700">夕食除外 ${mc.exTeamCnt}${tx('teamUnit')}/${mc.exDinnerN}名</span>`:''}${mc.upN?` <span style="color:#9a7322;font-weight:700">UP −${mc.upN}</span>`:''}${ad.length?` <span style="color:#9a7322">· 別注 ${ad.filter(a=>a.kind!=='allergy').length} · ⚠${ad.filter(a=>a.kind==='allergy').length}</span>`:''}
       <div class="pv-meal">朝食 ${mc.breakfastN} ・ 昼食 ${mc.lunchN}${mc.lunchArrICN?`(入国${mc.lunchArrICN})`:''} ・ 夕食 ${mc.dinnerN}${mc.upN?` <span style="color:#9a7322">(${mc.upN}${tx('upgradeNote')})</span>`:''}</div>
-      <div style="font-size:11.5px;color:#1A4D8F;font-weight:700;margin-top:2px">${tx('baseDinner')}: ${esc(baseDinnerFor(d))}${venueLine(d)?` · 会場: ${esc(venueLine(d))}`:` · <span style="color:var(--err)">会場 ${esc(tx('venueUnset'))}</span>`}</div></div>`;
+      <div style="font-size:11.5px;color:#1A4D8F;font-weight:700;margin-top:2px">${tx('baseDinner')}: ${esc(baseDinnerFor(d))}${venueLine(d)?` · 会場: ${esc(venueLine(d))}`:` · <span style="color:var(--err)">会場 ${esc(tx('venueUnset'))}</span>`}${venueSplitLine(d)}</div></div>`;
   }).join('');
 }
 
@@ -750,7 +845,7 @@ function downloadOrderXlsx(){
   if(!dates.length){ toast(tx('noOutDate'),'err'); return; }
   if(typeof XLSX==='undefined'){ toast(tx('xlsxLoading'),'warn'); return; }
   const _accomSet=ACCOMSEL.size?ACCOMSEL:null;
-  const HEAD=['No','入国','帰国','出発地','名前','英文名','Group','テーブルNo','人数','日次','単価','料理','参考事項'];
+  const HEAD=['No','入国','帰国','出発地','名前','英文名','Group','会場','テーブルNo','人数','日次','単価','料理','参考事項'];   // 会場(145) = レストラン/コンベンションホール
   const wb=XLSX.utils.book_new(); let made=0;
   dates.forEach(date=>{
     const staying=TEAMS.filter(t=> !t.excluded && t.dep<=date && t.arr>date
@@ -758,7 +853,7 @@ function downloadOrderXlsx(){
     if(!staying.length) return;
     const units=dinnerUnits(staying.slice().sort(teamSortByCode)).filter(u=>!_accomSet||_accomSet.has(u.accom));
     if(!units.length) return;
-    const mc=mealCounts(date);
+    const mc=mealCounts(date), vs=venueSplit(date);
     const aoa=[[`夕食オーダー  ${date}(${getWD(date)})`,'','','',`本日の基本夕食: ${baseDinnerFor(date)}`+(venueLine(date)?`  会場: ${venueLine(date)}`:''),'','','','',`${mc.teamCnt}チーム`,'',`${mc.dinnerN}名`,''], HEAD];
     let no=0;
     units.forEach(u=>{ no++;
@@ -766,13 +861,14 @@ function downloadOrderXlsx(){
       if(u.dep){ const days=Math.round((parseLocalDate(date)-parseLocalDate(u.dep))/86400000)+1; const nights=(u.dep&&u.arr)?Math.round((parseLocalDate(u.arr)-parseLocalDate(u.dep))/86400000):0; if(days>=1&&days<=nights+1) stayDay=`${days}日目`; }
       const ePax=u.teams.reduce((s,x)=>s+Math.max(0,(parseInt(x.pax,10)||0)-goneEarly(x.seq,date,'d')),0);
       const engShow=(u.engName&&u.engName!=='(미등록)')?u.engName:'';
-      aoa.push([no, fmtMD(u.dep), fmtMD(u.arr), u.isPus?'PUS':'ICN', u.repName||'', engShow, u.tag||'', '', ePax, stayDay, '', '', '']);
+      aoa.push([no, fmtMD(u.dep), fmtMD(u.arr), u.isPus?'PUS':'ICN', u.repName||'', engShow, u.tag||'', VENUE_JA[unitVenueOv(u,date)||dayVenue(date)]||'', '', ePax, stayDay, '', '', '']);
     });
     aoa.push([]); aoa.push(['','朝食','昼食','夕食']);
     aoa.push(['予約', mc.breakfastN, mc.lunchN, mc.dinnerN]);
     aoa.push(['合計', mc.breakfastN, mc.lunchN, mc.dinnerN]);
+    if(vs.split) aoa.push(['夕食 会場','レストラン',vs.restaurant.n,'コンベンション',vs.convention.n,'未指定',vs.none.n]);
     const ws=XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols']=[{wch:4},{wch:7},{wch:7},{wch:7},{wch:14},{wch:22},{wch:10},{wch:9},{wch:6},{wch:7},{wch:7},{wch:9},{wch:22}];
+    ws['!cols']=[{wch:4},{wch:7},{wch:7},{wch:7},{wch:14},{wch:22},{wch:10},{wch:12},{wch:9},{wch:6},{wch:7},{wch:7},{wch:9},{wch:22}];
     XLSX.utils.book_append_sheet(wb, ws, date.slice(5).replace(/-/g,'') || 'S'+(made+1));
     made++;
   });
@@ -796,6 +892,7 @@ function printOrder(){
     const sorted=staying.slice().sort(teamSortByCode);   // 팀별 규칙: 入国→숙소→코드
     const units=dinnerUnits(sorted).filter(u=>!_accomSet||_accomSet.has(u.accom));   // 묶음=대표 1행(合算)·대표 숙소 기준 필터
     if(!units.length) return '';
+    const vs=venueSplit(date), hasV=vs.split;   // 장소가 갈리는 날만 「会場」 열(レ/コ)·장소별 소계(SQL 145)
     let no=0;
     const trHTML=units.map(u=>{ no++;
       const depD=fmtMD(u.dep), arrD=fmtMD(u.arr);
@@ -813,7 +910,7 @@ function printOrder(){
         <td class="c orig ${u.isPus?'pus':'icn'}">${originCode}</td>
         <td class="kor">${esc(u.repName||'')}</td>
         <td class="eng">${esc(engShow)}</td>
-        <td class="c grp">${esc(u.tag)}</td>
+        <td class="c grp">${esc(u.tag)}</td>${hasV?`<td class="c venue ${esc(unitVenueOv(u,date)||dayVenue(date)||'')}">${venueShort(unitVenueOv(u,date)||dayVenue(date))}</td>`:''}
         <td class="c"></td>
         <td class="c"><strong>${ePax}</strong></td>
         <td class="c">${stayDay}</td>
@@ -842,7 +939,7 @@ function printOrder(){
     return `<div class="do-page">
       <div class="do-head">
         <div class="do-date">${date.slice(5).replace('-','/')}${getWD(date)}</div>
-        <div><div class="do-title">夕食オーダー</div><div class="do-base">本日の基本夕食 ： ${esc(baseDinnerFor(date))}${venueLine(date)?`　｜　会場 ： ${esc(venueLine(date))}`:''}</div></div>
+        <div><div class="do-title">夕食オーダー</div><div class="do-base">本日の基本夕食 ： ${esc(baseDinnerFor(date))}${venueLine(date)?`　｜　会場 ： ${esc(venueLine(date))}`:''}${hasV?`　｜　レ＝レストラン ${vs.restaurant.n}名 ／ コ＝コンベンションホール ${vs.convention.n}名${vs.none.t?` ／ 未指定 ${vs.none.n}名`:''}`:''}</div></div>
         <div class="do-meta">${mc.teamCnt}チーム · ${mc.dinnerN}名<br>${todayStr}</div>
       </div>
       <div class="do-roster">
@@ -853,14 +950,14 @@ function printOrder(){
           <th style="width:5%">帰国</th>
           <th style="width:5%">出発地</th>
           <th style="width:8%">名前</th>
-          <th style="width:16%">英文名</th>
-          <th style="width:9%">Group</th>
+          <th style="width:${hasV?15:16}%">英文名</th>
+          <th style="width:9%">Group</th>${hasV?'<th style="width:5%">会場</th>':''}
           <th style="width:6%">テーブルNo</th>
           <th style="width:5%">人数</th>
           <th style="width:6%">日次</th>
           <th style="width:5%">単価</th>
           <th style="width:9%">料理</th>
-          <th style="width:18%">参考事項</th>
+          <th style="width:${hasV?14:18}%">参考事項</th>
         </tr></thead>
         <tbody>${trHTML}</tbody>
       </table>
@@ -868,7 +965,7 @@ function printOrder(){
       <table class="do-mealsum">
         <thead><tr><th class="ms-rowh"></th><th>朝食</th><th>昼食</th><th>夕食</th></tr></thead>
         <tbody>
-          <tr class="ms-resv"><td class="ms-rowh">予約</td><td>${mc.breakfastN}</td><td>${mc.lunchN}${mc.lunchArrICN?`<span class="ms-sub">入国${mc.lunchArrICN}</span>`:''}</td><td>${mc.dinnerN}${mc.exTeamCnt?`<span class="ms-sub">夕食除外 ${mc.exTeamCnt}チーム ${mc.exDinnerN}名</span>`:''}${mc.upN?`<span class="ms-sub">アップグレード ${mc.upN}名 別</span>`:''}</td></tr>
+          <tr class="ms-resv"><td class="ms-rowh">予約</td><td>${mc.breakfastN}</td><td>${mc.lunchN}${mc.lunchArrICN?`<span class="ms-sub">入国${mc.lunchArrICN}</span>`:''}</td><td>${mc.dinnerN}${mc.exTeamCnt?`<span class="ms-sub">夕食除外 ${mc.exTeamCnt}チーム ${mc.exDinnerN}名</span>`:''}${mc.upN?`<span class="ms-sub">アップグレード ${mc.upN}名 別</span>`:''}${hasV?`<span class="ms-sub">レストラン ${vs.restaurant.n}名 ／ コンベンション ${vs.convention.n}名${vs.none.t?` ／ 未指定 ${vs.none.n}名`:''}</span>`:''}</td></tr>
           <tr class="ms-jp"><td class="ms-rowh">日本</td><td></td><td></td><td></td></tr>
           <tr class="ms-total"><td class="ms-rowh">合計</td><td>${mc.breakfastN}</td><td>${mc.lunchN}</td><td>${mc.dinnerN}</td></tr>
         </tbody>
@@ -918,6 +1015,8 @@ function printOrder(){
   .do-table td.orig.icn { color: #1A4D8F; }
   .do-table td.orig.pus { color: #B45309; }
   .do-table td.grp { font-family: 'Consolas','SZJpMono', monospace; font-size: calc(14pt*var(--fs,1)); font-weight: 700; }
+  .do-table td.venue { font-weight: 800; font-size: calc(15pt*var(--fs,1)); }
+  .do-table td.venue.convention { color: #B45309; }
   /* 잉크 절감: 줄무늬 배경 제거(테두리로 구분) */
   /* 食수 요약표 = 콤팩트(세로 공간 절약 → 로스터에 자리 양보, Min 2026-07) */
   .do-mealsum { margin-top: 4mm; border-collapse: collapse; width: 100%; }

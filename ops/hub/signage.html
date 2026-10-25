@@ -50,6 +50,11 @@
   .row .px{margin-left:auto;font-weight:800;color:var(--ink2);font-size:.9em;flex:0 0 auto}
   .row .px b{color:#fff;font-size:1.15em}
   .row.k{border-color:#5d7c4a;background:#1d2a19}
+  /* 팀별 석식 장소(SQL 145) — 장소 머리줄 + 컨벤션홀 팀은 금색 띠 */
+  .row.vh{background:#2a3a24;border-color:var(--acc)} .row.vh .nm{color:var(--acc)} .row.vh .nm i{color:var(--ink2)}
+  .row.vh.convention{background:#3a3222;border-color:var(--gold)} .row.vh.convention .nm{color:var(--gold)}
+  .row.vh.none{background:#2c2c2c;border-color:var(--muted)} .row.vh.none .nm{color:var(--ink2)}
+  .row.v-convention{border-left:.9vw solid var(--gold)}
   .ft{display:flex;gap:2vw;align-items:center;font-size:calc(2.2vh*var(--z));font-weight:800;color:var(--muted);border-top:.2vh solid var(--line);padding-top:.9vh}
   .ft .tot{color:var(--ink2)}
   .ft .tot b{color:#fff;font-size:1.2em}
@@ -251,12 +256,32 @@ function render(){
   const isTomorrow=d.date!==d.today;
   $('#hd-date').innerHTML=(isTomorrow?'<b>내일 · 明日</b>':'<b>오늘 · 本日</b>')+dateLabel(d.date);
   const base=(window.SZCore&&SZCore.baseDinner)?SZCore.baseDinner(d.date):'';
-  fillVenue('v-', VENUE[d.venue], [d.start_time,d.end_time].filter(Boolean).join(' 〜 '), base, d.note);
   const teams=Array.isArray(d.teams)?d.teams:[];
-  PAGES=Math.max(1,Math.ceil(teams.length/PAGE_ROWS));
-  const slice=teams.slice(PAGE*PAGE_ROWS,(PAGE+1)*PAGE_ROWS);
+  // 팀별 장소(SQL 145): 장소가 갈리는 날은 레스토랑 → 컨벤션홀 → 미정 순으로 머리줄을 넣어 나눈다
+  const vOf=t=>t.venue||d.venue||'';
+  const sumPax=v=>teams.filter(t=>vOf(t)===v).reduce((s,t)=>s+(Number(t.pax)||0),0);
+  const nR=teams.filter(t=>vOf(t)==='restaurant').length, nC=teams.filter(t=>vOf(t)==='convention').length, nN=teams.length-nR-nC;
+  const split=(nR>0&&nC>0)||(nN>0&&(nR>0||nC>0));
+  if(split){
+    fillVenue('v-', {ko:[nR?VENUE.restaurant.ko:'',nC?VENUE.convention.ko:''].filter(Boolean).join(' · '), ja:[nR?VENUE.restaurant.ja:'',nC?VENUE.convention.ja:''].filter(Boolean).join(' ／ ')},
+      [d.start_time,d.end_time].filter(Boolean).join(' 〜 '), base, d.note||'장소는 팀마다 다릅니다 · 명단의 구분을 확인해 주세요 ／ 会場はチームごとに異なります・名簿の区分をご確認ください');
+  } else {
+    fillVenue('v-', VENUE[d.venue], [d.start_time,d.end_time].filter(Boolean).join(' 〜 '), base, d.note);
+  }
+  let rows=teams;
+  if(split){
+    rows=[];
+    [['restaurant',nR],['convention',nC],['',nN]].forEach(([v,n])=>{ if(!n) return;
+      const grp=teams.filter(t=>vOf(t)===v);
+      rows.push({hdr:v, n:grp.length, pax:grp.reduce((s,t)=>s+(Number(t.pax)||0),0)});
+      grp.forEach(t=>rows.push({...t,_v:v}));
+    });
+  }
+  PAGES=Math.max(1,Math.ceil(rows.length/PAGE_ROWS));
+  const slice=rows.slice(PAGE*PAGE_ROWS,(PAGE+1)*PAGE_ROWS);
   gridRows($('#list'), slice, '오늘 석식 명단이 없습니다<br>本日の夕食予約はありません');
-  $('#tot').innerHTML=`<b>${d.units||0}</b>팀 · <b>${d.total||0}</b>명 <span style="color:var(--muted)">/ ${d.units||0}チーム · ${d.total||0}名</span>`;
+  $('#tot').innerHTML=`<b>${d.units||0}</b>팀 · <b>${d.total||0}</b>명 <span style="color:var(--muted)">/ ${d.units||0}チーム · ${d.total||0}名</span>`
+    +(split?` <span style="color:var(--muted)">· ${VENUE.restaurant.ko} <b>${sumPax('restaurant')}</b> · ${VENUE.convention.ko} <b>${sumPax('convention')}</b></span>`:'');
   $('#pg').textContent=PAGES>1?`${PAGE+1} / ${PAGES}`:'';
   showPane('p-dinner');
 }
@@ -266,7 +291,12 @@ function gridRows(list, rows, emptyMsg, extra){
   const n=rows.length, cols=n<=5?1:Math.min(MAX_COLS,Math.max(2,Math.ceil(n/ROWS_PER_COL))), r=Math.ceil(n/cols);
   const fs=([0,3.8,3.5,3.2,2.9][cols]||2.9)*SCALE;
   list.style.cssText=`grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${r},auto);--fs:${fs.toFixed(2)}vh`;
-  list.innerHTML=rows.map(t=>`<div class="row ${t.accom==='쿠주힐즈'?'k':''}"><span class="tag">${esc(t.tag||'')}</span><span class="nm">${esc(t.rep||'')}<i>様</i>${t.teams>1?`<i>+${t.teams-1}</i>`:''}${extra?extra(t):''}</span><span class="px"><b>${esc(t.pax)}</b>名</span></div>`).join('');
+  list.innerHTML=rows.map(t=>{
+    if(t.hdr!==undefined){   // 장소 머리줄(팀별 석식 장소, SQL 145)
+      const v=VENUE[t.hdr];
+      return `<div class="row vh ${t.hdr||'none'}"><span class="nm">${v?`${esc(v.ko)} <i>${esc(v.ja)}</i>`:'장소 미정 <i>会場未定</i>'}</span><span class="px"><b>${t.n}</b>팀 · <b>${t.pax}</b>名</span></div>`; }
+    return `<div class="row ${t.accom==='쿠주힐즈'?'k':''}${t._v?' v-'+t._v:''}"><span class="tag">${esc(t.tag||'')}</span><span class="nm">${esc(t.rep||'')}<i>様</i>${t.teams>1?`<i>+${t.teams-1}</i>`:''}${extra?extra(t):''}</span><span class="px"><b>${esc(t.pax)}</b>名</span></div>`;
+  }).join('');
 }
 function flip(){ if(SCREEN==='dinner'){ if(PAGES>1){ PAGE=(PAGE+1)%PAGES; render(); } } else if(SCREEN==='course'){ if(PAGES>1){ PAGE=(PAGE+1)%PAGES; renderCourse(); } } }
 
@@ -297,6 +327,10 @@ function renderLobby(){
   const dn=d.dinner||{};
   const base=(window.SZCore&&SZCore.baseDinner)?SZCore.baseDinner(d.date):'';
   fillVenue('s-', VENUE[dn.venue], [dn.start_time,dn.end_time].filter(Boolean).join(' 〜 '), base, dn.note);
+  // 장소가 갈리는 날(by_venue, SQL 145)은 두 장소를 함께 — 팀별 구분은 2층 모니터
+  { const bv=dn.by_venue||null; const r=bv&&bv.restaurant?(Number(bv.restaurant.units)||0):0, c=bv&&bv.convention?(Number(bv.convention.units)||0):0;
+    if(r>0&&c>0){ $('#s-ko').textContent=`${VENUE.restaurant.ko} · ${VENUE.convention.ko}`; $('#s-ja').textContent=`${VENUE.restaurant.ja} ／ ${VENUE.convention.ja}`; $('#s-venue').classList.remove('unset');
+      const nt=$('#s-note'); if(nt.hidden){ nt.hidden=false; nt.textContent=`${VENUE.restaurant.ko} ${bv.restaurant.pax}명 · ${VENUE.convention.ko} ${bv.convention.pax}명 ／ 会場はチームごとに異なります`; } } }
   // 공지
   const nts=Array.isArray(d.notices)?d.notices:[];
   $('#nts').innerHTML=nts.map(n=>`<div class="nt ${n.pinned?'pin':''}"><div class="ttl">${esc(n.title)}</div>${n.body?`<div class="bd">${esc(n.body)}</div>`:''}</div>`).join('');
