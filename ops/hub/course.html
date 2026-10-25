@@ -918,7 +918,8 @@ async function fixBoardIssues(){
     const dupSet=new Set(dup); const movedG=coll.map(i=>BOARD[i]);
     BOARD=BOARD.filter((g,i)=>!dupSet.has(i)); DBIDS=BOARD.map(g=>g.id).filter(Boolean);
     movedG.forEach(g=>{ const used=new Set(BOARD.filter(x=>x!==g&&x.course===g.course).map(x=>x.slot)); let s=(g.slot||0)+1; while(used.has(s)) s++; g.slot=s; ensureSlots(s); g.tee=SLOTS[s-1]||g.tee; });
-    render(); await save(true);
+    try{ render(); }catch(e){}   // 그리기가 실패해도 DB 정리는 끝까지
+    await save(true);
     try{ await supa.from('change_log').insert({ entity:'golf_groups', entity_id:DATESEL, action:'fix', label:`${DATESEL} 중복 ${ids.length}조 삭제 · 자리 충돌 ${movedG.length}조 이동`, changed_by:by }); }catch(e){}
     toast(tx('dupDone',ids.length,movedG.length),'ok');
     ISSUES={dup:[],coll:[]}; renderIssues();
