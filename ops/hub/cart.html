@@ -86,6 +86,21 @@
   .tag{font-weight:800;color:var(--accent2);font-family:Arial,sans-serif}
   .qty{width:52px;text-align:center;padding:4px 5px;font-family:var(--mono);font-weight:700}
   .nos{width:96px;padding:4px 6px;font-size:12px}
+  /* 조별 배정 카트(코스 배정표가 배분한 종류+번호) — course.html 셀 배지와 같은 색 */
+  .cbadge{display:inline-block;font-size:10.5px;font-weight:800;color:#1a3f6b;background:#e3ecf7;border:1px solid #b9cde8;border-radius:99px;padding:0 7px;margin:1px 2px;font-family:var(--mono);white-space:nowrap}
+  .cbadge.gas2{color:#4a4f44;background:var(--surface2);border-color:var(--border2)}
+  .cbadge.gas4{color:#fff;background:#5f6b57;border-color:#5f6b57}
+  .cbadge.none{color:var(--err);background:#fbeeeb;border-color:#e3bdb4;font-family:inherit}
+  /* 카트 번호 등록(종류별) */
+  .ublk{border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-top:10px;background:var(--surface2)}
+  .ublk h4{margin:0 0 6px;font-size:13px;color:var(--accent);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .ublk h4 .cnt{font-weight:700;color:var(--text2)}
+  .uchips{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 8px}
+  .uchip{font-family:var(--mono);font-size:11.5px;font-weight:800;border:1px solid var(--border2);background:var(--surface);color:var(--text);border-radius:7px;padding:2px 8px;cursor:pointer;min-width:34px}
+  .uchip:hover{border-color:var(--accent);color:var(--accent)}
+  .uchip.off{color:var(--muted);text-decoration:line-through;background:transparent;border-style:dashed}
+  .urow{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .urow .inp{flex:1;min-width:200px;padding:4px 8px;font-size:12px}
   .memo{width:120px;padding:4px 6px;font-size:12px}
   .src{padding:4px 6px;font-size:12px}
   .bdg{font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:99px;white-space:nowrap}
@@ -166,7 +181,7 @@
   .cxbox .row{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #f0d8d2;font-size:12.5px}
   .cxbox .row:first-of-type{border-top:0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.4">
 </head>
 <body data-so-area="cart">
 <div class="topbar so-bar">
@@ -197,7 +212,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=46"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
-<script src="../assets/saizen-ops.js?v=34.3"></script>
+<script src="../assets/saizen-ops.js?v=34.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -215,7 +230,7 @@ const L={
     stockTitle:'保有・使用・残数', own:'保有', use:'使用', left:'残', unit:'台', feeEach:n=>`1台1日 ¥${n.toLocaleString()}`,
     tblTitle:'チーム別 申請', dirty:n=>`未保存 ${n}件`,
     thTeam:'タグコード', thRep:'代表', thAccom:'宿泊', thPax:'人数', thElig:'事前申請', thCourse:'コース', thTee:'ティ',
-    thSrc:'申請区分', thNos:'カート番号', thMemo:'メモ', thFee:'料金', thTotal:'計',
+    thSrc:'申請区分', thNos:'組のカート', thMemo:'メモ', thFee:'料金', thTotal:'計',
     feeFree:'無料', feeFreeT:'入国日（仁川便の初日）・帰国日（釜山便の最終日）のラウンドはカート無料です',
     srcPre:'事前', srcOnsite:'現場',
     eligOk:'可', eligCond:'可（やまなみCC日）', eligNo:'不可',
@@ -230,7 +245,11 @@ const L={
     autoCfDone:n=>`${n}件を自動確定しました（精算に請求が入ります）`, teamUnit:'チーム', grpMark:'チーム', grpT:'同じ運営チーム — 手配書の묶기 / 備考「팀:」で連結', secReq:'申請チーム', secNoReq:'未申請チーム', secNoReqHint:'この日ラウンドするが申請なし — 申請漏れの確認用', scopeSplit:(a,b)=>`申請 ${a} / 未申請 ${b}`, showAllTeams:'この日の全チーム', oxNoT:'事前申請の記載なし',
     courseT:'コースを直接指定できます（規則より優先）', courseFix:'手動', courseFixT:'手動で指定したコースです',
     courseMark:c=>`コースを ${c} に変更（保存を押してください）`, courseSql:'99_play_course.sql の実行が必要です',
-    nosT:'自動割当の番号が既定です。直接入力すると保存されます（保存ボタン）',
+    nosT:'組ごとのカート(種別・番号)は<コース割当表>が割り当てます — ここでは表示のみ。番号の登録は下の「カート番号 登録」', nosNone:'未割当',
+    unitsTitle:'カート番号 登録(種別ごと)', unitsDesc:'実際のカート番号を種別ごとに登録します(例 1-36 や 1,2,5-9)。登録した番号を<b>コース割当表</b>が組ごとに1台ずつ配ります(電動申請チーム=電動 · 2名以下=2人乗り · 3名以上=4人乗り)。故障・整備中のカートは番号を押して<b>使用不可</b>に(取り消し線) — その日は配られません。',
+    unitsReg:(n,off)=>`登録 ${n}台${off?` · 使用不可 ${off}`:''}`, unitsRegT:'保有数は「カート番号 登録」の使用可能な番号の数です', unitsNone:'未登録 — 下に番号を入れて保存', unitsPh:'例 1-36 または 1,2,5-9,12',
+    unitsSave:'番号を保存', unitsSame:'変更がありません', unitsSaveAsk:(n,a,d)=>`${n}台で登録します(追加 ${a} · 削除 ${d})。削除した番号はその日の割当から外れます。よろしいですか？`, unitsSaved:n=>`${n}台 登録しました`,
+    unitsOn:n=>`${n}番 使用可能に戻しました`, unitsOff:n=>`${n}番 使用不可にしました(配られません)`, unitsOnT:'クリックで使用可能に戻す', unitsOffT:'クリックで使用不可(故障・整備)に',
     skipTitle:n=>`この日ラウンドなしで非表示 ${n}チーム`,
     skipWhy:{nodate:'日付未登録', inPus:'入国日（釜山便はラウンドなし）', outIcn:'帰国日（仁川便はラウンドなし）', none:'この日はラウンド対象外'}, scopeElec:(n,t)=>`表示 ${n}チーム / この日ラウンド ${t}チーム（申請のあるチームのみ）`, scopeAll:t=>`この日ラウンド ${t}チーム すべて表示`, noElecTeam:'この日 電動カートの申請チームはありません。',
     autoMark:'自動', dispBtn:'手配書', dispT:'現地手配書をポップアップで開きます',
@@ -280,7 +299,7 @@ const L={
     stockTitle:'보유 · 사용 · 잔여', own:'보유', use:'사용', left:'잔여', unit:'대', feeEach:n=>`1대 1일 ¥${n.toLocaleString()}`,
     tblTitle:'팀별 신청', dirty:n=>`미저장 ${n}건`,
     thTeam:'태그코드', thRep:'대표', thAccom:'숙소', thPax:'인원', thElig:'사전신청', thCourse:'코스', thTee:'티오프',
-    thSrc:'신청구분', thNos:'카트번호', thMemo:'메모', thFee:'요금', thTotal:'계',
+    thSrc:'신청구분', thNos:'조별 카트', thMemo:'메모', thFee:'요금', thTotal:'계',
     feeFree:'무료', feeFreeT:'입국일(인천출발 첫날)·귀국일(부산출발 마지막날) 라운딩은 카트 요금을 받지 않습니다',
     srcPre:'사전', srcOnsite:'현장',
     eligOk:'가능', eligCond:'가능(야마나미CC일)', eligNo:'불가',
@@ -295,7 +314,11 @@ const L={
     autoCfDone:n=>`${n}건 자동 확정(정산에 청구가 잡힙니다)`, teamUnit:'팀', grpMark:'팀', grpT:'같은 운영팀(수배서 묶기 / 비고 「팀:」)', secReq:'신청 팀', secNoReq:'미신청 팀', secNoReqHint:'그날 라운딩하지만 신청 없음 — 누락 확인용', scopeSplit:(a,b)=>`신청 ${a} / 미신청 ${b}`, showAllTeams:'그날 전체 팀', oxNoT:'사전신청 표기 없음',
     courseT:'코스를 직접 지정할 수 있습니다(규칙보다 우선)', courseFix:'수기', courseFixT:'수기로 지정한 코스입니다',
     courseMark:c=>`코스를 ${c} 로 바꿨습니다(저장을 눌러 주세요)`, courseSql:'99_play_course.sql 실행이 필요합니다',
-    nosT:'자동 배분 번호가 기본값입니다. 직접 입력하면 저장됩니다(저장 버튼)',
+    nosT:'조별 카트(종류·번호)는 <코스 배정표>가 배분합니다 — 여기서는 표시만. 번호 등록은 아래 「카트 번호 등록」', nosNone:'미배정',
+    unitsTitle:'카트 번호 등록(종류별)', unitsDesc:'실제 카트 번호를 종류별로 등록합니다(예 1-36 또는 1,2,5-9). 등록한 번호를 <b>코스 배정표</b>가 조마다 1대씩 배분합니다(전기 신청 팀=전기 · 2명 이하=2인승 · 3명 이상=4인승). 고장·정비 중인 카트는 번호를 눌러 <b>사용 불가</b>로(취소선) — 그날 배분에서 빠집니다.',
+    unitsReg:(n,off)=>`등록 ${n}대${off?` · 사용 불가 ${off}`:''}`, unitsRegT:'보유는 「카트 번호 등록」의 사용 가능한 번호 수입니다', unitsNone:'미등록 — 아래에 번호를 넣고 저장', unitsPh:'예 1-36 또는 1,2,5-9,12',
+    unitsSave:'번호 저장', unitsSame:'바뀐 것이 없습니다', unitsSaveAsk:(n,a,d)=>`${n}대로 등록합니다(추가 ${a} · 삭제 ${d}). 삭제한 번호는 그날 배분에서 빠집니다. 진행할까요?`, unitsSaved:n=>`${n}대 등록했습니다`,
+    unitsOn:n=>`${n}번 사용 가능으로 되돌렸습니다`, unitsOff:n=>`${n}번 사용 불가로 두었습니다(배분되지 않음)`, unitsOnT:'누르면 사용 가능으로', unitsOffT:'누르면 사용 불가(고장·정비)로',
     skipTitle:n=>`그날 라운딩 없어 안 보이는 팀 ${n}`,
     skipWhy:{nodate:'날짜 미등록', inPus:'입국일(부산편은 라운딩 없음)', outIcn:'귀국일(인천편은 라운딩 없음)', none:'그날 라운딩 대상 아님'}, scopeElec:(n,t)=>`표시 ${n}팀 / 그날 라운딩 ${t}팀 (신청 있는 팀만)`, scopeAll:t=>`그날 라운딩 ${t}팀 전부 표시`, noElecTeam:'이 날 전기카트 신청 팀이 없습니다.',
     autoMark:'자동', dispBtn:'수배서', dispT:'現地手配書를 팝업으로 엽니다',
@@ -345,7 +368,7 @@ const L={
     stockTitle:'Stock · in use · remaining', own:'Stock', use:'In use', left:'Left', unit:'', feeEach:n=>`¥${n.toLocaleString()} per cart/day`,
     tblTitle:'Requests by team', dirty:n=>`${n} unsaved`,
     thTeam:'Tag code', thRep:'Rep', thAccom:'Lodging', thPax:'Pax', thElig:'Pre-booking', thCourse:'Course', thTee:'Tee',
-    thSrc:'Type', thNos:'Cart no.', thMemo:'Note', thFee:'Fee', thTotal:'Total',
+    thSrc:'Type', thNos:'Group carts', thMemo:'Note', thFee:'Fee', thTotal:'Total',
     feeFree:'Free', feeFreeT:'Rounds on the arrival day (ICN teams) and the departure day (PUS teams) carry no cart fee',
     srcPre:'Pre', srcOnsite:'On-site',
     eligOk:'Yes', eligCond:'Yes (Yamanami CC day)', eligNo:'No',
@@ -360,7 +383,11 @@ const L={
     autoCfDone:n=>`Auto-confirmed ${n} (charged to the folio)`, teamUnit:' teams', grpMark:'team', grpT:'Same operating team (sheet grouping / remark)', secReq:'Requested', secNoReq:'No request', secNoReqHint:'Rounding today but no request — check for missed entries', scopeSplit:(a,b)=>`requested ${a} / none ${b}`, showAllTeams:'all teams that day', oxNoT:'No pre-request noted',
     courseT:'Pick the course directly (overrides the rule)', courseFix:'manual', courseFixT:'Course set manually',
     courseMark:c=>`Course set to ${c} (press Save)`, courseSql:'Run 99_play_course.sql first',
-    nosT:'Auto-allocated numbers are the default. Type to override (then Save)',
+    nosT:'Per-group carts (type · number) are assigned on the course sheet — display only here. Register numbers below under “Cart numbers”', nosNone:'none',
+    unitsTitle:'Cart numbers (registry by type)', unitsDesc:'Register the real cart numbers per type (e.g. 1-36 or 1,2,5-9). The <b>course sheet</b> hands one registered cart to each group (EV-request teams = electric · ≤2 players = 2-seater · 3+ = 4-seater). Click a number to mark a broken cart <b>unavailable</b> (struck through) — it is skipped that day.',
+    unitsReg:(n,off)=>`${n} registered${off?` · ${off} unavailable`:''}`, unitsRegT:'Stock = available numbers in the registry', unitsNone:'none yet — enter numbers below and save', unitsPh:'e.g. 1-36 or 1,2,5-9,12',
+    unitsSave:'Save numbers', unitsSame:'Nothing changed', unitsSaveAsk:(n,a,d)=>`Register ${n} carts (add ${a} · remove ${d}). Removed numbers drop out of that day’s assignment. Continue?`, unitsSaved:n=>`${n} carts registered`,
+    unitsOn:n=>`No. ${n} is available again`, unitsOff:n=>`No. ${n} set unavailable (not assigned)`, unitsOnT:'click to make available', unitsOffT:'click to mark unavailable (broken / service)',
     skipTitle:n=>`${n} team(s) hidden — no round that day`,
     skipWhy:{nodate:'dates missing', inPus:'arrival day (PUS flights do not play)', outIcn:'departure day (ICN flights do not play)', none:'not playing that day'}, scopeElec:(n,t)=>`showing ${n} of ${t} teams rounding (requests only)`, scopeAll:t=>`all ${t} teams rounding`, noElecTeam:'No electric-cart request on this date.',
     autoMark:'auto', dispBtn:'Sheet', dispT:'Opens the local arrangement sheet in a popup',
@@ -412,6 +439,9 @@ function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catc
 // 코스 코드 → 표기(조편성에서 저장한 야마나미CC 내 3코스)
 const COURSE_NAME={aso:'阿蘇',sobo:'祖母',kuju:'久住'};
 let PC={}, TG={}, SKIP=[];   // 코스 수기 지정 · 그날 라운딩 없어 목록에서 빠진 팀(진단용)
+let GCARTS={};      // event_seq → [{course,tee,no,type}] 그날 조별 배정 카트(코스 배정표 golf_groups.cart_no/cart_type) — 번호의 단일 진실원
+let ALLTYPES=[];    // cart_types 전부(가솔린 포함) — 번호 등록 패널은 세 종류 모두 다룬다
+let UNITS={};       // cart_code → {all:[{no,active,note,sort_order}]}  카트 번호 레지스트리(cart_units, SQL 94)
 // ⚠ 저장은 **[저장] 버튼 하나로 통일**한다(Min 2026-08) — 즉시 저장·버튼 저장이 섞이면
 //   무엇이 반영됐는지 알 수 없다. 코스 변경과 다른 날짜 취소분도 여기 모아 뒀다가 함께 저장한다.
 let PENDC={};        // event_seq → 바꾼 코스(저장 직전 임시)
@@ -500,6 +530,11 @@ function renderUI(){
       <div class="desc noprint" style="margin-top:11px">${tx('deskNote')}<br>${tx('noteStay')}</div>
     </div>
 
+    <details class="panel noprint" id="units-panel">
+      <summary style="cursor:pointer;font-size:14px;font-weight:800;color:var(--accent)">${tx('unitsTitle')} <span class="cnt" id="units-sum" style="font-weight:700;color:var(--text2);margin-left:6px"></span></summary>
+      <div class="desc" style="margin-top:8px">${tx('unitsDesc')}</div>
+      <div id="units"></div>
+    </details>
     <details class="panel noprint">
       <summary style="cursor:pointer;font-size:14px;font-weight:800;color:var(--accent)">${tx('mTeamTitle')}</summary>
       <div style="overflow:auto;margin-top:9px"><div id="m-team"></div></div>
@@ -536,7 +571,8 @@ async function load(){
     // 1) 카트 종류(보유 대수)
     const ct=await supa.from('cart_types').select('*').eq('active',true).order('sort_order');
     if(ct.error) throw ct.error;
-    TYPES=visibleTypes(ct.data);
+    TYPES=visibleTypes(ct.data); ALLTYPES=(ct.data||[]).slice(); GCARTS={};
+    await loadUnits();
     // 2) 그 날짜에 체류 중인 팀(입국<=날짜<=귀국) — 라운딩 여부는 규칙으로 거른다
     const bs=await paged((a,b)=>supa.from('bookings')
       .select('event_seq,rep_name,dep_date,arr_date,origin,airline,pax,remark,remark_local,team_label')
@@ -552,7 +588,7 @@ async function load(){
       NODATE=nd||[];
     }catch(e){}
     const seqs=(bs.data||[]).map(b=>b.event_seq);
-    if(!seqs.length){ ROWS=[]; DIRTY.clear(); $('#stat').textContent=''; renderStock(); renderTable(); return; }
+    if(!seqs.length){ ROWS=[]; DIRTY.clear(); $('#stat').textContent=''; renderStock(); renderTable(); renderUnits(); return; }
     // 3) 팀 정보(숙소·그룹코드) · 대표 항공편 · 조편성 · 카트 배정
     const GM={}, PX={}, GG={}, CB={};
     //  조기퇴실(room.html 🛫, guest_members.actual_dep) — 카트 배정·인원은 그대로 두고
@@ -567,8 +603,10 @@ async function load(){
       (em||[]).forEach(m=>{ const d=m.actual_dep?String(m.actual_dep).slice(0,10):'';
         if(d && d<=DATE) EARLYN[m.event_seq]=(EARLYN[m.event_seq]||0)+1; });
     }
-    const {data:gg}=await supa.from('golf_groups').select('event_seq,course_code,tee_time,cart_no,slot_no').eq('play_date',DATE);
-    (gg||[]).forEach(g=>{ if(g.event_seq!=null && !GG[g.event_seq]) GG[g.event_seq]=g; });
+    let {data:gg,error:ge}=await supa.from('golf_groups').select('event_seq,course_code,tee_time,cart_no,cart_type,slot_no').eq('play_date',DATE).order('slot_no',{nullsFirst:false});
+    if(ge && /cart_type/i.test(ge.message||'')) ({data:gg}=await supa.from('golf_groups').select('event_seq,course_code,tee_time,cart_no,slot_no').eq('play_date',DATE).order('slot_no',{nullsFirst:false}));   // SQL 147 미적용
+    (gg||[]).forEach(g=>{ if(g.event_seq==null) return; if(!GG[g.event_seq]) GG[g.event_seq]=g;
+      (GCARTS[g.event_seq]=GCARTS[g.event_seq]||[]).push({course:g.course_code||'',tee:g.tee_time||'',no:g.cart_no||'',type:g.cart_type||''}); });
     const {data:cb}=await supa.from('cart_bookings').select('*').eq('play_date',DATE);
     (cb||[]).forEach(x=>{ (CB[x.event_seq]=CB[x.event_seq]||{})[x.cart_code]=x; });
     // 팀 묶음 — 手配書에서 묶은 운영팀(print_overrides.team_group) 또는 비고의 「팀:」 라벨.
@@ -662,7 +700,7 @@ async function load(){
       ||String(a.tag).localeCompare(String(b.tag)));
     DIRTY.clear();
     $('#stat').textContent=`${ROWS.length}${lang()==='en'?' teams':'팀'}`;
-    renderStock(); renderTable();
+    renderStock(); renderTable(); renderUnits();
     autoAdjust();           // 인원이 바뀐 팀의 대수를 규칙에 맞게 자동 조정(사람이 정한 값은 제외)
     autoConfirm();          // 규칙대로 계산된 신청을 자동 확정 → 정산 청구까지 자동으로 이어진다
 
@@ -687,9 +725,11 @@ async function load(){
 
 function usedOf(code){ return ROWS.reduce((n,r)=>n+(+r.qty[code]||0),0); }
 
-// 보유 대수만 관리(Min 2026-08: "칩 관리 없이 총 블럭 수만"). 못 쓰는 카트는 보유 수를 줄인다.
-//  ⚠ cart_units 테이블(94)은 그대로 두되 화면에서는 쓰지 않는다(추후 개별 관리가 필요해지면 복구).
-function ownOf(t){ return +t.total_count||0; }
+// 보유 대수 — 번호 레지스트리(cart_units, 「카트 번호 등록」)가 있는 종류는 사용 가능 번호 수, 없으면 cart_types.total_count(옛 방식).
+//  (2026-10-26 Min 「카트는 번호가 다 있어서 그거에 맞게」 — 번호를 등록해 두면 코스 배정표가 조별로 그 번호를 배분한다)
+function unitsOf(code){ const u=UNITS[code]; return (u&&u.all)?u.all:[]; }
+function hasUnits(code){ return unitsOf(code).length>0; }
+function ownOf(t){ return hasUnits(t.code)? unitsOf(t.code).filter(x=>x.active!==false).length : (+t.total_count||0); }
 function activeOf(t){ return ownOf(t); }
 
 function renderStock(){
@@ -703,8 +743,9 @@ function renderStock(){
         <div class="n use"><span>${tx('use')}</span><b>${use}</b></div>
         <div class="n left ${left<0?'bad':''}"><span>${tx('left')}</span><b>${left}</b></div>
       </div>
-      <div class="own noprint"><span class="cnt">${tx('own')}</span>
-        <input class="inp" type="number" min="0" data-own="${t.code}" value="${own}"><span class="cnt">${tx('unit')}</span></div>
+      ${hasUnits(t.code)?`<div class="own noprint"><span class="cnt" title="${esc(tx('unitsRegT'))}">${esc(tx('unitsReg')(unitsOf(t.code).length, unitsOf(t.code).filter(x=>x.active===false).length))}</span></div>`
+        :`<div class="own noprint"><span class="cnt">${tx('own')}</span>
+        <input class="inp" type="number" min="0" data-own="${t.code}" value="${own}"><span class="cnt">${tx('unit')}</span></div>`}
       <div class="fee">${(+t.fee_yen||0)?tx('feeEach')(+t.fee_yen||0):''}</div>
     </div>`;
   }).join('');
@@ -724,17 +765,74 @@ async function saveOwn(code,n){
   }catch(e){ toast(tx('saveFail')+': '+String(e&&e.message||e),'err'); }
 }
 
-// 그 날 팀별 카트 번호 = 종류별 번호 풀에서 표시 순서대로 자동 배분(결정적).
-function allocForDay(){
-  const out={};
-  TYPES.forEach(t=>{
-    // 번호 풀 = 1..보유 대수(보유 수만 관리하므로 번호는 순번으로 자동 부여)
-    const pool=Array.from({length:ownOf(t)},(_,i)=>String(i+1));
-    const need=ROWS.map((r,i)=>({key:i, qty:+r.qty[t.code]||0}));
-    const got=SZCore.allocCartNos(pool,need);
-    Object.keys(got).forEach(i=>{ if(got[i].length){ (out[i]=out[i]||{})[t.code]=got[i]; } });
-  });
-  return out;   // { 행번호: { cart_code: ['1','2'] } }
+// ── 조별 배정 카트 — 코스 배정표(course.html)가 조당 1대로 배분한 종류·번호를 읽어 보여 준다(여기서는 고치지 않는다).
+//  옛 「1번부터 보유 대수까지 팀 순서대로 임시 배분」(allocForDay)은 폐지 — 실제 카트 번호와 맞지 않았다(Min 2026-10-26).
+function cartCell(r){
+  const gs=GCARTS[r.seq]||[];
+  if(!gs.length) return `<span class="cnt" style="color:var(--muted)" title="${esc(tx('nosT'))}">-</span>`;
+  return gs.map(g=>`<span class="cbadge ${esc(g.no?(g.type||''):'none')}" title="${esc((COURSE_NAME[g.course]||g.course||'')+' '+(g.tee||''))}">${g.no?esc(shortType(g.type)+' '+g.no):esc(tx('nosNone'))}</span>`).join(' ');
+}
+// ── 카트 번호 등록(cart_units, SQL 94) — 종류별 실제 번호를 등록하고, 고장·정비 카트는 번호를 눌러 사용 불가로 둔다.
+async function loadUnits(){
+  UNITS={};
+  try{
+    const {data,error}=await supa.from('cart_units').select('cart_code,no,active,note,sort_order').order('sort_order').order('no');
+    if(error) return;
+    (data||[]).forEach(u=>{ (UNITS[u.cart_code]=UNITS[u.cart_code]||{all:[]}).all.push(u); });
+    Object.keys(UNITS).forEach(c=>UNITS[c].all.sort((a,b)=>((a.sort_order||0)-(b.sort_order||0))||cartNoCmp(a.no,b.no)));
+  }catch(e){}
+}
+function cartNoCmp(a,b){ const x=parseInt(String(a).replace(/\D/g,''),10), y=parseInt(String(b).replace(/\D/g,''),10); if(!isNaN(x)&&!isNaN(y)&&x!==y) return x-y; return String(a).localeCompare(String(b)); }
+function renderUnits(){
+  const box=$('#units'); if(!box) return;
+  const sum=$('#units-sum');
+  const types=ALLTYPES.length?ALLTYPES:TYPES;
+  if(sum) sum.textContent=types.map(t=>`${shortType(t.code)} ${unitsOf(t.code).filter(x=>x.active!==false).length}`).join(' · ');
+  box.innerHTML=types.map(t=>{
+    const all=unitsOf(t.code), off=all.filter(x=>x.active===false).length;
+    const chips=all.length?all.map(u=>`<button type="button" class="uchip${u.active===false?' off':''}" data-utog="${esc(t.code)}|${esc(u.no)}" title="${esc(u.active===false?tx('unitsOnT'):tx('unitsOffT'))}${u.note?' · '+esc(u.note):''}">${esc(u.no)}</button>`).join('')
+      :`<span class="cnt" style="color:var(--muted)">${esc(tx('unitsNone'))}</span>`;
+    return `<div class="ublk" data-ucode="${esc(t.code)}">
+      <h4>${esc(lang()==='ja'?t.name_ja:t.name_ko)} <span class="cnt">${esc(tx('unitsReg')(all.length,off))}</span></h4>
+      <div class="uchips">${chips}</div>
+      <div class="urow"><input class="inp" type="text" data-ulist="${esc(t.code)}" placeholder="${esc(tx('unitsPh'))}" value="${esc(all.map(u=>u.no).join(', '))}">
+        <button class="btn sm ghost" type="button" data-usave="${esc(t.code)}">${esc(tx('unitsSave'))}</button></div>
+    </div>`; }).join('');
+  box.querySelectorAll('[data-utog]').forEach(b=>b.addEventListener('click',()=>{ const [code,no]=b.dataset.utog.split('|'); toggleUnit(code,no); }));
+  box.querySelectorAll('[data-usave]').forEach(b=>b.addEventListener('click',()=>{ const inp=box.querySelector(`[data-ulist="${b.dataset.usave}"]`); saveUnits(b.dataset.usave, inp?inp.value:''); }));
+}
+async function toggleUnit(code,no){
+  const u=unitsOf(code).find(x=>String(x.no)===String(no)); if(!u) return;
+  const next=!(u.active!==false);
+  try{
+    const {error}=await supa.from('cart_units').update({active:next}).eq('cart_code',code).eq('no',no);
+    if(error) throw error;
+    u.active=next; await syncTypeCount(code);
+    renderUnits(); renderStock(); toast(next?tx('unitsOn')(no):tx('unitsOff')(no),'ok');
+  }catch(e){ toast(tx('saveFail')+': '+String(e&&e.message||e),'err'); }
+}
+// 번호 목록 저장 = 차이만 반영(새 번호 추가 · 빠진 번호 삭제 · 남는 번호는 사용 가능 여부 그대로)
+async function saveUnits(code,text){
+  const list=SZCore.parseCartNos(text||'');
+  const cur=unitsOf(code).map(u=>String(u.no));
+  const add=list.filter(n=>!cur.includes(n)), del=cur.filter(n=>!list.includes(n));
+  if(!add.length && !del.length){ toast(tx('unitsSame'),'warn'); return; }
+  if(!confirm(tx('unitsSaveAsk')(list.length,add.length,del.length))) return;
+  try{
+    if(del.length){ for(let i=0;i<del.length;i+=200){ const {error}=await supa.from('cart_units').delete().eq('cart_code',code).in('no',del.slice(i,i+200)); if(error) throw error; } }
+    const rows=list.map((no,i)=>({cart_code:code,no,sort_order:i+1,active:(unitsOf(code).find(u=>String(u.no)===no)||{active:true}).active!==false}));
+    for(let i=0;i<rows.length;i+=200){ const {error}=await supa.from('cart_units').upsert(rows.slice(i,i+200),{onConflict:'cart_code,no'}); if(error) throw error; }
+    await loadUnits(); await syncTypeCount(code);
+    renderUnits(); renderStock(); toast(tx('unitsSaved')(list.length),'ok');
+  }catch(e){ toast(tx('saveFail')+': '+String(e&&e.message||e),'err'); }
+}
+// cart_types.total_count·numbers 도 레지스트리에 맞춘다(옛 화면·코스 배정표 폴백이 같은 수를 본다)
+async function syncTypeCount(code){
+  try{
+    const all=unitsOf(code), n=all.filter(x=>x.active!==false).length;
+    await supa.from('cart_types').update({total_count:n, numbers:all.map(u=>u.no).join(',')}).eq('code',code);
+    const t=(TYPES.find(x=>x.code===code)||ALLTYPES.find(x=>x.code===code)); if(t){ t.total_count=n; }
+  }catch(e){}
 }
 
 // 코스 수기 지정 — 규칙(간지 평일=구주고원)에 예외가 있을 때(오봉 연휴 등) 직접 고른다.
@@ -961,7 +1059,6 @@ function renderTable(){
       + `</div></details>` : '';
   if(!ROWS.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:10px 0">${tx('noRound')}</div>`; return; }
   const th=TYPES.map(t=>`<th>${esc(lang()==='ja'?t.name_ja:t.name_ko)}</th>`).join('');
-  const NOS=allocForDay();
   const rowHtml=r=>{ const i=ROWS.indexOf(r);
     // 입국일·귀국일 라운딩은 카트 무료(Min 2026-08) — 배정은 그대로, 요금만 0.
     const freeDay=SZCore.cartFreeDay(r,DATE);
@@ -985,6 +1082,7 @@ function renderTable(){
           ${r.courseFixed?`<span class="bdg" style="opacity:.7" title="${esc(tx('courseFixT'))}">${esc(tx('courseFix'))}</span>`:''}
           ${gc?`<div class="cnt" style="font-weight:600">${esc(tx('courseGrp'))}: ${esc(gc)}</div>`:''}</td>
       <td class="tee">${esc(r.tee||'-')}</td>
+      <td class="l">${cartCell(r)}</td>
       ${TYPES.map(t=>`<td><input class="inp qty" type="number" min="0" data-q="${t.code}" value="${+r.qty[t.code]||0}"></td>`).join('')}
       <td><input class="inp memo" type="text" data-f="memo" value="${esc(r.memo)}"></td>
       <td class="tee">${freeDay?`<span class="bdg ok" title="${esc(tx('feeFreeT'))}">${esc(tx('feeFree'))}</span>`:(fee?('¥'+fee.toLocaleString()):'-')}</td>
@@ -996,12 +1094,12 @@ function renderTable(){
   const totFee=LIST.reduce((s,r)=>s+(SZCore.cartFreeDay(r,DATE)?0:TYPES.reduce((n,t)=>n+(+r.qty[t.code]||0)*(+t.fee_yen||0),0)),0);
   const head=`<thead><tr>
       <th>${tx('thTeam')}</th><th>${tx('thRep')}</th><th>${tx('thAccom')}</th><th>${tx('thPax')}</th>
-      <th>${tx('thElig')}</th><th>${tx('thCourse')}</th><th>${tx('thTee')}</th>${th}
+      <th>${tx('thElig')}</th><th>${tx('thCourse')}</th><th>${tx('thTee')}</th><th title="${esc(tx('nosT'))}">${tx('thNos')}</th>${th}
       <th>${tx('thMemo')}</th><th>${tx('thFee')}</th>
     </tr></thead>`;
   box.innerHTML=`<h4 class="lsec">${esc(tx('secReq'))} <span class="cnt">${LIST.length}${esc(tx('teamUnit'))}</span></h4>`
     +(LIST.length?`<table class="t">${head}<tbody>${rows}
-    <tr class="sum"><td class="l" colspan="7">${tx('thTotal')} <span style="font-weight:600">· ${esc(tx('sumReq'))} ${LIST.reduce((n,r)=>n+TYPES.reduce((m,t)=>m+(+r.qty[t.code]||0),0),0)}${LIST.some(r=>r.cx)?` · ${esc(tx('sumCx'))} ${LIST.reduce((n,r)=>n+(+r.cx||0),0)}`:''}</span></td>
+    <tr class="sum"><td class="l" colspan="8">${tx('thTotal')} <span style="font-weight:600">· ${esc(tx('sumReq'))} ${LIST.reduce((n,r)=>n+TYPES.reduce((m,t)=>m+(+r.qty[t.code]||0),0),0)}${LIST.some(r=>r.cx)?` · ${esc(tx('sumCx'))} ${LIST.reduce((n,r)=>n+(+r.cx||0),0)}`:''}</span></td>
       ${TYPES.map(t=>`<td>${usedOf(t.code)}</td>`).join('')}
       <td></td><td>¥${totFee.toLocaleString()}</td></tr>
     </tbody></table>`:`<div class="cnt" style="color:var(--muted);padding:8px 0">${esc(tx('noElecTeam'))}</div>`)
@@ -1147,7 +1245,7 @@ async function loadMonth(){
   try{
     if(!TYPES.length){
       const ct=await supa.from('cart_types').select('*').eq('active',true).order('sort_order');
-      if(ct.error) throw ct.error; TYPES=visibleTypes(ct.data);
+      if(ct.error) throw ct.error; TYPES=visibleTypes(ct.data); ALLTYPES=(ct.data||[]).slice();
     }
     const b=ymBounds(YM);
     const bs=await paged((a,z)=>supa.from('bookings')
