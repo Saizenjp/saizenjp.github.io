@@ -53,6 +53,9 @@
   table.tedit td{border:1px solid var(--border);padding:4px 7px}
   table.tedit td.c{text-align:center}
   table.venue td{white-space:nowrap} table.venue .vb{font-size:12px;font-weight:700;padding:4px 10px;border-radius:99px;border:1px solid var(--border);background:var(--surface3);color:var(--text2);cursor:pointer} table.venue .vb.on{background:var(--accent);border-color:var(--accent);color:#fff} table.venue input{font:inherit;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface)} table.venue input.t{width:62px} table.venue input.n{width:220px} table.venue tr.today td{background:var(--accentSoft)}
+  /* 손님 화면 공개 상태(SQL 148 signage_release screen=dinner) */
+  .relst{font-size:11.5px;font-weight:800;color:var(--text2);white-space:nowrap} .relst.on{color:var(--ok)} .relst.dirty{color:var(--err)} .relst.hid{color:var(--warn)}
+  .relb{margin-left:4px}
   /* 팀별 석식 장소(SQL 145) — 날짜 줄 아래 펼쳐지는 묶음 단위 지정 */
   table.venue .vb.tvt{padding:3px 9px} table.venue .tvsum{color:var(--text2);font-weight:700}
   table.venue tr.vteams td{background:var(--surface2);padding:8px 10px;white-space:normal}
@@ -74,7 +77,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.5">
 </head>
 <body data-so-area="dinner">
 <div class="topbar so-bar">
@@ -105,7 +108,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=46"></script>
-<script src="../assets/saizen-ops.js?v=34.4"></script>
+<script src="../assets/saizen-ops.js?v=34.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(印刷 산출물·도메인 데이터는 미번역) ──
@@ -126,6 +129,7 @@ const L={
     selDate:'— 日付 —', selTeam:'— チーム選択 —', noTeamDay:'— その日宿泊チームなし —', noTag:'(タグなし)',
     addonEmpty:'登録された別注・アレルギーはありません。',
     pvH:'日付別 食数プレビュー', teditH:'チーム 夕食除外·名札', venueH:'夕食会場(日付別)', venueHint:'レストラン／コンベンションホールのどちらかを日付ごとに指定。<b>案内モニター</b>(ロビー・2F)と夕食オーダー印刷の見出しに出ます。', venueRest:'レストラン', venueConv:'コンベンションホール', venueUnset:'未設定', venueFrom:'開始', venueTo:'終了', venueNote:'モニター一言(任意)', venueSaved:'夕食会場を保存しました', venueFail:'保存失敗', venueOpen:'案内モニターを開く', venueToday:'今日',
+    relH:'お客様画面', relLive:'リアルタイム', relOn:(t,by)=>`公開中 ${t}${by?' '+by:''}`, relHidden:'非表示(準備中)', relDirty:'未公開の変更あり', relBtn:'お客様画面に公開', relHide:'公開停止', relLiveBtn:'リアルタイムに', relAsk:'この日の夕食名簿を今の形のままお客様画面(2Fモニター)に公開します。以後の変更は再度公開するまで反映されません。', relDone:'お客様画面に公開しました', relHiddenDone:'お客様画面を非表示にしました(準備中)', relLiveDone:'お客様画面をリアルタイムに戻しました', relSql:'公開制御は SQL 148 適用後', relPast:'過去の日付', relHint:'<b>お客様画面(2F 夕食モニター)</b>は既定でリアルタイムの名簿を映します。<b>[お客様画面に公開]</b>でその時点の名簿が最終版として固定され(以後の変更は「未公開の変更あり」)、<b>[公開停止]</b>は「準備中」、<b>[リアルタイムに]</b>で元に戻ります。ロビー・デジタルウォールの夕食要約も同じ状態に従います。',
     teditSumN:n=>`${n}チーム`, teditSum:(n,e)=>`${n}チーム · 除外 ${e}`,
     teditHint:'— 夕食除外は<b>夕食数量のみ</b>から控除(朝・昼食の食数は維持)。<b>レストラン名札は運営チーム(現地手配書)単位で1枚に合席</b>。チームの括りは現地手配書が唯一の基準。タグコード・人数はstep1データ基準(編集不可)',
     dgHint:'レストラン名札は<b>運営チーム(現地手配書で設定)単位で自動合席</b>されます。',
@@ -159,6 +163,7 @@ const L={
     selDate:'— 날짜 —', selTeam:'— 팀 선택 —', noTeamDay:'— 그날 묵는 팀 없음 —', noTag:'(태그없음)',
     addonEmpty:'등록된 別注·알레르기가 없습니다.',
     pvH:'날짜별 식수 미리보기', teditH:'팀 夕食除外·명패', venueH:'석식 장소(날짜별)', venueHint:'레스토랑 / 컨벤션홀 중 한 곳을 날짜마다 지정합니다. <b>안내 모니터</b>(로비·2층)와 夕食オーダー 인쇄 머리글에 나옵니다.', venueRest:'레스토랑', venueConv:'컨벤션홀', venueUnset:'미지정', venueFrom:'시작', venueTo:'종료', venueNote:'모니터 한 줄 안내(선택)', venueSaved:'석식 장소를 저장했습니다', venueFail:'저장 실패', venueOpen:'안내 모니터 열기', venueToday:'오늘',
+    relH:'손님 화면', relLive:'실시간', relOn:(t,by)=>`공개됨 ${t}${by?' '+by:''}`, relHidden:'숨김(준비 중)', relDirty:'미공개 변경 있음', relBtn:'손님 화면에 공개', relHide:'공개 중지', relLiveBtn:'실시간으로', relAsk:'이 날짜의 석식 명단을 지금 모양 그대로 손님 화면(2층 모니터)에 공개합니다. 이후 바꾼 것은 다시 공개해야 반영됩니다.', relDone:'손님 화면에 공개했습니다', relHiddenDone:'손님 화면을 숨겼습니다(준비 중)', relLiveDone:'손님 화면을 실시간으로 되돌렸습니다', relSql:'공개 제어는 SQL 148 적용 후', relPast:'지난 날짜', relHint:'<b>손님 화면(2층 석식 모니터)</b>은 기본으로 실시간 명단을 보여 줍니다. <b>[손님 화면에 공개]</b>를 누르면 그 시점의 명단이 최종본으로 고정되고(이후 변경은 「미공개 변경 있음」), <b>[공개 중지]</b>는 「준비 중」, <b>[실시간으로]</b>는 원래대로. 로비·디지털 월의 석식 요약도 같은 상태를 따릅니다.',
     teditSumN:n=>`${n}팀`, teditSum:(n,e)=>`${n}팀 · 제외 ${e}`,
     teditHint:'— 夕食除外는 <b>석식 수량에서만</b> 빠짐(朝·昼食 식수 유지). <b>レストラン名札은 운영팀(現地手配書) 단위로 1장에 합석</b>. 팀 묶음은 現地手配書가 단일 기준. 태그코드·인원은 step1 데이터 기준(수정 불가)',
     dgHint:'레스토랑 명패는 <b>운영팀(現地手配書에서 설정) 단위로 자동 합석</b>됩니다.',
@@ -192,6 +197,7 @@ const L={
     selDate:'— Date —', selTeam:'— Select team —', noTeamDay:'— No team staying that day —', noTag:'(no tag)',
     addonEmpty:'No 別注·allergy registered.',
     pvH:'Per-date meal-count preview', teditH:'Team 夕食除外·Nameplate', venueH:'Dinner venue (per date)', venueHint:'Pick Restaurant or Convention Hall for each date. Shown on the <b>lobby / 2F signage</b> and in the dinner-order print header.', venueRest:'Restaurant', venueConv:'Convention Hall', venueUnset:'not set', venueFrom:'from', venueTo:'to', venueNote:'one-line note for the monitor (optional)', venueSaved:'Dinner venue saved', venueFail:'Save failed', venueOpen:'Open signage', venueToday:'today',
+    relH:'Guest screen', relLive:'live', relOn:(t,by)=>`published ${t}${by?' '+by:''}`, relHidden:'hidden (preparing)', relDirty:'unpublished changes', relBtn:'Publish to guest screen', relHide:'Hide', relLiveBtn:'Back to live', relAsk:'Publish this date’s dinner list to the guest screen (2F monitor) as it is now. Later changes are not shown until you publish again.', relDone:'Published to the guest screen', relHiddenDone:'Guest screen hidden (preparing)', relLiveDone:'Guest screen back to live', relSql:'Release control needs SQL 148', relPast:'past date', relHint:'The <b>guest screen (2F dinner monitor)</b> shows the live list by default. <b>[Publish to guest screen]</b> freezes the list as the final version (later changes show “unpublished changes”), <b>[Hide]</b> shows “preparing”, <b>[Back to live]</b> restores. The lobby and digital-wall dinner summary follow the same state.',
     teditSumN:n=>`${n} team(s)`, teditSum:(n,e)=>`${n} team(s) · ${e} excluded`,
     teditHint:'— 夕食除外 deducts <b>from dinner count only</b> (朝·昼食 meal counts kept). <b>The restaurant nameplate merges by operational team (現地手配書) onto one card</b>. Team grouping is driven solely by 現地手配書. Tag code & count follow step1 data (not editable)',
     dgHint:'The restaurant nameplate <b>auto-merges by operational team (set in 現地手配書)</b>.',
@@ -215,6 +221,8 @@ function accomL(a){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
 let supa=null, YM=null, TEAMS=[], DATESEL=new Set(), ACCOMSEL=new Set(), OVR={}, ADDONS=[], EARLY={}, _TGT=null;
 let VENUE={};   // 날짜 → dinner_venue 행(석식 장소·시간·한 줄 안내) — SQL 134. 안내 모니터(signage.html)가 같은 표를 읽는다.
+let REL={};     // 날짜 → {mode:'snapshot'|'hidden', payload, released_at, released_by, dirty} — 손님 화면 공개 상태(signage_release screen=dinner, SQL 148)
+let HAS_REL=true;   // SQL 148 미적용이면 안내만
 let TVEN={};    // 'YYYY-MM-DD|event_seq' → venue — 팀별 석식 장소(dinner_team_venue, SQL 145). 날짜 장소 위에 덮는 예외.
 const VOPEN=new Set();   // 「팀별」을 펼친 날짜
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
@@ -302,7 +310,8 @@ function renderUI(){
     </div>
     <div class="panel">
       <h3>${tx('venueH')} <a class="btn ghost sm" href="signage.html?screen=dinner" target="_blank" rel="noopener" style="margin-left:8px;text-decoration:none">${tx('venueOpen')}</a></h3>
-      <div class="desc" style="margin-bottom:8px">${tx('venueHint')}</div>
+      <div class="desc" style="margin-bottom:6px">${tx('venueHint')}</div>
+      <div class="desc" style="margin-bottom:8px">${tx('relHint')}</div>
       <div style="overflow:auto"><table class="tedit venue" id="venue-tbl"><tbody></tbody></table></div>
     </div>
     <div class="panel">
@@ -688,7 +697,66 @@ async function loadVenues(){
     if(e2) throw e2;
     (tv||[]).forEach(r=>{ TVEN[fmtDate(r.dinner_date)+'|'+r.event_seq]=r.venue; });
   }catch(e){ /* SQL 145 미적용이면 팀별 지정 없이(날짜 장소만) */ }
+  // 손님 화면 공개 상태(SQL 148) — 없으면 실시간(종전)
+  REL={};
+  if(HAS_REL){
+    try{
+      const {data:rl,error:re}=await supa.from('signage_release').select('play_date,mode,payload,released_at,released_by').eq('screen','dinner').gte('play_date',ds[0]).lte('play_date',ds[ds.length-1]);
+      if(re){ if(/signage_release|schema cache/i.test(re.message||'')) HAS_REL=false; }
+      else (rl||[]).forEach(r=>{ REL[fmtDate(r.play_date)]={mode:r.mode,payload:r.payload,released_at:r.released_at,released_by:r.released_by||'',dirty:null}; });
+    }catch(e){}
+  }
   renderVenue();
+}
+// ── 손님 화면(2층 석식 모니터) 공개 제어 — course.html 과 같은 signage_release(screen='dinner'). 공개본 = _signage_dinner_live RPC 결과(모니터가 보는 모양 그대로) ──
+function relHHMM(ts){ if(!ts) return ''; const d=new Date(ts); if(isNaN(d)) return ''; return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function relKeyD(p){ if(!p) return ''; return JSON.stringify([p.venue||'',p.start_time||'',p.end_time||'',p.note||'',(Array.isArray(p.teams)?p.teams:[]).map(t=>[t.tag||'',t.rep||'',t.pax||0,t.venue||'',t.teams||1])]); }
+function relStText(r){ if(!r) return tx('relLive'); if(r.mode==='hidden') return tx('relHidden'); return tx('relOn')(relHHMM(r.released_at),r.released_by)+(r.dirty?' · '+tx('relDirty'):''); }
+function relStCls(r){ if(!r) return ''; if(r.mode==='hidden') return 'hid'; return r.dirty?'dirty':'on'; }
+function relCellHTML(d){
+  if(!HAS_REL) return `<span class="cnt" style="color:var(--muted)">${esc(tx('relSql'))}</span>`;
+  if(d<today()) return `<span class="cnt" style="color:var(--muted)">${esc(tx('relH'))} · ${esc(tx('relPast'))}</span>`;
+  const r=REL[d];
+  return `<span class="cnt">${esc(tx('relH'))}</span> <span class="relst ${relStCls(r)}">${esc(relStText(r))}</span>`
+    +`<button type="button" class="vb relb" data-rel="${d}" data-mode="snapshot">${esc(tx('relBtn'))}</button>`
+    +((r&&r.mode==='hidden')?'':`<button type="button" class="vb relb" data-rel="${d}" data-mode="hidden">${esc(tx('relHide'))}</button>`)
+    +(r?`<button type="button" class="vb relb" data-rel="${d}" data-mode="live">${esc(tx('relLiveBtn'))}</button>`:'');
+}
+async function releaseDinner(d,mode){
+  if(!HAS_REL||!supa){ toast(tx('relSql'),'warn'); return; }
+  const by=curUser()||null;
+  try{
+    if(mode==='live'){
+      const {error}=await supa.from('signage_release').delete().eq('play_date',d).eq('screen','dinner'); if(error) throw error;
+      delete REL[d]; toast(tx('relLiveDone'),'ok');
+    } else if(mode==='hidden'){
+      const at=new Date().toISOString();
+      const {error}=await supa.from('signage_release').upsert({play_date:d,screen:'dinner',mode:'hidden',payload:null,released_by:by,released_at:at},{onConflict:'play_date,screen'}); if(error) throw error;
+      REL[d]={mode:'hidden',payload:null,released_at:at,released_by:by||'',dirty:false}; toast(tx('relHiddenDone'),'ok');
+    } else {
+      if(!confirm(tx('relAsk'))) return;
+      const {data:live,error:le}=await supa.rpc('_signage_dinner_live',{p_date:d}); if(le) throw le;
+      const at=new Date().toISOString();
+      const {error}=await supa.from('signage_release').upsert({play_date:d,screen:'dinner',mode:'snapshot',payload:live,released_by:by,released_at:at},{onConflict:'play_date,screen'}); if(error) throw error;
+      REL[d]={mode:'snapshot',payload:live,released_at:at,released_by:by||'',dirty:false}; toast(tx('relDone'),'ok');
+    }
+  }catch(e){ const m=String(e&&e.message||e); if(/signage_release|_signage_dinner_live|schema cache/i.test(m)){ HAS_REL=false; toast(tx('relSql'),'warn'); } else toast(tx('venueFail')+': '+m,'err'); }
+  renderVenue();
+}
+// 공개본과 지금 실시간이 다른지(미공개 변경) — 공개된 날짜만 RPC 로 비교해 칸을 제자리에서 갱신(재렌더 루프 없음)
+let _relT=null;
+function scheduleRelCheck(){ clearTimeout(_relT); _relT=setTimeout(checkRelDirty,400); }
+async function checkRelDirty(){
+  if(!HAS_REL||!supa) return;
+  for(const d of Object.keys(REL)){
+    const r=REL[d]; if(!r||r.mode!=='snapshot'||!r.payload) continue;
+    try{
+      const {data,error}=await supa.rpc('_signage_dinner_live',{p_date:d}); if(error) break;
+      r.dirty=relKeyD(data)!==relKeyD(r.payload);
+      const cell=document.querySelector(`#venue-tbl tr[data-d="${d}"]:not(.vteams) .relst`);
+      if(cell){ cell.className='relst '+relStCls(r); cell.textContent=relStText(r); }
+    }catch(e){ break; }
+  }
 }
 // ── 팀별 석식 장소(SQL 145) — 날짜 장소가 기본, 묶음(team_group) 단위로 다른 장소를 지정 ──
 function dayVenue(date){ const v=VENUE[date]; return (v&&v.venue)||''; }
@@ -729,7 +797,8 @@ function renderVenue(){
       <td><button type="button" class="vb ${cur==='restaurant'?'on':''}" data-v="restaurant">${tx('venueRest')}</button> <button type="button" class="vb ${cur==='convention'?'on':''}" data-v="convention">${tx('venueConv')}</button>${cur?'':` <span class="cnt" style="color:var(--muted)">${tx('venueUnset')}</span>`}</td>
       <td>${tx('venueFrom')} <input class="t" data-f="start_time" value="${esc(v.start_time||'')}" placeholder="18:00" ${cur?'':'disabled'}> ${tx('venueTo')} <input class="t" data-f="end_time" value="${esc(v.end_time||'')}" placeholder="20:00" ${cur?'':'disabled'}></td>
       <td><input class="n" data-f="note" value="${esc(v.note||'')}" placeholder="${tx('venueNote')}" ${cur?'':'disabled'}></td>
-      <td><button type="button" class="vb tvt${open?' on':''}" data-tv="${d}">${tx('tvH')}${vs.split?` · ${tx('tvSplit')}`:''}</button>${sum?` <span class="cnt tvsum">${esc(sum)}</span>`:''}</td></tr>`;
+      <td><button type="button" class="vb tvt${open?' on':''}" data-tv="${d}">${tx('tvH')}${vs.split?` · ${tx('tvSplit')}`:''}</button>${sum?` <span class="cnt tvsum">${esc(sum)}</span>`:''}</td>
+      <td class="relc">${relCellHTML(d)}</td></tr>`;
     if(!open) return main;
     // 팀별(묶음 단위) 장소 — 날짜 장소가 기본, 다른 장소면 그 팀만 지정(묶음 전체에 같은 값을 쓴다)
     const units=dinnerUnitsOn(d);
@@ -740,7 +809,7 @@ function renderVenue(){
       return `<div class="tvrow"><span class="mono">${esc(u.tag)}</span><span class="tvrep">${esc(u.repName)}${u.teams.length>1?` <small>+${u.teams.length-1}</small>`:''}</span><span class="cnt">${esc(accomL(u.accom))} · ${pax}名</span>
         <span class="tvbtns">${bt('',tx('tvDefault')+(cur&&!ov?` (${venueLabel(cur)})`:''))}${bt('restaurant',tx('venueRest'))}${bt('convention',tx('venueConv'))}</span></div>`;
     }).join('') : `<div class="cnt" style="color:var(--muted)">${tx('noTeam')}</div>`;
-    return main+`<tr class="vteams" data-d="${d}"><td colspan="5"><div class="tvhd"><span class="desc" style="margin:0">${tx('tvHint')}</span><span style="flex:1"></span><button type="button" class="vb" data-tvbulk="${d}">${tx('tvBulk8')}</button><button type="button" class="vb" data-tvreset="${d}">${tx('tvReset')}</button></div>${rows}</td></tr>`;
+    return main+`<tr class="vteams" data-d="${d}"><td colspan="6"><div class="tvhd"><span class="desc" style="margin:0">${tx('tvHint')}</span><span style="flex:1"></span><button type="button" class="vb" data-tvbulk="${d}">${tx('tvBulk8')}</button><button type="button" class="vb" data-tvreset="${d}">${tx('tvReset')}</button></div>${rows}</td></tr>`;
   }).join('');
   tb.querySelectorAll('tr[data-d]:not(.vteams) .vb[data-v]:not(.tvb)').forEach(b=>b.addEventListener('click',()=>{ const d=b.closest('tr').dataset.d; const v=(VENUE[d]&&VENUE[d].venue)===b.dataset.v?null:b.dataset.v; saveVenue(d,{venue:v}); }));
   tb.querySelectorAll('input[data-f]').forEach(i=>i.addEventListener('change',()=>{ const d=i.closest('tr').dataset.d; saveVenue(d,{[i.dataset.f]:i.value.trim()||null}); }));
@@ -748,6 +817,8 @@ function renderVenue(){
   tb.querySelectorAll('.tvb').forEach(b=>b.addEventListener('click',()=>saveTeamVenue(b.dataset.d, b.dataset.seqs.split(','), b.dataset.v||null)));
   tb.querySelectorAll('[data-tvbulk]').forEach(b=>b.addEventListener('click',()=>bulkConvention(b.dataset.tvbulk)));
   tb.querySelectorAll('[data-tvreset]').forEach(b=>b.addEventListener('click',()=>resetTeamVenues(b.dataset.tvreset)));
+  tb.querySelectorAll('.relb').forEach(b=>b.addEventListener('click',()=>releaseDinner(b.dataset.rel,b.dataset.mode)));
+  scheduleRelCheck();
 }
 async function saveVenue(date,patch){
   const cur=VENUE[date]||{};

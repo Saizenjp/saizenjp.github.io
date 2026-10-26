@@ -216,7 +216,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.5">
 </head>
 <body data-so-area="frontdesk">
 <div class="topbar so-bar">
@@ -257,6 +257,7 @@
 <main>
   <div class="kpis" id="kpis"></div>
   <div id="followups"></div>
+  <div id="lobbydeps"></div>
   <div class="stage">
     <div class="col" id="lists"><div class="empty" id="t-empty"></div></div>
     <div class="col"><div class="detail" id="detail"><div class="none" id="t-none"></div></div></div>
@@ -265,7 +266,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=46"></script>
-<script src="../assets/saizen-ops.js?v=34.4"></script>
+<script src="../assets/saizen-ops.js?v=34.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -526,9 +527,13 @@ function teamNotes(t){
   return out;
 }
 function noteIco(k){ return k==='bug'?'🐛':(k==='fix'?'🔧':'📌'); }
+// 숙소행 출발 시각(로비 모니터 「출발 안내」, Min 2026-10-26) — 시즈노야도·간지호텔·쿠쥬 세 곳을 프론트가 적는다(공용 __so_lobbyDeps, lobby_departures)
+let LD=null;
+function mountLobbyDeps(day){ const box=$('#lobbydeps'); if(!box||!window.__so_lobbyDeps||!supa) return; if(!LD) LD=__so_lobbyDeps(box,supa,{dests:['shizu','ganji','kuju']}); LD.reload(day||state.day); }
 async function load(){
   if(!supa)return;
   const day=$('#day-pick').value||isoToday(); state.day=day;
+  mountLobbyDeps(day);
   const ym=ymOf(day);
   $('#day-label').textContent=day.slice(5).replace('-','/')+wd(day);
   try{
@@ -1294,7 +1299,7 @@ if(window.__so_hidScan) __so_hidScan(async function(raw){
   }catch(e){ toast(tx('qrNoMatch'),'err'); }
 });
 
-window.onSaizenLangChange=function(){ applyStatic(); if(state.teams.length||state.day) render(); };
+window.onSaizenLangChange=function(){ applyStatic(); if(state.teams.length||state.day) render(); if(LD&&state.day) LD.reload(state.day); };
 
 /* ── 부팅 ── */
 $('#btn-connect').addEventListener('click',connect);

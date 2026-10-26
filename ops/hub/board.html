@@ -73,7 +73,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.5">
 </head>
 <body data-so-area="board">
 <div class="topbar so-bar">
@@ -114,10 +114,26 @@
         <label><span data-i18n="bd_deptLabel"></span> <select class="inp" id="w-dept" style="width:auto;padding:6px 9px"></select></label>
         <label><input type="checkbox" id="w-pin"> <span data-i18n="bd_pin"></span></label>
         <label title="" id="w-guest-wrap"><input type="checkbox" id="w-guest"> <span data-i18n="bd_guest"></span></label>
+        <span id="w-guest-opts" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px">
+          <label><span id="t-kind-lbl"></span> <select class="inp" id="w-kind" style="width:auto;padding:5px 8px"><option value="notice"></option><option value="promo"></option></select></label>
+          <span id="t-screens-lbl" style="color:var(--text2)"></span>
+          <label><input type="checkbox" class="w-sc" value="lobby" checked> <span data-sc="lobby"></span></label>
+          <label><input type="checkbox" class="w-sc" value="wall"> <span data-sc="wall"></span></label>
+          <label><input type="checkbox" class="w-sc" value="dinner"> <span data-sc="dinner"></span></label>
+          <label><input type="checkbox" class="w-sc" value="course"> <span data-sc="course"></span></label>
+        </span>
         <label id="w-pinuntil-wrap" style="display:none;font-size:12px;color:var(--text2)"><span id="t-pinuntil-lbl"></span> <input type="date" class="inp" id="w-pinuntil" style="width:auto;padding:5px 8px"></label>
         <button class="btn" id="w-post" type="button" style="margin-left:auto" data-i18n="bd_post"></button>
       </div>
     </div>
+  </div>
+
+  <!-- 손님 화면 기본 문구(signage_texts, admin/manager) — 디지털 월 「오늘의 식사 안내」 조식·중식 줄(Min 2026-10-26 「조식은 6:00 open, 8:00까지 입장 가능 · close 안내는 따로 안 함」) -->
+  <div class="panel" id="texts-panel" style="display:none">
+    <h3 id="t-texts-h"></h3>
+    <div id="t-texts-hint" style="font-size:11.5px;color:var(--muted);margin-bottom:8px"></div>
+    <div id="texts-rows" class="write-row"></div>
+    <div class="opts" style="margin-top:8px;display:flex;align-items:center;gap:10px"><button class="btn" id="tx-save" type="button"></button></div>
   </div>
 
   <!-- 공지 목록 -->
@@ -130,13 +146,13 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=46"></script>
-<script src="../assets/saizen-ops.js?v=34.4"></script>
+<script src="../assets/saizen-ops.js?v=34.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 
 // ── i18n (한·일 직원 공용. ja 기본) — saizen-ops.js bd_*/ix_d* 키로 커버되지 않는 동적 문자열만 ──
 const L={
-  ja:{ connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connOk:'接続済',
+  ja:{ kindLbl:'種類', kindNotice:'お知らせ', kindPromo:'プロモーション', screensLbl:'表示画面', scLobby:'ロビー', scWall:'デジタルウォール', scDinner:'2F 夕食', scCourse:'コース', promoBadgeT:'お客様画面にプロモーションとして表示中', textsH:'お客様画面の基本文', textsHint:'デジタルウォール「本日のお食事のご案内」の朝食・昼食に付く固定文（日韓）。終了案内は書かない。', txBreakfast:'朝食', txLunch:'昼食', txKo:'韓国語', txJa:'日本語', txSave:'保存', txSaved:'基本文を保存しました', txFail:'保存失敗', txSql:'SQL 149 適用後に使えます', connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connOk:'接続済',
     connRetry:'接続・再試行', notConn:'未接続', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
     needLoginMsg:'ログインが必要です。上部の[ログイン]後に再接続してください。',
     connFail:'接続失敗', connFailHint:'(SQL 21 実行を確認)',
@@ -146,7 +162,7 @@ const L={
     pinUntilFail:'固定期間の保存失敗', pinUntilSet:'固定期間を設定しました', pinUntilOff:'固定期間を解除',
     needTitle:'タイトルを入力してください', postFail:'登録失敗', posted:'お知らせを登録しました',
     pinChangeFail:'変更失敗', delConfirm:'このお知らせを削除しますか？', delFail:'削除失敗' },
-  ko:{ connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connOk:'연결됨',
+  ko:{ kindLbl:'종류', kindNotice:'안내', kindPromo:'홍보', screensLbl:'표시 화면', scLobby:'로비', scWall:'디지털 월', scDinner:'2층 석식', scCourse:'코스', promoBadgeT:'손님 화면에 홍보로 표시 중', textsH:'손님 화면 기본 문구', textsHint:'디지털 월 「오늘의 식사 안내」의 조식·중식 줄에 붙는 고정 문구(한·일). 마감 안내는 따로 쓰지 않습니다.', txBreakfast:'조식', txLunch:'중식', txKo:'한국어', txJa:'일본어', txSave:'저장', txSaved:'기본 문구를 저장했습니다', txFail:'저장 실패', txSql:'SQL 149 적용 후 사용할 수 있습니다', connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connOk:'연결됨',
     connRetry:'연결·재시도', notConn:'미연결', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
     needLoginMsg:'로그인이 필요합니다. 상단 [로그인] 후 다시 연결하세요.',
     connFail:'연결 실패', connFailHint:'(SQL 21 실행 확인)',
@@ -156,7 +172,7 @@ const L={
     pinUntilFail:'고정 기간 저장 실패', pinUntilSet:'고정 기간 설정됨', pinUntilOff:'고정 기간 해제',
     needTitle:'제목을 입력하세요', postFail:'등록 실패', posted:'공지 등록됨',
     pinChangeFail:'변경 실패', delConfirm:'이 공지를 삭제할까요?', delFail:'삭제 실패' },
-  en:{ connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connOk:'Connected',
+  en:{ kindLbl:'Kind', kindNotice:'Notice', kindPromo:'Promo', screensLbl:'Screens', scLobby:'Lobby', scWall:'Digital wall', scDinner:'2F dinner', scCourse:'Course', promoBadgeT:'Shown on guest screens as a promo', textsH:'Guest-screen default texts', textsHint:'Fixed breakfast / lunch lines on the digital wall “Today\'s meals” (Korean + Japanese). No closing notice.', txBreakfast:'Breakfast', txLunch:'Lunch', txKo:'Korean', txJa:'Japanese', txSave:'Save', txSaved:'Default texts saved', txFail:'Save failed', txSql:'Available after SQL 149 is applied', connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connOk:'Connected',
     connRetry:'Connect · retry', notConn:'Not connected', needUrlKey:'URL·key required', needLogin:'Login required',
     needLoginMsg:'Login required. Sign in at the top, then connect again.',
     connFail:'Connection failed', connFailHint:'(check SQL 21 was run)',
@@ -172,11 +188,24 @@ function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||
 function applyStatic(){
   const ds=$('#sm-date'); if(ds && !lastSummary) ds.innerHTML=(window.t?t('bd_today'):esc(tx('todaySummary')));
   const pl=$('#t-pinuntil-lbl'); if(pl) pl.textContent=tx('pinUntilLbl');
+  const kl=$('#t-kind-lbl'); if(kl) kl.textContent=tx('kindLbl');
+  const ks=$('#w-kind'); if(ks){ ks.options[0].textContent=tx('kindNotice'); ks.options[1].textContent=tx('kindPromo'); }
+  const sl=$('#t-screens-lbl'); if(sl) sl.textContent=tx('screensLbl');
+  document.querySelectorAll('[data-sc]').forEach(el=>{ el.textContent=tx(SC_KEY[el.dataset.sc]||'scLobby'); });
+  const th=$('#t-texts-h'); if(th) th.textContent=tx('textsH');
+  const tt=$('#t-texts-hint'); if(tt) tt.textContent=tx('textsHint');
+  const tsv=$('#tx-save'); if(tsv) tsv.textContent=tx('txSave');
+  if(TEXTS) renderTexts();
   // 연결 상태 pill(아직 연결 안 됐을 때만 기본 라벨)
   const cs=$('#conn-state'); if(cs && !cs.dataset.set) cs.textContent=tx('notConn');
 }
 
 let supa=null, canWrite=false, anns=[], myAcc=null, lastSummary=null, myUid=null;
+// 손님 모니터 표시 화면(announcements.screens, SQL 148) — 홍보(kind=promo)는 로비·월 「리조트 안내」 화면 / 2층 석식·코스 맨 아래 띠
+const SC_KEY={lobby:'scLobby',wall:'scWall',dinner:'scDinner',course:'scCourse'};
+const SC_ORDER=['lobby','wall','dinner','course'];
+function screensLabel(a){ const sc=Array.isArray(a.screens)&&a.screens.length?a.screens:['lobby']; return SC_ORDER.filter(k=>sc.includes(k)).map(k=>tx(SC_KEY[k])).join('·'); }
+let TEXTS=null;   // signage_texts {key:{ko,ja}} — 디지털 월 조식·중식 기본 문구(SQL 149 미적용이면 null+안내)
 // 공지 삭제 = 작성자 본인(author_uid) 또는 마스터(admin). 핀·정렬은 admin·manager 그대로.
 function canDelAnn(a){ return (myAcc&&myAcc.role==='admin') || (a&&a.author_uid&&a.author_uid===myUid); }
 // 부서 키 ↔ (이모지, i18n키) — 라벨은 언어 토글 따라 번역
@@ -209,7 +238,7 @@ async function connect(){
     myAcc=acc;
     canWrite = !!(acc && (acc.role==='admin'||acc.role==='manager'));
     $('#write-panel').style.display = canWrite ? '' : 'none';
-    if(canWrite) fillWriteDept();
+    if(canWrite){ fillWriteDept(); loadTexts(); }
     setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
     await Promise.all([loadSummary(), loadAnns()]);
   }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connRetry');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message+' '+tx('connFailHint'),'err'); }
@@ -289,7 +318,7 @@ function renderAnns(){
         <span class="at">${esc(a.title)}</span>
         ${act&&a.pin_until?`<span class="pinuntil-meta">📌 ~${fmtTs(a.pin_until).slice(0,10)}</span>`:''}
         <span class="dbadge${a.dept?'':' all'}">${deptLabel(a.dept)}</span>
-        ${a.for_guests?`<span class="dbadge" style="background:var(--accent);color:#fff" title="${esc(tx('guestBadgeT'))}">${esc(t('bd_guestBadge'))}</span>`:''}
+        ${a.for_guests?`<span class="dbadge" style="background:${a.kind==='promo'?'var(--accent2)':'var(--accent)'};color:#fff" title="${esc(a.kind==='promo'?tx('promoBadgeT'):tx('guestBadgeT'))}">${esc(a.kind==='promo'?tx('kindPromo'):t('bd_guestBadge'))} · ${esc(screensLabel(a))}</span>`:''}
         <span class="ameta">${esc(a.author||'')} · ${fmtTs(a.created_at)}</span>
       </div>
       ${a.body?`<div class="abody">${esc(a.body)}</div>`:''}
@@ -344,9 +373,14 @@ async function postAnn(){
   const dept=($('#w-dept')&&$('#w-dept').value)||null;
   const pu=$('#w-pinuntil')&&$('#w-pinuntil').value;
   const pin_until=(pinned&&pu)?new Date(pu+'T23:59:59').toISOString():null;
-  const {error}=await supa.from('announcements').insert({title,body,pinned,author,author_uid:myUid,dept,pin_until,sort_order:0,for_guests});
+  const kind=for_guests?(($('#w-kind')&&$('#w-kind').value)||'notice'):'notice';
+  let screens=for_guests?[...document.querySelectorAll('.w-sc:checked')].map(c=>c.value):['lobby']; if(!screens.length) screens=['lobby'];
+  const row={title,body,pinned,author,author_uid:myUid,dept,pin_until,sort_order:0,for_guests,kind,screens};
+  let {error}=await supa.from('announcements').insert(row);
+  if(error && /kind|screens/i.test(error.message||'')){ delete row.kind; delete row.screens; ({error}=await supa.from('announcements').insert(row)); }   // SQL 148 미적용 DB
   if(error){ toast(tx('postFail')+': '+error.message,'err'); return; }
   $('#w-title').value=''; $('#w-body').value=''; $('#w-pin').checked=false; if($('#w-guest')) $('#w-guest').checked=false;
+  if($('#w-guest-opts')){ $('#w-guest-opts').style.display='none'; $('#w-kind').value='notice'; document.querySelectorAll('.w-sc').forEach(c=>{ c.checked=(c.value==='lobby'); }); }
   if($('#w-pinuntil')){ $('#w-pinuntil').value=''; $('#w-pinuntil-wrap').style.display='none'; }
   toast(tx('posted'),'ok'); loadAnns();
 }
@@ -371,6 +405,32 @@ async function delAnn(id){
 $('#btn-connect').addEventListener('click',connect);
 $('#w-post').addEventListener('click',postAnn);
 if($('#w-pin')) $('#w-pin').addEventListener('change',e=>{ const w=$('#w-pinuntil-wrap'); if(w) w.style.display=e.target.checked?'inline-flex':'none'; });
+if($('#w-guest')) $('#w-guest').addEventListener('change',e=>{ const w=$('#w-guest-opts'); if(w) w.style.display=e.target.checked?'inline-flex':'none'; });
+if($('#tx-save')) $('#tx-save').addEventListener('click',saveTexts);
+// ── 손님 화면 기본 문구(signage_texts) — 디지털 월 「오늘의 식사 안내」 조식·중식 줄. admin·manager 만(RLS). SQL 149 미적용이면 안내만.
+const TEXT_KEYS=[['breakfast','txBreakfast'],['lunch','txLunch']];
+async function loadTexts(){
+  const p=$('#texts-panel'); if(!p||!supa) return;
+  p.style.display='';
+  try{
+    const {data,error}=await supa.from('signage_texts').select('key,ko,ja');
+    if(error){ TEXTS=null; $('#texts-rows').innerHTML='<div class="empty">'+esc(tx('txSql'))+'</div>'; $('#tx-save').disabled=true; return; }
+    TEXTS={}; (data||[]).forEach(r=>{ TEXTS[r.key]={ko:r.ko||'',ja:r.ja||''}; });
+    $('#tx-save').disabled=false; renderTexts();
+  }catch(e){ TEXTS=null; $('#texts-rows').innerHTML='<div class="empty">'+esc(tx('txSql'))+'</div>'; }
+}
+function renderTexts(){
+  const box=$('#texts-rows'); if(!box||!TEXTS) return;
+  box.innerHTML=TEXT_KEYS.map(([k,lbl])=>{ const v=TEXTS[k]||{ko:'',ja:''};
+    return `<div class="tx-row" style="display:grid;grid-template-columns:5em 1fr 1fr;gap:8px;align-items:center"><b style="font-size:13px">${esc(tx(lbl))}</b><input class="inp" data-tk="${k}" data-tl="ko" placeholder="${esc(tx('txKo'))}" value="${esc(v.ko)}" maxlength="80"><input class="inp" data-tk="${k}" data-tl="ja" placeholder="${esc(tx('txJa'))}" value="${esc(v.ja)}" maxlength="80"></div>`; }).join('');
+}
+async function saveTexts(){
+  if(!supa||!TEXTS) return;
+  const rows=TEXT_KEYS.map(([k])=>({ key:k, ko:($(`[data-tk="${k}"][data-tl="ko"]`)||{}).value||'', ja:($(`[data-tk="${k}"][data-tl="ja"]`)||{}).value||'', updated_by:authorName(), updated_at:new Date().toISOString() }));
+  const {error}=await supa.from('signage_texts').upsert(rows,{onConflict:'key'});
+  if(error){ toast(tx('txFail')+': '+error.message,'err'); return; }
+  rows.forEach(r=>{ TEXTS[r.key]={ko:r.ko,ja:r.ja}; }); toast(tx('txSaved'),'ok');
+}
 applyStatic();
 loadCreds();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }

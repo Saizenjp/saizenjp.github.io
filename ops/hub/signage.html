@@ -11,7 +11,8 @@
   · saizen-ops.js 는 싣지 않는다(상단바·로그인 카드가 화면을 가린다). 공용은 saizen-core.js(순수 규칙)만.
   · ?screen=dinner (2층: 오늘 석식 명단) · ?screen=lobby (로비: 환영판·코스·출발 안내·석식·날씨·공지 로테이션)
   · ?screen=course (코스 입구·클럽하우스: 오늘 스타트표 — **아소 | 소보 | 쿠주 세 열**(Min 2026-10-26 「코스별로 나눠서」), 각 열 티오프 순 · 행 = 시간 · 그룹코드 · ○○○님 팀 · (홀) · 카트(+EV) · 식사 · 인원. 17시 이후엔 내일)
-  · ?screen=wall (통로 65~75형 디지털 월: 한 화면 고정 분할 — 왼쪽 오늘의 식사·안내·날씨 / 오른쪽 스타트표 3열 + 점심 후 재스타트. 로테이션 없음)
+  · ?screen=wall (통로 65~75형 디지털 월: 화면 로테이션 — 오늘의 식사 안내(조식·중식 기본 문구 signage_texts + 석식 장소·시간) → 오늘의 라운딩 3열 → 리조트 안내(홍보) → 안내 → 날씨. Min 2026-10-26 「한 화면에 묶으면 자리가 부족 — 나눠서」)
+  · 홍보(announcements.kind='promo', screens): 로비·월은 「리조트 안내」 화면(카드 격자), 2층 석식·코스 화면은 맨 아래 띠(최대 3장) — 없으면 띠가 사라진다. 석식 공개 제어(signage_release screen='dinner')는 코스와 같다(hidden=준비 중).
   · **한 페이지 원칙(Min 2026-10-26)**: 코스·석식 명단은 1·2페이지로 넘기지 않는다 — 줄 수에 맞춰 글자를 줄이고(하한 있음), 석식은 열 수(최대 6)를 늘린다. 그래도 넘치면 지난 줄부터 치운다. 큰 TV(75형)·`?scale=` 로 현장 조정.
   · ?screen=office (사무실·프론트 뒤, 직원용: 오늘 진행 현황 숫자판 — signage_office. 일본어 우선. 이름·방번호·금액 없음)
   · ?date=YYYY-MM-DD (시험용) · ?cut=21 (석식: 이 시각 이후엔 내일 / 코스·월: 17) · ?refresh=60 (초) · ?rot=20 (로비 화면 전환 초) · ?rows= (옛 인자, 지금은 무시 — 한 페이지 자동)
@@ -63,6 +64,7 @@
   .row .nm i{font-style:normal;font-size:.78em;color:var(--muted);margin-left:.3em;font-weight:700}
   .row .px{margin-left:auto;font-weight:700;color:var(--muted);font-size:.9em;flex:0 0 auto}
   .row .px b{color:var(--ink);font-size:1.15em;font-weight:800}
+  .row .nm i.ja,.row .px i.ja{font-style:normal;font-size:.72em;color:var(--muted);margin-left:.25em;font-weight:700}   /* 한·일 병기(Min 2026-10-26) */
   .row.k{border-color:var(--acc2)}
   /* 팀별 석식 장소(SQL 145) — 장소 머리줄 + 컨벤션홀 팀은 따뜻한 띠 */
   .row.vh{background:var(--panel2);border-color:var(--line2)} .row.vh .nm{color:var(--acc)} .row.vh .nm i{color:var(--muted)}
@@ -76,6 +78,35 @@
   .ft .upd{margin-left:auto;font-family:var(--mono)}
   .ft .upd.err{color:#f2b8ab}
   .none{grid-column:1/-1;text-align:center;color:var(--ink2);font-size:calc(3.6vh*var(--z));padding:8vh 0;font-weight:700}
+  /* 홍보 띠(2층 석식·코스 화면 맨 아래, 최대 3장) */
+  .band{display:flex;gap:1.2vw;flex:0 0 auto;min-height:0}
+  .band[hidden]{display:none}
+  .band .bc{flex:1;min-width:0;background:var(--panel2);border:.12vh solid var(--line);border-left:.5vw solid var(--warm);border-radius:1vh;padding:1vh 1.4vw}
+  .band .bc b{display:block;font-size:calc(2.7vh*var(--z));font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .band .bc span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:calc(2.1vh*var(--z));color:var(--ink2);font-weight:600;white-space:pre-wrap;line-height:1.35}
+  /* 리조트 안내(홍보 카드 격자 — 로비·월 로테이션 화면) */
+  .pgrid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(2,1fr);gap:1.4vw;align-content:start;overflow:hidden}
+  .pgrid.one{grid-template-columns:1fr}
+  .pc{background:var(--panel);border:.12vh solid var(--line);border-left:.6vw solid var(--warm);border-radius:1.4vh;padding:2.2vh 2.2vw;min-height:0}
+  .pc .ttl{font-size:calc(4.2vh*var(--z));font-weight:800;color:var(--ink);word-break:keep-all}
+  .pc .bd{font-size:calc(3vh*var(--z));font-weight:600;color:var(--ink2);margin-top:.9vh;white-space:pre-wrap;line-height:1.45;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+  /* 숙소행 출발(로비 출발 안내) */
+  .fl.lodg .frt i{font-style:normal;color:var(--muted);margin-left:.6vw;font-size:.8em}
+  .lrows{display:flex;flex-direction:column;gap:.6vh}
+  .lrow{display:flex;align-items:center;gap:1.6vw;font-size:calc(3.4vh*var(--z));font-weight:800;color:var(--ink)}
+  .lrow .dn i{font-style:normal;font-size:.7em;color:var(--muted);margin-left:.5vw;font-weight:700}
+  .lrow .dep{font-family:var(--mono);font-size:calc(4.6vh*var(--z));color:var(--ink);background:var(--panel2);border:.12vh solid var(--line2);border-radius:.9vh;padding:.1vh 1.2vw}
+  .lrow .lb2{font-size:.75em;color:var(--ink2);font-weight:600}
+  /* 오늘의 식사 안내(디지털 월) — 조식·중식·석식 세 줄, 큰 글자·한·일 병기 */
+  .meals{flex:1;min-height:0;display:flex;flex-direction:column;gap:1.6vh;justify-content:center}
+  .mrow{display:grid;grid-template-columns:15vw 1fr 1.5fr;align-items:center;gap:2vw;background:var(--panel);border:.12vh solid var(--line);border-radius:1.6vh;padding:2.4vh 2.6vw}
+  .mrow.dn{border-left:.6vw solid var(--acc)}
+  .mrow .mk{font-size:calc(5.2vh*var(--z));font-weight:800;color:var(--ink);line-height:1.1} .mrow .mk small{display:block;font-size:.5em;color:var(--acc);font-weight:700;margin-top:.4vh}
+  .mrow .mv{font-size:calc(5vh*var(--z));font-weight:800;color:var(--ink);line-height:1.1;word-break:keep-all} .mrow .mv small{display:block;font-size:.48em;color:var(--muted);font-weight:700;margin-top:.4vh}
+  .mrow .mi{font-size:calc(3.2vh*var(--z));font-weight:700;color:var(--ink2);line-height:1.4;word-break:keep-all;min-width:0}
+  .mrow .mi .ml{display:block} .mrow .mi .ml small{font-size:.72em;color:var(--muted);margin-left:.6vw;font-weight:600}
+  .mrow .mi .ml b{color:var(--ink);font-family:var(--mono);font-size:1.3em}
+  .mrow .mi .ml.prep{color:var(--warm)}
   /* 준비 중(공개 전) */
   .prep{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:30vh;gap:1.4vh;color:var(--ink2)}
   .prep b{font-size:calc(6.5vh*var(--z));font-weight:800;color:var(--ink);letter-spacing:.1vw}
@@ -193,33 +224,6 @@
   .kp .sub{font-size:2vh;font-weight:700;color:var(--ink2)}
   .kp .tg{display:flex;flex-wrap:wrap;gap:.4vh .5vw;overflow:hidden;align-content:flex-start}
   .kp .tg span{font-family:var(--mono);font-size:1.75vh;font-weight:700;color:var(--acc);background:var(--bg);border:.12vh solid var(--line);border-radius:.5vh;padding:.1vh .6vw}
-  /* ── 디지털 월(통로 65~75형) — 한 화면 고정 분할: 왼쪽 식사·안내·날씨(≈24vw) / 오른쪽 스타트표 3열(≈76vw) ── */
-  .wall{flex:1;min-height:0;display:grid;grid-template-columns:1fr 3.1fr;gap:1.6vw}
-  .wcol{min-height:0;display:flex;flex-direction:column;gap:1.2vh;overflow:hidden}
-  .wcol h3{font-size:calc(2.3vh*var(--z));font-weight:700;color:var(--muted);letter-spacing:.14vw;padding-bottom:.6vh;border-bottom:.12vh solid var(--line2)}
-  .wcol h3 small{font-weight:600;margin-left:.6vw;opacity:.8}
-  .meal{background:var(--panel);border:.12vh solid var(--line);border-radius:1.4vh;padding:1.6vh 1.8vw;display:flex;flex-direction:column;gap:.5vh}
-  .meal .k{font-size:calc(2.3vh*var(--z));font-weight:700;color:var(--muted)}
-  .meal .v{font-size:calc(3.9vh*var(--z));font-weight:800;color:var(--ink);line-height:1.15;word-break:keep-all}
-  .meal .v small{display:block;font-size:.55em;color:var(--acc);font-weight:700;margin-top:.2vh}
-  .meal .s{font-size:calc(2.5vh*var(--z));font-weight:700;color:var(--ink2);word-break:keep-all}
-  .meal .s b{color:var(--ink)}
-  .meal.dn{border-left:.5vw solid var(--acc)}
-  .wxs{display:grid;grid-template-columns:repeat(4,1fr);gap:.6vw}
-  .wxs .h{padding:1vh 0;background:var(--panel);border:.12vh solid var(--line);border-radius:1.2vh;text-align:center}
-  .wxs .h .hh{font-size:calc(2vh*var(--z));color:var(--muted);font-weight:700}
-  .wxs .h .ic{font-size:calc(4.2vh*var(--z));line-height:1.3}
-  .wxs .h .tp{font-size:calc(3.2vh*var(--z));font-weight:800;color:var(--ink)}
-  .wxs .h.now{border-color:var(--acc)}
-  .wxd{display:flex;gap:1vw;font-size:calc(2.5vh*var(--z));font-weight:700;color:var(--ink2)}
-  .wxd span{flex:1;background:var(--panel);border:.12vh solid var(--line);border-radius:1.2vh;padding:1vh 1vw;text-align:center}
-  .wxd b{color:var(--ink);display:block;font-size:1.25em}
-  .wcol .nts{gap:1vh;flex:1 1 auto} .wcol .nt{padding:1.1vh 1.4vw} .wcol .nt .ttl{font-size:calc(2.6vh*var(--z));word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden} .wcol .nt .bd{font-size:calc(2.1vh*var(--z));word-break:keep-all;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-  .wcol .wxd{font-size:calc(2.2vh*var(--z))} .wcol .wxd span{padding:.8vh .8vw}
-  .wcol .meal{padding:1.2vh 1.4vw} .wcol .meal .v{font-size:calc(3.3vh*var(--z))} .wcol .meal .s{font-size:calc(2.2vh*var(--z))}
-  .wcol h3.sub{margin-top:.6vh}
-  .wcol #w-wx{flex:0 0 auto}
-  .wcol .none{padding:4vh 0;font-size:calc(2.8vh*var(--z))}
 </style>
 </head>
 <body>
@@ -271,15 +275,12 @@
   <div class="pane" id="p-office"><div class="kpi" id="kpi"><div class="none">読み込み中… / 불러오는 중…</div></div></div>
   <!-- ── 코스 입구: 스타트표 ── -->
   <div class="pane" id="p-course"><div class="crs" id="crs"><div class="none">불러오는 중… / 読み込み中…</div></div></div>
-  <!-- ── 디지털 월: 식사 / 스타트표·재스타트 / 안내·날씨 ── -->
-  <div class="pane" id="p-wall">
-    <div class="wall">
-      <div class="wcol"><h3>오늘의 식사<small>本日のお食事</small></h3><div id="w-meals"></div>
-        <h3 class="sub">안내<small>お知らせ</small></h3><div class="nts" id="w-nts"></div><div id="w-wx"></div></div>
-      <div class="wcol"><h3 id="w-ctitle">오늘의 라운딩<small>本日のスタート</small></h3><div class="crs compact" id="w-crs"><div class="none">불러오는 중… / 読み込み中…</div></div></div>
-    </div>
-  </div>
+  <!-- ── 디지털 월: 오늘의 식사 안내(조식·중식 기본 문구 + 석식) — 라운딩·안내·날씨는 로비와 같은 pane 을 돌려 쓴다 ── -->
+  <div class="pane" id="p-wmeal"><div class="meals" id="wm-list"><div class="none">불러오는 중… / 読み込み中…</div></div></div>
+  <!-- ── 리조트 안내(홍보 카드) — 로비·월 로테이션 ── -->
+  <div class="pane" id="p-promo"><div class="pgrid" id="pr-list"></div></div>
 
+  <div class="band" id="band" hidden></div>
   <div class="ft">
     <div class="tot" id="tot"></div>
     <div class="pg" id="pg"></div>
@@ -304,7 +305,27 @@ const WD_KO=['일','월','화','수','목','금','토'], WD_JA=['日','月','火
 const LAT=32.95, LON=131.12;   // 홈 날씨와 같은 좌표(아소 야마나미 리조트 인근)
 let supa=null, DATA=null, PAGES=1, LASTOK='', WX=null, WXAT=0;   // PAGES 는 호환용(항상 1 — 한 페이지 원칙)
 let COURSE=null;   // 로비·월: 코스 스타트표(signage_course)도 같이 돌린다 — 아침 로비 문의 감소(Min)
-let PANES=[], PI=0;   // 로비: 지금 돌릴 화면 목록·현재 인덱스
+let PANES=[], PI=0;   // 로비·월: 지금 돌릴 화면 목록·현재 인덱스
+let BAND_VH=0;        // 화면 아래 홍보 띠 높이(vh) — 코스 표가 그만큼 줄어든다(띠가 없으면 0)
+const DEST={shizu:{ko:'시즈노야도',ja:'志津の宿'},ganji:{ko:'간지호텔',ja:'ガンジーホテル'},kuju:{ko:'쿠쥬 프라이빗 타운',ja:'クジュ プライベートタウン'}};   // 숙소행 출발(lobby_departures.dest)
+function prepHTML(ko,ja){ return `<div class="prep"><b>준비 중</b><small>準備中 — ${ja}</small><small>${ko}</small></div>`; }
+// 홍보 카드(리조트 안내 화면) / 홍보 띠(2층 석식·코스 맨 아래, 최대 3장 — 없으면 띠 자체가 사라진다)
+function promoCardsHTML(list){ const arr=Array.isArray(list)?list:[]; return arr.length? arr.map(p=>`<div class="pc${p.pinned?' pin':''}"><div class="ttl">${esc(p.title)}</div>${p.body?`<div class="bd">${esc(p.body)}</div>`:''}</div>`).join('') : '<div class="none">안내가 없습니다<br>ご案内はありません</div>'; }
+function renderPromoBand(list){
+  const b=$('#band'); const arr=(Array.isArray(list)?list:[]).slice(0,3);
+  BAND_VH=arr.length?11:0;
+  if(!arr.length){ b.hidden=true; b.innerHTML=''; return; }
+  b.hidden=false; b.innerHTML=arr.map(p=>`<div class="bc${p.pinned?' pin':''}"><b>${esc(p.title)}</b>${p.body?`<span>${esc(p.body)}</span>`:''}</div>`).join('');
+}
+// 숙소행 출발(각 사무실이 기입한 시각) — 오늘 것은 시각이 지나면 숨긴다
+function lodgingList(d,now){ return (Array.isArray(d.lodging)?d.lodging:[]).filter(x=>x&&x.dest&&x.time&&!(x.date===d.today&&now&&x.time<now)); }
+function lodgingHTML(d,now){
+  const rows=lodgingList(d,now); if(!rows.length) return '';
+  return [...new Set(rows.map(x=>x.date))].map(dt=>{ const dl=dt===d.today?'오늘 · 本日':'내일 · 明日';
+    return `<div class="fl lodg"><div class="fh"><span class="day">${dl} ${mdLabel(dt)}</span><span class="frt">숙소행 출발 <i>ご宿泊先へのご出発</i></span></div>`
+      +`<div class="lrows">${rows.filter(x=>x.date===dt).map(x=>{ const ds=DEST[x.dest]||{ko:x.dest,ja:''};
+          return `<div class="lrow"><span class="dn">${esc(ds.ko)}<i>${esc(ds.ja)}</i></span><span class="dep">${esc(x.time)}</span>${x.note?`<span class="lb2">${esc(x.note)}</span>`:''}</div>`; }).join('')}</div></div>`; }).join('');
+}
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function jst(){ const n=new Date(); return new Date(n.getTime()+(n.getTimezoneOffset()+540)*60000); }   // 모니터 PC 시간대와 무관하게 JST
@@ -342,7 +363,7 @@ async function load(){
     if(SCREEN==='lobby') renderLobby(); else if(SCREEN==='wall') renderWall(); else if(SCREEN==='course') renderCourse(); else if(SCREEN==='office') renderOffice(); else render();
   }catch(e){
     setUpd(false);
-    if(!DATA){ const el=$({lobby:'#w-list',wall:'#w-crs',course:'#crs',office:'#kpi'}[SCREEN]||'#list'); el.innerHTML='<div class="none">데이터를 불러오지 못했습니다<br>データを取得できませんでした</div>'; if(SCREEN==='lobby'){ showPane('p-welcome'); } if(SCREEN==='wall'){ showPane('p-wall'); } }
+    if(!DATA){ const el=$({lobby:'#w-list',wall:'#wm-list',course:'#crs',office:'#kpi'}[SCREEN]||'#list'); el.innerHTML='<div class="none">데이터를 불러오지 못했습니다<br>データを取得できませんでした</div>'; if(SCREEN==='lobby'){ showPane('p-welcome'); } if(SCREEN==='wall'){ showPane('p-wmeal'); } }
   }
 }
 
@@ -360,6 +381,12 @@ function render(){
   const isTomorrow=d.date!==d.today;
   $('#hd-date').innerHTML=(isTomorrow?'<b>내일 · 明日</b>':'<b>오늘 · 本日</b>')+dateLabel(d.date);
   const base=(window.SZCore&&SZCore.baseDinner)?SZCore.baseDinner(d.date):'';
+  renderPromoBand(d.promos);   // 특식·안주 신청 안내 등(공지 보드 홍보, 화면=2층 석식)
+  if(d.released===false){   // 공개 전(숨김) — 장소·시간은 보이고 명단은 「준비 중」(dinner.html [공개 중지])
+    fillVenue('v-', VENUE[d.venue], [d.start_time,d.end_time].filter(Boolean).join(' 〜 '), base, d.note);
+    const l=$('#list'); l.style.cssText=''; l.className='list'; l.innerHTML=prepHTML('명단이 확정되면 표시됩니다','名簿が確定次第 表示します');
+    $('#tot').innerHTML=''; $('#pg').textContent=''; showPane('p-dinner'); return;
+  }
   const teams=Array.isArray(d.teams)?d.teams:[];
   // 팀별 장소(SQL 145): 장소가 갈리는 날은 레스토랑 → 컨벤션홀 → 미정 순으로 머리줄을 넣어 나눈다
   const vOf=t=>t.venue||d.venue||'';
@@ -385,7 +412,8 @@ function render(){
   $('#p-dinner').classList.toggle('dense', rows.length>40);
   gridRows($('#list'), rows, '오늘 석식 명단이 없습니다<br>本日の夕食予約はありません');
   $('#tot').innerHTML=`<b>${d.units||0}</b>팀 · <b>${d.total||0}</b>명 <span style="color:var(--muted)">/ ${d.units||0}チーム · ${d.total||0}名</span>`
-    +(split?` <span style="color:var(--muted)">· ${VENUE.restaurant.ko} <b>${sumPax('restaurant')}</b> · ${VENUE.convention.ko} <b>${sumPax('convention')}</b></span>`:'');
+    +(split?` <span style="color:var(--muted)">· ${VENUE.restaurant.ko} <b>${sumPax('restaurant')}</b> · ${VENUE.convention.ko} <b>${sumPax('convention')}</b></span>`:'')
+    +(d.released?` <span style="color:var(--muted)">· 확정 ${esc(String(d.released_at||'').slice(11,16))}</span>`:'');
   $('#pg').textContent='';
   showPane('p-dinner');
 }
@@ -405,14 +433,24 @@ function gridRows(list, rows, emptyMsg, extra){
     if(t.hdr!==undefined){   // 장소 머리줄(팀별 석식 장소, SQL 145)
       const v=VENUE[t.hdr];
       return `<div class="row vh ${t.hdr||'none'}"><span class="nm">${v?`${esc(v.ko)} <i>${esc(v.ja)}</i>`:'장소 미정 <i>会場未定</i>'}</span><span class="px"><b>${t.n}</b>팀 · <b>${t.pax}</b>名</span></div>`; }
-    return `<div class="row ${t.accom==='쿠주힐즈'?'k':''}${t._v?' v-'+t._v:''}"><span class="tag">${esc(t.tag||'')}</span><span class="nm">${esc(t.rep||'')}<i>様</i>${t.teams>1?`<i>+${t.teams-1}</i>`:''}${extra?extra(t):''}</span><span class="px"><b>${esc(t.pax)}</b>名</span></div>`;
+    return `<div class="row ${t.accom==='쿠주힐즈'?'k':''}${t._v?' v-'+t._v:''}"><span class="tag">${esc(t.tag||'')}</span><span class="nm">${esc(t.rep||'')}<i>님</i><i class="ja">様</i>${t.teams>1?`<i>+${t.teams-1}</i>`:''}${extra?extra(t):''}</span><span class="px"><b>${esc(t.pax)}</b>명<i class="ja">名</i></span></div>`;
   }).join('');
+  fitListWidth(list);   // pane 이 숨겨져 있으면(폭 0) 건너뛰고 showPane 때 다시 잰다
+}
+// 폭 맞춤 — 높이로 정한 글자가 열 폭에 안 들어가 이름이 「김대표…」로 잘리면 글자를 줄인다(한·일 병기로 줄이 길어진 뒤 실측, Min 2026-10-26).
+//  이름이 다 보이는 쪽이 꽉 채우는 쪽보다 우선. 숨긴 pane 은 폭이 0 이라 못 재므로 showPane 이 보이는 pane 의 .list 마다 다시 부른다.
+function fitListWidth(list){
+  if(!list||!list.clientWidth) return;
+  let fs=parseFloat(list.style.getPropertyValue('--fs')); if(!fs) return;
+  const cut=()=>[...list.querySelectorAll('.row .nm')].some(e=>e.scrollWidth>e.clientWidth+1);
+  let k=0; while(k++<14 && fs>FS_MIN && cut()){ fs=Math.max(FS_MIN, fs*0.93); list.style.setProperty('--fs', fs.toFixed(2)+'vh'); }
 }
 
 // ── 로비: 화면 로테이션 ─────────────────────────────────────────────────
-const TITLES={ 'p-office':['本日の運営状況','오늘 운영 현황'], 'p-course':['오늘의 라운딩','本日のスタート時刻'], 'p-welcome':['환영합니다','ようこそ'], 'p-depart':['출발 안내','ご出発のご案内'], 'p-dsum':['석식 안내','夕食のご案内'], 'p-weather':['날씨','天気'], 'p-notice':['안내','お知らせ'], 'p-wall':['오늘의 안내','本日のご案内'] };
+const TITLES={ 'p-office':['本日の運営状況','오늘 운영 현황'], 'p-course':['오늘의 라운딩','本日のスタート時刻'], 'p-welcome':['환영합니다','ようこそ'], 'p-depart':['출발 안내','ご出発のご案内'], 'p-dsum':['석식 안내','夕食のご案内'], 'p-weather':['날씨','天気'], 'p-notice':['안내','お知らせ'], 'p-wmeal':['오늘의 식사 안내','本日のお食事のご案内'], 'p-promo':['리조트 안내','リゾートのご案内'] };
 function showPane(id){
   document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id===id));
+  document.querySelectorAll('#'+id+' .list').forEach(fitListWidth);   // 보이게 된 뒤에 폭 맞춤(숨긴 채 그린 명단)
   const t=TITLES[id]; if(t) $('#hd-title').innerHTML=`${esc(t[0])}<small>${esc(t[1])}</small>`;
   $('#dots').innerHTML=PANES.length>1?PANES.map(p=>`<i class="${p===id?'on':''}"></i>`).join(''):'';
 }
@@ -425,13 +463,13 @@ function renderLobby(){
   // 출발 안내 — 오늘 남은 便 + 내일. 오늘 便이 이미 떠났으면(시각 지남) 숨긴다.
   const now=hhmm();
   const deps=(Array.isArray(d.departures)?d.departures:[]).filter(g=>!(g.date===d.today && g.time && g.time<now));
-  $('#d-list').innerHTML=deps.length?deps.map(g=>{
+  $('#d-list').innerHTML=(deps.length?deps.map(g=>{
     const dl=g.date===d.today?'오늘 · 本日':'내일 · 明日';
     const bus=(g.dispatch||[]).filter(x=>x.depart||x.vehicle);
     const busHTML=bus.length?`<div class="bus"><span class="lb2">호텔 출발 · ホテル出発</span>${bus.map(x=>`<span class="dep">${esc(x.depart||'—')}</span>${x.vehicle?`<span>${esc(x.vehicle)}</span>`:''}${x.dest?`<span class="lb2">→ ${esc(x.dest)}</span>`:''}`).join('')}</div>`
       :`<div class="bus none2">호텔 출발 시각은 프론트에서 안내해 드립니다 · ホテル出発時刻はフロントでご案内します</div>`;
     return `<div class="fl"><div class="fh"><span class="day">${dl} ${mdLabel(g.date)}</span><span class="fno">${esc(g.flight||'—')}</span><span class="ftm">${esc(g.time||'')}</span><span class="frt">${esc([g.from,g.to].filter(Boolean).join(' → '))}</span><span class="fpx">${g.teams_n}팀 · ${g.pax}名</span></div>${busHTML}<div class="tags">${(g.teams||[]).map(t=>`<span>${esc(t.tag||'')}<b>${esc(t.rep||'')}</b></span>`).join('')}</div></div>`;
-  }).join(''):'<div class="none">오늘·내일 출발 예정 팀이 없습니다<br>本日・明日ご出発のチームはありません</div>';
+  }).join(''):'')+lodgingHTML(d,now)+((deps.length||lodgingList(d,now).length)?'':'<div class="none">오늘·내일 출발 예정 팀이 없습니다<br>本日・明日ご出発のチームはありません</div>');
   // 석식 요약
   const dn=d.dinner||{};
   const base=(window.SZCore&&SZCore.baseDinner)?SZCore.baseDinner(d.date):'';
@@ -440,23 +478,29 @@ function renderLobby(){
   { const bv=dn.by_venue||null; const r=bv&&bv.restaurant?(Number(bv.restaurant.units)||0):0, c=bv&&bv.convention?(Number(bv.convention.units)||0):0;
     if(r>0&&c>0){ $('#s-ko').textContent=`${VENUE.restaurant.ko} · ${VENUE.convention.ko}`; $('#s-ja').textContent=`${VENUE.restaurant.ja} ／ ${VENUE.convention.ja}`; $('#s-venue').classList.remove('unset');
       const nt=$('#s-note'); if(nt.hidden){ nt.hidden=false; nt.textContent=`${VENUE.restaurant.ko} ${bv.restaurant.pax}명 · ${VENUE.convention.ko} ${bv.convention.pax}명 ／ 会場はチームごとに異なります`; } } }
+  if(dn.released===false){ const nt=$('#s-note'); nt.hidden=false; nt.textContent='명단 준비 중 — 확정되면 2층 모니터에 표시됩니다 ／ 名簿は準備中です'; }
+  // 리조트 안내(홍보 — 공지 보드 kind=promo, 화면=로비)
+  const prs=Array.isArray(d.promos)?d.promos:[];
+  $('#pr-list').innerHTML=promoCardsHTML(prs); $('#pr-list').classList.toggle('one',prs.length===1);
   // 공지
   const nts=Array.isArray(d.notices)?d.notices:[];
   $('#nts').innerHTML=nts.map(n=>`<div class="nt ${n.pinned?'pin':''}"><div class="ttl">${esc(n.title)}</div>${n.body?`<div class="bd">${esc(n.body)}</div>`:''}</div>`).join('');
-  $('#tot').innerHTML=`체크인 <b>${d.welcome_teams||0}</b>팀 · 석식 <b>${dn.total||0}</b>명`;
+  $('#tot').innerHTML=`체크인 <b>${d.welcome_teams||0}</b>팀 · 석식 ${dn.released===false?'준비 중':`<b>${dn.total||0}</b>명`}`;
+  renderPromoBand(null);
   // 돌릴 화면 — 내용 없는 것은 뺀다
   const list=['p-welcome'];
   // 코스 스타트표 — 공개돼 있고 오늘 아직 나갈 조가 남아 있을 때만(다 나가면 빠진다)
   const cr=COURSE?paintCourse(COURSE,$('#crs')):null;
   if(cr&&cr.upcoming) list.push('p-course');
-  if(deps.length) list.push('p-depart');
+  if(deps.length||lodgingList(d,now).length) list.push('p-depart');
   list.push('p-dsum');
+  if(prs.length) list.push('p-promo');
   if(WX) list.push('p-weather');
   if(nts.length) list.push('p-notice');
   const cur=PANES[PI]; PANES=list; PI=Math.max(0,PANES.indexOf(cur));
   showPane(PANES[PI]);
 }
-function rotate(){ if(SCREEN!=='lobby'||PANES.length<2) return; PI=(PI+1)%PANES.length; showPane(PANES[PI]); }
+function rotate(){ if((SCREEN!=='lobby'&&SCREEN!=='wall')||PANES.length<2) return; PI=(PI+1)%PANES.length; showPane(PANES[PI]); }
 
 // ── 직원용: 오늘 운영 현황(숫자판, 일본어 우선) ─────────────────────────────
 function tile(cls,lbJa,lbKo,val,sub,tags){
@@ -516,7 +560,7 @@ function paintCourse(d, box){
   const now=isTomorrow?'':hhmm();
   const past=g=>!!now && teeOf(g)<now;
   const compact=box.classList.contains('compact');
-  const HAS={hole:gs.some(g=>g.hole!=null), cart:gs.some(g=>(g.cart!=null&&g.cart!=='')||g.ev===true), lunch:gs.some(g=>g.lunch!=null)};
+  const HAS={hole:gs.some(g=>g.hole!=null), cart:gs.some(g=>('cart' in g)||('cart_type' in g)||g.ev!=null), lunch:gs.some(g=>'lunch' in g)};   // RPC 가 필드를 주면(SQL 146~) 값이 비어도 열은 보인다(Min 2026-10-26 「컬럼이 없네」) — 옛 RPC 엔 키가 없어 종전대로
   const byTee=(a,b)=>(sg?0:String(a.tee).localeCompare(String(b.tee)))||((a.hole||0)-(b.hole||0))||((a.slot||0)-(b.slot||0))||((CORDER[a.course]??9)-(CORDER[b.course]??9));
   const cols=COURSES.map(c=>({c, rows:gs.filter(g=>g.course===c.code).sort(byTee)}));
   const other=gs.filter(g=>!CNAME[g.course]); if(other.length) cols[cols.length-1].rows.push(...other.sort(byTee));   // 예상 밖 코스 코드는 마지막 열에
@@ -524,7 +568,7 @@ function paintCourse(d, box){
   const pmAll=gs.filter(g=>g.pm_tee).sort((a,b)=>String(a.pm_tee).localeCompare(String(b.pm_tee)));
   const pm=pmAll.slice(0,6), pmMore=pmAll.length-pm.length;
   const maxRows=()=>Math.max(...cols.map(x=>x.rows.length));
-  const availVh=(compact?68:73)-(pm.length?5.5:0)-(compact?0:0);
+  const availVh=(compact?68:73)-BAND_VH-(pm.length?5.5:0);
   const fit=(r,oh)=>Math.min(compact?2.5:3.3, ((availVh/Math.max(r,8))-oh)/1.3);   // 줄 높이 ≈ fs×1.3 + 여백(oh vh)
   const upcomingAll=gs.filter(g=>!past(g)).sort(byTee);
   // 글자 상한 = 열 폭: 한 줄이 약 24em(컴팩트 20em)이라 열 내용폭(≈28vw·컴팩트 22vw)을 넘으면 칸이 「…」로 잘린다 → vw 기준 상한을 vh 로 환산
@@ -559,48 +603,60 @@ function renderCourse(){
   const d=DATA; if(!d) return;
   const isTomorrow=d.date!==d.today;
   $('#hd-date').innerHTML=(isTomorrow?'<b>내일 · 明日</b>':'<b>오늘 · 本日</b>')+dateLabel(d.date);
+  renderPromoBand(d.promos);   // 전기카트 안내 등(공지 보드 홍보, 화면=코스)
   const r=paintCourse(d,$('#crs'));
   $('#tot').innerHTML=r.hidden?'':`<b>${d.n||0}</b>조 · <b>${d.total||0}</b>명 <span style="color:var(--muted)">/ ${d.n||0}組 · ${d.total||0}名</span>${d.released?` <span style="color:var(--muted)">· 확정 ${esc(String(d.released_at||'').slice(11,16))}</span>`:''}`;
   $('#pg').textContent=(r.nextRow&&r.now?`▶ ${r.nextTee} 곧 출발 · まもなくスタート`:'');
   showPane('p-course');
 }
 
-// ── 디지털 월(통로 65~75형, Min 2026-10 요청) — 한 화면 고정 분할, 로테이션 없음 ────────────
-//  왼쪽(≈24vw) 오늘의 식사(조식·중식=레스토랑 고정 문구, 석식=장소·시간·기본 석식·팀별 장소 합계) + 안내(공지 2건) + 날씨 /
-//  오른쪽(≈76vw) 스타트표 아소|소보|쿠주 3열(공개된 최종본, 17시 이후엔 내일) + 점심 후 재스타트.
+// ── 디지털 월(통로 65~75형) — 화면 로테이션(Min 2026-10-26 「오늘의 안내로 한번에 묶으면 화면이 부족 — 나눠서」) ─────
+//  오늘의 식사 안내(조식·중식=기본 문구 signage_texts, 석식=장소·시간·기본 석식·장소별·공개 상태) → 오늘의 라운딩(3열, 17시 이후 내일)
+//  → 리조트 안내(홍보 screens=wall) → 안내(손님 공지) → 날씨. 내용 없는 화면은 뺀다. 로비와 같은 pane 을 돌려 쓴다.
+function renderWallMeals(d){
+  const dn=d.dinner||{}, T=d.texts||{};
+  const base=(window.SZCore&&SZCore.baseDinner)?SZCore.baseDinner(d.date):'';
+  const bf=T.breakfast||{ko:'06:00 오픈 · 08:00까지 입장 가능',ja:'06:00 オープン · 08:00 まで入場可'};   // 기본값(Min 2026-10-26) — 공지 보드 「손님 화면 기본 문구」로 고친다
+  const lu=T.lunch||{ko:'',ja:''};
+  const v=VENUE[dn.venue]; const bv=dn.by_venue||null;
+  const rN=bv&&bv.restaurant?(Number(bv.restaurant.pax)||0):0, cN=bv&&bv.convention?(Number(bv.convention.pax)||0):0;
+  const tm=[dn.start_time,dn.end_time].filter(Boolean).join(' 〜 ');
+  const venueKo=(rN>0&&cN>0)?`${VENUE.restaurant.ko} · ${VENUE.convention.ko}`:(v?v.ko:'프론트에 문의');
+  const venueJa=(rN>0&&cN>0)?`${VENUE.restaurant.ja} ／ ${VENUE.convention.ja}`:(v?v.ja:'フロントへお尋ねください');
+  const line=(ko,ja,cls)=>`<span class="ml${cls?' '+cls:''}">${ko}${ja?`<small>${ja}</small>`:''}</span>`;
+  const dinInfo=[ tm?line(`<b>${esc(tm)}</b>`,''):'', base?line(`기본 석식 ${esc(base)}`,'基本夕食'):'',
+    (rN>0&&cN>0)?line(`${VENUE.restaurant.ko} ${rN}명 · ${VENUE.convention.ko} ${cN}명`,'会場はチームごと'):'',
+    dn.released===false?line('명단 준비 중','名簿は準備中','prep'):'', dn.note?line(esc(dn.note),''):'' ].filter(Boolean).join('');
+  const row=(cls,ko,ja,vko,vja,info)=>`<div class="mrow ${cls}"><div class="mk">${ko}<small>${ja}</small></div><div class="mv">${vko}<small>${vja}</small></div><div class="mi">${info||''}</div></div>`;
+  $('#wm-list').innerHTML=row('bf','조식','朝食','레스토랑','レストラン', bf.ko?line(esc(bf.ko),esc(bf.ja||'')):'')
+    +row('lu','중식','昼食','레스토랑','レストラン', lu.ko?line(esc(lu.ko),esc(lu.ja||'')):'')
+    +row('dn','석식','夕食',venueKo,venueJa,dinInfo);
+}
 function renderWall(){
   const d=DATA; if(!d) return;
   $('#hd-date').innerHTML='<b>오늘 · 本日</b>'+dateLabel(d.date);
-  const dn=d.dinner||{};
-  const base=(window.SZCore&&SZCore.baseDinner)?SZCore.baseDinner(d.date):'';
-  const v=VENUE[dn.venue];
-  const bv=dn.by_venue||null; const rN=bv&&bv.restaurant?(Number(bv.restaurant.pax)||0):0, cN=bv&&bv.convention?(Number(bv.convention.pax)||0):0;
-  const splitTxt=(rN>0&&cN>0)?`<div class="s">${VENUE.restaurant.ko} <b>${rN}</b>명 · ${VENUE.convention.ko} <b>${cN}</b>명 <span style="color:var(--muted)">／ 会場はチームごと</span></div>`:'';
-  const venueTxt=(rN>0&&cN>0)?`${VENUE.restaurant.ko} · ${VENUE.convention.ko}<small>${VENUE.restaurant.ja}／${VENUE.convention.ja}</small>`:(v?`${esc(v.ko)}<small>${esc(v.ja)}</small>`:`프론트에 문의<small>フロントへ</small>`);
-  $('#w-meals').innerHTML=`
-    <div class="meal"><div class="k">조식 · 중식 ／ 朝食・昼食</div><div class="v">레스토랑<small>レストラン</small></div></div>
-    <div class="meal dn"><div class="k">석식 · 夕食${[dn.start_time,dn.end_time].filter(Boolean).length?` <b style="color:var(--ink);font-family:var(--mono)">${esc([dn.start_time,dn.end_time].filter(Boolean).join('〜'))}</b>`:''}</div>
-      <div class="v">${venueTxt}</div>${base?`<div class="s">기본 석식 · 基本夕食 <b>${esc(base)}</b></div>`:''}${splitTxt}${dn.note?`<div class="s">${esc(dn.note)}</div>`:''}</div>`;
-  // 스타트표(가운데) — 공개된 최종본(released) / 숨김=준비 중 / 행 없음=실시간
-  const box=$('#w-crs');
-  if(COURSE){
-    const tomorrow=COURSE.date!==COURSE.today;
-    $('#w-ctitle').innerHTML=`${tomorrow?'내일의 라운딩':'오늘의 라운딩'} <span style="font-weight:600">${esc(mdLabel(COURSE.date))}</span><small>${tomorrow?'明日':'本日'}のスタート</small>`;
-    const r=paintCourse(COURSE, box);
-    $('#pg').textContent=(r.nextRow&&r.now?`▶ ${r.nextTee} 곧 출발 · まもなくスタート`:'');
-  } else { box.innerHTML='<div class="none">스타트표를 불러오지 못했습니다<br>スタート表を取得できませんでした</div>'; $('#pg').textContent=''; }
-  // 안내(오른쪽)
+  renderPromoBand(null);
+  renderWallMeals(d);
+  // 오늘의 라운딩 — 공개된 최종본 / 숨김=준비 중 / 행 없음=실시간(17시 이후엔 내일)
+  const cr=COURSE?paintCourse(COURSE,$('#crs')):null;
+  const tomorrow=!!(COURSE&&COURSE.date!==COURSE.today);
+  TITLES['p-course']=[tomorrow?'내일의 라운딩':'오늘의 라운딩', (tomorrow?'明日':'本日')+'のスタート時刻'];
+  const prs=Array.isArray(d.wall_promos)?d.wall_promos:[];
+  $('#pr-list').innerHTML=promoCardsHTML(prs); $('#pr-list').classList.toggle('one',prs.length===1);
   const nts=Array.isArray(d.notices)?d.notices:[];
-  $('#w-nts').innerHTML=nts.length?nts.slice(0,2).map(n=>`<div class="nt ${n.pinned?'pin':''}"><div class="ttl">${esc(n.title)}</div>${n.body?`<div class="bd">${esc(n.body)}</div>`:''}</div>`).join('')
-    :'<div class="none">오늘 안내 사항이 없습니다<br>本日のお知らせはありません</div>';
-  if(WX) renderWeatherSmall();
-  $('#tot').innerHTML=`석식 <b>${dn.total||0}</b>명${COURSE&&!COURSE.hidden&&COURSE.released!==false?` · 라운딩 <b>${COURSE.n||0}</b>조 <b>${COURSE.total||0}</b>명`:''}`;
-  showPane('p-wall');
-  fitNotices();   // pane 이 보인 뒤에 재야 높이가 잡힌다(숨긴 pane 은 clientHeight 0)
+  $('#nts').innerHTML=nts.map(n=>`<div class="nt ${n.pinned?'pin':''}"><div class="ttl">${esc(n.title)}</div>${n.body?`<div class="bd">${esc(n.body)}</div>`:''}</div>`).join('');
+  const dn=d.dinner||{};
+  $('#tot').innerHTML=`석식 ${dn.released===false?'준비 중':`<b>${dn.total||0}</b>명`}${(cr&&!cr.hidden&&COURSE)?` · 라운딩 <b>${COURSE.n||0}</b>조 <b>${COURSE.total||0}</b>명`:''}`;
+  $('#pg').textContent=(cr&&cr.nextRow&&cr.now)?`▶ ${cr.nextTee} 곧 출발 · まもなくスタート`:'';
+  const list=['p-wmeal'];
+  if(cr && (cr.hidden || (cr.rows&&cr.rows.length))) list.push('p-course');   // 조가 있거나 「준비 중」을 알려야 할 때
+  if(prs.length) list.push('p-promo');
+  if(nts.length) list.push('p-notice');
+  if(WX) list.push('p-weather');
+  const cur=PANES[PI]; PANES=list; PI=Math.max(0,PANES.indexOf(cur));
+  showPane(PANES[PI]);
 }
 
-// 월 왼쪽 안내 — 공간을 넘치는 카드는 통째로 뺀다(반쯤 잘린 카드가 보이지 않게)
-function fitNotices(){ const b=$('#w-nts'); if(!b||!b.clientHeight) return; let n=0; while(b.scrollHeight>b.clientHeight+1 && b.children.length>1 && n++<5) b.removeChild(b.lastElementChild); }
 // ── 날씨(로비·월) — Open-Meteo, 홈과 같은 좌표. 30분마다 ──
 function wmap(c){
   if(c===0) return ['☀️','맑음','晴れ']; if(c===1||c===2) return ['🌤️','대체로 맑음','晴れ時々曇り']; if(c===3) return ['☁️','흐림','曇り'];
@@ -617,7 +673,7 @@ async function loadWeather(){
     const r=await fetch(url); const d=await r.json();
     if(!d||!d.hourly) throw new Error('wx');
     WX=d; WXAT=Date.now();
-    if(SCREEN==='wall'){ renderWeatherSmall(); fitNotices(); } else { renderWeather(); if(DATA) renderLobby(); }
+    renderWeather(); if(DATA){ if(SCREEN==='wall') renderWall(); else renderLobby(); }
   }catch(e){ /* 날씨 실패는 그 화면만 빠진다 */ }
 }
 function renderWeather(){
@@ -631,13 +687,6 @@ function renderWeather(){
     html+=`<div class="h ${n===1?'now':''}"><div class="hh">${n===1?'지금·今':hh+'시'}</div><div class="ic">${w[0]}</div><div class="tp">${Math.round(H.temperature_2m[i])}°</div><div class="pp">${pp==null?'-':pp+'%'}</div></div>`;
   }
   $('#wx').innerHTML=html;
-}
-// 월 화면 오른쪽 아래 — 오늘/내일 최저·최고(한 줄, 공지 자리를 뺏지 않게 작게)
-function renderWeatherSmall(){
-  const box=$('#w-wx'); if(!box||!WX) return;
-  const D=WX.daily||{};
-  const days=D.time?D.time.slice(0,2).map((t,i)=>{ const w=wmap(D.weather_code[i]); return `<span>${i===0?'오늘 · 今日':'내일 · 明日'} ${w[0]} ${esc(w[1])}<b>${Math.round(D.temperature_2m_min[i])}° / ${Math.round(D.temperature_2m_max[i])}°</b></span>`; }).join(''):'';
-  box.innerHTML=`<div class="wxd">${days}</div>`;
 }
 async function keepAwake(){ try{ if(navigator.wakeLock) await navigator.wakeLock.request('screen'); }catch(e){} }
 

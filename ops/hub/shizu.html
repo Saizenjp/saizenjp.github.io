@@ -245,7 +245,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.5">
 </head>
 <body data-so-area="shizu_sheet">
 <div class="topbar so-bar">
@@ -285,7 +285,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=46"></script>
-<script src="../assets/saizen-ops.js?v=34.4"></script>
+<script src="../assets/saizen-ops.js?v=34.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(予約表 산출물·도메인 데이터는 일본어 유지) ──
@@ -531,6 +531,7 @@ function renderUI(){
     </div>
     <div class="panel to-panel" id="turnover" style="display:none"></div>
     <div class="panel to-panel" id="localnotes" style="display:none"></div>
+    <div id="lobbydeps"></div>
     <div class="panel">
       <h3>${tx('boardH')} <span class="cnt">${tx('boardHint')}</span></h3>
       <div class="brd-bar">
@@ -751,6 +752,9 @@ function rackTeams(date){
     return {seq,rep:repEnOf(seq)||bk.rep_name||'',ms,mates,annex,port:portOf(seq),dep:ms[0].dep,arr:ms[0].arr};
   }).sort((a,b)=>(a.port||'').localeCompare(b.port||'')||(a.dep||'').localeCompare(b.dep||'')||(a.seq-b.seq));   // 出発地(ICN/PUS)끼리 묶어 표시(Min)
 }
+// 숙소행 출발 시각(야마나미 로비 모니터 「출발 안내」, Min 2026-10-26) — 시즈 담당이 보고 있는 날짜의 시즈노야도행 출발 시각을 적는다(공용 __so_lobbyDeps, lobby_departures)
+let LD=null;
+function mountLobbyDeps(date){ const box=$('#lobbydeps'); if(!box||!window.__so_lobbyDeps||!supa) return; const d=date||new Date(Date.now()+9*3600e3).toISOString().slice(0,10); if(!LD) LD=__so_lobbyDeps(box,supa,{dests:['shizu']}); LD.reload(d); }
 function renderBoard(){
   const board=$('#board'); if(!board) return;
   const ax=axis();
@@ -758,10 +762,11 @@ function renderBoard(){
   if(si) si.textContent=BSEL.size?tx('selN')(BSEL.size):'';
   // 선택한 날짜만큼 보드 표시(다중선택). 전체(미선택)면 성능상 첫 날짜만.
   const dates = DATESEL.size ? [...DATESEL].filter(d=>ax.includes(d)).sort() : (ax.length?[ax[0]]:[]);
-  if(!dates.length){ board.innerHTML=`<div class="rk-empty">${tx('noFocus')}</div>`; if(fl)fl.textContent=''; renderTurnover([]); return; }
+  if(!dates.length){ board.innerHTML=`<div class="rk-empty">${tx('noFocus')}</div>`; if(fl)fl.textContent=''; renderTurnover([]); mountLobbyDeps(null); return; }
   if(fl) fl.textContent=tx('focusLbl')(dates.map(fmtDate).join(' · '));
   board.innerHTML = dates.map(date=>renderBoardDay(date, dates.length>1)).join('');
   renderTurnover(dates);
+  mountLobbyDeps(dates[0]);
 }
 // 월 선택과 배정 보드 사이: 선택 날짜의 체크인/체크아웃 팀 간략 요약(배정된 방 기준·팀 단위)
 function renderTurnover(dates){
@@ -1440,7 +1445,7 @@ function applyStatic(){
   const cs=$('#conn-state'); const btn=$('#btn-connect');
   if(cs&&btn){ if(!supa){ cs.textContent=tx('notConn'); cs.className='pill'; btn.textContent=tx('connect'); } }
 }
-window.onSaizenLangChange=function(){
+window.onSaizenLangChange=function(){ if(LD) LD.reload();
   applyStatic();
   if(lang()==='ja' && supa) translateRemarks();                             // 일본어로 바꾸면 비고 번역(캐시 없는 것만 요청)
   if(typeof _cxSetTitle==='function') _cxSetTitle();                       // 취소 이력 제목 언어 갱신
