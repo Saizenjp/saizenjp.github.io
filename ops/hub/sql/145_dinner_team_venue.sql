@@ -8,7 +8,7 @@
 --     묶음(team_group)은 대표 팀의 지정을 따른다(화면은 묶음 전체에 같은 값을 쓴다).
 --  ③ signage_lobby — dinner 요약에 by_venue 를 같이 넘긴다(로비 석식 요약이 두 장소를 표시).
 --  ④ data_audit ⑮ dinner_check — 장소별 합계도 다른 모양의 쿼리로 재계산·대조(§3-3).
---  anon 실행 함수는 그대로 12개(signage_dinner·signage_lobby 는 이미 anon). 멱등. MCP 적용 2026-10-25.
+--  anon 실행 함수는 그대로 12개(signage_dinner·signage_lobby 는 이미 anon). 멱등. MCP 적용 2026-10-26(Min 승인).
 -- ============================================================================
 create table if not exists public.dinner_team_venue (
   dinner_date date   not null,

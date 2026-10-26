@@ -11,7 +11,7 @@
 --  ④ golf_add_charge — 코스 배정표 퀵 액션 「9홀 추가」 청구. charges 쓰기 RLS 가 settle·pos 뿐이라(100 과 같은 이유)
 --     security definer 로 팀 folio(open·team) 를 찾거나 만들어 라운딩 구분으로 청구. 권한 = admin 또는 golf·front·settle·pos.
 --     전기카트 추가는 RPC 가 아니라 cart_bookings 신청(트리거 100/116 이 요금) — 여기 없음.
---  anon 실행 함수는 그대로 12개(signage_course 만 anon, 새 함수 2개는 authenticated). 멱등. ⚠ DB 적용은 Min 승인(수동/MCP).
+--  anon 실행 함수는 그대로 12개(signage_course 만 anon, 새 함수 2개는 authenticated). 멱등. MCP 적용 2026-10-26(Min 승인).
 -- ============================================================================
 alter table public.golf_groups add column if not exists lunch_after smallint;
 do $$ begin
