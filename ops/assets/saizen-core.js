@@ -686,9 +686,8 @@
   //  (RLS 정책은 그룹 키로 검사하므로 — 세부 구분은 화면·카드 단위, DB 보호는 그룹 단위. ⚠ 돈이 걸린 RPC 는 자식 키를 직접 검사한다).
   var AREA_TREE = {
     print:   ['nametag', 'keyslip', 'aircover', 'dispatch', 'dinner', 'qrcards', 'transfer', 'notice'],
-    //  안내 모니터(TV 화면) — 인쇄물과 쓰임이 달라(한 번 열어두는 화면·로그인 불필요) 그룹을 따로 둔다(Min 2026-09, SQL 140).
-    //  DB 쓰기와 무관(모니터 RPC 는 anon) — 이 키는 랜딩 카드(링크) 노출만 정한다.
-    signage: ['sign_lobby', 'sign_course', 'sign_dinner', 'sign_office'],
+    //  안내 모니터(signage)는 트리 밖 단일 키(SQL 150, Min 2026-10-26): 카드가 「안내 모니터 관리」 1장뿐이라 자식이 없다(board 와 같음).
+    //  140 의 sign_lobby·sign_course·sign_dinner·sign_office 4자식은 폐지(계정은 부모 signage 로 승계). 모니터별 화면은 signage_monitors 표.
     front:   ['frontdesk', 'inv_front'],
     room:    ['room_assign', 'occupancy', 'roomstats', 'inv_room'],
     hk:      ['housekeeping', 'inv_hk'],

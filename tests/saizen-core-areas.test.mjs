@@ -28,10 +28,12 @@ test('areaAllowed: 자식 키만 → 그 화면만 · 부모 키 → 그룹 전�
   assert.equal(C.areaAllowed(rd, ['stats_mgmt']), null);
   assert.equal(C.areaAllowed({ role: 'admin', areas: [], read_areas: [] }, ['anything']), 'write');
   assert.equal(C.areaAllowed(null, ['dinner']), null);
-  // 안내 모니터는 인쇄물과 별도 그룹(140): print 만으론 모니터 카드가 안 보이고, signage 부모면 4화면 전부
-  assert.equal(C.areaAllowed(grp, ['sign_lobby']), null);
-  assert.equal(C.areaAllowed({ role: 'staff', areas: ['signage'], read_areas: [] }, ['sign_course']), 'write');
-  assert.equal(C.areaAllowed({ role: 'staff', areas: ['sign_course'], read_areas: [] }, ['sign_lobby']), null);
+  // 안내 모니터(signage)는 트리 밖 단일 키(150): print 만으론 모니터 관리 카드가 안 보이고, signage 키면 보인다. 옛 자식 키는 더 이상 아무것도 열지 않는다
+  assert.equal(C.areaAllowed(grp, ['signage']), null);
+  assert.equal(C.areaAllowed({ role: 'staff', areas: ['signage'], read_areas: [] }, ['signage']), 'write');
+  assert.equal(C.areaAllowed({ role: 'staff', areas: ['sign_lobby'], read_areas: [] }, ['signage']), null);
+  assert.deepEqual(C.areaExpand(['signage']), ['signage']);
+  assert.equal(C.AREA_TREE.signage, undefined);
   assert.equal(C.areaAllowed(only, 'dinner nametag'), 'write');   // 문자열(공백 구분)도 받는다
 });
 
@@ -45,13 +47,13 @@ test('체류 캘린더(staycal)만 있으면 경영통계(stats_mgmt)는 못 연
   assert.equal(C.areaAllowed(st, ['staycal']), 'write');
 });
 
-test('SQL seed(최신 area_tree 재시드 = 140) 와 AREA_TREE 가 같다', () => {
-  const sql = readFileSync(new URL('../ops/hub/sql/140_signage_area.sql', import.meta.url), 'utf8');
+test('SQL seed(최신 area_tree 재시드 = 150) 와 AREA_TREE 가 같다', () => {
+  const sql = readFileSync(new URL('../ops/hub/sql/150_signage_monitors.sql', import.meta.url), 'utf8');
   const blk = sql.slice(sql.indexOf('insert into public.area_tree'), sql.indexOf('on conflict (child)'));
   const seed = {};
   for (const m of blk.matchAll(/\('([a-z_]+)','([a-z_]+)'\)/g)) seed[m[1]] = m[2];
   const mine = {};
   Object.keys(C.AREA_TREE).forEach(p => C.AREA_TREE[p].forEach(c => { mine[c] = p; }));
   assert.deepEqual(seed, mine);
-  assert.equal(Object.keys(mine).length, 36);
+  assert.equal(Object.keys(mine).length, 32);
 });
