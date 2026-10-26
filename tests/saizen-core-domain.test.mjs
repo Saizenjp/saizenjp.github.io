@@ -311,8 +311,8 @@ test('nextStartCourse: 어제 출발 코스의 다음 코스(아소→소보→�
 test('기본 석식 한국어 표 = 일본어 표와 같은 길이·요일 일치(손님 화면용)', () => {
   assert.equal(SZCore.BASE_DINNER_KO.length, SZCore.BASE_DINNER.length);
   assert.ok(SZCore.BASE_DINNER_KO.every(x => x && x.length));
-  assert.equal(SZCore.baseDinnerKo('2026-10-26'), '국산 돼지 삼겹살 구이');   // 월
-  assert.equal(SZCore.baseDinner('2026-10-26'), '国産豚バラ焼');
+  assert.equal(SZCore.baseDinnerKo('2026-10-26'), '일본산 삼겹살 구이');   // 월
+  assert.equal(SZCore.baseDinner('2026-10-26'), '日本産豚バラ焼');
   assert.equal(SZCore.baseDinnerKo('2026-10-25'), '해물전골');               // 일
   assert.equal(SZCore.baseDinnerKo('bad'), '');
 });

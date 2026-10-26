@@ -36,7 +36,7 @@
   · 표기 원칙(Min): 손님용 = 한국어 우선 · 한·일 병기. 공개 장소라 방번호·연락처·생년은 어디에도 없다.
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=47"></script>
+<script src="../assets/saizen-core.js?v=48"></script>
 <style>
   /* 기본 = 밝은 화면(Min 2026-10-26 「밝은 테마로 진행해」 — 고령층 가독성: 밝은 바탕에 진한 글자). 어두운 복도는 ?theme=dark(아래 팔레트). 토큰 이름은 둘이 같다. */
   :root{ --bg:#f4f6f2; --panel:#ffffff; --panel2:#e9eee3; --line:#d2d8cc; --line2:#b4bfab; --ink:#1b211b; --ink2:#2f3a2f; --muted:#5d6a5a;
@@ -735,6 +735,11 @@ function renderWeather(){
 async function keepAwake(){ try{ if(navigator.wakeLock) await navigator.wakeLock.request('screen'); }catch(e){} }
 
 tick(); setInterval(tick,1000);
+// 무인 TV 자동 갱신(Min 2026-10-26 「여기도 한국어가 없어서」 = 옛 페이지를 들고 있던 TV): 10분마다 이 파일의 ETag 를 캐시 없이 확인해 배포가 바뀌면 그 자리에서 다시 연다.
+//  GitHub Pages 는 HTML 을 10분 캐시하므로 cache:'no-store' HEAD 로 본다. 첫 값은 부팅 때 저장. 실패(오프라인)는 무시.
+let PAGE_TAG=null;
+async function checkUpdate(){ try{ const r=await fetch(location.pathname,{method:'HEAD',cache:'no-store'}); if(!r.ok) return; const tag=r.headers.get('etag')||r.headers.get('last-modified')||''; if(!tag) return; if(PAGE_TAG===null){ PAGE_TAG=tag; return; } if(tag!==PAGE_TAG){ location.reload(); } }catch(e){} }
+checkUpdate(); setInterval(checkUpdate, 10*60*1000);
 load(); setInterval(load,REFRESH*1000);
 loadWeather(); setInterval(loadWeather,5*60*1000); setInterval(rotate,ROT*1000);
 keepAwake(); document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ keepAwake(); load(); } });
