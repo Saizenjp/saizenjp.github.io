@@ -6,7 +6,7 @@
   · 팀(예약) × 날짜 표: 묵는 밤마다 인원을 적는다(체크인 밤 〜 체크아웃 전날 밤 = bookings dep_date ≤ 날짜 < arr_date). 사진의 양식과 같은 뼈대.
   · 등록 데이터에서 자동 생성(bookings·guests·guest_members·passengers) — 손으로 옮겨 적지 않는다. 대기 예약 제외(§3-3).
   · 사진보다 나아진 점: ① 숙소별 묶음 + 숙소별 소계 줄 ② 머리에 날짜별 宿泊·到着·出発 인원 ③ 태그코드·회원 구분·숙박 일수·도착/출발 편 시각(명단의 대표자 항공편)
-    ④ 일·공휴일 빨강/토 파랑 열 ⑤ 월 경계 팀(전달 입국·다음 달 귀국)도 그 달 밤만 표시 ⑥ 촘촘한 치수 하나(토글 없음 — Min 2026-10-26) ⑦ A3 가로, 페이지마다 머리 반복.
+    ④ 일·공휴일 빨강/토 파랑 열 ⑤ 월 경계 팀(전달 입국·다음 달 귀국)도 그 달 밤만 표시 ⑥ 촘촘한 치수 하나(토글 없음 — Min 2026-10-26) ⑦ A3 가로, 페이지마다 머리 반복 ⑧ 입국·귀국일이 토·일·공휴일이면 날짜 칸에 색, 4명 이상 팀은 줄을 노랗게(Min 2026-10-26).
   · 직원용 인쇄물 = 일본어 우선·한국어 병기(표 머리 고정). 툴바만 언어 토글.
   · 권한: 「일별 체류 현황」과 같은 occupancy 영역(<body data-so-area="occupancy">). 읽기 전용(DB 쓰기 없음).
 ============================================================================ -->
@@ -90,6 +90,10 @@
   .sc th.tt{background:#e4e9dc}
   .sc td.cls{font-size:.9em} .sc td.name{font-weight:700}
   .sc td.pax{font-weight:800}
+  /* 입국·귀국 날짜 칸: 토=파랑 · 일/공휴일=빨강(머리줄과 같은 색) / 4명 이상 팀: 왼쪽 정보 칸 연노랑·인원 칸 진한 노랑(Min 2026-10-26) */
+  .sc td.dt.sun{color:#b3261e;font-weight:800} .sc td.dt.sat{color:#2b5fa8;font-weight:800}
+  .sc tr.team.big td:not(.d){background:#fff1c2} .sc tr.team.big td.pax{background:#f6cf5d;color:#4a3200}
+  .sc tr.team.big td.dt.sun{background:#fbeceb} .sc tr.team.big td.dt.sat{background:#eaf1fb}
   .sc tr.mem td.name{color:#1f3a12}
   .sc th.day{line-height:1.05} .sc th.day .wd{display:block;font-size:.85em}
   .sc th.num{font-size:.9em}
@@ -119,7 +123,7 @@
     .sc td,.sc th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=35.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=35.4">
 </head>
 <body data-so-area="occupancy">
 <div class="topbar so-bar">
@@ -164,20 +168,20 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=35.2"></script>
+<script src="../assets/saizen-ops.js?v=35.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 const L={
   ja:{ step:'客室 · 月間宿泊現況表', connHint:'接続情報はこのブラウザにのみ保存されます。', group:'宿泊先ごとにまとめる', print:'🖨 印刷 (A3 横)',
-       desc:'チーム×日付の宿泊表（泊まる夜ごとに人数）。登録データから自動生成 — 待機予約は除外、前月入国・翌月帰国のチームはこの月の夜だけ表示。到着/出発時刻は名簿の代表者の便。印刷はA3横、ページごとに見出しを繰り返します。ヤマナミ以外（クジュ・ガンジー・志津）は文字を自動で縮めて必ず1枚に収めます。',
+       desc:'チーム×日付の宿泊表（泊まる夜ごとに人数）。登録データから自動生成 — 待機予約は除外、前月入国・翌月帰国のチームはこの月の夜だけ表示。到着/出発時刻は名簿の代表者の便。印刷はA3横、ページごとに見出しを繰り返します。ヤマナミ以外（クジュ・ガンジー・志津）は文字を自動で縮めて必ず1枚に収めます。入国日・帰国日が土日祝なら日付欄に色（日・祝は赤、土は青）、4名以上のチームは左の情報欄が黄色。',
        all:'すべて', accY:'ヤマナミ', accK:'クジュ', accG:'ガンジー', accS:'志津', loading:'読み込み中…', empty:'この月の宿泊はありません', needConn:'接続後に表示します',
        sum:(t,p,n)=>`${t}チーム · ${p}名 · 延べ${n}泊`, outAt:'出力', teams:'チーム', pax:'名', nights:'延べ泊', loadFail:'読み込み失敗', fit:p=>`1枚に収める: 文字 ${p}%`, fitMulti:'ヤマナミを含む → 複数枚' },
   ko:{ step:'객실 · 월간 숙박 현황표', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', group:'숙소별 묶음', print:'🖨 인쇄 (A3 가로)',
-       desc:'팀×날짜 숙박표(묵는 밤마다 인원). 등록 데이터에서 자동 생성 — 대기 예약 제외, 전달 입국·다음 달 귀국 팀은 이 달 밤만 표시. 도착/출발 시각은 명단 대표자의 항공편. 인쇄는 A3 가로, 페이지마다 머리 반복. 야마나미를 뺀 숙소(쿠주·간지·시즈)는 글자를 자동으로 줄여 무조건 한 장에 맞춥니다.',
+       desc:'팀×날짜 숙박표(묵는 밤마다 인원). 등록 데이터에서 자동 생성 — 대기 예약 제외, 전달 입국·다음 달 귀국 팀은 이 달 밤만 표시. 도착/출발 시각은 명단 대표자의 항공편. 인쇄는 A3 가로, 페이지마다 머리 반복. 야마나미를 뺀 숙소(쿠주·간지·시즈)는 글자를 자동으로 줄여 무조건 한 장에 맞춥니다. 입국·귀국일이 토·일·공휴일이면 날짜 칸에 색(일·공휴일 빨강, 토 파랑), 4명 이상 팀은 왼쪽 정보 칸이 노랗게 표시됩니다.',
        all:'전체', accY:'야마나미', accK:'쿠주', accG:'간지', accS:'시즈', loading:'불러오는 중…', empty:'이 달 숙박이 없습니다', needConn:'연결 후 표시됩니다',
        sum:(t,p,n)=>`${t}팀 · ${p}명 · 연 ${n}박`, outAt:'출력', teams:'팀', pax:'명', nights:'연박', loadFail:'불러오기 실패', fit:p=>`한 장 맞춤: 글자 ${p}%`, fitMulti:'야마나미 포함 → 여러 장' },
   en:{ step:'Rooms · Monthly stay chart', connHint:'Connection info is stored only in this browser.', group:'Group by lodging', print:'🖨 Print (A3 landscape)',
-       desc:'Team × date stay chart (guests per night). Built from registered data — waiting bookings excluded; teams spanning month edges show only this month\'s nights. Arrival/departure times come from the representative\'s flights. Prints on A3 landscape with the header repeated per page. Lodgings other than Yamanami (Kuju, Ganji, Shizu) are always fitted on one page by shrinking the text.',
+       desc:'Team × date stay chart (guests per night). Built from registered data — waiting bookings excluded; teams spanning month edges show only this month\'s nights. Arrival/departure times come from the representative\'s flights. Prints on A3 landscape with the header repeated per page. Lodgings other than Yamanami (Kuju, Ganji, Shizu) are always fitted on one page by shrinking the text. Arrival/return dates on weekends or holidays are coloured (Sun/holiday red, Sat blue) and teams of 4 or more have a yellow info block.',
        all:'All', accY:'Yamanami', accK:'Kuju', accG:'Ganji', accS:'Shizu', loading:'Loading…', empty:'No stays this month', needConn:'Shown after connecting',
        sum:(t,p,n)=>`${t} teams · ${p} guests · ${n} guest-nights`, outAt:'Printed', teams:'teams', pax:'guests', nights:'guest-nights', loadFail:'Load failed', fit:p=>`Fit to one page: text ${p}%`, fitMulti:'Includes Yamanami → several pages' },
 };
@@ -255,7 +259,9 @@ function dayTotals(list, ym){
   list.forEach(t=>{ nightSpan(t,ym).forEach(d=>{ stay[d]+=t.pax; teams[d]++; }); const a=t.dep.startsWith(ym+'-')?Number(t.dep.slice(8,10)):0; const l=t.arr.startsWith(ym+'-')?Number(t.arr.slice(8,10)):0; if(a) arrv[a]+=t.pax; if(l) leave[l]+=t.pax; });
   return {stay,arrv,leave,teams};
 }
-function dayCls(ym,d){ const ds=dstr(ym,d), w=wdOf(ds); return (w===0||HOL.has(ds))?' sun'+(HOL.has(ds)?' hol':''):(w===6?' sat':''); }
+function dateCls(ds){ if(!ds) return ''; const w=wdOf(ds); return (w===0||HOL.has(ds))?' sun'+(HOL.has(ds)?' hol':''):(w===6?' sat':''); }   // 일·공휴일 sun(+hol) / 토 sat
+function dayCls(ym,d){ return dateCls(dstr(ym,d)); }
+const BIG_PAX=4;   // 이 인원 이상이면 팀 줄을 노랗게(Min 2026-10-26)
 function headHTML(ym, tot){
   const N=daysIn(ym);
   const info=[['No.','행사'],['代表者','대표자'],['タグ','태그'],['区分','회원구분'],['人数','인원'],['宿泊先','숙소'],['入国','입국'],['到着','도착'],['帰国','귀국'],['出発','출발'],['泊','박수']];
@@ -271,9 +277,9 @@ function teamRowHTML(t, ym){
     const first=on&&ds===t.dep, last=on&&dstr(ym,d+1)===t.arr;
     return `<td class="d${dayCls(ym,d)}${on?' on':''}${first?' first':''}${last?' last':''}">${on?t.pax:''}</td>`; }).join('');
   const noTail=t.no.includes('-')?t.no.split('-').pop():t.no;
-  return `<tr class="team${t.member?' mem':''}" data-seq="${t.seq}">`
+  return `<tr class="team${t.member?' mem':''}${t.pax>=BIG_PAX?' big':''}" data-seq="${t.seq}">`
     +`<td class="mono num" title="${esc(t.no)}">${esc(noTail)}</td><td class="l name">${esc(t.rep)}</td><td class="mono">${esc(t.tag)}</td><td class="cls">${esc(t.cls)}</td><td class="pax">${t.pax}</td><td>${ACCOM_JA[t.ak]||esc(t.accom)}</td>`
-    +`<td class="mono">${md(t.dep)}</td><td class="mono">${esc(t.arrT)}${t.port?`<small>${t.port}</small>`:''}</td><td class="mono">${md(t.arr)}</td><td class="mono">${esc(t.depT)}${t.retPort?`<small>${t.retPort}</small>`:''}</td><td>${t.nights}</td>`+cells+'</tr>';
+    +`<td class="mono dt${dateCls(t.dep)}">${md(t.dep)}</td><td class="mono">${esc(t.arrT)}${t.port?`<small>${t.port}</small>`:''}</td><td class="mono dt${dateCls(t.arr)}">${md(t.arr)}</td><td class="mono">${esc(t.depT)}${t.retPort?`<small>${t.retPort}</small>`:''}</td><td>${t.nights}</td>`+cells+'</tr>';
 }
 function totRowHTML(label, list, ym, cls){
   const N=daysIn(ym), tot=dayTotals(list,ym);
