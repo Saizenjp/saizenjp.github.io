@@ -95,28 +95,35 @@
   .sc th.num{font-size:.9em}
   .empty{padding:28px;text-align:center;color:var(--muted);font-weight:600}
   body.dense table.sc{font-size:10px;line-height:1.1} body.dense .sc th,body.dense .sc td{padding:0 3px}
+  /* 한 장 맞춤(Min 2026-10-26 「야마나미 제외하고 무조건 1장」): 인쇄 표 치수 = 아래 변수 × --fs(배율, fitOnePage 가 이분탐색으로 정한다).
+     body.fitm 은 화면에서 인쇄와 같은 치수로 잠깐 바꿔 높이를 재는 용도(표는 nowrap 이라 폭과 무관하게 높이가 같다). */
+  :root{--fs:1; --p-fs:8.6pt; --p-fsd:7.4pt; --p-lh:1.15; --p-lhd:1.05; --p-pv:0.4mm; --p-ph:1mm; --p-phd:0.8mm}
+  body.fitm table.sc{font-size:calc(var(--p-fs)*var(--fs));line-height:var(--p-lh)} body.fitm .sc th,body.fitm .sc td{padding:calc(var(--p-pv)*var(--fs)) calc(var(--p-ph)*var(--fs))!important}
+  body.fitm.dense table.sc{font-size:calc(var(--p-fsd)*var(--fs));line-height:var(--p-lhd)} body.fitm.dense .sc th,body.fitm.dense .sc td{padding:0 calc(var(--p-phd)*var(--fs))!important}
+  body.fitm .pt{display:flex;align-items:baseline;gap:14px;margin:0 0 3mm;font-size:12pt;font-weight:800}
+  .fitnote{font-weight:700;color:var(--accent2);margin-left:8px}
 
   @media print{
     @page{size:A3 landscape;margin:7mm}
     body{background:#fff;color:#000}
-    .topbar,.conn,.page-help,.bar,#toast,.so-totop,.so-footer,details.so-help{display:none!important}
+    .topbar,.conn,.page-help,.bar,.desc,#toast,.so-totop,.so-footer,details.so-help{display:none!important}
     main{padding:0}
     .pt{display:flex;align-items:baseline;gap:14px;margin:0 0 3mm;font-size:12pt;font-weight:800}
     .pt small{font-size:9pt;font-weight:600;color:#444}
     .pt .sp{flex:1}
     .wrap{overflow:visible;border:0;border-radius:0;max-height:none}
-    table.sc{font-size:8.6pt;line-height:1.15;width:100%;border-left:1px solid #999;border-top:1px solid #999}
-    .sc th,.sc td{border-color:#999;padding:0.4mm 1mm}
+    table.sc{font-size:calc(var(--p-fs)*var(--fs));line-height:var(--p-lh);width:100%;border-left:1px solid #999;border-top:1px solid #999}
+    .sc th,.sc td{border-color:#999;padding:calc(var(--p-pv)*var(--fs)) calc(var(--p-ph)*var(--fs))!important}   /* !important: 화면 전용 .sc .d / tr.grp td 의 고정 padding 을 이긴다 — 측정(body.fitm)과 같은 치수 */
     .sc thead th{position:static;background:#e8ece2!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     thead{display:table-header-group}
     tr{page-break-inside:avoid;break-inside:avoid}
     tr.grp{page-break-after:avoid;break-after:avoid}
     .sc td,.sc th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    body.dense table.sc{font-size:7.4pt;line-height:1.05}
-    body.dense .sc th,body.dense .sc td{padding:0 0.8mm}
+    body.dense table.sc{font-size:calc(var(--p-fsd)*var(--fs));line-height:var(--p-lhd)}
+    body.dense .sc th,body.dense .sc td{padding:0 calc(var(--p-phd)*var(--fs))!important}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.7">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.8">
 </head>
 <body data-so-area="occupancy">
 <div class="topbar so-bar">
@@ -153,7 +160,7 @@
     <label><input type="checkbox" id="opt-group" checked> <span id="t-group"></span></label>
     <label><input type="checkbox" id="opt-dense"> <span id="t-dense"></span></label>
     <button class="btn sm" id="btn-print" type="button"></button>
-    <span class="sum" id="sum"></span>
+    <span class="sum" id="sum"></span><span class="fitnote" id="fitnote"></span>
   </div>
   <div class="desc" id="t-desc"></div>
   <div class="pt" id="pt"></div>
@@ -162,22 +169,22 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=34.7"></script>
+<script src="../assets/saizen-ops.js?v=34.8"></script>
 <script>
 const $=s=>document.querySelector(s);
 const L={
   ja:{ step:'客室 · 月間宿泊現況表', connHint:'接続情報はこのブラウザにのみ保存されます。', group:'宿泊先ごとにまとめる', dense:'詰めて表示(1枚により多く)', print:'🖨 印刷 (A3 横)',
-       desc:'チーム×日付の宿泊表（泊まる夜ごとに人数）。登録データから自動生成 — 待機予約は除外、前月入国・翌月帰国のチームはこの月の夜だけ表示。到着/出発時刻は名簿の代表者の便。印刷はA3横、ページごとに見出しを繰り返します。',
+       desc:'チーム×日付の宿泊表（泊まる夜ごとに人数）。登録データから自動生成 — 待機予約は除外、前月入国・翌月帰国のチームはこの月の夜だけ表示。到着/出発時刻は名簿の代表者の便。印刷はA3横、ページごとに見出しを繰り返します。ヤマナミ以外（クジュ・ガンジー・志津）は文字を自動で縮めて必ず1枚に収めます。',
        all:'すべて', accY:'ヤマナミ', accK:'クジュ', accG:'ガンジー', accS:'志津', loading:'読み込み中…', empty:'この月の宿泊はありません', needConn:'接続後に表示します',
-       sum:(t,p,n)=>`${t}チーム · ${p}名 · 延べ${n}泊`, outAt:'出力', teams:'チーム', pax:'名', nights:'延べ泊', loadFail:'読み込み失敗' },
+       sum:(t,p,n)=>`${t}チーム · ${p}名 · 延べ${n}泊`, outAt:'出力', teams:'チーム', pax:'名', nights:'延べ泊', loadFail:'読み込み失敗', fit:p=>`1枚に収める: 文字 ${p}%`, fitMulti:'ヤマナミを含む → 複数枚（「詰めて表示」で枚数を減らす）' },
   ko:{ step:'객실 · 월간 숙박 현황표', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', group:'숙소별 묶음', dense:'촘촘하게(한 장에 더 많이)', print:'🖨 인쇄 (A3 가로)',
-       desc:'팀×날짜 숙박표(묵는 밤마다 인원). 등록 데이터에서 자동 생성 — 대기 예약 제외, 전달 입국·다음 달 귀국 팀은 이 달 밤만 표시. 도착/출발 시각은 명단 대표자의 항공편. 인쇄는 A3 가로, 페이지마다 머리 반복.',
+       desc:'팀×날짜 숙박표(묵는 밤마다 인원). 등록 데이터에서 자동 생성 — 대기 예약 제외, 전달 입국·다음 달 귀국 팀은 이 달 밤만 표시. 도착/출발 시각은 명단 대표자의 항공편. 인쇄는 A3 가로, 페이지마다 머리 반복. 야마나미를 뺀 숙소(쿠주·간지·시즈)는 글자를 자동으로 줄여 무조건 한 장에 맞춥니다.',
        all:'전체', accY:'야마나미', accK:'쿠주', accG:'간지', accS:'시즈', loading:'불러오는 중…', empty:'이 달 숙박이 없습니다', needConn:'연결 후 표시됩니다',
-       sum:(t,p,n)=>`${t}팀 · ${p}명 · 연 ${n}박`, outAt:'출력', teams:'팀', pax:'명', nights:'연박', loadFail:'불러오기 실패' },
+       sum:(t,p,n)=>`${t}팀 · ${p}명 · 연 ${n}박`, outAt:'출력', teams:'팀', pax:'명', nights:'연박', loadFail:'불러오기 실패', fit:p=>`한 장 맞춤: 글자 ${p}%`, fitMulti:'야마나미 포함 → 여러 장(「촘촘하게」로 장수 줄임)' },
   en:{ step:'Rooms · Monthly stay chart', connHint:'Connection info is stored only in this browser.', group:'Group by lodging', dense:'Dense (more rows per page)', print:'🖨 Print (A3 landscape)',
-       desc:'Team × date stay chart (guests per night). Built from registered data — waiting bookings excluded; teams spanning month edges show only this month\'s nights. Arrival/departure times come from the representative\'s flights. Prints on A3 landscape with the header repeated per page.',
+       desc:'Team × date stay chart (guests per night). Built from registered data — waiting bookings excluded; teams spanning month edges show only this month\'s nights. Arrival/departure times come from the representative\'s flights. Prints on A3 landscape with the header repeated per page. Lodgings other than Yamanami (Kuju, Ganji, Shizu) are always fitted on one page by shrinking the text.',
        all:'All', accY:'Yamanami', accK:'Kuju', accG:'Ganji', accS:'Shizu', loading:'Loading…', empty:'No stays this month', needConn:'Shown after connecting',
-       sum:(t,p,n)=>`${t} teams · ${p} guests · ${n} guest-nights`, outAt:'Printed', teams:'teams', pax:'guests', nights:'guest-nights', loadFail:'Load failed' },
+       sum:(t,p,n)=>`${t} teams · ${p} guests · ${n} guest-nights`, outAt:'Printed', teams:'teams', pax:'guests', nights:'guest-nights', loadFail:'Load failed', fit:p=>`Fit to one page: text ${p}%`, fitMulti:'Includes Yamanami → several pages (use Dense to reduce)' },
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
@@ -301,7 +308,36 @@ function render(){
   const [y,m]=ym.split('-').map(Number); const now=new Date();
   const accLbl=ACC.size?[...ACC].map(k=>ACCOM_FULL[k]).join(' · '):'全宿泊先 · 전체 숙소';
   $('#pt').innerHTML=`<span>月間 日別宿泊現況 <small>월간 숙박 현황표</small></span><span>${y}年${m}月</span><small>${esc(accLbl)}</small><span class="sp"></span><small>${list.length} ${esc(tx('teams'))} · ${pax} ${esc(tx('pax'))} · ${nights} ${esc(tx('nights'))} · 宿泊/到着/出発 = 各日の人数</small><small>${esc(tx('outAt'))} ${pad2(now.getMonth()+1)}/${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}</small>`;
+  fitOnePage();   // 제목까지 채운 뒤 측정(제목 높이 포함)
 }
+// ── 한 장 맞춤(Min 2026-10-26 「객실 월간 숙박 현황표는 야마나미 제외하고 무조건 1장에 나오게」) ──
+//  보이는 팀에 야마나미가 없으면(쿠주·간지·시즈만) A3 가로 한 장(인쇄 영역 283mm)에 들어가도록 --fs(글자·여백 배율)를 이분탐색으로 낮춘다.
+//  측정은 화면에서 body.fitm(인쇄와 같은 치수)을 잠깐 켜고 제목+표 높이를 잰다 — 표가 nowrap 이라 폭이 달라도 높이는 인쇄와 같다. 야마나미가 섞이면 여러 장 그대로.
+const PAGE_H_MM=283, FIT_SAFETY_MM=6, FIT_MIN=0.25;
+let FIT=1;
+function onePageMode(){ const list=visibleTeams(); return list.length>0 && !list.some(t=>t.ak==='Y'); }
+function mm2px(mm){ return mm/25.4*96; }
+function fitOnePage(){
+  const root=document.documentElement, note=$('#fitnote');
+  root.style.setProperty('--fs','1'); FIT=1;
+  if(!TEAMS.length){ if(note) note.textContent=''; return 1; }
+  if(!onePageMode()){ if(note) note.textContent=tx('fitMulti'); return 1; }
+  document.body.classList.add('fitm');
+  try{
+    const limit=mm2px(PAGE_H_MM-FIT_SAFETY_MM);
+    const h=()=>$('#tbl').getBoundingClientRect().height + $('#pt').getBoundingClientRect().height;
+    const search=()=>{ let lo=FIT_MIN, hi=1; for(let i=0;i<16;i++){ const mid=(lo+hi)/2; root.style.setProperty('--fs',String(mid)); if(h()<=limit) lo=mid; else hi=mid; } return Math.max(FIT_MIN,Math.floor(lo*1000)/1000); };
+    if(h()>limit){ FIT=search();
+      // 하한(25%)까지 줄여도 안 들어가면(숙소 여러 곳을 한꺼번에 고른 때) 「촘촘하게」를 자동으로 켜고 다시 — 무조건 한 장(Min)
+      root.style.setProperty('--fs',String(FIT_MIN));
+      if(h()>limit && !DENSE){ DENSE=true; $('#opt-dense').checked=true; document.body.classList.add('dense'); FIT=search(); }
+    }
+  }finally{ document.body.classList.remove('fitm'); }
+  root.style.setProperty('--fs',String(FIT));
+  if(note) note.textContent=tx('fit')(Math.round(FIT*100));
+  return FIT;
+}
+window.addEventListener('beforeprint',fitOnePage);
 function renderChips(){
   const box=$('#accom-chips'); if(!box) return;
   const keys=[['','all'],['Y','accY'],['K','accK'],['G','accG'],['S','accS']];
@@ -336,7 +372,7 @@ $('#btn-connect').addEventListener('click',connect);
 $('#ym').addEventListener('change',()=>{ if($('#ym').value){ YM=$('#ym').value; load(); } });
 $('#ym-prev').addEventListener('click',()=>shiftYm(-1)); $('#ym-next').addEventListener('click',()=>shiftYm(1));
 $('#opt-group').addEventListener('change',e=>{ GROUP=!!e.target.checked; render(); });
-$('#opt-dense').addEventListener('change',e=>{ DENSE=!!e.target.checked; document.body.classList.toggle('dense',DENSE); });
+$('#opt-dense').addEventListener('change',e=>{ DENSE=!!e.target.checked; document.body.classList.toggle('dense',DENSE); fitOnePage(); });
 $('#btn-print').addEventListener('click',()=>window.print());
 (function init(){
   const q=new URLSearchParams(location.search); const now=new Date();
