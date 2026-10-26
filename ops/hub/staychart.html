@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ja">
+<!-- ============================================================================
+  월간 숙박 현황표 · 月間 日別宿泊現況 (Min 2026-10-26 「현지 담당자가 A3 로 프린트해 보던 수기 엑셀 — 더 좋은 양식으로 인쇄」)
+  ----------------------------------------------------------------------------
+  · 팀(예약) × 날짜 표: 묵는 밤마다 인원을 적는다(체크인 밤 〜 체크아웃 전날 밤 = bookings dep_date ≤ 날짜 < arr_date). 사진의 양식과 같은 뼈대.
+  · 등록 데이터에서 자동 생성(bookings·guests·guest_members·passengers) — 손으로 옮겨 적지 않는다. 대기 예약 제외(§3-3).
+  · 사진보다 나아진 점: ① 숙소별 묶음 + 숙소별 소계 줄 ② 머리에 날짜별 宿泊·到着·出発 인원 ③ 태그코드·회원 구분·숙박 일수·도착/출발 편 시각(명단의 대표자 항공편)
+    ④ 일·공휴일 빨강/토 파랑 열 ⑤ 월 경계 팀(전달 입국·다음 달 귀국)도 그 달 밤만 표시 ⑥ 촘촘 모드(한 장에 더 많이) ⑦ A3 가로, 페이지마다 머리 반복.
+  · 직원용 인쇄물 = 일본어 우선·한국어 병기(표 머리 고정). 툴바만 언어 토글.
+  · 권한: 「일별 체류 현황」과 같은 occupancy 영역(<body data-so-area="occupancy">). 읽기 전용(DB 쓰기 없음).
+============================================================================ -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 월간 숙박 현황표</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../assets/saizen-core.js?v=48"></script>
+<style>
+  /* ── 공통 chrome (docs/ops-page-skeleton.html 정본 — 통째 복사) ── */
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
+    --border:#e3e6ea; --border2:#cdd2d8;
+    --text:#1f2937; --text2:#525b66; --muted:#8b919b;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,'SZJpMono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);
+    padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none}
+  .navhome:hover{text-decoration:underline}
+  .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .btn.xs{font-size:12px;padding:3px 9px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .hint{font-size:11px;color:var(--muted)}
+  #toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);min-width:200px;text-align:center}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+
+  /* ── 페이지 전용 ── */
+  main{padding:14px 20px 60px}
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+  .bar .grp{display:flex;align-items:center;gap:6px}
+  .bar label{font-size:12.5px;font-weight:700;color:var(--text2);display:flex;align-items:center;gap:5px;cursor:pointer}
+  .chips{display:flex;gap:5px;flex-wrap:wrap}
+  .chip{font-size:12px;font-weight:700;padding:4px 11px;border-radius:99px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .sum{font-size:12.5px;color:var(--text2);font-weight:600;margin-left:auto}
+  .desc{font-size:11.5px;color:var(--muted);margin:-4px 0 10px;line-height:1.5}
+  .pt{display:none}
+  .wrap{overflow:auto;background:#fff;border:1px solid var(--border);border-radius:8px;max-height:calc(100vh - 230px)}
+  table.sc{border-collapse:separate;border-spacing:0;font-size:11.5px;line-height:1.25;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .sc th,.sc td{border-right:1px solid #cfd4da;border-bottom:1px solid #cfd4da;padding:1px 4px;text-align:center;vertical-align:middle}
+  .sc thead th{background:#eef1ea;font-weight:800;position:sticky;z-index:2;border-top:1px solid #cfd4da}
+  .sc thead tr:nth-child(1) th{top:0} .sc thead tr:nth-child(2) th{top:22px} .sc thead tr:nth-child(3) th{top:40px} .sc thead tr:nth-child(4) th{top:58px} .sc thead tr:nth-child(5) th{top:76px}
+  .sc th small,.sc td small{display:block;font-size:.78em;font-weight:600;color:var(--muted);line-height:1.1}
+  .sc th.l,.sc td.l{text-align:left}
+  .sc td.mono,.sc th.mono{font-family:var(--mono);font-size:.95em}
+  .sc .d{min-width:26px;padding:1px 2px}
+  .sc th.sun,.sc td.sun{background:#fbeceb} .sc th.sat,.sc td.sat{background:#eaf1fb}
+  .sc th.sun .wd{color:#b3261e} .sc th.sat .wd{color:#2b5fa8} .sc th.hol .wd{color:#b3261e}
+  .sc td.on{background:#dcebc8;font-weight:800;color:#1f3a12}
+  .sc td.on.sun{background:#d9dfc0} .sc td.on.sat{background:#cfe0c8}
+  .sc td.on.first{border-left:2px solid #4a6b2f} .sc td.on.last{border-right:2px solid #4a6b2f}
+  .sc tr.grp td{background:#dfe4d8;font-weight:800;text-align:left;color:#2f3a2f;padding:2px 6px}
+  .sc tr.sub td{background:#f1f3ee;font-weight:800}
+  .sc tr.tot td{background:#e6ebdf;font-weight:900}
+  .sc tbody tr:hover td{filter:brightness(.96)}
+  .sc th.tt{background:#e4e9dc}
+  .sc td.cls{font-size:.9em} .sc td.name{font-weight:700}
+  .sc td.pax{font-weight:800}
+  .sc tr.mem td.name{color:#1f3a12}
+  .sc th.day{line-height:1.05} .sc th.day .wd{display:block;font-size:.85em}
+  .sc th.num{font-size:.9em}
+  .empty{padding:28px;text-align:center;color:var(--muted);font-weight:600}
+  body.dense table.sc{font-size:10px;line-height:1.1} body.dense .sc th,body.dense .sc td{padding:0 3px}
+
+  @media print{
+    @page{size:A3 landscape;margin:7mm}
+    body{background:#fff;color:#000}
+    .topbar,.conn,.page-help,.bar,#toast,.so-totop,.so-footer,details.so-help{display:none!important}
+    main{padding:0}
+    .pt{display:flex;align-items:baseline;gap:14px;margin:0 0 3mm;font-size:12pt;font-weight:800}
+    .pt small{font-size:9pt;font-weight:600;color:#444}
+    .pt .sp{flex:1}
+    .wrap{overflow:visible;border:0;border-radius:0;max-height:none}
+    table.sc{font-size:8.6pt;line-height:1.15;width:100%;border-left:1px solid #999;border-top:1px solid #999}
+    .sc th,.sc td{border-color:#999;padding:0.4mm 1mm}
+    .sc thead th{position:static;background:#e8ece2!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    thead{display:table-header-group}
+    tr{page-break-inside:avoid;break-inside:avoid}
+    tr.grp{page-break-after:avoid;break-after:avoid}
+    .sc td,.sc th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body.dense table.sc{font-size:7.4pt;line-height:1.05}
+    body.dense .sc th,body.dense .sc td{padding:0 0.8mm}
+  }
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=34.6">
+</head>
+<body data-so-area="occupancy">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">客室 · 月間宿泊現況表</span>
+  <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+    <button class="so-furi" id="so-furi" onclick="__so_toggleFuri()"></button>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connHint"></span>
+</div>
+
+<main>
+  <div class="bar">
+    <div class="grp">
+      <button class="btn xs ghost" id="ym-prev" type="button" title="◀">◀</button>
+      <input class="inp" type="month" id="ym" style="padding:5px 8px">
+      <button class="btn xs ghost" id="ym-next" type="button" title="▶">▶</button>
+    </div>
+    <div class="chips" id="accom-chips"></div>
+    <label><input type="checkbox" id="opt-group" checked> <span id="t-group"></span></label>
+    <label><input type="checkbox" id="opt-dense"> <span id="t-dense"></span></label>
+    <button class="btn sm" id="btn-print" type="button"></button>
+    <span class="sum" id="sum"></span>
+  </div>
+  <div class="desc" id="t-desc"></div>
+  <div class="pt" id="pt"></div>
+  <div class="wrap"><table class="sc" id="tbl"><tbody><tr><td class="empty" id="t-empty"></td></tr></tbody></table></div>
+</main>
+
+<div id="toast"></div>
+
+<script src="../assets/saizen-ops.js?v=34.6"></script>
+<script>
+const $=s=>document.querySelector(s);
+const L={
+  ja:{ step:'客室 · 月間宿泊現況表', connHint:'接続情報はこのブラウザにのみ保存されます。', group:'宿泊先ごとにまとめる', dense:'詰めて表示(1枚により多く)', print:'🖨 印刷 (A3 横)',
+       desc:'チーム×日付の宿泊表（泊まる夜ごとに人数）。登録データから自動生成 — 待機予約は除外、前月入国・翌月帰国のチームはこの月の夜だけ表示。到着/出発時刻は名簿の代表者の便。印刷はA3横、ページごとに見出しを繰り返します。',
+       all:'すべて', accY:'ヤマナミ', accK:'クジュ', accG:'ガンジー', accS:'志津', loading:'読み込み中…', empty:'この月の宿泊はありません', needConn:'接続後に表示します',
+       sum:(t,p,n)=>`${t}チーム · ${p}名 · 延べ${n}泊`, outAt:'出力', teams:'チーム', pax:'名', nights:'延べ泊', loadFail:'読み込み失敗' },
+  ko:{ step:'객실 · 월간 숙박 현황표', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', group:'숙소별 묶음', dense:'촘촘하게(한 장에 더 많이)', print:'🖨 인쇄 (A3 가로)',
+       desc:'팀×날짜 숙박표(묵는 밤마다 인원). 등록 데이터에서 자동 생성 — 대기 예약 제외, 전달 입국·다음 달 귀국 팀은 이 달 밤만 표시. 도착/출발 시각은 명단 대표자의 항공편. 인쇄는 A3 가로, 페이지마다 머리 반복.',
+       all:'전체', accY:'야마나미', accK:'쿠주', accG:'간지', accS:'시즈', loading:'불러오는 중…', empty:'이 달 숙박이 없습니다', needConn:'연결 후 표시됩니다',
+       sum:(t,p,n)=>`${t}팀 · ${p}명 · 연 ${n}박`, outAt:'출력', teams:'팀', pax:'명', nights:'연박', loadFail:'불러오기 실패' },
+  en:{ step:'Rooms · Monthly stay chart', connHint:'Connection info is stored only in this browser.', group:'Group by lodging', dense:'Dense (more rows per page)', print:'🖨 Print (A3 landscape)',
+       desc:'Team × date stay chart (guests per night). Built from registered data — waiting bookings excluded; teams spanning month edges show only this month\'s nights. Arrival/departure times come from the representative\'s flights. Prints on A3 landscape with the header repeated per page.',
+       all:'All', accY:'Yamanami', accK:'Kuju', accG:'Ganji', accS:'Shizu', loading:'Loading…', empty:'No stays this month', needConn:'Shown after connecting',
+       sum:(t,p,n)=>`${t} teams · ${p} guests · ${n} guest-nights`, outAt:'Printed', teams:'teams', pax:'guests', nights:'guest-nights', loadFail:'Load failed' },
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function toast(msg,cls){ const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.textContent=msg; $('#toast').appendChild(t); setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); },2400); }
+function setConn(t,c){ const e=$('#conn-state'); if(e){ e.textContent=t; e.className='pill'+(c?' '+c:''); } }
+
+// ── 상수 ──
+const ACCOM_ORDER=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
+const ACCOM_KEY={'야마나미리조트':'Y','쿠주힐즈':'K','간지호텔':'G','시즈노야도 료칸':'S'};
+const ACCOM_JA={Y:'ヤマナミ',K:'クジュ',G:'ガンジー',S:'志津'};              // 표 안 짧은 이름(직원용 일본어)
+const ACCOM_FULL={Y:'ヤマナミリゾート',K:'クジュヒルズ',G:'ガンジーホテル',S:'志津の宿'};
+const WD_JA=['日','月','火','水','木','金','土'];
+const HOL=new Set((window.SZCore&&SZCore.JP_HOLIDAYS)||[]);
+
+// ── 상태 ──
+let supa=null, YM='', TEAMS=[], ACC=new Set(), GROUP=true, DENSE=false, LOADED='';
+
+// ── 날짜 유틸(문자열 'YYYY-MM-DD' 비교만 — 시간대 영향 없음) ──
+function pad2(n){ return String(n).padStart(2,'0'); }
+function daysIn(ym){ const [y,m]=ym.split('-').map(Number); return new Date(y,m,0).getDate(); }
+function dstr(ym,d){ return ym+'-'+pad2(d); }
+function wdOf(ds){ const [y,m,d]=ds.split('-').map(Number); return new Date(y,m-1,d).getDay(); }
+function md(ds){ return ds?String(Number(ds.slice(5,7)))+'/'+String(Number(ds.slice(8,10))):''; }
+function hhmm(s){ const m=String(s||'').match(/(\d{1,2}):(\d{2})/); return m?pad2(m[1])+':'+m[2]:''; }
+function nightsOf(dep,arr){ try{ return SZCore.nightsBetween(dep,arr); }catch(e){ return Math.max(0,Math.round((new Date(arr)-new Date(dep))/86400000)); } }
+function accomKey(a){ return ACCOM_KEY[a]||((window.SZCore&&SZCore.accomPrefix)?SZCore.accomPrefix(a):'Y')||'Y'; }
+function classOf(rep){   // 회원 구분(사진의 Grouping): 실제 등급(회원권구분) 우선 → 회원/일반
+  if(!rep) return '一般';
+  const c=String(rep.member_class||'').trim(); if(c) return c;
+  try{ if(window.SZCore&&SZCore.isMember&&SZCore.isMember(rep)) return '会員'; }catch(e){}
+  return '一般';
+}
+function portOf(origin,flight){ try{ return (window.SZCore&&SZCore.originPort)?(SZCore.originPort(origin,flight)||''):''; }catch(e){ return ''; } }
+
+// ── 로드 ──
+async function fetchAll(q){ let out=[], pg=0; while(true){ const {data,error}=await q.range(pg,pg+999); if(error) throw error; out=out.concat(data||[]); if(!data||data.length<1000) break; pg+=1000; } return out; }
+async function load(){
+  if(!supa||!YM) return;
+  const m1=dstr(YM,1), mEnd=dstr(YM,daysIn(YM));
+  $('#sum').textContent=tx('loading');
+  try{
+    // 그 달에 밤이 하나라도 있는 예약: dep ≤ 월말 && arr > 월초 (arr=체크아웃일, 그날 밤은 안 묵음). 대기 제외.
+    const bs=await fetchAll(supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax,product_name,origin,airline,status,nights_label').lte('dep_date',mEnd).gt('arr_date',m1).neq('status','대기').order('dep_date').order('event_seq'));
+    const seqs=bs.map(b=>b.event_seq);
+    const G={}, REP={}, PX={};
+    for(let i=0;i<seqs.length;i+=200){ const ch=seqs.slice(i,i+200);
+      const {data:gs,error:e1}=await supa.from('guests').select('event_seq,accom,team_tag,group_code,pax').in('event_seq',ch); if(e1) throw e1; (gs||[]).forEach(g=>{ G[g.event_seq]=g; });
+      const {data:gm,error:e2}=await supa.from('guest_members').select('event_seq,is_rep,seq_in_team,passenger_id,member_class,member_grade,member_div').in('event_seq',ch); if(e2) throw e2;
+      (gm||[]).forEach(r=>{ const cur=REP[r.event_seq]; if(!cur || (r.is_rep&&!cur.is_rep) || (!!r.is_rep===!!cur.is_rep && (r.seq_in_team||99)<(cur.seq_in_team||99))) REP[r.event_seq]=r; });
+    }
+    const pids=Object.values(REP).map(r=>r.passenger_id).filter(Boolean);
+    for(let i=0;i<pids.length;i+=200){ const {data:ps,error:e3}=await supa.from('passengers').select('id,loc_arr_time,ret_dep_time,dep_flight,ret_flight,origin,airline').in('id',pids.slice(i,i+200)); if(e3) throw e3; (ps||[]).forEach(p=>{ PX[p.id]=p; }); }
+    TEAMS=bs.map(b=>{ const g=G[b.event_seq]||{}, rep=REP[b.event_seq]||null, p=rep?(PX[rep.passenger_id]||{}):{};
+      const accom=g.accom||((window.SZCore&&SZCore.accomFromProduct)?SZCore.accomFromProduct(b.product_name||''):'')||'야마나미리조트';
+      const depF=p.dep_flight||'', retF=p.ret_flight||'';
+      return { seq:b.event_seq, no:String(b.event_no||b.event_seq||''), rep:b.rep_name||'', tag:g.team_tag||g.group_code||'', cls:classOf(rep),
+        pax:Number(b.pax||g.pax||0)||0, accom, ak:accomKey(accom), dep:String(b.dep_date||'').slice(0,10), arr:String(b.arr_date||'').slice(0,10),
+        arrT:hhmm(p.loc_arr_time), depT:hhmm(p.ret_dep_time), port:portOf(p.origin||b.origin, depF||b.airline), retPort:portOf(p.origin||b.origin, retF||b.airline),
+        nights:nightsOf(String(b.dep_date||'').slice(0,10),String(b.arr_date||'').slice(0,10)), member:(rep?!!(window.SZCore&&SZCore.isMember&&SZCore.isMember(rep)):false) };
+    });
+    LOADED=YM; render();
+  }catch(e){ toast(tx('loadFail')+': '+(e&&e.message||e),'err'); $('#sum').textContent=''; }
+}
+
+// ── 렌더 ──
+function visibleTeams(){ return TEAMS.filter(t=>!ACC.size||ACC.has(t.ak)); }
+function nightSpan(t, ym){   // 이 달 안에서 묵는 날짜 집합(1..N) — dep ≤ d < arr
+  const N=daysIn(ym), out=[]; for(let d=1;d<=N;d++){ const ds=dstr(ym,d); if(t.dep<=ds && ds<t.arr) out.push(d); } return out;
+}
+function dayTotals(list, ym){
+  const N=daysIn(ym), stay=Array(N+1).fill(0), arrv=Array(N+1).fill(0), leave=Array(N+1).fill(0), teams=Array(N+1).fill(0);
+  list.forEach(t=>{ nightSpan(t,ym).forEach(d=>{ stay[d]+=t.pax; teams[d]++; }); const a=t.dep.startsWith(ym+'-')?Number(t.dep.slice(8,10)):0; const l=t.arr.startsWith(ym+'-')?Number(t.arr.slice(8,10)):0; if(a) arrv[a]+=t.pax; if(l) leave[l]+=t.pax; });
+  return {stay,arrv,leave,teams};
+}
+function dayCls(ym,d){ const ds=dstr(ym,d), w=wdOf(ds); return (w===0||HOL.has(ds))?' sun'+(HOL.has(ds)?' hol':''):(w===6?' sat':''); }
+function headHTML(ym, tot){
+  const N=daysIn(ym);
+  const info=[['No.','행사'],['代表者','대표자'],['タグ','태그'],['区分','회원구분'],['人数','인원'],['宿泊先','숙소'],['入国','입국'],['到着','도착'],['帰国','귀국'],['出発','출발'],['泊','박수']];
+  const r1='<tr>'+info.map(([j,k])=>`<th rowspan="5" class="tt">${j}<small>${k}</small></th>`).join('')+Array.from({length:N},(_,i)=>`<th class="d day num${dayCls(ym,i+1)}">${i+1}</th>`).join('')+'</tr>';
+  const r2='<tr>'+Array.from({length:N},(_,i)=>`<th class="d day${dayCls(ym,i+1)}"><span class="wd">${WD_JA[wdOf(dstr(ym,i+1))]}</span></th>`).join('')+'</tr>';
+  const row=(lbl,arr,cls)=>'<tr>'+Array.from({length:N},(_,i)=>`<th class="d ${cls}${dayCls(ym,i+1)}" title="${lbl}">${arr[i+1]||''}</th>`).join('')+'</tr>';
+  // 머리 3~5줄: 그날 밤 宿泊 인원 · 그날 到着 인원 · 그날 出発 인원 (왼쪽 라벨은 info 칸 rowspan 아래 첫 칸에 못 넣어 툴팁+범례로)
+  return '<thead>'+r1+r2+row('宿泊 · 숙박',tot.stay,'num stay')+row('到着 · 도착',tot.arrv,'num arr')+row('出発 · 출발',tot.leave,'num lv')+'</thead>';
+}
+function teamRowHTML(t, ym){
+  const N=daysIn(ym), span=new Set(nightSpan(t,ym));
+  const cells=Array.from({length:N},(_,i)=>{ const d=i+1, ds=dstr(ym,d); const on=span.has(d);
+    const first=on&&ds===t.dep, last=on&&dstr(ym,d+1)===t.arr;
+    return `<td class="d${dayCls(ym,d)}${on?' on':''}${first?' first':''}${last?' last':''}">${on?t.pax:''}</td>`; }).join('');
+  const noTail=t.no.includes('-')?t.no.split('-').pop():t.no;
+  return `<tr class="team${t.member?' mem':''}" data-seq="${t.seq}">`
+    +`<td class="mono num" title="${esc(t.no)}">${esc(noTail)}</td><td class="l name">${esc(t.rep)}</td><td class="mono">${esc(t.tag)}</td><td class="cls">${esc(t.cls)}</td><td class="pax">${t.pax}</td><td>${ACCOM_JA[t.ak]||esc(t.accom)}</td>`
+    +`<td class="mono">${md(t.dep)}</td><td class="mono">${esc(t.arrT)}${t.port?`<small>${t.port}</small>`:''}</td><td class="mono">${md(t.arr)}</td><td class="mono">${esc(t.depT)}${t.retPort?`<small>${t.retPort}</small>`:''}</td><td>${t.nights}</td>`+cells+'</tr>';
+}
+function totRowHTML(label, list, ym, cls){
+  const N=daysIn(ym), tot=dayTotals(list,ym);
+  const pax=list.reduce((s,t)=>s+t.pax,0), nights=list.reduce((s,t)=>s+nightSpan(t,ym).length*t.pax,0);
+  return `<tr class="${cls}"><td colspan="4" class="l">${label}</td><td class="pax">${pax}</td><td colspan="5" class="l"><small>${list.length} ${esc(tx('teams'))} · ${nights} ${esc(tx('nights'))}</small></td><td></td>`
+    +Array.from({length:N},(_,i)=>`<td class="d${dayCls(ym,i+1)}">${tot.stay[i+1]||''}</td>`).join('')+'</tr>';
+}
+function sortTeams(a,b){ return a.dep<b.dep?-1:a.dep>b.dep?1:(a.arr<b.arr?-1:a.arr>b.arr?1:String(a.rep).localeCompare(String(b.rep),'ko')); }
+function render(){
+  const tbl=$('#tbl'); if(!tbl) return;
+  const ym=LOADED||YM; if(!ym||!TEAMS.length){ tbl.innerHTML=`<tbody><tr><td class="empty">${esc(supa?tx('empty'):tx('needConn'))}</td></tr></tbody>`; $('#sum').textContent=''; $('#pt').innerHTML=''; return; }
+  const list=visibleTeams().slice().sort(sortTeams);
+  const tot=dayTotals(list,ym);
+  let body='';
+  if(GROUP){
+    const order=['Y','K','G','S'];
+    order.forEach(k=>{ const gl=list.filter(t=>t.ak===k); if(!gl.length) return;
+      body+=`<tr class="grp"><td colspan="${11+daysIn(ym)}">${ACCOM_FULL[k]} — ${gl.length} ${esc(tx('teams'))} · ${gl.reduce((s,t)=>s+t.pax,0)} ${esc(tx('pax'))}</td></tr>`;
+      body+=gl.map(t=>teamRowHTML(t,ym)).join('');
+      body+=totRowHTML(`${ACCOM_FULL[k]} 小計`, gl, ym, 'sub');
+    });
+  } else body=list.map(t=>teamRowHTML(t,ym)).join('');
+  body+=totRowHTML('合計 · 합계', list, ym, 'tot');
+  tbl.innerHTML=headHTML(ym,tot)+'<tbody>'+body+'</tbody>';
+  const pax=list.reduce((s,t)=>s+t.pax,0), nights=list.reduce((s,t)=>s+nightSpan(t,ym).length*t.pax,0);
+  $('#sum').textContent=tx('sum')(list.length,pax,nights);
+  const [y,m]=ym.split('-').map(Number); const now=new Date();
+  const accLbl=ACC.size?[...ACC].map(k=>ACCOM_FULL[k]).join(' · '):'全宿泊先 · 전체 숙소';
+  $('#pt').innerHTML=`<span>月間 日別宿泊現況 <small>월간 숙박 현황표</small></span><span>${y}年${m}月</span><small>${esc(accLbl)}</small><span class="sp"></span><small>${list.length} ${esc(tx('teams'))} · ${pax} ${esc(tx('pax'))} · ${nights} ${esc(tx('nights'))} · 宿泊/到着/出発 = 各日の人数</small><small>${esc(tx('outAt'))} ${pad2(now.getMonth()+1)}/${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}</small>`;
+}
+function renderChips(){
+  const box=$('#accom-chips'); if(!box) return;
+  const keys=[['','all'],['Y','accY'],['K','accK'],['G','accG'],['S','accS']];
+  box.innerHTML=keys.map(([k,l])=>`<button type="button" class="chip${(k?ACC.has(k):!ACC.size)?' on':''}" data-k="${k}">${esc(tx(l))}</button>`).join('');
+  box.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{ const k=b.dataset.k; if(!k) ACC.clear(); else if(ACC.has(k)) ACC.delete(k); else ACC.add(k); renderChips(); render(); }));
+}
+function applyStatic(){
+  $('#t-step').textContent=tx('step'); $('#t-connHint').textContent=tx('connHint'); $('#t-group').textContent=tx('group'); $('#t-dense').textContent=tx('dense');
+  $('#btn-print').textContent=tx('print'); $('#t-desc').textContent=tx('desc'); const em=$('#t-empty'); if(em) em.textContent=tx('needConn');
+  renderChips();
+}
+window.onSaizenLangChange=function(){ applyStatic(); if(TEAMS.length) render(); };
+
+// ── 월 이동 ──
+function shiftYm(n){ const [y,m]=YM.split('-').map(Number); const d=new Date(y,m-1+n,1); YM=d.getFullYear()+'-'+pad2(d.getMonth()+1); $('#ym').value=YM; load(); }
+
+// ── 연결(키 내장 자동연결: saizen-ops 가 localStorage 를 채운다) ──
+function loadCreds(){ $('#sb-url').value=localStorage.getItem('saizen_sb_url')||''; $('#sb-key').value=localStorage.getItem('saizen_sb_key')||''; }
+async function connect(){
+  const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
+  if(!url||!key){ setConn('URL·key','err'); return; }
+  localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.disabled=true; btn.classList.remove('connected');
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {error}=await supa.from('bookings').select('event_seq',{count:'exact',head:true}); if(error) throw error;
+    setConn('✓','ok'); btn.textContent='✓'; btn.classList.add('connected'); btn.disabled=false;
+    await load();
+  }catch(e){ setConn('✕','err'); toast(tx('loadFail')+': '+e.message,'err'); btn.textContent='↻'; btn.classList.remove('connected'); btn.disabled=false; supa=null; }
+}
+$('#btn-connect').addEventListener('click',connect);
+$('#ym').addEventListener('change',()=>{ if($('#ym').value){ YM=$('#ym').value; load(); } });
+$('#ym-prev').addEventListener('click',()=>shiftYm(-1)); $('#ym-next').addEventListener('click',()=>shiftYm(1));
+$('#opt-group').addEventListener('change',e=>{ GROUP=!!e.target.checked; render(); });
+$('#opt-dense').addEventListener('change',e=>{ DENSE=!!e.target.checked; document.body.classList.toggle('dense',DENSE); });
+$('#btn-print').addEventListener('click',()=>window.print());
+(function init(){
+  const q=new URLSearchParams(location.search); const now=new Date();
+  YM=(q.get('ym')&&/^\d{4}-\d{2}$/.test(q.get('ym')))?q.get('ym'):(now.getFullYear()+'-'+pad2(now.getMonth()+1));
+  $('#ym').value=YM; applyStatic(); loadCreds();
+  if($('#sb-url').value && $('#sb-key').value) connect();
+})();
+</script>
+</body>
+</html>
