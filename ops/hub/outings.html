@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ja">
+<!-- ============================================================================
+  신청제 행사(outings.html) — 라운딩 대신 쇼핑·관광 안내, 희망자만(2026-10-26)
+  · Min 「어느 날 라운딩을 하지 않고 쇼핑이나 다른 안내 — 전체가 아니라 신청자만」「팀의 개인들만 신청도(한 명·두 명, 나머지는 라운딩) → 코스 배정표 연동」
+  · 날짜별 행사 등록 → 그날 묵는 팀 명단에서 사람을 체크해 신청 → DB 트리거(SQL 152)가 golf_absentees 에 불참을 넣어 코스 배정표·손님 코스 화면에서 자동 제외.
+  · 로비(1층·2층)·디지털 월 로테이션 「오늘의 안내 · 신청 행사」 는 signage.html 이 outings 표를 직접 읽는다(anon 읽기, 이름 없음).
+  · 권한: 프론트 데스크 카드(<body data-so-area="frontdesk">). 쓰기 RLS = front·golf.
+============================================================================ -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 신청제 행사</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../assets/saizen-core.js?v=49"></script>
+<style>
+  /* ── 공통 chrome (docs/ops-page-skeleton.html 정본 — 통째 복사) ── */
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
+    --border:#e3e6ea; --border2:#cdd2d8;
+    --text:#1f2937; --text2:#525b66; --muted:#8b919b;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,'SZJpMono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);
+    padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none}
+  .navhome:hover{text-decoration:underline}
+  .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select,textarea{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .btn.xs{font-size:12px;padding:3px 9px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .hint{font-size:11px;color:var(--muted)}
+  #toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);min-width:200px;text-align:center}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+
+  /* ── 페이지 전용 ── */
+  main{padding:14px 20px 60px;max-width:1360px;margin:0 auto}
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  .bar .grp{display:flex;align-items:center;gap:6px}
+  .desc{font-size:11.5px;color:var(--muted);margin:0 0 12px;line-height:1.5;word-break:keep-all}
+  .sum{font-size:12.5px;color:var(--text2);font-weight:700;margin-left:auto}
+  .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px}
+  @media (max-width:980px){ .cols{grid-template-columns:1fr} }
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+  .panel h3{font-size:14px;font-weight:800;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .panel h3 .n{font-size:11px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:1px 8px}
+  .empty{padding:22px;text-align:center;color:var(--muted);font-size:13px;border:1px dashed var(--border2);border-radius:10px}
+  /* 행사 카드 */
+  .oc{border:1px solid var(--border);border-left:5px solid var(--accent);border-radius:10px;padding:10px 12px;margin-bottom:10px;cursor:pointer;background:var(--surface)}
+  .oc:hover{background:var(--surface2)} .oc.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .oc.st-closed{border-left-color:var(--accent2)} .oc.st-cancelled{border-left-color:var(--err);opacity:.7}
+  .oc .h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+  .oc .kind{font-size:11px;font-weight:800;color:var(--accentDeep);background:var(--accentSoft);border-radius:5px;padding:1px 7px}
+  .oc .tt{font-size:15px;font-weight:800} .oc .tt small{font-weight:600;color:var(--text2);margin-left:6px;font-size:12px}
+  .oc .m{font-size:12.5px;color:var(--text2);margin-top:4px;display:flex;gap:12px;flex-wrap:wrap}
+  .oc .m b{font-family:var(--mono);color:var(--text)}
+  .oc .cnt{margin-left:auto;font-size:13px;font-weight:800;color:var(--accentDeep)} .oc .cnt.over{color:var(--err)}
+  .oc .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+  .oc .st{display:flex;gap:4px} .oc .st button{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer}
+  .oc .st button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .oc .st button.on[data-st="cancelled"]{background:var(--err);border-color:var(--err)}
+  .oc .note{font-size:12px;color:var(--text2);margin-top:4px;white-space:pre-wrap}
+  /* 편집 폼 */
+  .edit{background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+  .edit h3{font-size:14px;font-weight:800;margin-bottom:10px}
+  .frm{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+  .frm label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--text2)}
+  .frm label .inp{font-weight:600;color:var(--text)} .frm .wide{grid-column:1/-1}
+  .acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  /* 신청자 */
+  .team{border:1px solid var(--border);border-radius:9px;padding:8px 10px;margin-bottom:8px}
+  .team .th{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+  .team .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)} .team .rep{font-weight:800} .team .acc{font-size:11.5px;color:var(--muted)}
+  .team .th .n{margin-left:auto;font-size:12px;font-weight:700;color:var(--text2)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .mchip{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;border:1px solid var(--border2);border-radius:99px;padding:3px 9px 3px 10px;background:var(--surface2)}
+  .mchip small{font-weight:600;color:var(--muted)}
+  .mchip button{border:0;background:transparent;color:var(--err);font-weight:800;cursor:pointer;font-size:13px;line-height:1;padding:0 2px}
+  .pick{border:1px solid var(--accent);border-radius:10px;padding:10px 12px;margin-top:10px;background:var(--surface2)}
+  .pick .ph{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  .pick .ph .inp{flex:1;min-width:160px}
+  .pick .team{background:var(--surface)}
+  .pick label.pm{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:600;border:1px solid var(--border2);border-radius:99px;padding:3px 9px;background:var(--surface);cursor:pointer}
+  .pick label.pm.done{opacity:.55;cursor:default} .pick label.pm.abs{border-style:dashed}
+  .pick label.pm input{margin:0}
+  .pick .list{max-height:52vh;overflow:auto;padding-right:4px}
+  .golfnote{font-size:12px;color:var(--text2);background:var(--accentSoft);border-left:4px solid var(--accent);border-radius:8px;padding:8px 12px;margin-bottom:10px;word-break:keep-all}
+  .rsum{font-size:12.5px;color:var(--text2);font-weight:700;margin-bottom:8px}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=35.0">
+</head>
+<body data-so-area="frontdesk">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">フロント · 申込行事</span>
+  <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+    <button class="so-furi" id="so-furi" onclick="__so_toggleFuri()"></button>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connHint"></span>
+</div>
+
+<main>
+  <div class="bar">
+    <div class="grp">
+      <button class="btn xs ghost" id="d-prev" type="button">◀</button>
+      <input class="inp" type="date" id="d" style="padding:5px 8px">
+      <button class="btn xs ghost" id="d-next" type="button">▶</button>
+    </div>
+    <button class="btn sm" id="btn-add" type="button"></button>
+    <span class="sum" id="sum"></span>
+  </div>
+  <div class="desc" id="t-desc"></div>
+  <div class="golfnote" id="t-golfNote"></div>
+
+  <div class="edit" id="edit" hidden>
+    <h3 id="e-title"></h3>
+    <div class="frm">
+      <label><span id="t-date"></span><input class="inp" type="date" id="e-date"></label>
+      <label><span id="t-kind"></span><select class="inp" id="e-kind"></select></label>
+      <label><span id="t-meet"></span><input class="inp" type="time" id="e-meet"></label>
+      <label><span id="t-ret"></span><input class="inp" type="time" id="e-ret"></label>
+      <label><span id="t-titleKo"></span><input class="inp" id="e-title_ko" maxlength="60" autocomplete="off"></label>
+      <label><span id="t-titleJa"></span><input class="inp" id="e-title_ja" maxlength="60" autocomplete="off"></label>
+      <label><span id="t-place"></span><input class="inp" id="e-place" maxlength="60" autocomplete="off"></label>
+      <label><span id="t-cap"></span><input class="inp" type="number" id="e-cap" min="1" max="500"></label>
+      <label><span id="t-fee"></span><input class="inp" type="number" id="e-fee" min="0" step="100"></label>
+      <label><span id="t-vehicle"></span><input class="inp" id="e-vehicle" maxlength="60" autocomplete="off"></label>
+      <label class="wide"><span id="t-noteKo"></span><input class="inp" id="e-note_ko" maxlength="200" autocomplete="off"></label>
+      <label class="wide"><span id="t-noteJa"></span><input class="inp" id="e-note_ja" maxlength="200" autocomplete="off"></label>
+    </div>
+    <div class="acts"><button class="btn" id="btn-save" type="button"></button><button class="btn ghost" id="btn-cancel" type="button"></button></div>
+  </div>
+
+  <div class="cols">
+    <div class="panel"><h3><span id="t-outings"></span><span class="n" id="n-out">0</span></h3><div id="olist"></div></div>
+    <div class="panel" id="right"><h3><span id="t-signups"></span><span class="n" id="n-sign">0</span></h3><div id="slist"></div></div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script src="../assets/saizen-ops.js?v=35.0"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let supa=null, D='', OUTS=[], SEL=null, SIGN=[], STAY=[], STAY_D='', EDIT=null, PICK=false, PQ='';
+const KINDS=['shopping','tour','other'];
+
+// ── i18n (로컬 키 = id="t-" + applyStatic / 동적은 tx) ──
+const L={
+  ja:{ step:'フロント · 申込行事', connHint:'接続情報はこのブラウザにのみ保存されます。', add:'＋ 行事を追加', edit:'行事を編集', newT:'新しい行事',
+    desc:'ラウンドの代わりにショッピング・観光などを希望者だけで行く日の受付。日付ごとに行事を登録し、その日宿泊中のチーム名簿から申込者（チーム内の一人・二人でも）を選びます。',
+    golfNote:'申込者は その日のコース組合せ表で自動的に「不参加」になります（残りのメンバーはそのままラウンド）。取消すと参加に戻ります。ロビー画面には題名・集合時刻・申込人数だけが表示されます（お名前なし）。',
+    date:'日付', kind:'種類', k_shopping:'ショッピング', k_tour:'観光', k_other:'その他', meet:'集合時刻', ret:'帰着予定', titleKo:'題名（韓国語）', titleJa:'題名（日本語）', place:'集合場所', cap:'定員（空欄＝制限なし）', fee:'お一人料金（円・空欄＝無料/未定）', vehicle:'車両・運転手', noteKo:'案内文（韓国語）', noteJa:'案内文（日本語）',
+    save:'保存', cancel:'取消', del:'削除', delConfirm:n=>`「${n}」を削除しますか？ 申込（${n}）も消え、コース組合せ表の不参加も戻ります。`, print:'名簿印刷', titleNeed:'題名（韓国語か日本語）を入力してください',
+    st_open:'募集中', st_closed:'締切', st_cancelled:'取消', outings:'この日の行事', signups:'申込者', selectHint:'左の行事を選ぶと申込者が表示されます', addSign:'＋ 申込を追加', pickSave:n=>`選択 ${n}名を申込`, pickCancel:'閉じる', search:'チーム・代表者・お名前で検索',
+    staying:'この日宿泊中のチーム', none:'行事がありません', noSign:'申込者はまだいません', noStay:'この日宿泊中のチームがありません', done:'申込済', absOther:'他の理由で不参加', member:'会員',
+    saved:'保存しました', deleted:'削除しました', signSaved:n=>`${n}名を申し込みました — コース組合せ表に反映`, signRemoved:'申込を取消しました', fail:'失敗', loading:'読み込み中…', capWarn:(n,c)=>`定員 ${c}名を超えます（申込 ${n}名）。それでも登録しますか？`,
+    cnt:(n,c)=>c?`${n} / ${c}名`:`${n}名`, sum:(o,n)=>`行事 ${o}件 · 申込 ${n}名`, feeL:'お一人', vehicleL:'車両', retL:'帰着', updBy:(d,u)=>`${d}${u?' · '+u:''}`,
+    pv:{title:'申込行事 名簿', date:'日付', meet:'集合', place:'集合場所', ret:'帰着予定', vehicle:'車両', cap:'定員', fee:'お一人料金', total:'合計', th:['No.','タグ','代表者','お名前','宿泊先','乗車確認','備考'], out:'出力'} },
+  ko:{ step:'프론트 · 신청제 행사', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', add:'＋ 행사 추가', edit:'행사 수정', newT:'새 행사',
+    desc:'라운딩 대신 쇼핑·관광 등을 희망자만 가는 날의 접수. 날짜별로 행사를 등록하고, 그날 묵는 팀 명단에서 신청자(팀 안의 한두 사람도)를 고릅니다.',
+    golfNote:'신청한 사람은 그날 코스 배정표에서 자동으로 「불참」이 됩니다(나머지 팀원은 그대로 라운딩). 취소하면 다시 참가로 돌아옵니다. 로비 화면에는 제목·집합 시각·신청 인원만 보입니다(이름 없음).',
+    date:'날짜', kind:'종류', k_shopping:'쇼핑', k_tour:'관광', k_other:'기타', meet:'집합 시각', ret:'귀환 예정', titleKo:'제목(한국어)', titleJa:'제목(일본어)', place:'집합 장소', cap:'정원(비우면 제한 없음)', fee:'1인 요금(엔 · 비우면 무료/미정)', vehicle:'차량·기사', noteKo:'안내 문구(한국어)', noteJa:'안내 문구(일본어)',
+    save:'저장', cancel:'취소', del:'삭제', delConfirm:n=>`「${n}」을(를) 삭제할까요? 신청도 함께 지워지고 코스 배정표의 불참도 되돌아갑니다.`, print:'명단 인쇄', titleNeed:'제목(한국어 또는 일본어)을 입력하세요',
+    st_open:'모집 중', st_closed:'마감', st_cancelled:'취소', outings:'이 날의 행사', signups:'신청자', selectHint:'왼쪽에서 행사를 고르면 신청자가 보입니다', addSign:'＋ 신청 추가', pickSave:n=>`선택 ${n}명 신청`, pickCancel:'닫기', search:'팀·대표자·이름으로 검색',
+    staying:'이 날 묵는 팀', none:'행사가 없습니다', noSign:'아직 신청자가 없습니다', noStay:'이 날 묵는 팀이 없습니다', done:'신청됨', absOther:'다른 사유로 불참', member:'회원',
+    saved:'저장했습니다', deleted:'삭제했습니다', signSaved:n=>`${n}명 신청 — 코스 배정표에 반영`, signRemoved:'신청을 취소했습니다', fail:'실패', loading:'불러오는 중…', capWarn:(n,c)=>`정원 ${c}명을 넘습니다(신청 ${n}명). 그래도 등록할까요?`,
+    cnt:(n,c)=>c?`${n} / ${c}명`:`${n}명`, sum:(o,n)=>`행사 ${o}건 · 신청 ${n}명`, feeL:'1인', vehicleL:'차량', retL:'귀환', updBy:(d,u)=>`${d}${u?' · '+u:''}`,
+    pv:{title:'申込行事 名簿 · 신청 행사 명단', date:'日付 · 날짜', meet:'集合 · 집합', place:'集合場所 · 장소', ret:'帰着予定 · 귀환', vehicle:'車両 · 차량', cap:'定員 · 정원', fee:'お一人料金 · 1인 요금', total:'合計 · 합계', th:['No.','タグ','代表者 · 대표','お名前 · 이름','宿泊先 · 숙소','乗車確認 · 승차','備考 · 비고'], out:'出力 · 출력'} },
+  en:{ step:'Front · Sign-up outings', connHint:'Connection info is stored only in this browser.', add:'＋ Add outing', edit:'Edit outing', newT:'New outing',
+    desc:'Sign-ups for days when some guests go shopping or sightseeing instead of a round. Register an outing per date and pick participants (even one or two people of a team) from that night’s staying teams.',
+    golfNote:'Participants are automatically marked “absent” on that day’s course sheet (the rest of the team plays as usual). Cancelling restores them. The lobby screen shows only the title, meeting time and head count (no names).',
+    date:'Date', kind:'Kind', k_shopping:'Shopping', k_tour:'Tour', k_other:'Other', meet:'Meeting time', ret:'Return (planned)', titleKo:'Title (Korean)', titleJa:'Title (Japanese)', place:'Meeting place', cap:'Capacity (blank = unlimited)', fee:'Fee per person (JPY · blank = free/TBD)', vehicle:'Vehicle · driver', noteKo:'Notice (Korean)', noteJa:'Notice (Japanese)',
+    save:'Save', cancel:'Cancel', del:'Delete', delConfirm:n=>`Delete “${n}”? Its sign-ups are removed and the course-sheet absences are restored.`, print:'Print roster', titleNeed:'Enter a title (Korean or Japanese)',
+    st_open:'Open', st_closed:'Closed', st_cancelled:'Cancelled', outings:'Outings on this day', signups:'Participants', selectHint:'Select an outing on the left to see its participants', addSign:'＋ Add sign-ups', pickSave:n=>`Sign up ${n} selected`, pickCancel:'Close', search:'Search team, representative or name',
+    staying:'Teams staying this night', none:'No outings', noSign:'No participants yet', noStay:'No teams staying this night', done:'Signed', absOther:'Absent for another reason', member:'Member',
+    saved:'Saved', deleted:'Deleted', signSaved:n=>`${n} signed up — reflected on the course sheet`, signRemoved:'Sign-up cancelled', fail:'Failed', loading:'Loading…', capWarn:(n,c)=>`Exceeds the capacity of ${c} (${n} signed). Register anyway?`,
+    cnt:(n,c)=>c?`${n} / ${c}`:`${n}`, sum:(o,n)=>`${o} outings · ${n} signed`, feeL:'per person', vehicleL:'Vehicle', retL:'Return', updBy:(d,u)=>`${d}${u?' · '+u:''}`,
+    pv:{title:'申込行事 名簿 · Outing roster', date:'日付 · Date', meet:'集合 · Meet', place:'集合場所 · Place', ret:'帰着予定 · Return', vehicle:'車両 · Vehicle', cap:'定員 · Capacity', fee:'お一人料金 · Fee', total:'合計 · Total', th:['No.','タグ','代表者 · Rep','お名前 · Name','宿泊先 · Lodging','乗車確認 · Boarded','備考 · Note'], out:'出力 · Printed'} }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k,...a){ const d=L[lang()]||L.ja; let v=(d[k]!==undefined)?d[k]:L.ja[k]; if(typeof v==='function') return a.length?v(...a):v; return v===undefined?k:v; }   // 함수 키는 인자 없이 부르면 함수 자체(tx('cnt',n,c) 꼴)
+function applyStatic(){
+  ['step','connHint','desc','golfNote','date','kind','meet','ret','titleKo','titleJa','place','cap','fee','vehicle','noteKo','noteJa','outings','signups'].forEach(k=>{ const e=$('#t-'+k); if(e) e.textContent=tx(k); });
+  $('#btn-add').textContent=tx('add'); $('#btn-save').textContent=tx('save'); $('#btn-cancel').textContent=tx('cancel');
+  const cur=$('#e-kind').value; $('#e-kind').innerHTML=KINDS.map(k=>`<option value="${k}">${esc(tx('k_'+k))}</option>`).join(''); if(cur) $('#e-kind').value=cur;
+  $('#e-title').textContent=EDIT&&EDIT.id?tx('edit'):tx('newT');
+}
+window.onSaizenLangChange=function(){ applyStatic(); render(); };
+
+// ── 공통 ──
+function setConn(t,c){ const e=$('#conn-state'); if(e){ e.textContent=t; e.className='pill'+(c?' '+c:''); } }
+function toast(msg,cls){ const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.textContent=msg;
+  $('#toast').appendChild(t); setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); },2600); }
+function who(){ try{ return (window.__so_getUser&&__so_getUser())||null; }catch(e){ return null; } }
+const pad2=n=>String(n).padStart(2,'0');
+function today(){ const n=new Date(); return n.getFullYear()+'-'+pad2(n.getMonth()+1)+'-'+pad2(n.getDate()); }
+function addDays(iso,n){ const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+function hm(v){ const m=String(v||'').match(/(\d{1,2}):(\d{2})/); return m?pad2(m[1])+':'+m[2]:''; }
+function titleOf(o){ return (lang()==='ja'?(o.title_ja||o.title_ko):(o.title_ko||o.title_ja))||tx('k_'+(o.kind||'other')); }
+function yen(v){ return '¥'+Number(v||0).toLocaleString('ja-JP'); }
+function fmtDT(iso){ const d=new Date(iso); if(isNaN(d)) return ''; return `${d.getMonth()+1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+async function logChange(id,action,label,changes){ try{ await supa.from('change_log').insert({entity:'outing',entity_id:String(id),action,label,changes:changes||null,changed_by:who()}); }catch(e){} }
+async function fetchIn(table, sel, col, ids, chunk){ let out=[]; for(let i=0;i<ids.length;i+=(chunk||200)){ const {data,error}=await supa.from(table).select(sel).in(col,ids.slice(i,i+(chunk||200))); if(error) throw error; out=out.concat(data||[]); } return out; }
+
+// ── 로드 ──
+async function load(){
+  if(!supa||!D) return;
+  $('#olist').innerHTML=`<div class="hint">${esc(tx('loading'))}</div>`;
+  try{
+    const {data:os,error}=await supa.from('outings').select('*').eq('outing_date',D).order('meet_time',{nullsFirst:false}).order('id'); if(error) throw error;
+    OUTS=os||[];
+    const ids=OUTS.map(o=>o.id);
+    SIGN=ids.length?await fetchIn('outing_signups','outing_id,member_id,event_seq,note,signed_by,signed_at','outing_id',ids):[];
+    await loadStay();
+    const mids=[...new Set(SIGN.map(s=>s.member_id))].filter(id=>!memberById(id));   // 묵는 팀 명단에 없는 사람(날짜가 바뀐 행사 등)은 따로 읽는다
+    if(mids.length){ const extra=await fetchIn('guest_members','id,event_seq,name_kr,name_en,seq_in_team,is_rep,member_grade,member_class,member_div','id',mids); extra.forEach(m=>{ EXTRA[String(m.id)]=m; }); }
+    if(SEL!=null && !OUTS.some(o=>o.id===SEL)) SEL=null;
+    render();
+  }catch(e){ toast(tx('fail')+': '+(e&&e.message||e),'err'); $('#olist').innerHTML=''; }
+}
+let EXTRA={};
+async function loadStay(){
+  if(STAY_D===D) return;
+  const {data:bs,error}=await supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax,status').lte('dep_date',D).gt('arr_date',D).neq('status','대기').order('dep_date').order('event_seq'); if(error) throw error;
+  const seqs=(bs||[]).map(b=>b.event_seq);
+  const gs=seqs.length?await fetchIn('guests','event_seq,accom,team_tag,group_code','event_seq',seqs):[];
+  const gm=seqs.length?await fetchIn('guest_members','id,event_seq,name_kr,name_en,seq_in_team,is_rep,member_grade,member_class,member_div','event_seq',seqs):[];
+  const abs=await supa.from('golf_absentees').select('member_id,reason').eq('play_date',D); const ABS={}; (abs.data||[]).forEach(a=>{ ABS[String(a.member_id)]=a.reason||''; });
+  const G={}; gs.forEach(g=>{ G[g.event_seq]=g; });
+  STAY=(bs||[]).map(b=>{ const g=G[b.event_seq]||{}; const members=gm.filter(m=>m.event_seq===b.event_seq).sort((a,c)=>(a.seq_in_team||99)-(c.seq_in_team||99)).map(m=>({...m,abs:ABS[String(m.id)]}));
+    return {seq:b.event_seq, no:String(b.event_no||''), rep:b.rep_name||'', tag:g.team_tag||g.group_code||'', accom:g.accom||'', pax:b.pax||0, members}; });
+  STAY_D=D;
+}
+function memberById(id){ for(const t of STAY){ const m=t.members.find(x=>String(x.id)===String(id)); if(m) return {...m,team:t}; } const e=EXTRA[String(id)]; return e?{...e,team:null}:null; }
+function teamOfSeq(seq){ return STAY.find(t=>String(t.seq)===String(seq))||null; }
+
+// ── 렌더 ──
+function render(){
+  const sel=OUTS.find(o=>o.id===SEL)||null;
+  $('#n-out').textContent=OUTS.length; $('#sum').textContent=tx('sum',OUTS.length, OUTS.reduce((s,o)=>s+(Number(o.signed)||0),0));
+  $('#olist').innerHTML=OUTS.length?OUTS.map(o=>{ const n=SIGN.filter(s=>s.outing_id===o.id).length, over=o.capacity&&n>o.capacity;
+    return `<div class="oc st-${esc(o.status)}${o.id===SEL?' sel':''}" data-id="${o.id}">
+      <div class="h"><span class="kind">${esc(tx('k_'+(o.kind||'other')))}</span><span class="tt">${esc(o.title_ko||o.title_ja||'')}${(o.title_ko&&o.title_ja)?`<small>${esc(o.title_ja)}</small>`:''}</span><span class="cnt${over?' over':''}">${esc(tx('cnt',n,o.capacity||0))}</span></div>
+      <div class="m">${o.meet_time?`<span>${esc(tx('meet'))} <b>${esc(hm(o.meet_time))}</b></span>`:''}${o.meet_place?`<span>${esc(o.meet_place)}</span>`:''}${o.return_time?`<span>${esc(tx('retL'))} <b>${esc(hm(o.return_time))}</b></span>`:''}${o.fee?`<span>${esc(tx('feeL'))} <b>${esc(yen(o.fee))}</b></span>`:''}${o.vehicle?`<span>${esc(tx('vehicleL'))} ${esc(o.vehicle)}</span>`:''}</div>
+      ${(o.note_ko||o.note_ja)?`<div class="note">${esc(o.note_ko||'')}${(o.note_ko&&o.note_ja)?' / ':''}${esc(o.note_ja||'')}</div>`:''}
+      <div class="acts"><div class="st">${['open','closed','cancelled'].map(st=>`<button type="button" data-st="${st}" class="${o.status===st?'on':''}">${esc(tx('st_'+st))}</button>`).join('')}</div>
+        <button type="button" class="btn xs ghost b-edit">${esc(tx('edit'))}</button><button type="button" class="btn xs ghost b-print">${esc(tx('print'))}</button><button type="button" class="btn xs ghost b-del">${esc(tx('del'))}</button>
+        <span class="hint">${o.updated_at?esc(tx('updBy',fmtDT(o.updated_at),o.created_by||'')):''}</span></div>
+    </div>`; }).join(''):`<div class="empty">${esc(tx('none'))}</div>`;
+  renderSign(sel);
+}
+function renderSign(sel){
+  const box=$('#slist'); if(!sel){ $('#n-sign').textContent='0'; box.innerHTML=`<div class="empty">${esc(tx('selectHint'))}</div>`; return; }
+  const rows=SIGN.filter(s=>s.outing_id===sel.id); $('#n-sign').textContent=rows.length;
+  const byTeam={}; rows.forEach(s=>{ (byTeam[s.event_seq]=byTeam[s.event_seq]||[]).push(s); });
+  const html=Object.keys(byTeam).map(seq=>{ const t=teamOfSeq(seq); const ms=byTeam[seq].map(s=>({s, m:memberById(s.member_id)}));
+    return `<div class="team" data-seq="${esc(seq)}"><div class="th"><span class="tag">${esc(t?t.tag:'')}</span><span class="rep">${esc(t?t.rep:'#'+seq)}</span><span class="acc">${esc(t?t.accom:'')}</span><span class="n">${ms.length}${lang()==='ja'?'名':lang()==='en'?'':'명'}${t?` / ${t.pax}`:''}</span></div>
+      <div class="chips">${ms.map(({s,m})=>`<span class="mchip" data-mid="${esc(s.member_id)}">${esc(m?(m.name_kr||m.name_en||'?'):'?')}${m&&m.name_en?`<small>${esc(m.name_en)}</small>`:''}<button type="button" class="b-unsign" title="${esc(tx('signRemoved'))}">✕</button></span>`).join('')}</div></div>`; }).join('');
+  box.innerHTML=`<div class="rsum">${esc(titleOf(sel))} · ${esc(tx('cnt',rows.length,sel.capacity||0))}</div>`+(html||`<div class="empty">${esc(tx('noSign'))}</div>`)
+    +`<div class="acts"><button type="button" class="btn sm" id="btn-pick">${esc(tx('addSign'))}</button></div><div id="pickbox"></div>`;
+  if(PICK) renderPick(sel);
+}
+function renderPick(sel){
+  const box=$('#pickbox'); if(!box) return; const signed=new Set(SIGN.filter(s=>s.outing_id===sel.id).map(s=>String(s.member_id)));
+  const q=PQ.trim().toLowerCase();
+  const teams=STAY.filter(t=>!q||[t.tag,t.rep,t.no,t.accom,...t.members.map(m=>(m.name_kr||'')+' '+(m.name_en||''))].join(' ').toLowerCase().includes(q));
+  box.innerHTML=`<div class="pick"><div class="ph"><b>${esc(tx('staying'))}</b> <span class="hint">${STAY.length}</span><input class="inp" id="pq" placeholder="${esc(tx('search'))}" value="${esc(PQ)}" autocomplete="off"><button type="button" class="btn sm" id="btn-pick-save">${esc(tx('pickSave',0))}</button><button type="button" class="btn sm ghost" id="btn-pick-close">${esc(tx('pickCancel'))}</button></div>
+    <div class="list">${teams.length?teams.map(t=>`<div class="team" data-seq="${esc(t.seq)}"><div class="th"><span class="tag">${esc(t.tag)}</span><span class="rep">${esc(t.rep)}</span><span class="acc">${esc(t.accom)}</span><span class="n">${t.members.length} / ${t.pax}</span></div>
+      <div class="chips">${t.members.map(m=>{ const done=signed.has(String(m.id)); const abs=!done&&m.abs; const mem=(window.SZCore&&SZCore.isMember)?SZCore.isMember(m):false;
+        return `<label class="pm${done?' done':''}${abs?' abs':''}" title="${abs?esc(tx('absOther')+': '+m.abs):''}"><input type="checkbox" class="pm-chk" value="${esc(m.id)}" data-seq="${esc(t.seq)}" ${done?'checked disabled':''}> ${esc(m.name_kr||m.name_en||'?')}${mem?` <small>${esc(tx('member'))}</small>`:''}${done?` <small>${esc(tx('done'))}</small>`:''}</label>`; }).join('')}</div></div>`).join(''):`<div class="empty">${esc(tx('noStay'))}</div>`}</div></div>`;
+  const pq=$('#pq'); if(pq){ pq.addEventListener('input',()=>{ PQ=pq.value; const at=pq.selectionStart; renderPick(sel); const n=$('#pq'); if(n){ n.focus(); try{ n.setSelectionRange(at,at); }catch(e){} } }); }
+  updatePickBtn();
+}
+function updatePickBtn(){ const n=document.querySelectorAll('.pm-chk:checked:not(:disabled)').length; const b=$('#btn-pick-save'); if(b){ b.textContent=tx('pickSave',n); b.disabled=!n; } }
+
+// ── 편집 ──
+function openEdit(o){
+  EDIT=o?{...o}:{id:null,outing_date:D,kind:'shopping',title_ko:'',title_ja:'',meet_time:'',meet_place:'',return_time:'',capacity:null,fee:null,vehicle:'',note_ko:'',note_ja:'',status:'open'};
+  $('#e-date').value=EDIT.outing_date||D; $('#e-kind').value=EDIT.kind||'shopping'; $('#e-meet').value=hm(EDIT.meet_time); $('#e-ret').value=hm(EDIT.return_time);
+  $('#e-title_ko').value=EDIT.title_ko||''; $('#e-title_ja').value=EDIT.title_ja||''; $('#e-place').value=EDIT.meet_place||''; $('#e-cap').value=EDIT.capacity||''; $('#e-fee').value=(EDIT.fee===null||EDIT.fee===undefined)?'':EDIT.fee;
+  $('#e-vehicle').value=EDIT.vehicle||''; $('#e-note_ko').value=EDIT.note_ko||''; $('#e-note_ja').value=EDIT.note_ja||'';
+  $('#e-title').textContent=EDIT.id?tx('edit'):tx('newT'); $('#edit').hidden=false; $('#e-title_ko').focus();
+}
+function readEdit(){
+  const v=id=>$('#'+id).value.trim();
+  const cap=parseInt(v('e-cap'),10), fee=parseInt(v('e-fee'),10);
+  return { outing_date:v('e-date')||D, kind:KINDS.includes(v('e-kind'))?v('e-kind'):'other', title_ko:v('e-title_ko'), title_ja:v('e-title_ja'), meet_time:v('e-meet')||null, return_time:v('e-ret')||null,
+    meet_place:v('e-place'), capacity:isNaN(cap)||cap<=0?null:cap, fee:isNaN(fee)||fee<0?null:fee, vehicle:v('e-vehicle'), note_ko:v('e-note_ko'), note_ja:v('e-note_ja') };
+}
+async function saveEdit(){
+  const row=readEdit(); if(!row.title_ko&&!row.title_ja){ toast(tx('titleNeed'),'warn'); return; }
+  const btn=$('#btn-save'); btn.disabled=true;
+  try{
+    if(EDIT&&EDIT.id){ const {error}=await supa.from('outings').update(row).eq('id',EDIT.id); if(error) throw error;
+      const diff={}; Object.keys(row).forEach(k=>{ if(String(EDIT[k]==null?'':EDIT[k])!==String(row[k]==null?'':row[k])) diff[k]={from:EDIT[k],to:row[k]}; });
+      logChange(EDIT.id,'update',row.title_ko||row.title_ja,diff); }
+    else { const {data,error}=await supa.from('outings').insert({...row,status:'open',created_by:who()}).select('id').single(); if(error) throw error;
+      logChange(data&&data.id,'insert',row.title_ko||row.title_ja,{date:row.outing_date}); SEL=data?data.id:SEL; }
+    $('#edit').hidden=true; EDIT=null; toast(tx('saved'),'ok');
+    if(row.outing_date!==D){ D=row.outing_date; $('#d').value=D; STAY_D=''; }
+    await load();
+  }catch(e){ toast(tx('fail')+': '+(e&&e.message||e),'err'); }
+  btn.disabled=false;
+}
+async function setStatus(o,st){ if(o.status===st) return; try{ const {error}=await supa.from('outings').update({status:st}).eq('id',o.id); if(error) throw error; logChange(o.id,'status',titleOf(o),{status:{from:o.status,to:st}}); o.status=st; render(); toast(tx('saved'),'ok'); }catch(e){ toast(tx('fail')+': '+(e&&e.message||e),'err'); } }
+async function delOuting(o){ const n=SIGN.filter(s=>s.outing_id===o.id).length; if(!confirm(tx('delConfirm',titleOf(o)+(n?' · '+n:'')))) return;
+  try{ const {error}=await supa.from('outings').delete().eq('id',o.id); if(error) throw error; logChange(o.id,'delete',titleOf(o),{signups:n}); if(SEL===o.id) SEL=null; toast(tx('deleted'),'ok'); await load(); }catch(e){ toast(tx('fail')+': '+(e&&e.message||e),'err'); } }
+
+// ── 신청 ──
+async function savePick(sel){
+  const picks=[...document.querySelectorAll('.pm-chk:checked:not(:disabled)')].map(c=>({member_id:c.value,event_seq:Number(c.dataset.seq)})); if(!picks.length) return;
+  const cur=SIGN.filter(s=>s.outing_id===sel.id).length;
+  if(sel.capacity && cur+picks.length>sel.capacity && !confirm(tx('capWarn',cur+picks.length,sel.capacity))) return;
+  const by=who(); const rows=picks.map(p=>({outing_id:sel.id,member_id:p.member_id,event_seq:p.event_seq,signed_by:by}));
+  try{ const {error}=await supa.from('outing_signups').upsert(rows,{onConflict:'outing_id,member_id'}); if(error) throw error;
+    logChange(sel.id,'signup',titleOf(sel),{added:rows.map(r=>r.member_id)}); toast(tx('signSaved',rows.length),'ok'); PICK=false; PQ=''; await load();
+  }catch(e){ toast(tx('fail')+': '+(e&&e.message||e),'err'); }
+}
+async function unsign(sel,mid){
+  try{ const {error}=await supa.from('outing_signups').delete().eq('outing_id',sel.id).eq('member_id',mid); if(error) throw error;
+    logChange(sel.id,'unsign',titleOf(sel),{removed:mid}); toast(tx('signRemoved'),'ok'); await load();
+  }catch(e){ toast(tx('fail')+': '+(e&&e.message||e),'err'); }
+}
+
+// ── 명단 인쇄(A4 · 직원용 · 일본어 우선 병기) ──
+function printRoster(o){
+  const P=tx('pv'); const rows=SIGN.filter(s=>s.outing_id===o.id); const byTeam={}; rows.forEach(s=>{ (byTeam[s.event_seq]=byTeam[s.event_seq]||[]).push(s); });
+  let i=0; const trs=Object.keys(byTeam).map(seq=>{ const t=teamOfSeq(seq); return byTeam[seq].map(s=>{ const m=memberById(s.member_id); i++;
+    return `<tr><td class="c">${i}</td><td class="mono">${esc(t?t.tag:'')}</td><td>${esc(t?t.rep:'#'+seq)}</td><td><b>${esc(m?(m.name_kr||''):'')}</b>${m&&m.name_en?` <small>${esc(m.name_en)}</small>`:''}</td><td>${esc(t?t.accom:'')}</td><td class="c"><span class="box"></span></td><td>${esc(s.note||'')}</td></tr>`; }).join(''); }).join('');
+  const meta=[[P.date,o.outing_date],[P.meet,[hm(o.meet_time),o.meet_place].filter(Boolean).join(' · ')],[P.ret,hm(o.return_time)],[P.vehicle,o.vehicle],[P.cap,o.capacity?String(o.capacity):''],[P.fee,o.fee?yen(o.fee):'']].filter(x=>x[1]);
+  const now=new Date(); const jp=window.__SO_JP_FONT||'';
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>outing_${o.outing_date}</title><style>${jp}
+    @page{size:A4 portrait;margin:14mm} body{font-family:'Pretendard','Meiryo','Yu Gothic','Hiragino Sans','Noto Sans JP','Noto Sans KR',sans-serif;color:#111;font-size:11pt}
+    h1{font-size:16pt;margin:0 0 2mm} h1 small{font-size:10pt;font-weight:600;color:#444;margin-left:8px} .sub{font-size:12pt;font-weight:800;margin:0 0 4mm}
+    .meta{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:1mm 6mm;font-size:10.5pt;margin-bottom:5mm} .meta b{color:#333}
+    table{border-collapse:collapse;width:100%} th,td{border:1px solid #333;padding:1.8mm 2.2mm;font-size:10.5pt;vertical-align:middle} th{background:#eee;font-weight:800}
+    td.c{text-align:center} .mono{font-family:Consolas,'SZJpMono',monospace;font-weight:800} small{color:#555;font-size:8.5pt} .box{display:inline-block;width:5mm;height:5mm;border:1.5px solid #333;vertical-align:middle}
+    .tot{margin-top:4mm;font-weight:800;font-size:12pt} .ft{margin-top:6mm;font-size:9pt;color:#555}
+    .bar{position:fixed;top:0;left:0;right:0;background:#fff;border-bottom:1px solid #ccc;padding:6px 10px} @media print{.bar{display:none}} @media screen{body{padding-top:40px}}
+  </style></head><body><div class="bar"><button onclick="window.print()">印刷 / 인쇄</button></div>
+    <h1>${esc(P.title)}<small>${esc(tx('k_'+(o.kind||'other')))}</small></h1><div class="sub">${esc(o.title_ja||'')}${(o.title_ja&&o.title_ko)?' ／ ':''}${esc(o.title_ko||'')}</div>
+    <div class="meta">${meta.map(([k,v])=>`<b>${esc(k)}</b><span>${esc(v)}</span>`).join('')}</div>
+    <table><thead><tr>${P.th.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${trs||`<tr><td colspan="7" class="c">—</td></tr>`}</tbody></table>
+    <div class="tot">${esc(P.total)} ${rows.length}${lang()==='en'?'':'名'}</div>
+    <div class="ft">${esc(P.out)} ${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${pad2(now.getHours())}:${pad2(now.getMinutes())}${(o.note_ja||o.note_ko)?' · '+esc(o.note_ja||o.note_ko):''}</div>
+  <\/body></html>`;
+  const w=window.open('','_blank','width=900,height=1000'); if(!w){ toast(tx('fail'),'err'); return; } w.document.open(); w.document.write(html); w.document.close(); return html;
+}
+
+// ── 이벤트 ──
+$('#olist').addEventListener('click',e=>{ const card=e.target.closest('.oc'); if(!card) return; const o=OUTS.find(x=>String(x.id)===card.dataset.id); if(!o) return;
+  if(e.target.closest('.b-edit')) openEdit(o); else if(e.target.closest('.b-print')) printRoster(o); else if(e.target.closest('.b-del')) delOuting(o);
+  else if(e.target.closest('.st button')) setStatus(o,e.target.closest('.st button').dataset.st);
+  else { SEL=o.id; PICK=false; PQ=''; render(); } });
+$('#slist').addEventListener('click',e=>{ const sel=OUTS.find(o=>o.id===SEL); if(!sel) return;
+  if(e.target.closest('#btn-pick')){ PICK=true; renderPick(sel); const pq=$('#pq'); if(pq) pq.focus(); }
+  else if(e.target.closest('#btn-pick-close')){ PICK=false; PQ=''; $('#pickbox').innerHTML=''; }
+  else if(e.target.closest('#btn-pick-save')) savePick(sel);
+  else if(e.target.closest('.b-unsign')){ const mid=e.target.closest('.mchip').dataset.mid; unsign(sel,mid); } });
+$('#slist').addEventListener('change',e=>{ if(e.target.classList.contains('pm-chk')) updatePickBtn(); });
+$('#btn-add').addEventListener('click',()=>openEdit(null));
+$('#btn-cancel').addEventListener('click',()=>{ $('#edit').hidden=true; EDIT=null; });
+$('#btn-save').addEventListener('click',saveEdit);
+function setDate(d){ D=d; $('#d').value=D; SEL=null; PICK=false; PQ=''; STAY_D=''; EXTRA={}; load(); }
+$('#d').addEventListener('change',()=>{ if($('#d').value) setDate($('#d').value); });
+$('#d-prev').addEventListener('click',()=>setDate(addDays(D,-1))); $('#d-next').addEventListener('click',()=>setDate(addDays(D,1)));
+
+// ── 연결 ──
+function loadCreds(){ $('#sb-url').value=localStorage.getItem('saizen_sb_url')||''; $('#sb-key').value=localStorage.getItem('saizen_sb_key')||''; }
+async function connect(){
+  const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
+  if(!url||!key){ setConn('URL·key','err'); return; }
+  localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.disabled=true; btn.classList.remove('connected');
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {error}=await supa.from('outings').select('id',{count:'exact',head:true}); if(error) throw error;
+    setConn('✓','ok'); btn.textContent='✓'; btn.classList.add('connected'); btn.disabled=false;
+    await load();
+  }catch(e){ setConn('✕','err'); toast(tx('fail')+': '+e.message,'err'); btn.textContent='↻'; btn.classList.remove('connected'); btn.disabled=false; supa=null; }
+}
+$('#btn-connect').addEventListener('click',connect);
+(function init(){
+  const q=new URLSearchParams(location.search); D=(q.get('date')&&/^\d{4}-\d{2}-\d{2}$/.test(q.get('date')))?q.get('date'):today(); $('#d').value=D;
+  applyStatic(); loadCreds();
+  if($('#sb-url').value && $('#sb-key').value) connect();
+})();
+</script>
+</body>
+</html>
