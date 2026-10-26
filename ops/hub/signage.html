@@ -6,7 +6,18 @@
 <meta name="robots" content="noindex,nofollow">
 <title>안내 모니터 · 案内モニター</title>
 <meta name="theme-color" content="#f4f6f2">
-<script>(function(){ try{ if(new URLSearchParams(location.search).get('theme')==='dark') document.documentElement.setAttribute('data-theme','dark'); }catch(e){} })();</script>
+<script>
+// 테마(Min 2026-10-26 「낮에는 밝은색, 저녁에는 어두운 테마로」): 기본 auto = JST 06:00~17:59 밝음 · 18:00~05:59 어두움. 화면마다 주소로 바꾼다 —
+//  ?theme=light | dark | auto · &dark=19-6 (auto 의 어두운 시간대, 시작-끝 시). 첫 그리기 전에 붙이고, 본문 스크립트가 매초 다시 확인한다(재시작 없이 전환).
+(function(){ try{
+  var q=new URLSearchParams(location.search), m=(q.get('theme')||'auto').toLowerCase(), r=String(q.get('dark')||'18-6').split('-').map(Number);
+  if(r.length!==2||isNaN(r[0])||isNaN(r[1])) r=[18,6];
+  function jh(){ var n=new Date(); return new Date(n.getTime()+(n.getTimezoneOffset()+540)*60000).getHours(); }
+  function dark(){ if(m==='dark') return true; if(m==='light') return false; var h=jh(), a=r[0], b=r[1]; return a<b ? (h>=a&&h<b) : (a>b ? (h>=a||h<b) : false); }
+  window.__soTheme=function(){ var d=dark(), el=document.documentElement, cur=el.getAttribute('data-theme')==='dark'; if(d!==cur){ if(d) el.setAttribute('data-theme','dark'); else el.removeAttribute('data-theme'); } return d; };
+  window.__soThemeMode=m; window.__soTheme();
+}catch(e){} })();
+</script>
 <!--
   안내 모니터(디지털 사이니지) — 로비·2층 엘리베이터 앞·코스 입구·통로(디지털 월) TV 에 켜 두는 전체화면.
   · 로그인 없음: signage_dinner / signage_lobby / signage_course / signage_office RPC(SQL 134~137·146) 만 부른다 — 오늘·내일만 답하고 방번호·연락처는 안 준다.
@@ -19,13 +30,13 @@
   · ?screen=office (사무실·프론트 뒤, 직원용: 오늘 진행 현황 숫자판 — signage_office. 일본어 우선. 이름·방번호·금액 없음)
   · ?date=YYYY-MM-DD (시험용) · ?cut=21 (석식: 이 시각 이후엔 내일 / 코스·월: 17) · ?refresh=60 (초) · ?rot=20 (로비 화면 전환 초) · ?rows= (옛 인자, 지금은 무시 — 한 페이지 자동)
   · ?scale=1.2 (글자 배율 — 큰 TV·먼 거리면 올린다. 시인성 최우선: 굵은 서체·줄 수 적게)
-  · 테마: **기본 = 밝은 화면**(Min 2026-10-26 「밝은 테마로 진행해」 — 고령층 가독성은 밝은 바탕에 진한 글자가 유리). 반사가 적은 어두운 복도는 ?theme=dark (모든 screen 공통, 토큰 팔레트만 바뀐다)
+  · 테마: **기본 auto = 낮(JST 06~17시) 밝은 화면 · 저녁(18~05시) 어두운 화면**(Min 2026-10-26 「밝은 테마로」 → 「낮에는 밝은색 저녁에는 어두운 테마로」). 화면마다 주소로: ?theme=light | dark | auto, &dark=19-6 (어두운 시간대). 토큰 팔레트만 바뀐다(모든 screen 공통)
   · 공개 제어(SQL 146 signage_release): 담당자가 코스 배정표에서 [손님 화면에 공개]를 누른 최종본만 보인다(released:true). 숨김이면 「준비 중」(released:false). 행이 없으면 실시간(종전).
   · 디자인 원칙(Min 2026-10-25 「깔끔하고 정제된, 모던한 느낌」): 글자 중심 · 여백 넉넉 · 배경 1 + 강조 1 색 · 얇은 구분선 · 장식 아이콘 없음(날씨 기호만 기능용) · 시인성 규칙 유지.
   · 표기 원칙(Min): 손님용 = 한국어 우선 · 한·일 병기. 공개 장소라 방번호·연락처·생년은 어디에도 없다.
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=46"></script>
+<script src="../assets/saizen-core.js?v=47"></script>
 <style>
   /* 기본 = 밝은 화면(Min 2026-10-26 「밝은 테마로 진행해」 — 고령층 가독성: 밝은 바탕에 진한 글자). 어두운 복도는 ?theme=dark(아래 팔레트). 토큰 이름은 둘이 같다. */
   :root{ --bg:#f4f6f2; --panel:#ffffff; --panel2:#e9eee3; --line:#d2d8cc; --line2:#b4bfab; --ink:#1b211b; --ink2:#2f3a2f; --muted:#5d6a5a;
@@ -56,6 +67,10 @@
   .time .tm{font-size:calc(6.4vh*var(--z));font-weight:700;white-space:nowrap;font-family:var(--mono);color:var(--ink);line-height:1.1}
   .time .menu{font-size:calc(3vh*var(--z));font-weight:700;color:var(--muted);margin-top:1vh}
   .time .menu b{color:var(--ink);font-weight:800;display:block;margin-top:.3vh}
+  .time .menu i{font-style:normal;color:var(--muted);font-weight:700;font-size:.72em;display:block;margin-top:.1vh}   /* 기본 석식 = 한국어 크게 + 일본어 작게(Min 2026-10-26) */
+  .time .entry{font-size:calc(2.5vh*var(--z));font-weight:700;color:var(--ink2);margin-top:.6vh;word-break:keep-all}
+  .time .entry small{color:var(--muted);font-size:.82em;margin-left:.6vw}
+  .time .tm[hidden]{display:none}
   .note{font-size:calc(3vh*var(--z));font-weight:700;color:var(--ink);background:var(--panel2);border-left:.5vw solid var(--acc);padding:1.1vh 1.6vw;border-radius:.9vh}
   .list{flex:1;min-height:0;display:grid;gap:.6vh 1vw;align-content:start;grid-auto-flow:column}
   .list.c5 .row .tag,.list.c6 .row .tag{min-width:4.4em}
@@ -98,6 +113,8 @@
   .pc{background:var(--panel);border:.12vh solid var(--line);border-left:.6vw solid var(--warm);border-radius:1.4vh;padding:2.2vh 2.2vw;min-height:0}
   .pc .ttl{font-size:calc(4.2vh*var(--z));font-weight:800;color:var(--ink);word-break:keep-all}
   .pc .bd{font-size:calc(3vh*var(--z));font-weight:600;color:var(--ink2);margin-top:.9vh;white-space:pre-wrap;line-height:1.45;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+  .pc.info{border-left-color:var(--acc)} .pc.info .ttl small{font-size:.6em;color:var(--muted);margin-left:1vw;font-weight:700}
+  .pc.info .bd{-webkit-line-clamp:8;font-weight:700;color:var(--ink)} .pc.info .bd.ja{font-size:calc(2.3vh*var(--z));color:var(--muted);font-weight:600;margin-top:.6vh;-webkit-line-clamp:6}
   /* 숙소행 출발(로비 출발 안내) */
   .fl.lodg .frt i{font-style:normal;color:var(--muted);margin-left:.6vw;font-size:.8em}
   .lrows{display:flex;flex-direction:column;gap:.6vh}
@@ -114,6 +131,7 @@
   .mrow .mi{font-size:calc(3.2vh*var(--z));font-weight:700;color:var(--ink2);line-height:1.4;word-break:keep-all;min-width:0}
   .mrow .mi .ml{display:block} .mrow .mi .ml small{font-size:.72em;color:var(--muted);margin-left:.6vw;font-weight:600}
   .mrow .mi .ml b{color:var(--ink);font-family:var(--mono);font-size:1.3em}
+  .mrow .mi .ml b.menu-ko{font-family:inherit;font-size:1.25em;font-weight:800}   /* 기본 석식 한국어 크게(Min) */
   .mrow .mi .ml.prep{color:var(--warm)}
   /* 준비 중(공개 전) */
   .prep{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:30vh;gap:1.4vh;color:var(--ink2)}
@@ -252,6 +270,7 @@
       <div class="box time">
         <div class="lb">시간 · 時間</div>
         <div class="tm" id="v-time">—</div>
+        <div class="entry" id="v-entry"></div>
         <div class="menu" id="v-menu"></div>
       </div>
     </div>
@@ -270,7 +289,7 @@
   <div class="pane" id="p-dsum">
     <div class="hero">
       <div class="box venue unset" id="s-venue"><div class="lb">석식 장소 · 夕食会場</div><div class="ko" id="s-ko"></div><div class="ja" id="s-ja"></div></div>
-      <div class="box time"><div class="lb">시간 · 時間</div><div class="tm" id="s-time">—</div><div class="menu" id="s-menu"></div></div>
+      <div class="box time"><div class="lb">시간 · 時間</div><div class="tm" id="s-time">—</div><div class="entry" id="s-entry"></div><div class="menu" id="s-menu"></div></div>
     </div>
     <div class="note" id="s-note" hidden></div>
     <div class="box" style="font-size:2.8vh;font-weight:700;color:var(--ink2)">팀별 명단은 2층 레스토랑 앞 모니터에서 확인해 주세요<br><span style="color:var(--muted)">チーム別のご案内は2階レストラン前のモニターをご覧ください</span></div>
@@ -315,6 +334,19 @@ let supa=null, DATA=null, PAGES=1, LASTOK='', WX=null, WXAT=0;   // PAGES 는 �
 let COURSE=null;   // 로비·월: 코스 스타트표(signage_course)도 같이 돌린다 — 아침 로비 문의 감소(Min)
 let PANES=[], PI=0;   // 로비·월: 지금 돌릴 화면 목록·현재 인덱스
 let BAND_VH=0;        // 화면 아래 홍보 띠 높이(vh) — 코스 표가 그만큼 줄어든다(띠가 없으면 0)
+// 손님 화면 기본 문구(signage_texts, SQL 149 — 공지 보드 「손님 화면 기본 문구」에서 고친다). RPC 가 키를 안 주면(미적용) 이 값. 키는 있는데 비어 있으면 「안 쓴다」.
+const DEF_TEXTS={ breakfast:{ko:'06:00 오픈 · 08:00까지 입장 가능',ja:'06:00 オープン · 08:00 まで入場可'},
+  lunch:{ko:'10:30 오픈 · 13:30까지 입장 가능',ja:'10:30 オープン · 13:30 まで入場可'},
+  dinner:{ko:'17:50 오픈 · 18:30까지 입장 가능',ja:'17:50 オープン · 18:30 まで入場可'},
+  bath:{ko:'05:00~22:00 오픈\n타올은 객실에서 가져와 주세요\n청소 시간 08:00~11:00 이용 불가\n일·수·목요일은 09:00부터 탕 이용 불가 (샤워실은 이용 가능)',
+        ja:'05:00〜22:00\nタオルはお部屋からお持ちください\n清掃時間 08:00〜11:00 はご利用いただけません\n日・水・木曜日は 09:00 から浴槽はご利用いただけません（シャワーはご利用可）'} };
+function txt(T,key){ const v=(T&&typeof T==='object'&&T[key])?T[key]:DEF_TEXTS[key]; return {ko:String(v&&v.ko||''),ja:String(v&&v.ja||'')}; }
+// 리조트 안내 화면 = 고정 시설 안내(대욕장 — signage_texts.bath) + 홍보 카드. 고정 안내는 ko 줄·ja 줄을 각각 블록으로.
+function infoCardsHTML(T){
+  const b=txt(T,'bath'); if(!b.ko&&!b.ja) return '';
+  const lines=v=>v.split(/\n/).map(x=>x.trim()).filter(Boolean).map(esc).join('<br>');
+  return `<div class="pc info"><div class="ttl">1층 대욕장<small>1F 大浴場</small></div>${b.ko?`<div class="bd">${lines(b.ko)}</div>`:''}${b.ja?`<div class="bd ja">${lines(b.ja)}</div>`:''}</div>`;
+}
 const DEST={shizu:{ko:'시즈노야도',ja:'志津の宿'},ganji:{ko:'간지호텔',ja:'ガンジーホテル'},kuju:{ko:'쿠쥬 프라이빗 타운',ja:'クジュ プライベートタウン'}};   // 숙소행 출발(lobby_departures.dest)
 function prepHTML(ko,ja){ return `<div class="prep"><b>준비 중</b><small>準備中 — ${ja}</small><small>${ko}</small></div>`; }
 // 홍보 카드(리조트 안내 화면) / 홍보 띠(2층 석식·코스 맨 아래, 최대 3장 — 없으면 띠 자체가 사라진다)
@@ -353,7 +385,7 @@ function courseDate(){
 function dateLabel(iso){ const d=new Date(iso+'T00:00:00'); const m=d.getMonth()+1, day=d.getDate(), w=d.getDay();
   return `${m}월 ${day}일 (${WD_KO[w]}) <small style="font-size:.75em;color:var(--muted)">${m}月${day}日(${WD_JA[w]})</small>`; }
 function mdLabel(iso){ const d=new Date(iso+'T00:00:00'); return `${d.getMonth()+1}/${d.getDate()} (${WD_KO[d.getDay()]}·${WD_JA[d.getDay()]})`; }
-function tick(){ $('#clock').textContent=hhmm(); }
+function tick(){ $('#clock').textContent=hhmm(); if(window.__soTheme) window.__soTheme(); }   // 시계와 함께 테마(auto)도 매초 확인 — 18시가 되면 그 자리에서 어두워진다
 function setUpd(ok){ const e=$('#upd'); if(ok){ LASTOK=hhmm(); e.className='upd'; e.textContent=LASTOK+' 갱신'; }
   else { e.className='upd err'; e.textContent='갱신 실패 '+hhmm()+(LASTOK?' · 마지막 '+LASTOK:''); } }
 
@@ -376,22 +408,25 @@ async function load(){
 }
 
 // ── 2층: 석식 명단 ──────────────────────────────────────────────────────
-function fillVenue(pre, v, tm, base, note){
+function fillVenue(pre, v, tm, base, note, entry){
   const vb=$('#'+pre+'venue'); vb.classList.toggle('unset',!v);
   $('#'+pre+'ko').textContent=v?v.ko:'장소는 프론트에 문의해 주세요';
   $('#'+pre+'ja').textContent=v?v.ja:'会場はフロントへお尋ねください';
-  $('#'+pre+'time').textContent=tm||'—';
-  $('#'+pre+'menu').innerHTML=base?`오늘의 기본 석식 · 本日の基本夕食<b>${esc(base)}</b>`:'';
+  const tmEl=$('#'+pre+'time'); tmEl.textContent=tm||''; tmEl.hidden=!tm;   // 그날 시간(dinner_venue)이 있을 때만 — 없으면 입장 안내만
+  const en=$('#'+pre+'entry'); if(en){ en.innerHTML=(entry&&(entry.ko||entry.ja))?`${esc(entry.ko)}${entry.ja?`<small>${esc(entry.ja)}</small>`:''}`:''; }
+  $('#'+pre+'menu').innerHTML=base?`오늘의 기본 석식 · 本日の基本夕食<b>${esc(base.ko||base.ja||'')}</b>${(base.ko&&base.ja)?`<i>${esc(base.ja)}</i>`:''}`:'';
   const nt=$('#'+pre+'note'); if(note){ nt.hidden=false; nt.textContent=note; } else nt.hidden=true;
 }
+// 요일별 기본 석식 — 한국어 크게·일본어 작게(SZCore 표 하나). 없으면 null.
+function baseDinnerOf(date){ try{ const ja=SZCore.baseDinner(date), ko=SZCore.baseDinnerKo?SZCore.baseDinnerKo(date):''; return (ja||ko)?{ko,ja}:null; }catch(e){ return null; } }
 function render(){
   const d=DATA; if(!d) return;
   const isTomorrow=d.date!==d.today;
   $('#hd-date').innerHTML=(isTomorrow?'<b>내일 · 明日</b>':'<b>오늘 · 本日</b>')+dateLabel(d.date);
-  const base=(window.SZCore&&SZCore.baseDinner)?SZCore.baseDinner(d.date):'';
+  const base=baseDinnerOf(d.date), entry=txt(d.texts,'dinner');
   renderPromoBand(d.promos);   // 특식·안주 신청 안내 등(공지 보드 홍보, 화면=2층 석식)
   if(d.released===false){   // 공개 전(숨김) — 장소·시간은 보이고 명단은 「준비 중」(dinner.html [공개 중지])
-    fillVenue('v-', VENUE[d.venue], [d.start_time,d.end_time].filter(Boolean).join(' 〜 '), base, d.note);
+    fillVenue('v-', VENUE[d.venue], [d.start_time,d.end_time].filter(Boolean).join(' 〜 '), base, d.note, entry);
     const l=$('#list'); l.style.cssText=''; l.className='list'; l.innerHTML=prepHTML('명단이 확정되면 표시됩니다','名簿が確定次第 表示します');
     $('#tot').innerHTML=''; $('#pg').textContent=''; showPane('p-dinner'); return;
   }
@@ -405,7 +440,7 @@ function render(){
     fillVenue('v-', {ko:[nR?VENUE.restaurant.ko:'',nC?VENUE.convention.ko:''].filter(Boolean).join(' · '), ja:[nR?VENUE.restaurant.ja:'',nC?VENUE.convention.ja:''].filter(Boolean).join(' ／ ')},
       [d.start_time,d.end_time].filter(Boolean).join(' 〜 '), base, d.note||'장소는 팀마다 다릅니다 · 명단의 구분을 확인해 주세요 ／ 会場はチームごとに異なります・名簿の区分をご確認ください');
   } else {
-    fillVenue('v-', VENUE[d.venue], [d.start_time,d.end_time].filter(Boolean).join(' 〜 '), base, d.note);
+    fillVenue('v-', VENUE[d.venue], [d.start_time,d.end_time].filter(Boolean).join(' 〜 '), base, d.note, entry);
   }
   let rows=teams;
   if(split){
@@ -480,8 +515,8 @@ function renderLobby(){
   }).join(''):'')+lodgingHTML(d,now)+((deps.length||lodgingList(d,now).length)?'':'<div class="none">오늘·내일 출발 예정 팀이 없습니다<br>本日・明日ご出発のチームはありません</div>');
   // 석식 요약
   const dn=d.dinner||{};
-  const base=(window.SZCore&&SZCore.baseDinner)?SZCore.baseDinner(d.date):'';
-  fillVenue('s-', VENUE[dn.venue], [dn.start_time,dn.end_time].filter(Boolean).join(' 〜 '), base, dn.note);
+  const base=baseDinnerOf(d.date), entry=txt(d.texts,'dinner');
+  fillVenue('s-', VENUE[dn.venue], [dn.start_time,dn.end_time].filter(Boolean).join(' 〜 '), base, dn.note, entry);
   // 장소가 갈리는 날(by_venue, SQL 145)은 두 장소를 함께 — 팀별 구분은 2층 모니터
   { const bv=dn.by_venue||null; const r=bv&&bv.restaurant?(Number(bv.restaurant.units)||0):0, c=bv&&bv.convention?(Number(bv.convention.units)||0):0;
     if(r>0&&c>0){ $('#s-ko').textContent=`${VENUE.restaurant.ko} · ${VENUE.convention.ko}`; $('#s-ja').textContent=`${VENUE.restaurant.ja} ／ ${VENUE.convention.ja}`; $('#s-venue').classList.remove('unset');
@@ -489,7 +524,8 @@ function renderLobby(){
   if(dn.released===false){ const nt=$('#s-note'); nt.hidden=false; nt.textContent='명단 준비 중 — 확정되면 2층 모니터에 표시됩니다 ／ 名簿は準備中です'; }
   // 리조트 안내(홍보 — 공지 보드 kind=promo, 화면=로비)
   const prs=Array.isArray(d.promos)?d.promos:[];
-  $('#pr-list').innerHTML=promoCardsHTML(prs); $('#pr-list').classList.toggle('one',prs.length===1);
+  const info=infoCardsHTML(d.texts); const nCards=(info?1:0)+prs.length;
+  $('#pr-list').innerHTML=nCards?(info+(prs.length?promoCardsHTML(prs):'')):promoCardsHTML([]); $('#pr-list').classList.toggle('one',nCards===1);
   // 공지
   const nts=Array.isArray(d.notices)?d.notices:[];
   $('#nts').innerHTML=nts.map(n=>`<div class="nt ${n.pinned?'pin':''}"><div class="ttl">${esc(n.title)}</div>${n.body?`<div class="bd">${esc(n.body)}</div>`:''}</div>`).join('');
@@ -502,7 +538,7 @@ function renderLobby(){
   if(cr&&cr.upcoming) list.push('p-course');
   if(deps.length||lodgingList(d,now).length) list.push('p-depart');
   list.push('p-dsum');
-  if(prs.length) list.push('p-promo');
+  if(nCards) list.push('p-promo');
   if(WX) list.push('p-weather');
   if(nts.length) list.push('p-notice');
   const cur=PANES[PI]; PANES=list; PI=Math.max(0,PANES.indexOf(cur));
@@ -623,16 +659,15 @@ function renderCourse(){
 //  → 리조트 안내(홍보 screens=wall) → 안내(손님 공지) → 날씨. 내용 없는 화면은 뺀다. 로비와 같은 pane 을 돌려 쓴다.
 function renderWallMeals(d){
   const dn=d.dinner||{}, T=d.texts||{};
-  const base=(window.SZCore&&SZCore.baseDinner)?SZCore.baseDinner(d.date):'';
-  const bf=T.breakfast||{ko:'06:00 오픈 · 08:00까지 입장 가능',ja:'06:00 オープン · 08:00 まで入場可'};   // 기본값(Min 2026-10-26) — 공지 보드 「손님 화면 기본 문구」로 고친다
-  const lu=T.lunch||{ko:'',ja:''};
+  const base=baseDinnerOf(d.date);
+  const bf=txt(T,'breakfast'), lu=txt(T,'lunch'), dnT=txt(T,'dinner');   // 기본값 DEF_TEXTS(Min 2026-10-26) — 공지 보드 「손님 화면 기본 문구」로 고친다
   const v=VENUE[dn.venue]; const bv=dn.by_venue||null;
   const rN=bv&&bv.restaurant?(Number(bv.restaurant.pax)||0):0, cN=bv&&bv.convention?(Number(bv.convention.pax)||0):0;
   const tm=[dn.start_time,dn.end_time].filter(Boolean).join(' 〜 ');
   const venueKo=(rN>0&&cN>0)?`${VENUE.restaurant.ko} · ${VENUE.convention.ko}`:(v?v.ko:'프론트에 문의');
   const venueJa=(rN>0&&cN>0)?`${VENUE.restaurant.ja} ／ ${VENUE.convention.ja}`:(v?v.ja:'フロントへお尋ねください');
   const line=(ko,ja,cls)=>`<span class="ml${cls?' '+cls:''}">${ko}${ja?`<small>${ja}</small>`:''}</span>`;
-  const dinInfo=[ tm?line(`<b>${esc(tm)}</b>`,''):'', base?line(`기본 석식 ${esc(base)}`,'基本夕食'):'',
+  const dinInfo=[ tm?line(`<b>${esc(tm)}</b>`,''):'', dnT.ko?line(esc(dnT.ko),esc(dnT.ja||'')):'', base?line(`기본 석식 <b class="menu-ko">${esc(base.ko||base.ja)}</b>`,base.ko&&base.ja?esc(base.ja):'基本夕食'):'',
     (rN>0&&cN>0)?line(`${VENUE.restaurant.ko} ${rN}명 · ${VENUE.convention.ko} ${cN}명`,'会場はチームごと'):'',
     dn.released===false?line('명단 준비 중','名簿は準備中','prep'):'', dn.note?line(esc(dn.note),''):'' ].filter(Boolean).join('');
   const row=(cls,ko,ja,vko,vja,info)=>`<div class="mrow ${cls}"><div class="mk">${ko}<small>${ja}</small></div><div class="mv">${vko}<small>${vja}</small></div><div class="mi">${info||''}</div></div>`;
@@ -650,7 +685,8 @@ function renderWall(){
   const tomorrow=!!(COURSE&&COURSE.date!==COURSE.today);
   TITLES['p-course']=[tomorrow?'내일의 라운딩':'오늘의 라운딩', (tomorrow?'明日':'本日')+'のスタート時刻'];
   const prs=Array.isArray(d.wall_promos)?d.wall_promos:[];
-  $('#pr-list').innerHTML=promoCardsHTML(prs); $('#pr-list').classList.toggle('one',prs.length===1);
+  const info=infoCardsHTML(d.texts); const nCards=(info?1:0)+prs.length;
+  $('#pr-list').innerHTML=nCards?(info+(prs.length?promoCardsHTML(prs):'')):promoCardsHTML([]); $('#pr-list').classList.toggle('one',nCards===1);
   const nts=Array.isArray(d.notices)?d.notices:[];
   $('#nts').innerHTML=nts.map(n=>`<div class="nt ${n.pinned?'pin':''}"><div class="ttl">${esc(n.title)}</div>${n.body?`<div class="bd">${esc(n.body)}</div>`:''}</div>`).join('');
   const dn=d.dinner||{};
@@ -658,7 +694,7 @@ function renderWall(){
   $('#pg').textContent=(cr&&cr.nextRow&&cr.now)?`▶ ${cr.nextTee} 곧 출발 · まもなくスタート`:'';
   const list=['p-wmeal'];
   if(cr && (cr.hidden || (cr.rows&&cr.rows.length))) list.push('p-course');   // 조가 있거나 「준비 중」을 알려야 할 때
-  if(prs.length) list.push('p-promo');
+  if(nCards) list.push('p-promo');
   if(nts.length) list.push('p-notice');
   if(WX) list.push('p-weather');
   const cur=PANES[PI]; PANES=list; PI=Math.max(0,PANES.indexOf(cur));

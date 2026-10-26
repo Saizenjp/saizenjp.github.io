@@ -667,10 +667,17 @@
   // ── 요일별 기본 석식(야마나미 레스토랑) — 夕食オーダー(dinner.html)·안내 모니터(signage.html) 공용 ──
   //  getDay: 0=日 … 6=土. 메뉴가 바뀌면 여기 한 곳만 고친다.
   var BASE_DINNER = ['海鮮鍋', '国産豚バラ焼', 'メウンタン(辛魚鍋)', '牛プルコギコース', '海鮮スンドゥブチゲ', '国産豚バラ焼', '黒豚しゃぶしゃぶ'];
+  // 같은 표의 한국어(손님 화면 — Min 2026-10-26 「석식 메뉴 한국어도 같이, 한국어를 크게」). 인쇄물(주방 제출)은 일본어 그대로.
+  var BASE_DINNER_KO = ['해물전골', '국산 돼지 삼겹살 구이', '매운탕', '소불고기 코스', '해물 순두부찌개', '국산 돼지 삼겹살 구이', '흑돼지 샤브샤브'];
   function baseDinner(date) {
     var d = parseLocalDate(date);
     if (!d || isNaN(d)) return '';
     return BASE_DINNER[d.getDay()] || '';
+  }
+  function baseDinnerKo(date) {
+    var d = parseLocalDate(date);
+    if (!d || isNaN(d)) return '';
+    return BASE_DINNER_KO[d.getDay()] || '';
   }
 
   // ── 접근 권한 트리(세부 영역) — admin.html·페이지 가드·랜딩 게이트·SQL area_tree(138) 의 단일 진실원 ──
@@ -1071,6 +1078,8 @@
     mealGoneCount: mealGoneCount,
     BASE_DINNER: BASE_DINNER,
     baseDinner: baseDinner,
+    BASE_DINNER_KO: BASE_DINNER_KO,
+    baseDinnerKo: baseDinnerKo,
     AREA_TREE: AREA_TREE,
     AREA_PARENT: AREA_PARENT,
     areaExpand: areaExpand,
