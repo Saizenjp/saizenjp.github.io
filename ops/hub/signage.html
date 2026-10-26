@@ -95,11 +95,7 @@
   .row.vh.none .nm{color:var(--ink2)}
   .row.v-convention{border-left:.5vw solid var(--warm)}
   .ft{display:flex;gap:2vw;align-items:center;font-size:calc(2.1vh*var(--z));font-weight:700;color:var(--muted);border-top:.12vh solid var(--line);padding-top:1vh}
-  .ft .mon{opacity:.75}
-  .mhold[hidden]{display:none}
-  .mhold{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vh;background:var(--bg);color:var(--ink);text-align:center;padding:4vw}
-  .mhold b{font-size:calc(7vh*var(--z));font-weight:800;letter-spacing:.1vw}
-  .mhold small{font-size:calc(2.6vh*var(--z));font-weight:700;color:var(--muted);white-space:pre-wrap}
+
   .ft .tot{color:var(--ink2)}
   .ft .tot b{color:var(--ink);font-size:1.2em;font-weight:800}
   .ft .pg{color:var(--acc)}
@@ -317,18 +313,11 @@
     <div class="tot" id="tot"></div>
     <div class="pg" id="pg"></div>
     <div class="dots" id="dots"></div>
-    <div class="mon" id="mon"></div>
     <div class="upd" id="upd"></div>
   </div>
-  <div class="mhold" id="mhold" hidden><b id="mhold-t"></b><small id="mhold-s"></small></div>
 <script>
 const $=s=>document.querySelector(s);
 const Q=new URLSearchParams(location.search);
-// 모니터 레지스트리(SQL 150, Min 2026-10-26 「모니터 2대(1층·2층 엘리베이터 앞)·추후 추가 · 같은 정보도 다른 내용도」):
-//  TV 는 ?monitor=<id> 하나로 연다. 설정(signage_monitors: 화면 종류·테마·배율·전환 초·로테이션 화면)을 읽어 ?monitor=&screen=&theme=… 로 바꿔 열고(replace),
-//  그 뒤 60초마다 다시 읽어 달라지면 그 자리에서 다시 연다 → 「안내 모니터」 관리 화면에서 저장하면 TV 에 가지 않아도 1분 안에 바뀐다.
-//  옛 주소(?screen= 직접 지정)는 그대로 동작(레지스트리 무관). ?monitor= 만 있고 screen 이 없으면 설정을 읽을 때까지 「준비 중」.
-const MON=(Q.get('monitor')||'').trim(), MON_PENDING=!!MON&&!Q.has('screen');
 const SCREEN=['lobby','course','office','wall'].includes(Q.get('screen'))?Q.get('screen'):'dinner';
 const _cut=parseInt(Q.get('cut'),10); const CUT_H=isNaN(_cut)?((SCREEN==='course'||SCREEN==='wall')?17:21):Math.max(0,Math.min(23,_cut));   // 이 시각(JST) 이후엔 내일(석식 21시 · 코스/월 17시)
 const REFRESH=Math.max(15,parseInt(Q.get('refresh')||(SCREEN==='office'?'30':'60'),10)||60);   // 직원 화면은 30초
@@ -557,7 +546,7 @@ function renderLobby(){
   showPane(PANES[PI]);
 }
 function rotate(){ if((SCREEN!=='lobby'&&SCREEN!=='wall')||PANES.length<2) return; PI=(PI+1)%PANES.length; showPane(PANES[PI]); }
-// ?panes=welcome,dsum,… (관리 화면 「보일 화면」) — 로비·월 로테이션에서 고른 것만. 고른 것이 하나도 남지 않으면(그날 내용이 없어서) 전부 돌린다 — 빈 TV 는 없다.
+// ?panes=welcome,dsum,… (주소 옵션 — 로비·월 로테이션에서 고른 화면만. 하나도 남지 않으면(그날 내용이 없어서) 전부 돌린다 — 빈 TV 는 없다.)
 const PANE_SEL=new Set((Q.get('panes')||'').split(',').map(s=>s.trim()).filter(Boolean));
 function paneFilter(list){ if(!PANE_SEL.size) return list; const f=list.filter(p=>PANE_SEL.has(p.replace(/^p-/,''))); return f.length?f:list; }
 
@@ -749,39 +738,14 @@ function renderWeather(){
 }
 async function keepAwake(){ try{ if(navigator.wakeLock) await navigator.wakeLock.request('screen'); }catch(e){} }
 
-// ── 모니터 레지스트리(signage_monitors) 읽기·적용 ──
-let MONCFG=null;
-async function monFetch(){ if(!supa) supa=window.supabase.createClient(SB_URL,SB_KEY); const {data,error}=await supa.from('signage_monitors').select('id,name_ko,name_ja,place,screen,params,enabled,updated_at').eq('id',MON).maybeSingle(); if(error) throw error; return data||null; }
-function monUrl(cfg){ const p=(cfg&&cfg.params&&typeof cfg.params==='object')?cfg.params:{}; const u=new URLSearchParams(); u.set('monitor',MON); u.set('screen',['lobby','wall','dinner','course','office'].includes(cfg.screen)?cfg.screen:'lobby');
-  ['theme','scale','rot','cut','refresh','rows','dark','panes'].forEach(k=>{ const v=p[k]; if(v===undefined||v===null) return; const s=Array.isArray(v)?v.join(','):String(v).trim(); if(s!=='') u.set(k,s); });
-  return location.pathname+'?'+u.toString(); }
-function monSame(a,b){ const n=s=>[...new URLSearchParams(String(s).split('?')[1]||'').entries()].sort((x,y)=>x[0]<y[0]?-1:x[0]>y[0]?1:0).map(e=>e[0]+'='+e[1]).join('&'); return n(a)===n(b); }
-function monNav(u){ if(window.__monNav) return window.__monNav(u); location.replace(u); }
-function monHold(t,s){ const h=$('#mhold'); if(!h) return; if(t===null){ h.hidden=true; return; } $('#mhold-t').textContent=t; $('#mhold-s').textContent=s||''; h.hidden=false; }
-// 설정 적용: 미등록·사용 안 함 → 「준비 중」 / 주소가 설정과 다르면 다시 연다 / 같으면 정상(true)
-function monApply(cfg){
-  if(!cfg){ monHold('準備中 · 준비 중', 'モニター「'+MON+'」は未登録です · 모니터 「'+MON+'」 미등록 — 안내 모니터 관리에서 등록해 주세요'); return false; }
-  MONCFG=cfg; const e=$('#mon'); if(e) e.textContent=cfg.name_ja||cfg.name_ko||cfg.id||'';
-  if(cfg.enabled===false){ monHold('準備中 · 준비 중', (cfg.name_ja||cfg.name_ko||cfg.id)+' — 停止中 · 사용 안 함(안내 모니터 관리에서 켭니다)'); return false; }
-  const want=monUrl(cfg); if(!monSame(want, location.pathname+location.search)){ monNav(want); return false; }
-  monHold(null); return true;
-}
-async function monResolve(){ let cfg=null; try{ cfg=await monFetch(); }catch(e){ monHold('準備中 · 준비 중','設定を読み込めません · 설정을 읽지 못했습니다 — 30초 후 다시 시도 ('+(e&&e.message||e)+')'); setTimeout(monResolve,30*1000); return; }
-  if(!monApply(cfg)) setTimeout(monResolve,30*1000); }
-async function monPoll(){ try{ const cfg=await monFetch(); monApply(cfg); }catch(e){} }
-
 tick(); setInterval(tick,1000);
 // 무인 TV 자동 갱신(Min 2026-10-26 「여기도 한국어가 없어서」 = 옛 페이지를 들고 있던 TV): 10분마다 이 파일의 ETag 를 캐시 없이 확인해 배포가 바뀌면 그 자리에서 다시 연다.
 //  GitHub Pages 는 HTML 을 10분 캐시하므로 cache:'no-store' HEAD 로 본다. 첫 값은 부팅 때 저장. 실패(오프라인)는 무시.
 let PAGE_TAG=null;
 async function checkUpdate(){ try{ const r=await fetch(location.pathname,{method:'HEAD',cache:'no-store'}); if(!r.ok) return; const tag=r.headers.get('etag')||r.headers.get('last-modified')||''; if(!tag) return; if(PAGE_TAG===null){ PAGE_TAG=tag; return; } if(tag!==PAGE_TAG){ location.reload(); } }catch(e){} }
 checkUpdate(); setInterval(checkUpdate, 10*60*1000);
-if(MON_PENDING){ monHold('準備中 · 준비 중','設定を読み込み中 · 설정 읽는 중'); monResolve(); }   // ?monitor= 만 있는 TV: 설정을 읽어 화면 주소로 바꿔 연다
-else {
-  load(); setInterval(load,REFRESH*1000);
-  loadWeather(); setInterval(loadWeather,5*60*1000); setInterval(rotate,ROT*1000);
-  if(MON){ monPoll(); setInterval(monPoll,60*1000); }   // 설정이 바뀌면 1분 안에 다시 연다(사용 안 함이면 준비 중)
-}
+load(); setInterval(load,REFRESH*1000);
+loadWeather(); setInterval(loadWeather,5*60*1000); setInterval(rotate,ROT*1000);
 keepAwake(); document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ keepAwake(); load(); } });
 // 화면을 한 번 클릭하면 전체화면(키오스크 설정이 없는 PC 용)
 document.addEventListener('click',()=>{ try{ if(!document.fullscreenElement) document.documentElement.requestFullscreen(); }catch(e){} });

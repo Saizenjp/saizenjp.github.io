@@ -10,7 +10,7 @@
 --      → signage 는 board 처럼 트리 밖 단일 키. seed 는 saizen-core.js AREA_TREE 와 같아야 한다
 --      (tests/saizen-core-areas.test.mjs 가 이 파일(최신 seed)을 읽어 대조) — 32행.
 --   ② user_access: 자식 키만 가진 계정은 부모 signage 로 승계(수정은 수정·보기는 보기), 자식 키는 지운다 → 보이던 카드(이제 1장)가 사라지지 않는다.
---   ③ signage_monitors: 설치 장소별 모니터(화면 종류·테마·글자 배율·전환 초·로테이션 화면 …).
+--   ③ signage_monitors: 설치 장소별 모니터(화면 종류·테마·글자 배율·전환 초·로테이션 화면 …). ⚠ 151 에서 폐지(Min 「아까처럼 나누는 게 낫겠다」) — ①② 만 유효.
 --      읽기 = anon 포함(TV 는 로그인 없음 — 화면 종류·배율뿐, 개인정보 없음) · 쓰기 = admin 또는 signage 영역.
 --      RPC 추가 없음(anon 실행 가능 security definer 12개 유지 — 139).
 --  멱등. Supabase MCP apply_migration 으로 적용.
