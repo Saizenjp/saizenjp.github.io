@@ -22,7 +22,7 @@
   .top .brand .blogo{height:26px;width:auto;display:block}
   .top .brand small{font-weight:600;color:var(--muted);font-size:11px;margin-left:6px}
   .langs{margin-left:auto;display:flex;gap:5px}
-  .langs button{font-family:inherit;font-size:12.5px;font-weight:700;padding:6px 11px;border-radius:99px;border:1px solid var(--line);
+  .langs button{font-family:inherit;font-size:12.5px;font-weight:700;padding:6px 11px;border-radius:99px;border:1px solid var(--line);white-space:nowrap;
     background:var(--surface);color:var(--text2);cursor:pointer}
   .langs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   .body{padding:18px 16px 40px;max-width:640px;margin:0 auto}
@@ -55,6 +55,21 @@
   .trow.settled .val{color:var(--ok)}
   .note{text-align:center;color:var(--muted);font-size:13px;margin-top:22px;line-height:1.6}
   .upd{text-align:center;color:var(--muted);font-size:11px;margin-top:10px}
+  /* 신청 행사(QR 자가 신청, SQL 155) — 카드 1장 = 행사 1건, 팀원 이름을 눌러 신청/취소 */
+  .oc{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 15px;margin-bottom:12px}
+  .oc .oh{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:9px;margin-bottom:10px}
+  .oc .oh .dt{font-size:18px;font-weight:800;color:var(--accent)} .oc .oh .dw{font-size:13px;font-weight:700;color:var(--muted)}
+  .oc .oh .tt{font-size:17px;font-weight:800;color:var(--text);flex-basis:100%} .oc .oh .tt small{display:block;font-size:12.5px;color:var(--muted);font-weight:600}
+  .oc .oh .st{margin-left:auto;font-size:11.5px;font-weight:800;border-radius:99px;padding:3px 10px;background:var(--bg);border:1px solid var(--line);color:var(--text2)}
+  .oc .oh .st.open{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .oc .om{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:14px;color:var(--text2);font-weight:600} .oc .om b{color:var(--text);font-family:var(--mono);font-weight:800}
+  .oc .on{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5;white-space:pre-wrap}
+  .oc .who{font-size:12.5px;font-weight:700;color:var(--text2);margin:12px 0 6px}
+  .oc .mbs{display:flex;flex-wrap:wrap;gap:8px}
+  .oc .mb{font-family:inherit;font-size:15px;font-weight:700;padding:10px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);color:var(--text);cursor:pointer;min-width:96px;text-align:center}
+  .oc .mb.on{background:var(--accent);color:#fff;border-color:var(--accent)} .oc .mb.on::after{content:' ✓'}
+  .oc .mb:disabled{opacity:.55;cursor:default}
+  .oc .msg{font-size:13px;font-weight:700;margin-top:8px;min-height:18px} .oc .msg.ok{color:var(--ok)} .oc .msg.err{color:var(--err)}
   /* 탭 — 오늘 안내 / 결제 내역. 손님 폰이라 크게. */
   .tabs{display:flex;gap:6px;margin:-2px 0 16px}
   .tabs button{flex:1;font-family:inherit;font-size:14.5px;font-weight:800;padding:11px 8px;border-radius:10px;
@@ -102,6 +117,7 @@
 
 <script>
 // ── 손님 셀프 결제내역(QR) — 비로그인(anon). 토큰(?t=)으로 guest_bill RPC 호출 ──
+//   탭 = 오늘 라운딩(guest_today 125) / 신청 행사(guest_outings·guest_outing_set 155 — 팀원 이름을 눌러 신청·취소, Min 2026-10-27 「QR로도 신청」) / 결제 내역
 const SB_URL='https://wzfmloivrolpwpiuyhbs.supabase.co';
 const SB_KEY='sb_publishable_W76Uh3D9gRPjPoxHwl-LYw_dR9BIj6L';   // publishable(공개·내장 안전)
 const $=s=>document.querySelector(s);
@@ -118,6 +134,10 @@ const T={
        rdNone:'조편성 준비 중입니다. 확정되면 여기에 표시됩니다.',
        rdOff:'이 날은 라운딩 일정이 없습니다.', rdSkip:'이 날은 라운딩을 하지 않습니다.',
        rdKuju:'구주고원CC 라운딩입니다. 시간은 프런트에서 안내해 드립니다.',
+       tabOut:'신청 행사', outNone:'신청할 수 있는 행사가 없습니다.', outMeet:'집합', outRet:'귀환', outFee:'1인', outFree:'무료/미정', outCap:'정원', outSigned:(n,c)=>c?`신청 ${n}/${c}명`:`신청 ${n}명`,
+       outOpen:'접수 중', outClosed:'접수 마감', outWho:'누가 가나요? 이름을 눌러 신청·취소하세요', outOk:'신청했습니다', outOff:'신청을 취소했습니다',
+       outFull:'정원이 찼습니다. 프런트에 문의해 주세요.', outClosedMsg:'접수가 마감되었습니다. 변경은 프런트에 문의해 주세요.', outFail:'처리하지 못했습니다. 프런트에 문의해 주세요.',
+       outNote:'※ 신청한 분은 그날 라운딩 조에서 빠집니다. 프런트에서도 신청·취소를 도와드립니다.',
        dow:['일','월','화','수','목','금','토'] },
   ja:{ title:'ご精算確認', guest:'お客様', item:'品目', qty:'数量', amount:'金額', honor:'様', room:n=>`${n}号室`,
        noLines:'まだご請求はありません。', subtotal:'ご請求合計', paid:'お支払い済', due:'未払い残高',
@@ -131,6 +151,10 @@ const T={
        rdNone:'組合せを準備中です。確定しましたらこちらに表示されます。',
        rdOff:'この日はラウンドのご予定がありません。', rdSkip:'この日はラウンドされません。',
        rdKuju:'九重高原CCでのラウンドです。時間はフロントよりご案内いたします。',
+       tabOut:'申込行事', outNone:'お申し込みいただける行事はありません。', outMeet:'集合', outRet:'帰着', outFee:'お一人', outFree:'無料/未定', outCap:'定員', outSigned:(n,c)=>c?`申込 ${n}/${c}名`:`申込 ${n}名`,
+       outOpen:'受付中', outClosed:'受付終了', outWho:'どなたが参加されますか？ お名前を押して申込・取消', outOk:'お申し込みを受け付けました', outOff:'お申し込みを取り消しました',
+       outFull:'定員に達しました。フロントへお問い合わせください。', outClosedMsg:'受付は終了しました。変更はフロントへお問い合わせください。', outFail:'処理できませんでした。フロントへお問い合わせください。',
+       outNote:'※ お申し込みの方はその日のラウンド組から外れます。フロントでも申込・取消を承ります。',
        dow:['日','月','火','水','木','金','土'] },
   en:{ title:'Your Bill', guest:'Guest', item:'Item', qty:'Qty', amount:'Amount', honor:'', room:n=>`Room ${n}`,
        noLines:'No charges yet.', subtotal:'Subtotal', paid:'Paid', due:'Balance due',
@@ -144,6 +168,10 @@ const T={
        rdNone:'Pairings are being prepared. They will appear here once confirmed.',
        rdOff:'No round scheduled for this day.', rdSkip:'No round on this day.',
        rdKuju:'You play at Kuju Kogen CC. The front desk will advise your tee time.',
+       tabOut:'Sign-ups', outNone:'No outings available to sign up for.', outMeet:'Meet', outRet:'Return', outFee:'Per person', outFree:'Free / TBD', outCap:'Capacity', outSigned:(n,c)=>c?`${n}/${c} signed`:`${n} signed`,
+       outOpen:'Open', outClosed:'Closed', outWho:'Who is going? Tap a name to sign up or cancel', outOk:'Signed up', outOff:'Sign-up cancelled',
+       outFull:'This outing is full. Please ask the front desk.', outClosedMsg:'Sign-ups are closed. Please ask the front desk for changes.', outFail:'Could not process. Please ask the front desk.',
+       outNote:'※ Participants are taken out of that day’s round. The front desk can also sign you up or cancel.',
        dow:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] }
 };
 let lang=localStorage.getItem('saizen_lang')||'ko'; if(!T[lang]) lang='ko';
@@ -168,23 +196,25 @@ function stateView(big,sub){ $('#body').innerHTML=`<div class="state"><div class
 
 //  탭 = 오늘 라운딩 / 결제 내역. 손님이 QR 하나로 둘 다 본다(Min 2026-08).
 let TAB=localStorage.getItem('saizen_bill_tab')||'today';
-let BILL=null, TODAY=null;
+let BILL=null, TODAY=null, OUT=null, OUT_MSG=null;   // OUT = guest_outings(155) · OUT_MSG = 방금 신청/취소 결과 한 줄
 
 function headHtml(){
   const L=T[lang], d=BILL||{};
   const repName=d.rep_name?`${esc(d.rep_name)}${esc(L.honor)}`:esc(L.guest);
   const rooms=Array.isArray(d.rooms)?d.rooms:[];
-  const ttl = TAB==='today' ? L.tabToday : L.title;
+  const ttl = TAB==='today' ? L.tabToday : (TAB==='out' ? L.tabOut : L.title);
   return `<div class="bhead"><span class="rep">${repName}</span>`
     +`${d.tag?`<span class="tag">${esc(d.tag)}</span>`:''}`
     +`${rooms.length?`<span class="room">${esc(rooms.map(L.room).join(' · '))}</span>`:''}`
     +`<span class="ttl">${esc(ttl)}</span></div>`;
 }
 function tabsHtml(){
-  if(!TODAY||TODAY.ok!==true) return '';
+  const hasT=!!(TODAY&&TODAY.ok===true), hasO=!!(OUT&&OUT.ok===true);
+  if(!hasT&&!hasO) return '';
   const L=T[lang];
   return `<div class="tabs">`
-    +`<button data-tab="today" class="${TAB==='today'?'on':''}">${esc(L.tabToday)}</button>`
+    +(hasT?`<button data-tab="today" class="${TAB==='today'?'on':''}">${esc(L.tabToday)}</button>`:'')
+    +(hasO?`<button data-tab="out" class="${TAB==='out'?'on':''}">${esc(L.tabOut)}${OUT.outings&&OUT.outings.length?` <small>${OUT.outings.length}</small>`:''}</button>`:'')
     +`<button data-tab="bill" class="${TAB==='bill'?'on':''}">${esc(L.tabBill)}</button></div>`;
 }
 
@@ -240,6 +270,40 @@ function todayPane(){
   return days.map((d,i)=>dayCard(d,i===0)).join('');
 }
 
+// ── 신청 행사(쇼핑·관광 등, SQL 152/155) — 팀원 이름 버튼으로 신청/취소. 마감·취소 행사는 버튼 없음(변경은 프런트). ──
+function outPane(){
+  const L=T[lang]; const d=OUT||{}; const list=Array.isArray(d.outings)?d.outings:[]; const mem=Array.isArray(d.members)?d.members:[];
+  if(!list.length) return `<div class="nolines">${esc(L.outNone)}</div>`;
+  return list.map(o=>{
+    const dt=new Date(String(o.date)+'T00:00:00'); const open=o.status==='open';
+    const title = lang==='ja' ? (o.title_ja||o.title_ko||'') : (o.title_ko||o.title_ja||'');
+    const sub = lang==='ja' ? (o.title_ja&&o.title_ko?o.title_ko:'') : (o.title_ko&&o.title_ja?o.title_ja:'');
+    const note = lang==='ja' ? (o.note_ja||o.note_ko||'') : (o.note_ko||o.note_ja||'');
+    const mine=new Set((Array.isArray(o.mine)?o.mine:[]).map(String));
+    const meta=[ o.meet_time?`<span>${esc(L.outMeet)} <b>${esc(o.meet_time)}</b>${o.meet_place?` · ${esc(o.meet_place)}`:''}</span>`:(o.meet_place?`<span>${esc(L.outMeet)} ${esc(o.meet_place)}</span>`:''),
+      o.return_time?`<span>${esc(L.outRet)} <b>${esc(o.return_time)}</b></span>`:'',
+      `<span>${esc(L.outFee)} <b>${o.fee?yen(o.fee):esc(L.outFree)}</b></span>`,
+      `<span>${esc(L.outSigned(Number(o.signed)||0,o.capacity||0))}</span>` ].filter(Boolean).join('');
+    const btns=mem.map(m=>{ const on=mine.has(String(m.id)); return `<button type="button" class="mb${on?' on':''}" data-o="${esc(o.id)}" data-m="${esc(m.id)}" data-on="${on?1:0}" ${open?'':'disabled'}>${esc(m.name||m.name_en||'?')}</button>`; }).join('');
+    const msg=(OUT_MSG&&String(OUT_MSG.oid)===String(o.id))?`<div class="msg ${OUT_MSG.ok?'ok':'err'}">${esc(OUT_MSG.text)}</div>`:`<div class="msg"></div>`;
+    return `<div class="oc" data-oid="${esc(o.id)}"><div class="oh"><span class="dt">${dt.getMonth()+1}/${dt.getDate()}</span><span class="dw">${esc(L.dow[dt.getDay()]||'')}</span>`
+      +`<span class="st${open?' open':''}">${esc(open?L.outOpen:L.outClosed)}</span><span class="tt">${esc(title)}${sub?`<small>${esc(sub)}</small>`:''}</span></div>`
+      +`<div class="om">${meta}</div>${note?`<div class="on">${esc(note)}</div>`:''}`
+      +`<div class="who">${esc(open?L.outWho:L.outClosedMsg)}</div><div class="mbs">${btns}</div>${msg}</div>`;
+  }).join('')+`<div class="note">${esc(L.outNote)}</div>`;
+}
+async function setOut(oid,mid,on,btn){
+  const L=T[lang]; if(!supa||!TOKEN) return;
+  btn.disabled=true;
+  try{
+    const {data,error}=await supa.rpc('guest_outing_set',{p_token:TOKEN,p_outing:Number(oid),p_member:mid,p_on:on}); if(error) throw error;
+    if(data&&data.ok===true){ OUT_MSG={oid,ok:true,text:on?L.outOk:L.outOff}; }
+    else { const r=(data&&data.reason)||''; OUT_MSG={oid,ok:false,text:r==='full'?L.outFull:(r==='closed'?L.outClosedMsg:L.outFail)}; }
+  }catch(e){ OUT_MSG={oid,ok:false,text:L.outFail}; }
+  lastSig=''; await tick();                       // 신청 상태를 서버에서 다시 받아 그린다(mine·signed)
+  setTimeout(()=>{ if(OUT_MSG&&String(OUT_MSG.oid)===String(oid)){ OUT_MSG=null; if(TAB==='out'){ lastSig=''; render(); lastSig=curSig(); } } },6000);
+}
+
 // ── 결제 내역 ──
 function billPane(){
   const L=T[lang], d=BILL||{};
@@ -264,16 +328,19 @@ function billPane(){
     <div class="note">${esc(L.note)}</div>`;
 }
 
-function curSig(){ return lang+'|'+TAB+'|'+JSON.stringify(BILL)+'|'+JSON.stringify(TODAY); }
+function curSig(){ return lang+'|'+TAB+'|'+JSON.stringify(BILL)+'|'+JSON.stringify(TODAY)+'|'+JSON.stringify(OUT)+'|'+JSON.stringify(OUT_MSG); }
 function render(){
   const L=T[lang];
-  if(!TODAY||TODAY.ok!==true) TAB='bill';           // 일정 RPC 없거나 실패 → 결제 내역만(구버전 호환)
-  const pane = TAB==='today' ? todayPane() : billPane();
+  const hasT=!!(TODAY&&TODAY.ok===true), hasO=!!(OUT&&OUT.ok===true);
+  if(TAB==='today'&&!hasT) TAB='bill';           // 일정 RPC 없거나 실패 → 결제 내역(구버전 호환)
+  if(TAB==='out'&&!hasO) TAB=hasT?'today':'bill';
+  const pane = TAB==='today' ? todayPane() : (TAB==='out' ? outPane() : billPane());
   $('#body').innerHTML=headHtml()+tabsHtml()+pane+`<div class="upd">${esc(L.updated)} ${hhmm()}</div>`;
   document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
     TAB=b.dataset.tab; try{ localStorage.setItem('saizen_bill_tab',TAB); }catch(e){}
     render(); lastSig=curSig();          // 탭만 바꾼 것이라 다음 폴링에서 다시 그리지 않는다
   }));
+  document.querySelectorAll('.oc .mb').forEach(b=>b.addEventListener('click',()=>setOut(b.dataset.o,b.dataset.m,b.dataset.on!=='1',b)));
 }
 
 async function tick(){
@@ -282,9 +349,10 @@ async function tick(){
   if(!supa){ try{ supa=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ return; } }
   try{
     //  일정 RPC(125)는 실패해도 결제 내역은 보여야 한다 → 따로 잡는다.
-    const [bill, today] = await Promise.all([
+    const [bill, today, out] = await Promise.all([
       supa.rpc('guest_bill',{p_token:TOKEN}),
-      supa.rpc('guest_today',{p_token:TOKEN}).catch(()=>({data:null}))
+      supa.rpc('guest_today',{p_token:TOKEN}).catch(()=>({data:null})),
+      supa.rpc('guest_outings',{p_token:TOKEN}).catch(()=>({data:null}))   // 신청 행사(155) — 실패해도 청구·일정은 그대로
     ]);
     if(bill.error) throw bill.error;
     const data=bill.data;
@@ -296,7 +364,7 @@ async function tick(){
       return;
     }
     if(!data || data.ok!==true){ if(lastSig!=='inv'){ stateView(L.invalid,L.invalidSub); lastSig='inv'; } return; }
-    BILL=data; TODAY=(today&&today.data&&today.data.ok===true)?today.data:null;
+    BILL=data; TODAY=(today&&today.data&&today.data.ok===true)?today.data:null; OUT=(out&&out.data&&out.data.ok===true)?out.data:null;
     const sig=curSig();
     if(sig!==lastSig){ render(); lastSig=sig; }
   }catch(e){ if(lastSig!=='err'){ stateView(L.errH,L.errSub); lastSig='err'; } }

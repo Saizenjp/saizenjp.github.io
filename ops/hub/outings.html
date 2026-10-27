@@ -109,7 +109,7 @@
   .golfnote{font-size:12px;color:var(--text2);background:var(--accentSoft);border-left:4px solid var(--accent);border-radius:8px;padding:8px 12px;margin-bottom:10px;word-break:keep-all}
   .rsum{font-size:12.5px;color:var(--text2);font-weight:700;margin-bottom:8px}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=35.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=35.9">
 </head>
 <body data-so-area="frontdesk">
 <div class="topbar so-bar">
@@ -173,9 +173,16 @@
   </div>
 </main>
 
+<div id="qr-modal" style="display:none;position:fixed;inset:0;z-index:60;background:rgba(20,24,18,.55);align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:14px;max-width:420px;width:100%;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+    <div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)"><b style="flex:1;font-size:14px" id="qr-title"></b><button class="btn xs ghost" id="qr-close" type="button">✕</button></div>
+    <div style="padding:14px 16px"><div id="qr-reader" style="width:100%;border-radius:10px;overflow:hidden"></div><div class="hint" id="qr-status" style="margin-top:8px;min-height:18px"></div><div class="hint" id="qr-hint"></div></div>
+  </div>
+</div>
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=35.8"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="../assets/saizen-ops.js?v=35.9"></script>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -189,7 +196,7 @@ const L={
     golfNote:'申込者は その日のコース組合せ表で自動的に「不参加」になります（残りのメンバーはそのままラウンド）。取消すと参加に戻ります。ロビー画面には題名・集合時刻・申込人数だけが表示されます（お名前なし）。',
     date:'日付', kind:'種類', k_shopping:'ショッピング', k_tour:'観光', k_other:'その他', meet:'集合時刻', ret:'帰着予定', titleKo:'題名（韓国語）', titleJa:'題名（日本語）', place:'集合場所', cap:'定員（空欄＝制限なし）', fee:'お一人料金（円・空欄＝無料/未定）', vehicle:'車両・運転手', noteKo:'案内文（韓国語）', noteJa:'案内文（日本語）',
     save:'保存', cancel:'取消', del:'削除', delConfirm:n=>`「${n}」を削除しますか？ 申込（${n}）も消え、コース組合せ表の不参加も戻ります。`, print:'名簿印刷', titleNeed:'題名（韓国語か日本語）を入力してください',
-    st_open:'募集中', st_closed:'締切', st_cancelled:'取消', outings:'この日の行事', signups:'申込者', selectHint:'左の行事を選ぶと申込者が表示されます', addSign:'＋ 申込を追加', pickSave:n=>`選択 ${n}名を申込`, pickCancel:'閉じる', search:'チーム・代表者・お名前で検索',
+    st_open:'募集中', st_closed:'締切', st_cancelled:'取消', outings:'この日の行事', signups:'申込者', selectHint:'左の行事を選ぶと申込者が表示されます', addSign:'＋ 申込を追加', pickSave:n=>`選択 ${n}名を申込`, pickCancel:'閉じる', qrBtn:'QR読取', qrTitle:'お客様のQRカードを読み取る', qrHint:'リーダーがあればどの欄にカーソルがあってもかざすだけで読めます。カメラは端末のカメラで QR を映してください。', qrScanning:'QR を映してください…', qrOpenFail:'カメラを開けません — リーダーをかざすか検索してください', qrNoMatch:'登録されていない QR です', qrNotStay:'この QR のチームはこの日に宿泊していません', qrNoOuting:'先に左の行事を選んでください', qrMatched:(tag,n)=>`${tag} チームを選択 — 未申込 ${n}名にチェック。確認して[申込]を押してください`, search:'チーム・代表者・お名前で検索',
     staying:'この日宿泊中のチーム', none:'行事がありません', noSign:'申込者はまだいません', noStay:'この日宿泊中のチームがありません', done:'申込済', absOther:'他の理由で不参加', member:'会員',
     saved:'保存しました', deleted:'削除しました', signSaved:n=>`${n}名を申し込みました — コース組合せ表に反映`, signRemoved:'申込を取消しました', fail:'失敗', loading:'読み込み中…', capWarn:(n,c)=>`定員 ${c}名を超えます（申込 ${n}名）。それでも登録しますか？`,
     cnt:(n,c)=>c?`${n} / ${c}名`:`${n}名`, sum:(o,n)=>`行事 ${o}件 · 申込 ${n}名`, feeL:'お一人', vehicleL:'車両', retL:'帰着', updBy:(d,u)=>`${d}${u?' · '+u:''}`,
@@ -199,7 +206,7 @@ const L={
     golfNote:'신청한 사람은 그날 코스 배정표에서 자동으로 「불참」이 됩니다(나머지 팀원은 그대로 라운딩). 취소하면 다시 참가로 돌아옵니다. 로비 화면에는 제목·집합 시각·신청 인원만 보입니다(이름 없음).',
     date:'날짜', kind:'종류', k_shopping:'쇼핑', k_tour:'관광', k_other:'기타', meet:'집합 시각', ret:'귀환 예정', titleKo:'제목(한국어)', titleJa:'제목(일본어)', place:'집합 장소', cap:'정원(비우면 제한 없음)', fee:'1인 요금(엔 · 비우면 무료/미정)', vehicle:'차량·기사', noteKo:'안내 문구(한국어)', noteJa:'안내 문구(일본어)',
     save:'저장', cancel:'취소', del:'삭제', delConfirm:n=>`「${n}」을(를) 삭제할까요? 신청도 함께 지워지고 코스 배정표의 불참도 되돌아갑니다.`, print:'명단 인쇄', titleNeed:'제목(한국어 또는 일본어)을 입력하세요',
-    st_open:'모집 중', st_closed:'마감', st_cancelled:'취소', outings:'이 날의 행사', signups:'신청자', selectHint:'왼쪽에서 행사를 고르면 신청자가 보입니다', addSign:'＋ 신청 추가', pickSave:n=>`선택 ${n}명 신청`, pickCancel:'닫기', search:'팀·대표자·이름으로 검색',
+    st_open:'모집 중', st_closed:'마감', st_cancelled:'취소', outings:'이 날의 행사', signups:'신청자', selectHint:'왼쪽에서 행사를 고르면 신청자가 보입니다', addSign:'＋ 신청 추가', pickSave:n=>`선택 ${n}명 신청`, pickCancel:'닫기', qrBtn:'QR 스캔', qrTitle:'손님 QR 카드 읽기', qrHint:'리더기가 있으면 어느 칸에 커서가 있어도 그냥 대면 읽힙니다. 카메라는 기기 카메라로 QR을 비추세요.', qrScanning:'QR을 비추세요…', qrOpenFail:'카메라를 열 수 없습니다 — 리더기로 대거나 검색하세요', qrNoMatch:'등록되지 않은 QR입니다', qrNotStay:'이 QR의 팀은 이 날짜에 묵지 않습니다', qrNoOuting:'먼저 왼쪽에서 행사를 고르세요', qrMatched:(tag,n)=>`${tag} 팀 선택 — 미신청 ${n}명 체크됨. 확인하고 [신청]을 누르세요`, search:'팀·대표자·이름으로 검색',
     staying:'이 날 묵는 팀', none:'행사가 없습니다', noSign:'아직 신청자가 없습니다', noStay:'이 날 묵는 팀이 없습니다', done:'신청됨', absOther:'다른 사유로 불참', member:'회원',
     saved:'저장했습니다', deleted:'삭제했습니다', signSaved:n=>`${n}명 신청 — 코스 배정표에 반영`, signRemoved:'신청을 취소했습니다', fail:'실패', loading:'불러오는 중…', capWarn:(n,c)=>`정원 ${c}명을 넘습니다(신청 ${n}명). 그래도 등록할까요?`,
     cnt:(n,c)=>c?`${n} / ${c}명`:`${n}명`, sum:(o,n)=>`행사 ${o}건 · 신청 ${n}명`, feeL:'1인', vehicleL:'차량', retL:'귀환', updBy:(d,u)=>`${d}${u?' · '+u:''}`,
@@ -209,7 +216,7 @@ const L={
     golfNote:'Participants are automatically marked “absent” on that day’s course sheet (the rest of the team plays as usual). Cancelling restores them. The lobby screen shows only the title, meeting time and head count (no names).',
     date:'Date', kind:'Kind', k_shopping:'Shopping', k_tour:'Tour', k_other:'Other', meet:'Meeting time', ret:'Return (planned)', titleKo:'Title (Korean)', titleJa:'Title (Japanese)', place:'Meeting place', cap:'Capacity (blank = unlimited)', fee:'Fee per person (JPY · blank = free/TBD)', vehicle:'Vehicle · driver', noteKo:'Notice (Korean)', noteJa:'Notice (Japanese)',
     save:'Save', cancel:'Cancel', del:'Delete', delConfirm:n=>`Delete “${n}”? Its sign-ups are removed and the course-sheet absences are restored.`, print:'Print roster', titleNeed:'Enter a title (Korean or Japanese)',
-    st_open:'Open', st_closed:'Closed', st_cancelled:'Cancelled', outings:'Outings on this day', signups:'Participants', selectHint:'Select an outing on the left to see its participants', addSign:'＋ Add sign-ups', pickSave:n=>`Sign up ${n} selected`, pickCancel:'Close', search:'Search team, representative or name',
+    st_open:'Open', st_closed:'Closed', st_cancelled:'Cancelled', outings:'Outings on this day', signups:'Participants', selectHint:'Select an outing on the left to see its participants', addSign:'＋ Add sign-ups', pickSave:n=>`Sign up ${n} selected`, pickCancel:'Close', qrBtn:'Scan QR', qrTitle:'Scan the guest QR card', qrHint:'With a hardware reader just scan — any field may have focus. Otherwise point the device camera at the QR.', qrScanning:'Point the camera at the QR…', qrOpenFail:'Camera unavailable — use the reader or search', qrNoMatch:'Unregistered QR', qrNotStay:'This QR team is not staying on this date', qrNoOuting:'Select an outing on the left first', qrMatched:(tag,n)=>`Team ${tag} selected — ${n} unsigned members ticked. Check and press [Sign up]`, search:'Search team, representative or name',
     staying:'Teams staying this night', none:'No outings', noSign:'No participants yet', noStay:'No teams staying this night', done:'Signed', absOther:'Absent for another reason', member:'Member',
     saved:'Saved', deleted:'Deleted', signSaved:n=>`${n} signed up — reflected on the course sheet`, signRemoved:'Sign-up cancelled', fail:'Failed', loading:'Loading…', capWarn:(n,c)=>`Exceeds the capacity of ${c} (${n} signed). Register anyway?`,
     cnt:(n,c)=>c?`${n} / ${c}`:`${n}`, sum:(o,n)=>`${o} outings · ${n} signed`, feeL:'per person', vehicleL:'Vehicle', retL:'Return', updBy:(d,u)=>`${d}${u?' · '+u:''}`,
@@ -293,7 +300,7 @@ function renderSign(sel){
   const byTeam={}; rows.forEach(s=>{ (byTeam[s.event_seq]=byTeam[s.event_seq]||[]).push(s); });
   const html=Object.keys(byTeam).map(seq=>{ const t=teamOfSeq(seq); const ms=byTeam[seq].map(s=>({s, m:memberById(s.member_id)}));
     return `<div class="team" data-seq="${esc(seq)}"><div class="th"><span class="tag">${esc(t?t.tag:'')}</span><span class="rep">${esc(t?t.rep:'#'+seq)}</span><span class="acc">${esc(t?t.accom:'')}</span><span class="n">${ms.length}${lang()==='ja'?'名':lang()==='en'?'':'명'}${t?` / ${t.pax}`:''}</span></div>
-      <div class="chips">${ms.map(({s,m})=>`<span class="mchip" data-mid="${esc(s.member_id)}">${esc(m?(m.name_kr||m.name_en||'?'):'?')}${m&&m.name_en?`<small>${esc(m.name_en)}</small>`:''}<button type="button" class="b-unsign" title="${esc(tx('signRemoved'))}">✕</button></span>`).join('')}</div></div>`; }).join('');
+      <div class="chips">${ms.map(({s,m})=>`<span class="mchip" data-mid="${esc(s.member_id)}">${esc(m?(m.name_kr||m.name_en||'?'):'?')}${m&&m.name_en?`<small>${esc(m.name_en)}</small>`:''}${s.signed_by==='QR'?`<small style="color:var(--accent2);font-weight:800" title="QR">QR</small>`:''}<button type="button" class="b-unsign" title="${esc(tx('signRemoved'))}">✕</button></span>`).join('')}</div></div>`; }).join('');
   box.innerHTML=`<div class="rsum">${esc(titleOf(sel))} · ${esc(tx('cnt',rows.length,sel.capacity||0))}</div>`+(html||`<div class="empty">${esc(tx('noSign'))}</div>`)
     +`<div class="acts"><button type="button" class="btn sm" id="btn-pick">${esc(tx('addSign'))}</button></div><div id="pickbox"></div>`;
   if(PICK) renderPick(sel);
@@ -302,7 +309,7 @@ function renderPick(sel){
   const box=$('#pickbox'); if(!box) return; const signed=new Set(SIGN.filter(s=>s.outing_id===sel.id).map(s=>String(s.member_id)));
   const q=PQ.trim().toLowerCase();
   const teams=STAY.filter(t=>!q||[t.tag,t.rep,t.no,t.accom,...t.members.map(m=>(m.name_kr||'')+' '+(m.name_en||''))].join(' ').toLowerCase().includes(q));
-  box.innerHTML=`<div class="pick"><div class="ph"><b>${esc(tx('staying'))}</b> <span class="hint">${STAY.length}</span><input class="inp" id="pq" placeholder="${esc(tx('search'))}" value="${esc(PQ)}" autocomplete="off"><button type="button" class="btn sm" id="btn-pick-save">${esc(tx('pickSave',0))}</button><button type="button" class="btn sm ghost" id="btn-pick-close">${esc(tx('pickCancel'))}</button></div>
+  box.innerHTML=`<div class="pick"><div class="ph"><b>${esc(tx('staying'))}</b> <span class="hint">${STAY.length}</span><input class="inp" id="pq" placeholder="${esc(tx('search'))}" value="${esc(PQ)}" autocomplete="off"><button type="button" class="btn sm ghost" id="btn-pick-qr" title="${esc(tx('qrHint'))}">${esc(tx('qrBtn'))}</button><button type="button" class="btn sm" id="btn-pick-save">${esc(tx('pickSave',0))}</button><button type="button" class="btn sm ghost" id="btn-pick-close">${esc(tx('pickCancel'))}</button></div>
     <div class="list">${teams.length?teams.map(t=>`<div class="team" data-seq="${esc(t.seq)}"><div class="th"><span class="tag">${esc(t.tag)}</span><span class="rep">${esc(t.rep)}</span><span class="acc">${esc(t.accom)}</span><span class="n">${t.members.length} / ${t.pax}</span></div>
       <div class="chips">${t.members.map(m=>{ const done=signed.has(String(m.id)); const abs=!done&&m.abs; const mem=(window.SZCore&&SZCore.isMember)?SZCore.isMember(m):false;
         return `<label class="pm${done?' done':''}${abs?' abs':''}" title="${abs?esc(tx('absOther')+': '+m.abs):''}"><input type="checkbox" class="pm-chk" value="${esc(m.id)}" data-seq="${esc(t.seq)}" ${done?'checked disabled':''}> ${esc(m.name_kr||m.name_en||'?')}${mem?` <small>${esc(tx('member'))}</small>`:''}${done?` <small>${esc(tx('done'))}</small>`:''}</label>`; }).join('')}</div></div>`).join(''):`<div class="empty">${esc(tx('noStay'))}</div>`}</div></div>`;
@@ -385,6 +392,40 @@ function printRoster(o){
   const w=window.open('','_blank','width=900,height=1000'); if(!w){ toast(tx('fail'),'err'); return; } w.document.open(); w.document.write(html); w.document.close(); return html;
 }
 
+// ── QR 스캔으로 팀 바로 선택(Min 2026-10-27 「신청도 QR코드를 대면 굳이 사람들 다 검색하지 않아도」) ──
+//  손님 QR 카드(bill.html?t=토큰) → order_tokens(로그인 읽기) → 팀 → 피커를 그 팀만으로 좁히고 아직 신청 안 한 팀원을 전부 체크(담당자가 확인하고 [신청]).
+//  하드웨어 리더기(키보드 입력, __so_hidScan)는 어느 칸에 포커스가 있어도 동작 · 카메라는 피커의 [QR 스캔](html5-qrcode).
+let _qr=null;
+function qrStatus(m){ const e=$('#qr-status'); if(e) e.textContent=m||''; }
+async function openScanCam(){
+  $('#qr-modal').style.display='flex'; $('#qr-title').textContent=tx('qrTitle'); $('#qr-hint').textContent=tx('qrHint'); qrStatus(tx('qrScanning'));
+  try{ if(!window.Html5Qrcode) throw new Error('lib'); _qr=new Html5Qrcode('qr-reader');
+    await _qr.start({facingMode:'environment'},{fps:10,qrbox:{width:220,height:220}},(decoded)=>{ scanResolve(decoded); },()=>{}); }
+  catch(e){ _qr=null; qrStatus(tx('qrOpenFail')); }
+}
+async function stopScan(){ if(_qr){ try{ await _qr.stop(); }catch(_){} try{ _qr.clear(); }catch(_){} _qr=null; } }
+async function closeScan(){ await stopScan(); const m=$('#qr-modal'); if(m) m.style.display='none'; }
+async function scanResolve(raw){
+  let token=String(raw||'').trim(); if(!token) return;
+  const m=token.match(/[?&]t=([^&\s]+)/); if(m) token=decodeURIComponent(m[1]);   // QR=bill URL 이면 ?t= 토큰 추출
+  await closeScan();
+  if(!supa) return;
+  const sel=OUTS.find(o=>o.id===SEL); if(!sel){ toast(tx('qrNoOuting'),'warn'); return; }
+  try{
+    const {data,error}=await supa.from('order_tokens').select('event_seq').eq('token',token).limit(1); if(error) throw error;
+    if(!data||!data.length){ toast(tx('qrNoMatch'),'err'); return; }
+    const seq=data[0].event_seq; const t=teamOfSeq(seq);
+    if(!t){ toast(tx('qrNotStay'),'err'); return; }
+    PICK=true; PQ=t.tag||t.rep||String(seq); renderPick(sel);
+    let n=0; document.querySelectorAll(`.pm-chk[data-seq="${seq}"]:not(:disabled)`).forEach(c=>{ c.checked=true; n++; });
+    updatePickBtn();
+    const box=$('#pickbox'); if(box&&box.scrollIntoView) box.scrollIntoView({block:'nearest'});
+    toast(tx('qrMatched',t.tag||t.rep||('#'+seq),n),'ok');
+  }catch(e){ toast(tx('qrNoMatch'),'err'); }
+}
+if(window.__so_hidScan) __so_hidScan(function(raw){ if(supa) scanResolve(raw); });
+$('#qr-close').addEventListener('click',closeScan);
+
 // ── 이벤트 ──
 $('#olist').addEventListener('click',e=>{ const card=e.target.closest('.oc'); if(!card) return; const o=OUTS.find(x=>String(x.id)===card.dataset.id); if(!o) return;
   if(e.target.closest('.b-edit')) openEdit(o); else if(e.target.closest('.b-print')) printRoster(o); else if(e.target.closest('.b-del')) delOuting(o);
@@ -393,6 +434,7 @@ $('#olist').addEventListener('click',e=>{ const card=e.target.closest('.oc'); if
 $('#slist').addEventListener('click',e=>{ const sel=OUTS.find(o=>o.id===SEL); if(!sel) return;
   if(e.target.closest('#btn-pick')){ PICK=true; renderPick(sel); const pq=$('#pq'); if(pq) pq.focus(); }
   else if(e.target.closest('#btn-pick-close')){ PICK=false; PQ=''; $('#pickbox').innerHTML=''; }
+  else if(e.target.closest('#btn-pick-qr')) openScanCam();
   else if(e.target.closest('#btn-pick-save')) savePick(sel);
   else if(e.target.closest('.b-unsign')){ const mid=e.target.closest('.mchip').dataset.mid; unsign(sel,mid); } });
 $('#slist').addEventListener('change',e=>{ if(e.target.classList.contains('pm-chk')) updatePickBtn(); });
