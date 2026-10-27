@@ -17,7 +17,9 @@
 --   ⑥ settle_report() 재정의 — by_rate(세율별 税込·세액·税抜) + 일별 세액을 「folio·세율 누적액의 세액 차분」으로(기간 합 = 청구서 세액 합) + by_cat 는 税込만.
 --   ⑦ data_audit 검수 짝 tax_rate_check(§3-3) — 이번 달 세율별 세액을 다른 모양의 쿼리로 재계산 대조 + 조합 위반 0.
 --  하지 않는 일: 기존 charges 의 amount·tax 재계산 없음(참고값·불변) · 정산 기록 삭제 없음(§0.4) · RLS 정책 변경 없음(새 컬럼은 같은 행 정책).
---  멱등. **Min 승인 뒤 실행**(§0.3). 적용 후 00_VERIFY 157(90 으로 갱신)·158.
+--  멱등. Min 승인(2026-10-27 「sql 158 적용해」「지금 실행해」) 뒤 MCP execute_sql 로 적용 완료 — MCP 실행 확인 질문이 2회 무응답 시간 초과(230초)된 뒤 3회차에 승인되어 적용.
+--  적용 확인(2026-10-27): tax_included 90/80/−90/0 · 컬럼 4 · 트리거·RPC 4개 tax_included 사용 · v_settlement_by_rate(security_invoker, anon 불가) · settle_report by_rate ·
+--  data_audit tax_rate_check=0(이번 달 10% 세액 보고서=재계산 일치) · settle_check 0 · 기존 charges·menu_items 전 행 10·taxable 백필 · anon secdef 15 유지. 00_VERIFY 157(90)·158.
 -- ============================================================================
 
 -- ── ① 소비세(内税) 공통 함수 — 버림(切り捨て). 정수 나눗셈은 0 방향 버림이라 음수도 부호만 바뀐다 ───────────
