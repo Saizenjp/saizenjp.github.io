@@ -694,7 +694,7 @@
     golf:    ['course', 'cart', 'inv_golf'],
     kitchen: ['kds', 'kds_front', 'inv_fnb'],
     pos:     ['pos_front', 'pos_golf', 'pos_restaurant', 'pos_customer'],
-    settle:  ['settle_onsite', 'settle_merit'],
+    settle:  ['settle_onsite', 'settle_merit', 'settle_report'],   // settle_report=정산 보고서(일보·주보·월보·연보 + 일 마감, SQL 156, Min 2026-10-27)
     stats:   ['stats_mgmt', 'staycal'],
     shizu:   ['shizu_sheet', 'inv_shizu']
   };

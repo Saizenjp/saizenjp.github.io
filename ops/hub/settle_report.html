@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="ja">
+<!-- ============================================================================
+  정산 보고서 · 精算 日報 / 週報 / 月報 / 年報 + 일 마감(日次締め)
+  (Min 2026-10-27 「ops로 최종 정산까지 마무리하고 최종 정산된 화면까지 · 일마다 정산일보·주보·월보·연보」)
+  ----------------------------------------------------------------------------
+  · 서버 RPC settle_report(from,to)(SQL 156)가 일별 집계를 한 번에 주고, 화면이 주(월~일)·월·연으로 묶는다.
+  · 매출 = charges(취소 제외) 税込, 날짜 = charged_at JST · 입금 = payments 현금/카드, 날짜 = paid_at JST
+  · 정산 완료 = folios settled(closed_at JST) · 미수 기말 = 그날까지 누적 청구 − 누적 입금(전 기간)
+  · 체크인/체크아웃/재실 = bookings(대기 제외) · 워크인 = walkins · 미정산 체크아웃 = 체크아웃인데 잔액≠0 또는 청구 있는 계산서가 미마감
+  · 일보 [일 마감] = settle_day_close RPC → 그날 숫자를 스냅샷으로 고정(마감 완료 화면). 마감 뒤 숫자가 바뀌면 「마감 후 변경 있음」.
+  · B2B(現地精算表) 금액은 월보·연보에 「참고」로만 — 현장 정산(folio)과 섞지 않는다(§11 정산 2종 분리).
+  · 인쇄 = A4 세로(네이비/모노톤, @page 는 최상위) · 엑셀 = ExcelJS(영문 파일명).
+============================================================================ -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 정산 보고서</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<style>
+  /* ── 공통 chrome (전 ops 페이지 공유 정본 — docs/ops-page-skeleton.html) ── */
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
+    --border:#e3e6ea; --border2:#cdd2d8;
+    --text:#1f2937; --text2:#525b66; --muted:#8b919b;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --card:#2f6f8f;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,'SZJpMono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);
+    padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none}
+  .navhome:hover{text-decoration:underline}
+  .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .btn.xs{font-size:12px;padding:3px 9px}
+  .btn.danger{background:transparent;color:var(--err);border-color:#e3bdb4}
+  .btn.danger:hover:not(:disabled){background:#f7e6e2}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .hint{font-size:11px;color:var(--muted)}
+  #toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);min-width:200px;text-align:center}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+
+  /* ── 페이지 전용 ── */
+  main{padding:14px 20px 70px;max-width:1240px;margin:0 auto}
+  .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  .chip{font-family:inherit;font-size:12.5px;font-weight:700;padding:6px 14px;border-radius:99px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .chip:hover:not(.on){border-color:var(--accent);color:var(--accent)}
+  .sep{width:1px;height:22px;background:var(--border2);margin:0 4px}
+  .rangelbl{font-size:16px;font-weight:800;color:var(--text);margin:6px 0 12px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .rangelbl small{font-size:12px;color:var(--text2);font-weight:600}
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px}
+  @media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:620px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;min-width:0}
+  .kpi .l{font-size:11px;color:var(--text2);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kpi .v{font-size:20px;font-weight:800;color:var(--text);font-family:var(--mono);margin-top:3px;letter-spacing:-.02em;white-space:nowrap}
+  .kpi .v small{font-size:11.5px;color:var(--text2);font-weight:700;font-family:inherit;margin-left:2px}
+  .kpi .sub{font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+  .kpi.rev .v{color:var(--accent)} .kpi.pay .v{color:var(--card)} .kpi.due .v{color:var(--err)} .kpi.ok .v{color:var(--ok)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+  .box{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px;min-width:0}
+  .grid2 .box{margin-bottom:0}
+  .box h3{font-size:13px;font-weight:800;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--surface2);color:var(--text);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .box h3 .cnt{margin-left:auto;font-size:11.5px;color:var(--text2);font-weight:700}
+  .box .bd{padding:10px 14px;overflow-x:auto}
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.t th{font-size:11px;color:var(--text2);font-weight:700;text-align:right;padding:6px 8px;border-bottom:1px solid var(--border);background:var(--surface2);white-space:nowrap}
+  table.t th.l,table.t td.l{text-align:left}
+  table.t td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+  table.t td.l{font-family:inherit}
+  table.t tr.tot td{font-weight:800;background:var(--surface2);border-top:2px solid var(--border2)}
+  table.t tr.today td{background:var(--accentSoft)}
+  table.t tr.future td{color:var(--muted)}
+  table.t td.neg{color:var(--err);font-weight:700}
+  table.t tr.clk{cursor:pointer} table.t tr.clk:hover td{background:var(--accentSoft)}
+  .badge{display:inline-block;font-size:10.5px;font-weight:700;border-radius:4px;padding:2px 7px;line-height:1.3;white-space:nowrap;vertical-align:middle}
+  .badge.ok{background:var(--accentSoft);color:var(--ok)} .badge.warn{background:#fbf3e2;color:#7a5a16} .badge.err{background:#f7e6e2;color:var(--err)} .badge.mute{background:var(--surface3);color:var(--text2)}
+  .close{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:14px 16px;margin-bottom:12px;display:flex;gap:14px 18px;flex-wrap:wrap;align-items:center}
+  .close.done{border-color:#b4cda0;background:var(--accentSoft)}
+  .close.future{background:var(--surface2)}
+  .close .st{font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px}
+  .close .meta{font-size:12px;color:var(--text2);line-height:1.6}
+  .close .meta b{color:var(--text)}
+  .close .frm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
+  .close .frm label{font-size:12px;font-weight:600;color:var(--text2)}
+  .diff{font-family:var(--mono);font-weight:800}
+  .diff.zero{color:var(--ok)} .diff.off{color:var(--err)}
+  .empty{font-size:12px;color:var(--muted);text-align:center;padding:16px 0}
+  .note{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.6}
+  .phead{display:none}
+  .tag{font-family:var(--mono);font-weight:800;color:var(--accent)}
+  .unlink{font-size:11px;color:var(--accent);font-weight:700;text-decoration:none;white-space:nowrap}
+  .unlink:hover{text-decoration:underline}
+  .ar-neg{color:var(--err)}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.0">
+<style>
+  @page{size:A4;margin:12mm}
+  @media print{
+    body{background:#fff;color:#1a2540}
+    .topbar,.conn,.bar,.so-totop,.so-footer,details.so-help,#toast,.noprint,.close .frm,.page-help{display:none!important}
+    main{padding:0;max-width:none}
+    .phead{display:block;border-bottom:2px solid #1a2540;padding-bottom:6px;margin-bottom:10px}
+    .phead h1{font-size:18px;font-weight:800;color:#1a2540}
+    .phead .m{font-size:11px;color:#555;margin-top:2px}
+    .rangelbl{display:none}
+    .kpi,.box,.close{border-color:#b9c4d6;border-radius:4px;box-shadow:none;break-inside:avoid;background:#fff}
+    .close.done{background:#eaf0f7}
+    .kpi .v,.kpi.rev .v,.kpi.pay .v,.kpi.due .v,.kpi.ok .v{color:#1a2540}
+    table.t th{background:#eaf0f7;color:#1a2540}
+    table.t tr.today td{background:#eaf0f7}
+    .grid2{break-inside:avoid}
+    .kpis{grid-template-columns:repeat(3,1fr)}
+  }
+</style>
+</head>
+<body data-so-area="settle_report">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">精算 · 日報 / 週報 / 月報 / 年報</span>
+  <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+    <button class="so-furi" id="so-furi" onclick="__so_toggleFuri()"></button>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connHint">연결 정보는 이 브라우저에만 저장됩니다.</span>
+</div>
+
+<main>
+  <div class="bar">
+    <button class="chip on" id="u-day" data-u="day" type="button">일보</button>
+    <button class="chip" id="u-week" data-u="week" type="button">주보</button>
+    <button class="chip" id="u-month" data-u="month" type="button">월보</button>
+    <button class="chip" id="u-year" data-u="year" type="button">연보</button>
+    <span class="sep"></span>
+    <button class="btn ghost sm" id="nav-prev" type="button" title="이전">◀</button>
+    <input class="inp" id="p-date" type="date">
+    <input class="inp" id="p-month" type="month" style="display:none">
+    <input class="inp" id="p-year" type="number" min="2025" max="2100" style="display:none;width:92px">
+    <button class="btn ghost sm" id="nav-next" type="button" title="다음">▶</button>
+    <button class="btn ghost sm" id="nav-today" type="button">오늘</button>
+    <div class="grow"></div>
+    <button class="btn ghost sm" id="btn-print" type="button" disabled>인쇄</button>
+    <button class="btn ghost sm" id="btn-xlsx" type="button" disabled>엑셀</button>
+    <button class="btn sm" id="btn-reload" type="button" disabled>새로고침</button>
+  </div>
+  <div class="phead"><h1 id="ph-title"></h1><div class="m" id="ph-meta"></div></div>
+  <div class="rangelbl" id="rangelbl"></div>
+  <div id="report"><div class="empty" id="t-empty">연결하면 보고서가 표시됩니다.</div></div>
+  <div class="note" id="t-note"></div>
+</main>
+
+<div id="toast"></div>
+
+<script src="../assets/saizen-core.js?v=51"></script>
+<script src="../assets/saizen-ops.js?v=36.0"></script>
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+let supa=null;
+let UNIT='day';            // day | week | month | year
+let BASE=null;             // 기준 날짜 'YYYY-MM-DD' (주=이 날이 든 월~일, 월=이 달, 연=이 해)
+let DATA=null;             // settle_report 결과
+let LOADING=false;
+const CATS=['라운딩','식음','숙박','골프샵','기타'];   // 고정 5종(Min 확정)
+
+// ── i18n(ja 기본 · ko · en) ───────────────────────────────────────────────
+const L={
+  ja:{ step:'精算 · 日報 / 週報 / 月報 / 年報', connHint:'接続情報はこのブラウザにのみ保存されます。',
+    uDay:'日報', uWeek:'週報', uMonth:'月報', uYear:'年報', today:'今日', print:'印刷', xlsx:'Excel', reload:'再読込',
+    titleDay:'精算日報', titleWeek:'精算週報', titleMonth:'精算月報', titleYear:'精算年報',
+    emptyConnect:'接続すると報告書が表示されます。', loading:'集計中…', loadFail:'報告書の読み込み失敗: ', needConnect:'先に接続してください',
+    connecting:'接続中…', connected:'接続済', connFail:'接続失敗', connFailRetry:'接続失敗・再試行', needUrlKey:'URL・key 必要', connectBtn:'接続',
+    kSales:'売上(税込)', kNet:'税抜', kTax:'消費税', kPay:'入金', kCash:'現金', kCard:'カード', kSettled:'精算完了', kAr:'未収残高(期末)', kArStart:'期首',
+    kCiCo:'チェックイン / アウト', kCi:'チェックイン', kCo:'チェックアウト', kStay:'在室', kWalkin:'ウォークイン', kClosedDays:'締め済み日数', kUnset:'決済手段 未指定の請求',
+    uTeam:'組', uPax:'名', uCnt:'件', uDays:'日',
+    sCat:'部門別売上', sPay:'入金・店舗別', sDays:'日別', sMonths:'月別', sUnsettled:'未精算チェックアウト', sB2B:'B2B請求 参考(現地精算表基準)',
+    thCat:'区分', thN:'件数', thNet:'税抜', thTax:'消費税', thGross:'税込', thSource:'店舗', thDate:'日付', thMonth:'月', thSales:'売上', thCash:'現金', thCard:'カード', thPay:'入金計',
+    thSettled:'精算件', thAr:'未収期末', thCi:'チェックイン', thCo:'チェックアウト', thClosed:'締め', thTeam:'チーム', thRep:'代表', thCoDate:'アウト日', thBalance:'残高', thGrossT:'請求', thPaid:'入金', thStatus:'状態', thTotal:'合計',
+    mCash:'現金', mCard:'カード', payNone:'入金なし',
+    src_golf:'ゴルフ(ラウンド・カート)', src_restaurant:'レストラン', src_front:'フロント', src_frontdesk:'フロント(手入力)', src_proshop:'ゴルフショップ', src_banquet:'宴会', src_room:'客室', src_etc:'その他', 'src_(기타)':'その他',
+    'cat_라운딩':'ラウンド', 'cat_식음':'飲食', 'cat_숙박':'宿泊', 'cat_골프샵':'ゴルフショップ', 'cat_기타':'その他',
+    clOpen:'未締め', clFuture:'予定日 — 締めはできません', clToday:'本日', clDone:'締め完了', clBy:'担当', clAt:'締め時刻', clCash:'現金実査', clBook:'帳簿現金', clDiff:'差額', clNote:'メモ',
+    clBtn:'日次締め', clReopen:'締め取消', clCashPh:'現金実査額(任意)', clNotePh:'メモ(任意)', clUnHint:n=>`未精算チェックアウト ${n}件`,
+    clConfirm:(d,g,p,n)=>`${d} の精算を締めます。\n売上 ${g} · 入金 ${p}\n未精算チェックアウト ${n}件\n締めた後はこの日の数字が固定されます。続けますか？`,
+    clDoneToast:'締めました', clReopenConfirm:d=>`${d} の締めを取り消します。再度締めるまで未締めになります。続けますか？`, clReopened:'締めを取り消しました',
+    clFail:'締め失敗: ', clNoRpc:'締め機能(SQL 156)がまだ適用されていません — 管理者に連絡してください',
+    clDrift:'締め後に変更あり', clDriftDetail:(a,b,c,d)=>`売上 ${a} → ${b} · 入金 ${c} → ${d}`, clSnapOk:'締め時点と一致', clDaysClosed:(n,m)=>`締め ${n} / ${m}日`,
+    unNone:'未精算チェックアウトはありません', unWalkin:'ウォークイン', unOpen:n=>`未締め ${n}`, unGo:'精算画面を開く', unPaid:'精算済', unDue:'未収', unOver:'過入金',
+    b2bTeams:'チーム', b2bPax:'人員', b2bLodge:'宿泊', b2bTrans:'送迎', b2bTotal:'合計',
+    b2bNote:'人員=max(名簿,予約) · 泊数=帰国−入国 · 宿泊先単価 · 送迎 ¥6,000 · 待機予約除外 · 控除/加算前。現場精算(この報告書の売上・入金)とは別のお金です。',
+    noteRules:'日付は日本時間基準。売上＝請求(取消除外・税込)、入金＝決済(現金/カード)、精算完了＝その日に締め(settled)た伝票、未収期末＝その日までの累計請求−累計入金。チェックイン/アウト/在室は予約基準(待機予約除外)。',
+    xlsxDone:'Excel をダウンロードしました', xlsxFail:'Excel 作成失敗: ',
+    wd:['日','月','火','水','木','金','土'], weekRange:(a,b)=>`${a} 〜 ${b}`, monthLbl:ym=>`${ym.slice(0,4)}年${Number(ym.slice(5,7))}月`, yearLbl:y=>`${y}年`,
+    printedAt:'印刷', printedBy:'担当' },
+  ko:{ step:'정산 · 일보 / 주보 / 월보 / 연보', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
+    uDay:'일보', uWeek:'주보', uMonth:'월보', uYear:'연보', today:'오늘', print:'인쇄', xlsx:'엑셀', reload:'새로고침',
+    titleDay:'정산 일보', titleWeek:'정산 주보', titleMonth:'정산 월보', titleYear:'정산 연보',
+    emptyConnect:'연결하면 보고서가 표시됩니다.', loading:'집계 중…', loadFail:'보고서 로드 실패: ', needConnect:'먼저 연결하세요',
+    connecting:'연결 중…', connected:'연결됨', connFail:'연결 실패', connFailRetry:'연결 실패 · 재시도', needUrlKey:'URL·key 필요', connectBtn:'연결',
+    kSales:'매출(税込)', kNet:'税抜', kTax:'소비세', kPay:'입금', kCash:'현금', kCard:'카드', kSettled:'정산 완료', kAr:'미수 잔액(기말)', kArStart:'기초',
+    kCiCo:'체크인 / 체크아웃', kCi:'체크인', kCo:'체크아웃', kStay:'재실', kWalkin:'워크인', kClosedDays:'마감 완료 일수', kUnset:'결제수단 미지정 청구',
+    uTeam:'팀', uPax:'명', uCnt:'건', uDays:'일',
+    sCat:'부문별 매출', sPay:'입금 · 매장별', sDays:'일별', sMonths:'월별', sUnsettled:'미정산 체크아웃', sB2B:'B2B 청구 참고(現地精算表 기준)',
+    thCat:'구분', thN:'건수', thNet:'税抜', thTax:'소비세', thGross:'税込', thSource:'매장', thDate:'날짜', thMonth:'월', thSales:'매출', thCash:'현금', thCard:'카드', thPay:'입금계',
+    thSettled:'정산건', thAr:'미수 기말', thCi:'체크인', thCo:'체크아웃', thClosed:'마감', thTeam:'팀', thRep:'대표', thCoDate:'체크아웃일', thBalance:'잔액', thGrossT:'청구', thPaid:'입금', thStatus:'상태', thTotal:'합계',
+    mCash:'현금', mCard:'카드', payNone:'입금 없음',
+    src_golf:'골프(라운딩·카트)', src_restaurant:'레스토랑', src_front:'프론트', src_frontdesk:'프론트(수기)', src_proshop:'골프샵', src_banquet:'연회', src_room:'객실', src_etc:'기타', 'src_(기타)':'기타',
+    'cat_라운딩':'라운딩', 'cat_식음':'식음', 'cat_숙박':'숙박', 'cat_골프샵':'골프샵', 'cat_기타':'기타',
+    clOpen:'미마감', clFuture:'예정일 — 마감할 수 없습니다', clToday:'오늘', clDone:'마감 완료', clBy:'담당', clAt:'마감 시각', clCash:'현금 실사', clBook:'장부 현금', clDiff:'차이', clNote:'메모',
+    clBtn:'일 마감', clReopen:'마감 취소', clCashPh:'현금 실사액(선택)', clNotePh:'메모(선택)', clUnHint:n=>`미정산 체크아웃 ${n}건`,
+    clConfirm:(d,g,p,n)=>`${d} 정산을 마감합니다.\n매출 ${g} · 입금 ${p}\n미정산 체크아웃 ${n}건\n마감 뒤에는 이 날 숫자가 고정됩니다. 계속할까요?`,
+    clDoneToast:'마감했습니다', clReopenConfirm:d=>`${d} 마감을 취소합니다. 다시 마감할 때까지 미마감 상태가 됩니다. 계속할까요?`, clReopened:'마감을 취소했습니다',
+    clFail:'마감 실패: ', clNoRpc:'마감 기능(SQL 156)이 아직 적용되지 않았습니다 — 관리자에게 알려 주세요',
+    clDrift:'마감 후 변경 있음', clDriftDetail:(a,b,c,d)=>`매출 ${a} → ${b} · 입금 ${c} → ${d}`, clSnapOk:'마감 당시와 일치', clDaysClosed:(n,m)=>`마감 ${n} / ${m}일`,
+    unNone:'미정산 체크아웃이 없습니다', unWalkin:'워크인', unOpen:n=>`미마감 ${n}`, unGo:'정산 화면 열기', unPaid:'정산됨', unDue:'미수', unOver:'과오납',
+    b2bTeams:'팀', b2bPax:'인원', b2bLodge:'숙박', b2bTrans:'송영', b2bTotal:'합계',
+    b2bNote:'인원=max(명단,예약) · 박수=귀국−입국 · 숙소 단가 · 송영 ¥6,000 · 대기 예약 제외 · 차감·가산 전. 현장 정산(이 보고서의 매출·입금)과는 별개의 돈입니다.',
+    noteRules:'날짜는 일본 시간 기준. 매출=청구(취소 제외, 税込) · 입금=결제(현금/카드) · 정산 완료=그날 마감(settled)한 계산서 · 미수 기말=그날까지 누적 청구−누적 입금. 체크인/체크아웃/재실은 예약 기준(대기 예약 제외).',
+    xlsxDone:'엑셀을 내려받았습니다', xlsxFail:'엑셀 생성 실패: ',
+    wd:['일','월','화','수','목','금','토'], weekRange:(a,b)=>`${a} ~ ${b}`, monthLbl:ym=>`${ym.slice(0,4)}년 ${Number(ym.slice(5,7))}월`, yearLbl:y=>`${y}년`,
+    printedAt:'인쇄', printedBy:'담당' },
+  en:{ step:'Settlement · Daily / Weekly / Monthly / Yearly', connHint:'Connection info is stored only in this browser.',
+    uDay:'Daily', uWeek:'Weekly', uMonth:'Monthly', uYear:'Yearly', today:'Today', print:'Print', xlsx:'Excel', reload:'Reload',
+    titleDay:'Daily settlement report', titleWeek:'Weekly settlement report', titleMonth:'Monthly settlement report', titleYear:'Yearly settlement report',
+    emptyConnect:'Connect to see the report.', loading:'Calculating…', loadFail:'Failed to load the report: ', needConnect:'Connect first',
+    connecting:'Connecting…', connected:'Connected', connFail:'Connection failed', connFailRetry:'Failed · retry', needUrlKey:'URL and key required', connectBtn:'Connect',
+    kSales:'Sales (tax incl.)', kNet:'Net', kTax:'Tax', kPay:'Receipts', kCash:'Cash', kCard:'Card', kSettled:'Settled', kAr:'Outstanding (end)', kArStart:'start',
+    kCiCo:'Check-in / out', kCi:'Check-in', kCo:'Check-out', kStay:'In-house', kWalkin:'Walk-in', kClosedDays:'Closed days', kUnset:'Charges without pay method',
+    uTeam:'teams', uPax:'pax', uCnt:'items', uDays:'days',
+    sCat:'Sales by category', sPay:'Receipts · by outlet', sDays:'By day', sMonths:'By month', sUnsettled:'Unsettled check-outs', sB2B:'B2B billing reference (Merit settlement basis)',
+    thCat:'Category', thN:'Items', thNet:'Net', thTax:'Tax', thGross:'Gross', thSource:'Outlet', thDate:'Date', thMonth:'Month', thSales:'Sales', thCash:'Cash', thCard:'Card', thPay:'Receipts',
+    thSettled:'Settled', thAr:'Outstanding', thCi:'Check-in', thCo:'Check-out', thClosed:'Closed', thTeam:'Team', thRep:'Rep.', thCoDate:'Check-out', thBalance:'Balance', thGrossT:'Charged', thPaid:'Paid', thStatus:'Status', thTotal:'Total',
+    mCash:'Cash', mCard:'Card', payNone:'No receipts',
+    src_golf:'Golf (rounds · carts)', src_restaurant:'Restaurant', src_front:'Front desk', src_frontdesk:'Front desk (manual)', src_proshop:'Pro shop', src_banquet:'Banquet', src_room:'Rooms', src_etc:'Other', 'src_(기타)':'Other',
+    'cat_라운딩':'Rounds', 'cat_식음':'F&B', 'cat_숙박':'Lodging', 'cat_골프샵':'Pro shop', 'cat_기타':'Other',
+    clOpen:'Not closed', clFuture:'Future date — cannot close', clToday:'Today', clDone:'Day closed', clBy:'By', clAt:'Closed at', clCash:'Cash counted', clBook:'Cash on books', clDiff:'Difference', clNote:'Note',
+    clBtn:'Close day', clReopen:'Reopen', clCashPh:'Cash counted (optional)', clNotePh:'Note (optional)', clUnHint:n=>`${n} unsettled check-out(s)`,
+    clConfirm:(d,g,p,n)=>`Close the settlement for ${d}.\nSales ${g} · Receipts ${p}\nUnsettled check-outs: ${n}\nAfter closing, the figures for this day are fixed. Continue?`,
+    clDoneToast:'Day closed', clReopenConfirm:d=>`Reopen ${d}? It stays open until closed again. Continue?`, clReopened:'Reopened',
+    clFail:'Close failed: ', clNoRpc:'Day close (SQL 156) is not applied yet — tell the administrator',
+    clDrift:'Changed after close', clDriftDetail:(a,b,c,d)=>`Sales ${a} → ${b} · Receipts ${c} → ${d}`, clSnapOk:'Matches the closing snapshot', clDaysClosed:(n,m)=>`Closed ${n} / ${m} days`,
+    unNone:'No unsettled check-outs', unWalkin:'Walk-in', unOpen:n=>`${n} open`, unGo:'Open settlement', unPaid:'Settled', unDue:'Due', unOver:'Overpaid',
+    b2bTeams:'Teams', b2bPax:'Pax', b2bLodge:'Lodging', b2bTrans:'Transfers', b2bTotal:'Total',
+    b2bNote:'Pax = max(roster, booking) · nights = return − arrival · lodging rate · transfer ¥6,000 · waitlist excluded · before deductions. Separate from on-site settlement (sales/receipts above).',
+    noteRules:'Dates are Japan time. Sales = charges (voids excluded, tax incl.) · Receipts = payments (cash/card) · Settled = folios settled that day · Outstanding (end) = cumulative charges − cumulative receipts up to that day. Check-in/out/in-house are booking based (waitlist excluded).',
+    xlsxDone:'Excel downloaded', xlsxFail:'Excel failed: ',
+    wd:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], weekRange:(a,b)=>`${a} – ${b}`, monthLbl:ym=>ym, yearLbl:y=>String(y),
+    printedAt:'Printed', printedBy:'By' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k,...a){ const d=L[lang()]||L.ja; let v=(d[k]!==undefined)?d[k]:L.ja[k]; if(v===undefined) return k;
+  if(typeof v==='function') return v(...a); return v; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function toast(msg,cls){ const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.textContent=msg;
+  $('#toast').appendChild(t); setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); },2600); }
+function setConn(t,c){ const e=$('#conn-state'); if(e){ e.textContent=t; e.className='pill'+(c?' '+c:''); } }
+function yen(n){ n=Math.round(Number(n||0)); return (n<0?'-':'')+'¥'+Math.abs(n).toLocaleString('ja-JP'); }
+function num(n){ return Number(n||0).toLocaleString('ja-JP'); }
+function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||null; }catch(e){ return null; } }
+function tsShort(ts){ return (window.__so_ts?__so_ts(ts,'short'):String(ts||'')); }
+
+// ── 날짜(JST · 문자열 연산 — 브라우저 시간대에 흔들리지 않게 UTC 로 계산) ──
+function jstToday(){ return new Date(Date.now()+9*3600e3).toISOString().slice(0,10); }
+function addDays(ds,n){ const t=Date.UTC(+ds.slice(0,4),+ds.slice(5,7)-1,+ds.slice(8,10)); return new Date(t+n*86400e3).toISOString().slice(0,10); }
+function wdIdx(ds){ return new Date(ds+'T00:00:00Z').getUTCDay(); }
+function wdName(ds){ return tx('wd')[wdIdx(ds)]; }
+function monthEnd(ym){ const y=+ym.slice(0,4), m=+ym.slice(5,7); return new Date(Date.UTC(y,m,0)).toISOString().slice(0,10); }
+function md(ds){ return Number(ds.slice(5,7))+'/'+Number(ds.slice(8,10)); }
+function rangeOf(unit, base){
+  if(unit==='day') return {from:base, to:base};
+  if(unit==='week'){ const mon=addDays(base, -((wdIdx(base)+6)%7)); return {from:mon, to:addDays(mon,6)}; }   // 월~일
+  if(unit==='month'){ const ym=base.slice(0,7); return {from:ym+'-01', to:monthEnd(ym)}; }
+  const y=base.slice(0,4); return {from:y+'-01-01', to:y+'-12-31'};
+}
+function shiftBase(n){
+  if(UNIT==='day') BASE=addDays(BASE,n);
+  else if(UNIT==='week') BASE=addDays(BASE,7*n);
+  else if(UNIT==='month'){ const y=+BASE.slice(0,4), m=+BASE.slice(5,7); BASE=new Date(Date.UTC(y,m-1+n,1)).toISOString().slice(0,10); }
+  else { BASE=(+BASE.slice(0,4)+n)+'-01-01'; }
+}
+function rangeText(r){
+  if(UNIT==='day') return `${r.from} (${wdName(r.from)})`;
+  if(UNIT==='week') return tx('weekRange', `${r.from} (${wdName(r.from)})`, `${r.to} (${wdName(r.to)})`);
+  if(UNIT==='month') return tx('monthLbl', r.from.slice(0,7));
+  return tx('yearLbl', r.from.slice(0,4));
+}
+function titleOf(){ return tx({day:'titleDay',week:'titleWeek',month:'titleMonth',year:'titleYear'}[UNIT]); }
+function catLabel(c){ const v=tx('cat_'+c); return v==='cat_'+c?c:v; }
+function srcLabel(s){ const v=tx('src_'+s); return v==='src_'+s?s:v; }
+
+// ── 정적 라벨 ──
+function applyStatic(){
+  $('#t-step').textContent=tx('step'); $('#t-connHint').textContent=tx('connHint');
+  $('#u-day').textContent=tx('uDay'); $('#u-week').textContent=tx('uWeek'); $('#u-month').textContent=tx('uMonth'); $('#u-year').textContent=tx('uYear');
+  $('#nav-today').textContent=tx('today'); $('#btn-print').textContent=tx('print'); $('#btn-xlsx').textContent=tx('xlsx'); $('#btn-reload').textContent=tx('reload');
+  const e=$('#t-empty'); if(e) e.textContent=tx('emptyConnect');
+  $('#t-note').textContent=tx('noteRules');
+  const cb=$('#btn-connect'); if(cb&&!supa) cb.textContent=tx('connectBtn');
+}
+window.onSaizenLangChange=function(){ applyStatic(); if(DATA) render(); else renderLabel(); };
+
+// ── 입력 동기화 ──
+function syncInputs(){
+  $('#p-date').style.display=(UNIT==='day'||UNIT==='week')?'':'none';
+  $('#p-month').style.display=(UNIT==='month')?'':'none';
+  $('#p-year').style.display=(UNIT==='year')?'':'none';
+  $('#p-date').value=BASE; $('#p-month').value=BASE.slice(0,7); $('#p-year').value=BASE.slice(0,4);
+  $$('.chip[data-u]').forEach(b=>b.classList.toggle('on', b.dataset.u===UNIT));
+  const u=new URL(location.href); u.searchParams.set('unit',UNIT); u.searchParams.set('d',BASE); history.replaceState(null,'',u.toString());
+}
+function setUnit(u){ UNIT=u; syncInputs(); load(); }
+function renderLabel(){
+  const r=rangeOf(UNIT,BASE);
+  $('#rangelbl').innerHTML=`<span>${esc(rangeText(r))}</span><small>${esc(titleOf())}</small>`;
+}
+
+// ── 로드 ──
+async function load(){
+  renderLabel();
+  if(!supa){ return; }
+  const r=rangeOf(UNIT,BASE);
+  LOADING=true; $('#report').innerHTML=`<div class="empty">${esc(tx('loading'))}</div>`;
+  $('#btn-print').disabled=true; $('#btn-xlsx').disabled=true;
+  const {data,error}=await supa.rpc('settle_report',{p_from:r.from, p_to:r.to});
+  LOADING=false;
+  if(error){ DATA=null; $('#report').innerHTML=`<div class="empty">${esc(tx('loadFail')+error.message)}</div>`; return; }
+  DATA=data||null; render();
+}
+
+// ── 버킷(연보 = 월별) ──
+function monthBuckets(days){
+  const m={}; days.forEach(d=>{ const k=d.d.slice(0,7); const b=m[k]=m[k]||{ym:k, days:[], gross:0,net:0,tax:0,ch_n:0,pay:0,cash:0,card:0,pay_n:0,set_n:0,set_amount:0,ci_teams:0,ci_pax:0,co_teams:0,co_pax:0,wk_teams:0,wk_pax:0,closed:0,past:0,ar_end:0};
+    b.days.push(d); ['gross','net','tax','ch_n','pay','cash','card','pay_n','set_n','set_amount','ci_teams','ci_pax','co_teams','co_pax','wk_teams','wk_pax'].forEach(k=>{ b[k]+=Number(d[k]||0); });
+    if(d.closed) b.closed++; if(d.d<=DATA.range.today) b.past++; b.ar_end=Number(d.ar_end||0); });
+  return Object.keys(m).sort().map(k=>m[k]);
+}
+
+// ── 그리기 ──
+function render(){
+  if(!DATA){ return; }
+  const r=DATA.range, days=DATA.days||[], tot=DATA.totals||{}, today=r.today;
+  renderLabel();
+  let html='';
+  if(UNIT==='day') html+=closeHTML(days[0]||{d:r.from}, today);
+  html+=kpiHTML(tot, days, today);
+  html+=`<div class="grid2">${catHTML(DATA.by_cat||[], tot)}${payHTML(tot, DATA.by_source||[])}</div>`;
+  if(UNIT==='week'||UNIT==='month') html+=daysHTML(days, today);
+  if(UNIT==='year') html+=monthsHTML(monthBuckets(days), today);
+  if(UNIT!=='year') html+=unsettledHTML(DATA.unsettled||[]);
+  if(UNIT==='month'||UNIT==='year') html+=b2bHTML(DATA.b2b||{});
+  $('#report').innerHTML=html;
+  wire();
+  $('#btn-print').disabled=false; $('#btn-xlsx').disabled=false;
+  $('#ph-title').textContent=`${titleOf()} · ${rangeText(r)}`;
+  const u=curUser(); $('#ph-meta').textContent=`${tx('printedAt')} ${tsShort(new Date().toISOString())}${u?' · '+tx('printedBy')+' '+u:''}`;
+}
+function kpiHTML(tot, days, today){
+  const arCls=Number(tot.ar_end||0)>0?'due':(Number(tot.ar_end||0)<0?'due':'ok');
+  let third='';
+  if(UNIT==='day'){ const d=days[0]||{}; third=`<div class="kpi"><div class="l">${esc(tx('kStay'))}</div><div class="v">${num(d.stay_pax)}<small>${esc(tx('uPax'))}</small></div><div class="sub">${esc(tx('kWalkin'))} ${num(d.wk_teams)} ${esc(tx('uTeam'))} · ${num(d.wk_pax)} ${esc(tx('uPax'))}</div></div>`; }
+  else { third=`<div class="kpi ${Number(tot.closed_days||0)>=Number(tot.past_days||0)&&Number(tot.past_days||0)>0?'ok':''}"><div class="l">${esc(tx('kClosedDays'))}</div><div class="v">${num(tot.closed_days)}<small>/ ${num(tot.past_days)} ${esc(tx('uDays'))}</small></div><div class="sub">${esc(tx('kWalkin'))} ${num(tot.wk_teams)} ${esc(tx('uTeam'))} · ${num(tot.wk_pax)} ${esc(tx('uPax'))}</div></div>`; }
+  return `<div class="kpis">
+    <div class="kpi rev"><div class="l">${esc(tx('kSales'))}</div><div class="v">${yen(tot.gross)}</div><div class="sub">${esc(tx('kNet'))} ${yen(tot.net)} · ${esc(tx('kTax'))} ${yen(tot.tax)} · ${num(tot.ch_n)} ${esc(tx('uCnt'))}</div></div>
+    <div class="kpi pay"><div class="l">${esc(tx('kPay'))}</div><div class="v">${yen(tot.pay)}</div><div class="sub">${esc(tx('kCash'))} ${yen(tot.cash)} · ${esc(tx('kCard'))} ${yen(tot.card)} · ${num(tot.pay_n)} ${esc(tx('uCnt'))}</div></div>
+    <div class="kpi ok"><div class="l">${esc(tx('kSettled'))}</div><div class="v">${num(tot.set_n)}<small>${esc(tx('uCnt'))}</small></div><div class="sub">${yen(tot.set_amount)}</div></div>
+    <div class="kpi ${arCls}"><div class="l">${esc(tx('kAr'))}</div><div class="v">${yen(tot.ar_end)}</div><div class="sub">${esc(tx('kArStart'))} ${yen(tot.ar_start)}${Number(tot.unset||0)?' · '+esc(tx('kUnset'))+' '+yen(tot.unset):''}</div></div>
+    <div class="kpi"><div class="l">${esc(tx('kCiCo'))}</div><div class="v">${num(tot.ci_teams)}<small>${esc(tx('uTeam'))}</small> / ${num(tot.co_teams)}<small>${esc(tx('uTeam'))}</small></div><div class="sub">${esc(tx('kCi'))} ${num(tot.ci_pax)} ${esc(tx('uPax'))} · ${esc(tx('kCo'))} ${num(tot.co_pax)} ${esc(tx('uPax'))}</div></div>
+    ${third}
+  </div>`;
+}
+function catHTML(byCat, tot){
+  const map={}; byCat.forEach(x=>{ map[x.category]=x; });
+  const keys=CATS.concat(byCat.map(x=>x.category).filter(c=>!CATS.includes(c)));
+  const rows=keys.map(c=>{ const x=map[c]; if(!x) return ''; return `<tr><td class="l">${esc(catLabel(c))}</td><td>${num(x.n)}</td><td>${yen(x.net)}</td><td>${yen(x.tax)}</td><td><b>${yen(x.gross)}</b></td></tr>`; }).join('');
+  return `<div class="box"><h3>${esc(tx('sCat'))}<span class="cnt">${num(tot.ch_n)} ${esc(tx('uCnt'))}</span></h3><div class="bd">
+    <table class="t"><thead><tr><th class="l">${esc(tx('thCat'))}</th><th>${esc(tx('thN'))}</th><th>${esc(tx('thNet'))}</th><th>${esc(tx('thTax'))}</th><th>${esc(tx('thGross'))}</th></tr></thead>
+    <tbody>${rows||`<tr><td class="l" colspan="5"><div class="empty">—</div></td></tr>`}
+    <tr class="tot"><td class="l">${esc(tx('thTotal'))}</td><td>${num(tot.ch_n)}</td><td>${yen(tot.net)}</td><td>${yen(tot.tax)}</td><td>${yen(tot.gross)}</td></tr></tbody></table></div></div>`;
+}
+function payHTML(tot, bySrc){
+  const srcRows=bySrc.map(x=>`<tr><td class="l">${esc(srcLabel(x.source))}</td><td>${num(x.n)}</td><td>${yen(x.gross)}</td></tr>`).join('');
+  return `<div class="box"><h3>${esc(tx('sPay'))}<span class="cnt">${num(tot.pay_n)} ${esc(tx('uCnt'))}</span></h3><div class="bd">
+    <table class="t" style="margin-bottom:12px"><thead><tr><th class="l">${esc(tx('kPay'))}</th><th>${esc(tx('thCash'))}</th><th>${esc(tx('thCard'))}</th><th>${esc(tx('thPay'))}</th></tr></thead>
+    <tbody><tr><td class="l">${esc(tx('kPay'))}</td><td>${yen(tot.cash)}</td><td>${yen(tot.card)}</td><td><b>${yen(tot.pay)}</b></td></tr></tbody></table>
+    <table class="t"><thead><tr><th class="l">${esc(tx('thSource'))}</th><th>${esc(tx('thN'))}</th><th>${esc(tx('thGross'))}</th></tr></thead>
+    <tbody>${srcRows||`<tr><td class="l" colspan="3"><div class="empty">—</div></td></tr>`}</tbody></table></div></div>`;
+}
+function closedCell(d){
+  if(!d.closed) return d.d>DATA.range.today?'':`<span class="badge mute">${esc(tx('clOpen'))}</span>`;
+  const drift=isDrift(d);
+  return `<span class="badge ${drift?'warn':'ok'}">${esc(drift?tx('clDrift'):tx('clDone'))}</span>`;
+}
+function daysHTML(days, today){
+  const rows=days.map(d=>{ const cls=[d.d===today?'today':'', d.d>today?'future':'', 'clk'].filter(Boolean).join(' ');
+    return `<tr class="${cls}" data-d="${esc(d.d)}"><td class="l">${esc(md(d.d))} (${esc(wdName(d.d))})</td><td>${yen(d.gross)}</td><td>${yen(d.cash)}</td><td>${yen(d.card)}</td><td>${yen(d.pay)}</td><td>${num(d.set_n)}</td><td class="${Number(d.ar_end||0)>0?'neg':''}">${yen(d.ar_end)}</td><td>${num(d.ci_teams)} / ${num(d.ci_pax)}</td><td>${num(d.co_teams)} / ${num(d.co_pax)}</td><td class="l">${closedCell(d)}</td></tr>`; }).join('');
+  const t=DATA.totals||{};
+  return `<div class="box"><h3>${esc(tx('sDays'))}<span class="cnt">${esc(tx('clDaysClosed', num(t.closed_days), num(t.past_days)))}</span></h3><div class="bd">
+    <table class="t"><thead><tr><th class="l">${esc(tx('thDate'))}</th><th>${esc(tx('thSales'))}</th><th>${esc(tx('thCash'))}</th><th>${esc(tx('thCard'))}</th><th>${esc(tx('thPay'))}</th><th>${esc(tx('thSettled'))}</th><th>${esc(tx('thAr'))}</th><th>${esc(tx('thCi'))} (${esc(tx('uTeam'))}/${esc(tx('uPax'))})</th><th>${esc(tx('thCo'))} (${esc(tx('uTeam'))}/${esc(tx('uPax'))})</th><th class="l">${esc(tx('thClosed'))}</th></tr></thead>
+    <tbody>${rows}<tr class="tot"><td class="l">${esc(tx('thTotal'))}</td><td>${yen(t.gross)}</td><td>${yen(t.cash)}</td><td>${yen(t.card)}</td><td>${yen(t.pay)}</td><td>${num(t.set_n)}</td><td>${yen(t.ar_end)}</td><td>${num(t.ci_teams)} / ${num(t.ci_pax)}</td><td>${num(t.co_teams)} / ${num(t.co_pax)}</td><td class="l"></td></tr></tbody></table></div></div>`;
+}
+function monthsHTML(buckets, today){
+  const rows=buckets.map(b=>{ const cls=[b.ym===today.slice(0,7)?'today':'', b.ym>today.slice(0,7)?'future':'', 'clk'].filter(Boolean).join(' ');
+    return `<tr class="${cls}" data-ym="${esc(b.ym)}"><td class="l">${esc(tx('monthLbl',b.ym))}</td><td>${yen(b.gross)}</td><td>${yen(b.cash)}</td><td>${yen(b.card)}</td><td>${yen(b.pay)}</td><td>${num(b.set_n)}</td><td class="${b.ar_end>0?'neg':''}">${yen(b.ar_end)}</td><td>${num(b.ci_teams)} / ${num(b.ci_pax)}</td><td>${num(b.co_teams)} / ${num(b.co_pax)}</td><td>${b.past?`${num(b.closed)} / ${num(b.past)}`:''}</td></tr>`; }).join('');
+  const t=DATA.totals||{};
+  return `<div class="box"><h3>${esc(tx('sMonths'))}<span class="cnt">${esc(tx('clDaysClosed', num(t.closed_days), num(t.past_days)))}</span></h3><div class="bd">
+    <table class="t"><thead><tr><th class="l">${esc(tx('thMonth'))}</th><th>${esc(tx('thSales'))}</th><th>${esc(tx('thCash'))}</th><th>${esc(tx('thCard'))}</th><th>${esc(tx('thPay'))}</th><th>${esc(tx('thSettled'))}</th><th>${esc(tx('thAr'))}</th><th>${esc(tx('thCi'))} (${esc(tx('uTeam'))}/${esc(tx('uPax'))})</th><th>${esc(tx('thCo'))} (${esc(tx('uTeam'))}/${esc(tx('uPax'))})</th><th>${esc(tx('thClosed'))}</th></tr></thead>
+    <tbody>${rows}<tr class="tot"><td class="l">${esc(tx('thTotal'))}</td><td>${yen(t.gross)}</td><td>${yen(t.cash)}</td><td>${yen(t.card)}</td><td>${yen(t.pay)}</td><td>${num(t.set_n)}</td><td>${yen(t.ar_end)}</td><td>${num(t.ci_teams)} / ${num(t.ci_pax)}</td><td>${num(t.co_teams)} / ${num(t.co_pax)}</td><td>${num(t.closed_days)} / ${num(t.past_days)}</td></tr></tbody></table></div></div>`;
+}
+function unsettledHTML(list){
+  const rows=list.map(u=>{ const bal=Number(u.balance||0); const st=bal>0?`<span class="badge err">${esc(tx('unDue'))}</span>`:(bal<0?`<span class="badge warn">${esc(tx('unOver'))}</span>`:`<span class="badge ok">${esc(tx('unPaid'))}</span>`);
+    const open=Number(u.open_n||0)?` <span class="badge mute">${esc(tx('unOpen',u.open_n))}</span>`:'';
+    const ym=u.ym||String(u.co_date||'').slice(0,7);
+    return `<tr><td class="l"><span class="tag">${esc(u.tag||'')}</span>${u.walkin?` <span class="badge mute">${esc(tx('unWalkin'))}</span>`:''}</td><td class="l">${esc(u.rep_name||'')}</td><td class="l">${esc(u.co_date||'')}</td><td>${yen(u.gross)}</td><td>${yen(u.paid)}</td><td class="${bal>0?'neg':''}">${yen(bal)}</td><td class="l">${st}${open}</td><td class="l noprint"><a class="unlink" href="settle.html?ym=${encodeURIComponent(ym)}&seq=${encodeURIComponent(u.event_seq)}">${esc(tx('unGo'))}</a></td></tr>`; }).join('');
+  return `<div class="box"><h3>${esc(tx('sUnsettled'))}<span class="cnt">${num(list.length)} ${esc(tx('uTeam'))}</span></h3><div class="bd">
+    ${list.length?`<table class="t"><thead><tr><th class="l">${esc(tx('thTeam'))}</th><th class="l">${esc(tx('thRep'))}</th><th class="l">${esc(tx('thCoDate'))}</th><th>${esc(tx('thGrossT'))}</th><th>${esc(tx('thPaid'))}</th><th>${esc(tx('thBalance'))}</th><th class="l">${esc(tx('thStatus'))}</th><th class="l noprint"></th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="empty">${esc(tx('unNone'))}</div>`}
+  </div></div>`;
+}
+function b2bHTML(b){
+  return `<div class="box"><h3>${esc(tx('sB2B'))}</h3><div class="bd">
+    <table class="t"><thead><tr><th>${esc(tx('b2bTeams'))}</th><th>${esc(tx('b2bPax'))}</th><th>${esc(tx('b2bLodge'))}</th><th>${esc(tx('b2bTrans'))}</th><th>${esc(tx('b2bTotal'))}</th></tr></thead>
+    <tbody><tr><td>${num(b.teams)}</td><td>${num(b.pax)}</td><td>${yen(b.lodge)}</td><td>${yen(b.trans)}</td><td><b>${yen(b.total)}</b></td></tr></tbody></table>
+    <div class="note" style="margin-top:8px">${esc(tx('b2bNote'))}</div></div></div>`;
+}
+// 마감 스냅샷과 지금 숫자가 다른가(매출·입금)
+function isDrift(d){ const s=d.closed&&d.closed.snap; if(!s) return false; return Number(s.gross||0)!==Number(d.gross||0) || Number(s.pay||0)!==Number(d.pay||0); }
+function closeHTML(d, today){
+  const un=(DATA.unsettled||[]).length;
+  if(d.d>today){
+    return `<div class="close future"><div class="st"><span class="badge mute">${esc(tx('clFuture'))}</span>${esc(d.d)} (${esc(wdName(d.d))})</div></div>`;
+  }
+  if(d.closed){
+    const c=d.closed; const drift=isDrift(d); const s=c.snap||{};
+    const cashDiff=(c.cash_counted==null)?null:(Number(c.cash_counted)-Number(d.cash||0));
+    return `<div class="close done">
+      <div><div class="st">${esc(tx('clDone'))} <span class="badge ${drift?'warn':'ok'}">${esc(drift?tx('clDrift'):tx('clSnapOk'))}</span>${d.d===today?` <span class="badge mute">${esc(tx('clToday'))}</span>`:''}</div>
+        <div class="meta">${esc(tx('clAt'))} <b>${esc(tsShort(c.closed_at))}</b> · ${esc(tx('clBy'))} <b>${esc(c.closed_by||'-')}</b>
+          ${cashDiff!=null?` · ${esc(tx('clCash'))} <b>${yen(c.cash_counted)}</b> / ${esc(tx('clBook'))} <b>${yen(d.cash)}</b> · ${esc(tx('clDiff'))} <span class="diff ${cashDiff===0?'zero':'off'}">${yen(cashDiff)}</span>`:''}
+          ${c.note?`<br>${esc(tx('clNote'))}: ${esc(c.note)}`:''}
+          ${drift?`<br>${esc(tx('clDriftDetail', yen(s.gross), yen(d.gross), yen(s.pay), yen(d.pay)))}`:''}
+        </div></div>
+      <div class="frm"><button class="btn danger sm" id="btn-reopen" type="button">${esc(tx('clReopen'))}</button></div>
+    </div>`;
+  }
+  return `<div class="close">
+    <div><div class="st"><span class="badge warn">${esc(tx('clOpen'))}</span>${esc(d.d)} (${esc(wdName(d.d))})${d.d===today?` <span class="badge mute">${esc(tx('clToday'))}</span>`:''}</div>
+      <div class="meta">${esc(tx('kSales'))} <b>${yen(d.gross)}</b> · ${esc(tx('kPay'))} <b>${yen(d.pay)}</b> (${esc(tx('kCash'))} ${yen(d.cash)} · ${esc(tx('kCard'))} ${yen(d.card)}) · ${esc(tx('clUnHint',un))}</div></div>
+    <div class="frm">
+      <label for="cl-cash">${esc(tx('clCash'))}</label><input class="inp" id="cl-cash" type="number" step="1" placeholder="${esc(tx('clCashPh'))}" style="width:150px">
+      <input class="inp" id="cl-note" type="text" placeholder="${esc(tx('clNotePh'))}" style="width:200px">
+      <button class="btn sm" id="btn-close" type="button">${esc(tx('clBtn'))}</button>
+    </div>
+  </div>`;
+}
+function wire(){
+  const bc=$('#btn-close'); if(bc) bc.addEventListener('click', closeDay);
+  const br=$('#btn-reopen'); if(br) br.addEventListener('click', reopenDay);
+  $$('tr.clk[data-d]').forEach(tr=>tr.addEventListener('click',()=>{ BASE=tr.dataset.d; setUnit('day'); }));
+  $$('tr.clk[data-ym]').forEach(tr=>tr.addEventListener('click',()=>{ BASE=tr.dataset.ym+'-01'; setUnit('month'); }));
+}
+// ── 일 마감 / 취소 ──
+async function closeDay(){
+  if(!supa||!DATA) return;
+  const d=(DATA.days||[])[0]; if(!d) return;
+  const cashRaw=$('#cl-cash').value.trim(); const cash=cashRaw===''?null:Math.round(Number(cashRaw));
+  const note=$('#cl-note').value.trim();
+  const un=(DATA.unsettled||[]).length;
+  if(!confirm(tx('clConfirm', `${d.d} (${wdName(d.d)})`, yen(d.gross), yen(d.pay), un))) return;
+  const btn=$('#btn-close'); if(btn) btn.disabled=true;
+  try{
+    const {error}=await supa.rpc('settle_day_close',{p_date:d.d, p_cash:cash, p_note:note||null, p_by:curUser()});
+    if(error) throw error;
+    toast(tx('clDoneToast'),'ok'); await load();
+  }catch(e){
+    const msg=String(e.message||e);
+    toast((/function|schema cache|does not exist/i.test(msg)?tx('clNoRpc'):tx('clFail')+msg),'err');
+    if(btn) btn.disabled=false;
+  }
+}
+async function reopenDay(){
+  if(!supa||!DATA) return;
+  const d=(DATA.days||[])[0]; if(!d||!d.closed) return;
+  if(!confirm(tx('clReopenConfirm', `${d.d} (${wdName(d.d)})`))) return;
+  const btn=$('#btn-reopen'); if(btn) btn.disabled=true;
+  try{
+    const {error}=await supa.rpc('settle_day_reopen',{p_date:d.d, p_by:curUser()});
+    if(error) throw error;
+    toast(tx('clReopened'),'ok'); await load();
+  }catch(e){ toast(tx('clFail')+String(e.message||e),'err'); if(btn) btn.disabled=false; }
+}
+
+// ── 인쇄 ──
+function printReport(){ if(!DATA) return; window.print(); }
+
+// ── 엑셀(ExcelJS · 네이비/모노톤 · 영문 파일명) ──
+function fileName(){ const f=DATA.range.from.replace(/-/g,''); if(UNIT==='day') return `settle_daily_${f}.xlsx`; if(UNIT==='week') return `settle_weekly_${f}.xlsx`; if(UNIT==='month') return `settle_monthly_${f.slice(0,6)}.xlsx`; return `settle_yearly_${f.slice(0,4)}.xlsx`; }
+async function downloadXlsx(){
+  if(!DATA) return;
+  if(!window.ExcelJS){ toast(tx('xlsxFail')+'ExcelJS','err'); return; }
+  const NAVY='FF1A2540', SOFT='FFEAF0F7', LINE='FFB9C4D6';
+  const bAll=()=>{ const s={style:'thin',color:{argb:LINE}}; return {top:s,left:s,bottom:s,right:s}; };
+  const head=(ws,row,heads)=>{ heads.forEach((h,i)=>{ const c=ws.getRow(row).getCell(i+1); c.value=h; c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:NAVY}}; c.border=bAll(); c.alignment={horizontal:i?'right':'left'}; }); };
+  const put=(ws,row,vals,yenCols,bold)=>{ vals.forEach((v,i)=>{ const c=ws.getRow(row).getCell(i+1); c.value=v; c.border=bAll(); c.alignment={horizontal:(typeof v==='number')?'right':'left'};
+      if(yenCols&&yenCols.includes(i)) c.numFmt='¥#,##0'; if(bold){ c.font={bold:true,color:{argb:NAVY}}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:SOFT}}; } }); };
+  const title=(ws,text,cols)=>{ ws.mergeCells(1,1,1,cols); const c=ws.getCell('A1'); c.value=text; c.font={bold:true,size:14,color:{argb:NAVY}}; };
+  const N=v=>Number(v||0);
+  try{
+    const wb=new ExcelJS.Workbook(); wb.creator='SaiZen';
+    const r=DATA.range, t=DATA.totals||{}, days=DATA.days||[];
+    const ttl=`${titleOf()} ${rangeText(r)}`;
+    // 要約
+    const w1=wb.addWorksheet('要約'); w1.columns=[{width:30},{width:20},{width:14}];
+    title(w1, ttl, 3);
+    let rr=3;
+    const line=(k,v,isYen,unit)=>{ put(w1,rr,[k,v,unit||''], isYen?[1]:[]); rr++; };
+    line(tx('kSales'), N(t.gross), true); line(tx('kNet'), N(t.net), true); line(tx('kTax'), N(t.tax), true); line(tx('thN'), N(t.ch_n), false, tx('uCnt'));
+    line(tx('kPay'), N(t.pay), true); line(tx('kCash'), N(t.cash), true); line(tx('kCard'), N(t.card), true); line(tx('kPay')+' '+tx('thN'), N(t.pay_n), false, tx('uCnt'));
+    line(tx('kSettled'), N(t.set_n), false, tx('uCnt')); line(tx('kSettled')+' '+tx('thGross'), N(t.set_amount), true);
+    line(tx('kAr')+' ('+tx('kArStart')+')', N(t.ar_start), true); line(tx('kAr'), N(t.ar_end), true);
+    line(tx('kCi')+' '+tx('uTeam'), N(t.ci_teams)); line(tx('kCi')+' '+tx('uPax'), N(t.ci_pax)); line(tx('kCo')+' '+tx('uTeam'), N(t.co_teams)); line(tx('kCo')+' '+tx('uPax'), N(t.co_pax));
+    line(tx('kWalkin')+' '+tx('uTeam'), N(t.wk_teams)); line(tx('kWalkin')+' '+tx('uPax'), N(t.wk_pax));
+    line(tx('kClosedDays'), `${N(t.closed_days)} / ${N(t.past_days)}`);
+    if(UNIT==='day'){ const d=days[0]||{}; line(tx('kStay'), N(d.stay_pax), false, tx('uPax'));
+      if(d.closed){ line(tx('clDone'), `${tsShort(d.closed.closed_at)} · ${d.closed.closed_by||'-'}`); if(d.closed.cash_counted!=null){ line(tx('clCash'), N(d.closed.cash_counted), true); line(tx('clDiff'), N(d.closed.cash_counted)-N(d.cash), true); } if(d.closed.note) line(tx('clNote'), d.closed.note); }
+      else line(tx('thClosed'), d.d>r.today?tx('clFuture'):tx('clOpen')); }
+    // 区分別
+    const w2=wb.addWorksheet('区分別'); w2.columns=[{width:18},{width:10},{width:14},{width:13},{width:14}];
+    title(w2, ttl, 5); head(w2,3,[tx('thCat'),tx('thN'),tx('thNet'),tx('thTax'),tx('thGross')]);
+    let r2=4; const byCat=DATA.by_cat||[]; const map={}; byCat.forEach(x=>{ map[x.category]=x; });
+    CATS.concat(byCat.map(x=>x.category).filter(c=>!CATS.includes(c))).forEach(c=>{ const x=map[c]; if(!x) return; put(w2,r2,[catLabel(c),N(x.n),N(x.net),N(x.tax),N(x.gross)],[2,3,4]); r2++; });
+    put(w2,r2,[tx('thTotal'),N(t.ch_n),N(t.net),N(t.tax),N(t.gross)],[2,3,4],true);
+    // 店舗別
+    const w3=wb.addWorksheet('店舗別'); w3.columns=[{width:24},{width:10},{width:14}];
+    title(w3, ttl, 3); head(w3,3,[tx('thSource'),tx('thN'),tx('thGross')]);
+    let r3=4; (DATA.by_source||[]).forEach(x=>{ put(w3,r3,[srcLabel(x.source),N(x.n),N(x.gross)],[2]); r3++; });
+    // 日別 / 月別
+    if(UNIT!=='day'){
+      const isY=UNIT==='year';
+      const w4=wb.addWorksheet(isY?'月別':'日別'); w4.columns=[{width:14},{width:14},{width:13},{width:13},{width:14},{width:9},{width:14},{width:9},{width:9},{width:9},{width:9},{width:12}];
+      title(w4, ttl, 12); head(w4,3,[isY?tx('thMonth'):tx('thDate'),tx('thSales'),tx('thCash'),tx('thCard'),tx('thPay'),tx('thSettled'),tx('thAr'),tx('thCi')+' '+tx('uTeam'),tx('thCi')+' '+tx('uPax'),tx('thCo')+' '+tx('uTeam'),tx('thCo')+' '+tx('uPax'),tx('thClosed')]);
+      let r4=4;
+      const rows=isY?monthBuckets(days):days;
+      rows.forEach(d=>{ const lbl=isY?d.ym:`${d.d} (${wdName(d.d)})`; const closed=isY?`${d.closed} / ${d.past}`:(d.closed?tx('clDone'):(d.d>r.today?'':tx('clOpen')));
+        put(w4,r4,[lbl,N(d.gross),N(d.cash),N(d.card),N(d.pay),N(d.set_n),N(d.ar_end),N(d.ci_teams),N(d.ci_pax),N(d.co_teams),N(d.co_pax),closed],[1,2,3,4,6]); r4++; });
+      put(w4,r4,[tx('thTotal'),N(t.gross),N(t.cash),N(t.card),N(t.pay),N(t.set_n),N(t.ar_end),N(t.ci_teams),N(t.ci_pax),N(t.co_teams),N(t.co_pax),`${N(t.closed_days)} / ${N(t.past_days)}`],[1,2,3,4,6],true);
+    }
+    // 未精算
+    if(UNIT!=='year'){
+      const w5=wb.addWorksheet('未精算'); w5.columns=[{width:12},{width:16},{width:13},{width:14},{width:14},{width:14},{width:12}];
+      title(w5, ttl, 7); head(w5,3,[tx('thTeam'),tx('thRep'),tx('thCoDate'),tx('thGrossT'),tx('thPaid'),tx('thBalance'),tx('thStatus')]);
+      let r5=4; (DATA.unsettled||[]).forEach(u=>{ const bal=N(u.balance); put(w5,r5,[u.tag||'',(u.walkin?tx('unWalkin')+' ':'')+(u.rep_name||''),u.co_date||'',N(u.gross),N(u.paid),bal,bal>0?tx('unDue'):(bal<0?tx('unOver'):tx('unPaid'))],[3,4,5]); r5++; });
+      if(r5===4) put(w5,4,[tx('unNone')]);
+    }
+    // B2B 参考
+    if(UNIT==='month'||UNIT==='year'){
+      const b=DATA.b2b||{}; const w6=wb.addWorksheet('B2B参考'); w6.columns=[{width:10},{width:10},{width:16},{width:16},{width:16}];
+      title(w6, ttl+' · '+tx('sB2B'), 5); head(w6,3,[tx('b2bTeams'),tx('b2bPax'),tx('b2bLodge'),tx('b2bTrans'),tx('b2bTotal')]);
+      put(w6,4,[N(b.teams),N(b.pax),N(b.lodge),N(b.trans),N(b.total)],[2,3,4]); w6.getCell('A6').value=tx('b2bNote');
+    }
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fileName(); document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1500);
+    toast(tx('xlsxDone'),'ok');
+  }catch(e){ toast(tx('xlsxFail')+String(e.message||e),'err'); }
+}
+
+// ── 연결 ──
+function loadCreds(){ $('#sb-url').value=localStorage.getItem('saizen_sb_url')||''; $('#sb-key').value=localStorage.getItem('saizen_sb_key')||''; }
+async function connect(){
+  const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
+  if(!url||!key){ setConn(tx('needUrlKey'),'err'); return; }
+  localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.disabled=true; btn.textContent=tx('connecting'); btn.classList.remove('connected');
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {error}=await supa.from('bookings').select('event_seq',{count:'exact',head:true});
+    if(error) throw error;
+    setConn(tx('connected'),'ok');
+    btn.textContent='✓ '+tx('connected'); btn.classList.add('connected'); btn.disabled=false;
+    $('#btn-reload').disabled=false;
+    await load();
+  }catch(e){
+    setConn(tx('connFail'),'err'); toast(tx('connFail')+': '+e.message,'err');
+    btn.textContent=tx('connFailRetry'); btn.classList.remove('connected'); btn.disabled=false; supa=null;
+  }
+}
+
+// ── 이벤트 ──
+$$('.chip[data-u]').forEach(b=>b.addEventListener('click',()=>setUnit(b.dataset.u)));
+$('#nav-prev').addEventListener('click',()=>{ shiftBase(-1); syncInputs(); load(); });
+$('#nav-next').addEventListener('click',()=>{ shiftBase(1); syncInputs(); load(); });
+$('#nav-today').addEventListener('click',()=>{ BASE=jstToday(); syncInputs(); load(); });
+$('#p-date').addEventListener('change',e=>{ if(e.target.value){ BASE=e.target.value; syncInputs(); load(); } });
+$('#p-month').addEventListener('change',e=>{ if(e.target.value){ BASE=e.target.value+'-01'; syncInputs(); load(); } });
+$('#p-year').addEventListener('change',e=>{ const y=String(e.target.value||'').trim(); if(/^\d{4}$/.test(y)){ BASE=y+'-01-01'; syncInputs(); load(); } });
+$('#btn-print').addEventListener('click',printReport);
+$('#btn-xlsx').addEventListener('click',downloadXlsx);
+$('#btn-reload').addEventListener('click',load);
+$('#btn-connect').addEventListener('click',connect);
+
+// ── 시작: 딥링크(?unit=&d=) → 기본 오늘 일보 ──
+(function init(){
+  const q=new URLSearchParams(location.search);
+  const u=q.get('unit'); if(['day','week','month','year'].includes(u)) UNIT=u;
+  const d=q.get('d'); BASE=(d&&/^\d{4}-\d{2}-\d{2}$/.test(d))?d:jstToday();
+  applyStatic(); syncInputs(); renderLabel();
+  loadCreds();
+  if($('#sb-url').value && $('#sb-key').value) connect();
+})();
+</script>
+</body>
+</html>

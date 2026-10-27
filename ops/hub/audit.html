@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 運営管理 · データ検収(マスター)</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=50"></script>
+<script src="../assets/saizen-core.js?v=51"></script>
 <style>
   :root{
     --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
@@ -80,7 +80,7 @@
   .gok{display:inline-block;background:var(--accentSoft);color:var(--ok);border:1px solid #b4cda0;border-radius:5px;padding:1px 8px;font-size:11px;font-weight:800}
   .gsum{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=35.9">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.0">
 </head>
 <body data-so-area="admin">
 <div class="topbar so-bar">
@@ -128,7 +128,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=35.9"></script>
+<script src="../assets/saizen-ops.js?v=36.0"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 데이터 검수(마스터 전용). 82_data_audit.sql 의 data_audit() RPC 호출.
@@ -145,7 +145,8 @@ const CHECKS=['seq_gap','count_mismatch','dup_tag','orphan_room','room_over','me
   'lobby_check',          // 로비 모니터 환영판·출발 인원 = 예약 재계산(135)
   'course_check',         // 코스 모니터 인원 = 조 재계산(136)
   'office_check',
-  'golf_dup'];            // 조편성 중복·자리 충돌(143)        // 직원 모니터 체크인·재실 인원 = 예약 재계산(137)
+  'golf_dup',             // 조편성 중복·자리 충돌(143)
+  'settle_check','settle_close_drift'];   // 정산 보고서 검산 · 마감 후 변경(156)            // 조편성 중복·자리 충돌(143)        // 직원 모니터 체크인·재실 인원 = 예약 재계산(137)
 
 const L={
   ja:{
@@ -193,6 +194,8 @@ const L={
     f_occ_check:'0が正常。1なら経営統計の稼働率を信用せず、開発に連絡。',
     n_sales_check:'売上の検算', d_sales_check:'請求(charges)の合計と伝票(v_folio_balance)の合計が同じか、伝票のない請求がないか。精算画面と統計が同じお金を見ているかの確認。',
     f_sales_check:'0が正常。伝票のない請求があればその請求はどこにも集計されない — 開発に連絡。',
+    n_settle_check:'精算報告書の検算', d_settle_check:'当月の売上(税込)・入金・未収期末を、報告書(JST日付集計)とは別の式(タイムスタンプ境界・伝票残高)で再計算して照合。精算日報/月報と精算画面が同じお金を見ているかの確認。', f_settle_check:'0が正常。不一致なら時間帯処理か取消(voided)の扱いが食い違っている — 開発に連絡。',
+    n_settle_close_drift:'締め後の変更', d_settle_close_drift:'直近60日の日次締め日のうち、締め時点のスナップショット(売上・入金)と今の再計算が異なる日。締め後に請求・入金が追加/取消された。', f_settle_close_drift:'精算報告書でその日を開き「締め後に変更あり」の内訳を確認 → 締め取消→再締め、または理由をメモに残す。',
     f_member_dup:'対処: ①Mクリック会員管理で正しい生年を確認 ②誤っている予約の生年を修正 ③再import(step1) ④その後に残った古い行を削除。⚠ 先に行だけ消すと、次のimportでその方のコードが一致せず「コード未保有」に戻り、別コードが振られる恐れがあります。',
     // 묶음 그룹코드 조회
     gTitle:'グループコード照会', gBtn:'照会', gAll:'全グループ点検', gPh:'コード・代表者・行事番号',
@@ -250,6 +253,8 @@ const L={
     f_occ_check:'0이 정상. 1이면 경영 통계의 가동률을 믿지 말고 개발에 알리세요.',
     n_sales_check:'매출 검산', d_sales_check:'청구(charges) 합계와 계산서(v_folio_balance) 합계가 같은지, 계산서 없는 청구가 없는지. 정산 화면과 통계가 같은 돈을 보고 있는지 확인합니다.',
     f_sales_check:'0이 정상. 계산서 없는 청구가 있으면 그 돈은 어디에도 집계되지 않습니다 — 개발에 알리세요.',
+    n_settle_check:'정산 보고서 검산', d_settle_check:'이번 달 매출(税込)·입금·미수 기말을 보고서(JST 날짜 집계)와 다른 식(타임스탬프 경계·계산서 잔액)으로 다시 계산해 대조합니다. 정산 일보/월보와 정산 화면이 같은 돈을 보고 있는지 확인합니다.', f_settle_check:'0이 정상. 어긋나면 시간대 처리나 취소(voided) 처리가 서로 다른 것 — 개발에 알리세요.',
+    n_settle_close_drift:'마감 후 변경', d_settle_close_drift:'최근 60일 일 마감일 중 마감 시점 스냅샷(매출·입금)과 지금 재계산이 다른 날. 마감 뒤에 청구·입금이 추가되거나 취소된 것입니다.', f_settle_close_drift:'정산 보고서에서 그 날을 열어 「마감 후 변경 있음」 내역을 확인 → 마감 취소 후 다시 마감하거나 사유를 메모에 남깁니다.',
     f_member_dup:'조치: ①엠클릭 회원관리에서 올바른 생년 확인 ②틀린 예약의 생년을 수정 ③재임포트(step1) ④그 뒤 남은 옛 행을 삭제. ⚠ 행부터 지우면 다음 임포트에서 그분 코드가 매칭되지 않아 「코드 미보유」로 돌아가고 다른 코드가 배정될 수 있습니다.',
     gTitle:'묶음 그룹코드 조회', gBtn:'조회', gAll:'전체 묶음 점검', gPh:'코드 · 대표자 · 행사번호',
     gDesc:'묶은 팀의 「통일코드·순번」을 로드 범위와 무관하게 그룹 전원 기준으로 계산해 보여줍니다. 現地手配書·航空カバー가 인쇄하는 값과 같습니다.',
@@ -304,6 +309,8 @@ const L={
     f_occ_check:'0 is normal. If 1, do not trust the occupancy figure and tell the developer.',
     n_sales_check:'Revenue cross-check', d_sales_check:'Sum of charges vs sum of folios (v_folio_balance), and charges without a folio. Confirms the settlement screen and the stats look at the same money.',
     f_sales_check:'0 is normal. A charge without a folio is counted nowhere — tell the developer.',
+    n_settle_check:'Settlement report check', d_settle_check:'Recomputes this month\'s sales (tax incl.), receipts and outstanding with a different query (timestamp bounds, folio balances) and compares with the report (JST date aggregation). Confirms the daily/monthly reports and the settlement screen look at the same money.', f_settle_check:'0 is normal. A mismatch means timezone or void handling differs — tell the developer.',
+    n_settle_close_drift:'Changed after close', d_settle_close_drift:'Closed days (last 60) whose closing snapshot (sales, receipts) differs from the current recomputation — charges or payments were added or voided after the close.', f_settle_close_drift:'Open that day in Settlement Reports and read the changed-after-close detail → reopen and close again, or note the reason.',
     f_member_dup:'Fix: (1) confirm the correct birth date in the member master, (2) correct it on the wrong booking, (3) re-import (step1), (4) only then delete the leftover row. ⚠ Deleting the row first breaks the match on the next import — the member falls back to “no code” and may be given a different one.',
     n_room_over:'Room over capacity', d_room_over:'Assigned pax on overlapping nights for one room exceeds capacity (double-booking).',
     f_room_over:'Fix: Check the room in room.html and reassign. Capacity guard prevents new ones (0 is normal).',
