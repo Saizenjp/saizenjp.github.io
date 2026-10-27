@@ -125,7 +125,7 @@
   .ycard .bar{height:7px;background:var(--surface3);border-radius:99px;overflow:hidden;margin-top:7px}
   .ycard .bar i{display:block;height:100%;background:var(--accent)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=35.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=35.7">
 </head>
 <body data-so-area="stats_mgmt staycal">
 <div class="topbar so-bar">
@@ -177,7 +177,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=50"></script>
-<script src="../assets/saizen-ops.js?v=35.6"></script>
+<script src="../assets/saizen-ops.js?v=35.7"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, DATA=null;
@@ -316,6 +316,7 @@ async function connect(){
     supa=window.supabase.createClient(url,key);
     const {data:sess}=await supa.auth.getSession();
     setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.classList.add('connected');btn.disabled=false;
+    if(VIEW==='cal') renderCal(); else if(VIEW==='trend') loadTrend();   // 수동 연결(자동 연결이 아닐 때)도 보고 있던 화면을 그린다
     if(!$('#d-from').value){ quick('thismonth'); } else { run(); }
   }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connect');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
 }
@@ -326,13 +327,16 @@ async function run(){
   const f=$('#d-from').value, t=$('#d-to').value;
   if(!f||!t){ return; }
   $('#rangelbl').innerHTML=`<b>${esc(f)}</b> ~ <b>${esc(t)}</b>`;
-  $('#content').innerHTML=`<div class="deny">${tx('loading')}</div>`;
+  // 집계(요약)는 요약 보기일 때만 #content 에 그린다 — 캘린더·추이 보기 중이면 받아 두기만 한다.
+  //  (랜딩 「체류 캘린더」= ?view=cal 로 들어와 캘린더를 그린 직후, 자동 연결의 run() 이 같은 #content 를 요약으로 덮어
+  //   경영통계가 떠 보이던 버그 — Min 2026-10-27 「체류 캘린더 누르면 경영통계로 넘어가네」)
+  if(VIEW==='sum') $('#content').innerHTML=`<div class="deny">${tx('loading')}</div>`;
   const {data,error}=await supa.rpc('exec_stats',{p_from:f,p_to:t});
   if(error){
     const msg=/권한|permission/i.test(error.message)?tx('noAuth'):(tx('loadFail')+': '+error.message);
-    $('#content').innerHTML=`<div class="deny" style="color:var(--err)">${esc(msg)}</div>`; return;
+    DATA=null; if(VIEW==='sum') $('#content').innerHTML=`<div class="deny" style="color:var(--err)">${esc(msg)}</div>`; return;
   }
-  DATA=data||{}; render();
+  DATA=data||{}; if(VIEW==='sum') render();
 }
 
 function render(){
@@ -642,7 +646,7 @@ function setView(v){
     if(supa) renderCal();
   } else if(v==='trend'){
     if(supa) loadTrend();
-  } else if(DATA) render();
+  } else if(DATA) render(); else if(supa && $('#d-from').value) run();   // 캘린더로 들어와 아직 집계가 없으면 요약으로 바꿀 때 받는다
 }
 
 // 언어 토글 시 정적 라벨 + 동적 재렌더
