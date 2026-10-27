@@ -122,6 +122,10 @@
   table.lines td.num,table.lines th.num{text-align:right;font-family:var(--mono)}
   table.lines tr.voided td{opacity:.4;text-decoration:line-through}
   .catpill{font-size:10.5px;font-weight:700;border-radius:5px;padding:2px 7px;color:#fff;white-space:nowrap}
+  .taxpill{display:inline-block;font-size:10.5px;font-weight:700;border-radius:9px;padding:1px 7px;white-space:nowrap;background:var(--surface2);color:var(--text2);border:1px solid var(--border)}
+  .taxpill.r8{color:var(--accent2);border-color:var(--accent2)}
+  .taxpill.exempt,.taxpill.outside{color:var(--muted);background:var(--surface3)}
+  .totals .tr.rate{font-size:12px;color:var(--text2)}.totals .tr.rate small{color:var(--muted)}.totals .tr.rate .note8{color:var(--accent2);font-weight:700}
   .cat-라운딩{background:var(--c-round)} .cat-식음{background:var(--c-food)} .cat-숙박{background:var(--c-stay)}
   .cat-골프샵{background:var(--c-shop)} .cat-기타{background:var(--c-etc)}
   .vbtn{cursor:pointer;color:var(--err);font-weight:700;font-size:13px;border:none;background:none;padding:2px 6px}
@@ -163,7 +167,7 @@
      왼쪽으로 밀렸다가 제자리로 튀었다(Min 2026-08). 세로 이동만 남긴다. */
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.1">
 </head>
 <body data-so-area="settle_onsite">
 <div class="topbar so-bar">
@@ -225,8 +229,8 @@
 <div id="toast"></div>
 
 <script src="../assets/qrcode-generator.js?v=1"></script>
-<script src="../assets/saizen-core.js?v=52"></script>
-<script src="../assets/saizen-ops.js?v=36.0"></script>
+<script src="../assets/saizen-core.js?v=53"></script>
+<script src="../assets/saizen-ops.js?v=36.1"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -236,7 +240,8 @@
 // ════════════════════════════════════════════════════════════════════════
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
-const TAX_RATE=SZCore.TAX_RATE/100;                   // 内税: 단가=최종가(税込). 세율·세액 식은 saizen-core 공통(P0 2026-10-27)
+let HAS_TAXCOL=true;                                  // charges.tax_rate·tax_class(SQL 158) — 미적용 DB 면 insert 에서 뺀다(default 10·과세와 같은 뜻)
+const TAX_RATE=SZCore.TAX_RATE/100;                   // 内税: 단가=최종가(税込). 세율·세액 식은 saizen-core 공통(P0 2026-10-27 · P1 세율 구분·버림 2026-10-27)
 const CATEGORIES=['라운딩','식음','숙박','골프샵','기타']; // 고정 5종(Min 확정)
 const METHODS=['현금','카드'];                         // 결제수단(Min 확정)
 const STATUS_LABEL={open:'열림',closed:'마감',settled:'결제완료'};  // DB값(open/closed/settled) 표시 폴백 — 표시는 statusLabel()로 다국어
@@ -256,6 +261,7 @@ const L={
     chargeLoadFail:'請求読み込み失敗', payLoadFail:'支払読み込み失敗',
     voidBtn:'取消', noCharges:'請求内訳がありません。', noPays:'支払内訳がありません。',
     personPrefix:'個人', teamEventUnit:'チーム(行事)単位',
+    thRate:'税率', taxSubject:'対象', taxIn:'うち消費税', note8:'※は軽減税率(8%)対象', thTotalIn:'合計(税込)', taxRule:'消費税は伝票単位・税率ごとに1回切り捨て', rateTitle:'税率別', thFolios:'伝票数', salesRateNA:'税率別の要約は SQL 158 適用後に表示されます',
     thCat:'区分', thDesc:'内訳', thQty:'数量', thUnit:'単価', thSub:'小計', thTax:'消費税', thTotal:'合計',
     phUnit:'単価(税込・最終価格)', thMethod:'方法', thAmount:'金額', thDate:'日時', thBy:'担当',
     calcTotal:'合計(税込)', calcPretax:'税抜', calcIntax:'内税',
@@ -297,6 +303,7 @@ const L={
     chargeLoadFail:'청구 로드 실패', payLoadFail:'결제 로드 실패',
     voidBtn:'취소', noCharges:'청구 내역이 없습니다.', noPays:'결제 내역이 없습니다.',
     personPrefix:'개인', teamEventUnit:'팀(행사) 단위',
+    thRate:'세율', taxSubject:'대상', taxIn:'내 소비세', note8:'※는 경감세율(8%) 대상', thTotalIn:'합계(税込)', taxRule:'소비세는 계산서 단위·세율별로 1회 버림', rateTitle:'세율별', thFolios:'계산서 수', salesRateNA:'세율별 요약은 SQL 158 적용 뒤 표시됩니다',
     thCat:'구분', thDesc:'내역', thQty:'수량', thUnit:'단가', thSub:'소계', thTax:'소비세', thTotal:'합계',
     phUnit:'단가(税込·최종가)', thMethod:'수단', thAmount:'금액', thDate:'일시', thBy:'담당',
     calcTotal:'합계(税込)', calcPretax:'세전', calcIntax:'内税',
@@ -338,6 +345,7 @@ const L={
     chargeLoadFail:'Charge load failed', payLoadFail:'Payment load failed',
     voidBtn:'Void', noCharges:'No charges.', noPays:'No payments.',
     personPrefix:'Person', teamEventUnit:'Team (event) level',
+    thRate:'Tax rate', taxSubject:'subject', taxIn:'incl. tax', note8:'※ reduced rate (8%) items', thTotalIn:'Total (tax incl.)', taxRule:'Consumption tax is rounded down once per folio and rate', rateTitle:'By tax rate', thFolios:'Folios', salesRateNA:'By-rate summary appears after SQL 158 is applied',
     thCat:'Category', thDesc:'Description', thQty:'Qty', thUnit:'Unit', thSub:'Subtotal', thTax:'Tax', thTotal:'Total',
     phUnit:'Unit price (incl. tax · final)', thMethod:'Method', thAmount:'Amount', thDate:'Date · time', thBy:'By',
     calcTotal:'Total (incl. tax)', calcPretax:'pre-tax', calcIntax:'incl. tax',
@@ -388,7 +396,23 @@ function yen(n){ return '¥'+Number(n||0).toLocaleString('ja-JP'); }
 //  받은 일시 — 공용 계정이라 「누가 받았는지」는 이 시각과 근무표로 확인한다.
 //  금전 기록이라 **초까지** 남긴다(같은 분에 여러 건이 들어가면 순서를 못 가린다).
 function payWhen(ts){ return (window.__so_ts?__so_ts(ts):String(ts||'')); }
-function taxOf(gross){ return SZCore.taxIncluded(gross); }  // 内税(포함된 소비세) — saizen-core 공통 위임(P0)
+function taxOf(gross,rate){ return SZCore.taxIncluded(gross,rate); }  // 内税(포함된 소비세, 버림) — saizen-core 공통 위임(P0·P1)
+// ── 세율(P1 2026-10-27): 세액은 **계산서 단위·세율별 1회 버림**(SZCore.taxByRate). 행의 tax 는 참고값 — 화면·御請求書·領収書·엑셀 전부 집계값만 쓴다. ──
+function taxKeyOf(c){ return SZCore.taxKey(c?c.tax_rate:null, c?c.tax_class:null); }
+function taxShort(k){ return SZCore.taxLabel(k, lang()); }      // 화면 라벨(언어별)
+function taxJa(k){ return SZCore.taxLabel(k, 'ja'); }           // 인쇄물(일본어 문서)
+function taxCell(c){ const k=taxKeyOf(c), p=SZCore.taxParse(k); return `<span class="taxpill ${p.cls==='taxable'?('r'+p.rate):p.cls}">${esc(taxShort(k))}</span>`; }
+function taxOptsHTML(cur){ return SZCore.TAX_OPTIONS.map(o=>`<option value="${o.key}" ${o.key===cur?'selected':''}>${esc(taxShort(o.key))}</option>`).join(''); }
+// 합계 위 세율별 줄 — 10% 한 종류뿐이면 생략(小計·消費税 줄이 이미 말해 준다)
+function rateRowsHTML(TB){
+  if(!TB.buckets.length || (TB.buckets.length===1 && TB.buckets[0].key==='taxable:10')) return '';
+  return TB.buckets.map(b=>`<div class="tr rate"><span>${esc(taxShort(b.key))} ${esc(tx('taxSubject'))}</span><span class="v">${yen(b.gross)}${b.rate>0?` <small>(${esc(tx('taxIn'))} ${yen(b.tax)})</small>`:''}</span></div>`).join('')
+    +(TB.has8?`<div class="tr rate"><span class="note8">${esc(tx('note8'))}</span><span></span></div>`:'');
+}
+// 御請求書·엑셀 공용 — 세율별 합계 줄 [라벨, 금액, 내소비세|null]
+function rateTotRows(TB){
+  return TB.buckets.map(b=>[`${taxJa(b.key)}対象${b.rate===8?'(※)':''}`, b.gross, b.rate>0?b.tax:null]);
+}
 function nowYM(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
 function toast(msg,cls){
   const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:'');
@@ -419,6 +443,7 @@ async function connect(){
     supa=window.supabase.createClient(url,key);
     const {error}=await supa.from('folios').select('id',{count:'exact',head:true});
     if(error) throw error;
+    { const {error:te}=await supa.from('charges').select('tax_rate').limit(1); HAS_TAXCOL=!te; if(!HAS_TAXCOL) console.warn('charges.tax_rate 없음 — SQL 158 미적용:', te.message); }
     setConn(tx('connOk'),'ok'); toast(tx('connOkToast'),'ok');
     btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
     $('#btn-load').disabled=false; $('#btn-sales').disabled=false;
@@ -676,25 +701,22 @@ function renderDetail(){
   const tag=tagShow(f.event_seq, f.team_tag);
   const editable=f.status==='open';
   const charges=state.charges.filter(c=>!c.voided);
-  const subTotal=charges.reduce((s,c)=>s+Number(c.amount||0),0);
-  const taxTotal=charges.reduce((s,c)=>s+Number(c.tax||0),0);
-  const svcTotal=charges.reduce((s,c)=>s+Number(c.service_charge||0),0);
-  const grand=subTotal+taxTotal+svcTotal;
+  const TB=SZCore.taxByRate(charges);          // 세율별 税込 합계에 1회 버림(적격청구서 규칙) — 행 tax 합이 아니다
+  const subTotal=TB.net, taxTotal=TB.tax, grand=TB.gross;
   const paid=state.payments.filter(p=>!p.voided).reduce((s,p)=>s+Number(p.amount||0),0);
   const bal=grand-paid;
 
   const chargeRows=state.charges.map(c=>`
     <tr class="${c.voided?'voided':''}">
       <td><span class="catpill cat-${c.category}">${catLabel(c.category)}</span></td>
+      <td>${taxCell(c)}</td>
       <td>${c.description||''}</td>
       <td class="num">${Number(c.qty||0)}</td>
       <td class="num">${yen(c.unit_price)}</td>
-      <td class="num">${yen(c.amount)}</td>
-      <td class="num">${yen(c.tax)}</td>
-      <td class="num">${yen(Number(c.amount||0)+Number(c.tax||0)+Number(c.service_charge||0))}</td>
+      <td class="num">${yen(SZCore.lineGross(c))}</td>
       <td>${c.voided?'':(editable?paySel(c):(c.pay_method?methodLabel(c.pay_method):'<span style="color:var(--muted)">-</span>'))}</td>
       <td>${c.voided?'':'<button class="vbtn" data-void-charge="'+c.id+'">'+tx('voidBtn')+'</button>'}</td>
-    </tr>`).join('') || '<tr><td colspan="9" class="empty-hint">'+tx('noCharges')+'</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="8" class="empty-hint">'+tx('noCharges')+'</td></tr>';
 
   const payRows=state.payments.map(p=>`
     <tr class="${p.voided?'voided':''}">
@@ -726,8 +748,8 @@ function renderDetail(){
 
     <table class="lines">
       <thead><tr>
-        <th>${tx('thCat')}</th><th>${tx('thDesc')}</th><th class="num">${tx('thQty')}</th><th class="num">${tx('thUnit')}</th>
-        <th class="num">${tx('thSub')}</th><th class="num">${tx('thTax')}</th><th class="num">${tx('thTotal')}</th><th>${tx('thPayMethod')}</th><th></th>
+        <th>${tx('thCat')}</th><th>${tx('thRate')}</th><th>${tx('thDesc')}</th><th class="num">${tx('thQty')}</th><th class="num">${tx('thUnit')}</th>
+        <th class="num">${tx('thTotalIn')}</th><th>${tx('thPayMethod')}</th><th></th>
       </tr></thead>
       <tbody>${chargeRows}</tbody>
     </table>
@@ -745,6 +767,7 @@ function renderDetail(){
       <summary>${tx('foldAdd')}</summary>
       <div class="form-row">
         <select class="inp" id="ch-cat">${catOpts}</select>
+        <select class="inp" id="ch-tax" title="${tx('thRate')}">${taxOptsHTML('taxable:10')}</select>
         <input class="inp desc" id="ch-desc" type="text" data-i18n-ph="st_phDesc">
         <input class="inp" id="ch-qty" type="number" min="0" step="1" value="1" style="width:72px">
         <input class="inp" id="ch-unit" type="number" step="100" value="0" style="width:110px" placeholder="${tx('phUnit')}">
@@ -771,6 +794,7 @@ function renderDetail(){
     </div>
 
     <div class="totals">
+      ${rateRowsHTML(TB)}
       <div class="tr"><span data-i18n="st_subtotal"></span><span class="v">${yen(subTotal)}</span></div>
       <div class="tr"><span data-i18n="st_tax"></span><span class="v">${yen(taxTotal)}</span></div>
       <div class="tr grand"><span data-i18n="st_grand"></span><span class="v">${yen(grand)}</span></div>
@@ -793,10 +817,10 @@ function renderDetail(){
   if(editable){
     const recalc=()=>{
       const q=Number($('#ch-qty').value||0), u=Number($('#ch-unit').value||0);
-      const amt=Math.round(q*u);
-      $('#ch-calc').textContent=`${tx('calcTotal')} ${yen(amt)} · ${tx('calcPretax')} ${yen(amt-taxOf(amt))} + ${tx('calcIntax')} ${yen(taxOf(amt))}`;
+      const amt=Math.round(q*u), rt=SZCore.taxParse($('#ch-tax')?$('#ch-tax').value:'taxable:10').rate;
+      $('#ch-calc').textContent=`${tx('calcTotal')} ${yen(amt)} · ${tx('calcPretax')} ${yen(amt-taxOf(amt,rt))} + ${tx('calcIntax')} ${yen(taxOf(amt,rt))}`;
     };
-    $('#ch-qty').addEventListener('input',recalc); $('#ch-unit').addEventListener('input',recalc); recalc();
+    $('#ch-qty').addEventListener('input',recalc); $('#ch-unit').addEventListener('input',recalc); const cht=$('#ch-tax'); if(cht) cht.addEventListener('change',recalc); recalc();
     $('#btn-add-charge').addEventListener('click',addCharge);
     $('#btn-add-pay').addEventListener('click',addPayment);
     box.querySelectorAll('.pmbtn').forEach(b=>b.addEventListener('click',()=>{
@@ -822,11 +846,13 @@ async function addCharge(){
   const unit=Number($('#ch-unit').value||0);
   const gross=Math.round(qty*unit);   // 단가=税込(최종가). 음수=환불/조정 라인 허용
   if(gross===0){toast(tx('needQtyUnit'),'warn');return;}
-  const tax=taxOf(gross);             // 内税(포함분)
+  const T=SZCore.taxParse($('#ch-tax')?$('#ch-tax').value:'taxable:10');   // 세율·구분(기본 10%·과세)
+  const tax=taxOf(gross,T.rate);      // 内税(포함분, 행 참고값 — 표시는 세율별 집계)
   const row={ folio_id:f.folio_id, event_seq:f.event_seq, member_id:f.member_id||null,
     category, source:'frontdesk', description, qty, unit_price:unit,
-    amount:gross-tax, tax, service_charge:0,
+    amount:gross-tax, tax, tax_rate:T.rate, tax_class:T.cls, service_charge:0,
     created_by:(window.__so_getUser&&__so_getUser())||null };
+  if(!HAS_TAXCOL){ delete row.tax_rate; delete row.tax_class; }   // SQL 158 미적용 DB
   const {error}=await supa.from('charges').insert(row);
   if(error){toast(tx('chargeAddFail')+': '+error.message,'err');return;}
   toast(tx('chargeAdded'),'ok');
@@ -1012,7 +1038,8 @@ function openReceipt(f){
   const paid=Math.round(pays.reduce((s,p)=>s+Number(p.amount||0),0));
   const cash=Math.round(pays.filter(p=>p.method==='현금').reduce((s,p)=>s+Number(p.amount||0),0));
   if(!window.__so_receipt){ toast('領収書 모듈 로드 실패 — 새로고침','err'); return; }
-  __so_receipt({ tag:tagUni(f.event_seq,f.team_tag), repName:f.rep_name||'', no:evNo(f.event_seq), paid, cash });
+  const TB=SZCore.taxByRate((state.charges||[]).filter(c=>!c.voided));   // 금액이 청구 합계와 같을 때 領収書에 세율별 내역을 찍는다
+  __so_receipt({ tag:tagUni(f.event_seq,f.team_tag), repName:f.rep_name||'', no:evNo(f.event_seq), paid, cash, buckets:TB.buckets, grand:TB.gross });
 }
 
 async function previewStatement(f){
@@ -1026,9 +1053,8 @@ async function previewStatement(f){
   const rooms=(roomsOfS(f.event_seq).join(', '))||'-';
   const today=new Date().toISOString().slice(0,10);
   const lines=state.charges.filter(c=>!c.voided);
-  const subTotal=lines.reduce((s,c)=>s+Number(c.amount||0),0);
-  const taxTotal=lines.reduce((s,c)=>s+Number(c.tax||0),0);
-  const grand=subTotal+taxTotal+lines.reduce((s,c)=>s+Number(c.service_charge||0),0);
+  const TB=SZCore.taxByRate(lines);          // 세율별 1회 버림(적격청구서)
+  const subTotal=TB.net, taxTotal=TB.tax, grand=TB.gross;
   const pays=state.payments.filter(p=>!p.voided);
   const paid=pays.reduce((s,p)=>s+Number(p.amount||0),0);
   const bal=grand-paid;
@@ -1037,9 +1063,12 @@ async function previewStatement(f){
   try{ if(typeof qrcode==='function'){ const tk=await billToken(f.event_seq); const d=qrImg(billUrlOf(tk),6);
     if(d) qrHTML=`<div class="qrbox"><img src="${d}" alt="QR"><span>スマホでご確認<br>폰으로 확인</span></div>`; } }catch(_){}
   const rowsHTML=lines.length?lines.map(c=>{
-    const tot=Number(c.amount||0)+Number(c.tax||0)+Number(c.service_charge||0);
-    return `<tr><td>${esc(catJ[c.category]||c.category)}</td><td class="l">${esc(c.description||'')}</td><td class="r">${Number(c.qty||0)}</td><td class="r">${Y(c.unit_price)}</td><td class="r">${Y(c.amount)}</td><td class="r">${Y(c.tax)}</td><td class="r b">${Y(tot)}</td></tr>`;
-  }).join(''):`<tr><td colspan="7" class="empty">(請求項目なし)</td></tr>`;
+    const k=taxKeyOf(c), p=SZCore.taxParse(k), tot=SZCore.lineGross(c);
+    return `<tr><td>${esc(catJ[c.category]||c.category)}</td><td class="l">${esc(c.description||'')}${p.rate===8?' <b>※</b>':''}</td><td class="c">${esc(taxJa(k))}</td><td class="r">${Number(c.qty||0)}</td><td class="r">${Y(c.unit_price)}</td><td class="r b">${Y(tot)}</td></tr>`;
+  }).join(''):`<tr><td colspan="6" class="empty">(請求項目なし)</td></tr>`;
+  // 세율별 합계 줄(적격청구서: 세율별 税込合計 + 세율별 消費税額) — 不課税는 소비세 없이 별도 줄
+  const rateHTML=rateTotRows(TB).map(r=>`<div class="trow rate"><span>${esc(r[0])}</span><span>${Y(r[1])}${r[2]!=null?` <small>(うち消費税 ${Y(r[2])})</small>`:''}</span></div>`).join('')
+    +(TB.has8?`<div class="trow note"><span>※は軽減税率(8%)対象</span><span></span></div>`:'');
   const paysHTML=pays.length?`<div class="paytitle">お支払い内訳</div>
     <table class="pay"><thead><tr><th>方法</th><th class="r">金額</th><th>日付</th></tr></thead><tbody>
     ${pays.map(p=>`<tr><td>${p.method==='현금'?'現金':'カード'}</td><td class="r">${Y(p.amount)}</td><td>${esc((p.paid_at||'').slice(0,10))}</td></tr>`).join('')}
@@ -1063,8 +1092,9 @@ async function previewStatement(f){
   table.lines th{background:#1a2540;color:#fff;padding:8px 7px;font-weight:700;text-align:right}
   table.lines th.l{text-align:left}
   table.lines td{border:1px solid #b9c4d6;padding:7px;text-align:right}
-  table.lines td.l{text-align:left}table.lines td.b{font-weight:700}
+  table.lines td.l{text-align:left}table.lines td.b{font-weight:700}table.lines td.c{text-align:center;white-space:nowrap}
   table.lines td.empty{text-align:center;color:#888;padding:18px}
+  .trow.rate{font-size:12px;color:#333}.trow.rate small{color:#666}.trow.note{font-size:11px;color:#1a4d8f;padding-top:0}
   table.lines tbody tr:nth-child(even) td{background:#f4f7fb}
   .totals{margin:16px 0 0 auto;width:300px}
   .trow{display:flex;justify-content:space-between;font-size:13px;padding:6px 8px}
@@ -1092,11 +1122,12 @@ async function previewStatement(f){
       <div><span class="lab">御部屋 / Room</span> ${esc(rooms)}</div>
       <div class="rt"><span class="lab">発行日</span> ${today} &nbsp;·&nbsp; event ${esc(String(evNo(f.event_seq)))} &nbsp;·&nbsp; session ${esc(state.ym)}</div>
     </div>
-    <table class="lines"><thead><tr><th class="l">区分</th><th class="l">内訳</th><th>数量</th><th>単価</th><th>小計</th><th>消費税</th><th>合計</th></tr></thead>
+    <table class="lines"><thead><tr><th class="l">区分</th><th class="l">内訳</th><th>税率</th><th>数量</th><th>単価(税込)</th><th>金額(税込)</th></tr></thead>
     <tbody>${rowsHTML}</tbody></table>
     <div class="totals">
+      ${rateHTML}
       <div class="trow"><span>小計(税抜)</span><span>${Y(subTotal)}</span></div>
-      <div class="trow"><span>うち消費税(10%·内税)</span><span>${Y(taxTotal)}</span></div>
+      <div class="trow"><span>うち消費税(内税)</span><span>${Y(taxTotal)}</span></div>
       <div class="trow grand"><span>御請求合計</span><span>${Y(grand)}</span></div>
       <div class="trow"><span>入金</span><span>−${Y(paid)}</span></div>
       <div class="trow bal"><span>残額</span><span>${Y(bal)}</span></div>
@@ -1113,13 +1144,13 @@ async function exportStatement(f){
   if(f.folio_id!==state.selId) await selectFolio(f.folio_id);
   const wb=new ExcelJS.Workbook(); wb.creator='SaiZen';
   const ws=wb.addWorksheet('御請求書');
-  ws.columns=[{width:10},{width:34},{width:8},{width:12},{width:13},{width:11},{width:13}];
+  ws.columns=[{width:10},{width:36},{width:10},{width:8},{width:13},{width:14}];
 
   // 머리글
-  ws.mergeCells('A1:G1');
+  ws.mergeCells('A1:F1');
   const tt=ws.getCell('A1'); tt.value='御　請　求　書'; tt.font={bold:true,size:18,color:{argb:XLM.navy}};
   tt.alignment={horizontal:'center'};
-  ws.mergeCells('A2:G2');
+  ws.mergeCells('A2:F2');
   const sub=ws.getCell('A2'); sub.value='アソ ヤマナミリゾート ／ 株式会社SaiZen';
   sub.font={size:10,color:{argb:XLM.blue}}; sub.alignment={horizontal:'center'};
 
@@ -1135,51 +1166,51 @@ async function exportStatement(f){
 
   // 명세 헤더
   const hr=8;
-  const heads=['区分','内訳','数量','単価','小計','消費税','合計'];
+  const heads=['区分','内訳','税率','数量','単価(税込)','金額(税込)'];
   heads.forEach((h,i)=>{
     const c=ws.getRow(hr).getCell(i+1);
     c.value=h; c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill=xFill(XLM.navy);
-    c.alignment={horizontal:i<2?'left':'right'}; c.border=xBorderAll();
+    c.alignment={horizontal:i<2?'left':(i===2?'center':'right')}; c.border=xBorderAll();
   });
   let r=hr+1;
   const lines=state.charges.filter(c=>!c.voided);
+  const TB=SZCore.taxByRate(lines);          // 세율별 1회 버림(적격청구서)
   const catJ={'라운딩':'ラウンド','식음':'飲食','숙박':'宿泊','골프샵':'ゴルフショップ','기타':'その他'};
   lines.forEach((c,idx)=>{
     const row=ws.getRow(r);
-    const total=Number(c.amount||0)+Number(c.tax||0)+Number(c.service_charge||0);
+    const k=taxKeyOf(c), p=SZCore.taxParse(k);
     row.getCell(1).value=catJ[c.category]||c.category;
-    row.getCell(2).value=c.description||'';
-    row.getCell(3).value=Number(c.qty||0);
-    row.getCell(4).value=Number(c.unit_price||0);
-    row.getCell(5).value=Number(c.amount||0);
-    row.getCell(6).value=Number(c.tax||0);
-    row.getCell(7).value=total;
-    for(let i=1;i<=7;i++){
+    row.getCell(2).value=(c.description||'')+(p.rate===8?' ※':'');
+    row.getCell(3).value=taxJa(k);
+    row.getCell(4).value=Number(c.qty||0);
+    row.getCell(5).value=Number(c.unit_price||0);
+    row.getCell(6).value=SZCore.lineGross(c);
+    for(let i=1;i<=6;i++){
       const cell=row.getCell(i);
       cell.border=xBorderAll();
-      cell.alignment={horizontal:i<3?'left':'right'};
-      if(i>=4&&i<=7) cell.numFmt='¥#,##0';
+      cell.alignment={horizontal:i<3?'left':(i===3?'center':'right')};
+      if(i>=5) cell.numFmt='¥#,##0';
       if(idx%2===1) cell.fill=xFill(XLM.zebra);
     }
     r++;
   });
-  if(!lines.length){ ws.mergeCells(`A${r}:G${r}`); ws.getCell(`A${r}`).value='(請求項目なし)'; r++; }
+  if(!lines.length){ ws.mergeCells(`A${r}:F${r}`); ws.getCell(`A${r}`).value='(請求項目なし)'; r++; }
 
-  // 합계
-  const subTotal=lines.reduce((s,c)=>s+Number(c.amount||0),0);
-  const taxTotal=lines.reduce((s,c)=>s+Number(c.tax||0),0);
-  const grand=subTotal+taxTotal+lines.reduce((s,c)=>s+Number(c.service_charge||0),0);
+  // 합계 — 세율별 税込合計(+うち消費税) → 小計(税抜)·消費税·御請求合計·入金·残額
+  const subTotal=TB.net, taxTotal=TB.tax, grand=TB.gross;
   const paid=state.payments.filter(p=>!p.voided).reduce((s,p)=>s+Number(p.amount||0),0);
   const bal=grand-paid;
   r++;
-  const totRows=[['小計(税抜)',subTotal],['うち消費税(10%·内税)',taxTotal],['御請求合計',grand],['入金',paid],['残額',bal]];
+  const totRows=rateTotRows(TB).map(x=>[x[0]+(x[2]!=null?`（うち消費税 ¥${Number(x[2]).toLocaleString('ja-JP')}）`:''), x[1]])
+    .concat([['小計(税抜)',subTotal],['うち消費税(内税)',taxTotal],['御請求合計',grand],['入金',paid],['残額',bal]]);
   totRows.forEach((tr,i)=>{
-    ws.mergeCells(`E${r}:F${r}`);
-    const lab=ws.getCell(`E${r}`); lab.value=tr[0]; lab.alignment={horizontal:'right'};
-    const val=ws.getCell(`G${r}`); val.value=tr[1]; val.numFmt='¥#,##0'; val.alignment={horizontal:'right'};
+    ws.mergeCells(`C${r}:E${r}`);
+    const lab=ws.getCell(`C${r}`); lab.value=tr[0]; lab.alignment={horizontal:'right'};
+    const val=ws.getCell(`F${r}`); val.value=tr[1]; val.numFmt='¥#,##0'; val.alignment={horizontal:'right'};
     if(tr[0]==='御請求合計'||tr[0]==='残額'){ lab.font={bold:true,color:{argb:XLM.navy}}; val.font={bold:true,color:{argb:XLM.navy}}; lab.fill=xFill(XLM.soft); val.fill=xFill(XLM.soft); }
     r++;
   });
+  if(TB.has8){ ws.getCell(`A${r}`).value='※は軽減税率(8%)対象'; ws.getCell(`A${r}`).font={size:9,color:{argb:XLM.blue}}; r++; }
 
   // 결제 내역
   if(state.payments.filter(p=>!p.voided).length){
@@ -1201,17 +1232,32 @@ async function exportStatement(f){
 }
 
 // ── 매출요약 HTML 미리보기 팝업(→ 인쇄). [엑셀]은 팝업 안 버튼으로 유지. ──
+// 세율별 요약(v_settlement_by_rate, SQL 158) — 뷰가 없으면 null(옛 DB)
+async function loadSalesByRate(){
+  try{ const {data,error}=await supa.from('v_settlement_by_rate').select('*').eq('session_ym',state.ym); if(error) return null;
+    return (data||[]).map(x=>({key:SZCore.taxKey(x.tax_rate,x.tax_class), rate:Number(x.tax_rate||0), cls:x.tax_class||'taxable', n:Number(x.line_count||0), folios:Number(x.folio_count||0), gross:Number(x.gross_total||0), tax:Number(x.tax_amount||0), net:Number(x.charge_amount||0)}))
+      .sort((a,b)=>({taxable:0,exempt:1,outside:2}[a.cls]-{taxable:0,exempt:1,outside:2}[b.cls])||(b.rate-a.rate)); }
+  catch(_){ return null; }
+}
 async function previewSalesSummary(){
   if(!supa){toast(tx('needConnect'),'warn');return;}
   const {data,error}=await supa.from('v_settlement_by_category').select('*').eq('session_ym',state.ym);
   if(error){toast(tx('salesLoadFail')+': '+error.message,'err');return;}
   const rows=data||[]; const Y=n=>'¥'+Number(n||0).toLocaleString('ja-JP');
   const catJ={'라운딩':'ラウンド','식음':'飲食','숙박':'宿泊','골프샵':'ゴルフショップ','기타':'その他'};
-  let tC=0,tS=0,tT=0,tG=0, body='';
+  const BR=await loadSalesByRate();
+  let tC=0,tG=0, body='';
   CATEGORIES.forEach(cat=>{ const row=rows.find(x=>x.category===cat); if(!row) return;
-    tC+=Number(row.line_count||0); tS+=Number(row.charge_amount||0); tT+=Number(row.tax_amount||0); tG+=Number(row.gross_total||0);
-    body+=`<tr><td class="l">${catJ[cat]||cat}</td><td class="r">${Number(row.line_count||0)}</td><td class="r">${Y(row.charge_amount)}</td><td class="r">${Y(row.tax_amount)}</td><td class="r b">${Y(row.gross_total)}</td></tr>`;
+    tC+=Number(row.line_count||0); tG+=Number(row.gross_total||0);
+    body+=`<tr><td class="l">${catJ[cat]||cat}</td><td class="r">${Number(row.line_count||0)}</td><td class="r b">${Y(row.gross_total)}</td></tr>`;
   });
+  let rateBody='', rT={n:0,g:0,t:0,nn:0};
+  (BR||[]).forEach(b=>{ rT.n+=b.n; rT.g+=b.gross; rT.t+=b.tax; rT.nn+=b.net; rateBody+=`<tr><td class="l">${taxJa(b.key)}${b.rate===8?' ※':''}</td><td class="r">${b.n}</td><td class="r">${Y(b.gross)}</td><td class="r">${Y(b.tax)}</td><td class="r b">${Y(b.net)}</td></tr>`; });
+  const rateTable=BR?`<div class="h2">税率別　<small>${esc(tx('taxRule'))}</small></div>
+    <table><thead><tr><th class="l">税率</th><th>件数</th><th>税込</th><th>消費税</th><th>税抜</th></tr></thead>
+    <tbody>${rateBody||'<tr><td colspan="5" style="text-align:center;color:#888;padding:18px">'+tx('noData')+'</td></tr>'}
+    <tr class="tot"><td class="l">合計</td><td class="r">${rT.n}</td><td class="r">${Y(rT.g)}</td><td class="r">${Y(rT.t)}</td><td class="r">${Y(rT.nn)}</td></tr></tbody></table>`
+    :`<div class="h2" style="color:#888">${esc(tx('salesRateNA'))}</div>`;
   const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>売上要約 ${state.ym}</title>
 <style>${window.__SO_JP_FONT||''}@page{size:A4;margin:14mm}*{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Meiryo','Malgun Gothic','Noto Sans JP',sans-serif;background:#eceef1;color:#1a2540}
@@ -1221,6 +1267,7 @@ async function previewSalesSummary(){
   .toolbar button.x{background:#1a4d8f}.toolbar button.c{background:#999}
   .page{width:190mm;margin:18px auto;background:#fff;padding:16mm;box-shadow:0 2px 14px rgba(0,0,0,.1)}
   .h1{font-size:20px;font-weight:800;color:#1a2540;margin-bottom:14px}
+  .h2{font-size:14px;font-weight:800;color:#1a4d8f;margin:18px 0 8px}.h2 small{font-weight:600;color:#666;font-size:11px}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th{background:#1a2540;color:#fff;padding:8px;text-align:right}th.l{text-align:left}
   td{border:1px solid #b9c4d6;padding:8px;text-align:right}td.l{text-align:left}td.b{font-weight:700}
@@ -1232,10 +1279,11 @@ async function previewSalesSummary(){
     <button class="x" onclick="try{window.opener&&window.opener.__settleDownloadSales&&window.opener.__settleDownloadSales()}catch(e){alert('${tx('downloadFromOpener')}')}">⬇ ${tx('excelBtn')}</button>
     <button class="c" onclick="window.close()">✕ ${tx('closeXBtn')}</button></div>
   <div class="page"><div class="h1">売上要約　${state.ym}</div>
-    <table><thead><tr><th class="l">区分</th><th>件数</th><th>小計(税抜)</th><th>消費税</th><th>合計</th></tr></thead>
-    <tbody>${body||'<tr><td colspan="5" style="text-align:center;color:#888;padding:18px">'+tx('noData')+'</td></tr>'}
-    <tr class="tot"><td class="l">合計</td><td class="r">${tC}</td><td class="r">${Y(tS)}</td><td class="r">${Y(tT)}</td><td class="r">${Y(tG)}</td></tr>
-    </tbody></table></div></body></html>`;
+    <table><thead><tr><th class="l">区分</th><th>件数</th><th>合計(税込)</th></tr></thead>
+    <tbody>${body||'<tr><td colspan="3" style="text-align:center;color:#888;padding:18px">'+tx('noData')+'</td></tr>'}
+    <tr class="tot"><td class="l">合計</td><td class="r">${tC}</td><td class="r">${Y(tG)}</td></tr>
+    </tbody></table>
+    ${rateTable}</div></body></html>`;
   const w=window.open('','_blank'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
   w.document.write(html); w.document.close();
 }
@@ -1246,31 +1294,39 @@ async function exportSalesSummary(){
   const {data,error}=await supa.from('v_settlement_by_category').select('*').eq('session_ym',state.ym);
   if(error){toast(tx('salesLoadFail')+': '+error.message,'err');return;}
   const rows=data||[];
+  const BR=await loadSalesByRate();
   const wb=new ExcelJS.Workbook(); wb.creator='SaiZen';
   const ws=wb.addWorksheet('売上要約');
-  ws.columns=[{width:14},{width:10},{width:14},{width:13},{width:14}];
+  ws.columns=[{width:16},{width:10},{width:14},{width:13},{width:14}];
   ws.mergeCells('A1:E1');
   const tt=ws.getCell('A1'); tt.value=`売上要約 ${state.ym}`; tt.font={bold:true,size:15,color:{argb:XLM.navy}};
-  const heads=['区分','件数','小計(税抜)','消費税','合計'];
-  heads.forEach((h,i)=>{ const c=ws.getRow(3).getCell(i+1); c.value=h; c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill=xFill(XLM.navy); c.border=xBorderAll(); c.alignment={horizontal:i?'right':'left'}; });
+  const headRow=(rr,heads)=>heads.forEach((h,i)=>{ const c=ws.getRow(rr).getCell(i+1); c.value=h; c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill=xFill(XLM.navy); c.border=xBorderAll(); c.alignment={horizontal:i?'right':'left'}; });
+  const totRow=(rr,vals,yenFrom)=>{ const t=ws.getRow(rr); vals.forEach((v,i)=>{ const c=t.getCell(i+1); c.value=v; c.font={bold:true,color:{argb:XLM.navy}}; c.fill=xFill(XLM.soft); c.border=xBorderAll(); c.alignment={horizontal:i?'right':'left'}; if(i+1>=yenFrom) c.numFmt='¥#,##0'; }); };
   const catJ={'라운딩':'ラウンド','식음':'飲食','숙박':'宿泊','골프샵':'ゴルフショップ','기타':'その他'};
-  let r=4; let tC=0,tS=0,tT=0,tG=0;
-  // 카테고리 고정 순서로 정렬
+  // 区分別 = 件数·税込(세액은 세율별 표에서 — 구분별 세액은 배분값이라 적지 않는다)
+  headRow(3,['区分','件数','合計(税込)']);
+  let r=4; let tC=0,tG=0;
   CATEGORIES.forEach(cat=>{
     const row=rows.find(x=>x.category===cat); if(!row) return;
     const wsr=ws.getRow(r);
     wsr.getCell(1).value=catJ[cat]||cat;
     wsr.getCell(2).value=Number(row.line_count||0);
-    wsr.getCell(3).value=Number(row.charge_amount||0);
-    wsr.getCell(4).value=Number(row.tax_amount||0);
-    wsr.getCell(5).value=Number(row.gross_total||0);
-    for(let i=1;i<=5;i++){ const c=wsr.getCell(i); c.border=xBorderAll(); c.alignment={horizontal:i?'right':'left'}; if(i>=3) c.numFmt='¥#,##0'; }
-    tC+=Number(row.line_count||0); tS+=Number(row.charge_amount||0); tT+=Number(row.tax_amount||0); tG+=Number(row.gross_total||0);
+    wsr.getCell(3).value=Number(row.gross_total||0);
+    for(let i=1;i<=3;i++){ const c=wsr.getCell(i); c.border=xBorderAll(); c.alignment={horizontal:i>1?'right':'left'}; if(i>=3) c.numFmt='¥#,##0'; }
+    tC+=Number(row.line_count||0); tG+=Number(row.gross_total||0);
     r++;
   });
-  const tot=ws.getRow(r);
-  tot.getCell(1).value='合計'; tot.getCell(2).value=tC; tot.getCell(3).value=tS; tot.getCell(4).value=tT; tot.getCell(5).value=tG;
-  for(let i=1;i<=5;i++){ const c=tot.getCell(i); c.font={bold:true,color:{argb:XLM.navy}}; c.fill=xFill(XLM.soft); c.border=xBorderAll(); c.alignment={horizontal:i?'right':'left'}; if(i>=3) c.numFmt='¥#,##0'; }
+  totRow(r,['合計',tC,tG],3); r+=2;
+  // 税率別 — 세액=계산서·세율별 1회 버림의 합(v_settlement_by_rate, SQL 158)
+  if(BR){
+    ws.getCell(`A${r}`).value='税率別'; ws.getCell(`A${r}`).font={bold:true,color:{argb:XLM.blue}}; ws.getCell(`B${r}`).value=tx('taxRule'); ws.getCell(`B${r}`).font={size:9,color:{argb:XLM.blue}}; r++;
+    headRow(r,['税率','件数','税込','消費税','税抜']); r++;
+    let rT={n:0,g:0,t:0,nn:0};
+    BR.forEach(b=>{ const wsr=ws.getRow(r); wsr.getCell(1).value=taxJa(b.key)+(b.rate===8?' ※':''); wsr.getCell(2).value=b.n; wsr.getCell(3).value=b.gross; wsr.getCell(4).value=b.tax; wsr.getCell(5).value=b.net;
+      for(let i=1;i<=5;i++){ const c=wsr.getCell(i); c.border=xBorderAll(); c.alignment={horizontal:i>1?'right':'left'}; if(i>=3) c.numFmt='¥#,##0'; }
+      rT.n+=b.n; rT.g+=b.gross; rT.t+=b.tax; rT.nn+=b.net; r++; });
+    totRow(r,['合計',rT.n,rT.g,rT.t,rT.nn],3); r++;
+  } else { ws.getCell(`A${r}`).value=tx('salesRateNA'); ws.getCell(`A${r}`).font={size:9,color:{argb:XLM.blue}}; }
   await downloadWB(wb,`SalesSummary_${state.ym}.xlsx`);
   toast(tx('salesDownloaded'),'ok');
 }

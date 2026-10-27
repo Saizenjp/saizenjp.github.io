@@ -346,18 +346,87 @@
   var GOLF_COURSES = ['aso', 'sobo', 'kuju'];
   // 일별 코스 로테이션(Min 2026-10-25 「매일 아소→소보→쿠주 순서로 로테이션」 = 팀 단위 「가」).
   //  어제 아소에서 출발한 팀은 오늘 소보, 소보→쿠주, 쿠주→아소. 어제 기록이 없으면 null(화면은 가장 덜 찬 코스).
-  // ── 消費税(内税) 공통 (P0 2026-10-27, docs/06 정산 보강) ──────────────────────────
-  //  단가=税込(최종가, Min 2026-06 확정). 포함된 소비세 = 税込 − round(税込 ÷ (1 + rate/100)).
-  //  pos.html·settle.html 의 taxOf()·frontdesk.html 인라인 식·SQL cart_sync_charge/golf_add_charge 가 전부 이 식과 같은 값을 낸다
-  //  (정수 엔에서는 round(税込 − 税込/1.1) 과도 동일 — tests/saizen-core-tax.test.mjs 가 0~100,000엔 전수 대조).
-  //  rate 는 % 정수(10 / 8 / 0). 0 이면 소비세 0(비과세·불과세). 적격청구서용 「청구서 단위·세율별 1회 단수처리」(P1·D1)는 별도 함수로 둔다.
+  // ── 消費税(内税) 공통 (P0 2026-10-27 공통화 · P1 세율 구분 + 단수처리 = 버림, docs/06 정산 보강) ─────────
+  //  단가=税込(최종가, Min 2026-06 확정). 세율 rate 는 % 정수(10 / 8 軽減 / 0 非課税·不課税).
+  //  · taxIncluded(税込, rate)  = 포함된 소비세 = 税込 × rate ÷ (100+rate) 를 **버림(切り捨て)**(D1, Min 2026-10-27).
+  //    음수(환불·조정)는 0 방향 버림(절대값 버림·부호 유지) — SQL tax_included()(158, 정수 나눗셈)와 정수 엔 전수 동일.
+  //  · 적격청구서 규칙 = 세액은 **청구서(folio) 단위·세율별로 1회** 단수처리. 행별 세액(charges.tax)은 참고값.
+  //    → taxByRate(lines) 가 세율·구분별 税込 합계를 모아 그 합계에 한 번 버림한 세액을 돌려준다. 화면·御請求書·領収書·보고서가 전부 이걸 쓴다.
+  //  · tax_class: taxable(課税) / exempt(非課税) / outside(不課税: ゴルフ場利用税·入湯税 등). 0% 는 둘 중 하나.
   var TAX_RATE = 10;
-  function taxIncluded(gross, rate) {
-    gross = Number(gross || 0); rate = (rate == null) ? TAX_RATE : Number(rate);
-    if (!(rate > 0)) return 0;
-    return gross - Math.round(gross / (1 + rate / 100));
+  var TAX_ROUNDING = 'floor';   // D1. 'round' / 'ceil' 로 바꾸려면 SQL tax_included(158)도 함께 바꿔야 한다(두 곳이 한 식).
+  var TAX_OPTIONS = [           // 선택지(메뉴 관리·수기 청구). key = class:rate (저장은 두 컬럼 tax_class·tax_rate)
+    { key: 'taxable:10', cls: 'taxable', rate: 10 },
+    { key: 'taxable:8',  cls: 'taxable', rate: 8  },
+    { key: 'exempt:0',   cls: 'exempt',  rate: 0  },
+    { key: 'outside:0',  cls: 'outside', rate: 0  }
+  ];
+  var TAX_LABELS = {            // 짧은 라벨(인쇄물은 ja). 문장은 각 페이지 사전에서.
+    ja: { 'taxable:10': '10%', 'taxable:8': '8%(軽減)', 'exempt:0': '非課税', 'outside:0': '不課税', mark8: '※', note8: '※は軽減税率(8%)対象', subject: '対象', taxIn: 'うち消費税' },
+    ko: { 'taxable:10': '10%', 'taxable:8': '8%(경감)', 'exempt:0': '비과세', 'outside:0': '불과세', mark8: '※', note8: '※는 경감세율(8%) 대상', subject: '대상', taxIn: '내 소비세' },
+    en: { 'taxable:10': '10%', 'taxable:8': '8% (reduced)', 'exempt:0': 'Tax-exempt', 'outside:0': 'Non-taxable', mark8: '※', note8: '※ reduced rate (8%) items', subject: 'subject', taxIn: 'incl. tax' }
+  };
+  function taxRound(x, mode) {
+    mode = mode || TAX_ROUNDING;
+    var s = x < 0 ? -1 : 1, a = Math.abs(x);
+    var v = mode === 'round' ? Math.round(a) : (mode === 'ceil' ? Math.ceil(a) : Math.floor(a));
+    return s * v;
   }
-  function netOf(gross, rate) { return Number(gross || 0) - taxIncluded(gross, rate); }
+  function taxIncluded(gross, rate, mode) {
+    gross = Number(gross || 0); rate = (rate == null) ? TAX_RATE : Number(rate);
+    if (!(rate > 0) || !gross) return 0;
+    return taxRound(gross * rate / (100 + rate), mode);   // 정수 엔이면 몫이 정수일 때 정확히 정수(IEEE), 아니면 1/(100+rate) 이상 떨어져 오차 없음
+  }
+  function netOf(gross, rate, mode) { return Number(gross || 0) - taxIncluded(gross, rate, mode); }
+  //  세율·구분 → key. 구분이 과세가 아니면 세율은 0 으로 정규화(저장 check 와 같은 규칙).
+  function taxKey(rate, cls) {
+    cls = (cls === 'exempt' || cls === 'outside') ? cls : 'taxable';
+    rate = (rate == null || rate === '') ? TAX_RATE : Number(rate);
+    if (cls !== 'taxable') rate = 0;
+    else if (rate !== 8 && rate !== 10) rate = (rate === 0 ? 0 : TAX_RATE);
+    if (cls === 'taxable' && rate === 0) { cls = 'exempt'; }   // 과세 0% 는 없다 → 非課税로
+    return cls + ':' + rate;
+  }
+  function taxParse(key) {
+    var p = String(key || 'taxable:10').split(':');
+    var k = taxKey(p[1], p[0]); var q = k.split(':');
+    return { key: k, cls: q[0], rate: Number(q[1]) };
+  }
+  //  한 줄의 税込 금액 — 청구 행(amount+tax+service_charge) / 장바구니 줄(unit_price×qty) / 직접 gross
+  function lineGross(l) {
+    if (!l) return 0;
+    if (l.gross != null) return Number(l.gross) || 0;
+    if (l.amount != null || l.tax != null) return (Number(l.amount) || 0) + (Number(l.tax) || 0) + (Number(l.service_charge) || 0);
+    return Math.round((Number(l.unit_price) || 0) * (Number(l.qty == null ? 1 : l.qty) || 0));
+  }
+  function taxBucketOrder(a, b) {
+    var o = { taxable: 0, exempt: 1, outside: 2 };
+    return (o[a.cls] - o[b.cls]) || (b.rate - a.rate);
+  }
+  //  청구서 단위 세율별 집계 — lines: 청구 행 또는 장바구니 줄(tax_rate·tax_class 없으면 10%·과세). voided 행은 뺀다.
+  //  반환 { buckets:[{key,cls,rate,n,gross,tax,net}], gross, tax, net, n, has8, mixed }
+  function taxByRate(lines, mode) {
+    var map = {};
+    (lines || []).forEach(function (l) {
+      if (!l || l.voided) return;
+      var t = taxParse(taxKey(l.tax_rate, l.tax_class));
+      var b = map[t.key] || (map[t.key] = { key: t.key, cls: t.cls, rate: t.rate, n: 0, gross: 0, tax: 0, net: 0 });
+      b.gross += lineGross(l); b.n += 1;
+    });
+    var buckets = Object.keys(map).map(function (k) { return map[k]; }).sort(taxBucketOrder);
+    var out = { buckets: buckets, gross: 0, tax: 0, net: 0, n: 0, has8: false, mixed: buckets.length > 1 };
+    buckets.forEach(function (b) {
+      b.tax = taxIncluded(b.gross, b.rate, mode); b.net = b.gross - b.tax;
+      out.gross += b.gross; out.tax += b.tax; out.net += b.net; out.n += b.n;
+      if (b.cls === 'taxable' && b.rate === 8) out.has8 = true;
+    });
+    return out;
+  }
+  function taxLabel(x, lang) {
+    var k = (typeof x === 'string') ? taxParse(x).key : (x && x.key) || taxKey(x && x.rate, x && x.cls);
+    var L = TAX_LABELS[lang] || TAX_LABELS.ja;
+    return L[k] || k;
+  }
 
   function nextStartCourse(prev, courses) {
     var cs = courses || GOLF_COURSES; var i = cs.indexOf(String(prev || ''));
@@ -1066,8 +1135,17 @@
     GOLF_COURSES: GOLF_COURSES,
     nextStartCourse: nextStartCourse,
     TAX_RATE: TAX_RATE,
+    TAX_ROUNDING: TAX_ROUNDING,
+    TAX_OPTIONS: TAX_OPTIONS,
+    TAX_LABELS: TAX_LABELS,
+    taxRound: taxRound,
     taxIncluded: taxIncluded,
     netOf: netOf,
+    taxKey: taxKey,
+    taxParse: taxParse,
+    lineGross: lineGross,
+    taxByRate: taxByRate,
+    taxLabel: taxLabel,
     buildRounding: buildRounding,
     cartFreeDay: cartFreeDay,
     singlePlan: singlePlan,

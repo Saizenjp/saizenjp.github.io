@@ -116,8 +116,10 @@
   .unlink{font-size:11px;color:var(--accent);font-weight:700;text-decoration:none;white-space:nowrap}
   .unlink:hover{text-decoration:underline}
   .ar-neg{color:var(--err)}
+  .box .bd h4.sub{margin:12px 0 6px;font-size:12.5px;font-weight:800;color:var(--text2)}
+  .box .bd .note{margin-top:8px;font-size:11px;color:var(--muted);line-height:1.5}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.1">
 <style>
   @page{size:A4;margin:12mm}
   @media print{
@@ -188,8 +190,8 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-core.js?v=52"></script>
-<script src="../assets/saizen-ops.js?v=36.0"></script>
+<script src="../assets/saizen-core.js?v=53"></script>
+<script src="../assets/saizen-ops.js?v=36.1"></script>
 <script>
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
@@ -210,6 +212,7 @@ const L={
     kCiCo:'チェックイン / アウト', kCi:'チェックイン', kCo:'チェックアウト', kStay:'在室', kWalkin:'ウォークイン', kClosedDays:'締め済み日数', kUnset:'決済手段 未指定の請求',
     uTeam:'組', uPax:'名', uCnt:'件', uDays:'日',
     sCat:'部門別売上', sPay:'入金・店舗別', sDays:'日別', sMonths:'月別', sUnsettled:'未精算チェックアウト', sB2B:'B2B請求 参考(現地精算表基準)',
+    sRate:'税率別', thRate:'税率', taxNote:'消費税＝伝票(フォリオ)単位・税率ごとに1回切り捨て(日別は累計差分、期間合計＝伝票の税額合計)。部門別は税込のみ。', rateNA:'税率別は SQL 158 適用後に表示',
     thCat:'区分', thN:'件数', thNet:'税抜', thTax:'消費税', thGross:'税込', thSource:'店舗', thDate:'日付', thMonth:'月', thSales:'売上', thCash:'現金', thCard:'カード', thPay:'入金計',
     thSettled:'精算件', thAr:'未収期末', thCi:'チェックイン', thCo:'チェックアウト', thClosed:'締め', thTeam:'チーム', thRep:'代表', thCoDate:'アウト日', thBalance:'残高', thGrossT:'請求', thPaid:'入金', thStatus:'状態', thTotal:'合計',
     mCash:'現金', mCard:'カード', payNone:'入金なし',
@@ -237,6 +240,7 @@ const L={
     kCiCo:'체크인 / 체크아웃', kCi:'체크인', kCo:'체크아웃', kStay:'재실', kWalkin:'워크인', kClosedDays:'마감 완료 일수', kUnset:'결제수단 미지정 청구',
     uTeam:'팀', uPax:'명', uCnt:'건', uDays:'일',
     sCat:'부문별 매출', sPay:'입금 · 매장별', sDays:'일별', sMonths:'월별', sUnsettled:'미정산 체크아웃', sB2B:'B2B 청구 참고(現地精算表 기준)',
+    sRate:'세율별', thRate:'세율', taxNote:'소비세=계산서(folio) 단위·세율별 1회 버림(일별은 누적 차분, 기간 합=계산서 세액 합). 부문별은 税込만.', rateNA:'세율별은 SQL 158 적용 뒤 표시',
     thCat:'구분', thN:'건수', thNet:'税抜', thTax:'소비세', thGross:'税込', thSource:'매장', thDate:'날짜', thMonth:'월', thSales:'매출', thCash:'현금', thCard:'카드', thPay:'입금계',
     thSettled:'정산건', thAr:'미수 기말', thCi:'체크인', thCo:'체크아웃', thClosed:'마감', thTeam:'팀', thRep:'대표', thCoDate:'체크아웃일', thBalance:'잔액', thGrossT:'청구', thPaid:'입금', thStatus:'상태', thTotal:'합계',
     mCash:'현금', mCard:'카드', payNone:'입금 없음',
@@ -264,6 +268,7 @@ const L={
     kCiCo:'Check-in / out', kCi:'Check-in', kCo:'Check-out', kStay:'In-house', kWalkin:'Walk-in', kClosedDays:'Closed days', kUnset:'Charges without pay method',
     uTeam:'teams', uPax:'pax', uCnt:'items', uDays:'days',
     sCat:'Sales by category', sPay:'Receipts · by outlet', sDays:'By day', sMonths:'By month', sUnsettled:'Unsettled check-outs', sB2B:'B2B billing reference (Merit settlement basis)',
+    sRate:'By tax rate', thRate:'Rate', taxNote:'Tax = rounded down once per folio and rate (daily = cumulative difference; period total = sum of folio tax). Category table shows gross only.', rateNA:'By-rate table appears after SQL 158 is applied',
     thCat:'Category', thN:'Items', thNet:'Net', thTax:'Tax', thGross:'Gross', thSource:'Outlet', thDate:'Date', thMonth:'Month', thSales:'Sales', thCash:'Cash', thCard:'Card', thPay:'Receipts',
     thSettled:'Settled', thAr:'Outstanding', thCi:'Check-in', thCo:'Check-out', thClosed:'Closed', thTeam:'Team', thRep:'Rep.', thCoDate:'Check-out', thBalance:'Balance', thGrossT:'Charged', thPaid:'Paid', thStatus:'Status', thTotal:'Total',
     mCash:'Cash', mCard:'Card', payNone:'No receipts',
@@ -404,14 +409,26 @@ function kpiHTML(tot, days, today){
     ${third}
   </div>`;
 }
+// 세율 라벨(saizen-core 공통) — 'taxable:10' 등 key → 10% / 8%(軽減) / 非課税 / 不課税
+function rateLabel(b){ return SZCore.taxLabel(SZCore.taxKey(b.rate,b.cls), lang()); }
+// 부문별 = 税込만(구분별 세액은 배분값이라 적지 않는다) + 세율별 표(세액=계산서·세율별 1회 버림, SQL 158). by_rate 가 없으면(옛 RPC) 안내만.
 function catHTML(byCat, tot){
   const map={}; byCat.forEach(x=>{ map[x.category]=x; });
   const keys=CATS.concat(byCat.map(x=>x.category).filter(c=>!CATS.includes(c)));
-  const rows=keys.map(c=>{ const x=map[c]; if(!x) return ''; return `<tr><td class="l">${esc(catLabel(c))}</td><td>${num(x.n)}</td><td>${yen(x.net)}</td><td>${yen(x.tax)}</td><td><b>${yen(x.gross)}</b></td></tr>`; }).join('');
+  const rows=keys.map(c=>{ const x=map[c]; if(!x) return ''; return `<tr><td class="l">${esc(catLabel(c))}</td><td>${num(x.n)}</td><td><b>${yen(x.gross)}</b></td></tr>`; }).join('');
+  const br=DATA&&DATA.by_rate;
+  const rrows=(br||[]).map(b=>`<tr><td class="l">${esc(rateLabel(b))}</td><td>${num(b.n)}</td><td>${yen(b.gross)}</td><td>${yen(b.tax)}</td><td><b>${yen(b.net)}</b></td></tr>`).join('');
+  const rate=br?`<h4 class="sub">${esc(tx('sRate'))}</h4>
+    <table class="t"><thead><tr><th class="l">${esc(tx('thRate'))}</th><th>${esc(tx('thN'))}</th><th>${esc(tx('thGross'))}</th><th>${esc(tx('thTax'))}</th><th>${esc(tx('thNet'))}</th></tr></thead>
+    <tbody>${rrows||`<tr><td class="l" colspan="5"><div class="empty">—</div></td></tr>`}
+    <tr class="tot"><td class="l">${esc(tx('thTotal'))}</td><td>${num(tot.ch_n)}</td><td>${yen(tot.gross)}</td><td>${yen(tot.tax)}</td><td>${yen(tot.net)}</td></tr></tbody></table>
+    <div class="note">${esc(tx('taxNote'))}</div>`
+    :`<div class="note">${esc(tx('rateNA'))}</div>`;
   return `<div class="box"><h3>${esc(tx('sCat'))}<span class="cnt">${num(tot.ch_n)} ${esc(tx('uCnt'))}</span></h3><div class="bd">
-    <table class="t"><thead><tr><th class="l">${esc(tx('thCat'))}</th><th>${esc(tx('thN'))}</th><th>${esc(tx('thNet'))}</th><th>${esc(tx('thTax'))}</th><th>${esc(tx('thGross'))}</th></tr></thead>
-    <tbody>${rows||`<tr><td class="l" colspan="5"><div class="empty">—</div></td></tr>`}
-    <tr class="tot"><td class="l">${esc(tx('thTotal'))}</td><td>${num(tot.ch_n)}</td><td>${yen(tot.net)}</td><td>${yen(tot.tax)}</td><td>${yen(tot.gross)}</td></tr></tbody></table></div></div>`;
+    <table class="t"><thead><tr><th class="l">${esc(tx('thCat'))}</th><th>${esc(tx('thN'))}</th><th>${esc(tx('thGross'))}</th></tr></thead>
+    <tbody>${rows||`<tr><td class="l" colspan="3"><div class="empty">—</div></td></tr>`}
+    <tr class="tot"><td class="l">${esc(tx('thTotal'))}</td><td>${num(tot.ch_n)}</td><td>${yen(tot.gross)}</td></tr></tbody></table>
+    ${rate}</div></div>`;
 }
 function payHTML(tot, bySrc){
   const srcRows=bySrc.map(x=>`<tr><td class="l">${esc(srcLabel(x.source))}</td><td>${num(x.n)}</td><td>${yen(x.gross)}</td></tr>`).join('');
@@ -558,12 +575,18 @@ async function downloadXlsx(){
     if(UNIT==='day'){ const d=days[0]||{}; line(tx('kStay'), N(d.stay_pax), false, tx('uPax'));
       if(d.closed){ line(tx('clDone'), `${tsShort(d.closed.closed_at)} · ${d.closed.closed_by||'-'}`); if(d.closed.cash_counted!=null){ line(tx('clCash'), N(d.closed.cash_counted), true); line(tx('clDiff'), N(d.closed.cash_counted)-N(d.cash), true); } if(d.closed.note) line(tx('clNote'), d.closed.note); }
       else line(tx('thClosed'), d.d>r.today?tx('clFuture'):tx('clOpen')); }
-    // 区分別
+    // 区分別(税込만) + 税率別(세액=계산서·세율별 1회 버림)
     const w2=wb.addWorksheet('区分別'); w2.columns=[{width:18},{width:10},{width:14},{width:13},{width:14}];
-    title(w2, ttl, 5); head(w2,3,[tx('thCat'),tx('thN'),tx('thNet'),tx('thTax'),tx('thGross')]);
+    title(w2, ttl, 5); head(w2,3,[tx('thCat'),tx('thN'),tx('thGross')]);
     let r2=4; const byCat=DATA.by_cat||[]; const map={}; byCat.forEach(x=>{ map[x.category]=x; });
-    CATS.concat(byCat.map(x=>x.category).filter(c=>!CATS.includes(c))).forEach(c=>{ const x=map[c]; if(!x) return; put(w2,r2,[catLabel(c),N(x.n),N(x.net),N(x.tax),N(x.gross)],[2,3,4]); r2++; });
-    put(w2,r2,[tx('thTotal'),N(t.ch_n),N(t.net),N(t.tax),N(t.gross)],[2,3,4],true);
+    CATS.concat(byCat.map(x=>x.category).filter(c=>!CATS.includes(c))).forEach(c=>{ const x=map[c]; if(!x) return; put(w2,r2,[catLabel(c),N(x.n),N(x.gross)],[2]); r2++; });
+    put(w2,r2,[tx('thTotal'),N(t.ch_n),N(t.gross)],[2],true); r2+=2;
+    if(DATA.by_rate){ w2.getCell(`A${r2}`).value=tx('sRate'); w2.getCell(`A${r2}`).font={bold:true,color:{argb:NAVY}}; r2++;
+      head(w2,r2,[tx('thRate'),tx('thN'),tx('thGross'),tx('thTax'),tx('thNet')]); r2++;
+      DATA.by_rate.forEach(b=>{ put(w2,r2,[rateLabel(b),N(b.n),N(b.gross),N(b.tax),N(b.net)],[2,3,4]); r2++; });
+      put(w2,r2,[tx('thTotal'),N(t.ch_n),N(t.gross),N(t.tax),N(t.net)],[2,3,4],true); r2++;
+      w2.getCell(`A${r2}`).value=tx('taxNote'); }
+    else { w2.getCell(`A${r2}`).value=tx('rateNA'); }
     // 店舗別
     const w3=wb.addWorksheet('店舗別'); w3.columns=[{width:24},{width:10},{width:14}];
     title(w3, ttl, 3); head(w3,3,[tx('thSource'),tx('thN'),tx('thGross')]);

@@ -199,6 +199,10 @@
   .cart-line{display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
   .cart-line .cl-name{font-size:15px;font-weight:800;line-height:1.3}
   .cart-line .cl-name .cl-ko{color:var(--text2);font-weight:600;font-size:13px}
+  .cart-line .cl-name .cl-tax{display:inline-block;margin-left:4px;font-size:11px;font-weight:800;color:var(--accent2);vertical-align:middle}
+  .cart-line .cl-name .cl-tax.r8{font-size:13px}
+  .cart-foot .tr.rates{justify-content:flex-end;gap:10px;font-size:11.5px;color:var(--text2);flex-wrap:wrap}
+  .cart-foot .tr.rates i{font-style:normal;color:var(--muted)}
   .cart-line .cl-price{font-family:var(--mono);font-size:12px;color:var(--text2)}
   .cart-line .cl-sum{font-family:var(--mono);font-size:14.5px;font-weight:800;color:var(--accent);text-align:right}
   .cart-line .qtybox{display:flex;align-items:center;gap:6px;grid-row:1;grid-column:2}
@@ -260,7 +264,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.1">
 </head>
 <body data-so-area="pos_front pos_golf pos_restaurant">
 <script>(function(){ var o=new URLSearchParams(location.search).get('outlet')||''; var M={front:'pos_front',golf:'pos_golf',restaurant:'pos_restaurant'}; if(M[o]) document.body.setAttribute('data-so-area',M[o]); })();</script>
@@ -346,6 +350,7 @@
           <div class="cart-dest" id="cart-dest" style="display:none"></div>
         <div class="tr"><span data-i18n="po_subtotal"></span><span class="v" id="cart-sub">¥0</span></div>
           <div class="tr"><span data-i18n="po_tax"></span><span class="v" id="cart-tax">¥0</span></div>
+          <div class="tr rates" id="cart-rates" style="display:none"></div>
           <div class="tr grand"><span data-i18n="po_total"></span><span class="v" id="cart-total">¥0</span></div>
           <button class="btn big" id="btn-send" type="button" disabled data-i18n="po_send"></button>
           <div id="wi-pay" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
@@ -451,8 +456,8 @@
   </div>
 </div>
 
-<script src="../assets/saizen-core.js?v=52"></script>
-<script src="../assets/saizen-ops.js?v=36.0"></script>
+<script src="../assets/saizen-core.js?v=53"></script>
+<script src="../assets/saizen-ops.js?v=36.1"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -461,7 +466,8 @@
 // ════════════════════════════════════════════════════════════════════════
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
-const TAX_RATE=SZCore.TAX_RATE/100;   // 内税: 메뉴가=최종가(税込). 세율·세액 식은 saizen-core 공통(P0 2026-10-27)
+const TAX_RATE=SZCore.TAX_RATE/100;   // 内税: 메뉴가=최종가(税込). 세율·세액 식은 saizen-core 공통(P0 2026-10-27 · P1 세율 구분·버림)
+let HAS_TAXCOL=true;                  // charges.tax_rate·tax_class(SQL 158) 적용 여부 — 미적용 DB 면 insert 에서 두 필드를 뺀다(default 10·과세와 같은 뜻)
 
 // ── i18n (한·일 직원 공용. ja 기본) — saizen-ops.js 의 data-i18n/t() 와 병행, 동적 JS 문자열용 ──
 const L={
@@ -641,7 +647,10 @@ function outletVenues(){ return state.outlet ? OUTLETS[state.outlet].venues : nu
 function opBy(){ return (window.__so_getUser && __so_getUser()) || localStorage.getItem('saizen_op_name') || 'pos'; }
 
 function yen(n){ return '¥'+Number(n||0).toLocaleString('ja-JP'); }
-function taxOf(gross){ return SZCore.taxIncluded(gross); }  // 内税(포함된 소비세) — saizen-core 공통 위임(P0)
+function taxOf(gross,rate){ return SZCore.taxIncluded(gross,rate); }  // 内税(포함된 소비세, 버림) — saizen-core 공통 위임(P0·P1)
+function taxKeyOf(l){ return SZCore.taxParse(SZCore.taxKey(l?l.tax_rate:null, l?l.tax_class:null)); }   // 장바구니 줄·메뉴의 세율·구분(없으면 10%·과세)
+// 줄 이름 옆 표시: 8%=※ · 0%=非課税/不課税 라벨 · 10%=없음(기본)
+function taxMark(l){ const T=taxKeyOf(l); if(T.key==='taxable:10') return ''; return `<span class="cl-tax${T.rate===8?' r8':''}">${escP(T.rate===8?'※':SZCore.taxLabel(T.key,lang()))}</span>`; }
 function isoToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function ymOf(iso){ return String(iso||'').slice(0,7); }
 function toast(msg,cls){
@@ -675,6 +684,7 @@ async function connect(){
     supa=window.supabase.createClient(url,key);
     const {error}=await supa.from('menu_items').select('id',{count:'exact',head:true});
     if(error) throw error;
+    { const {error:te}=await supa.from('charges').select('tax_rate').limit(1); HAS_TAXCOL=!te; if(!HAS_TAXCOL) console.warn('charges.tax_rate 없음 — SQL 158 미적용:', te.message); }
     setConn(tx('connOk'),'ok'); toast(tx('connectedToast'),'ok');
     btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
     $('#btn-load').disabled=false;
@@ -1321,7 +1331,8 @@ function addToCart(m){
     // station: 메뉴 지정값 우선. 단 프론트·골프샵 매점은 주방/바로 보내지 않음(none).
     let st=m.station||'kitchen';
     if(vv==='front'||vv==='proshop') st='none';
-    state.cart.push({key, id:m.id, category:m.category, venue:vv, station:st, name_ja:desc, name_ko:(price===Number(m.unit_price)?m.name_ko:''), unit_price:price, qty:1}); }
+    const T=taxKeyOf(m);   // 메뉴의 세율·구분을 줄에 복사(청구 시점 세율 고정 — 메뉴를 뒤에 바꿔도 과거 청구 불변)
+    state.cart.push({key, id:m.id, category:m.category, venue:vv, station:st, name_ja:desc, name_ko:(price===Number(m.unit_price)?m.name_ko:''), unit_price:price, qty:1, tax_rate:T.rate, tax_class:T.cls}); }
   const line=state.cart.find(l=>l.key===key);
   renderCart(key);
   toast(tx('cartAdded')(lang()==='ko'?(m.name_ko||desc):desc, line?line.qty:1),'ok');   // 무엇이 몇 개 담겼는지 바로 안내
@@ -1338,7 +1349,7 @@ function renderCart(hitKey){
   if(!state.cart.length){ body.innerHTML='<div class="cart-empty">'+t('po_cartEmpty')+'</div>'; }
   else state.cart.forEach(l=>{
     const row=document.createElement('div'); row.className='cart-line'+(l.key===hitKey?' hit':'');
-    row.innerHTML=`<div class="cl-name">${l.name_ja}${l.name_ko?` <span class="cl-ko">${l.name_ko}</span>`:''}`
+    row.innerHTML=`<div class="cl-name">${l.name_ja}${taxMark(l)}${l.name_ko?` <span class="cl-ko">${l.name_ko}</span>`:''}`
       +(stLabel(l.station)?`<span class="cl-st st-${escP(l.station)}">${escP(stLabel(l.station))}</span>`:'')
       +`</div>
       <div class="qtybox">
@@ -1364,11 +1375,14 @@ function renderCart(hitKey){
   body.querySelectorAll('[data-minus]').forEach(b=>b.addEventListener('click',()=>changeQty(b.dataset.minus,-1)));
   body.querySelectorAll('[data-plus]').forEach(b=>b.addEventListener('click',()=>changeQty(b.dataset.plus,1)));
   body.querySelectorAll('[data-rm]').forEach(b=>b.addEventListener('click',()=>removeLine(b.dataset.rm)));
-  const gross=state.cart.reduce((s,l)=>s+l.unit_price*l.qty,0);   // 메뉴가 합계(税込=최종가)
-  const tax=state.cart.reduce((s,l)=>s+taxOf(l.unit_price*l.qty),0);  // 内税(포함분)
-  $('#cart-sub').textContent=yen(gross-tax);   // 세전 소계
-  $('#cart-tax').textContent=yen(tax);
-  $('#cart-total').textContent=yen(gross);     // 합계 = 메뉴가 그대로
+  //  합계 = 메뉴가 그대로(税込). 内税는 **세율별 합계에 1회 버림**(적격청구서 규칙, P1) — 줄마다 버린 값을 더하지 않는다.
+  const TB=SZCore.taxByRate(state.cart);
+  $('#cart-sub').textContent=yen(TB.net);      // 세전 소계
+  $('#cart-tax').textContent=yen(TB.tax);
+  $('#cart-total').textContent=yen(TB.gross);  // 합계 = 메뉴가 그대로
+  { const rb=$('#cart-rates'); if(rb){ const show=TB.buckets.length>1||(TB.buckets.length===1&&TB.buckets[0].key!=='taxable:10');
+      rb.style.display=show?'':'none';
+      rb.innerHTML=show?TB.buckets.map(b=>`<span>${escP(SZCore.taxLabel(b.key,lang()))} ${yen(b.gross)}${b.rate>0?` <i>(${yen(b.tax)})</i>`:''}</span>`).join(' · '):''; } }
   updateSendBtn(); saveCart();
 }
 
@@ -1417,30 +1431,31 @@ async function sendCart(){
       state.cart.forEach(l=>{
         const gross=l.unit_price*l.qty;
         if(k===1){
-          const mid=mids[0], tax=taxOf(gross);
+          const mid=mids[0], T=taxKeyOf(l), tax=taxOf(gross,T.rate);
           rows.push({ folio_id:folioOf[mid], event_seq:state.team.event_seq, member_id:mid,
             category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:''),
-            qty:l.qty, unit_price:l.unit_price, amount:gross-tax, tax, service_charge:0, link_ref:'menu:'+l.id, created_by:by });
+            qty:l.qty, unit_price:l.unit_price, amount:gross-tax, tax, tax_rate:T.rate, tax_class:T.cls, service_charge:0, link_ref:'menu:'+l.id, created_by:by });
         } else {
           const base=Math.floor(gross/k); let rem=gross-base*k;   // 잔돈은 앞 인원부터 +1엔
           mids.forEach((mid,i)=>{
             const share=base+(i<rem?1:0); if(share<=0) return;
-            const tax=taxOf(share);
+            const T=taxKeyOf(l), tax=taxOf(share,T.rate);
             rows.push({ folio_id:folioOf[mid], event_seq:state.team.event_seq, member_id:mid,
               category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:'')+` (${k}인 분할)`,
-              qty:1, unit_price:share, amount:share-tax, tax, service_charge:0, link_ref:'menu:'+l.id, created_by:by });
+              qty:1, unit_price:share, amount:share-tax, tax, tax_rate:T.rate, tax_class:T.cls, service_charge:0, link_ref:'menu:'+l.id, created_by:by });
           });
         }
       });
     } else {
       const folioId=await ensureFolio();
       state.cart.forEach(l=>{
-        const gross=l.unit_price*l.qty, tax=taxOf(gross);
+        const gross=l.unit_price*l.qty, T=taxKeyOf(l), tax=taxOf(gross,T.rate);
         rows.push({ folio_id:folioId, event_seq:state.team.event_seq, member_id:null,
           category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:''),
-          qty:l.qty, unit_price:l.unit_price, amount:gross-tax, tax, service_charge:0, link_ref:'menu:'+l.id, created_by:by });
+          qty:l.qty, unit_price:l.unit_price, amount:gross-tax, tax, tax_rate:T.rate, tax_class:T.cls, service_charge:0, link_ref:'menu:'+l.id, created_by:by });
       });
     }
+    if(!HAS_TAXCOL) rows.forEach(r=>{ delete r.tax_rate; delete r.tax_class; });   // SQL 158 미적용 DB — 컬럼이 없으면 보내지 않는다
     const {error}=await supa.from('charges').insert(rows);
     if(error) throw error;
     // 주방(kitchen)·바(bar)행 모두 KDS 티켓 발행(none=매점은 미발행).

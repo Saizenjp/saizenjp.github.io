@@ -85,8 +85,10 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+  .notax .taxcol{display:none}
+  select[data-f="tax"]{min-width:92px}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.1">
 </head>
 <body data-so-area="menu">
 <div class="topbar so-bar">
@@ -145,6 +147,7 @@
         <select class="inp" id="n-cat"></select></div>
       <div class="f"><label data-i18n="me_venue"></label><select class="inp" id="n-venue"></select></div>
       <div class="f"><label data-i18n="me_price"></label><input class="inp price" id="n-price" type="number" min="0" step="100" value="0"></div>
+      <div class="f taxcol"><label id="t-ntax"></label><select class="inp" id="n-tax"></select></div>
       <div class="f"><label data-i18n="me_sort"></label><input class="inp sort" id="n-sort" type="number" value="0"></div>
       <div class="f"><label>&nbsp;</label><button class="btn sm" id="btn-add" type="button" disabled data-i18n="me_add"></button></div>
     </div>
@@ -162,9 +165,9 @@
         <thead><tr>
           <th data-i18n="me_code"></th><th data-i18n="me_nameJa"></th><th data-i18n="me_nameKo"></th>
           <th data-i18n="me_cat"></th><th data-i18n="me_grp"></th><th data-i18n="me_sub"></th><th data-i18n="me_venue"></th><th data-i18n="me_station"></th>
-          <th class="num" data-i18n="me_price"></th><th data-i18n="me_sort"></th><th data-i18n="me_active"></th><th></th>
+          <th class="num" data-i18n="me_price"></th><th class="taxcol" id="t-thtax"></th><th data-i18n="me_sort"></th><th data-i18n="me_active"></th><th></th>
         </tr></thead>
-        <tbody id="menu-body"><tr><td colspan="12" class="empty-hint" data-i18n="me_connectFirst"></td></tr></tbody>
+        <tbody id="menu-body"><tr><td colspan="13" class="empty-hint" data-i18n="me_connectFirst"></td></tr></tbody>
       </table>
     </div>
   </div>
@@ -173,8 +176,8 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-core.js?v=52"></script>
-<script src="../assets/saizen-ops.js?v=36.0"></script>
+<script src="../assets/saizen-core.js?v=53"></script>
+<script src="../assets/saizen-ops.js?v=36.1"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 메뉴 관리(menu_items CRUD)  · POS/KDS 단가·station 마스터
@@ -183,10 +186,12 @@
 // ════════════════════════════════════════════════════════════════════════
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
+let HAS_TAX=true;   // menu_items.tax_rate·tax_class(SQL 158) 적용 여부 — 미적용 DB 면 세율 열을 숨기고 저장에서도 뺀다
 
 // ── i18n (한·일 직원 공용. ja 기본. me_* 등은 saizen-ops.js, 나머지 로컬 키는 여기서) ──
 const L={
-  ja:{ phCode:'自動', tipNextCode:'場所に合う次のコードを生成(FR1·GS1…)', phNameKo:'생맥주',
+  ja:{ thTax:'税率', tax10:'10%', tax8:'8%(軽減)', taxEx:'非課税', taxOut:'不課税', flTax:'税率', flTaxCls:'税区分', taxNoCol:'税率列は未適用(SQL 158 実行後に表示)',
+    phCode:'自動', tipNextCode:'場所に合う次のコードを生成(FR1·GS1…)', phNameKo:'생맥주',
     saveAll:'💾 一括保存', saveVenue:'💾 この場所を一括保存', tipCodeLock:'適用済みのコードは修正不可',
     histTitle:'🕘 変更履歴', histEmptyConnect:'接続後に表示されます。', histEmptyNone:'まだ変更履歴がありません。',
     histTblMissing:'履歴テーブル未設置(29_change_log.sql の実行が必要)', histRecent:n=>`(直近 ${n}件)`,
@@ -201,7 +206,8 @@ const L={
     flCode:'コード', flNameJa:'日本語名', flNameKo:'韓国語名', flCat:'区分', flVenue:'場所', flStation:'station', flPrice:'単価', flSort:'並び順', flActive:'有効',
     catRound:'ラウンド', catFb:'飲食', catRoom:'ルーム', catProshop:'ゴルフショップ', catEtc:'その他',
     venRestaurant:'レストラン', venFront:'フロント売店', venGolf:'ゴルフ場 プレー料金', venProshop:'ゴルフショップ(商品)', venBanquet:'コンベンションホール', venEtc:'その他', all:'全体' },
-  ko:{ phCode:'자동', tipNextCode:'장소에 맞는 다음 코드 생성(FR1·GS1…)', phNameKo:'생맥주',
+  ko:{ thTax:'세율', tax10:'10%', tax8:'8%(경감)', taxEx:'비과세', taxOut:'불과세', flTax:'세율', flTaxCls:'세구분', taxNoCol:'세율 열 미적용(SQL 158 실행 뒤 표시)',
+    phCode:'자동', tipNextCode:'장소에 맞는 다음 코드 생성(FR1·GS1…)', phNameKo:'생맥주',
     saveAll:'💾 전체 저장', saveVenue:'💾 이 장소 전체 저장', tipCodeLock:'적용된 코드는 수정 불가',
     histTitle:'🕘 수정 이력', histEmptyConnect:'연결 후 표시됩니다.', histEmptyNone:'아직 수정 이력이 없습니다.',
     histTblMissing:'이력 테이블 미설치(29_change_log.sql 실행 필요)', histRecent:n=>`(최근 ${n}건)`,
@@ -216,7 +222,8 @@ const L={
     flCode:'코드', flNameJa:'日本語名', flNameKo:'한국어명', flCat:'구분', flVenue:'장소', flStation:'station', flPrice:'단가', flSort:'정렬', flActive:'활성',
     catRound:'라운딩', catFb:'식음', catRoom:'룸', catProshop:'골프샵', catEtc:'기타',
     venRestaurant:'레스토랑', venFront:'프론트 매점', venGolf:'골프장 플레이 요금', venProshop:'프로샵(상품)', venBanquet:'컨벤션 홀', venEtc:'기타', all:'전체' },
-  en:{ phCode:'Auto', tipNextCode:'Generate next code for this venue (FR1·GS1…)', phNameKo:'생맥주',
+  en:{ thTax:'Tax rate', tax10:'10%', tax8:'8% (reduced)', taxEx:'Tax-exempt', taxOut:'Non-taxable', flTax:'Tax rate', flTaxCls:'Tax class', taxNoCol:'Tax-rate column not applied yet (shown after SQL 158)',
+    phCode:'Auto', tipNextCode:'Generate next code for this venue (FR1·GS1…)', phNameKo:'생맥주',
     saveAll:'💾 Save all', saveVenue:'💾 Save this venue', tipCodeLock:'Applied code cannot be edited',
     histTitle:'🕘 Change history', histEmptyConnect:'Shown after connecting.', histEmptyNone:'No change history yet.',
     histTblMissing:'History table missing (run 29_change_log.sql)', histRecent:n=>`(last ${n})`,
@@ -251,6 +258,12 @@ function subOpts(grp,cur){ const list=MSUBS[grp||'']||[].concat(MSUBS['음료'],
 const CAT_TXKEY={'라운딩':'catRound','식음':'catFb','숙박':'catRoom','골프샵':'catProshop','기타':'catEtc'};
 function catLabel(c){ const k=CAT_TXKEY[c]; return k?tx(k):(c||tx('catEtc')); }
 const STATIONS=['kitchen','bar','none'];
+// ── 세율(P1 2026-10-27, D1 버림·D2 8% 품목은 현장 지정) — 저장은 tax_class·tax_rate 두 컬럼, 화면은 한 select(key=class:rate) ──
+const TAX_TXKEY={'taxable:10':'tax10','taxable:8':'tax8','exempt:0':'taxEx','outside:0':'taxOut'};
+function taxOptLabel(key){ const k=TAX_TXKEY[key]; return k?tx(k):key; }
+function taxOpts(cur){ return SZCore.TAX_OPTIONS.map(o=>`<option value="${o.key}" ${o.key===cur?'selected':''}>${esc(taxOptLabel(o.key))}</option>`).join(''); }
+function taxKeyOf(m){ return SZCore.taxKey(m?m.tax_rate:null, m?m.tax_class:null); }
+function fillTaxSelect(){ const sel=$('#n-tax'); if(!sel) return; const cur=sel.value||'taxable:10'; sel.innerHTML=taxOpts(cur); }
 let state={ items:[], venueFilter:'__all' };
 
 // ── 장소(venue) 레지스트리: 저장값(key)은 그대로, 화면은 라벨(언어별), 신규코드는 prefix+번호 ──
@@ -315,6 +328,9 @@ function applyStatic(){
   const nc=$('#btn-nextcode'); if(nc) nc.title=tx('tipNextCode');
   const ko=$('#n-ko'); if(ko) ko.placeholder=tx('phNameKo');
   const sa=$('#btn-saveall'); if(sa) sa.textContent=tx('saveAll');
+  const tt=$('#t-thtax'); if(tt) tt.textContent=tx('thTax');
+  const nt=$('#t-ntax'); if(nt) nt.textContent=tx('thTax');
+  fillTaxSelect();
   const ht=$('#t-histtitle'); if(ht) ht.textContent=tx('histTitle');
   refreshHistEmpty();
   refreshConnBtn();
@@ -343,6 +359,7 @@ async function connect(){
     supa=window.supabase.createClient(url,key);
     const {error}=await supa.from('menu_items').select('id',{count:'exact',head:true});
     if(error) throw error;
+    { const {error:te}=await supa.from('menu_items').select('tax_rate').limit(1); HAS_TAX=!te; document.body.classList.toggle('notax',!HAS_TAX); if(!HAS_TAX) console.warn('menu_items.tax_rate 없음 — SQL 158 미적용:', te.message); }
     setConn(tx('connOk'),'ok'); toast(tx('connectedToast'),'ok');
     btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
     $('#btn-add').disabled=false; $('#btn-saveall').disabled=false;
@@ -390,7 +407,7 @@ function render(){
       ||(CATS.indexOf(a.category||'기타')-CATS.indexOf(b.category||'기타'))
       ||((a.sort_order||0)-(b.sort_order||0)));
   $('#list-cnt').innerHTML=`${items.length}${t('me_cntItem')}`;
-  if(!items.length){ body.innerHTML='<tr><td colspan="12" class="empty-hint">'+t('me_empty')+'</td></tr>'; return; }
+  if(!items.length){ body.innerHTML='<tr><td colspan="13" class="empty-hint">'+t('me_empty')+'</td></tr>'; return; }
   let lastVenue=null, lastCat=null;
   items.forEach(m=>{
     const venue=m.venue||'etc';
@@ -399,7 +416,7 @@ function render(){
     if(venue!==lastVenue){
       lastVenue=venue; lastCat=null;
       const vr=document.createElement('tr');
-      vr.innerHTML=`<td colspan="12" class="venue-h"><div style="display:flex;align-items:center;gap:10px">
+      vr.innerHTML=`<td colspan="13" class="venue-h"><div style="display:flex;align-items:center;gap:10px">
         <span>${esc(venueLabel(venue))} <span style="color:var(--muted);font-weight:600">(${esc(venuePrefix(venue))})</span></span>
         <button class="btn ghost sm" type="button" data-savevenue style="margin-left:auto">${esc(tx('saveVenue'))}</button>
       </div></td>`;
@@ -410,7 +427,7 @@ function render(){
     if(cat!==lastCat){
       lastCat=cat;
       const cr=document.createElement('tr');
-      cr.innerHTML=`<td colspan="12" class="line-subh" style="background:var(--surface2);color:var(--text2);font-weight:700;font-size:12px;padding:5px 14px 5px 26px;border-bottom:1px solid var(--border)">▸ ${esc(catLabel(cat))}</td>`;
+      cr.innerHTML=`<td colspan="13" class="line-subh" style="background:var(--surface2);color:var(--text2);font-weight:700;font-size:12px;padding:5px 14px 5px 26px;border-bottom:1px solid var(--border)">▸ ${esc(catLabel(cat))}</td>`;
       body.appendChild(cr);
     }
     const tr=document.createElement('tr');
@@ -428,6 +445,7 @@ function render(){
       <td><select class="inp" data-f="venue">${venueOpts(venue)}</select></td>
       <td><select class="inp" data-f="station">${stOpts}</select></td>
       <td><input class="inp price" data-f="unit_price" type="number" min="0" step="100" value="${Number(m.unit_price||0)}"></td>
+      <td class="taxcol"><select class="inp" data-f="tax">${taxOpts(taxKeyOf(m))}</select></td>
       <td><input class="inp sort" data-f="sort_order" type="number" value="${Number(m.sort_order||0)}"></td>
       <td style="text-align:center"><input type="checkbox" data-f="active" ${m.active?'checked':''}></td>
       <td><div class="rowbtns">
@@ -443,7 +461,7 @@ function render(){
 
 function rowPatch(tr){
   const g=f=>tr.querySelector(`[data-f="${f}"]`);
-  return {
+  const o={
     code:g('code').value.trim()||null,
     name_ja:g('name_ja').value.trim(),
     name_ko:g('name_ko').value.trim()||null,
@@ -456,9 +474,11 @@ function rowPatch(tr){
     sort_order:Math.round(Number(g('sort_order').value||0)),
     active:g('active').checked,
   };
+  if(HAS_TAX){ const t=SZCore.taxParse(g('tax')?g('tax').value:'taxable:10'); o.tax_rate=t.rate; o.tax_class=t.cls; }
+  return o;
 }
 // ── 변경이력(change_log) 기록 — best-effort(테이블 없거나 실패해도 저장은 진행) ──
-const LOG_FIELDS=['code','name_ja','name_ko','category','menu_group','sub','venue','station','unit_price','sort_order','active'];
+const LOG_FIELDS=['code','name_ja','name_ko','category','menu_group','sub','venue','station','unit_price','tax_rate','tax_class','sort_order','active'];
 function norm(v){ return (v===true||v===false)?v:(v==null?'':String(v)); }
 function diffItem(before,after){
   const ch={};
@@ -537,6 +557,7 @@ async function addOne(){
     unit_price:Math.round(Number($('#n-price').value||0)),
     sort_order:Math.round(Number($('#n-sort').value||0)),
   };
+  if(HAS_TAX){ const t=SZCore.taxParse($('#n-tax')?$('#n-tax').value:'taxable:10'); row.tax_rate=t.rate; row.tax_class=t.cls; }
   if(!row.name_ja){toast(tx('addNeedJa'),'warn');return;}
   const {data:ins,error}=await supa.from('menu_items').insert(row).select().single();
   if(error){toast(tx('addFail')+error.message,'err');return;}
@@ -555,7 +576,7 @@ async function loadHistory(){
   if(error){ body.innerHTML='<div class="empty-hint">'+esc(tx('histTblMissing'))+'</div>'; $('#hist-cnt').textContent=''; return; }
   renderHistory(data||[]);
 }
-const HIST_FKEY={code:'flCode',name_ja:'flNameJa',name_ko:'flNameKo',category:'flCat',venue:'flVenue',station:'flStation',unit_price:'flPrice',sort_order:'flSort',active:'flActive'};
+const HIST_FKEY={code:'flCode',name_ja:'flNameJa',name_ko:'flNameKo',category:'flCat',venue:'flVenue',station:'flStation',unit_price:'flPrice',tax_rate:'flTax',tax_class:'flTaxCls',sort_order:'flSort',active:'flActive'};
 function histFLabel(f){ const k=HIST_FKEY[f]; return k?tx(k):f; }
 function renderHistory(list){
   $('#hist-cnt').textContent=list.length?tx('histRecent')(list.length):'';
