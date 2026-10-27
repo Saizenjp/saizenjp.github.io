@@ -346,6 +346,19 @@
   var GOLF_COURSES = ['aso', 'sobo', 'kuju'];
   // 일별 코스 로테이션(Min 2026-10-25 「매일 아소→소보→쿠주 순서로 로테이션」 = 팀 단위 「가」).
   //  어제 아소에서 출발한 팀은 오늘 소보, 소보→쿠주, 쿠주→아소. 어제 기록이 없으면 null(화면은 가장 덜 찬 코스).
+  // ── 消費税(内税) 공통 (P0 2026-10-27, docs/06 정산 보강) ──────────────────────────
+  //  단가=税込(최종가, Min 2026-06 확정). 포함된 소비세 = 税込 − round(税込 ÷ (1 + rate/100)).
+  //  pos.html·settle.html 의 taxOf()·frontdesk.html 인라인 식·SQL cart_sync_charge/golf_add_charge 가 전부 이 식과 같은 값을 낸다
+  //  (정수 엔에서는 round(税込 − 税込/1.1) 과도 동일 — tests/saizen-core-tax.test.mjs 가 0~100,000엔 전수 대조).
+  //  rate 는 % 정수(10 / 8 / 0). 0 이면 소비세 0(비과세·불과세). 적격청구서용 「청구서 단위·세율별 1회 단수처리」(P1·D1)는 별도 함수로 둔다.
+  var TAX_RATE = 10;
+  function taxIncluded(gross, rate) {
+    gross = Number(gross || 0); rate = (rate == null) ? TAX_RATE : Number(rate);
+    if (!(rate > 0)) return 0;
+    return gross - Math.round(gross / (1 + rate / 100));
+  }
+  function netOf(gross, rate) { return Number(gross || 0) - taxIncluded(gross, rate); }
+
   function nextStartCourse(prev, courses) {
     var cs = courses || GOLF_COURSES; var i = cs.indexOf(String(prev || ''));
     if (i < 0) return null; return cs[(i + 1) % cs.length];
@@ -1052,6 +1065,9 @@
     cartRemarkKind: cartRemarkKind,
     GOLF_COURSES: GOLF_COURSES,
     nextStartCourse: nextStartCourse,
+    TAX_RATE: TAX_RATE,
+    taxIncluded: taxIncluded,
+    netOf: netOf,
     buildRounding: buildRounding,
     cartFreeDay: cartFreeDay,
     singlePlan: singlePlan,
