@@ -47,13 +47,13 @@ test('체류 캘린더(staycal)만 있으면 경영통계(stats_mgmt)는 못 연
   assert.equal(C.areaAllowed(st, ['staycal']), 'write');
 });
 
-test('SQL seed(최신 area_tree 재시드 = 150) 와 AREA_TREE 가 같다', () => {
-  const sql = readFileSync(new URL('../ops/hub/sql/150_signage_monitors.sql', import.meta.url), 'utf8');
+test('SQL seed(최신 area_tree 재시드 = 153) 와 AREA_TREE 가 같다', () => {
+  const sql = readFileSync(new URL('../ops/hub/sql/153_area_staychart.sql', import.meta.url), 'utf8');
   const blk = sql.slice(sql.indexOf('insert into public.area_tree'), sql.indexOf('on conflict (child)'));
   const seed = {};
   for (const m of blk.matchAll(/\('([a-z_]+)','([a-z_]+)'\)/g)) seed[m[1]] = m[2];
   const mine = {};
   Object.keys(C.AREA_TREE).forEach(p => C.AREA_TREE[p].forEach(c => { mine[c] = p; }));
   assert.deepEqual(seed, mine);
-  assert.equal(Object.keys(mine).length, 32);
+  assert.equal(Object.keys(mine).length, 33);   // 153: staychart(월간 숙박 현황표) 추가
 });

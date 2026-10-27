@@ -689,7 +689,7 @@
     //  안내 모니터(signage)는 트리 밖 단일 키(SQL 150, Min 2026-10-26): 카드가 「안내 모니터 관리」 1장뿐이라 자식이 없다(board 와 같음).
     //  140 의 sign_lobby·sign_course·sign_dinner·sign_office 4자식은 폐지(계정은 부모 signage 로 승계). 모니터별 화면은 signage_monitors 표.
     front:   ['frontdesk', 'inv_front'],
-    room:    ['room_assign', 'occupancy', 'roomstats', 'inv_room'],
+    room:    ['room_assign', 'occupancy', 'staychart', 'roomstats', 'inv_room'],   // staychart=월간 숙박 현황표(SQL 153, Min 2026-10-27: 권한 관리 자기 체크표)
     hk:      ['housekeeping', 'inv_hk'],
     golf:    ['course', 'cart', 'inv_golf'],
     kitchen: ['kds', 'kds_front', 'inv_fnb'],
