@@ -24,6 +24,9 @@
   · saizen-ops.js 는 싣지 않는다(상단바·로그인 카드가 화면을 가린다). 공용은 saizen-core.js(순수 규칙)만.
   · ?screen=dinner (2층: 오늘 석식 명단) · ?screen=lobby (로비: 환영판·코스·출발 안내·석식·날씨·공지 로테이션)
   · ?screen=course (코스 입구·클럽하우스: 오늘 스타트표 — **아소 | 소보 | 쿠주 세 열**(Min 2026-10-26 「코스별로 나눠서」), 각 열 티오프 순 · 행 = 시간 · 그룹코드 · ○○○님 팀 · (홀) · 카트(+EV) · 식사 · 인원. 17시 이후엔 내일)
+  · ?screen=guide (43형 안내·광고 — Min 2026-10-27: 업체 광고(이미지·동영상·문구, 공지 보드 홍보 kind=promo·화면=guide·Storage signage 버킷)와
+      기본 안내 4종(골프장·대욕장·레스토랑·리조트 매너, signage_texts manner_*)을 교대로 로테이션. RPC signage_guide(anon). 동영상은 끝날 때까지(최대 90초) 유지.
+      디지털 월(wall) 카드는 같은 날 폐지(1층 엘리베이터 앞 = 로비 화면) — ?screen=wall 코드는 주소로만 남는다.)
   · ?screen=wall (통로 65~75형 디지털 월: 화면 로테이션 — 오늘의 식사 안내(조식·중식 기본 문구 signage_texts + 석식 장소·시간) → 오늘의 라운딩 3열 → 리조트 안내(홍보) → 안내 → 날씨. Min 2026-10-26 「한 화면에 묶으면 자리가 부족 — 나눠서」)
   · 홍보(announcements.kind='promo', screens): 로비·월은 「리조트 안내」 화면(카드 격자), 2층 석식·코스 화면은 맨 아래 띠(최대 3장) — 없으면 띠가 사라진다. 석식 공개 제어(signage_release screen='dinner')는 코스와 같다(hidden=준비 중).
   · **한 페이지 원칙(Min 2026-10-26)**: 코스·석식 명단은 1·2페이지로 넘기지 않는다 — 줄 수에 맞춰 글자를 줄이고(하한 있음), 석식은 열 수(최대 6)를 늘린다. 그래도 넘치면 지난 줄부터 치운다. 큰 TV(75형)·`?scale=` 로 현장 조정.
@@ -42,6 +45,7 @@
   :root{ --bg:#f4f6f2; --panel:#ffffff; --panel2:#e9eee3; --line:#d2d8cc; --line2:#b4bfab; --ink:#1b211b; --ink2:#2f3a2f; --muted:#5d6a5a;
          --acc:#3f6a2a; --acc2:#7c9a66; --warm:#9a7322; --err:#a43d2f; --rain:#2d6cb5;
          --c-aso:#3f7a2e; --c-sobo:#2b6a9c; --c-kuju:#8a6a1c; --warn-bd:#c9634f; --warn-bg:#fbe9e5; --warn-ink:#b3261e; --z:1;
+         --cap-bg:rgba(0,0,0,.72); --cap-ink:#ffffff;   /* 광고 이미지 위 캡션 띠(테마 무관) */
          --mono:'SFMono-Regular',Consolas,Menlo,'SZJpMono',monospace; }
   html[data-theme="dark"]{ --bg:#0f1311; --panel:#161c18; --panel2:#1c2420; --line:#293229; --line2:#3b473c; --ink:#f7f9f3; --ink2:#dfe7d8; --muted:#a2b19c;
          --acc:#a9d38f; --acc2:#5f8a4e; --warm:#f1dc9e; --err:#f2b8ab; --rain:#9fc8ff;
@@ -246,6 +250,20 @@
   .crs.compact .pmt .pmi{font-size:calc(2.1vh*var(--z))}
   .crs.compact .pmt table td{font-size:calc(2.3vh*var(--z))}
   .crs.compact .pmt h3{font-size:calc(2vh*var(--z))}
+  /* ── 안내·광고(43형, ?screen=guide) — 매너 안내 4종 ↔ 업체 광고 교대(Min 2026-10-27) ── */
+  .mn{flex:1;min-height:0;display:flex;flex-direction:column;gap:1.3vh;justify-content:center}
+  .mn .ml{display:grid;grid-template-columns:4.6vw 1fr;align-items:center;gap:1.6vw;background:var(--panel);border:.12vh solid var(--line);border-left:.6vw solid var(--acc);border-radius:1.4vh;padding:1.5vh 2.2vw;min-height:0}
+  .mn .ml .n{font-family:var(--mono);font-size:calc(var(--mfs,3.9vh)*.9*var(--z));font-weight:800;color:var(--acc);text-align:center}
+  .mn .ml .ko{font-size:calc(var(--mfs,3.9vh)*var(--z));font-weight:800;color:var(--ink);line-height:1.3;word-break:keep-all}
+  .mn .ml .ja{font-size:calc(var(--mfs,3.9vh)*.64*var(--z));font-weight:700;color:var(--muted);margin-top:.5vh;line-height:1.3;word-break:keep-all}
+  .ad{flex:1;min-height:0;position:relative;background:var(--panel);border:.12vh solid var(--line);border-radius:1.4vh;overflow:hidden;display:flex;align-items:center;justify-content:center}
+  .ad img,.ad video{width:100%;height:100%;object-fit:contain;display:block;background:var(--panel)}
+  .ad .cap{position:absolute;left:0;right:0;bottom:0;padding:1.6vh 2.4vw 2vh;background:linear-gradient(transparent,var(--cap-bg));color:var(--cap-ink)}
+  .ad .cap b{display:block;font-size:calc(4vh*var(--z));font-weight:800;line-height:1.2;word-break:keep-all}
+  .ad .cap span{display:block;font-size:calc(2.7vh*var(--z));font-weight:600;margin-top:.5vh;white-space:pre-wrap;line-height:1.4;word-break:keep-all}
+  .ad.text{flex-direction:column;gap:2.4vh;padding:4vh 6vw;text-align:center;border-left:.8vw solid var(--warm)}
+  .ad.text .ttl{font-size:calc(6.8vh*var(--z));font-weight:800;color:var(--ink);line-height:1.2;word-break:keep-all}
+  .ad.text .bd{font-size:calc(3.8vh*var(--z));font-weight:600;color:var(--ink2);white-space:pre-wrap;line-height:1.5;word-break:keep-all}
   /* ── 직원용 운영 현황 ── */
   .kpi{flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:1fr;gap:1.1vw}
   .kp{background:var(--panel);border:.12vh solid var(--line);border-radius:1.4vh;padding:1.4vh 1.4vw;display:flex;flex-direction:column;gap:.4vh;overflow:hidden}
@@ -317,6 +335,8 @@
   <div class="pane" id="p-wmeal"><div class="meals" id="wm-list"><div class="none">불러오는 중… / 読み込み中…</div></div></div>
   <!-- ── 리조트 안내(홍보 카드) — 로비·월 로테이션 ── -->
   <div class="pane" id="p-promo"><div class="pgrid" id="pr-list"></div></div>
+  <!-- ── 안내·광고(43형): 매너 안내·광고 pane 은 renderGuide() 가 여기 뒤에 동적으로 만든다(.pane.gp). 이 pane 은 로딩·오류·내용 없음 표시용 ── -->
+  <div class="pane" id="p-guide"><div class="none">불러오는 중… / 読み込み中…</div></div>
 
   <div class="band" id="band" hidden></div>
   <div class="ft">
@@ -328,7 +348,7 @@
 <script>
 const $=s=>document.querySelector(s);
 const Q=new URLSearchParams(location.search);
-const SCREEN=['lobby','course','office','wall'].includes(Q.get('screen'))?Q.get('screen'):'dinner';
+const SCREEN=['lobby','course','office','wall','guide'].includes(Q.get('screen'))?Q.get('screen'):'dinner';
 const _cut=parseInt(Q.get('cut'),10); const CUT_H=isNaN(_cut)?((SCREEN==='course'||SCREEN==='wall')?17:21):Math.max(0,Math.min(23,_cut));   // 이 시각(JST) 이후엔 내일(석식 21시 · 코스/월 17시)
 const REFRESH=Math.max(15,parseInt(Q.get('refresh')||(SCREEN==='office'?'30':'60'),10)||60);   // 직원 화면은 30초
 const ROT=Math.max(8,parseInt(Q.get('rot')||'20',10)||20);   // 로비 화면 전환(초)
@@ -405,8 +425,8 @@ async function load(){
   const date=targetDate();
   try{
     if(!supa) supa=window.supabase.createClient(SB_URL,SB_KEY);
-    const rpcName={lobby:'signage_lobby',wall:'signage_lobby',course:'signage_course',office:'signage_office'}[SCREEN]||'signage_dinner';
-    const {data,error}=await supa.rpc(rpcName,{p_date:date});
+    const rpcName={lobby:'signage_lobby',wall:'signage_lobby',course:'signage_course',office:'signage_office',guide:'signage_guide'}[SCREEN]||'signage_dinner';
+    const {data,error}=await (SCREEN==='guide'?supa.rpc(rpcName):supa.rpc(rpcName,{p_date:date}));   // 안내·광고는 날짜 무관
     if(error) throw error;
     if(!data||data.ok===false) throw new Error((data&&data.reason)||'no data');
     if(SCREEN==='lobby'||SCREEN==='wall'){   // 코스 표는 실패해도 로비·월은 돈다
@@ -414,10 +434,10 @@ async function load(){
       if(SCREEN==='lobby'){ try{ const r=await supa.rpc('signage_dinner',{p_date:date}); DINNER=(r.data&&r.data.ok!==false)?r.data:null; }catch(e){ DINNER=null; } }   // 석식 팀 명단(공개 제어 포함)
       try{ const r=await supa.from('outings').select('id,outing_date,kind,title_ko,title_ja,meet_time,meet_place,return_time,capacity,fee,signed,note_ko,note_ja,status').in('outing_date',[date,addDays(date,1)]).neq('status','cancelled').order('outing_date').order('meet_time'); OUT=Array.isArray(r.data)?r.data:[]; }catch(e){ OUT=[]; } }
     DATA=data; setUpd(true);
-    if(SCREEN==='lobby') renderLobby(); else if(SCREEN==='wall') renderWall(); else if(SCREEN==='course') renderCourse(); else if(SCREEN==='office') renderOffice(); else render();
+    if(SCREEN==='lobby') renderLobby(); else if(SCREEN==='wall') renderWall(); else if(SCREEN==='course') renderCourse(); else if(SCREEN==='office') renderOffice(); else if(SCREEN==='guide') renderGuide(); else render();
   }catch(e){
     setUpd(false);
-    if(!DATA){ const el=$({lobby:'#w-list',wall:'#wm-list',course:'#crs',office:'#kpi'}[SCREEN]||'#list'); el.innerHTML='<div class="none">데이터를 불러오지 못했습니다<br>データを取得できませんでした</div>'; if(SCREEN==='lobby'){ showPane('p-welcome'); } if(SCREEN==='wall'){ showPane('p-wmeal'); } }
+    if(!DATA){ const el=$({lobby:'#w-list',wall:'#wm-list',course:'#crs',office:'#kpi',guide:'#p-guide'}[SCREEN]||'#list'); el.innerHTML='<div class="none">데이터를 불러오지 못했습니다<br>データを取得できませんでした</div>'; if(SCREEN==='lobby'){ showPane('p-welcome'); } if(SCREEN==='wall'){ showPane('p-wmeal'); } if(SCREEN==='guide'){ PANES=['p-guide']; PI=0; showPane('p-guide'); } }
   }
 }
 
@@ -520,13 +540,25 @@ function fitListWidth(list){
 }
 
 // ── 로비: 화면 로테이션 ─────────────────────────────────────────────────
-const TITLES={ 'p-office':['本日の運営状況','오늘 운영 현황'], 'p-course':['오늘의 라운딩','本日のスタート時刻'], 'p-welcome':['환영합니다','ようこそ'], 'p-depart':['출발 안내','ご出発のご案内'], 'p-dsum':['석식 안내','夕食のご案内'], 'p-weather':['날씨','天気'], 'p-notice':['안내','お知らせ'], 'p-wmeal':['오늘의 식사 안내','本日のお食事のご案内'], 'p-promo':['리조트 안내','リゾートのご案内'], 'p-dinner':['석식 명단','夕食のご案内（チーム別）'], 'p-outing':['오늘의 안내 · 신청 행사','本日のご案内 · お申込み行事'] };
+const TITLES={ 'p-guide':['리조트 안내','リゾートのご案内'], 'p-office':['本日の運営状況','오늘 운영 현황'], 'p-course':['오늘의 라운딩','本日のスタート時刻'], 'p-welcome':['환영합니다','ようこそ'], 'p-depart':['출발 안내','ご出発のご案内'], 'p-dsum':['석식 안내','夕食のご案内'], 'p-weather':['날씨','天気'], 'p-notice':['안내','お知らせ'], 'p-wmeal':['오늘의 식사 안내','本日のお食事のご案内'], 'p-promo':['리조트 안내','リゾートのご案内'], 'p-dinner':['석식 명단','夕食のご案内（チーム別）'], 'p-outing':['오늘의 안내 · 신청 행사','本日のご案内 · お申込み行事'] };
 function showPane(id){
   document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id===id));
   if(id==='p-dinner' && SCREEN==='lobby' && DINNER) renderDinnerPane(DINNER,false);   // 보이는 상태에서 열 수·글자 맞춤
   document.querySelectorAll('#'+id+' .list').forEach(fitListWidth);   // 보이게 된 뒤에 폭 맞춤(숨긴 채 그린 명단)
   const t=TITLES[id]; if(t) $('#hd-title').innerHTML=`${esc(t[0])}<small>${esc(t[1])}</small>`;
   $('#dots').innerHTML=PANES.length>1?PANES.map(p=>`<i class="${p===id?'on':''}"></i>`).join(''):'';
+  if(SCREEN==='guide') guideMedia(id);
+}
+// 안내·광고: 보이는 pane 의 동영상은 처음부터 재생하고 끝날 때까지(최대 VID_MAX초) 다음 화면으로 넘기지 않는다. 다른 pane 동영상은 멈춘다.
+let GUIDE_HOLD=0; const VID_MAX=90;
+function guideMedia(id){
+  GUIDE_HOLD=0;
+  document.querySelectorAll('.pane.gp video').forEach(v=>{ if(v.closest('.pane').id!==id){ try{ v.pause(); }catch(e){} } });
+  const v=document.querySelector('#'+id+' video'); if(!v) return;
+  try{ v.currentTime=0; const pr=v.play(); if(pr&&pr.catch) pr.catch(()=>{}); }catch(e){}
+  const dur=(isFinite(v.duration)&&v.duration>0)?v.duration:VID_MAX;
+  GUIDE_HOLD=Date.now()+Math.min(dur,VID_MAX)*1000;
+  v.onended=()=>{ GUIDE_HOLD=0; rotate(); };
 }
 function renderLobby(){
   const d=DATA; if(!d) return;
@@ -581,7 +613,7 @@ function renderLobby(){
   const cur=PANES[PI]; PANES=paneFilter(list); PI=Math.max(0,PANES.indexOf(cur));
   showPane(PANES[PI]);
 }
-function rotate(){ if((SCREEN!=='lobby'&&SCREEN!=='wall')||PANES.length<2) return; PI=(PI+1)%PANES.length; showPane(PANES[PI]); }
+function rotate(){ if(!['lobby','wall','guide'].includes(SCREEN)||PANES.length<2) return; if(SCREEN==='guide'&&GUIDE_HOLD&&Date.now()<GUIDE_HOLD) return; PI=(PI+1)%PANES.length; showPane(PANES[PI]); }
 // ?panes=welcome,dsum,… (주소 옵션 — 로비·월 로테이션에서 고른 화면만. 하나도 남지 않으면(그날 내용이 없어서) 전부 돌린다 — 빈 TV 는 없다.)
 const PANE_SEL=new Set((Q.get('panes')||'').split(',').map(s=>s.trim()).filter(Boolean));
 function paneFilter(list){ if(!PANE_SEL.size) return list; const f=list.filter(p=>PANE_SEL.has(p.replace(/^p-/,''))); return f.length?f:list; }
@@ -694,6 +726,55 @@ function renderCourse(){
   showPane('p-course');
 }
 
+// ── 안내·광고(43형, ?screen=guide) — Min 2026-10-27 ─────────────────────────────────────────────
+//  매너 안내 4종(signage_texts manner_*: 줄바꿈=화면 한 줄, ko 줄 크게 + ja 줄 작게)과 업체 광고(공지 보드 홍보 kind=promo·화면=guide,
+//  이미지/동영상=Storage 공개 URL, 없으면 글자 카드)를 교대로 돌린다(안내→광고→안내→광고…, 남는 광고는 뒤에).
+//  광고 캡션 = 본문이 있을 때만(제목+본문 띠) — 업체 이미지에 글자가 이미 있으면 본문을 비워 이미지만.
+const MANNER=[['manner_golf','골프장 매너 안내','ゴルフ場でのマナー'],['manner_bath','대욕장 매너 안내','大浴場でのマナー'],
+              ['manner_restaurant','레스토랑 매너 안내','レストランでのマナー'],['manner_resort','리조트 매너 안내','リゾートでのマナー']];
+function guidePanes(d){
+  const T=(d&&d.texts&&typeof d.texts==='object')?d.texts:{};
+  const mn=MANNER.map(([k,ko,ja])=>{ const v=T[k]; if(!v) return null; const lines={ko:String(v.ko||''),ja:String(v.ja||'')}; if(!lines.ko.trim()&&!lines.ja.trim()) return null; return {id:'g-'+k,kind:'mn',key:k,ko,ja,lines}; }).filter(Boolean);
+  const ads=(Array.isArray(d&&d.ads)?d.ads:[]).filter(a=>a&&(a.title||a.media_url)).map(a=>({id:'g-ad-'+String(a.id).replace(/[^A-Za-z0-9_-]/g,''),kind:'ad',ad:a}));
+  const out=[]; const n=Math.max(mn.length,ads.length);
+  for(let i=0;i<n;i++){ if(mn[i]) out.push(mn[i]); if(ads[i]) out.push(ads[i]); }
+  return out;
+}
+function mannerHTML(p){
+  const ko=p.lines.ko.split(/\n/).map(x=>x.trim()).filter(Boolean), ja=p.lines.ja.split(/\n/).map(x=>x.trim()).filter(Boolean);
+  const n=Math.max(ko.length,ja.length); const fs=n<=4?4.4:(n<=6?3.7:(n<=8?3.1:2.6));   // 줄 수에 맞춘 글자(한 페이지 원칙)
+  let h=`<div class="mn" style="--mfs:${fs}vh">`;
+  for(let i=0;i<n;i++) h+=`<div class="ml"><div class="n">${i+1}</div><div><div class="ko">${esc(ko[i]||ja[i]||'')}</div>${(ja[i]&&ko[i])?`<div class="ja">${esc(ja[i])}</div>`:''}</div></div>`;
+  return h+'</div>';
+}
+function adHTML(a){
+  const url=String(a.media_url||''); const type=a.media_type||(url?(/\.(mp4|webm|mov)(\?|$)/i.test(url)?'video':'image'):'');
+  if(!url||!type) return `<div class="ad text"><div class="ttl">${esc(a.title||'')}</div>${a.body?`<div class="bd">${esc(a.body)}</div>`:''}</div>`;
+  const cap=a.body?`<div class="cap"><b>${esc(a.title||'')}</b><span>${esc(a.body)}</span></div>`:'';
+  const media=type==='video'?`<video src="${esc(url)}" muted playsinline preload="auto"></video>`:`<img src="${esc(url)}" alt="">`;
+  return `<div class="ad">${media}${cap}</div>`;
+}
+function renderGuide(){
+  const d=DATA; if(!d) return;
+  $('#hd-date').innerHTML='<b>오늘 · 本日</b>'+dateLabel(d.today||ymd(jst()));
+  const panes=guidePanes(d), band=$('#band'), keep=new Set(panes.map(p=>p.id));
+  document.querySelectorAll('.pane.gp').forEach(el=>{ if(!keep.has(el.id)) el.remove(); });
+  panes.forEach(p=>{
+    const html=p.kind==='mn'?mannerHTML(p):adHTML(p.ad);
+    let el=document.getElementById(p.id);
+    if(!el){ el=document.createElement('div'); el.className='pane gp'; el.id=p.id; el.dataset.kind=p.kind; band.insertAdjacentElement('beforebegin',el); }
+    if(el.dataset.sig!==html){ el.innerHTML=html; el.dataset.sig=html; }   // 내용이 같으면 건드리지 않는다(재생 중 동영상 유지)
+    TITLES[p.id]=p.kind==='mn'?[p.ko,p.ja]:['리조트 안내','リゾートのご案内'];
+  });
+  const nMn=panes.filter(p=>p.kind==='mn').length, nAd=panes.length-nMn;
+  $('#tot').innerHTML=panes.length?`안내 <b>${nMn}</b> · 광고 <b>${nAd}</b> <span style="color:var(--muted)">/ ご案内 ${nMn} · 広告 ${nAd}</span>`:'';
+  $('#pg').textContent='';
+  renderPromoBand(null);
+  if(!panes.length){ $('#p-guide').innerHTML='<div class="none">안내 내용이 없습니다<br>ご案内はありません</div>'; PANES=['p-guide']; PI=0; showPane('p-guide'); return; }
+  const cur=PANES[PI]; PANES=paneFilter(panes.map(p=>p.id)); PI=Math.max(0,PANES.indexOf(cur));
+  showPane(PANES[PI]);
+}
+
 // ── 디지털 월(통로 65~75형) — 화면 로테이션(Min 2026-10-26 「오늘의 안내로 한번에 묶으면 화면이 부족 — 나눠서」) ─────
 //  오늘의 식사 안내(조식·중식=기본 문구 signage_texts, 석식=장소·시간·기본 석식·장소별·공개 상태) → 오늘의 라운딩(3열, 17시 이후 내일)
 //  → 리조트 안내(홍보 screens=wall) → 안내(손님 공지) → 날씨. 내용 없는 화면은 뺀다. 로비와 같은 pane 을 돌려 쓴다.
@@ -775,6 +856,7 @@ function renderWeather(){
 }
 async function keepAwake(){ try{ if(navigator.wakeLock) await navigator.wakeLock.request('screen'); }catch(e){} }
 
+if(SCREEN==='guide'){ $('#hd-title').innerHTML='리조트 안내<small>リゾートのご案内</small>'; }
 tick(); setInterval(tick,1000);
 // 무인 TV 자동 갱신(Min 2026-10-26 「여기도 한국어가 없어서」 = 옛 페이지를 들고 있던 TV): 10분마다 이 파일의 ETag 를 캐시 없이 확인해 배포가 바뀌면 그 자리에서 다시 연다.
 //  GitHub Pages 는 HTML 을 10분 캐시하므로 cache:'no-store' HEAD 로 본다. 첫 값은 부팅 때 저장. 실패(오프라인)는 무시.
