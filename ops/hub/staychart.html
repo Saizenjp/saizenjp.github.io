@@ -9,13 +9,15 @@
     ④ 일·공휴일 빨강/토 파랑 열 ⑤ 월 경계 팀(전달 입국·다음 달 귀국)도 그 달 밤만 표시 ⑥ 촘촘한 치수 하나(토글 없음 — Min 2026-10-26) ⑦ A3 가로, 페이지마다 머리 반복 ⑧ 입국·귀국일이 토·일·공휴일이면 날짜 칸에 색, 4명 이상 팀은 줄을 노랗게(Min 2026-10-26).
   · 직원용 인쇄물 = 일본어 우선·한국어 병기(표 머리 고정). 툴바만 언어 토글.
   · 권한: staychart 영역(객실(room) 그룹의 자식, SQL 153 — 권한 관리에 자기 체크표. Min 2026-10-27). 읽기 전용(DB 쓰기 없음).
+  · ?brand=kumamoto|trial = 자회사 상품 모드(Min 2026-10-30 「별도 메뉴를 만든 다음에 동일한 양식으로」): 같은 양식으로 별도 원장 partner_bookings/partner_members(SQL 159)를 그린다.
+    열은 태그·회원구분·숙소를 빼고 区分(単独/コンボ)·IN/OUT(자회사 숙소 구간) — 콤보는 다른 쪽 숙소를 작게 표시, 구간을 못 읽은 팀은 「確認」. 권한 키 partner_<brand>(body data-so-area 를 주소로 바꿔 단다). 숙소 칩·묶음 없음, 항상 한 장 맞춤.
 ============================================================================ -->
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 월간 숙박 현황표</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=53"></script>
+<script src="../assets/saizen-core.js?v=54"></script>
 <style>
   /* ── 공통 chrome (docs/ops-page-skeleton.html 정본 — 통째 복사) ── */
   :root{
@@ -92,6 +94,7 @@
   .sc tbody tr:hover td{filter:brightness(.96)}
   .sc th.tt{background:#e4e9dc}
   .sc td.cls{font-size:.9em} .sc td.name{font-weight:700}
+  .sc td.kind{font-size:.9em} .sc td .unsure{color:#b13b2c;font-weight:800;font-size:.85em;margin-left:3px}   /* 자회사 모드: 区分 · 구간 못 읽음 표시 */
   .sc td.pax{font-weight:800}
   /* 입국·귀국 날짜 칸: 토=파랑 · 일/공휴일=빨강(머리줄과 같은 색) / 4명 이상 팀: 왼쪽 정보 칸 연노랑·인원 칸 진한 노랑(Min 2026-10-26) */
   .sc td.dt.sun{color:#b3261e;font-weight:800} .sc td.dt.sat{color:#2b5fa8;font-weight:800}
@@ -128,9 +131,10 @@
     .sc td,.sc th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.3">
 </head>
 <body data-so-area="staychart">
+<script>(function(){ var b=new URLSearchParams(location.search).get('brand')||''; if(/^(kumamoto|trial)$/.test(b)) document.body.setAttribute('data-so-area','partner_'+b); })();</script>
 <div class="topbar so-bar">
   <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
   <span class="step" id="t-step">客室 · 月間宿泊現況表</span>
@@ -174,22 +178,28 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=36.2"></script>
+<script src="../assets/saizen-ops.js?v=36.3"></script>
 <script>
 const $=s=>document.querySelector(s);
 const L={
   ja:{ step:'客室 · 月間宿泊現況表', connHint:'接続情報はこのブラウザにのみ保存されます。', group:'宿泊先ごとにまとめる', print:'🖨 印刷 (A3 横)',
        desc:'チーム×日付の宿泊表（泊まる夜ごとに人数）。登録データから自動生成 — 待機予約は除外、前月入国・翌月帰国のチームはこの月の夜だけ表示。到着/出発時刻は名簿の代表者の便。印刷はA3横、ページごとに見出しを繰り返します。ヤマナミ以外（クジュ・ガンジー・志津）は文字を自動で縮めて必ず1枚に収めます。入国日・帰国日が土日祝なら日付欄に色（日・祝は赤、土は青）、4名以上のチームは左の情報欄が黄色。',
        all:'すべて', accY:'ヤマナミ', accK:'クジュ', accG:'ガンジー', accS:'志津', loading:'読み込み中…', empty:'この月の宿泊はありません', needConn:'接続後に表示します',
-       sum:(t,p,n)=>`${t}チーム · ${p}名 · 延べ${n}泊`, outAt:'出力', teams:'チーム', pax:'名', nights:'延べ泊', loadFail:'読み込み失敗', zoomT:'画面の文字サイズ(このPCに保存 · 印刷には影響しません)', fit:p=>`1枚に収める: 文字 ${p}%`, fitMulti:'ヤマナミを含む → 複数枚' },
+       sum:(t,p,n)=>`${t}チーム · ${p}名 · 延べ${n}泊`, outAt:'出力', teams:'チーム', pax:'名', nights:'延べ泊', loadFail:'読み込み失敗', zoomT:'画面の文字サイズ(このPCに保存 · 印刷には影響しません)', fit:p=>`1枚に収める: 文字 ${p}%`, fitMulti:'ヤマナミを含む → 複数枚',
+       stepP:b=>`子会社商品 · ${b}`, descP:'子会社商品の宿泊表（チーム×日付、泊まる夜ごとに人数）。登録データ（別台帳 partner_bookings）から自動生成 — 待機予約は除外。IN/OUT はこの商品の宿泊区間: 単独商品は予約期間全体、コンボ（例: 熊本市内ホテル3泊＋ヤマナミ2泊）は商品名の「N泊」と順序で切り、相手側の宿泊先を小さく表示。区間を読めなかったチームは予約期間全体を表示し「確認」を付けます。到着/出発時刻は、その日が入国日/帰国日のときだけ名簿の代表者の便から。印刷はA3横で必ず1枚。',
+       kindSolo:'単独', kindCombo:'コンボ', unsureT:'商品名から宿泊区間を読めませんでした — 予約期間全体を表示（Mクリックの商品名を確認）', needSql:'子会社商品の台帳（partner_bookings）がありません — 管理者に SQL 159 の適用を依頼してください' },
   ko:{ step:'객실 · 월간 숙박 현황표', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', group:'숙소별 묶음', print:'🖨 인쇄 (A3 가로)',
        desc:'팀×날짜 숙박표(묵는 밤마다 인원). 등록 데이터에서 자동 생성 — 대기 예약 제외, 전달 입국·다음 달 귀국 팀은 이 달 밤만 표시. 도착/출발 시각은 명단 대표자의 항공편. 인쇄는 A3 가로, 페이지마다 머리 반복. 야마나미를 뺀 숙소(쿠주·간지·시즈)는 글자를 자동으로 줄여 무조건 한 장에 맞춥니다. 입국·귀국일이 토·일·공휴일이면 날짜 칸에 색(일·공휴일 빨강, 토 파랑), 4명 이상 팀은 왼쪽 정보 칸이 노랗게 표시됩니다.',
        all:'전체', accY:'야마나미', accK:'쿠주', accG:'간지', accS:'시즈', loading:'불러오는 중…', empty:'이 달 숙박이 없습니다', needConn:'연결 후 표시됩니다',
-       sum:(t,p,n)=>`${t}팀 · ${p}명 · 연 ${n}박`, outAt:'출력', teams:'팀', pax:'명', nights:'연박', loadFail:'불러오기 실패', zoomT:'화면 글자 크기(이 PC에 저장 · 인쇄에는 영향 없음)', fit:p=>`한 장 맞춤: 글자 ${p}%`, fitMulti:'야마나미 포함 → 여러 장' },
+       sum:(t,p,n)=>`${t}팀 · ${p}명 · 연 ${n}박`, outAt:'출력', teams:'팀', pax:'명', nights:'연박', loadFail:'불러오기 실패', zoomT:'화면 글자 크기(이 PC에 저장 · 인쇄에는 영향 없음)', fit:p=>`한 장 맞춤: 글자 ${p}%`, fitMulti:'야마나미 포함 → 여러 장',
+       stepP:b=>`자회사 상품 · ${b}`, descP:'자회사 상품 숙박표(팀×날짜, 묵는 밤마다 인원). 등록 데이터(별도 원장 partner_bookings)에서 자동 생성 — 대기 예약 제외. IN/OUT은 이 상품의 숙박 구간: 단독 상품은 예약 기간 전체, 콤보(예: 구마모토 시내호텔 3박 + 야마나미 2박)는 상품명의 「N박」과 순서로 잘라 상대 쪽 숙소를 작게 표시합니다. 구간을 못 읽은 팀은 예약 기간 전체를 보이고 「確認」을 붙입니다. 도착/출발 시각은 그날이 입국일/귀국일일 때만 명단 대표자의 항공편에서. 인쇄는 A3 가로 무조건 한 장.',
+       kindSolo:'단독', kindCombo:'콤보', unsureT:'상품명에서 숙박 구간을 못 읽었습니다 — 예약 기간 전체를 표시(엠클릭 상품명 확인)', needSql:'자회사 상품 원장(partner_bookings)이 없습니다 — 관리자에게 SQL 159 적용을 요청하세요' },
   en:{ step:'Rooms · Monthly stay chart', connHint:'Connection info is stored only in this browser.', group:'Group by lodging', print:'🖨 Print (A3 landscape)',
        desc:'Team × date stay chart (guests per night). Built from registered data — waiting bookings excluded; teams spanning month edges show only this month\'s nights. Arrival/departure times come from the representative\'s flights. Prints on A3 landscape with the header repeated per page. Lodgings other than Yamanami (Kuju, Ganji, Shizu) are always fitted on one page by shrinking the text. Arrival/return dates on weekends or holidays are coloured (Sun/holiday red, Sat blue) and teams of 4 or more have a yellow info block.',
        all:'All', accY:'Yamanami', accK:'Kuju', accG:'Ganji', accS:'Shizu', loading:'Loading…', empty:'No stays this month', needConn:'Shown after connecting',
-       sum:(t,p,n)=>`${t} teams · ${p} guests · ${n} guest-nights`, outAt:'Printed', teams:'teams', pax:'guests', nights:'guest-nights', loadFail:'Load failed', zoomT:'On-screen text size (saved on this PC · does not affect printing)', fit:p=>`Fit to one page: text ${p}%`, fitMulti:'Includes Yamanami → several pages' },
+       sum:(t,p,n)=>`${t} teams · ${p} guests · ${n} guest-nights`, outAt:'Printed', teams:'teams', pax:'guests', nights:'guest-nights', loadFail:'Load failed', zoomT:'On-screen text size (saved on this PC · does not affect printing)', fit:p=>`Fit to one page: text ${p}%`, fitMulti:'Includes Yamanami → several pages',
+       stepP:b=>`Subsidiary products · ${b}`, descP:'Stay chart for subsidiary products (team × date, guests per night). Built from registered data (separate ledger partner_bookings) — waiting bookings excluded. IN/OUT is the stay segment of this product: single products span the whole booking; combos (e.g. Kumamoto city hotel 3 nights + Yamanami 2 nights) are cut by the "N nights" in the product name and their order, with the other lodging shown small. Teams whose segment could not be read show the full booking span with 確認. Arrival/departure times appear only when that day is the arrival/return day. Prints on A3 landscape, always one page.',
+       kindSolo:'Single', kindCombo:'Combo', unsureT:'Stay segment could not be read from the product name — full booking span shown (check the product name in M-click)', needSql:'Subsidiary ledger (partner_bookings) is missing — ask the administrator to apply SQL 159' },
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
@@ -205,6 +215,10 @@ const ACCOM_FULL={Y:'ヤマナミリゾート',K:'クジュヒルズ',G:'ガン�
 const WD_JA=['日','月','火','水','木','金','土'];
 const HOL=new Set((window.SZCore&&SZCore.JP_HOLIDAYS)||[]);
 
+// ── 자회사 상품 모드(?brand=kumamoto|trial, SQL 159) — 같은 양식, 별도 원장. 열 9개(태그·회원구분·숙소 없음) ──
+const BRAND=(()=>{ const b=new URLSearchParams(location.search).get('brand')||''; return (/^(kumamoto|trial)$/.test(b) && window.SZCore && SZCore.partnerBrandDef && SZCore.partnerBrandDef(b))?b:''; })();
+const INFO_N=BRAND?9:11;   // 왼쪽 정보 칸 수(colspan 계산)
+function brandLabel(short){ return BRAND?SZCore.partnerLabel(BRAND, lang(), !!short):''; }
 // ── 상태 ──
 let supa=null, YM='', TEAMS=[], ACC=new Set(), GROUP=true, LOADED='';
 
@@ -229,6 +243,7 @@ function portOf(origin,flight){ try{ return (window.SZCore&&SZCore.originPort)?(
 async function fetchAll(q){ let out=[], pg=0; while(true){ const {data,error}=await q.range(pg,pg+999); if(error) throw error; out=out.concat(data||[]); if(!data||data.length<1000) break; pg+=1000; } return out; }
 async function load(){
   if(!supa||!YM) return;
+  if(BRAND) return loadPartner();
   const m1=dstr(YM,1), mEnd=dstr(YM,daysIn(YM));
   $('#sum').textContent=tx('loading');
   try{
@@ -254,6 +269,29 @@ async function load(){
     LOADED=YM; render();
   }catch(e){ toast(tx('loadFail')+': '+(e&&e.message||e),'err'); $('#sum').textContent=''; }
 }
+// 자회사 상품: 별도 원장 partner_bookings(그 달에 자회사 숙소 밤이 있는 팀: seg_from ≤ 월말 && seg_to > 월초, 대기 제외) + partner_members(대표자 항공편 시각)
+async function loadPartner(){
+  const m1=dstr(YM,1), mEnd=dstr(YM,daysIn(YM));
+  $('#sum').textContent=tx('loading');
+  try{
+    const bs=await fetchAll(supa.from('partner_bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,seg_from,seg_to,seg_nights,seg_sure,combo,pax,product_name,origin,airline,status,nights_label').eq('brand',BRAND).lte('seg_from',mEnd).gt('seg_to',m1).neq('status','대기').order('seg_from').order('event_seq'));
+    const seqs=bs.map(b=>b.event_seq), REP={};
+    for(let i=0;i<seqs.length;i+=200){ const ch=seqs.slice(i,i+200);
+      const {data:ms,error}=await supa.from('partner_members').select('event_seq,is_rep,seq_in_team,dep_flight,ret_flight,origin,airline,loc_arr_time,ret_dep_time').in('event_seq',ch); if(error) throw error;
+      (ms||[]).forEach(r=>{ const cur=REP[r.event_seq]; if(!cur || (r.is_rep&&!cur.is_rep) || (!!r.is_rep===!!cur.is_rep && (r.seq_in_team||99)<(cur.seq_in_team||99))) REP[r.event_seq]=r; });
+    }
+    TEAMS=bs.map(b=>{ const p=REP[b.event_seq]||{};
+      const fullDep=String(b.dep_date||'').slice(0,10), fullArr=String(b.arr_date||'').slice(0,10);
+      const dep=String(b.seg_from||b.dep_date||'').slice(0,10), arr=String(b.seg_to||b.arr_date||'').slice(0,10);
+      const otherAcc=b.combo&&window.SZCore&&SZCore.accomFromProduct?SZCore.accomFromProduct(b.product_name||''):'';
+      return { seq:b.event_seq, no:String(b.event_no||b.event_seq||''), rep:b.rep_name||'', tag:'', cls:'', pax:Number(b.pax||0)||0, accom:brandLabel(true), ak:'P',
+        dep, arr, fullDep, fullArr, combo:!!b.combo, sure:b.seg_sure!==false, other:otherAcc?(ACCOM_JA[accomKey(otherAcc)]||otherAcc):'',
+        arrT:(dep===fullDep)?hhmm(p.loc_arr_time):'', depT:(arr===fullArr)?hhmm(p.ret_dep_time):'',
+        port:(dep===fullDep)?portOf(p.origin||b.origin, p.dep_flight||b.airline):'', retPort:(arr===fullArr)?portOf(p.origin||b.origin, p.ret_flight||b.airline):'',
+        nights:nightsOf(dep,arr), member:false }; });
+    LOADED=YM; render();
+  }catch(e){ const m=String(e&&e.message||e); toast((/partner_bookings|partner_members|schema cache|does not exist/i.test(m)?tx('needSql')+' · ':'')+tx('loadFail')+': '+m,'err'); $('#sum').textContent=''; }
+}
 
 // ── 렌더 ──
 function visibleTeams(){ return TEAMS.filter(t=>!ACC.size||ACC.has(t.ak)); }
@@ -270,7 +308,8 @@ function dayCls(ym,d){ return dateCls(dstr(ym,d)); }
 const BIG_PAX=4;   // 이 인원 이상이면 팀 줄을 노랗게(Min 2026-10-26)
 function headHTML(ym, tot){
   const N=daysIn(ym);
-  const info=[['No.','행사'],['代表者','대표자'],['タグ','태그'],['区分','회원구분'],['人数','인원'],['宿泊先','숙소'],['入国','입국'],['到着','도착'],['帰国','귀국'],['出発','출발'],['泊','박수']];
+  const info=BRAND?[['No.','행사'],['代表者','대표자'],['区分','구분'],['人数','인원'],['IN','체크인'],['到着','도착'],['OUT','체크아웃'],['出発','출발'],['泊','박수']]
+                  :[['No.','행사'],['代表者','대표자'],['タグ','태그'],['区分','회원구분'],['人数','인원'],['宿泊先','숙소'],['入国','입국'],['到着','도착'],['帰国','귀국'],['出発','출발'],['泊','박수']];
   const r1='<tr>'+info.map(([j,k])=>`<th rowspan="5" class="tt">${j}<small>${k}</small></th>`).join('')+Array.from({length:N},(_,i)=>`<th class="d day num${dayCls(ym,i+1)}">${i+1}</th>`).join('')+'</tr>';
   const r2='<tr>'+Array.from({length:N},(_,i)=>`<th class="d day${dayCls(ym,i+1)}"><span class="wd">${WD_JA[wdOf(dstr(ym,i+1))]}</span></th>`).join('')+'</tr>';
   const row=(lbl,arr,cls)=>'<tr>'+Array.from({length:N},(_,i)=>`<th class="d ${cls}${dayCls(ym,i+1)}" title="${lbl}">${arr[i+1]||''}</th>`).join('')+'</tr>';
@@ -283,6 +322,15 @@ function teamRowHTML(t, ym){
     const first=on&&ds===t.dep, last=on&&dstr(ym,d+1)===t.arr;
     return `<td class="d${dayCls(ym,d)}${on?' on':''}${first?' first':''}${last?' last':''}">${on?t.pax:''}</td>`; }).join('');
   const noTail=t.no.includes('-')?t.no.split('-').pop():t.no;
+  if(BRAND){   // 区分(単独/コンボ + 상대 숙소) · IN(←상대 숙소에서) · 到着(입국일일 때만) · OUT(→상대 숙소로) · 出発(귀국일일 때만) · 泊
+    const kind=t.combo?`${esc(tx('kindCombo'))}${t.other?`<small>${esc(t.other)}</small>`:''}`:esc(tx('kindSolo'));
+    const unsure=t.sure?'':`<span class="unsure" title="${esc(tx('unsureT'))}">確認</span>`;
+    const inFrom=(t.combo&&t.fullDep&&t.dep>t.fullDep&&t.other)?`<small>← ${esc(t.other)}</small>`:'';
+    const outTo=(t.combo&&t.fullArr&&t.arr<t.fullArr&&t.other)?`<small>→ ${esc(t.other)}</small>`:'';
+    return `<tr class="team${t.pax>=BIG_PAX?' big':''}${t.sure?'':' unsure'}" data-seq="${t.seq}">`
+      +`<td class="mono num" title="${esc(t.no)}">${esc(noTail)}</td><td class="l name">${esc(t.rep)}</td><td class="kind">${kind}${unsure}</td><td class="pax">${t.pax}</td>`
+      +`<td class="mono dt${dateCls(t.dep)}">${md(t.dep)}${inFrom}</td><td class="mono">${esc(t.arrT)}${t.port?`<small>${t.port}</small>`:''}</td><td class="mono dt${dateCls(t.arr)}">${md(t.arr)}${outTo}</td><td class="mono">${esc(t.depT)}${t.retPort?`<small>${t.retPort}</small>`:''}</td><td>${t.nights}</td>`+cells+'</tr>';
+  }
   return `<tr class="team${t.member?' mem':''}${t.pax>=BIG_PAX?' big':''}" data-seq="${t.seq}">`
     +`<td class="mono num" title="${esc(t.no)}">${esc(noTail)}</td><td class="l name">${esc(t.rep)}</td><td class="mono">${esc(t.tag)}</td><td class="cls">${esc(t.cls)}</td><td class="pax">${t.pax}</td><td>${ACCOM_JA[t.ak]||esc(t.accom)}</td>`
     +`<td class="mono dt${dateCls(t.dep)}">${md(t.dep)}</td><td class="mono">${esc(t.arrT)}${t.port?`<small>${t.port}</small>`:''}</td><td class="mono dt${dateCls(t.arr)}">${md(t.arr)}</td><td class="mono">${esc(t.depT)}${t.retPort?`<small>${t.retPort}</small>`:''}</td><td>${t.nights}</td>`+cells+'</tr>';
@@ -290,7 +338,7 @@ function teamRowHTML(t, ym){
 function totRowHTML(label, list, ym, cls){
   const N=daysIn(ym), tot=dayTotals(list,ym);
   const pax=list.reduce((s,t)=>s+t.pax,0), nights=list.reduce((s,t)=>s+nightSpan(t,ym).length*t.pax,0);
-  return `<tr class="${cls}"><td colspan="4" class="l">${label}</td><td class="pax">${pax}</td><td colspan="5" class="l"><small>${list.length} ${esc(tx('teams'))} · ${nights} ${esc(tx('nights'))}</small></td><td></td>`
+  return `<tr class="${cls}"><td colspan="${BRAND?3:4}" class="l">${label}</td><td class="pax">${pax}</td><td colspan="${BRAND?4:5}" class="l"><small>${list.length} ${esc(tx('teams'))} · ${nights} ${esc(tx('nights'))}</small></td><td></td>`
     +Array.from({length:N},(_,i)=>`<td class="d${dayCls(ym,i+1)}">${tot.stay[i+1]||''}</td>`).join('')+'</tr>';
 }
 function sortTeams(a,b){ return a.dep<b.dep?-1:a.dep>b.dep?1:(a.arr<b.arr?-1:a.arr>b.arr?1:String(a.rep).localeCompare(String(b.rep),'ko')); }
@@ -300,10 +348,10 @@ function render(){
   const list=visibleTeams().slice().sort(sortTeams);
   const tot=dayTotals(list,ym);
   let body='';
-  if(GROUP){
+  if(GROUP && !BRAND){
     const order=['Y','K','G','S'];
     order.forEach(k=>{ const gl=list.filter(t=>t.ak===k); if(!gl.length) return;
-      body+=`<tr class="grp"><td colspan="${11+daysIn(ym)}">${ACCOM_FULL[k]} — ${gl.length} ${esc(tx('teams'))} · ${gl.reduce((s,t)=>s+t.pax,0)} ${esc(tx('pax'))}</td></tr>`;
+      body+=`<tr class="grp"><td colspan="${INFO_N+daysIn(ym)}">${ACCOM_FULL[k]} — ${gl.length} ${esc(tx('teams'))} · ${gl.reduce((s,t)=>s+t.pax,0)} ${esc(tx('pax'))}</td></tr>`;
       body+=gl.map(t=>teamRowHTML(t,ym)).join('');
       body+=totRowHTML(`${ACCOM_FULL[k]} 小計`, gl, ym, 'sub');
     });
@@ -313,7 +361,7 @@ function render(){
   const pax=list.reduce((s,t)=>s+t.pax,0), nights=list.reduce((s,t)=>s+nightSpan(t,ym).length*t.pax,0);
   $('#sum').textContent=tx('sum')(list.length,pax,nights);
   const [y,m]=ym.split('-').map(Number); const now=new Date();
-  const accLbl=ACC.size?[...ACC].map(k=>ACCOM_FULL[k]).join(' · '):'全宿泊先 · 전체 숙소';
+  const accLbl=BRAND?`${SZCore.partnerLabel(BRAND,'ja')} · ${SZCore.partnerLabel(BRAND,'ko')}`:(ACC.size?[...ACC].map(k=>ACCOM_FULL[k]).join(' · '):'全宿泊先 · 전체 숙소');
   $('#pt').innerHTML=`<span>月間 日別宿泊現況 <small>월간 숙박 현황표</small></span><span>${y}年${m}月</span><small>${esc(accLbl)}</small><span class="sp"></span><small>${list.length} ${esc(tx('teams'))} · ${pax} ${esc(tx('pax'))} · ${nights} ${esc(tx('nights'))} · 宿泊/到着/出発 = 各日の人数</small><small>${esc(tx('outAt'))} ${pad2(now.getMonth()+1)}/${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}</small>`;
   fitOnePage();   // 제목까지 채운 뒤 측정(제목 높이 포함)
   stickyTops();
@@ -334,7 +382,7 @@ function stickyTops(){ const rows=[...document.querySelectorAll('#tbl thead tr')
 //  측정은 화면에서 body.fitm(인쇄와 같은 치수)을 잠깐 켜고 제목+표 높이를 잰다 — 표가 nowrap 이라 폭이 달라도 높이는 인쇄와 같다. 야마나미가 섞이면 여러 장 그대로.
 const PAGE_H_MM=283, FIT_SAFETY_MM=6, FIT_MIN=0.25;
 let FIT=1;
-function onePageMode(){ const list=visibleTeams(); return list.length>0 && !list.some(t=>t.ak==='Y'); }
+function onePageMode(){ const list=visibleTeams(); return list.length>0 && (!!BRAND || !list.some(t=>t.ak==='Y')); }   // 자회사 상품은 항상 한 장
 function mm2px(mm){ return mm/25.4*96; }
 function fitOnePage(){
   const root=document.documentElement, note=$('#fitnote');
@@ -355,13 +403,15 @@ function fitOnePage(){
 window.addEventListener('beforeprint',fitOnePage);
 function renderChips(){
   const box=$('#accom-chips'); if(!box) return;
+  if(BRAND){ box.innerHTML=''; box.style.display='none'; const gl=$('#opt-group')&&$('#opt-group').closest('label'); if(gl) gl.style.display='none'; return; }
   const keys=[['','all'],['Y','accY'],['K','accK'],['G','accG'],['S','accS']];
   box.innerHTML=keys.map(([k,l])=>`<button type="button" class="chip${(k?ACC.has(k):!ACC.size)?' on':''}" data-k="${k}">${esc(tx(l))}</button>`).join('');
   box.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{ const k=b.dataset.k; if(!k) ACC.clear(); else if(ACC.has(k)) ACC.delete(k); else ACC.add(k); renderChips(); render(); }));
 }
 function applyStatic(){
-  $('#t-step').textContent=tx('step'); $('#t-connHint').textContent=tx('connHint'); $('#t-group').textContent=tx('group');
-  $('#btn-print').textContent=tx('print'); $('#t-desc').textContent=tx('desc'); const em=$('#t-empty'); if(em) em.textContent=tx('needConn');
+  $('#t-step').textContent=BRAND?tx('stepP')(brandLabel()):tx('step'); $('#t-connHint').textContent=tx('connHint'); $('#t-group').textContent=tx('group');
+  if(BRAND) document.title='Yamanami 운영 관리 · '+brandLabel()+' · 월간 숙박 현황표';
+  $('#btn-print').textContent=tx('print'); $('#t-desc').textContent=BRAND?tx('descP'):tx('desc'); const em=$('#t-empty'); if(em) em.textContent=tx('needConn');
   const z=$('#zoom'); if(z) z.title=tx('zoomT');
   renderChips();
 }
@@ -379,7 +429,7 @@ async function connect(){
   const btn=$('#btn-connect'); btn.disabled=true; btn.classList.remove('connected');
   try{
     supa=window.supabase.createClient(url,key);
-    const {error}=await supa.from('bookings').select('event_seq',{count:'exact',head:true}); if(error) throw error;
+    const {error}=await supa.from(BRAND?'partner_bookings':'bookings').select('event_seq',{count:'exact',head:true}); if(error) throw error;   /* 대기 포함: 연결 확인용 head count */
     setConn('✓','ok'); btn.textContent='✓'; btn.classList.add('connected'); btn.disabled=false;
     await load();
   }catch(e){ setConn('✕','err'); toast(tx('loadFail')+': '+e.message,'err'); btn.textContent='↻'; btn.classList.remove('connected'); btn.disabled=false; supa=null; }

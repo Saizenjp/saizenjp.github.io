@@ -214,6 +214,64 @@
     return '';   // 미해당 = 타 리조트(스가다이라·14hills·벳푸·시로사토·미야자키 등) → 운영 원장 제외
   }
 
+  // ── 자회사 상품(구마모토 시내호텔·트라이얼 리조트) — 별도 원장 partner_bookings/partner_members(SQL 159, Min 2026-10-30) ──
+  //  야마나미 권역 숙소가 아니라 step1 이 bookings 에서 버리던 상품. 야마나미 운영 표(bookings·guests…)에는 넣지 않고
+  //  자회사 담당자만 보는 별도 원장에 적재한다(手配書·송영·식수·B2B·모니터 무영향). 상품명 → brand 는 여기 한 곳에서만 정한다.
+  //  ⚠ 「트라이얼」표기는 Min 2026-10-30 가정(실제 엠클릭 상품명이 다르면 re 한 줄만 고친다).
+  var PARTNER_BRANDS = [
+    { key: 'kumamoto', re: /구마모토\s*시내|쿠마모토\s*시내|熊本\s*市内|kumamoto\s*city/i,
+      label: { ja: '熊本市内商品', ko: '구마모토 시내 상품', en: 'Kumamoto city products' },
+      short: { ja: '熊本市内', ko: '구마모토 시내', en: 'Kumamoto city' } },
+    { key: 'trial', re: /트라이얼|トライアル|\btrial\b/i,
+      label: { ja: 'トライアルリゾート商品', ko: '트라이얼 리조트 상품', en: 'Trial Resort products' },
+      short: { ja: 'トライアル', ko: '트라이얼', en: 'Trial' } }
+  ];
+  function partnerBrandDef(key) {
+    for (var i = 0; i < PARTNER_BRANDS.length; i++) if (PARTNER_BRANDS[i].key === key) return PARTNER_BRANDS[i];
+    return null;
+  }
+  //  상품명 → 'kumamoto' | 'trial' | ''(자회사 상품 아님). 콤보(「구마모토 시내호텔 3박 + 야마나미리조트 2박」)도 brand 를 돌려준다
+  //  (야마나미 쪽 적재는 accomFromProduct 가 따로 판정 — 둘 다 참이면 양쪽 원장에 들어간다).
+  function partnerBrand(name) {
+    var s = String(name == null ? '' : name);
+    for (var i = 0; i < PARTNER_BRANDS.length; i++) if (PARTNER_BRANDS[i].re.test(s)) return PARTNER_BRANDS[i].key;
+    return '';
+  }
+  function partnerLabel(key, lang, short) {
+    var d = partnerBrandDef(key); if (!d) return String(key || '');
+    var m = short ? d.short : d.label; return m[lang] || m.ja;
+  }
+  function isoShift(ds, n) {
+    var d = parseLocalDate(ds); if (isNaN(d)) return '';
+    d.setDate(d.getDate() + n); return fmtDate(d);
+  }
+  //  자회사 상품 구간(그 숙소에 묵는 밤) — 예약 전체 [dep, arr) 안에서 상품명으로 자른다.
+  //   · 단독 상품(「+」 없음) = 예약 기간 전체(sure=true)
+  //   · 콤보 = 「+」로 나눈 구간 중 brand 글자가 든 구간의 「N박」 + 그 앞 구간들의 박수 합(offset) → [dep+offset, dep+offset+N)
+  //     머리 「[5박 6일]」은 떼고 읽는다. 구간 하나라도 박수를 못 읽거나 합이 예약 박수와 다르면 전체 기간 + sure=false(화면 「確認」).
+  //   반환 {from,to,nights,sure,pos:'all'|'first'|'mid'|'last'}
+  function partnerSegment(name, dep, arr, brand) {
+    var s = String(name == null ? '' : name).replace(/^\s*\[[^\]]*\]\s*/, '');
+    var d = String(dep || '').slice(0, 10), a = String(arr || '').slice(0, 10);
+    var total = nightsBetween(d, a);
+    var def = partnerBrandDef(brand || partnerBrand(s));
+    var full = { from: d, to: a, nights: total, sure: false, pos: 'all' };
+    if (!d || !a || !total || !def) return full;
+    var segs = s.split(/\s*[+＋]\s*/).filter(function (x) { return x.trim(); });
+    if (segs.length < 2) return { from: d, to: a, nights: total, sure: true, pos: 'all' };
+    var idx = -1; segs.forEach(function (sg, i) { if (idx < 0 && def.re.test(sg)) idx = i; });
+    if (idx < 0) return full;
+    var nOf = function (sg) { var ms = sg.match(/(\d+)\s*박/g); if (!ms) return NaN; return Number(ms[ms.length - 1].match(/(\d+)/)[1]); };
+    var ns = segs.map(nOf);
+    if (ns.some(function (n) { return !(n >= 0); })) return full;
+    var n = ns[idx]; if (!(n > 0)) return full;
+    var sum = ns.reduce(function (x, y) { return x + y; }, 0);
+    if (sum !== total) return full;   // 상품명 박수 합 ≠ 예약 박수 → 날짜를 믿을 수 없다
+    var offset = 0; for (var i = 0; i < idx; i++) offset += ns[i];
+    var from = isoShift(d, offset), to = isoShift(from, n);
+    return { from: from, to: to, nights: n, sure: true, pos: idx === 0 ? 'first' : (idx === segs.length - 1 ? 'last' : 'mid') };
+  }
+
   // ── 비회원 F풀 코드 재사용 충돌 판정(30일 쿨다운) ──────────────────────────
   //  두 팀 체류가 gapDays(기본 30) 이내면 '충돌'(같은 F코드 금지). 30일+ 지나면 재사용 허용.
   //  이유=① 턴오버 당일(퇴실=입실) 현장 동시존재 ② 한 달 내 같은 코드 재등장 → 네임택·식사 혼동.
@@ -778,7 +836,8 @@
     pos:     ['pos_front', 'pos_golf', 'pos_restaurant', 'pos_customer'],
     settle:  ['settle_onsite', 'settle_merit', 'settle_report'],   // settle_report=정산 보고서(일보·주보·월보·연보 + 일 마감, SQL 156, Min 2026-10-27)
     stats:   ['stats_mgmt', 'staycal'],
-    shizu:   ['shizu_sheet', 'inv_shizu']
+    shizu:   ['shizu_sheet', 'inv_shizu'],
+    partner: ['partner_kumamoto', 'partner_trial']   // 자회사 상품(SQL 159, Min 2026-10-30): 상품별로 담당자를 따로 지정 — 카드·페이지 노출 + partner_* 표 RLS 읽기
   };
   var AREA_PARENT = {};
   Object.keys(AREA_TREE).forEach(function (p) { AREA_TREE[p].forEach(function (c) { AREA_PARENT[c] = p; }); });
@@ -1112,6 +1171,11 @@
     accomRate: accomRate,
     b2bFees: b2bFees,
     accomFromProduct: accomFromProduct,
+    PARTNER_BRANDS: PARTNER_BRANDS,
+    partnerBrand: partnerBrand,
+    partnerBrandDef: partnerBrandDef,
+    partnerLabel: partnerLabel,
+    partnerSegment: partnerSegment,
     nmCodeConflict: nmCodeConflict,
     weekday: weekday,
     mdWd: mdWd,

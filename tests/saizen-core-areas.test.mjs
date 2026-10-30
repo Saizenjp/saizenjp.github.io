@@ -47,13 +47,20 @@ test('체류 캘린더(staycal)만 있으면 경영통계(stats_mgmt)는 못 연
   assert.equal(C.areaAllowed(st, ['staycal']), 'write');
 });
 
-test('SQL seed(최신 area_tree 재시드 = 156) 와 AREA_TREE 가 같다', () => {
-  const sql = readFileSync(new URL('../ops/hub/sql/156_settle_report.sql', import.meta.url), 'utf8');
+test('SQL seed(최신 area_tree 재시드 = 159) 와 AREA_TREE 가 같다', () => {
+  const sql = readFileSync(new URL('../ops/hub/sql/159_partner_products.sql', import.meta.url), 'utf8');
   const blk = sql.slice(sql.indexOf('insert into public.area_tree'), sql.indexOf('on conflict (child)'));
   const seed = {};
   for (const m of blk.matchAll(/\('([a-z_]+)','([a-z_]+)'\)/g)) seed[m[1]] = m[2];
   const mine = {};
   Object.keys(C.AREA_TREE).forEach(p => C.AREA_TREE[p].forEach(c => { mine[c] = p; }));
   assert.deepEqual(seed, mine);
-  assert.equal(Object.keys(mine).length, 34);   // 156: settle_report(정산 보고서) 추가
+  assert.equal(Object.keys(mine).length, 36);   // 159: partner_kumamoto·partner_trial(자회사 상품) 추가
+  assert.deepEqual(C.AREA_TREE.partner, ['partner_kumamoto', 'partner_trial']);
+  // 자회사 계정: 상품 하나만 → 그 카드만 · 부모 partner → 둘 다 · 다른 그룹 카드는 못 연다
+  const ku = { role: 'staff', areas: ['partner_kumamoto'], read_areas: [] };
+  assert.equal(C.areaAllowed(ku, ['partner_kumamoto']), 'write');
+  assert.equal(C.areaAllowed(ku, ['partner_trial']), null);
+  assert.equal(C.areaAllowed(ku, ['staychart']), null);
+  assert.equal(C.areaAllowed({ role: 'staff', areas: [], read_areas: ['partner'] }, ['partner_trial']), 'read');
 });

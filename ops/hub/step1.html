@@ -113,7 +113,7 @@
   .navlink:hover{background:rgba(0,0,0,.04)}
   .navlink.cur{background:var(--accentSoft,#e6eeda);color:var(--accent,#647548);border-color:var(--accent,#647548)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.3">
 </head>
 <body data-so-area="step1">
 <div class="wrap">
@@ -262,8 +262,8 @@
 </div>
 <style>@keyframes runspin{to{transform:rotate(360deg)}}</style>
 
-<script src="../assets/saizen-core.js?v=53"></script>
-<script src="../assets/saizen-ops.js?v=36.2"></script>
+<script src="../assets/saizen-core.js?v=54"></script>
+<script src="../assets/saizen-ops.js?v=36.3"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -279,6 +279,7 @@ let supa = null;
 //   ※ DB 저장값(예: status·check_status)·엑셀 컬럼명은 번역하지 않는다. 화면 표시만.
 const L = {
   ja:{
+    stpPartner:'子会社商品の登録', partnerNoTable:'子会社商品の台帳(partner_bookings)がありません — SQL 159 を適用すると熊本市内・トライアル商品も登録されます', partnerDone:(n,k,t,m)=>`子会社商品 ${n}チーム(熊本市内 ${k} · トライアル ${t}) · 名簿 ${m}名 — 別台帳(partner_bookings)`, partnerCleaned:(b,m)=>`子会社商品の整理: ファイルにないチーム ${b} · 名簿 ${m}名を削除`, partnerUnsure:n=>`子会社商品 ${n}チームは商品名から宿泊区間を読めず、予約期間全体にしました(画面で「確認」表示)`, partnerFail:'子会社商品の登録に失敗: ',
     doneRoomBtn:'客室割当へ →', doneRoomNote:'登録した月の<b>客室割当</b>を開くと、その内容に合わせて<b>自動割当</b>が走ります。手動で割り当てた部屋は固定され、上書きされません。',
     mdH:'月データ削除', mdHsub:'アップロードと無関係に特定の月を全体整理',
     mdLbl:'削除する月', mdDelBtn:'🗑 この月のデータ削除', mdRefreshTitle:'月リスト更新',
@@ -335,6 +336,7 @@ const L = {
     delMonthFail:'· 月削除失敗: '
   },
   ko:{
+    stpPartner:'자회사 상품 적재', partnerNoTable:'자회사 상품 원장(partner_bookings)이 없습니다 — SQL 159 를 적용하면 구마모토 시내·트라이얼 상품도 적재됩니다', partnerDone:(n,k,t,m)=>`자회사 상품 ${n}팀(구마모토 시내 ${k} · 트라이얼 ${t}) · 명단 ${m}명 — 별도 원장(partner_bookings)`, partnerCleaned:(b,m)=>`자회사 상품 정리: 파일에 없는 팀 ${b} · 명단 ${m}명 삭제`, partnerUnsure:n=>`자회사 상품 ${n}팀은 상품명에서 숙박 구간을 못 읽어 예약 기간 전체로 두었습니다(화면에 「確認」 표시)`, partnerFail:'자회사 상품 적재 실패: ',
     doneRoomBtn:'방배정으로 →', doneRoomNote:'등록한 달의 <b>방배정</b>을 열면 그 내용에 맞춰 <b>자동배정</b>이 실행됩니다. 수기로 배정한 방은 고정되어 덮어쓰지 않습니다.',
     mdH:'월 데이터 삭제', mdHsub:'업로드와 무관하게 특정 월 전체 정리',
     mdLbl:'삭제할 월', mdDelBtn:'🗑 이 달 데이터 삭제', mdRefreshTitle:'월 목록 새로고침',
@@ -391,6 +393,7 @@ const L = {
     delMonthFail:'· 월 삭제 실패: '
   },
   en:{
+    stpPartner:'Subsidiary products', partnerNoTable:'Subsidiary ledger (partner_bookings) is missing — apply SQL 159 to import Kumamoto city / Trial products', partnerDone:(n,k,t,m)=>`Subsidiary products ${n} teams (Kumamoto city ${k} · Trial ${t}) · roster ${m} — separate ledger (partner_bookings)`, partnerCleaned:(b,m)=>`Subsidiary cleanup: ${b} teams · ${m} roster rows not in the file deleted`, partnerUnsure:n=>`${n} subsidiary teams: stay segment could not be read from the product name — full booking span kept (marked 確認 on screen)`, partnerFail:'Subsidiary import failed: ',
     doneRoomBtn:'Go to room assignment →', doneRoomNote:'Opening <b>room assignment</b> for the imported month runs <b>auto-assign</b> against the new data. Manually assigned rooms stay pinned.',
     mdH:'Delete month data', mdHsub:'Clean an entire month regardless of uploads',
     mdLbl:'Month to delete', mdDelBtn:'🗑 Delete this month', mdRefreshTitle:'Refresh month list',
@@ -599,6 +602,48 @@ function accomPrefix(accom){
 // 숙박지 판정은 SZCore 단일 소스에 위임(정산·통계·/app/과 동일 규칙 — 드리프트 방지).
 //   미해당('')=타 리조트 → 운영 원장 제외(v13.4 규칙).
 function detectAccom(productName){ return SZCore.accomFromProduct(productName); }
+
+// ── 자회사 상품(구마모토 시내호텔·트라이얼 리조트) 행 만들기 — 순수 함수(별도 원장 partner_bookings/partner_members, SQL 159, Min 2026-10-30) ──
+//   예약리스트에서 SZCore.partnerBrand 가 잡는 팀 + 일행별예약의 그 팀 명단(최소 정보: 이름·영문명·성별·항공편·시각 — 여권·생년·전화 제외).
+//   야마나미 적재와 무관(bookings 등은 종전 그대로). 콤보(「구마모토 시내호텔 3박 + 야마나미리조트 2박」)는 양쪽에 다 들어간다.
+//   자회사 숙소 구간(seg_from/seg_to)은 상품명으로 자른다(SZCore.partnerSegment) — 못 읽으면 예약 기간 전체 + seg_sure=false(화면 「確認」).
+function partnerRowsFrom(res, ilh, sessYm){
+  const out={bookings:[], members:[], byBrand:{}, seqs:new Set(), unsure:0};
+  if(!(window.SZCore&&SZCore.partnerBrand)) return out;
+  const pick=(r,...ks)=>{ for(const k of ks){ const v=r[k]; if(v!=null && String(v).trim()) return String(v).trim(); } return ''; };
+  const repOf={};
+  (res||[]).forEach(r=>{
+    const status=String(r['구분']||'').trim(); if(!['견적','대기','확정','정산'].includes(status)) return;
+    const seq=parseInt(String(r['eventSeq']||'').trim(),10); if(!seq) return;
+    const pname=String(r['상품명']||'');
+    const brand=SZCore.partnerBrand(pname); if(!brand) return;
+    const dep=birthISO(r['출발일자'])||null, arr=birthISO(r['도착일자'])||null;
+    const seg=SZCore.partnerSegment(pname, dep, arr, brand);
+    if(!seg.sure) out.unsure++;
+    const rep=String(r['대표고객']||'').trim();
+    out.bookings.push({ event_seq:seq, brand, event_no:String(r['행사번호']||'').trim()||null, status, rep_name:rep||null,
+      member_type:String(r['회원권구분']||'').trim()||null, pax:Number(r['예약']||0)||0, dep_date:dep, arr_date:arr,
+      seg_from:seg.from||dep, seg_to:seg.to||arr, seg_nights:seg.nights||null, seg_sure:!!seg.sure, combo:!!SZCore.accomFromProduct(pname),
+      product_name:pname||null, nights_label:String(r['기간']||'').trim()||null, origin:String(r['출발지']||'').trim()||null, airline:String(r['항공']||'').trim()||null,
+      remark:pick(r,'비고','비 고','비고사항')||null, remark_local:pick(r,'현지 비고','현지비고','현지전달비고','현지 전달비고')||null,
+      reserved_at:birthISO(r['예약일자']||r['예약일'])||null, session_ym:(dep||'').slice(0,7)||sessYm||null, synced_at:new Date().toISOString() });
+    out.byBrand[brand]=(out.byBrand[brand]||0)+1; out.seqs.add(seq); repOf[seq]=rep;
+  });
+  const byTeam={};
+  (ilh||[]).forEach(r=>{
+    const id=parseInt(String(r['pkgPsgrSeq']||'').trim(),10), seq=parseInt(String(r['eventSeq']||'').trim(),10);
+    if(!id||!seq||!out.seqs.has(seq)) return;
+    (byTeam[seq]=byTeam[seq]||[]).push({ id, no:Number(r['No']||0)||0, name_kr:String(r['고객명']||'').trim()||null,
+      name_en:[String(r['영문성']||'').trim(),String(r['영문이름']||'').trim()].filter(Boolean).join(' ')||null, gender:String(r['성별']||'').trim()||null,
+      dep_flight:String(r['출발편']||'').trim()||null, ret_flight:String(r['귀국편']||'').trim()||null, origin:String(r['출발지']||'').trim()||null, airline:String(r['항공사']||'').trim()||null,
+      dep_time:String(r['한국출발']||'').trim()||null, loc_arr_time:String(r['현지도착']||'').trim()||null, ret_dep_time:String(r['현지출발']||'').trim()||null, kor_arr_time:String(r['한국도착']||'').trim()||null });
+  });
+  Object.keys(byTeam).forEach(seqStr=>{ const seq=+seqStr; const list=byTeam[seq].sort((a,b)=>a.no-b.no);
+    let repIdx=list.findIndex(p=>p.name_kr && p.name_kr===repOf[seq]); if(repIdx<0) repIdx=0;   // 대표자=예약리스트 대표고객(없으면 첫 사람) — 월간표 도착/출발 시각의 기준
+    list.forEach((p,i)=>{ const {no,...rest}=p; out.members.push({ ...rest, event_seq:seq, seq_in_team:i+1, is_rep:i===repIdx }); });
+  });
+  return out;
+}
 
 // ════════════════════════════════════════════════════════════════════════
 //  Supabase 연결
@@ -956,6 +1001,38 @@ async function run(){
       if(pxDel) log(`✓ ${tx('paxCleaned')(pxDel)}`,'dim');
     }catch(_){ /* 정리 실패는 임포트를 막지 않음 */ }
     log(`✓ ${t('s1_dyn_log_pax')} ${stat['passengers']}${t('s1_dyn_cases')}`,'ok');
+
+    // ── 2b) 자회사 상품(구마모토 시내호텔·트라이얼 리조트) → 별도 원장 partner_bookings/partner_members (SQL 159, Min 2026-10-30) ──
+    //   야마나미 권역 숙소가 아니라 위(1)에서 버린 상품을 여기서 받는다. 야마나미 표(bookings 등)는 건드리지 않는다.
+    //   표가 없으면(SQL 159 미적용) 안내만 하고 넘어간다. 실패해도 야마나미 등록은 계속된다.
+    runProgress(tx('stpPartner'));
+    try{
+      const PR = partnerRowsFrom(res, ilh, ym);
+      const probe = await supa.from('partner_bookings').select('event_seq',{count:'exact',head:true});
+      if(probe.error){ if(PR.bookings.length) log('· '+tx('partnerNoTable'),'warn'); }
+      else {
+        stat['partner_bookings'] = await upsertChunked('partner_bookings', PR.bookings, 'event_seq');
+        stat['partner_members']  = await upsertChunked('partner_members',  PR.members,  'id');
+        // 정리 ① 파일에 있는 출발일자의 팀 중 파일에 없는 팀(취소·상품 변경) — bookings 월 동기화와 같은 규칙(부분 파일은 그 날짜만). 명단은 cascade.
+        const fileDepsP=new Set(); res.forEach(r=>{ const d=birthISO(r['출발일자']); if(d) fileDepsP.add(String(d).slice(0,10)); });
+        let delB=0, delM=0;
+        if(fileMonths.length && fileDepsP.size){
+          let ex=[], pg=0;
+          while(true){ const {data,error}=await supa.from('partner_bookings').select('event_seq,dep_date').in('session_ym',fileMonths).range(pg,pg+999); if(error||!data||!data.length) break; ex=ex.concat(data); if(data.length<1000) break; pg+=1000; }
+          const orph=ex.filter(r=>fileDepsP.has(String(r.dep_date||'').slice(0,10)) && !PR.seqs.has(r.event_seq)).map(r=>r.event_seq);
+          for(let i=0;i<orph.length;i+=100){ const {data,error}=await supa.from('partner_bookings').delete().in('event_seq',orph.slice(i,i+100)).select('event_seq'); if(!error&&data) delB+=data.length; }
+        }
+        // 정리 ② 파일 팀의 명단에서 파일에 없는 사람(엠클릭 No 재부여·동행자 교체) — passengers 유령행 정리와 같은 규칙
+        const fileIdsP={}; PR.members.forEach(m=>{ (fileIdsP[m.event_seq]=fileIdsP[m.event_seq]||new Set()).add(m.id); });
+        const mSeqs=Object.keys(fileIdsP).map(Number), staleM=[];
+        for(let i=0;i<mSeqs.length;i+=120){ const chunk=mSeqs.slice(i,i+120); let pg=0;
+          while(true){ const {data,error}=await supa.from('partner_members').select('id,event_seq').in('event_seq',chunk).range(pg,pg+999); if(error||!data||!data.length) break; data.forEach(r=>{ const set=fileIdsP[r.event_seq]; if(set&&!set.has(r.id)) staleM.push(r.id); }); if(data.length<1000) break; pg+=1000; } }
+        for(let i=0;i<staleM.length;i+=200){ const {data,error}=await supa.from('partner_members').delete().in('id',staleM.slice(i,i+200)).select('id'); if(!error&&data) delM+=data.length; }
+        if(PR.bookings.length||delB) log(`✓ ${tx('partnerDone')(PR.bookings.length, PR.byBrand.kumamoto||0, PR.byBrand.trial||0, PR.members.length)}`,'ok');
+        if(delB||delM) log(`✓ ${tx('partnerCleaned')(delB,delM)}`,'dim');
+        if(PR.unsure) log('· '+tx('partnerUnsure')(PR.unsure),'warn');
+      }
+    }catch(e){ log(tx('partnerFail')+((e&&e.message)||e),'warn'); }
 
     runProgress(tx('stpGuests'));
     // ── 3) guests (팀 운영 원장) — procMap 기준 ──

@@ -34,7 +34,7 @@ function walk(dir, out = []) {
 }
 
 const files = walk(join(ROOT, 'ops')).sort();
-const RE = /from\('bookings'\)|bookings!inner\(/g;
+const RE = /from\('bookings'\)|from\('partner_bookings'\)|bookings!inner\(/g;   // 자회사 상품 원장(159)도 같은 규칙
 let hits = 0, bad = 0;
 for (const f of files) {
   const rel = relative(ROOT, f).replace(/\\/g, '/');
@@ -43,7 +43,7 @@ for (const f of files) {
   //  `const GSEL='…bookings!inner(…)'` 처럼 select 문자열을 상수로 빼 둔 페이지는
   //  그 상수를 쓰는 `.select(GSEL)` 문장을 검사 대상에 넣는다(상수 정의 자체는 쿼리가 아니다).
   const consts = [...src.matchAll(/const\s+([A-Z_][A-Z0-9_]*)\s*=\s*'[^']*bookings!inner\([^']*'/g)].map(x => x[1]);
-  const RE2 = consts.length ? new RegExp(`from\\('bookings'\\)|bookings!inner\\(|\\.select\\((?:${consts.join('|')})\\)`, 'g') : RE;
+  const RE2 = consts.length ? new RegExp(`from\\('bookings'\\)|from\\('partner_bookings'\\)|bookings!inner\\(|\\.select\\((?:${consts.join('|')})\\)`, 'g') : RE;
   RE2.lastIndex = 0;
   let m;
   while ((m = RE2.exec(src))) {
