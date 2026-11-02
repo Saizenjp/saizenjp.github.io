@@ -18,7 +18,8 @@
 --  ④ area_tree 재시드(36행) — 부모 partner + 자식 partner_kumamoto·partner_trial(권한 관리 「자회사 상품」 줄, 상품별 담당자 지정).
 --     seed 는 saizen-core.js AREA_TREE 와 같아야 한다(tests/saizen-core-areas.test.mjs 가 이 파일을 읽어 대조).
 --  RPC 추가 없음(anon security definer 15 유지). 멱등(if not exists / drop policy if exists → create / on conflict).
---  적용: Supabase MCP(확인 프롬프트는 Min 승인) 또는 SQL Editor. 00_VERIFY 159.
+--  적용 완료 2026-11-01(Supabase MCP, Min 「sql 159 적용해」) — 검증: 표 2·정책 8·anon select 불가·트리거 2·area_tree 36(partner 자식 2)·anon secdef 15 유지
+--    + 롤백 드라이런(적재→updated_at 갱신→cascade 삭제→brand check 거부). 00_VERIFY 159.
 -- ============================================================================
 
 -- ① 팀 원장

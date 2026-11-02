@@ -246,30 +246,44 @@
     d.setDate(d.getDate() + n); return fmtDate(d);
   }
   //  자회사 상품 구간(그 숙소에 묵는 밤) — 예약 전체 [dep, arr) 안에서 상품명으로 자른다.
-  //   · 단독 상품(「+」 없음) = 예약 기간 전체(sure=true)
-  //   · 콤보 = 「+」로 나눈 구간 중 brand 글자가 든 구간의 「N박」 + 그 앞 구간들의 박수 합(offset) → [dep+offset, dep+offset+N)
-  //     머리 「[5박 6일]」은 떼고 읽는다. 구간 하나라도 박수를 못 읽거나 합이 예약 박수와 다르면 전체 기간 + sure=false(화면 「確認」).
+  //   · 「+」로 나눈 구간 중 **숙박 구간만** 본다 = 「N박」이 있거나 숙소 이름(brand·야마나미 권역 accomFromProduct)·호텔/리조트/宿 글자가 있는 구간.
+  //     「3색 골프」「송영」같은 비숙박 구간은 무시한다 — 실제 엠클릭 상품명 「[4박 5일] 구마모토 시내 호텔 + 3색 골프」(2026-11 적재 8팀)가
+  //     「+」 때문에 콤보로 읽혀 전부 「確認」이 붙었던 원인(2026-11-02 수정).
+  //   · 숙박 구간이 brand 하나뿐 = 예약 기간 전체(sure=true, pos 'all')
+  //   · 콤보(숙박 구간 2개+) = brand 구간의 「N박」 + 그 앞 숙박 구간들의 박수 합(offset) → [dep+offset, dep+offset+N).
+  //     박수가 없는 숙박 구간이 꼭 하나면 예약 박수 − 나머지 합으로 채운다(「구마모토 시내호텔 + 야마나미리조트 2박」 5박 → 구마모토 3박).
+  //     그래도 못 읽거나 합이 예약 박수와 다르면 전체 기간 + sure=false(화면 「確認」).
+  //   머리 「[5박 6일]」은 어디에 있어도(「여행사 [2박 3일] …」) 떼고 읽는다.
   //   반환 {from,to,nights,sure,pos:'all'|'first'|'mid'|'last'}
+  var LODGING_RE = /호텔|리조트|숙박|별장|료칸|旅館|ホテル|リゾート|宿|hotel|resort/i;
   function partnerSegment(name, dep, arr, brand) {
-    var s = String(name == null ? '' : name).replace(/^\s*\[[^\]]*\]\s*/, '');
+    var s = String(name == null ? '' : name).replace(/\[[^\]]*\d+\s*박[^\]]*\]/g, ' ').replace(/^\s*\[[^\]]*\]\s*/, '');
     var d = String(dep || '').slice(0, 10), a = String(arr || '').slice(0, 10);
     var total = nightsBetween(d, a);
     var def = partnerBrandDef(brand || partnerBrand(s));
     var full = { from: d, to: a, nights: total, sure: false, pos: 'all' };
     if (!d || !a || !total || !def) return full;
     var segs = s.split(/\s*[+＋]\s*/).filter(function (x) { return x.trim(); });
-    if (segs.length < 2) return { from: d, to: a, nights: total, sure: true, pos: 'all' };
-    var idx = -1; segs.forEach(function (sg, i) { if (idx < 0 && def.re.test(sg)) idx = i; });
+    var isLodging = function (sg) { return /\d+\s*박/.test(sg) || def.re.test(sg) || !!accomFromProduct(sg) || LODGING_RE.test(sg); };
+    var lod = segs.filter(isLodging);
+    var idx = -1; lod.forEach(function (sg, i) { if (idx < 0 && def.re.test(sg)) idx = i; });
     if (idx < 0) return full;
+    if (lod.length < 2) return { from: d, to: a, nights: total, sure: true, pos: 'all' };
     var nOf = function (sg) { var ms = sg.match(/(\d+)\s*박/g); if (!ms) return NaN; return Number(ms[ms.length - 1].match(/(\d+)/)[1]); };
-    var ns = segs.map(nOf);
-    if (ns.some(function (n) { return !(n >= 0); })) return full;
+    var ns = lod.map(nOf);
+    var missing = []; ns.forEach(function (n, i) { if (!(n >= 0)) missing.push(i); });
+    if (missing.length > 1) return full;
+    if (missing.length === 1) {
+      var known = ns.reduce(function (x, y) { return x + (y >= 0 ? y : 0); }, 0);
+      var rest = total - known; if (!(rest > 0)) return full;
+      ns[missing[0]] = rest;
+    }
     var n = ns[idx]; if (!(n > 0)) return full;
     var sum = ns.reduce(function (x, y) { return x + y; }, 0);
     if (sum !== total) return full;   // 상품명 박수 합 ≠ 예약 박수 → 날짜를 믿을 수 없다
     var offset = 0; for (var i = 0; i < idx; i++) offset += ns[i];
     var from = isoShift(d, offset), to = isoShift(from, n);
-    return { from: from, to: to, nights: n, sure: true, pos: idx === 0 ? 'first' : (idx === segs.length - 1 ? 'last' : 'mid') };
+    return { from: from, to: to, nights: n, sure: true, pos: idx === 0 ? 'first' : (idx === lod.length - 1 ? 'last' : 'mid') };
   }
 
   // ── 비회원 F풀 코드 재사용 충돌 판정(30일 쿨다운) ──────────────────────────

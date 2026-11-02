@@ -48,9 +48,30 @@ test('partnerSegment — 콤보는 상품명 「N박」과 순서로 자회사 �
 
 test('partnerSegment — 못 읽으면 전체 기간 + sure=false(화면 「確認」): 박수 없음·합 불일치·날짜 없음·brand 구간 없음', () => {
   const full = (f, t, n) => ({ from: f, to: t, nights: n, sure: false, pos: 'all' });
-  assert.deepEqual(C.partnerSegment('구마모토 시내호텔 + 야마나미리조트 2박', '2026-10-01', '2026-10-06'), full('2026-10-01', '2026-10-06', 5));   // 구마모토 박수 없음
+  assert.deepEqual(C.partnerSegment('구마모토 시내호텔 + 야마나미리조트 2박 + 간지호텔', '2026-10-01', '2026-10-06'), full('2026-10-01', '2026-10-06', 5));   // 박수 없는 숙박 구간이 둘 → 못 채움
   assert.deepEqual(C.partnerSegment('구마모토 시내호텔 3박 + 야마나미리조트 2박', '2026-10-01', '2026-10-08'), full('2026-10-01', '2026-10-08', 7));   // 3+2 ≠ 7
   assert.deepEqual(C.partnerSegment('구마모토 시내호텔 3박 + 야마나미리조트 2박', '', '2026-10-06'), full('', '2026-10-06', 0));                     // 날짜 없음
   assert.deepEqual(C.partnerSegment('야마나미리조트 3박 + 간지호텔 2박', '2026-10-01', '2026-10-06', 'kumamoto'), full('2026-10-01', '2026-10-06', 5)); // brand 구간 없음
   assert.deepEqual(C.partnerSegment('구마모토 시내호텔 3박 + 야마나미리조트 2박', '2026-10-01', '2026-10-06', 'bogus'), full('2026-10-01', '2026-10-06', 5));
+});
+
+test('partnerSegment — 비숙박 구간(3색 골프 등)은 무시: 실제 상품명 「구마모토 시내 호텔 + 3색 골프」는 단독 숙박 = 전체 기간 sure(2026-11 적재 8팀 「確認」 오탐 수정)', () => {
+  // 2026-11 실제 적재 상품명(머리 [N박 N일] · 「여행사」 접두 · 뒤 (TW/KE))
+  assert.deepEqual(C.partnerSegment('[4박 5일] 구마모토 시내 호텔 + 3색 골프', '2026-11-02', '2026-11-06'),
+    { from: '2026-11-02', to: '2026-11-06', nights: 4, sure: true, pos: 'all' });
+  assert.deepEqual(C.partnerSegment('여행사 [2박 3일] 구마모토 시내 호텔 + 3색 골프 (TW/KE)', '2026-11-27', '2026-11-29'),
+    { from: '2026-11-27', to: '2026-11-29', nights: 2, sure: true, pos: 'all' });
+  assert.deepEqual(C.partnerSegment('여행사 [3박 4일] 구마모토 시내 호텔 + 3색 골프', '2026-12-03', '2026-12-06'),
+    { from: '2026-12-03', to: '2026-12-06', nights: 3, sure: true, pos: 'all' });
+  // 골프 구간이 끼어도 숙박 구간 둘이면 콤보 — 박수 없는 숙박 구간 하나는 예약 박수에서 뺀 나머지로 채운다
+  assert.deepEqual(C.partnerSegment('[5박 6일] 구마모토 시내 호텔 + 3색 골프 + 야마나미리조트 2박', '2026-10-01', '2026-10-06'),
+    { from: '2026-10-01', to: '2026-10-04', nights: 3, sure: true, pos: 'first' });
+  assert.deepEqual(C.partnerSegment('구마모토 시내호텔 + 야마나미리조트 2박', '2026-10-01', '2026-10-06'),
+    { from: '2026-10-01', to: '2026-10-04', nights: 3, sure: true, pos: 'first' });
+  // 나머지가 0 이하면 못 채운다(전체 기간 + 確認)
+  assert.deepEqual(C.partnerSegment('구마모토 시내호텔 + 야마나미리조트 5박', '2026-10-01', '2026-10-06'),
+    { from: '2026-10-01', to: '2026-10-06', nights: 5, sure: false, pos: 'all' });
+  // 트라이얼도 같은 규칙(가정 표기)
+  assert.deepEqual(C.partnerSegment('[3박 4일] 트라이얼 리조트 + 골프 2라운드', '2026-11-10', '2026-11-13'),
+    { from: '2026-11-10', to: '2026-11-13', nights: 3, sure: true, pos: 'all' });
 });
