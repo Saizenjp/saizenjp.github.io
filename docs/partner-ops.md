@@ -39,7 +39,7 @@ Min 지시(2026-11-02): 「이 파일 그대로가 아닌 우리 스타일에 �
 
 ## 3. 표 · 권한 · 검수
 
-- SQL 160: `partner_ops`(팀별 1행) · `partner_golf` · `partner_dispatch` · 등록표 `partner_hotels`(블록·가산)/`partner_courses`/`partner_vehicles`(정원)/`partner_staff` · `partner_settings`(rates·partner_defaults) · `partner_bookings.agency`.
+- SQL 160(2026-11-02 적용 완료 — 표 10·정책 32·롤백 드라이런 통과): `partner_ops`(팀별 1행) · `partner_golf` · `partner_dispatch` · 등록표 `partner_hotels`(블록·가산)/`partner_courses`/`partner_vehicles`(정원)/`partner_staff` · `partner_settings`(rates·partner_defaults) · `partner_bookings.agency`.
 - 권한: 화면·카드는 `partner_kumamoto` / `partner_trial`(둘 중 하나). RLS 읽기 = 그 상품 키 보기 이상, 쓰기 = 그 상품 키 수정(등록표는 partner 키).
 - 검수(§3-3): `data_audit` ㉓ `partner_block_over`(블록 초과 밤 = 화면 빨간 칸 수) · ㉔ `partner_single_norate`.
 

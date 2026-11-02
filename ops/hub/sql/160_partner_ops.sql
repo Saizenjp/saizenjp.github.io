@@ -17,7 +17,10 @@
 --  ⑤' 요금: 현지 요금표(新料金 2026.12·日別 料金表)의 구조를 SZCore.partnerQuote 로 — 밤마다 호텔(wk/hi)+라운드 골프(wk/sat/sun)+引率(day/last)+호텔 가산+1인 가산.
 --      숫자(요금표)는 partner_settings.rates 에 화면에서 입력(저장소·SQL 에 두지 않는다). 팀별 확정 요금 메모·1인 가산은 partner_ops.
 --  ⑥ data_audit 짝(§3-3): partner_block_over(블록 초과 밤) · partner_single_norate(싱글 있는데 요금 미정) — 화면 빨간 표시와 같은 수.
---  멱등(if not exists / on conflict / drop policy if exists). 적용: Supabase MCP(Min 승인) 또는 SQL Editor. 00_VERIFY 160.
+--  멱등(if not exists / on conflict / drop policy if exists). 00_VERIFY 160.
+--  ✅ 적용 완료 2026-11-02(Min 「sql 160 적용해」 → MCP apply_migration). 검증: partner_% 표 10 · 정책 32(8표×4) · anon select 불가 · anon secdef 15 유지 ·
+--     seed 호텔 5/골프장 6/차량 4/설정 2 · agency 컬럼 · data_audit ㉓㉔ 포함 · updated_at 트리거 · 시퀀스 authenticated 6/anon 0.
+--     롤백 드라이런: 삽입 1/1/1 · 트리거 동작 · leg 체크 거부 · ㉓ 블록 초과 4밤(=기대) · ㉔ 싱글 미정 1(=기대) · cascade 0/0/0 · RLS(마스터 5행 / partner 없는 직원 0행·쓰기 거부 / partner 권한자 5행·쓰기 허용).
 -- ============================================================================
 
 -- ① 여행사
