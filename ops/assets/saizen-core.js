@@ -217,7 +217,7 @@
   // ── 자회사 상품(구마모토 시내호텔·트라이얼 리조트) — 별도 원장 partner_bookings/partner_members(SQL 159, Min 2026-10-30) ──
   //  야마나미 권역 숙소가 아니라 step1 이 bookings 에서 버리던 상품. 야마나미 운영 표(bookings·guests…)에는 넣지 않고
   //  자회사 담당자만 보는 별도 원장에 적재한다(手配書·송영·식수·B2B·모니터 무영향). 상품명 → brand 는 여기 한 곳에서만 정한다.
-  //  ⚠ 「트라이얼」표기는 Min 2026-10-30 가정(실제 엠클릭 상품명이 다르면 re 한 줄만 고친다).
+  //  「트라이얼」표기 = Min 2026-11-02 확인(「일단 트라이얼이라는 단어 들어가」) — 전체 상품명은 추후, 다르면 re 한 줄만 고친다.
   var PARTNER_BRANDS = [
     { key: 'kumamoto', re: /구마모토\s*시내|쿠마모토\s*시내|熊本\s*市内|kumamoto\s*city/i,
       label: { ja: '熊本市内商品', ko: '구마모토 시내 상품', en: 'Kumamoto city products' },
