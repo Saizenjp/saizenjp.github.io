@@ -113,7 +113,7 @@
   .navlink:hover{background:rgba(0,0,0,.04)}
   .navlink.cur{background:var(--accentSoft,#e6eeda);color:var(--accent,#647548);border-color:var(--accent,#647548)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.6">
 </head>
 <body data-so-area="step1">
 <div class="wrap">
@@ -262,8 +262,8 @@
 </div>
 <style>@keyframes runspin{to{transform:rotate(360deg)}}</style>
 
-<script src="../assets/saizen-core.js?v=55"></script>
-<script src="../assets/saizen-ops.js?v=36.5"></script>
+<script src="../assets/saizen-core.js?v=56"></script>
+<script src="../assets/saizen-ops.js?v=36.6"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -626,6 +626,7 @@ function partnerRowsFrom(res, ilh, sessYm){
       seg_from:seg.from||dep, seg_to:seg.to||arr, seg_nights:seg.nights||null, seg_sure:!!seg.sure, combo:!!SZCore.accomFromProduct(pname),
       product_name:pname||null, nights_label:String(r['기간']||'').trim()||null, origin:String(r['출발지']||'').trim()||null, airline:String(r['항공']||'').trim()||null,
       remark:pick(r,'비고','비 고','비고사항')||null, remark_local:pick(r,'현지 비고','현지비고','현지전달비고','현지 전달비고')||null,
+      agency:(SZCore.partnerAgency?SZCore.partnerAgency({ explicit:pick(r,'여행사','거래처','판매처','대리점'), remark:pick(r,'비고','비 고','비고사항'), remark_local:pick(r,'현지 비고','현지비고','현지전달비고','현지 전달비고'), product_name:pname }):null),   // 여행사(SQL 160, 컬럼 없으면 적재 직전 제거)
       reserved_at:birthISO(r['예약일자']||r['예약일'])||null, session_ym:(dep||'').slice(0,7)||sessYm||null, synced_at:new Date().toISOString() });
     out.byBrand[brand]=(out.byBrand[brand]||0)+1; out.seqs.add(seq); repOf[seq]=rep;
   });
@@ -1011,6 +1012,9 @@ async function run(){
       const probe = await supa.from('partner_bookings').select('event_seq',{count:'exact',head:true});
       if(probe.error){ if(PR.bookings.length) log('· '+tx('partnerNoTable'),'warn'); }
       else {
+        // agency 컬럼(SQL 160)이 아직 없으면 그 칸만 빼고 적재(159 만 적용된 DB 호환)
+        const agProbe = await supa.from('partner_bookings').select('agency',{count:'exact',head:true});
+        if(agProbe.error){ PR.bookings.forEach(b=>{ delete b.agency; }); }
         stat['partner_bookings'] = await upsertChunked('partner_bookings', PR.bookings, 'event_seq');
         stat['partner_members']  = await upsertChunked('partner_members',  PR.members,  'id');
         // 정리 ① 파일에 있는 출발일자의 팀 중 파일에 없는 팀(취소·상품 변경) — bookings 월 동기화와 같은 규칙(부분 파일은 그 날짜만). 명단은 cascade.

@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="ja">
+<!-- ============================================================================
+  구마모토 시내 · 트라이얼 — 수배 목록(手配リスト) (partner_ops.html, 2026-11-02)
+  · Min 「현지 담당 회사가 쓰던 수배서 목록(월별 xlsx)을 우리 시스템 환경에 맞게 — 파일 그대로가 아니라 우리 스타일로.
+         안 봐도 되는 정보는 빼고, 꼭 봐야 하는 건 맞춰서, 기본값은 넣을 수 있게」
+    차량 하이에스 3·마이크로버스 1(증설 가능) · 담당 3명 · 호텔 블록 워싱턴 트윈 4·아마넥 트윈 4 · 싱글 블록 없음(싱글은 요금 책정)
+    타 여행사 팀도 엠클릭에 넣어 메리트투어가 함께 관리(여행사 명은 엠클릭에 따로) · 요금표(新料金) 구조는 SZCore.partnerQuote.
+  · 월 단위 1행=1팀(별도 원장 partner_bookings, step1 이 엠클릭에서 채움). 자동 칸=기간·인원·대표·여행사·항공·비고.
+    담당자 입력=호텔·객실 수·싱글 요금·담당·골프 일정(날짜·코스·티타임)·배차(차량·담당)·메모 + 체크 4종(호텔 名簿·골프장 名簿·日程表·請求書).
+  · 데이터: SQL 160(partner_ops·partner_golf·partner_dispatch·등록표 partner_hotels/courses/vehicles/staff·partner_settings). 미적용이면 목록만 보이고 입력은 막힌다.
+  · 권한: <body data-so-area="partner_kumamoto partner_trial">(둘 중 하나) — RLS 가 brand 로 걸러 자기 상품만 보인다.
+  · 인쇄: 월 목록(A4 가로, 일본어 우선) · 팀 名簿(호텔·골프장 송부용) · 配車表(날짜별).
+============================================================================ -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 수배 목록</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../assets/saizen-core.js?v=56"></script>
+<style>
+  /* ── 공통 chrome (docs/ops-page-skeleton.html 정본 — 통째 복사) ── */
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceef1;
+    --border:#e3e6ea; --border2:#cdd2d8;
+    --text:#1f2937; --text2:#525b66; --muted:#8b919b;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#EDF0E2; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,'SZJpMono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.55;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);
+    padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none}
+  .navhome:hover{text-decoration:underline}
+  .grow{flex:1}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select,textarea{font-family:inherit}
+  .inp{padding:7px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
+  .btn.sm{font-size:12px;padding:5px 12px}
+  .btn.xs{font-size:12px;padding:3px 9px}
+  .btn.connected{background:var(--ok);border-color:var(--ok);color:#fff}
+  .conn{padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:230px}
+  .hint{font-size:11px;color:var(--muted)}
+  #toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);min-width:200px;text-align:center}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
+
+  /* ── 페이지 전용 ── */
+  main{padding:14px 20px 70px;max-width:1500px;margin:0 auto}
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  .bar .grp{display:flex;align-items:center;gap:6px}
+  .desc{font-size:11.5px;color:var(--muted);margin:0 0 12px;line-height:1.5;word-break:keep-all}
+  .sum{font-size:12.5px;color:var(--text2);font-weight:700;margin-left:auto}
+  .tabs{display:flex;gap:4px;background:var(--surface3);border-radius:9px;padding:3px}
+  .tabs button{font-size:12.5px;font-weight:700;border:0;background:transparent;color:var(--text2);padding:5px 12px;border-radius:7px;cursor:pointer}
+  .tabs button.on{background:var(--accent);color:#fff}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .chip{font-size:12px;font-weight:700;border:1px solid var(--border2);border-radius:99px;padding:3px 10px;background:var(--surface);color:var(--text2);cursor:pointer}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+  .panel h3{font-size:13.5px;font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .panel h3 .n{font-size:11px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:1px 8px}
+  .warnbar{background:#fbf3e2;border:1px solid #e8d7a8;color:#7a5a16;border-radius:10px;padding:9px 14px;font-size:12.5px;font-weight:600;margin-bottom:12px}
+  .empty{padding:22px;text-align:center;color:var(--muted);font-size:13px;border:1px dashed var(--border2);border-radius:10px}
+  .cols{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(360px,.95fr);gap:14px;align-items:start}
+  @media (max-width:1100px){ .cols{grid-template-columns:1fr} .detail{position:static!important;max-height:none!important} }
+  .detail{position:sticky;top:78px;max-height:calc(100vh - 100px);overflow:auto;scrollbar-gutter:stable;padding-bottom:70px}
+  /* 블록 띠 */
+  .blk{display:grid;grid-template-columns:150px 1fr;gap:6px;align-items:center;margin-bottom:6px}
+  .blk .nm{font-size:12.5px;font-weight:800} .blk .nm small{display:block;font-weight:600;color:var(--muted);font-size:11px}
+  .blk .days{display:grid;grid-template-columns:repeat(var(--n,31),minmax(0,1fr));gap:2px}
+  .blk .dc{font-family:var(--mono);font-size:10.5px;text-align:center;border-radius:4px;padding:3px 0;background:var(--surface3);color:var(--text2);line-height:1.2;cursor:default}
+  .blk .dc b{display:block;font-size:9px;font-weight:600;color:var(--muted)}
+  .blk .dc.use{background:var(--accentSoft);color:var(--accentDeep)} .blk .dc.full{background:#c8d4e6;color:#1f3a63} .blk .dc.over{background:#f3c9c0;color:var(--err);font-weight:800}
+  .blk .dc.off{opacity:.35}
+  /* 목록 */
+  table.lt{width:100%;border-collapse:collapse;font-size:12.5px}
+  .lt th{font-size:11px;font-weight:800;color:var(--text2);text-align:left;padding:6px 7px;border-bottom:2px solid var(--border2);white-space:nowrap;background:var(--surface);position:sticky;top:0}
+  .lt td{padding:7px 7px;border-bottom:1px solid var(--border);vertical-align:top}
+  .lt tr.tm{cursor:pointer} .lt tr.tm:hover td{background:var(--surface2)} .lt tr.tm.sel td{background:var(--accentSoft)}
+  .lt td.n,.lt th.n{text-align:right;font-family:var(--mono);font-weight:800}
+  .lt small{display:block;color:var(--muted);font-size:11px;font-weight:600;line-height:1.3}
+  .lt .mono{font-family:var(--mono);font-weight:700}
+  .dots{display:flex;gap:3px} .dot{width:16px;height:16px;border-radius:50%;background:var(--surface3);color:var(--muted);font-size:9.5px;font-weight:900;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border2)}
+  .dot.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+  .bd{display:inline-block;font-size:10.5px;font-weight:800;border-radius:5px;padding:1px 6px;margin:1px 2px 1px 0;white-space:nowrap}
+  .bd.err{background:#f7e6e2;color:var(--err)} .bd.warn{background:#fbf3e2;color:#7a5a16} .bd.info{background:var(--surface3);color:var(--text2)} .bd.brand{background:var(--accentSoft);color:var(--accentDeep)}
+  .yen{font-family:var(--mono);font-weight:800;white-space:nowrap}
+  /* 상세 */
+  .detail h2{font-size:17px;font-weight:900;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .detail h2 small{font-size:12px;font-weight:700;color:var(--text2)}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12.5px;margin:8px 0} .kv b{color:var(--text2);font-weight:700;white-space:nowrap}
+  .sec{border-top:1px solid var(--border);padding-top:10px;margin-top:10px}
+  .sec h4{font-size:12.5px;font-weight:800;color:var(--accentDeep);margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .sec h4 .r{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .frm{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+  .frm label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;font-weight:700;color:var(--text2)}
+  .frm label .inp{font-weight:600;color:var(--text);padding:5px 8px} .frm .wide{grid-column:1/-1}
+  .frm input[type=number]{width:100%}
+  table.mini{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+  .mini th{font-size:10.5px;font-weight:800;color:var(--text2);text-align:left;padding:3px 5px;border-bottom:1px solid var(--border2);white-space:nowrap}
+  .mini td{padding:3px 4px;border-bottom:1px solid var(--border);vertical-align:middle}
+  .mini .inp{padding:4px 6px;font-size:12px;width:100%} .mini input[type=time]{width:92px} .mini input.sm{width:74px}
+  .mini tr.prop td{opacity:.7;background:var(--surface2)} .mini .x{border:0;background:transparent;color:var(--err);font-weight:900;cursor:pointer;font-size:14px}
+  .mini .over{color:var(--err);font-weight:800}
+  .checks{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .ck{border:1px solid var(--border2);border-radius:9px;padding:7px 10px;background:var(--surface2);cursor:pointer;font-size:12.5px;font-weight:700;color:var(--text2);display:flex;flex-direction:column;gap:2px}
+  .ck.on{background:var(--accentSoft);border-color:#b4cda0;color:var(--accentDeep)} .ck small{font-weight:600;font-size:11px;color:var(--muted)}
+  .quote{background:var(--surface2);border-radius:9px;padding:8px 10px;font-size:12.5px;display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:4px 10px}
+  .quote b{font-family:var(--mono);font-weight:800;font-size:13px} .quote small{display:block;color:var(--muted);font-size:10.5px;font-weight:600}
+  .quote .tot b{color:var(--accentDeep);font-size:14.5px}
+  .members{font-size:12px;color:var(--text2);line-height:1.6}
+  .members b{color:var(--text);font-weight:700}
+  .plus{font-size:11.5px;font-weight:700;color:var(--accent);border:1px dashed var(--accent);background:transparent;border-radius:7px;padding:3px 9px;cursor:pointer}
+  /* 배차 */
+  .veh{display:inline-flex;flex-direction:column;border:1px solid var(--border2);border-radius:9px;padding:5px 10px;background:var(--surface);font-size:12px;font-weight:700;min-width:120px}
+  .veh small{font-weight:600;color:var(--muted);font-size:10.5px} .veh.over{border-color:var(--err);background:#f7e6e2}
+  /* 기본값 */
+  .defs{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px}
+  .defs .panel{margin:0}
+  textarea.inp{min-height:54px;resize:vertical}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.6">
+</head>
+<body data-so-area="partner_kumamoto partner_trial">
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈 / ホーム"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">熊本市内・トライアル · 手配リスト</span>
+  <a class="navhome" href="../index.html" data-i18n="navHome">← 현장 운영</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+    <button class="so-furi" id="so-furi" onclick="__so_toggleFuri()"></button>
+  </div>
+  <span class="pill" id="conn-state">미연결</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">연결</button>
+  <span class="hint" id="t-connHint"></span>
+</div>
+
+<main>
+  <div class="bar">
+    <div class="grp">
+      <button class="btn xs ghost" id="m-prev" type="button">◀</button>
+      <input class="inp" type="month" id="m" style="padding:5px 8px">
+      <button class="btn xs ghost" id="m-next" type="button">▶</button>
+    </div>
+    <div class="chips" id="brand-chips"></div>
+    <div class="tabs" id="tabs">
+      <button type="button" data-v="list" class="on" id="t-tabList"></button>
+      <button type="button" data-v="disp" id="t-tabDisp"></button>
+      <button type="button" data-v="def" id="t-tabDef"></button>
+    </div>
+    <input class="inp" id="q" autocomplete="off" style="padding:5px 9px;min-width:160px">
+    <span class="hint" id="qcnt"></span>
+    <button class="btn sm ghost" id="btn-print" type="button"></button>
+    <span class="sum" id="sum"></span>
+  </div>
+  <div class="desc" id="t-desc"></div>
+  <div class="warnbar" id="nosql" hidden></div>
+
+  <section id="v-list">
+    <div class="panel" id="blocks-panel"><h3 id="t-blocks"></h3><div id="blocks"></div><div class="hint" id="t-blocksHint"></div></div>
+    <div class="cols">
+      <div class="panel" style="padding:6px 8px;overflow:auto"><table class="lt" id="list"><thead></thead><tbody></tbody></table></div>
+      <div class="panel detail" id="detail"></div>
+    </div>
+  </section>
+
+  <section id="v-disp" hidden>
+    <div class="bar">
+      <div class="grp">
+        <button class="btn xs ghost" id="d-prev" type="button">◀</button>
+        <input class="inp" type="date" id="d" style="padding:5px 8px">
+        <button class="btn xs ghost" id="d-next" type="button">▶</button>
+        <button class="btn xs ghost" id="d-today" type="button"></button>
+      </div>
+      <button class="btn sm" id="btn-dprop" type="button"></button>
+      <button class="btn sm ghost" id="btn-dprint" type="button"></button>
+      <span class="sum" id="dsum"></span>
+    </div>
+    <div class="chips" id="dveh" style="margin-bottom:8px"></div>
+    <div class="panel" style="padding:6px 8px;overflow:auto"><table class="lt" id="dtbl"><thead></thead><tbody></tbody></table></div>
+    <div class="hint" id="t-dispHint"></div>
+  </section>
+
+  <section id="v-def" hidden>
+    <div class="defs">
+      <div class="panel" id="def-hotels"></div>
+      <div class="panel" id="def-courses"></div>
+      <div class="panel" id="def-vehicles"></div>
+      <div class="panel" id="def-staff"></div>
+      <div class="panel" id="def-rates" style="grid-column:1/-1"></div>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script src="../assets/saizen-ops.js?v=36.6"></script>
+<script>
+const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let supa=null, YM='', VIEW='list', BR=new Set(), SEL=null, D='', HAS_OPS=true, LOADING=false;
+let TEAMS=[], OPS={}, GOLF={}, DISP={}, DAYROWS=[], DAYTEAMS={}, HOTELS=[], COURSES=[], VEHICLES=[], STAFF=[], DEFAULTS={}, RATES={};
+
+// ── i18n(로컬 사전, ja/ko/en 키 동일) ──
+const L={
+  ja:{ step:'熊本市内・トライアル · 手配リスト', connHint:'接続情報はこのブラウザにのみ保存されます。',
+    desc:'月ごとに1行=1チーム。期間・人数・代表者・旅行会社・航空・備考は登録データ(エムクリック)から自動。担当者はホテル・部屋数・ゴルフ日程・配車・担当・4つのチェック(名簿→ホテル／名簿→ゴルフ場／日程表／請求書)を入力します。基本値(ホテルのブロック・ゴルフ場・車両・担当・料金表)は「基本設定」で。',
+    tabList:'手配リスト', tabDisp:'配車(日別)', tabDef:'基本設定', q:'検索（代表者・旅行会社・ホテル・ゴルフ場）', cnt:n=>n+'件', print:'印刷 月リスト',
+    noSql:'手配表(partner_ops など、SQL 160)がまだありません — 一覧は見えますが入力は保存できません。管理者に SQL 160 の適用を依頼してください。',
+    loading:'読み込み中…', loadFail:'読み込み失敗', saveFail:'保存失敗', saved:'保存しました', sum:(t,p)=>`${t}チーム · ${p}名`,
+    brandAll:'全部', blocks:'ホテル ブロック（夜ごとのツイン使用／確保）', blocksHint:'数字=その夜のツイン使用数／確保数。赤=ブロック超過（追加確保が必要）。シングルはブロック外（料金を設定）。',
+    hDate:'期間', hPax:'人数', hRep:'代表者', hProd:'商品', hHotel:'ホテル・部屋', hGolf:'ゴルフ', hStaff:'担当', hYen:'見積(チーム)', hIss:'要確認', hSt:'状態',
+    nights:n=>n+'泊', solo:'単独', combo:'コンボ', unsure:'確認', unsureT:'商品名から宿泊区間を読めず、予約期間全体を表示しています',
+    stH:'名簿→ホテル', stG:'名簿→ゴルフ場', stI:'日程表', stB:'請求書', notYet:'未',
+    issNoHotel:'ホテル未指定', issRooms0:'部屋数未入力', issRoomsMis:'部屋数≠人数', issSingleRate:'シングル料金未設定', issGolf:n=>`ゴルフ未指定 ${n}日`, issStaff:'担当未指定', issAgency:'旅行会社 未記載', issDisp:'配車なし', issBlock:'ブロック超過', issRates:'料金表 未登録',
+    selHint:'左のチームを選ぶと、ここで手配内容を入力できます。', dAgency:'旅行会社', dStaff:'担当', dProduct:'商品名', dRemark:'備考(エムクリック)', dRemarkLocal:'現地備考', dFlight:'航空', dIn:'IN', dOut:'OUT', dMembers:'名簿', dMembersN:n=>`${n}名`,
+    secHotel:'ホテル・部屋', hotel:'ホテル', hotelNone:'（未指定）', hotelOther:'その他(備考に)', hotelNote:'ホテル備考', twin:'ツイン', single:'シングル', triple:'トリプル', singleRate:'シングル料金(1人1泊)', singleRateHint:r=>r?`空欄=料金表 ¥${r}`:'空欄=料金表(未登録)', priceAdj:'1人加算(円)', priceNote:'確定料金メモ', suggest:'人数から提案',
+    blockLine:(u,b)=>`ツイン ${u}／${b}`, blockOver:'ブロック超過',
+    secGolf:'ゴルフ日程', gDate:'日付', gCourse:'ゴルフ場', gTee:'ティー', gHoles:'ホール', gNote:'備考', gRoster:'名簿', makeDays:n=>`泊数ぶんの行を作る(${n}日)`, addDay:'＋ 1日追加', courseNone:'（未指定）', courseOther:'その他(備考に)',
+    secDisp:'配車', lIn:'到着・迎え', lGolfOut:'ホテル→ゴルフ場', lGolfBack:'ゴルフ場→ホテル', lOut:'出発・送り', lOther:'その他', dTime:'時刻', dLeg:'区間', dVeh:'車両', dStaff2:'担当', dNote:'備考', addProp:'提案を追加', addAllProp:'提案をすべて追加', vehNone:'（未指定）', addLeg:'＋ 1行',
+    secChecks:'チェック', secMemo:'メモ', secQuote:'見積(料金表から自動)', qTwin:'ツイン 1人', qSingle:'シングル 1人', qTriple:'トリプル 1人', qTotal:'チーム計', qRounds:n=>`ゴルフ ${n}R`, qNights:n=>`${n}泊`, qPersons:(a,b)=>`部屋の人数 ${a}／${b}`,
+    party:'組(他予約と一緒に動く)', partyNone:'（なし）',
+    dToday:'今日', dProp:'この日の提案を追加', dPrint:'配車表 印刷', dSum:(n,v)=>`${n}便 · 車両 ${v}台`, dTeam:'チーム', dPax:'人数', dispHint:'時刻が同じ同一車両は相乗り(人数合計が定員を超えると赤)。灰色の行は提案 — 「追加」で保存されます。', trips:n=>n+'便', load:(p,c)=>`${p}／${c}名`,
+    defHotels:'ホテル（ブロック）', defCourses:'ゴルフ場', defVehicles:'車両', defStaff:'担当者', defRates:'料金表（1人・円）', nameJa:'名称(日)', nameKo:'名称(韓)', blockTwin:'ツイン確保', blockFrom:'開始', blockTo:'終了', surcharge:'1人1泊加算', capacity:'定員', active:'使用', add:'＋ 追加', addPrompt:'名称を入力', del:'削除', delConfirm:'削除しますか？（使われている行は「使用」を外してください）',
+    rHotel:'ホテル', rGolf:'ゴルフ(1R)', rGuide:'引率', rWk:'平日', rHi:'休日(金土日・祝・祝前日)', rSat:'土', rSun:'日・祝', rDay:'1日', rLast:'帰国日', rSave:'料金表を保存', rHint:'夜の区分: 金・土・日・祝日・祝前日の夜=休日料金。ゴルフ: 土／日・祝で別料金、金曜は平日。引率: 泊ごとに1日分、帰国日は帰国日分。',
+    defHotelBrand:'既定ホテル', defStaffBrand:'既定担当', brandK:'熊本市内', brandT:'トライアル', defSave:'既定値を保存',
+    pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', printed:'印刷' },
+    fail:'失敗' },
+  ko:{ step:'구마모토 시내 · 트라이얼 · 수배 목록', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
+    desc:'월 단위 1행=1팀. 기간·인원·대표·여행사·항공·비고는 등록 데이터(엠클릭)에서 자동. 담당자는 호텔·객실 수·골프 일정·배차·담당·체크 4종(명단→호텔 / 명단→골프장 / 일정표 / 청구서)을 입력합니다. 기본값(호텔 블록·골프장·차량·담당·요금표)은 「기본 설정」에서.',
+    tabList:'수배 목록', tabDisp:'배차(날짜별)', tabDef:'기본 설정', q:'검색(대표·여행사·호텔·골프장)', cnt:n=>n+'건', print:'인쇄 월 목록',
+    noSql:'수배 표(partner_ops 등, SQL 160)가 아직 없습니다 — 목록은 보이지만 입력은 저장되지 않습니다. 관리자에게 SQL 160 적용을 요청하세요.',
+    loading:'불러오는 중…', loadFail:'불러오기 실패', saveFail:'저장 실패', saved:'저장했습니다', sum:(t,p)=>`${t}팀 · ${p}명`,
+    brandAll:'전체', blocks:'호텔 블록(밤마다 트윈 사용/확보)', blocksHint:'숫자=그 밤의 트윈 사용 수/확보 수. 빨강=블록 초과(추가 확보 필요). 싱글은 블록 밖(요금을 정합니다).',
+    hDate:'기간', hPax:'인원', hRep:'대표자', hProd:'상품', hHotel:'호텔·객실', hGolf:'골프', hStaff:'담당', hYen:'견적(팀)', hIss:'요확인', hSt:'상태',
+    nights:n=>n+'박', solo:'단독', combo:'콤보', unsure:'확인', unsureT:'상품명에서 숙박 구간을 못 읽어 예약 기간 전체를 표시합니다',
+    stH:'명단→호텔', stG:'명단→골프장', stI:'일정표', stB:'청구서', notYet:'미',
+    issNoHotel:'호텔 미지정', issRooms0:'객실 수 미입력', issRoomsMis:'객실 수≠인원', issSingleRate:'싱글 요금 미정', issGolf:n=>`골프 미지정 ${n}일`, issStaff:'담당 미지정', issAgency:'여행사 미기재', issDisp:'배차 없음', issBlock:'블록 초과', issRates:'요금표 미등록',
+    selHint:'왼쪽에서 팀을 고르면 여기서 수배 내용을 입력합니다.', dAgency:'여행사', dStaff:'담당', dProduct:'상품명', dRemark:'비고(엠클릭)', dRemarkLocal:'현지 비고', dFlight:'항공', dIn:'IN', dOut:'OUT', dMembers:'명단', dMembersN:n=>`${n}명`,
+    secHotel:'호텔·객실', hotel:'호텔', hotelNone:'(미지정)', hotelOther:'기타(비고에)', hotelNote:'호텔 비고', twin:'트윈', single:'싱글', triple:'트리플', singleRate:'싱글 요금(1인 1박)', singleRateHint:r=>r?`비우면 요금표 ¥${r}`:'비우면 요금표(미등록)', priceAdj:'1인 가산(円)', priceNote:'확정 요금 메모', suggest:'인원으로 제안',
+    blockLine:(u,b)=>`트윈 ${u}/${b}`, blockOver:'블록 초과',
+    secGolf:'골프 일정', gDate:'날짜', gCourse:'골프장', gTee:'티타임', gHoles:'홀', gNote:'비고', gRoster:'명단', makeDays:n=>`박수만큼 줄 만들기(${n}일)`, addDay:'＋ 1일 추가', courseNone:'(미지정)', courseOther:'기타(비고에)',
+    secDisp:'배차', lIn:'도착·픽업', lGolfOut:'호텔→골프장', lGolfBack:'골프장→호텔', lOut:'출발·샌딩', lOther:'기타', dTime:'시각', dLeg:'구간', dVeh:'차량', dStaff2:'담당', dNote:'비고', addProp:'제안 추가', addAllProp:'제안 전부 추가', vehNone:'(미지정)', addLeg:'＋ 1행',
+    secChecks:'체크', secMemo:'메모', secQuote:'견적(요금표에서 자동)', qTwin:'트윈 1인', qSingle:'싱글 1인', qTriple:'트리플 1인', qTotal:'팀 합계', qRounds:n=>`골프 ${n}R`, qNights:n=>`${n}박`, qPersons:(a,b)=>`객실 인원 ${a}/${b}`,
+    party:'묶음(다른 예약과 함께 이동)', partyNone:'(없음)',
+    dToday:'오늘', dProp:'이 날 제안 추가', dPrint:'배차표 인쇄', dSum:(n,v)=>`${n}편 · 차량 ${v}대`, dTeam:'팀', dPax:'인원', dispHint:'시각이 같은 같은 차량은 합승(인원 합이 정원을 넘으면 빨강). 회색 줄은 제안 — 「추가」를 눌러 저장합니다.', trips:n=>n+'편', load:(p,c)=>`${p}/${c}명`,
+    defHotels:'호텔(블록)', defCourses:'골프장', defVehicles:'차량', defStaff:'담당자', defRates:'요금표(1인·円)', nameJa:'이름(일)', nameKo:'이름(한)', blockTwin:'트윈 확보', blockFrom:'시작', blockTo:'종료', surcharge:'1인 1박 가산', capacity:'정원', active:'사용', add:'＋ 추가', addPrompt:'이름을 입력', del:'삭제', delConfirm:'삭제할까요? (쓰이고 있는 줄은 「사용」을 끄세요)',
+    rHotel:'호텔', rGolf:'골프(1R)', rGuide:'인솔', rWk:'평일', rHi:'휴일(금토일·공휴일·공휴일 전날)', rSat:'토', rSun:'일·공휴일', rDay:'1일', rLast:'귀국일', rSave:'요금표 저장', rHint:'밤 구분: 금·토·일·공휴일·공휴일 전날 밤=휴일 요금. 골프: 토 / 일·공휴일 별도 요금, 금요일은 평일. 인솔: 밤마다 1일분, 귀국일은 귀국일분.',
+    defHotelBrand:'기본 호텔', defStaffBrand:'기본 담당', brandK:'구마모토 시내', brandT:'트라이얼', defSave:'기본값 저장',
+    pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', printed:'印刷' },
+    fail:'실패' },
+  en:{ step:'Kumamoto city · Trial · Arrangement list', connHint:'Connection info is stored only in this browser.',
+    desc:'One row per team per month. Dates, pax, representative, agency, flights and remarks come from registered data (M-Click). Staff enter hotel, rooms, golf schedule, dispatch, person in charge and the 4 checks (roster→hotel / roster→course / itinerary / invoice). Defaults (hotel blocks, courses, vehicles, staff, rates) are in “Defaults”.',
+    tabList:'Arrangement list', tabDisp:'Dispatch (by day)', tabDef:'Defaults', q:'Search (rep · agency · hotel · course)', cnt:n=>n+' rows', print:'Print month list',
+    noSql:'Arrangement tables (partner_ops etc., SQL 160) are not applied yet — the list is visible but edits cannot be saved. Ask the administrator to apply SQL 160.',
+    loading:'Loading…', loadFail:'Load failed', saveFail:'Save failed', saved:'Saved', sum:(t,p)=>`${t} teams · ${p} pax`,
+    brandAll:'All', blocks:'Hotel blocks (twin used / blocked per night)', blocksHint:'Number = twins used / blocked that night. Red = over the block (extra rooms needed). Singles are outside the block (set a rate).',
+    hDate:'Dates', hPax:'Pax', hRep:'Representative', hProd:'Product', hHotel:'Hotel · rooms', hGolf:'Golf', hStaff:'Staff', hYen:'Quote (team)', hIss:'To check', hSt:'Status',
+    nights:n=>n+'N', solo:'single', combo:'combo', unsure:'check', unsureT:'Stay segment could not be read from the product name — full booking span shown',
+    stH:'Roster→hotel', stG:'Roster→course', stI:'Itinerary', stB:'Invoice', notYet:'—',
+    issNoHotel:'No hotel', issRooms0:'No rooms', issRoomsMis:'Rooms≠pax', issSingleRate:'Single rate missing', issGolf:n=>`Golf missing ${n}d`, issStaff:'No staff', issAgency:'Agency not noted', issDisp:'No dispatch', issBlock:'Over block', issRates:'Rates not set',
+    selHint:'Select a team on the left to edit its arrangements here.', dAgency:'Agency', dStaff:'Staff', dProduct:'Product', dRemark:'Remark (M-Click)', dRemarkLocal:'Local remark', dFlight:'Flights', dIn:'IN', dOut:'OUT', dMembers:'Roster', dMembersN:n=>`${n} pax`,
+    secHotel:'Hotel · rooms', hotel:'Hotel', hotelNone:'(none)', hotelOther:'Other (in note)', hotelNote:'Hotel note', twin:'Twin', single:'Single', triple:'Triple', singleRate:'Single rate (pp/night)', singleRateHint:r=>r?`blank = rate card ¥${r}`:'blank = rate card (not set)', priceAdj:'Per-person add (¥)', priceNote:'Agreed price memo', suggest:'Suggest from pax',
+    blockLine:(u,b)=>`Twin ${u}/${b}`, blockOver:'Over block',
+    secGolf:'Golf schedule', gDate:'Date', gCourse:'Course', gTee:'Tee', gHoles:'Holes', gNote:'Note', gRoster:'Roster', makeDays:n=>`Create rows for nights (${n})`, addDay:'+ Add a day', courseNone:'(none)', courseOther:'Other (in note)',
+    secDisp:'Dispatch', lIn:'Arrival pickup', lGolfOut:'Hotel → course', lGolfBack:'Course → hotel', lOut:'Departure drop', lOther:'Other', dTime:'Time', dLeg:'Leg', dVeh:'Vehicle', dStaff2:'Staff', dNote:'Note', addProp:'Add proposal', addAllProp:'Add all proposals', vehNone:'(none)', addLeg:'+ Add row',
+    secChecks:'Checks', secMemo:'Memo', secQuote:'Quote (auto from rate card)', qTwin:'Twin pp', qSingle:'Single pp', qTriple:'Triple pp', qTotal:'Team total', qRounds:n=>`Golf ${n}R`, qNights:n=>`${n}N`, qPersons:(a,b)=>`Room persons ${a}/${b}`,
+    party:'Party (moves with another booking)', partyNone:'(none)',
+    dToday:'Today', dProp:'Add proposals for this day', dPrint:'Print dispatch sheet', dSum:(n,v)=>`${n} trips · ${v} vehicles`, dTeam:'Team', dPax:'Pax', dispHint:'Same vehicle at the same time = shared ride (red when pax exceed capacity). Grey rows are proposals — press “Add” to save.', trips:n=>n+' trips', load:(p,c)=>`${p}/${c} pax`,
+    defHotels:'Hotels (blocks)', defCourses:'Golf courses', defVehicles:'Vehicles', defStaff:'Staff', defRates:'Rate card (per person, ¥)', nameJa:'Name (JA)', nameKo:'Name (KO)', blockTwin:'Twin block', blockFrom:'From', blockTo:'To', surcharge:'Add pp/night', capacity:'Capacity', active:'Active', add:'+ Add', addPrompt:'Enter a name', del:'Delete', delConfirm:'Delete? (if in use, untick “Active” instead)',
+    rHotel:'Hotel', rGolf:'Golf (1R)', rGuide:'Escort', rWk:'Weekday', rHi:'Holiday (Fri/Sat/Sun · holiday · eve)', rSat:'Sat', rSun:'Sun · holiday', rDay:'Per day', rLast:'Departure day', rSave:'Save rate card', rHint:'Night type: Fri/Sat/Sun, holidays and holiday eves = holiday rate. Golf: Sat and Sun/holiday rates, Friday = weekday. Escort: one day per night plus the departure-day rate.',
+    defHotelBrand:'Default hotel', defStaffBrand:'Default staff', brandK:'Kumamoto city', brandT:'Trial', defSave:'Save defaults',
+    pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', printed:'印刷' },
+    fail:'Failed' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k,...a){ const d=L[lang()]||L.ja; let v=(d[k]!==undefined)?d[k]:L.ja[k]; if(typeof v==='function') return a.length?v(...a):v; return v===undefined?k:v; }
+function applyStatic(){
+  [['t-step','step'],['t-connHint','connHint'],['t-desc','desc'],['t-tabList','tabList'],['t-tabDisp','tabDisp'],['t-tabDef','tabDef'],['btn-print','print'],['t-blocks','blocks'],['t-blocksHint','blocksHint'],['d-today','dToday'],['btn-dprop','dProp'],['btn-dprint','dPrint'],['t-dispHint','dispHint'],['nosql','noSql']]
+    .forEach(([id,k])=>{ const e=document.getElementById(id); if(e) e.textContent=tx(k); });
+  $('#q').placeholder=tx('q');
+}
+window.onSaizenLangChange=function(){ applyStatic(); renderAll(); };
+function toast(msg,cls){ const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.textContent=msg; $('#toast').appendChild(t); setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); },2600); }
+function setConn(t,c){ const e=$('#conn-state'); e.textContent=t; e.className='pill'+(c?' '+c:''); }
+function who(){ try{ return (window.__so_getUser&&__so_getUser())||null; }catch(e){ return null; } }
+async function logChange(id,action,label,changes){ try{ await supa.from('change_log').insert({entity:'partner_ops',entity_id:String(id),action,label,changes:changes||null,changed_by:who()}); }catch(e){} }
+
+// ── 날짜 ──
+const pad2=n=>String(n).padStart(2,'0');
+function today(){ const d=new Date(); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+function daysIn(ym){ const [y,m]=ym.split('-').map(Number); return new Date(y,m,0).getDate(); }
+function dstr(ym,d){ return `${ym}-${pad2(d)}`; }
+function addDays(ds,n){ const [y,m,d]=ds.split('-').map(Number); const x=new Date(y,m-1,d+n); return `${x.getFullYear()}-${pad2(x.getMonth()+1)}-${pad2(x.getDate())}`; }
+function shiftMonth(ym,n){ const [y,m]=ym.split('-').map(Number); const x=new Date(y,m-1+n,1); return `${x.getFullYear()}-${pad2(x.getMonth()+1)}`; }
+function nightsOf(t){ const out=[]; let d=t.dep; let guard=0; while(d<t.arr && guard++<60){ out.push(d); d=addDays(d,1); } return out; }
+function mmdd(ds){ return ds?`${Number(ds.slice(5,7))}/${Number(ds.slice(8,10))}`:''; }
+const WD=['日','月','火','水','木','金','土'];
+function wd(ds){ const [y,m,d]=ds.split('-').map(Number); return WD[new Date(y,m-1,d).getDay()]; }
+function hhmm(v){ if(!v) return ''; const s=String(v).trim(); let m=s.match(/(\d{1,2}):(\d{2})/); if(m) return pad2(m[1])+':'+m[2]; m=s.match(/^(\d{1,2})(\d{2})$/); if(m) return pad2(m[1])+':'+m[2]; return ''; }
+function addMin(hm,delta){ const m=hhmm(hm); if(!m) return ''; let t=Number(m.slice(0,2))*60+Number(m.slice(3))+delta; t=Math.max(0,Math.min(23*60+59,t)); return pad2(Math.floor(t/60))+':'+pad2(t%60); }
+const yen=n=>'¥'+Number(n||0).toLocaleString('ja-JP');
+
+// ── 참조 ──
+const ops=seq=>OPS[seq]||{};
+const golf=seq=>(GOLF[seq]||[]).slice().sort((a,b)=>(a.play_date||'').localeCompare(b.play_date||'')||(a.sort||0)-(b.sort||0)||(a.id||0)-(b.id||0));
+const disp=seq=>(DISP[seq]||[]).slice().sort((a,b)=>(a.trip_date||'').localeCompare(b.trip_date||'')||(a.depart_time||'99').localeCompare(b.depart_time||'99'));
+const hotelById=id=>HOTELS.find(h=>h.id===Number(id))||null;
+const courseById=id=>COURSES.find(c=>c.id===Number(id))||null;
+const vehById=id=>VEHICLES.find(v=>v.id===Number(id))||null;
+function hotelName(h){ if(!h) return ''; return lang()==='ko'&&h.name_ko?h.name_ko:h.name_ja; }
+function courseName(c,short){ if(!c) return ''; const n=(lang()==='ko'&&c.name_ko)?c.name_ko:c.name_ja; return short?n.replace(/(ゴルフクラブ|カントリークラブ|ゴルフ倶楽部|カントリー|ゴルフ場|CC|GC)\s*$/,''):n; }
+function brandShort(b){ return (window.SZCore&&SZCore.partnerLabel)?SZCore.partnerLabel(b,lang(),true):b; }
+function agencyOf(t){ const o=ops(t.seq); return (o.agency&&o.agency.trim())||t.agency||''; }
+function repMember(t){ const ms=t.members||[]; return ms.find(m=>m.is_rep)||ms[0]||null; }
+function portOf(origin,flight){ try{ return (window.SZCore&&SZCore.originPort)?SZCore.originPort(origin,flight):''; }catch(e){ return ''; } }
+function flightLine(t){ const m=repMember(t); if(!m) return {in:'',out:''}; const port=portOf(m.origin||t.origin,m.dep_flight||t.airline);
+  return { in:[m.dep_flight,hhmm(m.loc_arr_time)?hhmm(m.loc_arr_time)+'着':'',port].filter(Boolean).join(' '), out:[m.ret_flight,hhmm(m.ret_dep_time)?hhmm(m.ret_dep_time)+'発':''].filter(Boolean).join(' ') }; }
+function visible(){ return TEAMS.filter(t=>!BR.size||BR.has(t.brand)); }
+function teamOf(seq){ return TEAMS.find(t=>t.seq===Number(seq))||DAYTEAMS[seq]||null; }
+const LEGS=['in','golf_out','golf_back','out','other'];
+function legLabel(l){ return tx({in:'lIn',golf_out:'lGolfOut',golf_back:'lGolfBack',out:'lOut',other:'lOther'}[l]||'lOther'); }
+function ratesReady(){ const H=RATES.hotel||{}; return !!(H.twin&&(H.twin.wk||H.twin.hi)); }
+
+// ── 견적·점검 ──
+function quoteFor(t){
+  if(!(window.SZCore&&SZCore.partnerQuote)) return null;
+  const o=ops(t.seq), g=golf(t.seq).filter(r=>r.course_id||r.course_note), h=hotelById(o.hotel_id);
+  return SZCore.partnerQuote({ from:t.dep, to:t.arr, golfDates:g.length?g.map(r=>r.play_date):undefined, surcharge:h?h.surcharge:0,
+    twin:o.twin||0, single:o.single||0, triple:o.triple||0, pax:t.pax, adj:o.price_adj||0, singleRate:(o.single_rate==null?'':o.single_rate) }, RATES);
+}
+function blockUse(hotelId, ds){ let u=0; TEAMS.forEach(t=>{ const o=ops(t.seq); if(Number(o.hotel_id)===Number(hotelId) && t.dep<=ds && ds<t.arr) u+=Number(o.twin||0); }); return u; }
+function blockOn(h, ds){ if(!h||!(h.block_twin>0)) return 0; if(h.block_from&&ds<h.block_from) return 0; if(h.block_to&&ds>h.block_to) return 0; return h.block_twin; }
+function issues(t){
+  const o=ops(t.seq), out=[]; const H=RATES.hotel||{};
+  if(!HAS_OPS) return out;
+  if(!o.hotel_id&&!(o.hotel_note||'').trim()) out.push({k:'issNoHotel',sev:'err'});
+  const rooms=Number(o.twin||0)+Number(o.single||0)+Number(o.triple||0);
+  if(!rooms) out.push({k:'issRooms0',sev:'warn'}); else if(Number(o.twin||0)*2+Number(o.single||0)+Number(o.triple||0)*3!==t.pax) out.push({k:'issRoomsMis',sev:'warn'});
+  if(Number(o.single||0)>0 && (o.single_rate==null||o.single_rate==='') && !(H.single&&(H.single.wk||H.single.hi))) out.push({k:'issSingleRate',sev:'err'});
+  const g=golf(t.seq).filter(r=>r.course_id||(r.course_note||'').trim()); const need=nightsOf(t).length; if(g.length<need) out.push({k:'issGolf',sev:'warn',n:need-g.length});
+  if(!(o.staff||'').trim()) out.push({k:'issStaff',sev:'warn'});
+  if(/미기재/.test(agencyOf(t))) out.push({k:'issAgency',sev:'warn'});
+  if(!disp(t.seq).length) out.push({k:'issDisp',sev:'warn'});
+  const h=hotelById(o.hotel_id); if(h&&nightsOf(t).some(ds=>blockOn(h,ds)>0&&blockUse(h.id,ds)>blockOn(h,ds))) out.push({k:'issBlock',sev:'err'});
+  return out;
+}
+
+// ── 로드 ──
+async function fetchIn(table, sel, col, ids, extra){ let out=[]; for(let i=0;i<ids.length;i+=200){ let q=supa.from(table).select(sel).in(col,ids.slice(i,i+200)); if(extra) q=extra(q); const {data,error}=await q; if(error) throw error; out=out.concat(data||[]); } return out; }
+async function loadRefs(){
+  const [h,c,v,s,st]=await Promise.all([
+    supa.from('partner_hotels').select('*').order('sort').order('id'),
+    supa.from('partner_courses').select('*').order('sort').order('id'),
+    supa.from('partner_vehicles').select('*').order('sort').order('id'),
+    supa.from('partner_staff').select('*').order('sort').order('id'),
+    supa.from('partner_settings').select('*')]);
+  for(const r of [h,c,v,s,st]) if(r.error) throw r.error;
+  HOTELS=h.data||[]; COURSES=c.data||[]; VEHICLES=v.data||[]; STAFF=s.data||[];
+  DEFAULTS={}; RATES={}; (st.data||[]).forEach(r=>{ if(r.key==='partner_defaults') DEFAULTS=r.value||{}; if(r.key==='rates') RATES=r.value||{}; });
+}
+async function load(){
+  if(!supa||!YM||LOADING) return; LOADING=true;
+  const m1=dstr(YM,1), mEnd=dstr(YM,daysIn(YM));
+  $('#sum').textContent=tx('loading');
+  try{
+    const {data:bs,error}=await supa.from('partner_bookings').select('event_seq,brand,event_no,status,rep_name,pax,dep_date,arr_date,seg_from,seg_to,seg_nights,seg_sure,combo,product_name,origin,airline,remark,remark_local,agency')
+      .lte('seg_from',mEnd).gt('seg_to',m1).neq('status','대기').order('seg_from').order('event_seq'); if(error) throw error;
+    const seqs=(bs||[]).map(b=>b.event_seq);
+    const ms=await fetchIn('partner_members','event_seq,seq_in_team,is_rep,name_kr,name_en,gender,dep_flight,ret_flight,origin,airline,dep_time,loc_arr_time,ret_dep_time,kor_arr_time','event_seq',seqs);
+    const byTeam={}; ms.forEach(m=>{ (byTeam[m.event_seq]=byTeam[m.event_seq]||[]).push(m); });
+    TEAMS=(bs||[]).map(b=>({ seq:b.event_seq, brand:b.brand, no:String(b.event_no||b.event_seq), rep:b.rep_name||'', pax:Number(b.pax||0)||0, status:b.status,
+      dep:String(b.seg_from||b.dep_date||'').slice(0,10), arr:String(b.seg_to||b.arr_date||'').slice(0,10), fullDep:String(b.dep_date||'').slice(0,10), fullArr:String(b.arr_date||'').slice(0,10),
+      combo:!!b.combo, sure:b.seg_sure!==false, product:b.product_name||'', origin:b.origin||'', airline:b.airline||'', remark:b.remark||'', remark_local:b.remark_local||'', agency:b.agency||'',
+      members:(byTeam[b.event_seq]||[]).sort((a,c)=>(a.seq_in_team||0)-(c.seq_in_team||0)) }));
+    OPS={}; GOLF={}; DISP={};
+    try{
+      await loadRefs();
+      const [o,g,d]=await Promise.all([fetchIn('partner_ops','*','event_seq',seqs), fetchIn('partner_golf','*','event_seq',seqs), fetchIn('partner_dispatch','*','event_seq',seqs)]);
+      o.forEach(r=>{ OPS[r.event_seq]=r; }); g.forEach(r=>{ (GOLF[r.event_seq]=GOLF[r.event_seq]||[]).push(r); }); d.forEach(r=>{ (DISP[r.event_seq]=DISP[r.event_seq]||[]).push(r); });
+      HAS_OPS=true; $('#nosql').hidden=true;
+    }catch(e){ const m=String(e&&e.message||e); if(/partner_(ops|golf|dispatch|hotels|courses|vehicles|staff|settings)|schema cache|does not exist/i.test(m)){ HAS_OPS=false; $('#nosql').hidden=false; } else throw e; }
+    if(SEL&&!TEAMS.some(t=>t.seq===SEL)) SEL=null;
+    renderAll();
+  }catch(e){ toast(tx('loadFail')+': '+(e&&e.message||e),'err'); $('#sum').textContent=''; }
+  finally{ LOADING=false; }
+}
+
+// ── 저장 ──
+const OPS_FIELDS=['agency','staff','hotel_id','hotel_note','twin','single','triple','single_rate','price_adj','price_note','party','memo','roster_hotel_at','roster_hotel_by','roster_golf_at','roster_golf_by','itinerary_at','itinerary_by','invoiced_at','invoiced_by'];
+async function saveOps(seq, patch, label){
+  if(!HAS_OPS){ toast(tx('noSql'),'warn'); return false; }
+  const cur=OPS[seq]||{}; const row={event_seq:seq}; OPS_FIELDS.forEach(f=>{ if(cur[f]!==undefined) row[f]=cur[f]; }); Object.assign(row,patch);
+  const {data,error}=await supa.from('partner_ops').upsert(row,{onConflict:'event_seq'}).select().single();
+  if(error){ toast(tx('saveFail')+': '+error.message,'err'); return false; }
+  OPS[seq]=data; logChange(seq,'ops',label||Object.keys(patch).join(','),patch); renderAll(); return true;
+}
+async function saveGolf(row){
+  if(!HAS_OPS){ toast(tx('noSql'),'warn'); return null; }
+  const {data,error}=await supa.from('partner_golf').upsert(row,{onConflict:'id'}).select().single();
+  if(error){ toast(tx('saveFail')+': '+error.message,'err'); return null; }
+  const list=GOLF[data.event_seq]=GOLF[data.event_seq]||[]; const i=list.findIndex(r=>r.id===data.id); if(i>=0) list[i]=data; else list.push(data);
+  logChange(data.event_seq,'golf',`${data.play_date} ${courseName(courseById(data.course_id))||data.course_note||''} ${data.tee_time||''}`); return data;
+}
+async function delGolf(row){ const {error}=await supa.from('partner_golf').delete().eq('id',row.id); if(error){ toast(tx('saveFail')+': '+error.message,'err'); return; } GOLF[row.event_seq]=(GOLF[row.event_seq]||[]).filter(r=>r.id!==row.id); logChange(row.event_seq,'golf_del',row.play_date); renderAll(); }
+async function saveDisp(row){
+  if(!HAS_OPS){ toast(tx('noSql'),'warn'); return null; }
+  const {data,error}=await supa.from('partner_dispatch').upsert(row,{onConflict:'id'}).select().single();
+  if(error){ toast(tx('saveFail')+': '+error.message,'err'); return null; }
+  const list=DISP[data.event_seq]=DISP[data.event_seq]||[]; const i=list.findIndex(r=>r.id===data.id); if(i>=0) list[i]=data; else list.push(data);
+  const j=DAYROWS.findIndex(r=>r.id===data.id); if(j>=0) DAYROWS[j]=data; else if(data.trip_date===D) DAYROWS.push(data);
+  logChange(data.event_seq,'dispatch',`${data.trip_date} ${legLabel(data.leg)} ${data.depart_time||''} ${vehById(data.vehicle_id)?vehById(data.vehicle_id).name:''}`); return data;
+}
+async function delDisp(row){ const {error}=await supa.from('partner_dispatch').delete().eq('id',row.id); if(error){ toast(tx('saveFail')+': '+error.message,'err'); return; } DISP[row.event_seq]=(DISP[row.event_seq]||[]).filter(r=>r.id!==row.id); DAYROWS=DAYROWS.filter(r=>r.id!==row.id); logChange(row.event_seq,'dispatch_del',row.trip_date); renderAll(); }
+
+// ── 제안(골프 날짜·배차) ──
+function proposeLegs(t){
+  const saved=disp(t.seq), has=(d,l)=>saved.some(r=>r.trip_date===d&&r.leg===l), m=repMember(t)||{}, out=[];
+  if(!has(t.dep,'in')) out.push({event_seq:t.seq, trip_date:t.dep, leg:'in', depart_time:(t.dep===t.fullDep)?hhmm(m.loc_arr_time):''});
+  golf(t.seq).forEach(g=>{ if(!(g.course_id||(g.course_note||'').trim())) return;
+    const tee=hhmm((g.tee_time||'').split(',')[0]);
+    if(!has(g.play_date,'golf_out')) out.push({event_seq:t.seq, trip_date:g.play_date, leg:'golf_out', depart_time:tee?addMin(tee,-60):''});
+    if(!has(g.play_date,'golf_back')) out.push({event_seq:t.seq, trip_date:g.play_date, leg:'golf_back', depart_time:''}); });
+  if(!has(t.arr,'out')) out.push({event_seq:t.seq, trip_date:t.arr, leg:'out', depart_time:(t.arr===t.fullArr&&hhmm(m.ret_dep_time))?addMin(m.ret_dep_time,-120):''});
+  return out;
+}
+function suggestRooms(t){
+  let single=0; try{ if(window.SZCore&&SZCore.singleRequested){ const r=SZCore.singleRequested([t.remark,t.remark_local].filter(Boolean).join(' / '),t.pax); if(r&&r.n) single=Math.min(t.pax,r.n); } }catch(e){}
+  if(!single && t.pax%2===1) single=1;
+  return { twin:Math.floor((t.pax-single)/2), single, triple:0 };
+}
+
+// ── 렌더 ──
+function renderAll(){ renderChips(); renderBlocks(); renderList(); renderDetail(); if(VIEW==='disp') renderDay(); if(VIEW==='def') renderDefs(); const vis=visible(); $('#sum').textContent=TEAMS.length?tx('sum',vis.length,vis.reduce((a,t)=>a+t.pax,0)):''; }
+function renderChips(){
+  const brands=[...new Set(TEAMS.map(t=>t.brand))];
+  $('#brand-chips').innerHTML=`<span class="chip${BR.size?'':' on'}" data-b="">${esc(tx('brandAll'))}</span>`+brands.map(b=>`<span class="chip${BR.has(b)?' on':''}" data-b="${esc(b)}">${esc(brandShort(b))}</span>`).join('');
+}
+$('#brand-chips').addEventListener('click',e=>{ const c=e.target.closest('.chip'); if(!c) return; const b=c.dataset.b; if(!b) BR.clear(); else if(BR.has(b)) BR.delete(b); else BR.add(b); renderAll(); });
+function renderBlocks(){
+  const box=$('#blocks'); const hs=HOTELS.filter(h=>h.active&&h.block_twin>0); const N=daysIn(YM||today().slice(0,7));
+  if(!HAS_OPS||!hs.length){ $('#blocks-panel').style.display='none'; return; } $('#blocks-panel').style.display='';
+  box.innerHTML=hs.map(h=>{ const cells=[]; for(let d=1;d<=N;d++){ const ds=dstr(YM,d), b=blockOn(h,ds), u=blockUse(h.id,ds); const cls=!b?'off':(u>b?'over':(u===b?'full':(u?'use':''))); const who=TEAMS.filter(t=>Number(ops(t.seq).hotel_id)===h.id&&t.dep<=ds&&ds<t.arr).map(t=>`${t.rep}(${ops(t.seq).twin||0})`).join(' · ');
+      cells.push(`<div class="dc ${cls}" title="${esc(ds+(who?' · '+who:''))}"><b>${d}</b>${b?`${u}/${b}`:'–'}</div>`); }
+    return `<div class="blk"><div class="nm">${esc(hotelName(h))}<small>${esc(tx('blockLine',h.block_twin,h.block_twin))}${h.surcharge?` · +${yen(h.surcharge)}`:''}</small></div><div class="days" style="--n:${N}">${cells.join('')}</div></div>`; }).join('');
+}
+function statusDots(o){ return `<div class="dots">${[['H','roster_hotel_at','stH'],['G','roster_golf_at','stG'],['日','itinerary_at','stI'],['請','invoiced_at','stB']].map(([c,f,k])=>`<i class="dot${o[f]?' ok':''}" title="${esc(tx(k))}${o[f]?' ✓':''}">${c}</i>`).join('')}</div>`; }
+function roomsText(o){ const parts=[]; if(o.twin) parts.push(`${tx('twin')}${o.twin}`); if(o.single) parts.push(`${tx('single')}${o.single}`); if(o.triple) parts.push(`${tx('triple')}${o.triple}`); return parts.join(' '); }
+function renderList(){
+  const vis=visible();
+  $('#list thead').innerHTML=`<tr><th>${esc(tx('hSt'))}</th><th>${esc(tx('hDate'))}</th><th class="n">${esc(tx('hPax'))}</th><th>${esc(tx('hRep'))}</th><th>${esc(tx('hProd'))}</th><th>${esc(tx('hHotel'))}</th><th>${esc(tx('hGolf'))}</th><th>${esc(tx('hStaff'))}</th><th class="n">${esc(tx('hYen'))}</th><th>${esc(tx('hIss'))}</th></tr>`;
+  if(!vis.length){ $('#list tbody').innerHTML=`<tr><td colspan="10"><div class="empty">—</div></td></tr>`; return; }
+  $('#list tbody').innerHTML=vis.map(t=>{ const o=ops(t.seq), h=hotelById(o.hotel_id), g=golf(t.seq), q=quoteFor(t), iss=issues(t);
+    const gTxt=g.filter(r=>r.course_id||r.course_note).map(r=>courseName(courseById(r.course_id),true)||r.course_note).join('·');
+    return `<tr class="tm${SEL===t.seq?' sel':''}" data-seq="${t.seq}">
+      <td>${statusDots(o)}</td>
+      <td><span class="mono">${esc(mmdd(t.dep))}→${esc(mmdd(t.arr))}</span><small>${esc(tx('nights',nightsOf(t).length))}${t.sure?'':` <span class="bd warn" title="${esc(tx('unsureT'))}">${esc(tx('unsure'))}</span>`}</small></td>
+      <td class="n">${t.pax}</td>
+      <td><b>${esc(t.rep)}</b><small>${esc(agencyOf(t))}</small></td>
+      <td><span class="bd brand">${esc(brandShort(t.brand))}</span><small>${esc(t.combo?tx('combo'):tx('solo'))}</small></td>
+      <td>${esc(hotelName(h)||(o.hotel_note||''))}<small>${esc(roomsText(o))}</small></td>
+      <td>${esc(gTxt)}<small>${g.filter(r=>r.course_id||r.course_note).length}/${nightsOf(t).length}</small></td>
+      <td>${esc(o.staff||'')}</td>
+      <td class="n yen">${q&&q.ok&&ratesReady()?yen(q.total):''}</td>
+      <td>${iss.map(i=>`<span class="bd ${i.sev}">${esc(i.n!=null?tx(i.k,i.n):tx(i.k))}</span>`).join('')}</td></tr>`; }).join('');
+}
+$('#list').addEventListener('click',e=>{ const tr=e.target.closest('tr.tm'); if(!tr) return; SEL=Number(tr.dataset.seq); renderList(); renderDetail(); });
+
+function optList(items, val, labelFn, noneLabel, otherLabel){ return `<option value=""${val?'':' selected'}>${esc(noneLabel)}</option>`+items.map(x=>`<option value="${x.id}"${Number(val)===x.id?' selected':''}>${esc(labelFn(x))}</option>`).join('')+(otherLabel?`<option value="other"${val==='other'?' selected':''}>${esc(otherLabel)}</option>`:''); }
+function staffOpts(val){ return `<option value="">—</option>`+STAFF.filter(s=>s.active||s.name===val).map(s=>`<option${s.name===val?' selected':''}>${esc(s.name)}</option>`).join('')+(val&&!STAFF.some(s=>s.name===val)?`<option selected>${esc(val)}</option>`:''); }
+function renderDetail(){
+  const box=$('#detail'); const t=teamOf(SEL);
+  if(!t){ box.innerHTML=`<div class="empty">${esc(tx('selHint'))}</div>`; return; }
+  const o=ops(t.seq), fl=flightLine(t), h=hotelById(o.hotel_id), q=quoteFor(t), nights=nightsOf(t), g=golf(t.seq), ds=disp(t.seq), props=proposeLegs(t);
+  const H=RATES.hotel||{}, singleDefault=(H.single&&(H.single.wk||H.single.hi))?`${H.single.wk||'-'}/${H.single.hi||'-'}`:'';
+  const others=TEAMS.filter(x=>x.seq!==t.seq && x.dep<t.arr && x.arr>t.dep);
+  const blockNote=h&&h.block_twin>0?nights.map(ds=>{ const b=blockOn(h,ds), u=blockUse(h.id,ds); return b?`<span class="bd ${u>b?'err':'info'}">${esc(mmdd(ds))} ${u}/${b}</span>`:''; }).join(''):'';
+  const chk=(f,by,k)=>`<div class="ck${o[f]?' on':''}" data-ck="${f}" data-by="${by}">${esc(tx(k))}<small>${o[f]?esc(new Date(o[f]).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+(o[by]?' · '+o[by]:'')):esc(tx('notYet'))}</small></div>`;
+  box.innerHTML=`
+    <h2>${esc(t.rep)} <small>${t.pax}名 · ${esc(mmdd(t.dep))}→${esc(mmdd(t.arr))} ${esc(tx('nights',nights.length))}${t.combo?` · ${esc(tx('combo'))} ${esc(mmdd(t.fullDep))}→${esc(mmdd(t.fullArr))}`:''}</small> <span class="bd brand">${esc(brandShort(t.brand))}</span>${t.sure?'':`<span class="bd warn" title="${esc(tx('unsureT'))}">${esc(tx('unsure'))}</span>`}</h2>
+    <div class="kv">
+      <b>${esc(tx('dProduct'))}</b><span>${esc(t.product)}</span>
+      <b>${esc(tx('dFlight'))}</b><span>${esc(tx('dIn'))} ${esc(fl.in||'—')} · ${esc(tx('dOut'))} ${esc(fl.out||'—')}</span>
+      ${t.remark?`<b>${esc(tx('dRemark'))}</b><span>${esc(t.remark)}</span>`:''}
+      ${t.remark_local?`<b>${esc(tx('dRemarkLocal'))}</b><span>${esc(t.remark_local)}</span>`:''}
+    </div>
+    <div class="frm">
+      <label>${esc(tx('dAgency'))}<input class="inp" data-f="agency" value="${esc(agencyOf(t))}" ${HAS_OPS?'':'disabled'}></label>
+      <label>${esc(tx('dStaff'))}<select class="inp" data-f="staff" ${HAS_OPS?'':'disabled'}>${staffOpts(o.staff||'')}</select></label>
+      <label>${esc(tx('party'))}<select class="inp" data-f="party" ${HAS_OPS?'':'disabled'}><option value="">${esc(tx('partyNone'))}</option>${others.map(x=>`<option value="${x.seq}"${Number(o.party)===x.seq?' selected':''}>${esc(x.rep)} ${esc(mmdd(x.dep))}→${esc(mmdd(x.arr))} ${x.pax}名</option>`).join('')}</select></label>
+    </div>
+    <details class="so-fold" style="margin-top:6px"><summary>${esc(tx('dMembers'))} <span class="so-fsum">${esc(tx('dMembersN',t.members.length))}</span></summary>
+      <div class="members">${t.members.map(m=>`${m.seq_in_team}. <b>${esc(m.name_kr||'')}</b> ${esc(m.name_en||'')} ${esc(m.gender||'')}${m.is_rep?' ★':''}`).join('<br>')}</div></details>
+
+    <div class="sec"><h4>${esc(tx('secHotel'))}<span class="r"><button class="plus" data-act="suggest" type="button">${esc(tx('suggest'))}</button></span></h4>
+      <div class="frm">
+        <label class="wide">${esc(tx('hotel'))}<select class="inp" data-f="hotel_id" ${HAS_OPS?'':'disabled'}>${optList(HOTELS.filter(x=>x.active||x.id===Number(o.hotel_id)),o.hotel_id,x=>hotelName(x)+(x.block_twin?` (${tx('blockLine',blockOn(x,t.dep)?blockUse(x.id,t.dep):0,x.block_twin)})`:''),tx('hotelNone'))}</select></label>
+        <label>${esc(tx('twin'))}<input class="inp" type="number" min="0" data-f="twin" value="${o.twin||0}" ${HAS_OPS?'':'disabled'}></label>
+        <label>${esc(tx('single'))}<input class="inp" type="number" min="0" data-f="single" value="${o.single||0}" ${HAS_OPS?'':'disabled'}></label>
+        <label>${esc(tx('triple'))}<input class="inp" type="number" min="0" data-f="triple" value="${o.triple||0}" ${HAS_OPS?'':'disabled'}></label>
+        <label>${esc(tx('singleRate'))}<input class="inp" type="number" min="0" step="100" data-f="single_rate" value="${o.single_rate==null?'':o.single_rate}" placeholder="${esc(tx('singleRateHint',singleDefault))}" ${HAS_OPS?'':'disabled'}></label>
+        <label>${esc(tx('priceAdj'))}<input class="inp" type="number" step="100" data-f="price_adj" value="${o.price_adj||0}" ${HAS_OPS?'':'disabled'}></label>
+        <label class="wide">${esc(tx('hotelNote'))}<input class="inp" data-f="hotel_note" value="${esc(o.hotel_note||'')}" ${HAS_OPS?'':'disabled'}></label>
+        <label class="wide">${esc(tx('priceNote'))}<input class="inp" data-f="price_note" value="${esc(o.price_note||'')}" ${HAS_OPS?'':'disabled'}></label>
+      </div>
+      ${blockNote?`<div style="margin-top:6px">${blockNote}</div>`:''}
+    </div>
+
+    <div class="sec"><h4>${esc(tx('secQuote'))}${ratesReady()?'':`<span class="bd warn">${esc(tx('issRates'))}</span>`}</h4>
+      ${q&&q.ok?`<div class="quote">
+        <div><small>${esc(tx('qTwin'))}</small><b>${yen(q.twin)}</b></div><div><small>${esc(tx('qSingle'))}</small><b>${yen(q.single)}</b></div><div><small>${esc(tx('qTriple'))}</small><b>${yen(q.triple)}</b></div>
+        <div class="tot"><small>${esc(tx('qTotal'))}</small><b>${yen(q.total)}</b></div>
+        <div><small>${esc(tx('qNights',q.nights))} · ${esc(tx('qRounds',q.rounds))}</small><b class="${q.roomsMatch?'':'over'}" style="font-size:12px">${esc(tx('qPersons',q.persons,t.pax))}</b></div></div>`:''}
+    </div>
+
+    <div class="sec"><h4>${esc(tx('secGolf'))}<span class="r">${g.length?'':`<button class="plus" data-act="golfDays" type="button">${esc(tx('makeDays',nights.length))}</button>`}<button class="plus" data-act="golfAdd" type="button">${esc(tx('addDay'))}</button></span></h4>
+      ${g.length?`<table class="mini"><thead><tr><th>${esc(tx('gDate'))}</th><th>${esc(tx('gCourse'))}</th><th>${esc(tx('gTee'))}</th><th>${esc(tx('gHoles'))}</th><th>${esc(tx('gNote'))}</th><th>${esc(tx('gRoster'))}</th><th></th></tr></thead><tbody>
+        ${g.map(r=>`<tr data-gid="${r.id}"><td><input class="inp sm" type="date" data-g="play_date" value="${esc(r.play_date||'')}"></td>
+          <td><select class="inp" data-g="course_id">${optList(COURSES.filter(x=>x.active||x.id===Number(r.course_id)),r.course_id,x=>courseName(x),tx('courseNone'))}</select>${r.course_note||!r.course_id?`<input class="inp" data-g="course_note" value="${esc(r.course_note||'')}" placeholder="${esc(tx('courseOther'))}" style="margin-top:3px">`:''}</td>
+          <td><input class="inp sm" data-g="tee_time" value="${esc(r.tee_time||'')}" placeholder="HH:MM"></td>
+          <td><input class="inp sm" data-g="holes" value="${esc(r.holes||'')}" style="width:56px"></td>
+          <td><input class="inp" data-g="note" value="${esc(r.note||'')}"></td>
+          <td style="text-align:center"><input type="checkbox" data-g="roster_sent" ${r.roster_sent?'checked':''}></td>
+          <td><button class="x" data-act="golfDel" type="button" title="${esc(tx('del'))}">×</button></td></tr>`).join('')}</tbody></table>`:''}
+    </div>
+
+    <div class="sec"><h4>${esc(tx('secDisp'))}<span class="r">${props.length?`<button class="plus" data-act="dispAll" type="button">${esc(tx('addAllProp'))}</button>`:''}<button class="plus" data-act="dispAdd" type="button">${esc(tx('addLeg'))}</button></span></h4>
+      <table class="mini"><thead><tr><th>${esc(tx('gDate'))}</th><th>${esc(tx('dLeg'))}</th><th>${esc(tx('dTime'))}</th><th>${esc(tx('dVeh'))}</th><th>${esc(tx('dStaff2'))}</th><th>${esc(tx('dNote'))}</th><th></th></tr></thead><tbody>
+        ${ds.map(r=>dispRowHTML(r,false)).join('')}${props.map((r,i)=>dispRowHTML(r,true,i)).join('')}</tbody></table>
+    </div>
+
+    <div class="sec"><h4>${esc(tx('secChecks'))}</h4><div class="checks">${chk('roster_hotel_at','roster_hotel_by','stH')}${chk('roster_golf_at','roster_golf_by','stG')}${chk('itinerary_at','itinerary_by','stI')}${chk('invoiced_at','invoiced_by','stB')}</div></div>
+    <div class="sec"><h4>${esc(tx('secMemo'))}<span class="r"><button class="plus" data-act="roster" type="button">${esc(tx('pv').roster)} ${esc(tx('pv').printed)}</button></span></h4><textarea class="inp" data-f="memo" ${HAS_OPS?'':'disabled'}>${esc(o.memo||'')}</textarea></div>`;
+}
+function dispRowHTML(r,prop,i){
+  const vehSel=`<select class="inp" data-d="vehicle_id">${optList(VEHICLES.filter(v=>v.active||v.id===Number(r.vehicle_id)),r.vehicle_id,v=>`${v.name} (${v.capacity})`,tx('vehNone'))}</select>`;
+  return `<tr class="${prop?'prop':''}" ${prop?`data-prop="${i}"`:`data-did="${r.id}"`}>
+    <td><input class="inp sm" type="date" data-d="trip_date" value="${esc(r.trip_date||'')}" ${prop?'disabled':''}></td>
+    <td><select class="inp" data-d="leg" ${prop?'disabled':''}>${LEGS.map(l=>`<option value="${l}"${r.leg===l?' selected':''}>${esc(legLabel(l))}</option>`).join('')}</select></td>
+    <td><input class="inp sm" type="time" data-d="depart_time" value="${esc(hhmm(r.depart_time))}" ${prop?'disabled':''}></td>
+    <td>${prop?'':vehSel}</td><td>${prop?'':`<select class="inp" data-d="staff">${staffOpts(r.staff||'')}</select>`}</td>
+    <td>${prop?'':`<input class="inp" data-d="note" value="${esc(r.note||'')}">`}</td>
+    <td>${prop?`<button class="plus" data-act="dispProp" type="button">${esc(tx('addProp'))}</button>`:`<button class="x" data-act="dispDel" type="button" title="${esc(tx('del'))}">×</button>`}</td></tr>`;
+}
+// 상세 패널 이벤트(위임)
+$('#detail').addEventListener('change',async e=>{
+  const t=teamOf(SEL); if(!t) return; const el=e.target;
+  if(el.dataset.f){ let v=el.type==='number'?(el.value===''?null:Number(el.value)):el.value; if(el.dataset.f==='hotel_id'||el.dataset.f==='party') v=el.value?Number(el.value):null; if(el.dataset.f==='agency'&&v===t.agency) v=null;
+    const ok=await saveOps(t.seq,{[el.dataset.f]:v},el.dataset.f); if(ok&&el.dataset.f==='party'&&v){ await saveOps(v,{party:Math.min(v,t.seq)},'party'); await saveOps(t.seq,{party:Math.min(v,t.seq)},'party'); } return; }
+  const gtr=el.closest('tr[data-gid]'); if(gtr&&el.dataset.g){ const row=golf(t.seq).find(r=>r.id===Number(gtr.dataset.gid)); if(!row) return; let v=el.type==='checkbox'?el.checked:el.value; if(el.dataset.g==='course_id') v=el.value?Number(el.value):null; if(el.dataset.g==='tee_time') v=el.value.split(',').map(x=>hhmm(x)||x.trim()).filter(Boolean).join(','); await saveGolf(Object.assign({},row,{[el.dataset.g]:v})); renderAll(); return; }
+  const dtr=el.closest('tr[data-did]'); if(dtr&&el.dataset.d){ const row=disp(t.seq).find(r=>r.id===Number(dtr.dataset.did)); if(!row) return; let v=el.value; if(el.dataset.d==='vehicle_id') v=el.value?Number(el.value):null; await saveDisp(Object.assign({},row,{[el.dataset.d]:v})); renderAll(); }
+});
+$('#detail').addEventListener('click',async e=>{
+  const t=teamOf(SEL); if(!t) return;
+  const ck=e.target.closest('.ck'); if(ck){ const f=ck.dataset.ck, by=ck.dataset.by, on=!!ops(t.seq)[f]; await saveOps(t.seq,{[f]:on?null:new Date().toISOString(),[by]:on?null:who()},f); return; }
+  const b=e.target.closest('[data-act]'); if(!b) return; const act=b.dataset.act;
+  if(act==='suggest'){ const s=suggestRooms(t); const patch=Object.assign({},s); if(!ops(t.seq).hotel_id){ const def=hotelById((DEFAULTS.hotel||{})[t.brand]); if(def) patch.hotel_id=def.id; } if(!ops(t.seq).staff&&(DEFAULTS.staff||{})[t.brand]) patch.staff=DEFAULTS.staff[t.brand]; await saveOps(t.seq,patch,'suggest'); }
+  else if(act==='golfDays'){ if(!HAS_OPS) return toast(tx('noSql'),'warn'); const rows=nightsOf(t).map((d,i)=>({event_seq:t.seq,play_date:d,sort:i})); const {data,error}=await supa.from('partner_golf').insert(rows).select(); if(error) return toast(tx('saveFail')+': '+error.message,'err'); GOLF[t.seq]=(GOLF[t.seq]||[]).concat(data||[]); logChange(t.seq,'golf_days',String(rows.length)); renderAll(); }
+  else if(act==='golfAdd'){ if(!HAS_OPS) return toast(tx('noSql'),'warn'); const last=golf(t.seq).slice(-1)[0]; const d=last?addDays(last.play_date,1):t.dep; const r=await saveGolf({event_seq:t.seq,play_date:d,sort:golf(t.seq).length}); if(r) renderAll(); }
+  else if(act==='golfDel'){ const tr=b.closest('tr[data-gid]'); const row=golf(t.seq).find(r=>r.id===Number(tr.dataset.gid)); if(row) await delGolf(row); }
+  else if(act==='dispProp'){ const tr=b.closest('tr[data-prop]'); const p=proposeLegs(t)[Number(tr.dataset.prop)]; if(p){ const r=await saveDisp(Object.assign({staff:ops(t.seq).staff||null},p)); if(r) renderAll(); } }
+  else if(act==='dispAll'){ const props=proposeLegs(t); for(const p of props){ await saveDisp(Object.assign({staff:ops(t.seq).staff||null},p)); } renderAll(); }
+  else if(act==='dispAdd'){ const r=await saveDisp({event_seq:t.seq,trip_date:t.dep,leg:'other',depart_time:'',staff:ops(t.seq).staff||null}); if(r) renderAll(); }
+  else if(act==='dispDel'){ const tr=b.closest('tr[data-did]'); const row=disp(t.seq).find(r=>r.id===Number(tr.dataset.did)); if(row) await delDisp(row); }
+  else if(act==='roster'){ printRoster(t); }
+});
+
+// ── 배차(날짜별) ──
+async function loadDay(){
+  if(!supa||!D) return; DAYROWS=[]; DAYTEAMS={};
+  if(!HAS_OPS){ renderDay(); return; }
+  try{
+    const {data,error}=await supa.from('partner_dispatch').select('*').eq('trip_date',D).order('depart_time'); if(error) throw error; DAYROWS=data||[];
+    const missing=[...new Set(DAYROWS.map(r=>r.event_seq))].filter(s=>!TEAMS.some(t=>t.seq===s));
+    if(missing.length){ const bs=await fetchIn('partner_bookings','event_seq,brand,rep_name,pax,seg_from,seg_to,dep_date,arr_date,status','event_seq',missing,q=>q.neq('status','대기'));
+      bs.forEach(b=>{ DAYTEAMS[b.event_seq]={seq:b.event_seq,brand:b.brand,rep:b.rep_name||'',pax:Number(b.pax||0)||0,dep:String(b.seg_from||b.dep_date||'').slice(0,10),arr:String(b.seg_to||b.arr_date||'').slice(0,10),fullDep:String(b.dep_date||'').slice(0,10),fullArr:String(b.arr_date||'').slice(0,10),members:[]}; }); }
+  }catch(e){ toast(tx('loadFail')+': '+(e&&e.message||e),'err'); }
+  renderDay();
+}
+function dayProps(){ const out=[]; TEAMS.forEach(t=>{ proposeLegs(t).filter(p=>p.trip_date===D).forEach(p=>out.push(Object.assign({_t:t},p))); }); return out; }
+function renderDay(){
+  if(VIEW!=='disp') return;
+  const rows=DAYROWS.slice().sort((a,b)=>(a.depart_time||'99').localeCompare(b.depart_time||'99')), props=dayProps();
+  // 차량별 적재(같은 차량·같은 시각 = 합승)
+  const loads={}; rows.forEach(r=>{ if(!r.vehicle_id) return; const k=r.vehicle_id+'|'+(r.depart_time||''); const t=teamOf(r.event_seq); loads[k]=(loads[k]||0)+(t?t.pax:0); });
+  $('#dveh').innerHTML=VEHICLES.filter(v=>v.active).map(v=>{ const trips=rows.filter(r=>r.vehicle_id===v.id); const max=Math.max(0,...Object.keys(loads).filter(k=>k.startsWith(v.id+'|')).map(k=>loads[k])); return `<div class="veh${max>v.capacity?' over':''}">${esc(v.name)}<small>${esc(tx('trips',trips.length))} · ${esc(tx('load',max,v.capacity))}</small></div>`; }).join('');
+  $('#dsum').textContent=tx('dSum',rows.length,new Set(rows.map(r=>r.vehicle_id).filter(Boolean)).size);
+  $('#dtbl thead').innerHTML=`<tr><th>${esc(tx('dTime'))}</th><th>${esc(tx('dTeam'))}</th><th class="n">${esc(tx('dPax'))}</th><th>${esc(tx('dLeg'))}</th><th>${esc(tx('dVeh'))}</th><th>${esc(tx('dStaff2'))}</th><th>${esc(tx('dNote'))}</th><th></th></tr>`;
+  const trs=rows.map(r=>{ const t=teamOf(r.event_seq)||{rep:'#'+r.event_seq,pax:0,brand:''}; const k=r.vehicle_id+'|'+(r.depart_time||''); const v=vehById(r.vehicle_id); const over=v&&loads[k]>v.capacity;
+    return `<tr data-did="${r.id}" data-seq="${r.event_seq}"><td><input class="inp sm" type="time" data-d="depart_time" value="${esc(hhmm(r.depart_time))}"></td><td><b>${esc(t.rep)}</b><small>${esc(brandShort(t.brand))}</small></td><td class="n">${t.pax}</td>
+      <td><select class="inp" data-d="leg">${LEGS.map(l=>`<option value="${l}"${r.leg===l?' selected':''}>${esc(legLabel(l))}</option>`).join('')}</select></td>
+      <td><select class="inp${over?' over':''}" data-d="vehicle_id">${optList(VEHICLES.filter(x=>x.active||x.id===Number(r.vehicle_id)),r.vehicle_id,x=>`${x.name} (${x.capacity})`,tx('vehNone'))}</select>${over?`<small class="over">${esc(tx('load',loads[k],v.capacity))}</small>`:''}</td>
+      <td><select class="inp" data-d="staff">${staffOpts(r.staff||'')}</select></td><td><input class="inp" data-d="note" value="${esc(r.note||'')}"></td><td><button class="x" data-act="dispDel" type="button">×</button></td></tr>`; });
+  const ptrs=props.map((p,i)=>`<tr class="prop" data-prop="${i}"><td>${esc(hhmm(p.depart_time)||'—')}</td><td><b>${esc(p._t.rep)}</b><small>${esc(brandShort(p._t.brand))}</small></td><td class="n">${p._t.pax}</td><td>${esc(legLabel(p.leg))}</td><td></td><td></td><td></td><td><button class="plus" data-act="dispProp" type="button">${esc(tx('addProp'))}</button></td></tr>`);
+  $('#dtbl tbody').innerHTML=(trs.concat(ptrs).join(''))||`<tr><td colspan="8"><div class="empty">—</div></td></tr>`;
+  $('#btn-dprop').disabled=!props.length||!HAS_OPS;
+}
+$('#dtbl').addEventListener('change',async e=>{ const tr=e.target.closest('tr[data-did]'); if(!tr||!e.target.dataset.d) return; const row=DAYROWS.find(r=>r.id===Number(tr.dataset.did)); if(!row) return; let v=e.target.value; if(e.target.dataset.d==='vehicle_id') v=v?Number(v):null; await saveDisp(Object.assign({},row,{[e.target.dataset.d]:v})); renderDay(); });
+$('#dtbl').addEventListener('click',async e=>{ const b=e.target.closest('[data-act]'); if(!b) return;
+  if(b.dataset.act==='dispDel'){ const tr=b.closest('tr[data-did]'); const row=DAYROWS.find(r=>r.id===Number(tr.dataset.did)); if(row) await delDisp(row); }
+  if(b.dataset.act==='dispProp'){ const tr=b.closest('tr[data-prop]'); const p=dayProps()[Number(tr.dataset.prop)]; if(p){ const {_t,...row}=p; const r=await saveDisp(Object.assign({staff:ops(_t.seq).staff||null},row)); if(r) renderDay(); } } });
+$('#btn-dprop').addEventListener('click',async()=>{ for(const p of dayProps()){ const {_t,...row}=p; await saveDisp(Object.assign({staff:ops(_t.seq).staff||null},row)); } renderDay(); });
+$('#btn-dprint').addEventListener('click',()=>printDispatch());
+function setDay(d){ D=d; $('#d').value=D; loadDay(); }
+$('#d').addEventListener('change',()=>setDay($('#d').value||today())); $('#d-prev').addEventListener('click',()=>setDay(addDays(D,-1))); $('#d-next').addEventListener('click',()=>setDay(addDays(D,1))); $('#d-today').addEventListener('click',()=>setDay(today()));
+
+// ── 기본 설정 ──
+function regTable(id, title, rows, cols, table){
+  const head=cols.map(c=>`<th>${esc(c.label)}</th>`).join('');
+  const body=rows.map(r=>`<tr data-id="${r.id}">${cols.map(c=>{ const v=r[c.f]; if(c.type==='bool') return `<td style="text-align:center"><input type="checkbox" data-r="${c.f}" ${v?'checked':''}></td>`; if(c.type==='number') return `<td><input class="inp sm" type="number" data-r="${c.f}" value="${v==null?'':v}" style="width:80px"></td>`; if(c.type==='date') return `<td><input class="inp sm" type="date" data-r="${c.f}" value="${esc(v||'')}"></td>`; return `<td><input class="inp" data-r="${c.f}" value="${esc(v||'')}"></td>`; }).join('')}<td><button class="x" data-act="del" type="button" title="${esc(tx('del'))}">×</button></td></tr>`).join('');
+  $('#'+id).innerHTML=`<h3>${esc(title)}<span class="n">${rows.length}</span><span style="margin-left:auto"><button class="plus" data-act="add" type="button">${esc(tx('add'))}</button></span></h3><table class="mini" data-table="${table}"><thead><tr>${head}<th></th></tr></thead><tbody>${body}</tbody></table>`;
+}
+function renderDefs(){
+  if(VIEW!=='def') return;
+  regTable('def-hotels', tx('defHotels'), HOTELS, [{f:'name_ja',label:tx('nameJa')},{f:'name_ko',label:tx('nameKo')},{f:'block_twin',label:tx('blockTwin'),type:'number'},{f:'block_from',label:tx('blockFrom'),type:'date'},{f:'block_to',label:tx('blockTo'),type:'date'},{f:'surcharge',label:tx('surcharge'),type:'number'},{f:'active',label:tx('active'),type:'bool'}], 'partner_hotels');
+  regTable('def-courses', tx('defCourses'), COURSES, [{f:'name_ja',label:tx('nameJa')},{f:'name_ko',label:tx('nameKo')},{f:'active',label:tx('active'),type:'bool'}], 'partner_courses');
+  regTable('def-vehicles', tx('defVehicles'), VEHICLES, [{f:'name',label:tx('nameJa')},{f:'capacity',label:tx('capacity'),type:'number'},{f:'active',label:tx('active'),type:'bool'}], 'partner_vehicles');
+  regTable('def-staff', tx('defStaff'), STAFF, [{f:'name',label:tx('nameJa')},{f:'active',label:tx('active'),type:'bool'}], 'partner_staff');
+  const R=RATES, g=(a,b)=>((R[a]||{})[b]==null?'':(R[a]||{})[b]), gh=(ty,k)=>(((R.hotel||{})[ty]||{})[k]==null?'':((R.hotel||{})[ty]||{})[k]);
+  const num=(path,val)=>`<input class="inp sm" type="number" min="0" step="100" data-rate="${path}" value="${val}" style="width:96px">`;
+  $('#def-rates').innerHTML=`<h3>${esc(tx('defRates'))}</h3>
+    <table class="mini"><thead><tr><th></th><th>${esc(tx('rWk'))}</th><th>${esc(tx('rHi'))}</th></tr></thead><tbody>
+      <tr><td>${esc(tx('rHotel'))} · ${esc(tx('twin'))}</td><td>${num('hotel.twin.wk',gh('twin','wk'))}</td><td>${num('hotel.twin.hi',gh('twin','hi'))}</td></tr>
+      <tr><td>${esc(tx('rHotel'))} · ${esc(tx('single'))}</td><td>${num('hotel.single.wk',gh('single','wk'))}</td><td>${num('hotel.single.hi',gh('single','hi'))}</td></tr>
+      <tr><td>${esc(tx('rHotel'))} · ${esc(tx('triple'))}</td><td>${num('hotel.triple.wk',gh('triple','wk'))}</td><td>${num('hotel.triple.hi',gh('triple','hi'))}</td></tr></tbody></table>
+    <table class="mini" style="margin-top:8px"><thead><tr><th></th><th>${esc(tx('rWk'))}</th><th>${esc(tx('rSat'))}</th><th>${esc(tx('rSun'))}</th></tr></thead><tbody>
+      <tr><td>${esc(tx('rGolf'))}</td><td>${num('golf.wk',g('golf','wk'))}</td><td>${num('golf.sat',g('golf','sat'))}</td><td>${num('golf.sun',g('golf','sun'))}</td></tr></tbody></table>
+    <table class="mini" style="margin-top:8px"><thead><tr><th></th><th>${esc(tx('rDay'))}</th><th>${esc(tx('rLast'))}</th></tr></thead><tbody>
+      <tr><td>${esc(tx('rGuide'))}</td><td>${num('guide.day',g('guide','day'))}</td><td>${num('guide.last',g('guide','last'))}</td></tr></tbody></table>
+    <div class="frm" style="margin-top:10px">
+      ${['kumamoto','trial'].map(b=>`<label>${esc(tx('defHotelBrand'))} · ${esc(b==='kumamoto'?tx('brandK'):tx('brandT'))}<select class="inp" data-def="hotel.${b}">${optList(HOTELS.filter(h=>h.active),(DEFAULTS.hotel||{})[b],h=>hotelName(h),tx('hotelNone'))}</select></label>
+        <label>${esc(tx('defStaffBrand'))} · ${esc(b==='kumamoto'?tx('brandK'):tx('brandT'))}<select class="inp" data-def="staff.${b}">${staffOpts((DEFAULTS.staff||{})[b]||'')}</select></label>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap"><button class="btn sm" data-act="saveRates" type="button">${esc(tx('rSave'))}</button><span class="hint">${esc(tx('rHint'))}</span></div>`;
+}
+async function saveReg(table, id, patch){ const {data,error}=await supa.from(table).update(patch).eq('id',id).select().single(); if(error){ toast(tx('saveFail')+': '+error.message,'err'); return; } const arr={partner_hotels:HOTELS,partner_courses:COURSES,partner_vehicles:VEHICLES,partner_staff:STAFF}[table]; const i=arr.findIndex(r=>r.id===id); if(i>=0) arr[i]=data; logChange(table,'reg',`${table}#${id} ${Object.keys(patch).join(',')}`); }
+$('#v-def').addEventListener('change',async e=>{
+  const el=e.target; const tbl=el.closest('table[data-table]');
+  if(tbl&&el.dataset.r){ const tr=el.closest('tr[data-id]'); const id=Number(tr.dataset.id); let v=el.type==='checkbox'?el.checked:(el.type==='number'?(el.value===''?0:Number(el.value)):(el.value||null)); await saveReg(tbl.dataset.table,id,{[el.dataset.r]:v}); renderAll(); return; }
+  if(el.dataset.def){ const [k,b]=el.dataset.def.split('.'); DEFAULTS[k]=DEFAULTS[k]||{}; DEFAULTS[k][b]=el.dataset.def.startsWith('hotel')?(el.value?Number(el.value):null):(el.value||null); const {error}=await supa.from('partner_settings').upsert({key:'partner_defaults',value:DEFAULTS,updated_by:who()},{onConflict:'key'}); if(error) toast(tx('saveFail')+': '+error.message,'err'); else toast(tx('saved'),'ok'); }
+});
+$('#v-def').addEventListener('click',async e=>{
+  const b=e.target.closest('[data-act]'); if(!b) return; const panel=b.closest('.panel'); const tbl=panel&&panel.querySelector('table[data-table]'); const table=tbl&&tbl.dataset.table;
+  if(b.dataset.act==='add'&&table){ const name=prompt(tx('addPrompt')); if(!name||!name.trim()) return; const row=table==='partner_vehicles'?{name:name.trim(),capacity:9}:(table==='partner_staff'?{name:name.trim()}:{name_ja:name.trim()}); row.sort=({partner_hotels:HOTELS,partner_courses:COURSES,partner_vehicles:VEHICLES,partner_staff:STAFF}[table]).length+1;
+    const {data,error}=await supa.from(table).insert(row).select().single(); if(error) return toast(tx('saveFail')+': '+error.message,'err'); ({partner_hotels:HOTELS,partner_courses:COURSES,partner_vehicles:VEHICLES,partner_staff:STAFF}[table]).push(data); logChange(table,'reg_add',name.trim()); renderAll(); }
+  if(b.dataset.act==='del'&&table){ const tr=b.closest('tr[data-id]'); const id=Number(tr.dataset.id); if(!confirm(tx('delConfirm'))) return; const {error}=await supa.from(table).delete().eq('id',id); if(error) return toast(tx('saveFail')+': '+error.message,'err'); const arr={partner_hotels:HOTELS,partner_courses:COURSES,partner_vehicles:VEHICLES,partner_staff:STAFF}[table]; const i=arr.findIndex(r=>r.id===id); if(i>=0) arr.splice(i,1); logChange(table,'reg_del',String(id)); renderAll(); }
+  if(b.dataset.act==='saveRates'){ const R={}; $$('#def-rates [data-rate]').forEach(inp=>{ const v=inp.value===''?null:Number(inp.value); const [a,b2,c]=inp.dataset.rate.split('.'); if(c){ R[a]=R[a]||{}; R[a][b2]=R[a][b2]||{}; R[a][b2][c]=v; } else { R[a]=R[a]||{}; R[a][b2]=v; } });
+    const {error}=await supa.from('partner_settings').upsert({key:'rates',value:R,updated_by:who()},{onConflict:'key'}); if(error) return toast(tx('saveFail')+': '+error.message,'err'); RATES=R; logChange('rates','rates','rates'); toast(tx('saved'),'ok'); renderAll(); }
+});
+
+// ── 인쇄 ──
+function popup(title, css, body){ const jp=window.__SO_JP_FONT||''; const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${jp}
+    body{font-family:'Pretendard','Meiryo','Yu Gothic','Hiragino Sans','Noto Sans JP','Noto Sans KR',sans-serif;color:#111}
+    h1{font-size:15pt;margin:0 0 2mm} h1 small{font-size:9.5pt;font-weight:600;color:#444;margin-left:8px}
+    table{border-collapse:collapse;width:100%} th,td{border:1px solid #333;padding:1.4mm 1.8mm;font-size:9pt;vertical-align:top} th{background:#eee;font-weight:800;white-space:nowrap}
+    .mono{font-family:Consolas,'SZJpMono',monospace;font-weight:800} small{color:#555;font-size:7.5pt;display:block} .c{text-align:center} .r{text-align:right}
+    .box{display:inline-block;width:3.6mm;height:3.6mm;border:1.2px solid #333;vertical-align:middle;margin-right:1mm} .box.on{background:#333}
+    .ft{margin-top:4mm;font-size:8pt;color:#555} ${css}</style></head><body>${body}</body></html>`;
+  const w=window.open('','_blank','width=1100,height=900'); if(!w){ toast(tx('fail'),'err'); return html; } w.document.open(); w.document.write(html); w.document.close(); return html; }
+function printList(){
+  const P=tx('pv'), vis=visible(); const chk=(o,f)=>`<span class="box${o[f]?' on':''}"></span>`;
+  const rows=vis.map(t=>{ const o=ops(t.seq), h=hotelById(o.hotel_id), fl=flightLine(t), g=golf(t.seq).filter(r=>r.course_id||r.course_note), q=quoteFor(t);
+    return `<tr><td class="mono">${esc(mmdd(t.dep))}→${esc(mmdd(t.arr))}<small>${esc(wd(t.dep))}〜${esc(wd(addDays(t.arr,0)))}</small></td><td class="c">${nightsOf(t).length}</td><td class="c">${t.pax}</td><td><b>${esc(t.rep)}</b><small>${esc(brandShort(t.brand))}${t.combo?' · '+esc(P.period)+' '+esc(mmdd(t.fullDep))+'→'+esc(mmdd(t.fullArr)):''}</small></td><td>${esc(agencyOf(t))}</td>
+      <td>IN ${esc(fl.in||'—')}<br>OUT ${esc(fl.out||'—')}</td><td>${esc(hotelName(h)||o.hotel_note||'')}<small>${esc(roomsText(o))}${o.hotel_note&&h?' · '+esc(o.hotel_note):''}</small></td>
+      <td>${g.map(r=>`${esc(mmdd(r.play_date))} ${esc(courseName(courseById(r.course_id),true)||r.course_note||'')}${r.tee_time?' '+esc(r.tee_time):''}${r.holes?' '+esc(r.holes):''}${r.note?' <small>'+esc(r.note)+'</small>':''}`).join('<br>')}</td>
+      <td>${esc(o.staff||'')}</td><td class="c" style="white-space:nowrap">${chk(o,'roster_hotel_at')}${chk(o,'roster_golf_at')}${chk(o,'itinerary_at')}${chk(o,'invoiced_at')}</td>
+      <td class="r mono">${q&&q.ok&&ratesReady()?esc(yen(q.total)):''}</td><td>${esc([t.remark_local,t.remark,o.memo,o.price_note].filter(Boolean).join(' / '))}</td></tr>`; }).join('');
+  return popup(`partner_ops_${YM}`, `@page{size:A4 landscape;margin:9mm} td{font-size:8.5pt}`,
+    `<h1>${esc(P.title)} <small>${esc(YM)} · ${vis.length}チーム · ${vis.reduce((a,t)=>a+t.pax,0)}名 · ${esc(P.printed)} ${new Date().toLocaleString('ja-JP')}</small></h1>
+     <table><thead><tr><th>${esc(P.period)}</th><th>${esc(P.nights)}</th><th>${esc(P.pax)}</th><th>${esc(P.rep)}</th><th>${esc(P.agency)}</th><th>${esc(P.air)}</th><th>${esc(P.hotel)}</th><th>${esc(P.golf)}</th><th>${esc(P.staff)}</th><th>${esc(P.chk)}</th><th>見積</th><th>${esc(P.note)}</th></tr></thead><tbody>${rows}</tbody></table>
+     <div class="ft">${esc(P.chk)} = ■済 □未</div>`);
+}
+function printRoster(t){
+  const P=tx('pv'), o=ops(t.seq), h=hotelById(o.hotel_id), g=golf(t.seq).filter(r=>r.course_id||r.course_note);
+  const trs=t.members.map(m=>`<tr><td class="c">${m.seq_in_team}</td><td><b>${esc(m.name_en||'')}</b>${m.name_kr?`<small>${esc(m.name_kr)}</small>`:''}</td><td class="c">${esc(m.gender||'')}</td><td></td></tr>`).join('');
+  return popup(`roster_${t.seq}`, `@page{size:A4 portrait;margin:14mm} td,th{font-size:10.5pt;padding:2mm 2.5mm} .meta{display:grid;grid-template-columns:auto 1fr;gap:1mm 6mm;font-size:10.5pt;margin:3mm 0 5mm} .meta b{color:#333}`,
+    `<h1>${esc(P.roster)} <small>${esc(t.rep)} 様 · ${t.pax}名</small></h1>
+     <div class="meta"><b>${esc(P.period)}</b><span>${esc(t.dep)}（${esc(wd(t.dep))}）〜 ${esc(t.arr)}（${esc(wd(t.arr))}） ${nightsOf(t).length}${esc(P.nights)}</span><b>${esc(P.agency)}</b><span>${esc(agencyOf(t))}</span>
+       <b>${esc(P.hotel)}</b><span>${esc(hotelName(h)||o.hotel_note||'—')} ${esc(roomsText(o))}</span><b>${esc(P.golf)}</b><span>${g.map(r=>`${esc(mmdd(r.play_date))} ${esc(courseName(courseById(r.course_id))||r.course_note||'')} ${esc(r.tee_time||'')}`).join('<br>')||'—'}</span><b>${esc(P.staff)}</b><span>${esc(o.staff||'')}</span></div>
+     <table><thead><tr><th>${esc(P.no)}</th><th>${esc(P.name)}</th><th>${esc(P.gender)}</th><th>${esc(P.note)}</th></tr></thead><tbody>${trs}</tbody></table>
+     <div class="ft">${esc(P.printed)} ${new Date().toLocaleString('ja-JP')}</div>`);
+}
+function printDispatch(){
+  const P=tx('pv'); const rows=DAYROWS.slice().sort((a,b)=>(a.vehicle_id||999)-(b.vehicle_id||999)||(a.depart_time||'99').localeCompare(b.depart_time||'99'));
+  const groups={}; rows.forEach(r=>{ const k=r.vehicle_id||0; (groups[k]=groups[k]||[]).push(r); });
+  const blocks=Object.keys(groups).sort((a,b)=>Number(a)-Number(b)).map(k=>{ const v=vehById(k); const trs=groups[k].map(r=>{ const t=teamOf(r.event_seq)||{rep:'#'+r.event_seq,pax:0}; return `<tr><td class="mono c">${esc(hhmm(r.depart_time)||'—')}</td><td>${esc(legLabel(r.leg))}</td><td><b>${esc(t.rep)}</b> 様</td><td class="c">${t.pax}</td><td>${esc(r.staff||'')}</td><td>${esc(r.note||'')}</td></tr>`; }).join('');
+    return `<h2>${esc(v?`${v.name}（${v.capacity}）`:P.unassigned)}</h2><table><thead><tr><th>${esc(P.time)}</th><th>${esc(P.leg)}</th><th>${esc(P.team)}</th><th>${esc(P.pax)}</th><th>${esc(P.staff)}</th><th>${esc(P.note)}</th></tr></thead><tbody>${trs}</tbody></table>`; }).join('');
+  return popup(`dispatch_${D}`, `@page{size:A4 portrait;margin:12mm} h2{font-size:12pt;margin:4mm 0 1.5mm} td,th{font-size:10pt;padding:1.8mm 2.2mm}`,
+    `<h1>${esc(P.disp)} <small>${esc(D)}（${esc(wd(D))}） · ${rows.length}便 · ${esc(P.printed)} ${new Date().toLocaleString('ja-JP')}</small></h1>${blocks||'<div class="ft">—</div>'}`);
+}
+$('#btn-print').addEventListener('click',()=>printList());
+
+// ── 뷰·월·검색 ──
+function setView(v){ VIEW=v; $$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); $('#v-list').hidden=v!=='list'; $('#v-disp').hidden=v!=='disp'; $('#v-def').hidden=v!=='def'; $('#btn-print').style.display=v==='list'?'':'none'; if(v==='disp'){ if(!D) D=today(); $('#d').value=D; loadDay(); } if(v==='def') renderDefs(); }
+$('#tabs').addEventListener('click',e=>{ const b=e.target.closest('button[data-v]'); if(b) setView(b.dataset.v); });
+function setMonth(ym){ YM=ym; $('#m').value=YM; load(); }
+$('#m').addEventListener('change',()=>setMonth($('#m').value||today().slice(0,7))); $('#m-prev').addEventListener('click',()=>setMonth(shiftMonth(YM,-1))); $('#m-next').addEventListener('click',()=>setMonth(shiftMonth(YM,1)));
+if(window.__so_rowSearch) __so_rowSearch('#q','#list tbody','tr.tm',{count:'#qcnt',label:n=>tx('cnt',n)});
+
+// ── 연결 ──
+function loadCreds(){ $('#sb-url').value=localStorage.getItem('saizen_sb_url')||''; $('#sb-key').value=localStorage.getItem('saizen_sb_key')||''; }
+async function connect(){
+  const url=$('#sb-url').value.trim(), key=$('#sb-key').value.trim();
+  if(!url||!key){ setConn('URL·key','err'); return; }
+  localStorage.setItem('saizen_sb_url',url); localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect'); btn.disabled=true; btn.classList.remove('connected');
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {error}=await supa.from('partner_bookings').select('event_seq',{count:'exact',head:true}); if(error) throw error;
+    setConn('✓','ok'); btn.textContent='✓'; btn.classList.add('connected'); btn.disabled=false;
+    await load();
+  }catch(e){ setConn('✕','err'); toast(tx('fail')+': '+e.message,'err'); btn.textContent='↻'; btn.classList.remove('connected'); btn.disabled=false; supa=null; }
+}
+$('#btn-connect').addEventListener('click',connect);
+(function init(){
+  const q=new URLSearchParams(location.search);
+  YM=(q.get('ym')&&/^\d{4}-\d{2}$/.test(q.get('ym')))?q.get('ym'):today().slice(0,7); $('#m').value=YM;
+  D=(q.get('date')&&/^\d{4}-\d{2}-\d{2}$/.test(q.get('date')))?q.get('date'):today(); $('#d').value=D;
+  if(q.get('view')==='disp'||q.get('view')==='def') setView(q.get('view'));
+  applyStatic(); loadCreds(); renderAll();
+  if($('#sb-url').value && $('#sb-key').value) connect();
+})();
+</script>
+</body>
+</html>

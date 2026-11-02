@@ -286,6 +286,68 @@
     return { from: from, to: to, nights: n, sure: true, pos: idx === 0 ? 'first' : (idx === lod.length - 1 ? 'last' : 'mid') };
   }
 
+  //  여행사(판매처) — Min 2026-11-02 「타 여행사 원장도 엠클릭에 넣고 메리트투어가 함께 관리 · 여행사 명은 따로 적어줄거임」.
+  //   ① 예약리스트에 여행사/거래처/판매처 열이 있으면 그 값(explicit) ② 비고·현지비고의 「여행사: ○○」「여행사 ○○투어」「[○○투어]」
+  //   ③ 상품명이 「여행사」로 시작하면 '여행사(미기재)'(어느 여행사인지 적어 달라는 표시) ④ 그 외 '메리트투어'(엠클릭 기본 판매처).
+  var AGENCY_SUFFIX = '(?:투어|여행사|여행|트래블|관광|ツアー|トラベル|観光|旅行|tour|travel)';
+  function partnerAgency(o) {
+    o = o || {};
+    var ex = String(o.explicit == null ? '' : o.explicit).trim(); if (ex) return ex;
+    var txt = [o.remark, o.remark_local].map(function (x) { return String(x == null ? '' : x); }).join('\n');
+    var m = txt.match(/여행사\s*[:：=]\s*([^\n,，、/|)\]]+)/)
+      || txt.match(new RegExp('여행사\\s+([^\\s,，、/|)\\]]*' + AGENCY_SUFFIX + '[^\\s,，、/|)\\]]*)', 'i'))
+      || txt.match(new RegExp('\\[\\s*([^\\]\\n]{1,24}?' + AGENCY_SUFFIX + ')\\s*\\]', 'i'));
+    if (m) return m[1].trim();
+    if (/^\s*여행사/.test(String(o.product_name == null ? '' : o.product_name))) return '여행사(미기재)';
+    return '메리트투어';
+  }
+
+  // ── 자회사(구마모토 시내·트라이얼) 요금 계산 — 현지 요금표(2026-12 新料金)의 **구조**만 규칙으로(숫자는 DB partner_settings.rates, 저장소엔 없음 §3-2)
+  //   밤 요금 구분 partnerNightType: 금·토·일·祝日·祝前日 밤 = 'hi'(休日料金) / 그 외 'wk' — 현지 日別 料金表 365일(2026-11~2027-10)과 전부 일치.
+  //   골프 요금 구분 partnerGolfType: 토 'sat' · 일/祝日 'sun' · 그 외(금요일 포함) 'wk'.
+  //   1인 요금 = Σ밤 호텔(객실 종류·밤 구분 + 호텔 가산) + Σ라운드 골프(날 구분) + 引率(밤마다 day, 귀국일 last) + 가산(adj).
+  //   기본 골프 = 묵는 밤마다 1라운드(도착일 포함·귀국일 제외) — 현지 「3色ゴルフ」(4泊=4R, 3泊=3R) 과 같다.
+  function partnerNightType(ds) {
+    var d = parseLocalDate(ds); if (isNaN(d)) return 'wk';
+    var wd = d.getDay(); if (wd === 5 || wd === 6 || wd === 0) return 'hi';
+    if (JP_HOLIDAYS.indexOf(fmtDate(d)) >= 0) return 'hi';
+    var nx = new Date(d); nx.setDate(nx.getDate() + 1); if (JP_HOLIDAYS.indexOf(fmtDate(nx)) >= 0) return 'hi';
+    return 'wk';
+  }
+  function partnerGolfType(ds) {
+    var d = parseLocalDate(ds); if (isNaN(d)) return 'wk';
+    var wd = d.getDay(); if (wd === 6) return 'sat'; if (wd === 0 || JP_HOLIDAYS.indexOf(fmtDate(d)) >= 0) return 'sun'; return 'wk';
+  }
+  //  o = { from, to(체크아웃), golfDates[](없으면 밤마다), surcharge(호텔 1인·1박 가산), twin, single, triple(객실 수), pax, adj(1인 가산), singleRate(싱글 1박 수기 요금 — 있으면 표 대신) }
+  //  rates = { hotel:{twin:{wk,hi}, single:{wk,hi}, triple:{wk,hi}}, golf:{wk,sat,sun}, guide:{day,last} }
+  function partnerQuote(o, rates) {
+    o = o || {}; rates = rates || {};
+    var H = rates.hotel || {}, G = rates.golf || {}, GD = rates.guide || {};
+    var num = function (v) { var n = Number(v); return isFinite(n) ? n : 0; };
+    var from = String(o.from || '').slice(0, 10), to = String(o.to || '').slice(0, 10);
+    var n = nightsBetween(from, to);
+    if (!(n > 0)) return { ok: false, nights: 0, rounds: 0, twin: 0, single: 0, triple: 0, golf: 0, guide: 0, persons: 0, total: 0, roomsMatch: true };
+    var nights = []; for (var i = 0; i < n; i++) { var d = parseLocalDate(from); d.setDate(d.getDate() + i); nights.push(fmtDate(d)); }
+    var golfDates = Array.isArray(o.golfDates) ? o.golfDates.filter(Boolean) : nights.slice();
+    var hotelOf = function (type) {
+      var r = H[type] || (type === 'triple' ? H.twin : null) || {}; var sum = 0;
+      nights.forEach(function (ds) {
+        var k = partnerNightType(ds);
+        var base = (type === 'single' && o.singleRate != null && o.singleRate !== '') ? num(o.singleRate) : num(r[k]);
+        sum += base + num(o.surcharge);
+      });
+      return sum;
+    };
+    var golf = 0; golfDates.forEach(function (ds) { golf += num(G[partnerGolfType(ds)]); });
+    var guide = num(GD.day) * n + num(GD.last);
+    var adj = num(o.adj);
+    var pp = { twin: hotelOf('twin') + golf + guide + adj, single: hotelOf('single') + golf + guide + adj, triple: hotelOf('triple') + golf + guide + adj };
+    var tw = num(o.twin), sg = num(o.single), tr = num(o.triple), pax = num(o.pax);
+    var persons = tw * 2 + sg + tr * 3;
+    return { ok: true, nights: n, rounds: golfDates.length, twin: pp.twin, single: pp.single, triple: pp.triple, golf: golf, guide: guide,
+      persons: persons, pax: pax, total: pp.twin * tw * 2 + pp.single * sg + pp.triple * tr * 3, roomsMatch: !pax || persons === pax };
+  }
+
   // ── 비회원 F풀 코드 재사용 충돌 판정(30일 쿨다운) ──────────────────────────
   //  두 팀 체류가 gapDays(기본 30) 이내면 '충돌'(같은 F코드 금지). 30일+ 지나면 재사용 허용.
   //  이유=① 턴오버 당일(퇴실=입실) 현장 동시존재 ② 한 달 내 같은 코드 재등장 → 네임택·식사 혼동.
@@ -1190,6 +1252,8 @@
     partnerBrandDef: partnerBrandDef,
     partnerLabel: partnerLabel,
     partnerSegment: partnerSegment,
+    partnerAgency: partnerAgency,
+    partnerNightType: partnerNightType, partnerGolfType: partnerGolfType, partnerQuote: partnerQuote,
     nmCodeConflict: nmCodeConflict,
     weekday: weekday,
     mdWd: mdWd,
