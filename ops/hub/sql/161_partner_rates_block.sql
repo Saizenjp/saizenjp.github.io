@@ -11,7 +11,10 @@
 --     숫자(요금)는 화면 「기본 설정 › 요금표」에서 DB 에만 넣는다(저장소 §3-2). 옛 partner_settings.rates(공통 한 벌)는 행이 없을 때 폴백.
 --  ③ data_audit 짝 갱신(§3-3): ㉓ partner_block_over 가 use_block 을 보고 · ㉔ partner_single_norate 가 partner_rates 의 싱글 요금(호텔별·공통, 체류 기간 겹침)도 본다.
 --  RLS: partner_rates = 등록표와 같음(읽기 partner 키 보기 이상 · 쓰기 partner 키 수정 또는 마스터 · anon 없음). RPC 추가 없음(anon secdef 15 유지).
---  멱등. 적용: Supabase MCP(Min 「sql 161 적용해」) 또는 SQL Editor. 00_VERIFY 161.
+--  멱등. 00_VERIFY 161.
+--  ✅ 적용 완료 2026-11-03(MCP, Min 「sql 161 적용해」) — 검증: partner_ops.use_block(default true) · partner_rates 표·RLS on·정책 4(sel/ins/upd/del)·anon select 불가·
+--     authenticated select/insert·시퀀스 authenticated usage/anon 없음·updated_at 트리거·kind 인덱스 · data_audit 치환 3곳(use_block)/2곳(partner_rates r) · anon secdef 15 유지.
+--     롤백 드라이런: 블록 1 호텔에 트윈 2 팀 → ㉓ 2밤 → use_block=false → 0 / 싱글 1·요금 없음 → ㉔ 1 → 공통 싱글 요금 행(기간 겹침) → 0 / RLS(마스터 1행 · partner 없는 직원 0행·insert 거부 · partner 권한자 1행). 잔류 0.
 -- ============================================================================
 
 -- ① 블록 사용 여부(팀별)

@@ -45,7 +45,7 @@ Min 지시(2026-11-02): 「이 파일 그대로가 아닌 우리 스타일에 �
 - SQL 160(2026-11-02 적용 완료 — 표 10·정책 32·롤백 드라이런 통과): `partner_ops`(팀별 1행) · `partner_golf` · `partner_dispatch` · 등록표 `partner_hotels`(블록·가산)/`partner_courses`/`partner_vehicles`(정원)/`partner_staff` · `partner_settings`(rates·partner_defaults) · `partner_bookings.agency`.
 - 권한: 화면·카드는 `partner_kumamoto` / `partner_trial`(둘 중 하나). RLS 읽기 = 그 상품 키 보기 이상, 쓰기 = 그 상품 키 수정(등록표는 partner 키).
 - 검수(§3-3): `data_audit` ㉓ `partner_block_over`(블록 초과 밤 = 화면 빨간 칸 수, use_block=false 제외) · ㉔ `partner_single_norate`(팀 수기 요금·기본값·`partner_rates` 싱글 행 모두 없을 때).
-- SQL 161(2026-11-03 파일): `partner_ops.use_block` · `partner_rates`(RLS 등록표와 동일) · data_audit ㉓㉔ 갱신. 화면은 미적용이어도 동작(블록 체크 잠김·옛 공통 요금표).
+- SQL 161(2026-11-03 MCP 적용 완료): `partner_ops.use_block` · `partner_rates`(RLS 등록표와 동일) · data_audit ㉓㉔ 갱신. 화면은 미적용이어도 동작(블록 체크 잠김·옛 공통 요금표).
 
 ## 4. 파일 대조 결과(수치 없이)
 
