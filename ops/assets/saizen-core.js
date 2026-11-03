@@ -302,6 +302,150 @@
     return '메리트투어';
   }
 
+  // ── 엠클릭 비고 → 수배 자동 채움 · 송영 차량/구간 계획 (Min 2026-11-03) ────────────────
+  //  Min: 「수배 파일 업로드 때 엠클릭 비고란에 싱글룸·골프장·호텔명(·여행사)을 기재 → 그걸 기준으로 블록을 잡게.
+  //        지금 수배 목록은 너무 많은 걸 적어 넣어야 함」 「송영은 8명이면 한 대, 20명 이상 대형 팀이 아니면 마이크로보다 하이에스 먼저」
+  //        「구마모토 공항·호텔·골프장 세 곳이 송영지, 서로 50분 정도라 경유가 있을 수 있음」
+  //  순수 함수 — 등록표(호텔·골프장·차량)는 인자로 받고 DB 는 모른다. step1(적재 직후)·partner_ops.html(제안 배지·[비고대로]) 양쪽이 같은 함수를 쓴다.
+  var PARTNER_TRAVEL_MIN = 50;          // 공항↔호텔↔골프장 이동 시간(분)
+  var PARTNER_BUS_MIN = 20;             // 이 인원부터 큰 차(마이크로버스)를 먼저 쓴다 — 그 아래는 하이에스(정원 9) 먼저
+  var PARTNER_POINTS = ['airport', 'hotel', 'course', 'other'];
+  function _pnorm(s) { return String(s == null ? '' : s).toLowerCase().replace(/[\s　·・\-ー_~〜()（）\[\]「」『』'"\.]/g, ''); }
+  var _PN_STRIP = /(ホテル|호텔|hotel|ゴルフクラブ|カントリークラブ|ゴルフ倶楽部|ゴルフ場|カントリー|골프클럽|골프장|컨트리클럽|컨트리|골프|\bcc\b|\bgc\b)/ig;
+  //  등록표 행(name_ja·name_ko·name·aliases 쉼표 구분) → 비고에서 찾을 때 쓰는 정규화 별칭 목록(2자 이상). 「○○호텔」「○○カントリークラブ」는 접미를 뗀 짧은 꼴도 넣는다.
+  function partnerAliasList(row) {
+    row = row || {}; var raw = [];
+    ['name_ja', 'name_ko', 'name'].forEach(function (k) { if (row[k]) raw.push(String(row[k])); });
+    String(row.aliases == null ? '' : row.aliases).split(/[,，、\n;]/).forEach(function (a) { if (a.trim()) raw.push(a.trim()); });
+    var out = [];
+    raw.forEach(function (a) {
+      var n = _pnorm(a); if (n.length >= 2 && out.indexOf(n) < 0) out.push(n);
+      var s2 = _pnorm(a.replace(_PN_STRIP, ' ')); if (s2.length >= 2 && s2 !== n && out.indexOf(s2) < 0) out.push(s2);
+    });
+    return out;
+  }
+  //  비고 안에서 등록표 이름을 전부 찾는다 → [{id,row,pos,len,alias}] (적힌 순서, 겹치면 긴 별칭 우선 — 「미나미아소트라이얼」 안의 「아소트라이얼」은 안 잡힌다).
+  //  같은 이름이 두 번 적히면 두 번 잡힌다(골프장 2일 연속 같은 코스). 영문 별칭은 단어 경계(restaurant 안의 tau 같은 오탐 방지).
+  function partnerFindNames(text, rows) {
+    var t = _pnorm(text); if (!t) return [];
+    var hits = [];
+    (rows || []).forEach(function (r) {
+      if (!r || r.active === false) return;
+      partnerAliasList(r).forEach(function (a) {
+        var ascii = /^[a-z0-9]+$/.test(a); var i = t.indexOf(a);
+        while (i >= 0) {
+          var ok = true;
+          if (ascii) { var b = t.charAt(i - 1), e = t.charAt(i + a.length); if (/[a-z]/.test(b) || /[a-z]/.test(e)) ok = false; }   // 글자 경계만(앞의 날짜 「11/11kao」는 허용)
+          if (ok) hits.push({ id: r.id, row: r, pos: i, len: a.length, alias: a });
+          i = t.indexOf(a, i + 1);
+        }
+      });
+    });
+    hits.sort(function (x, y) { return x.pos - y.pos || y.len - x.len; });
+    var out = [];
+    hits.forEach(function (h) {
+      var last = out[out.length - 1];
+      if (last && h.pos < last.pos + last.len) { if (h.len > last.len) out[out.length - 1] = h; return; }
+      out.push(h);
+    });
+    return out;
+  }
+  function _psig(s) { var h = 5381; for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+  function _mdToIso(m, d, ref) {
+    var y = Number(String(ref || '').slice(0, 4)) || new Date().getFullYear();
+    var dt = new Date(y, m - 1, d); if (isNaN(dt) || dt.getMonth() !== m - 1) return '';
+    var cand = fmtDate(dt);
+    if (ref && cand < ref) { var c2 = fmtDate(new Date(y + 1, m - 1, d)); if (nightsBetween(ref, c2) <= 60) cand = c2; }   // 연말을 넘기는 체류(12/28 입국의 「1/2」)
+    return cand;
+  }
+  //  비고(엠클릭 비고+현지비고) → 수배 제안. ctx={pax, hotels[], courses[], segFrom, segTo}
+  //   호텔   = 등록표 이름·별칭이 처음 나오는 것(둘 이상이면 hotels 에 전부, 화면이 「확인」)
+  //   객실   = singleRequested(싱글룸 N·전원 싱글·이름 나열·홀수 1명) + 트리플(「트리플 N」·「3인 1실」) → 나머지 2명씩 트윈, 남는 1명은 싱글(odd)
+  //   골프장 = 적힌 순서대로 날짜별 1라운드. 날짜는 이름 앞의 「11/5」「2일차」「둘째날」(또는 바로 뒤의 M/D)을 읽고, 없으면 이어서 하루씩 —
+  //            코스 수가 박수보다 적으면 도착 다음 날부터(4박 3코스 → 2·3·4일차), 같거나 많으면 도착일부터. 추정한 날짜는 explicit=false(화면 「날짜 확인」).
+  //   여행사 = partnerAgency(「여행사: ○○」·「○○투어」)
+  //   sig    = 비고+인원 서명(partner_ops.auto_sig 에 저장 → 비고가 바뀌면 「비고 변경」)
+  function partnerRemarkPlan(text, ctx) {
+    ctx = ctx || {}; var txt = String(text == null ? '' : text);
+    var pax = Number(ctx.pax) || 0, segFrom = String(ctx.segFrom || '').slice(0, 10), segTo = String(ctx.segTo || '').slice(0, 10);
+    var hh = partnerFindNames(txt, ctx.hotels || []), ch = partnerFindNames(txt, ctx.courses || []);
+    var hotel = hh.length ? hh[0] : null;
+    var hotelIds = []; hh.forEach(function (h) { if (hotelIds.indexOf(h.id) < 0) hotelIds.push(h.id); });
+    //  「싱글룸 2」「싱글: 2」처럼 단위 없는 수(Min 비고 양식)를 먼저 본다 — 야마나미 비고용 singleRequested 는 단위 없는 수를 세지 않고 이름 나열로 오독할 수 있다
+    var sm = txt.match(/(싱글|シングル|single)\s*(?:룸|room|ルーム)?\s*[:：]?\s*(\d{1,2})(?![\/:\d])/i);
+    var sg = (sm && Number(sm[2]) > 0 && Number(sm[2]) <= 30) ? { n: Number(sm[2]), how: 'num' } : singleRequested(txt, pax);
+    var single = Math.min(pax, Math.max(0, Number(sg.n) || 0));
+    var tm = txt.match(/트리플\s*(\d{1,2})|(\d{1,2})\s*트리플|トリプル\s*(\d{1,2})|(\d{1,2})\s*トリプル/);
+    var triple = tm ? Number(tm[1] || tm[2] || tm[3] || tm[4]) : (SG_TRIPLE.test(txt) ? 1 : 0);
+    if (triple * 3 + single > pax) triple = Math.max(0, Math.floor((pax - single) / 3));
+    var rest = pax - single - triple * 3; var twin = Math.max(0, Math.floor(rest / 2)); var odd = rest - twin * 2;
+    if (odd === 1) single += 1;
+    var t = _pnorm(txt), nights = (segFrom && segTo) ? nightsBetween(segFrom, segTo) : 0;
+    var cur = segFrom ? isoShift(segFrom, (ch.length && nights > 0 && ch.length < nights) ? 1 : 0) : '';
+    var golf = [], assumed = 0, days = ['첫', '둘', '셋', '넷', '다섯', '여섯', '일곱'];
+    ch.forEach(function (h) {
+      var before = t.slice(Math.max(0, h.pos - 10), h.pos), after = t.slice(h.pos + h.len, h.pos + h.len + 8), date = '', m;
+      if ((m = before.match(/(\d{1,2})\/(\d{1,2})(?:일|日)?$/))) date = _mdToIso(Number(m[1]), Number(m[2]), segFrom);
+      else if ((m = after.match(/^(\d{1,2})\/(\d{1,2})/))) date = _mdToIso(Number(m[1]), Number(m[2]), segFrom);
+      else if ((m = before.match(/(\d{1,2})(?:일차|일째|日目)$/))) date = segFrom ? isoShift(segFrom, Number(m[1]) - 1) : '';
+      else if ((m = before.match(/(첫|둘|셋|넷|다섯|여섯|일곱)째?날$/))) date = segFrom ? isoShift(segFrom, days.indexOf(m[1])) : '';
+      var explicit = !!date;
+      if (!date) { date = cur; if (segTo && date > segTo) date = segTo; assumed++; }
+      golf.push({ courseId: h.id, name: h.row.name_ko || h.row.name_ja || h.row.name || '', date: date, explicit: explicit });
+      if (date) cur = isoShift(date, 1);
+    });
+    var agency = partnerAgency({ remark: txt });
+    return { hotelId: hotel ? hotel.id : null, hotelName: hotel ? (hotel.row.name_ko || hotel.row.name_ja || hotel.row.name || '') : '', hotels: hotelIds,
+      single: single, twin: twin, triple: triple, singleHow: sg.how, odd: odd === 1,
+      golf: golf, golfAssumed: assumed, agency: agency, agencyExplicit: agency !== '메리트투어' && agency !== '여행사(미기재)',
+      empty: !hotel && !golf.length && !SG_WORD.test(txt) && !tm, sig: _psig(t + '|' + pax) };
+  }
+  //  송영 차량 배분 — pax 명을 차량 등록표(capacity·sort)로. 20명 미만=하이에스(정원<20)를 sort 순으로 채우고 모자라면 큰 차, 20명 이상=큰 차(정원 큰 순) 먼저.
+  //  → {vehicles:[{vehicleId,name,capacity,pax}], short(못 태운 인원)}. 8명=하이에스 1대 · 12명=2대 · 20명=마이크로버스 1대.
+  function partnerVehiclePlan(pax, vehicles) {
+    pax = Number(pax) || 0;
+    var vs = (vehicles || []).filter(function (v) { return v && v.active !== false && Number(v.capacity) > 0; })
+      .slice().sort(function (a, b) { return (Number(a.sort) || 0) - (Number(b.sort) || 0) || (Number(a.id) || 0) - (Number(b.id) || 0); });
+    var small = vs.filter(function (v) { return Number(v.capacity) < PARTNER_BUS_MIN; });
+    var big = vs.filter(function (v) { return Number(v.capacity) >= PARTNER_BUS_MIN; }).sort(function (a, b) { return Number(b.capacity) - Number(a.capacity); });
+    var order = pax >= PARTNER_BUS_MIN ? big.concat(small) : small.concat(big);
+    var left = pax, out = [];
+    for (var i = 0; i < order.length && left > 0; i++) { var take = Math.min(left, Number(order[i].capacity)); out.push({ vehicleId: order[i].id, name: order[i].name, capacity: Number(order[i].capacity), pax: take }); left -= take; }
+    return { vehicles: out, short: left };
+  }
+  function _hm(v) { var s = String(v == null ? '' : v).trim(); var m = s.match(/(\d{1,2}):(\d{2})/); if (m) return (m[1].length < 2 ? '0' : '') + m[1] + ':' + m[2]; m = s.match(/^(\d{1,2})(\d{2})$/); if (m) return (m[1].length < 2 ? '0' : '') + m[1] + ':' + m[2]; return ''; }
+  function _hmAdd(hm, d) { var s = _hm(hm); if (!s) return ''; var t = Number(s.slice(0, 2)) * 60 + Number(s.slice(3)) + d; t = Math.max(0, Math.min(23 * 60 + 59, t)); var h = Math.floor(t / 60), mm = t % 60; return (h < 10 ? '0' : '') + h + ':' + (mm < 10 ? '0' : '') + mm; }
+  //  구간(leg) ↔ 지점(from/via/to). 옛 행(지점 없음)은 leg 로 해석한다.
+  function partnerRouteOf(leg) { return { in: ['airport', 'hotel'], golf_out: ['hotel', 'course'], golf_back: ['course', 'hotel'], out: ['hotel', 'airport'] }[leg] || ['', '']; }
+  function partnerLegOf(from, to) { if (from === 'airport') return 'in'; if (to === 'airport') return 'out'; if (from === 'hotel' && to === 'course') return 'golf_out'; if (from === 'course' && to === 'hotel') return 'golf_back'; return 'other'; }
+  //  송영 구간 계획 — team={dep(구간 시작),arr(구간 끝=체크아웃),fullDep,fullArr,arrTime(현지 도착),retTime(현지 출발)} · golf=[{play_date,tee_time}]
+  //   도착일: 공항→호텔 / 그날 골프면 공항→골프장(도착+50+50+15분 안에 티오프면 호텔 경유) + 골프장→호텔
+  //   중간일: 호텔→골프장(티 −60) · 골프장→호텔
+  //   귀국일: 호텔→공항(출발편 −120) / 그날 골프면 호텔→골프장 + 골프장→공항(출발편 −120)
+  //   시각은 예약 전체의 도착·출발일일 때만(콤보의 중간 구간은 비움). 반환 [{trip_date, leg, from_pt, via_pt, to_pt, depart_time}]
+  function partnerLegPlan(team, golf, opts) {
+    team = team || {}; opts = opts || {}; var T = Number(opts.travelMin) || PARTNER_TRAVEL_MIN;
+    var dep = String(team.dep || '').slice(0, 10), arr = String(team.arr || '').slice(0, 10); if (!dep || !arr || dep > arr) return [];
+    var arrTime = (!team.fullDep || String(team.fullDep).slice(0, 10) === dep) ? _hm(team.arrTime) : '';
+    var retTime = (!team.fullArr || String(team.fullArr).slice(0, 10) === arr) ? _hm(team.retTime) : '';
+    var byDate = {}; (golf || []).forEach(function (g) { var d = String(g.play_date || '').slice(0, 10); if (d && !byDate[d]) byDate[d] = g; });
+    var out = [], ds = dep, guard = 0;
+    var push = function (d, leg, f, v, to, tm) { out.push({ trip_date: d, leg: leg, from_pt: f, via_pt: v || '', to_pt: to, depart_time: tm || '' }); };
+    while (ds <= arr && guard++ < 60) {
+      var g = byDate[ds], tee = g ? _hm(String(g.tee_time || '').split(',')[0]) : '';
+      if (ds === dep && ds === arr) { if (g) { push(ds, 'in', 'airport', '', 'course', arrTime); push(ds, 'out', 'course', '', 'airport', retTime ? _hmAdd(retTime, -(T + 70)) : ''); } }
+      else if (ds === dep) {
+        if (g) { var via = (arrTime && tee && _hmAdd(arrTime, 2 * T + 15) <= tee) ? 'hotel' : ''; push(ds, 'in', 'airport', via, 'course', arrTime); push(ds, 'golf_back', 'course', '', 'hotel', ''); }
+        else push(ds, 'in', 'airport', '', 'hotel', arrTime);
+      } else if (ds === arr) {
+        if (g) { push(ds, 'golf_out', 'hotel', '', 'course', tee ? _hmAdd(tee, -(T + 10)) : ''); push(ds, 'out', 'course', '', 'airport', retTime ? _hmAdd(retTime, -(T + 70)) : ''); }
+        else push(ds, 'out', 'hotel', '', 'airport', retTime ? _hmAdd(retTime, -(T + 70)) : '');
+      } else if (g) { push(ds, 'golf_out', 'hotel', '', 'course', tee ? _hmAdd(tee, -(T + 10)) : ''); push(ds, 'golf_back', 'course', '', 'hotel', ''); }
+      ds = isoShift(ds, 1);
+    }
+    return out;
+  }
+
   // ── 자회사(구마모토 시내·트라이얼) 요금 계산 — 현지 요금표(2026-12 新料金)의 **구조**만 규칙으로(숫자는 DB partner_settings.rates, 저장소엔 없음 §3-2)
   //   밤 요금 구분 partnerNightType: 금·토·일·祝日·祝前日 밤 = 'hi'(休日料金) / 그 외 'wk' — 현지 日別 料金表 365일(2026-11~2027-10)과 전부 일치.
   //   골프 요금 구분 partnerGolfType: 토 'sat' · 일/祝日 'sun' · 그 외(금요일 포함) 'wk'.
@@ -1304,6 +1448,9 @@
     partnerAgency: partnerAgency,
     partnerNightType: partnerNightType, partnerGolfType: partnerGolfType, partnerQuote: partnerQuote,
     partnerRateRows: partnerRateRows, partnerRateCands: partnerRateCands, partnerPrice: partnerPrice,
+    PARTNER_TRAVEL_MIN: PARTNER_TRAVEL_MIN, PARTNER_BUS_MIN: PARTNER_BUS_MIN, PARTNER_POINTS: PARTNER_POINTS,
+    partnerAliasList: partnerAliasList, partnerFindNames: partnerFindNames, partnerRemarkPlan: partnerRemarkPlan,
+    partnerVehiclePlan: partnerVehiclePlan, partnerLegPlan: partnerLegPlan, partnerRouteOf: partnerRouteOf, partnerLegOf: partnerLegOf,
     nmCodeConflict: nmCodeConflict,
     weekday: weekday,
     mdWd: mdWd,

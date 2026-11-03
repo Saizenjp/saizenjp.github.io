@@ -169,3 +169,64 @@ test('partnerQuote v2 — 행 배열: 호텔별·코스별·좁은 기간 반영
   const b = C.partnerQuote({ from: '2026-11-09', to: '2026-11-13', twin: 2, single: 1, pax: 5 }, C.partnerRateRows(legacy));
   assert.equal(a.total, b.total); assert.equal(a.complete, true); assert.equal(a.transfer, 0);
 });
+
+// ── 비고 자동 채움 · 송영 차량/구간 (Min 2026-11-03) ──
+const HOTELS = [
+  { id: 1, name_ja: 'ワシントンホテル', name_ko: '워싱턴 호텔', aliases: '워싱턴,워싱톤,ワシントン,washington' },
+  { id: 2, name_ja: 'ホテルタウ', name_ko: '호텔 타우', aliases: '타우,タウ,tau' },
+  { id: 3, name_ja: 'アマネクホテル', name_ko: '아마넥 호텔', aliases: '아마넥' }];
+const COURSES = [
+  { id: 1, name_ja: 'グランドチャンピオンゴルフクラブ', name_ko: '그랜드 챔피언', aliases: '그랜드챔피언,그랜드,그챔' },
+  { id: 2, name_ja: '熊本中央カントリークラブ', name_ko: '구마모토 츄오', aliases: '추오,츄오,중앙' },
+  { id: 3, name_ja: '阿蘇グリーンヒルカントリークラブ', name_ko: '그린힐', aliases: '아소그린힐' },
+  { id: 4, name_ja: 'KAOゴルフ倶楽部', name_ko: 'KAO CC', aliases: 'KAO,카오' },
+  { id: 5, name_ja: '阿蘇トライアル', name_ko: '아소 트라이얼', aliases: '아소트라이얼' },
+  { id: 6, name_ja: '南阿蘇トライアル', name_ko: '미나미아소 트라이얼', aliases: '미나미아소트라이얼,미나미아소' }];
+test('partnerFindNames — 적힌 순서·긴 별칭 우선(미나미아소 안의 아소트라이얼 제외)·같은 코스 2회·영문 단어 경계', () => {
+  const hits = C.partnerFindNames('골프장: 추오, 미나미아소트라이얼, KAO, 추오', COURSES).map(h => h.id);
+  assert.deepEqual(hits, [2, 6, 4, 2]);
+  assert.deepEqual(C.partnerFindNames('restaurant 예약', HOTELS), []);                 // tau 오탐 없음
+  assert.deepEqual(C.partnerFindNames('TAU 호텔', HOTELS).map(h => h.id), [2]);
+  assert.deepEqual(C.partnerFindNames('그랜드 챔피언 / 그린힐', COURSES).map(h => h.id), [1, 3]);
+});
+test('partnerRemarkPlan — 호텔·싱글·트리플·골프장 날짜(추정/명시)·여행사·서명', () => {
+  const p = C.partnerRemarkPlan('여행사: 한성투어 / 워싱턴호텔 / 싱글룸 2 / 골프장 그랜드챔피언, 추오, 미나미아소트라이얼', { pax: 5, hotels: HOTELS, courses: COURSES, segFrom: '2026-11-09', segTo: '2026-11-13' });
+  assert.equal(p.hotelId, 1); assert.equal(p.agency, '한성투어'); assert.equal(p.agencyExplicit, true);
+  assert.equal(p.single, 3); assert.equal(p.twin, 1); assert.equal(p.triple, 0); assert.equal(p.odd, true);   // 싱글 2 + 남는 1명도 싱글
+  assert.deepEqual(p.golf.map(g => [g.courseId, g.date, g.explicit]), [[1, '2026-11-10', false], [2, '2026-11-11', false], [6, '2026-11-12', false]]);   // 4박 3코스 → 2·3·4일차
+  assert.equal(p.golfAssumed, 3); assert.equal(p.empty, false); assert.ok(p.sig);
+  const q = C.partnerRemarkPlan('11/9 그랜드챔피언 11/10 추오 11/11 KAO 11/12 그린힐 / 아마넥 / 전원 싱글', { pax: 4, hotels: HOTELS, courses: COURSES, segFrom: '2026-11-09', segTo: '2026-11-13' });
+  assert.equal(q.hotelId, 3); assert.equal(q.single, 4); assert.equal(q.twin, 0);
+  assert.deepEqual(q.golf.map(g => [g.courseId, g.date, g.explicit]), [[1, '2026-11-09', true], [2, '2026-11-10', true], [4, '2026-11-11', true], [3, '2026-11-12', true]]);
+  const r = C.partnerRemarkPlan('트리플 1 / 워싱턴 / 2일차 추오 / 둘째날 그린힐', { pax: 5, hotels: HOTELS, courses: COURSES, segFrom: '2026-12-28', segTo: '2026-12-31' });
+  assert.equal(r.triple, 1); assert.equal(r.twin, 1); assert.equal(r.single, 0);
+  assert.deepEqual(r.golf.map(g => g.date), ['2026-12-29', '2026-12-29']);
+  const y = C.partnerRemarkPlan('1/2 추오', { pax: 2, hotels: HOTELS, courses: COURSES, segFrom: '2026-12-28', segTo: '2027-01-03' });
+  assert.equal(y.golf[0].date, '2027-01-02');                                                                  // 연말 넘김
+  const e = C.partnerRemarkPlan('', { pax: 4, hotels: HOTELS, courses: COURSES, segFrom: '2026-11-09', segTo: '2026-11-13' });
+  assert.equal(e.hotelId, null); assert.deepEqual(e.golf, []); assert.equal(e.twin, 2); assert.equal(e.single, 0); assert.equal(e.empty, true);
+  assert.equal(C.partnerRemarkPlan('싱글 1', { pax: 3 }).sig !== C.partnerRemarkPlan('싱글 2', { pax: 3 }).sig, true);
+});
+test('partnerVehiclePlan — 8명=하이에스 1대 · 12명=2대 · 19명=3대 · 20명=마이크로버스 · 30명=마이크로+하이에스', () => {
+  const V = [{ id: 1, name: 'H1', capacity: 9, sort: 1 }, { id: 2, name: 'H2', capacity: 9, sort: 2 }, { id: 3, name: 'H3', capacity: 9, sort: 3 }, { id: 4, name: 'Micro', capacity: 25, sort: 4 }];
+  const ids = n => C.partnerVehiclePlan(n, V).vehicles.map(v => v.vehicleId + ':' + v.pax);
+  assert.deepEqual(ids(8), ['1:8']); assert.deepEqual(ids(12), ['1:9', '2:3']); assert.deepEqual(ids(19), ['1:9', '2:9', '3:1']);
+  assert.deepEqual(ids(20), ['4:20']); assert.deepEqual(ids(30), ['4:25', '1:5']);
+  assert.equal(C.partnerVehiclePlan(60, V).short, 60 - 52);
+  assert.deepEqual(C.partnerVehiclePlan(5, [{ id: 9, capacity: 9, active: false }]).vehicles, []);
+});
+test('partnerLegPlan — 도착일 골프(호텔 경유/직행)·중간일·귀국일 골프→공항·구간↔지점', () => {
+  const team = { dep: '2026-11-09', arr: '2026-11-13', fullDep: '2026-11-09', fullArr: '2026-11-13', arrTime: '09:25', retTime: '10:30' };
+  const legs = C.partnerLegPlan(team, [{ play_date: '2026-11-09', tee_time: '12:00' }, { play_date: '2026-11-10', tee_time: '09:00' }, { play_date: '2026-11-13', tee_time: '07:30' }]);
+  assert.deepEqual(legs.map(l => [l.trip_date.slice(5), l.leg, l.from_pt, l.via_pt, l.to_pt, l.depart_time]), [
+    ['11-09', 'in', 'airport', 'hotel', 'course', '09:25'], ['11-09', 'golf_back', 'course', '', 'hotel', ''],
+    ['11-10', 'golf_out', 'hotel', '', 'course', '08:00'], ['11-10', 'golf_back', 'course', '', 'hotel', ''],
+    ['11-13', 'golf_out', 'hotel', '', 'course', '06:30'], ['11-13', 'out', 'course', '', 'airport', '08:30']]);
+  const direct = C.partnerLegPlan(team, [{ play_date: '2026-11-09', tee_time: '10:30' }]);
+  assert.equal(direct[0].via_pt, '');                                                                          // 09:25+115분 > 10:30 → 직행
+  const plain = C.partnerLegPlan(team, []);
+  assert.deepEqual(plain.map(l => [l.leg, l.from_pt, l.to_pt, l.depart_time]), [['in', 'airport', 'hotel', '09:25'], ['out', 'hotel', 'airport', '08:30']]);
+  const combo = C.partnerLegPlan({ dep: '2026-11-11', arr: '2026-11-13', fullDep: '2026-11-09', fullArr: '2026-11-13', arrTime: '09:25', retTime: '10:30' }, []);
+  assert.equal(combo[0].depart_time, '');                                                                      // 콤보 중간 구간 시작일 = 공항 도착 아님
+  assert.deepEqual(C.partnerRouteOf('golf_out'), ['hotel', 'course']); assert.equal(C.partnerLegOf('course', 'airport'), 'out'); assert.equal(C.partnerLegOf('hotel', 'hotel'), 'other');
+});

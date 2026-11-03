@@ -17,7 +17,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 수배 목록</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=57"></script>
+<script src="../assets/saizen-core.js?v=58"></script>
 <style>
   /* ── 공통 chrome (docs/ops-page-skeleton.html 정본 — 통째 복사) ── */
   :root{
@@ -159,8 +159,17 @@
   table.rt{border-collapse:collapse;font-size:12px;width:100%} .rt th{font-size:10.5px;font-weight:800;color:var(--text2);padding:3px 4px;border-bottom:1px solid var(--border2);text-align:center;white-space:nowrap} .rt th.lb,.rt td.lb{text-align:left;white-space:nowrap;font-weight:700;color:var(--text2)}
   .rt td{padding:2px 3px;border-bottom:1px solid var(--border)} .rt input.rin{width:86px;padding:4px 6px;font-size:12px;text-align:right;border:1px solid var(--border2);border-radius:6px;background:var(--surface)}
   textarea.inp{min-height:54px;resize:vertical}
+  /* 초안·저장(Min 2026-11-03 「잘못 수정하면 안 되게 저장 버튼을 따로」) — 상세·날짜별 배차·등록표는 [저장]을 눌러야 DB 에 쓴다 */
+  .savebar{position:sticky;top:0;z-index:6;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface);border-bottom:1px solid var(--border);padding:6px 8px 8px;margin:4px 0 6px;font-size:12px;font-weight:700;color:var(--muted)}
+  .savebar.on{background:#fbf3e2;border:1px solid #e8d7a8;color:#7a5a16;border-radius:8px}
+  .savebar .sp{margin-left:auto;display:flex;gap:6px}
+  .rmk{background:var(--surface2);border:1px dashed var(--accent);border-radius:9px;padding:8px 10px;font-size:12.5px;margin-top:8px;line-height:1.5}
+  .rmk b{color:var(--accentDeep)} .rmk .plus{float:right;margin-left:8px} .rmk .hint{display:block;margin-top:4px}
+  .bd.sug{background:#eef3e4;color:var(--accentDeep)} .lt small.sug{color:var(--accent2);font-weight:700}
+  .regsave{margin-left:auto;display:flex;gap:6px;align-items:center} .mini tr.dirty td{background:#fbf3e2} .lt tr.dirty td{background:#fbf3e2}
+  .grow .auto{font-size:10px;font-weight:800;color:var(--accent2);border:1px solid var(--accent2);border-radius:4px;padding:0 4px;justify-self:center}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.7">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.8">
 </head>
 <body data-so-area="partner_kumamoto partner_trial">
 <div class="topbar so-bar">
@@ -202,6 +211,7 @@
     <input class="inp" id="q" autocomplete="off" style="padding:5px 9px;min-width:160px">
     <span class="hint" id="qcnt"></span>
     <button class="btn sm ghost" id="btn-print" type="button"></button>
+    <button class="btn sm" id="btn-remark-all" type="button" hidden></button>
     <span class="sum" id="sum"></span>
   </div>
   <div class="desc" id="t-desc"></div>
@@ -225,6 +235,7 @@
       </div>
       <button class="btn sm" id="btn-dprop" type="button"></button>
       <button class="btn sm ghost" id="btn-dprint" type="button"></button>
+      <button class="btn sm" id="btn-dsave" type="button" hidden></button>
       <span class="sum" id="dsum"></span>
     </div>
     <div class="chips" id="dveh" style="margin-bottom:8px"></div>
@@ -245,12 +256,13 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=36.7"></script>
+<script src="../assets/saizen-ops.js?v=36.8"></script>
 <script>
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let supa=null, YM='', VIEW='list', BR=new Set(), SEL=null, D='', HAS_OPS=true, LOADING=false;
 let TEAMS=[], OPS={}, GOLF={}, DISP={}, DAYROWS=[], DAYTEAMS={}, HOTELS=[], COURSES=[], VEHICLES=[], STAFF=[], DEFAULTS={}, RATES={}, RATEROWS=[], HAS_RATES=false, HAS_USE_BLOCK=false, PENDP=[];
+let HAS_PTS=false, HAS_ALIASES=false, HAS_AUTOSIG=false, HAS_GAUTO=false, PLAN={}, DR=null, DDR={}, REGDIRTY={}, TMP=-1;   // SQL 162 프로브 · 비고 플랜 캐시 · 초안(상세/날짜별 배차/등록표)
 
 // ── i18n(로컬 사전, ja/ko/en 키 동일) ──
 const L={
@@ -277,6 +289,12 @@ const L={
     dToday:'今日', dProp:'この日の提案を追加', dPrint:'配車表 印刷', dSum:(n,v)=>`${n}便 · 車両 ${v}台`, dTeam:'チーム', dPax:'人数', dispHint:'時刻が同じ同一車両は相乗り(人数合計が定員を超えると赤)。灰色の行は提案 — 「追加」で保存されます。', trips:n=>n+'便', load:(p,c)=>`${p}／${c}名`,
     defHotels:'ホテル（ブロック）', defCourses:'ゴルフ場', defVehicles:'車両', defStaff:'担当者', defRates:'料金表（1人・円）', nameJa:'名称(日)', nameKo:'名称(韓)', blockTwin:'ツイン確保', blockFrom:'開始', blockTo:'終了', surcharge:'1人1泊加算', capacity:'定員', active:'使用', add:'＋ 追加', addPrompt:'名称を入力', del:'削除', delConfirm:'削除しますか？（使われている行は「使用」を外してください）',
     rHotel:'ホテル', rGolf:'ゴルフ(1R)', rGuide:'引率', rWk:'平日', rHi:'休日(金土日・祝・祝前日)', rSat:'土', rSun:'日・祝', rDay:'1日', rLast:'帰国日', rSave:'料金表を保存', rHint:'夜の区分: 金・土・日・祝日・祝前日の夜=休日料金。ゴルフ: 土／日・祝で別料金、金曜は平日。引率: 泊ごとに1日分、帰国日は帰国日分。',
+    save:'保存', cancel:'取消', unsaved:'未保存の変更があります — [保存]で反映', savedState:'保存済み', unsavedConfirm:'未保存の変更があります。破棄して移動しますか？', unsavedBadge:'未保存', applied:'入力しました（[保存]で反映）',
+    remarkH:'備考から読んだ手配', remarkTag:'備考', applyRemark:'備考どおりに入力', applyRemarkAll:n=>`備考どおりに一括入力(${n})`, applyRemarkAllConfirm:n=>`手配行のない ${n}チームに、備考から読んだホテル・部屋数・ゴルフ場を入れますか？（すぐ保存されます）`, applyRemarkAllDone:(n,g)=>`${n}チーム入力（ゴルフ ${g}行）`,
+    remarkNone:'備考に手配情報（ホテル・シングル・ゴルフ場）がありません', remarkGolf:n=>`ゴルフ ${n}R`, remarkOdd:'余り1名はシングル', remarkDateAssumed:'日付は推定（確認）', remarkFmt:'備考の書き方: 「여행사: ○○ / 워싱턴 / 싱글룸 2 / 골프장: 그랜드챔피언, 추오, 그린힐」— 日付は「11/5 추오」「2일차 추오」のように',
+    issRemark:'備考 未反映', issRemarkChanged:'備考 変更あり', applyGolfReplace:'既存のゴルフ行を備考の内容で置き換えますか？（「いいえ」=ゴルフはそのまま）', autoRow:'備考',
+    ptAirport:'空港', ptHotel:'ホテル', ptCourse:'ゴルフ場', ptOther:'その他', via:'経由', dRoute:'区間', vehSplit:(i,n,p)=>`${i}/${n}台 · ${p}名`,
+    aliases:'別名(カンマ区切り)', regSave:n=>`保存(${n})`, dSave:n=>`保存(${n})`, delRowConfirm:'この行を削除しますか？',
     defHotelBrand:'既定ホテル', defStaffBrand:'既定担当', brandK:'熊本市内', brandT:'トライアル', defSave:'既定値を保存',
     pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', printed:'印刷' },
     fail:'失敗' },
@@ -303,6 +321,12 @@ const L={
     dToday:'오늘', dProp:'이 날 제안 추가', dPrint:'배차표 인쇄', dSum:(n,v)=>`${n}편 · 차량 ${v}대`, dTeam:'팀', dPax:'인원', dispHint:'시각이 같은 같은 차량은 합승(인원 합이 정원을 넘으면 빨강). 회색 줄은 제안 — 「추가」를 눌러 저장합니다.', trips:n=>n+'편', load:(p,c)=>`${p}/${c}명`,
     defHotels:'호텔(블록)', defCourses:'골프장', defVehicles:'차량', defStaff:'담당자', defRates:'요금표(1인·円)', nameJa:'이름(일)', nameKo:'이름(한)', blockTwin:'트윈 확보', blockFrom:'시작', blockTo:'종료', surcharge:'1인 1박 가산', capacity:'정원', active:'사용', add:'＋ 추가', addPrompt:'이름을 입력', del:'삭제', delConfirm:'삭제할까요? (쓰이고 있는 줄은 「사용」을 끄세요)',
     rHotel:'호텔', rGolf:'골프(1R)', rGuide:'인솔', rWk:'평일', rHi:'휴일(금토일·공휴일·공휴일 전날)', rSat:'토', rSun:'일·공휴일', rDay:'1일', rLast:'귀국일', rSave:'요금표 저장', rHint:'밤 구분: 금·토·일·공휴일·공휴일 전날 밤=휴일 요금. 골프: 토 / 일·공휴일 별도 요금, 금요일은 평일. 인솔: 밤마다 1일분, 귀국일은 귀국일분.',
+    save:'저장', cancel:'취소', unsaved:'저장하지 않은 변경이 있습니다 — [저장]을 눌러야 반영됩니다', savedState:'저장됨', unsavedConfirm:'저장하지 않은 변경이 있습니다. 버리고 이동할까요?', unsavedBadge:'미저장', applied:'채웠습니다([저장]을 눌러야 반영)',
+    remarkH:'비고에서 읽은 수배', remarkTag:'비고', applyRemark:'비고대로 채우기', applyRemarkAll:n=>`비고대로 일괄 채우기(${n})`, applyRemarkAllConfirm:n=>`수배 행이 없는 ${n}팀에 비고에서 읽은 호텔·객실 수·골프장을 넣을까요? (바로 저장됩니다)`, applyRemarkAllDone:(n,g)=>`${n}팀 채움(골프 ${g}줄)`,
+    remarkNone:'비고에 수배 정보(호텔·싱글·골프장)가 없습니다', remarkGolf:n=>`골프 ${n}R`, remarkOdd:'남는 1명은 싱글', remarkDateAssumed:'날짜는 추정(확인)', remarkFmt:'비고 쓰는 법: 「여행사: ○○ / 워싱턴 / 싱글룸 2 / 골프장: 그랜드챔피언, 추오, 그린힐」 — 날짜는 「11/5 추오」「2일차 추오」처럼',
+    issRemark:'비고 미반영', issRemarkChanged:'비고 변경됨', applyGolfReplace:'기존 골프 줄을 비고 내용으로 바꿀까요? (「아니오」=골프는 그대로)', autoRow:'비고',
+    ptAirport:'공항', ptHotel:'호텔', ptCourse:'골프장', ptOther:'기타', via:'경유', dRoute:'구간', vehSplit:(i,n,p)=>`${i}/${n}대 · ${p}명`,
+    aliases:'별칭(쉼표 구분)', regSave:n=>`저장(${n})`, dSave:n=>`저장(${n})`, delRowConfirm:'이 줄을 삭제할까요?',
     defHotelBrand:'기본 호텔', defStaffBrand:'기본 담당', brandK:'구마모토 시내', brandT:'트라이얼', defSave:'기본값 저장',
     pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', printed:'印刷' },
     fail:'실패' },
@@ -329,6 +353,12 @@ const L={
     dToday:'Today', dProp:'Add proposals for this day', dPrint:'Print dispatch sheet', dSum:(n,v)=>`${n} trips · ${v} vehicles`, dTeam:'Team', dPax:'Pax', dispHint:'Same vehicle at the same time = shared ride (red when pax exceed capacity). Grey rows are proposals — press “Add” to save.', trips:n=>n+' trips', load:(p,c)=>`${p}/${c} pax`,
     defHotels:'Hotels (blocks)', defCourses:'Golf courses', defVehicles:'Vehicles', defStaff:'Staff', defRates:'Rate card (per person, ¥)', nameJa:'Name (JA)', nameKo:'Name (KO)', blockTwin:'Twin block', blockFrom:'From', blockTo:'To', surcharge:'Add pp/night', capacity:'Capacity', active:'Active', add:'+ Add', addPrompt:'Enter a name', del:'Delete', delConfirm:'Delete? (if in use, untick “Active” instead)',
     rHotel:'Hotel', rGolf:'Golf (1R)', rGuide:'Escort', rWk:'Weekday', rHi:'Holiday (Fri/Sat/Sun · holiday · eve)', rSat:'Sat', rSun:'Sun · holiday', rDay:'Per day', rLast:'Departure day', rSave:'Save rate card', rHint:'Night type: Fri/Sat/Sun, holidays and holiday eves = holiday rate. Golf: Sat and Sun/holiday rates, Friday = weekday. Escort: one day per night plus the departure-day rate.',
+    save:'Save', cancel:'Cancel', unsaved:'Unsaved changes — press Save to apply', savedState:'Saved', unsavedConfirm:'There are unsaved changes. Discard them?', unsavedBadge:'unsaved', applied:'Filled in (press Save to apply)',
+    remarkH:'Read from the remark', remarkTag:'remark', applyRemark:'Fill from remark', applyRemarkAll:n=>`Fill all from remarks (${n})`, applyRemarkAllConfirm:n=>`Fill hotel, rooms and courses from the remarks for ${n} teams without an arrangement row? (saved immediately)`, applyRemarkAllDone:(n,g)=>`${n} teams filled (golf ${g} rows)`,
+    remarkNone:'No arrangement info (hotel · single · course) in the remark', remarkGolf:n=>`Golf ${n}R`, remarkOdd:'odd 1 pax → single', remarkDateAssumed:'dates assumed (check)', remarkFmt:'Remark format: “여행사: ○○ / 워싱턴 / 싱글룸 2 / 골프장: 그랜드챔피언, 추오, 그린힐” — dates like “11/5 추오” or “2일차 추오”',
+    issRemark:'Remark not applied', issRemarkChanged:'Remark changed', applyGolfReplace:'Replace the existing golf rows with the remark? (“No” keeps golf as is)', autoRow:'auto',
+    ptAirport:'Airport', ptHotel:'Hotel', ptCourse:'Course', ptOther:'Other', via:'via', dRoute:'Route', vehSplit:(i,n,p)=>`${i}/${n} veh · ${p} pax`,
+    aliases:'Aliases (comma)', regSave:n=>`Save (${n})`, dSave:n=>`Save (${n})`, delRowConfirm:'Delete this row?',
     defHotelBrand:'Default hotel', defStaffBrand:'Default staff', brandK:'Kumamoto city', brandT:'Trial', defSave:'Save defaults',
     pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', printed:'印刷' },
     fail:'Failed' }
@@ -383,10 +413,10 @@ function legLabel(l){ return tx({in:'lIn',golf_out:'lGolfOut',golf_back:'lGolfBa
 function ratesReady(){ return RATEROWS.length>0; }
 
 // ── 견적·점검 ──
-function quoteFor(t){
+function quoteFor(t, ov){   // ov={ops,golf,disp} = 상세 초안(저장 전 값으로 견적)
   if(!(window.SZCore&&SZCore.partnerQuote)) return null;
-  const o=ops(t.seq), g=golf(t.seq).filter(r=>r.course_id||r.course_note), h=hotelById(o.hotel_id);
-  const tr={}; disp(t.seq).forEach(r=>{ if(r.vehicle_id&&r.trip_date) tr[r.trip_date+'|'+r.vehicle_id]={date:r.trip_date,vehicleId:r.vehicle_id}; });   // 송영 = 저장 배차의 (날짜·차량) 대일
+  const o=ov?ov.ops:ops(t.seq), g=(ov?ov.golf:golf(t.seq)).filter(r=>r.course_id||r.course_note), h=hotelById(o.hotel_id);
+  const tr={}; (ov?ov.disp:disp(t.seq)).forEach(r=>{ if(r.vehicle_id&&r.trip_date) tr[r.trip_date+'|'+r.vehicle_id]={date:r.trip_date,vehicleId:r.vehicle_id}; });   // 송영 = 저장 배차의 (날짜·차량) 대일
   return SZCore.partnerQuote({ from:t.dep, to:t.arr, hotelId:o.hotel_id||null, golf:g.length?g.map(r=>({date:r.play_date,courseId:r.course_id||null})):undefined, transfer:Object.values(tr),
     surcharge:h?h.surcharge:0, twin:o.twin||0, single:o.single||0, triple:o.triple||0, pax:t.pax, adj:o.price_adj||0, singleRate:(o.single_rate==null?'':o.single_rate) }, RATEROWS);
 }
@@ -406,7 +436,45 @@ function issues(t){
   if(!disp(t.seq).length) out.push({k:'issDisp',sev:'warn'});
   const h=hotelById(o.hotel_id); if(h&&o.use_block!==false&&nightsOf(t).some(ds=>blockOn(h,ds)>0&&blockUse(h.id,ds)>blockOn(h,ds))) out.push({k:'issBlock',sev:'err'});
   if(ratesReady()&&q){ const miss=q.missing.filter(m=>!m.startsWith('single:')); if(miss.length) out.push({k:'issRateMissing',sev:'warn',n:miss.length}); }
+  const p=planFor(t); if(!OPS[t.seq]&&!p.empty) out.push({k:'issRemark',sev:'sug'}); else if(HAS_AUTOSIG&&o.auto_sig&&p.sig&&o.auto_sig!==p.sig) out.push({k:'issRemarkChanged',sev:'warn'});
   return out;
+}
+// ── 비고 플랜(SZCore.partnerRemarkPlan — step1 의 자동 채움과 같은 규칙) · 초안(DR) ──
+function planFor(t){ if(PLAN[t.seq]) return PLAN[t.seq]; let p; try{ p=(window.SZCore&&SZCore.partnerRemarkPlan)?SZCore.partnerRemarkPlan([t.remark,t.remark_local].filter(Boolean).join('\n'),{pax:t.pax,hotels:HOTELS,courses:COURSES,segFrom:t.dep,segTo:t.arr}):null; }catch(e){ p=null; }
+  p=p||{hotelId:null,hotels:[],single:0,twin:0,triple:0,golf:[],golfAssumed:0,agency:'',agencyExplicit:false,empty:true,sig:''}; PLAN[t.seq]=p; return p; }
+function remarkCandidates(){ return HAS_OPS?visible().filter(t=>!OPS[t.seq]&&!planFor(t).empty):[]; }
+function draftFor(t){ if(DR&&DR.seq===t.seq) return DR; DR={seq:t.seq, ops:Object.assign({},OPS[t.seq]||{}), golf:(GOLF[t.seq]||[]).map(r=>Object.assign({},r)), disp:(DISP[t.seq]||[]).map(r=>Object.assign({},r)), golfDel:[], dispDel:[], dirty:false}; return DR; }
+function dirty(){ return !!(DR&&DR.dirty); }
+function mark(){ if(DR&&!DR.dirty){ DR.dirty=true; renderList(); } else if(DR) DR.dirty=true; }
+function canLeave(){ if(!dirty()&&!Object.keys(DDR).length) return true; return confirm(tx('unsavedConfirm')); }
+function rowChanged(saved, row){ if(!saved) return true; return Object.keys(row).some(k=>k!=='id'&&String(row[k]==null?'':row[k])!==String(saved[k]==null?'':saved[k])); }
+async function commitDraft(){
+  const t=teamOf(DR&&DR.seq); if(!t||!DR) return false; if(!HAS_OPS){ toast(tx('noSql'),'warn'); return false; }
+  const d=DR; let ok=true;
+  const patch={}; OPS_FIELDS.concat(HAS_USE_BLOCK?['use_block']:[]).concat(HAS_AUTOSIG?['auto_sig']:[]).forEach(f=>{ if(d.ops[f]!==undefined) patch[f]=d.ops[f]; });
+  const prevParty=(OPS[t.seq]||{}).party||null;
+  if(!(await saveOps(t.seq,patch,'save',true))) ok=false;
+  if(ok&&d.ops.party&&(Number(d.ops.party)!==Number(prevParty))){ const v=Number(d.ops.party); await saveOps(v,{party:Math.min(v,t.seq)},'party',true); await saveOps(t.seq,{party:Math.min(v,t.seq)},'party',true); }
+  for(const id of d.golfDel){ const {error}=await supa.from('partner_golf').delete().eq('id',id); if(error){ toast(tx('saveFail')+': '+error.message,'err'); ok=false; } else { GOLF[t.seq]=(GOLF[t.seq]||[]).filter(r=>r.id!==id); logChange(t.seq,'golf_del',String(id)); } }
+  for(const r of d.golf){ const row=Object.assign({},r); if(!HAS_GAUTO) delete row.auto; const saved=(GOLF[t.seq]||[]).find(x=>x.id===r.id); if(row.id<0) delete row.id; else if(!rowChanged(saved,row)) continue; if(!(await saveGolf(row))) ok=false; }
+  for(const id of d.dispDel){ const {error}=await supa.from('partner_dispatch').delete().eq('id',id); if(error){ toast(tx('saveFail')+': '+error.message,'err'); ok=false; } else { DISP[t.seq]=(DISP[t.seq]||[]).filter(r=>r.id!==id); DAYROWS=DAYROWS.filter(r=>r.id!==id); logChange(t.seq,'dispatch_del',String(id)); } }
+  for(const r of d.disp){ const row=Object.assign({},r); if(!HAS_PTS){ delete row.from_pt; delete row.via_pt; delete row.to_pt; } const saved=(DISP[t.seq]||[]).find(x=>x.id===r.id); if(row.id<0) delete row.id; else if(!rowChanged(saved,row)) continue; if(!(await saveDisp(row))) ok=false; }
+  if(ok){ DR=null; toast(tx('saved'),'ok'); }
+  renderAll(); return ok;
+}
+function applyRemarkToDraft(t,d){
+  const p=planFor(t); if(p.empty){ toast(tx('remarkNone'),'warn'); return; }
+  if(p.hotelId) d.ops.hotel_id=p.hotelId;
+  d.ops.twin=p.twin; d.ops.single=p.single; d.ops.triple=p.triple;
+  if(!d.ops.staff&&(DEFAULTS.staff||{})[t.brand]) d.ops.staff=DEFAULTS.staff[t.brand];
+  if(p.agencyExplicit&&!d.ops.agency&&p.agency!==t.agency) d.ops.agency=p.agency;
+  if(HAS_AUTOSIG) d.ops.auto_sig=p.sig;
+  if(p.golf.length){
+    let keep=d.golf, go=true;
+    if(HAS_GAUTO) keep=d.golf.filter(r=>!r.auto); else if(d.golf.length){ if(confirm(tx('applyGolfReplace'))) keep=[]; else go=false; }
+    if(go){ d.golf.forEach(r=>{ if(!keep.includes(r)&&r.id>0) d.golfDel.push(r.id); }); d.golf=keep; p.golf.forEach((x,i)=>d.golf.push({id:TMP--,event_seq:t.seq,play_date:x.date,course_id:x.courseId,sort:keep.length+i,auto:true})); }
+  }
+  mark(); renderDetail(); toast(tx('applied'),'ok');
 }
 
 // ── 로드 ──
@@ -443,13 +511,17 @@ async function load(){
       dep:String(b.seg_from||b.dep_date||'').slice(0,10), arr:String(b.seg_to||b.arr_date||'').slice(0,10), fullDep:String(b.dep_date||'').slice(0,10), fullArr:String(b.arr_date||'').slice(0,10),
       combo:!!b.combo, sure:b.seg_sure!==false, product:b.product_name||'', origin:b.origin||'', airline:b.airline||'', remark:b.remark||'', remark_local:b.remark_local||'', agency:b.agency||'',
       members:(byTeam[b.event_seq]||[]).sort((a,c)=>(a.seq_in_team||0)-(c.seq_in_team||0)) }));
-    OPS={}; GOLF={}; DISP={};
+    OPS={}; GOLF={}; DISP={}; PLAN={}; DR=null; DDR={};
     try{
       await loadRefs();
       const [o,g,d]=await Promise.all([fetchIn('partner_ops','*','event_seq',seqs), fetchIn('partner_golf','*','event_seq',seqs), fetchIn('partner_dispatch','*','event_seq',seqs)]);
       o.forEach(r=>{ OPS[r.event_seq]=r; }); g.forEach(r=>{ (GOLF[r.event_seq]=GOLF[r.event_seq]||[]).push(r); }); d.forEach(r=>{ (DISP[r.event_seq]=DISP[r.event_seq]||[]).push(r); });
       HAS_OPS=true; $('#nosql').hidden=true;
       try{ const pr=await supa.from('partner_ops').select('use_block',{count:'exact',head:true}); HAS_USE_BLOCK=!pr.error; }catch(e){ HAS_USE_BLOCK=false; }   // SQL 161 적용 여부(블록 사용 체크)
+      try{ const pr=await supa.from('partner_dispatch').select('from_pt',{count:'exact',head:true}); HAS_PTS=!pr.error; }catch(e){ HAS_PTS=false; }         // SQL 162 송영 구간(출발·경유·도착)
+      try{ const pr=await supa.from('partner_ops').select('auto_sig',{count:'exact',head:true}); HAS_AUTOSIG=!pr.error; }catch(e){ HAS_AUTOSIG=false; }     // SQL 162 비고 서명
+      try{ const pr=await supa.from('partner_golf').select('auto',{count:'exact',head:true}); HAS_GAUTO=!pr.error; }catch(e){ HAS_GAUTO=false; }            // SQL 162 자동 골프 줄
+      HAS_ALIASES=HOTELS.some(h=>Object.prototype.hasOwnProperty.call(h,'aliases'))||COURSES.some(c=>Object.prototype.hasOwnProperty.call(c,'aliases'));
     }catch(e){ const m=String(e&&e.message||e); if(/partner_(ops|golf|dispatch|hotels|courses|vehicles|staff|settings)|schema cache|does not exist/i.test(m)){ HAS_OPS=false; $('#nosql').hidden=false; } else throw e; }
     if(SEL&&!TEAMS.some(t=>t.seq===SEL)) SEL=null;
     renderAll();
@@ -459,12 +531,12 @@ async function load(){
 
 // ── 저장 ──
 const OPS_FIELDS=['agency','staff','hotel_id','hotel_note','twin','single','triple','single_rate','price_adj','price_note','party','memo','roster_hotel_at','roster_hotel_by','roster_golf_at','roster_golf_by','itinerary_at','itinerary_by','invoiced_at','invoiced_by'];
-async function saveOps(seq, patch, label){
+async function saveOps(seq, patch, label, quiet){
   if(!HAS_OPS){ toast(tx('noSql'),'warn'); return false; }
-  const cur=OPS[seq]||{}; const row={event_seq:seq}; OPS_FIELDS.concat(HAS_USE_BLOCK?['use_block']:[]).forEach(f=>{ if(cur[f]!==undefined) row[f]=cur[f]; }); Object.assign(row,patch); if(!HAS_USE_BLOCK) delete row.use_block;
+  const cur=OPS[seq]||{}; const row={event_seq:seq}; OPS_FIELDS.concat(HAS_USE_BLOCK?['use_block']:[]).concat(HAS_AUTOSIG?['auto_sig']:[]).forEach(f=>{ if(cur[f]!==undefined) row[f]=cur[f]; }); Object.assign(row,patch); if(!HAS_USE_BLOCK) delete row.use_block; if(!HAS_AUTOSIG) delete row.auto_sig;
   const {data,error}=await supa.from('partner_ops').upsert(row,{onConflict:'event_seq'}).select().single();
   if(error){ toast(tx('saveFail')+': '+error.message,'err'); return false; }
-  OPS[seq]=data; logChange(seq,'ops',label||Object.keys(patch).join(','),patch); renderAll(); return true;
+  OPS[seq]=data; logChange(seq,'ops',label||Object.keys(patch).join(','),patch); if(!quiet) renderAll(); return true;
 }
 async function saveGolf(row){
   if(!HAS_OPS){ toast(tx('noSql'),'warn'); return null; }
@@ -485,14 +557,23 @@ async function saveDisp(row){
 async function delDisp(row){ const {error}=await supa.from('partner_dispatch').delete().eq('id',row.id); if(error){ toast(tx('saveFail')+': '+error.message,'err'); return; } DISP[row.event_seq]=(DISP[row.event_seq]||[]).filter(r=>r.id!==row.id); DAYROWS=DAYROWS.filter(r=>r.id!==row.id); logChange(row.event_seq,'dispatch_del',row.trip_date); renderAll(); }
 
 // ── 제안(골프 날짜·배차) ──
-function proposeLegs(t){
-  const saved=disp(t.seq), has=(d,l)=>saved.some(r=>r.trip_date===d&&r.leg===l), m=repMember(t)||{}, out=[];
-  if(!has(t.dep,'in')) out.push({event_seq:t.seq, trip_date:t.dep, leg:'in', depart_time:(t.dep===t.fullDep)?hhmm(m.loc_arr_time):''});
-  golf(t.seq).forEach(g=>{ if(!(g.course_id||(g.course_note||'').trim())) return;
-    const tee=hhmm((g.tee_time||'').split(',')[0]);
-    if(!has(g.play_date,'golf_out')) out.push({event_seq:t.seq, trip_date:g.play_date, leg:'golf_out', depart_time:tee?addMin(tee,-60):''});
-    if(!has(g.play_date,'golf_back')) out.push({event_seq:t.seq, trip_date:g.play_date, leg:'golf_back', depart_time:''}); });
-  if(!has(t.arr,'out')) out.push({event_seq:t.seq, trip_date:t.arr, leg:'out', depart_time:(t.arr===t.fullArr&&hhmm(m.ret_dep_time))?addMin(m.ret_dep_time,-120):''});
+// 송영 구간·차량 제안 — SZCore.partnerLegPlan(공항·호텔·골프장 서로 50분, 도착일 골프면 호텔 경유 가능, 귀국일 골프면 골프장→공항) × partnerVehiclePlan(8명=하이에스 1대 · 20명 이상=마이크로버스)
+const ROUTES=[['airport','','hotel'],['airport','','course'],['airport','hotel','course'],['hotel','','course'],['course','','hotel'],['hotel','','airport'],['course','','airport'],['course','hotel','airport'],['other','','other']];
+function ptLabel(pt){ return pt?tx({airport:'ptAirport',hotel:'ptHotel',course:'ptCourse',other:'ptOther'}[pt]||'ptOther'):''; }
+function routeOf(r){ if(r.from_pt||r.to_pt) return [r.from_pt||'',r.via_pt||'',r.to_pt||'']; const d=(window.SZCore&&SZCore.partnerRouteOf)?SZCore.partnerRouteOf(r.leg):['','']; return [d[0]||'',r.via_pt||'',d[1]||'']; }
+function routeLabel(r){ const [f,v,t]=routeOf(r); if(!f&&!t) return legLabel(r.leg); return [f,v,t].filter(Boolean).map(ptLabel).join('→'); }
+function routeOpts(r){ const cur=routeOf(r).join('|'); const list=ROUTES.map(x=>x.join('|')); if(cur.replace(/\|/g,'')&&!list.includes(cur)) list.unshift(cur); return list.map(k=>{ const [f,v,t]=k.split('|'); const lb=(f==='other'&&t==='other')?tx('lOther'):[f,v,t].filter(Boolean).map(ptLabel).join('→'); return `<option value="${k}"${k===cur?' selected':''}>${esc(lb)}</option>`; }).join(''); }
+function proposeLegs(t, d){
+  const saved=d?d.disp:disp(t.seq), g=(d?d.golf:golf(t.seq)).filter(r=>r.course_id||(r.course_note||'').trim()), m=repMember(t)||{};
+  const has=(ds,l)=>saved.some(r=>r.trip_date===ds&&r.leg===l);
+  if(!(window.SZCore&&SZCore.partnerLegPlan)) return [];
+  const legs=SZCore.partnerLegPlan({dep:t.dep,arr:t.arr,fullDep:t.fullDep,fullArr:t.fullArr,arrTime:m.loc_arr_time,retTime:m.ret_dep_time}, g);
+  const vp=SZCore.partnerVehiclePlan?SZCore.partnerVehiclePlan(t.pax,VEHICLES):{vehicles:[]}; const out=[];
+  legs.forEach(l=>{ if(has(l.trip_date,l.leg)) return;
+    const vs=vp.vehicles.length?vp.vehicles:[{vehicleId:null,pax:t.pax}];
+    vs.forEach((v,i)=>{ const row={event_seq:t.seq,trip_date:l.trip_date,leg:l.leg,depart_time:l.depart_time||'',vehicle_id:v.vehicleId||null,note:vs.length>1?tx('vehSplit',i+1,vs.length,v.pax):''};
+      if(HAS_PTS){ row.from_pt=l.from_pt||null; row.via_pt=l.via_pt||null; row.to_pt=l.to_pt||null; } else if(l.via_pt){ row.note=(row.note?row.note+' · ':'')+tx('via')+' '+ptLabel(l.via_pt); }
+      out.push(row); }); });
   return out;
 }
 function suggestRooms(t){
@@ -520,42 +601,74 @@ function roomsText(o){ const parts=[]; if(o.twin) parts.push(`${tx('twin')}${o.t
 function renderList(){
   const vis=visible();
   $('#list thead').innerHTML=`<tr><th>${esc(tx('hSt'))}</th><th>${esc(tx('hDate'))}</th><th class="n">${esc(tx('hPax'))}</th><th>${esc(tx('hRep'))}</th><th>${esc(tx('hHotel'))}</th><th>${esc(tx('hGolf'))}</th><th>${esc(tx('hStaff'))}</th><th class="n">${esc(tx('hYen'))}</th><th>${esc(tx('hIss'))}</th></tr>`;
+  const cand=remarkCandidates(); const rb=$('#btn-remark-all'); rb.hidden=!cand.length; rb.textContent=tx('applyRemarkAll',cand.length);
   if(!vis.length){ $('#list tbody').innerHTML=`<tr><td colspan="9"><div class="empty">—</div></td></tr>`; return; }
-  $('#list tbody').innerHTML=vis.map(t=>{ const o=ops(t.seq), h=hotelById(o.hotel_id), g=golf(t.seq).filter(r=>r.course_id||r.course_note), q=quoteFor(t), iss=issues(t);
+  $('#list tbody').innerHTML=vis.map(t=>{ const o=ops(t.seq), h=hotelById(o.hotel_id), g=golf(t.seq).filter(r=>r.course_id||r.course_note), q=quoteFor(t), iss=issues(t), p=planFor(t), isD=DR&&DR.seq===t.seq&&DR.dirty;
     const gl=g.map(r=>`<div class="gl">${esc(mmdd(r.play_date))} ${esc(courseName(courseById(r.course_id),true)||r.course_note||'')}${r.tee_time?` <span class="mono">${esc(r.tee_time)}</span>`:''}</div>`).join('');   // 라운드별 한 줄(글자 단위 줄바꿈 금지)
-    return `<tr class="tm${SEL===t.seq?' sel':''}" data-seq="${t.seq}">
-      <td>${statusDots(o)}</td>
+    return `<tr class="tm${SEL===t.seq?' sel':''}${isD?' dirty':''}" data-seq="${t.seq}">
+      <td>${statusDots(o)}${isD?`<span class="bd warn">${esc(tx('unsavedBadge'))}</span>`:''}</td>
       <td class="nw"><span class="mono">${esc(mmdd(t.dep))}→${esc(mmdd(t.arr))}</span><small>${esc(tx('nights',nightsOf(t).length))}${t.sure?'':` <span class="bd warn" title="${esc(tx('unsureT'))}">${esc(tx('unsure'))}</span>`}</small></td>
       <td class="n">${t.pax}</td>
       <td class="nw"><b>${esc(t.rep)}</b> <span class="bd brand">${esc(brandShort(t.brand))}</span>${t.combo?` <span class="bd info">${esc(tx('combo'))}</span>`:''}<small>${esc(agencyOf(t))}</small></td>
-      <td class="nw">${esc(hotelName(h)||(o.hotel_note||''))}${h&&h.block_twin>0&&o.use_block===false?` <span class="bd info">${esc(tx('blockOut'))}</span>`:''}<small>${esc(roomsText(o))}</small></td>
-      <td>${gl}<small>${g.length}/${nightsOf(t).length}</small></td>
+      <td class="nw">${esc(hotelName(h)||(o.hotel_note||''))}${h&&h.block_twin>0&&o.use_block===false?` <span class="bd info">${esc(tx('blockOut'))}</span>`:''}<small>${esc(roomsText(o))}</small>${!o.hotel_id&&p.hotelId?`<small class="sug">${esc(tx('remarkTag'))}: ${esc(hotelName(hotelById(p.hotelId)))}</small>`:''}</td>
+      <td>${gl}<small>${g.length}/${nightsOf(t).length}</small>${!g.length&&p.golf.length?`<small class="sug">${esc(tx('remarkTag'))}: ${esc(tx('remarkGolf',p.golf.length))}</small>`:''}</td>
       <td class="nw">${esc(o.staff||'')}</td>
       <td class="n yen">${q&&q.ok&&ratesReady()&&q.complete?yen(q.total):''}</td>
       <td>${iss.map(i=>`<span class="bd ${i.sev}">${esc(i.n!=null?tx(i.k,i.n):tx(i.k))}</span>`).join('')}</td></tr>`; }).join('');
 }
-$('#list').addEventListener('click',e=>{ const tr=e.target.closest('tr.tm'); if(!tr) return; SEL=Number(tr.dataset.seq); renderList(); renderDetail(); });
+$('#list').addEventListener('click',e=>{ const tr=e.target.closest('tr.tm'); if(!tr) return; const seq=Number(tr.dataset.seq); if(seq===SEL) return; if(!canLeave()) return; DR=null; SEL=seq; renderList(); renderDetail(); });
+$('#btn-remark-all').addEventListener('click',async()=>{ const cand=remarkCandidates(); if(!cand.length) return; if(!confirm(tx('applyRemarkAllConfirm',cand.length))) return; let n=0,gn=0;
+  for(const t of cand){ const p=planFor(t); const row={event_seq:t.seq,twin:p.twin,single:p.single,triple:p.triple}; if(p.hotelId) row.hotel_id=p.hotelId; else if((DEFAULTS.hotel||{})[t.brand]) row.hotel_id=DEFAULTS.hotel[t.brand]; if((DEFAULTS.staff||{})[t.brand]) row.staff=DEFAULTS.staff[t.brand]; if(p.agencyExplicit&&p.agency!==t.agency) row.agency=p.agency; if(HAS_AUTOSIG) row.auto_sig=p.sig;
+    const {data,error}=await supa.from('partner_ops').upsert(row,{onConflict:'event_seq'}).select().single(); if(error){ toast(tx('saveFail')+': '+error.message,'err'); break; } OPS[t.seq]=data; n++;
+    if(p.golf.length&&!(GOLF[t.seq]||[]).length){ const rows=p.golf.map((x,i)=>{ const r={event_seq:t.seq,play_date:x.date,course_id:x.courseId,sort:i}; if(HAS_GAUTO) r.auto=true; return r; }); const g=await supa.from('partner_golf').insert(rows).select(); if(!g.error){ GOLF[t.seq]=(GOLF[t.seq]||[]).concat(g.data||[]); gn+=rows.length; } }
+    logChange(t.seq,'remark_apply',p.hotelName||''); }
+  if(n) toast(tx('applyRemarkAllDone',n,gn),'ok'); renderAll(); });
 
 function optList(items, val, labelFn, noneLabel, otherLabel){ return `<option value=""${val?'':' selected'}>${esc(noneLabel)}</option>`+items.map(x=>`<option value="${x.id}"${Number(val)===x.id?' selected':''}>${esc(labelFn(x))}</option>`).join('')+(otherLabel?`<option value="other"${val==='other'?' selected':''}>${esc(otherLabel)}</option>`:''); }
 function staffOpts(val){ return `<option value="">—</option>`+STAFF.filter(s=>s.active||s.name===val).map(s=>`<option${s.name===val?' selected':''}>${esc(s.name)}</option>`).join('')+(val&&!STAFF.some(s=>s.name===val)?`<option selected>${esc(val)}</option>`:''); }
+function rmkHTML(t,p,o){
+  if(p.empty) return `<div class="rmk"><b>${esc(tx('remarkH'))}</b> — ${esc(tx('remarkNone'))}<span class="hint">${esc(tx('remarkFmt'))}</span></div>`;
+  const parts=[];
+  if(p.hotelId) parts.push(`${tx('hotel')}: ${p.hotels.map(id=>hotelName(hotelById(id))||'').filter(Boolean).join(' / ')}`);
+  parts.push(`${tx('twin')}${p.twin} · ${tx('single')}${p.single}${p.triple?` · ${tx('triple')}${p.triple}`:''}${p.odd?` (${tx('remarkOdd')})`:''}`);
+  if(p.golf.length) parts.push(`${tx('remarkGolf',p.golf.length)}: `+p.golf.map(x=>`${mmdd(x.date)}${x.explicit?'':'?'} ${courseName(courseById(x.courseId),true)}`).join(' · ')+(p.golfAssumed?` — ${tx('remarkDateAssumed')}`:''));
+  if(p.agencyExplicit) parts.push(`${tx('dAgency')}: ${p.agency}`);
+  const changed=HAS_AUTOSIG&&o.auto_sig&&p.sig&&o.auto_sig!==p.sig;
+  return `<div class="rmk"><button class="plus" data-act="applyRemark" type="button" ${HAS_OPS?'':'disabled'}>${esc(tx('applyRemark'))}</button><b>${esc(tx('remarkH'))}</b>${changed?` <span class="bd warn">${esc(tx('issRemarkChanged'))}</span>`:(!OPS[t.seq]?` <span class="bd sug">${esc(tx('issRemark'))}</span>`:'')}<div>${parts.map(esc).join('<br>')}</div></div>`;
+}
+function saveBarHTML(d){ return `<div class="savebar${d.dirty?' on':''}" id="savebar"><span>${esc(d.dirty?tx('unsaved'):tx('savedState'))}</span><span class="sp"><button class="btn sm" data-act="save" type="button" ${d.dirty&&HAS_OPS?'':'disabled'}>${esc(tx('save'))}</button><button class="btn sm ghost" data-act="cancel" type="button" ${d.dirty?'':'disabled'}>${esc(tx('cancel'))}</button></span></div>`; }
+function refreshSaveBar(){ const sb=$('#savebar'); if(!sb||!DR) return; sb.classList.toggle('on',DR.dirty); sb.querySelector('span').textContent=DR.dirty?tx('unsaved'):tx('savedState'); sb.querySelector('[data-act=save]').disabled=!(DR.dirty&&HAS_OPS); sb.querySelector('[data-act=cancel]').disabled=!DR.dirty; }
+function quoteHTML(t,d){
+  const q=quoteFor(t,d);
+  return `<h4>${esc(tx('secQuote'))}${ratesReady()?'':`<span class="bd warn">${esc(tx('issRates'))}</span>`}</h4>
+      ${q&&q.ok?`<div class="quote">
+        <div><small>${esc(tx('qTwin'))}</small><b>${yen(q.twin)}</b></div><div><small>${esc(tx('qSingle'))}</small><b>${yen(q.single)}</b></div><div><small>${esc(tx('qTriple'))}</small><b>${yen(q.triple)}</b></div>
+        ${q.transferDays?`<div><small>${esc(tx('qTransfer',q.transferDays))}</small><b>${yen(q.transfer)}</b></div>`:''}
+        <div class="tot"><small>${esc(tx('qTotal'))}</small><b>${yen(q.total)}</b></div>
+        <div><small>${esc(tx('qNights',q.nights))} · ${esc(tx('qRounds',q.rounds))}</small><b class="${q.roomsMatch?'':'over'}" style="font-size:12px">${esc(tx('qPersons',q.persons,t.pax))}</b></div>
+        ${q.missing.length&&ratesReady()?`<div style="grid-column:1/-1"><span class="bd warn">${esc(tx('qMissing'))}: ${esc(missingText(q.missing))}</span></div>`:''}</div>`:''}`;
+}
 function renderDetail(){
   const box=$('#detail'); const t=teamOf(SEL);
   if(!t){ box.innerHTML=`<div class="empty">${esc(tx('selHint'))}</div>`; box.classList.remove('open'); return; }
-  const o=ops(t.seq), fl=flightLine(t), h=hotelById(o.hotel_id), q=quoteFor(t), nights=nightsOf(t), g=golf(t.seq), ds=disp(t.seq), props=proposeLegs(t);
+  const d=draftFor(t), o=d.ops, fl=flightLine(t), h=hotelById(o.hotel_id), nights=nightsOf(t), p=planFor(t);
+  const g=d.golf.slice().sort((a,b)=>String(a.play_date||'').localeCompare(String(b.play_date||''))||(a.sort||0)-(b.sort||0)), ds=d.disp, props=proposeLegs(t,d);
   const H=RATES.hotel||{}, singleDefault=(H.single&&(H.single.wk||H.single.hi))?`${H.single.wk||'-'}/${H.single.hi||'-'}`:'';
   const others=TEAMS.filter(x=>x.seq!==t.seq && x.dep<t.arr && x.arr>t.dep);
-  const blockNote=h&&h.block_twin>0?nights.map(ds=>{ const b=blockOn(h,ds), u=blockUse(h.id,ds); return b?`<span class="bd ${u>b?'err':'info'}">${esc(mmdd(ds))} ${u}/${b}</span>`:''; }).join(''):'';
+  const blockNote=h&&h.block_twin>0?nights.map(ds2=>{ const b=blockOn(h,ds2), u=blockUse(h.id,ds2); return b?`<span class="bd ${u>b?'err':'info'}">${esc(mmdd(ds2))} ${u}/${b}</span>`:''; }).join(''):'';
   const chk=(f,by,k)=>`<div class="ck${o[f]?' on':''}" data-ck="${f}" data-by="${by}">${esc(tx(k))}<small>${o[f]?esc(new Date(o[f]).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+(o[by]?' · '+o[by]:'')):esc(tx('notYet'))}</small></div>`;
   box.innerHTML=`
     <h2>${esc(t.rep)} <small>${t.pax}名 · ${esc(mmdd(t.dep))}→${esc(mmdd(t.arr))} ${esc(tx('nights',nights.length))}${t.combo?` · ${esc(tx('combo'))} ${esc(mmdd(t.fullDep))}→${esc(mmdd(t.fullArr))}`:''}</small> <span class="bd brand">${esc(brandShort(t.brand))}</span>${t.sure?'':`<span class="bd warn" title="${esc(tx('unsureT'))}">${esc(tx('unsure'))}</span>`}<button class="dclose" data-act="closeDetail" type="button" title="${esc(tx('closeDetail'))}">✕</button></h2>
+    ${saveBarHTML(d)}
     <div class="kv">
       <b>${esc(tx('dProduct'))}</b><span>${esc(t.product)}</span>
       <b>${esc(tx('dFlight'))}</b><span>${esc(tx('dIn'))} ${esc(fl.in||'—')} · ${esc(tx('dOut'))} ${esc(fl.out||'—')}</span>
       ${t.remark?`<b>${esc(tx('dRemark'))}</b><span>${esc(t.remark)}</span>`:''}
       ${t.remark_local?`<b>${esc(tx('dRemarkLocal'))}</b><span>${esc(t.remark_local)}</span>`:''}
     </div>
-    <div class="frm">
-      <label>${esc(tx('dAgency'))}<input class="inp" data-f="agency" value="${esc(agencyOf(t))}" ${HAS_OPS?'':'disabled'}></label>
+    ${rmkHTML(t,p,o)}
+    <div class="frm" style="margin-top:8px">
+      <label>${esc(tx('dAgency'))}<input class="inp" data-f="agency" value="${esc((o.agency&&o.agency.trim())||t.agency||'')}" ${HAS_OPS?'':'disabled'}></label>
       <label>${esc(tx('dStaff'))}<select class="inp" data-f="staff" ${HAS_OPS?'':'disabled'}>${staffOpts(o.staff||'')}</select></label>
       <label>${esc(tx('party'))}<select class="inp" data-f="party" ${HAS_OPS?'':'disabled'}><option value="">${esc(tx('partyNone'))}</option>${others.map(x=>`<option value="${x.seq}"${Number(o.party)===x.seq?' selected':''}>${esc(x.rep)} ${esc(mmdd(x.dep))}→${esc(mmdd(x.arr))} ${x.pax}名</option>`).join('')}</select></label>
     </div>
@@ -577,14 +690,7 @@ function renderDetail(){
       ${blockNote?`<div style="margin-top:6px">${blockNote}</div>`:''}
     </div>
 
-    <div class="sec"><h4>${esc(tx('secQuote'))}${ratesReady()?'':`<span class="bd warn">${esc(tx('issRates'))}</span>`}</h4>
-      ${q&&q.ok?`<div class="quote">
-        <div><small>${esc(tx('qTwin'))}</small><b>${yen(q.twin)}</b></div><div><small>${esc(tx('qSingle'))}</small><b>${yen(q.single)}</b></div><div><small>${esc(tx('qTriple'))}</small><b>${yen(q.triple)}</b></div>
-        ${q.transferDays?`<div><small>${esc(tx('qTransfer',q.transferDays))}</small><b>${yen(q.transfer)}</b></div>`:''}
-        <div class="tot"><small>${esc(tx('qTotal'))}</small><b>${yen(q.total)}</b></div>
-        <div><small>${esc(tx('qNights',q.nights))} · ${esc(tx('qRounds',q.rounds))}</small><b class="${q.roomsMatch?'':'over'}" style="font-size:12px">${esc(tx('qPersons',q.persons,t.pax))}</b></div>
-        ${q.missing.length&&ratesReady()?`<div style="grid-column:1/-1"><span class="bd warn">${esc(tx('qMissing'))}: ${esc(missingText(q.missing))}</span></div>`:''}</div>`:''}
-    </div>
+    <div class="sec" id="dq">${quoteHTML(t,d)}</div>
 
     <div class="sec"><h4>${esc(tx('secGolf'))}<span class="r">${g.length?'':`<button class="plus" data-act="golfDays" type="button">${esc(tx('makeDays',nights.length))}</button>`}<button class="plus" data-act="golfAdd" type="button">${esc(tx('addDay'))}</button></span></h4>
       ${g.length?`<div class="grow hd"><span>${esc(tx('gDate'))}</span><span>${esc(tx('gCourse'))}</span><span>${esc(tx('gTee'))}</span><span>${esc(tx('gHoles'))}</span><span></span></div>`:''}
@@ -594,51 +700,59 @@ function renderDetail(){
           <input class="inp" data-g="tee_time" value="${esc(r.tee_time||'')}" placeholder="HH:MM">
           <input class="inp" data-g="holes" value="${esc(r.holes||'')}">
           <button class="x" data-act="golfDel" type="button" title="${esc(tx('del'))}">×</button>
-          <div class="l2">${r.course_note||!r.course_id?`<input class="inp" data-g="course_note" value="${esc(r.course_note||'')}" placeholder="${esc(tx('courseOther'))}">`:''}<input class="inp" data-g="note" value="${esc(r.note||'')}" placeholder="${esc(tx('gNote'))}"><label class="ckl"><input type="checkbox" data-g="roster_sent" ${r.roster_sent?'checked':''}> ${esc(tx('gRoster'))}</label></div>
+          <div class="l2">${r.auto?`<span class="auto" title="${esc(tx('remarkH'))}">${esc(tx('autoRow'))}</span>`:''}${r.course_note||!r.course_id?`<input class="inp" data-g="course_note" value="${esc(r.course_note||'')}" placeholder="${esc(tx('courseOther'))}">`:''}<input class="inp" data-g="note" value="${esc(r.note||'')}" placeholder="${esc(tx('gNote'))}"><label class="ckl"><input type="checkbox" data-g="roster_sent" ${r.roster_sent?'checked':''}> ${esc(tx('gRoster'))}</label></div>
         </div>`).join('')}
     </div>
 
     <div class="sec"><h4>${esc(tx('secDisp'))}<span class="r">${props.length?`<button class="plus" data-act="dispAll" type="button">${esc(tx('addAllProp'))}</button>`:''}<button class="plus" data-act="dispAdd" type="button">${esc(tx('addLeg'))}</button></span></h4>
-      ${ds.length||props.length?`<div class="grow drow hd"><span>${esc(tx('gDate'))}</span><span>${esc(tx('dLeg'))}</span><span>${esc(tx('dTime'))}</span><span></span></div>`:''}
+      ${ds.length||props.length?`<div class="grow drow hd"><span>${esc(tx('gDate'))}</span><span>${esc(tx('dRoute'))}</span><span>${esc(tx('dTime'))}</span><span></span></div>`:''}
       ${ds.map(r=>dispRowHTML(r,false)).join('')}${props.map((r,i)=>dispRowHTML(r,true,i)).join('')}
     </div>
 
     <div class="sec"><h4>${esc(tx('secChecks'))}</h4><div class="checks">${chk('roster_hotel_at','roster_hotel_by','stH')}${chk('roster_golf_at','roster_golf_by','stG')}${chk('itinerary_at','itinerary_by','stI')}${chk('invoiced_at','invoiced_by','stB')}</div></div>
     <div class="sec"><h4>${esc(tx('secMemo'))}<span class="r"><button class="plus" data-act="roster" type="button">${esc(tx('pv').roster)} ${esc(tx('pv').printed)}</button></span></h4><textarea class="inp" data-f="memo" ${HAS_OPS?'':'disabled'}>${esc(o.memo||'')}</textarea></div>`;
-  box.classList.add('open'); box.scrollTop=0;
+  box.classList.add('open'); if(!d.dirty) box.scrollTop=0;
 }
 function dispRowHTML(r,prop,i){
   const vehSel=`<select class="inp" data-d="vehicle_id">${optList(VEHICLES.filter(v=>v.active||v.id===Number(r.vehicle_id)),r.vehicle_id,v=>`${v.name} (${v.capacity})`,tx('vehNone'))}</select>`;
+  const legSel=HAS_PTS?`<select class="inp" data-d="route" ${prop?'disabled':''}>${routeOpts(r)}</select>`:`<select class="inp" data-d="leg" ${prop?'disabled':''}>${LEGS.map(l=>`<option value="${l}"${r.leg===l?' selected':''}>${esc(legLabel(l))}</option>`).join('')}</select>`;
+  const pv=prop?`<small>${esc(routeLabel(r))}${r.vehicle_id&&vehById(r.vehicle_id)?' · '+esc(vehById(r.vehicle_id).name):''}${r.note?' · '+esc(r.note):''}</small>`:'';
   return `<div class="grow drow${prop?' prop':''}" ${prop?`data-prop="${i}"`:`data-did="${r.id}"`}>
     <input class="inp" type="date" data-d="trip_date" value="${esc(r.trip_date||'')}" ${prop?'disabled':''}>
-    <select class="inp" data-d="leg" ${prop?'disabled':''}>${LEGS.map(l=>`<option value="${l}"${r.leg===l?' selected':''}>${esc(legLabel(l))}</option>`).join('')}</select>
+    ${legSel}
     <input class="inp" type="time" data-d="depart_time" value="${esc(hhmm(r.depart_time))}" ${prop?'disabled':''}>
     ${prop?`<button class="plus" data-act="dispProp" type="button">${esc(tx('addProp'))}</button>`:`<button class="x" data-act="dispDel" type="button" title="${esc(tx('del'))}">×</button>`}
-    ${prop?'':`<div class="l2">${vehSel}<select class="inp" data-d="staff">${staffOpts(r.staff||'')}</select><input class="inp" data-d="note" value="${esc(r.note||'')}" placeholder="${esc(tx('dNote'))}"></div>`}
+    ${prop?`<div class="l2">${pv}</div>`:`<div class="l2">${vehSel}<select class="inp" data-d="staff">${staffOpts(r.staff||'')}</select><input class="inp" data-d="note" value="${esc(r.note||'')}" placeholder="${esc(tx('dNote'))}"></div>`}
   </div>`;
 }
-// 상세 패널 이벤트(위임)
-$('#detail').addEventListener('change',async e=>{
-  const t=teamOf(SEL); if(!t) return; const el=e.target;
-  if(el.dataset.f){ let v=el.type==='checkbox'?el.checked:(el.type==='number'?(el.value===''?null:Number(el.value)):el.value); if(el.dataset.f==='hotel_id'||el.dataset.f==='party') v=el.value?Number(el.value):null; if(el.dataset.f==='agency'&&v===t.agency) v=null;
-    const ok=await saveOps(t.seq,{[el.dataset.f]:v},el.dataset.f); if(ok&&el.dataset.f==='party'&&v){ await saveOps(v,{party:Math.min(v,t.seq)},'party'); await saveOps(t.seq,{party:Math.min(v,t.seq)},'party'); } return; }
-  const gtr=el.closest('[data-gid]'); if(gtr&&el.dataset.g){ const row=golf(t.seq).find(r=>r.id===Number(gtr.dataset.gid)); if(!row) return; let v=el.type==='checkbox'?el.checked:el.value; if(el.dataset.g==='course_id') v=el.value?Number(el.value):null; if(el.dataset.g==='tee_time') v=el.value.split(',').map(x=>hhmm(x)||x.trim()).filter(Boolean).join(','); await saveGolf(Object.assign({},row,{[el.dataset.g]:v})); renderAll(); return; }
-  const dtr=el.closest('[data-did]'); if(dtr&&el.dataset.d){ const row=disp(t.seq).find(r=>r.id===Number(dtr.dataset.did)); if(!row) return; let v=el.value; if(el.dataset.d==='vehicle_id') v=el.value?Number(el.value):null; await saveDisp(Object.assign({},row,{[el.dataset.d]:v})); renderAll(); }
+// 상세 패널 이벤트(위임) — 전부 초안(DR)에만 반영. DB 는 [저장]에서(Min 2026-11-03 「그냥 수정이 되게 되어 있어서 위험함」)
+$('#detail').addEventListener('change',e=>{
+  const t=teamOf(SEL); if(!t) return; const el=e.target; const d=draftFor(t);
+  if(el.dataset.f){ const f=el.dataset.f; let v=el.type==='checkbox'?el.checked:(el.type==='number'?(el.value===''?null:Number(el.value)):el.value); if(f==='hotel_id'||f==='party') v=el.value?Number(el.value):null; if(f==='agency'&&v===t.agency) v=null;
+    d.ops[f]=v; mark(); if(f==='hotel_id'||f==='use_block') renderDetail(); else { refreshSaveBar(); const dq=$('#dq'); if(dq) dq.innerHTML=quoteHTML(t,d); } return; }
+  const gtr=el.closest('[data-gid]'); if(gtr&&el.dataset.g){ const row=d.golf.find(r=>r.id===Number(gtr.dataset.gid)); if(!row) return; let v=el.type==='checkbox'?el.checked:el.value; if(el.dataset.g==='course_id') v=el.value?Number(el.value):null; if(el.dataset.g==='tee_time') v=el.value.split(',').map(x=>hhmm(x)||x.trim()).filter(Boolean).join(','); row[el.dataset.g]=v; if(row.auto&&(el.dataset.g==='course_id'||el.dataset.g==='play_date')) row.auto=false; mark(); if(el.dataset.g==='course_id'||el.dataset.g==='play_date') renderDetail(); else { refreshSaveBar(); const dq=$('#dq'); if(dq) dq.innerHTML=quoteHTML(t,d); } return; }
+  const dtr=el.closest('[data-did]'); if(dtr&&el.dataset.d){ const row=d.disp.find(r=>r.id===Number(dtr.dataset.did)); if(!row) return; let v=el.value;
+    if(el.dataset.d==='route'){ const [f,vi,to]=v.split('|'); row.from_pt=f||null; row.via_pt=vi||null; row.to_pt=to||null; row.leg=(window.SZCore&&SZCore.partnerLegOf)?SZCore.partnerLegOf(f,to):'other'; }
+    else { if(el.dataset.d==='vehicle_id') v=el.value?Number(el.value):null; row[el.dataset.d]=v; }
+    mark(); refreshSaveBar(); if(el.dataset.d==='vehicle_id'||el.dataset.d==='trip_date'){ const dq=$('#dq'); if(dq) dq.innerHTML=quoteHTML(t,d); } }
 });
 $('#detail').addEventListener('click',async e=>{
-  const t=teamOf(SEL); if(!t) return;
-  const ck=e.target.closest('.ck'); if(ck){ const f=ck.dataset.ck, by=ck.dataset.by, on=!!ops(t.seq)[f]; await saveOps(t.seq,{[f]:on?null:new Date().toISOString(),[by]:on?null:who()},f); return; }
+  const t=teamOf(SEL); if(!t) return; const d=draftFor(t);
+  const ck=e.target.closest('.ck'); if(ck){ const f=ck.dataset.ck, by=ck.dataset.by, on=!!d.ops[f]; d.ops[f]=on?null:new Date().toISOString(); d.ops[by]=on?null:who(); mark(); renderDetail(); return; }
   const b=e.target.closest('[data-act]'); if(!b) return; const act=b.dataset.act;
-  if(act==='suggest'){ const s=suggestRooms(t); const patch=Object.assign({},s); if(!ops(t.seq).hotel_id){ const def=hotelById((DEFAULTS.hotel||{})[t.brand]); if(def) patch.hotel_id=def.id; } if(!ops(t.seq).staff&&(DEFAULTS.staff||{})[t.brand]) patch.staff=DEFAULTS.staff[t.brand]; await saveOps(t.seq,patch,'suggest'); }
-  else if(act==='golfDays'){ if(!HAS_OPS) return toast(tx('noSql'),'warn'); const rows=nightsOf(t).map((d,i)=>({event_seq:t.seq,play_date:d,sort:i})); const {data,error}=await supa.from('partner_golf').insert(rows).select(); if(error) return toast(tx('saveFail')+': '+error.message,'err'); GOLF[t.seq]=(GOLF[t.seq]||[]).concat(data||[]); logChange(t.seq,'golf_days',String(rows.length)); renderAll(); }
-  else if(act==='golfAdd'){ if(!HAS_OPS) return toast(tx('noSql'),'warn'); const last=golf(t.seq).slice(-1)[0]; const d=last?addDays(last.play_date,1):t.dep; const r=await saveGolf({event_seq:t.seq,play_date:d,sort:golf(t.seq).length}); if(r) renderAll(); }
-  else if(act==='golfDel'){ const tr=b.closest('[data-gid]'); const row=golf(t.seq).find(r=>r.id===Number(tr.dataset.gid)); if(row) await delGolf(row); }
-  else if(act==='dispProp'){ const tr=b.closest('[data-prop]'); const p=proposeLegs(t)[Number(tr.dataset.prop)]; if(p){ const r=await saveDisp(Object.assign({staff:ops(t.seq).staff||null},p)); if(r) renderAll(); } }
-  else if(act==='dispAll'){ const props=proposeLegs(t); for(const p of props){ await saveDisp(Object.assign({staff:ops(t.seq).staff||null},p)); } renderAll(); }
-  else if(act==='dispAdd'){ const r=await saveDisp({event_seq:t.seq,trip_date:t.dep,leg:'other',depart_time:'',staff:ops(t.seq).staff||null}); if(r) renderAll(); }
-  else if(act==='dispDel'){ const tr=b.closest('[data-did]'); const row=disp(t.seq).find(r=>r.id===Number(tr.dataset.did)); if(row) await delDisp(row); }
+  if(act==='save'){ await commitDraft(); }
+  else if(act==='cancel'){ DR=null; renderAll(); }
+  else if(act==='suggest'){ const sg=suggestRooms(t); Object.assign(d.ops,sg); if(!d.ops.hotel_id){ const def=hotelById((DEFAULTS.hotel||{})[t.brand]); if(def) d.ops.hotel_id=def.id; } if(!d.ops.staff&&(DEFAULTS.staff||{})[t.brand]) d.ops.staff=DEFAULTS.staff[t.brand]; mark(); renderDetail(); }
+  else if(act==='applyRemark'){ applyRemarkToDraft(t,d); }
+  else if(act==='golfDays'){ nightsOf(t).forEach((ds2,i)=>d.golf.push({id:TMP--,event_seq:t.seq,play_date:ds2,sort:i})); mark(); renderDetail(); }
+  else if(act==='golfAdd'){ const last=d.golf.slice().sort((a,c)=>String(a.play_date||'').localeCompare(String(c.play_date||''))).slice(-1)[0]; const ds2=last?addDays(last.play_date,1):t.dep; d.golf.push({id:TMP--,event_seq:t.seq,play_date:ds2,sort:d.golf.length}); mark(); renderDetail(); }
+  else if(act==='golfDel'){ const tr=b.closest('[data-gid]'); const id=Number(tr.dataset.gid); const i=d.golf.findIndex(r=>r.id===id); if(i>=0){ if(id>0) d.golfDel.push(id); d.golf.splice(i,1); mark(); renderDetail(); } }
+  else if(act==='dispProp'){ const tr=b.closest('[data-prop]'); const pr=proposeLegs(t,d)[Number(tr.dataset.prop)]; if(pr){ d.disp.push(Object.assign({id:TMP--,staff:d.ops.staff||null},pr)); mark(); renderDetail(); } }
+  else if(act==='dispAll'){ proposeLegs(t,d).forEach(pr=>d.disp.push(Object.assign({id:TMP--,staff:d.ops.staff||null},pr))); mark(); renderDetail(); }
+  else if(act==='dispAdd'){ d.disp.push({id:TMP--,event_seq:t.seq,trip_date:t.dep,leg:'other',depart_time:'',staff:d.ops.staff||null}); mark(); renderDetail(); }
+  else if(act==='dispDel'){ const tr=b.closest('[data-did]'); const id=Number(tr.dataset.did); const i=d.disp.findIndex(r=>r.id===id); if(i>=0){ if(id>0) d.dispDel.push(id); d.disp.splice(i,1); mark(); renderDetail(); } }
   else if(act==='roster'){ printRoster(t); }
-  else if(act==='closeDetail'){ SEL=null; renderList(); renderDetail(); }
+  else if(act==='closeDetail'){ if(!canLeave()) return; DR=null; SEL=null; renderList(); renderDetail(); }
 });
 
 // ── 배차(날짜별) ──
@@ -654,46 +768,56 @@ async function loadDay(){
   renderDay();
 }
 function dayProps(){ const out=[]; TEAMS.forEach(t=>{ proposeLegs(t).filter(p=>p.trip_date===D).forEach(p=>out.push(Object.assign({_t:t},p))); }); return out; }
+function dayRow(r){ return Object.assign({},r,DDR[r.id]||{}); }   // 보이는 값 = 저장값 + 미저장 수정
 function renderDay(){
   if(VIEW!=='disp') return;
-  const rows=DAYROWS.slice().sort((a,b)=>(a.depart_time||'99').localeCompare(b.depart_time||'99')), props=dayProps();
+  const rows=DAYROWS.map(dayRow).sort((a,b)=>(a.depart_time||'99').localeCompare(b.depart_time||'99')), props=dayProps();
   // 차량별 적재(같은 차량·같은 시각 = 합승)
   const loads={}; rows.forEach(r=>{ if(!r.vehicle_id) return; const k=r.vehicle_id+'|'+(r.depart_time||''); const t=teamOf(r.event_seq); loads[k]=(loads[k]||0)+(t?t.pax:0); });
   $('#dveh').innerHTML=VEHICLES.filter(v=>v.active).map(v=>{ const trips=rows.filter(r=>r.vehicle_id===v.id); const max=Math.max(0,...Object.keys(loads).filter(k=>k.startsWith(v.id+'|')).map(k=>loads[k])); return `<div class="veh${max>v.capacity?' over':''}">${esc(v.name)}<small>${esc(tx('trips',trips.length))} · ${esc(tx('load',max,v.capacity))}</small></div>`; }).join('');
   $('#dsum').textContent=tx('dSum',rows.length,new Set(rows.map(r=>r.vehicle_id).filter(Boolean)).size);
-  $('#dtbl thead').innerHTML=`<tr><th>${esc(tx('dTime'))}</th><th>${esc(tx('dTeam'))}</th><th class="n">${esc(tx('dPax'))}</th><th>${esc(tx('dLeg'))}</th><th>${esc(tx('dVeh'))}</th><th>${esc(tx('dStaff2'))}</th><th>${esc(tx('dNote'))}</th><th></th></tr>`;
+  const nd=Object.keys(DDR).length; const sb=$('#btn-dsave'); sb.hidden=!nd; sb.textContent=tx('dSave',nd);
+  $('#dtbl thead').innerHTML=`<tr><th>${esc(tx('dTime'))}</th><th>${esc(tx('dTeam'))}</th><th class="n">${esc(tx('dPax'))}</th><th>${esc(tx('dRoute'))}</th><th>${esc(tx('dVeh'))}</th><th>${esc(tx('dStaff2'))}</th><th>${esc(tx('dNote'))}</th><th></th></tr>`;
   const trs=rows.map(r=>{ const t=teamOf(r.event_seq)||{rep:'#'+r.event_seq,pax:0,brand:''}; const k=r.vehicle_id+'|'+(r.depart_time||''); const v=vehById(r.vehicle_id); const over=v&&loads[k]>v.capacity;
-    return `<tr data-did="${r.id}" data-seq="${r.event_seq}"><td><input class="inp sm" type="time" data-d="depart_time" value="${esc(hhmm(r.depart_time))}"></td><td><b>${esc(t.rep)}</b><small>${esc(brandShort(t.brand))}</small></td><td class="n">${t.pax}</td>
-      <td><select class="inp" data-d="leg">${LEGS.map(l=>`<option value="${l}"${r.leg===l?' selected':''}>${esc(legLabel(l))}</option>`).join('')}</select></td>
+    const legSel=HAS_PTS?`<select class="inp" data-d="route">${routeOpts(r)}</select>`:`<select class="inp" data-d="leg">${LEGS.map(l=>`<option value="${l}"${r.leg===l?' selected':''}>${esc(legLabel(l))}</option>`).join('')}</select>`;
+    return `<tr data-did="${r.id}" data-seq="${r.event_seq}"${DDR[r.id]?' class="dirty"':''}><td><input class="inp sm" type="time" data-d="depart_time" value="${esc(hhmm(r.depart_time))}"></td><td><b>${esc(t.rep)}</b><small>${esc(brandShort(t.brand))}</small></td><td class="n">${t.pax}</td>
+      <td>${legSel}</td>
       <td><select class="inp${over?' over':''}" data-d="vehicle_id">${optList(VEHICLES.filter(x=>x.active||x.id===Number(r.vehicle_id)),r.vehicle_id,x=>`${x.name} (${x.capacity})`,tx('vehNone'))}</select>${over?`<small class="over">${esc(tx('load',loads[k],v.capacity))}</small>`:''}</td>
       <td><select class="inp" data-d="staff">${staffOpts(r.staff||'')}</select></td><td><input class="inp" data-d="note" value="${esc(r.note||'')}"></td><td><button class="x" data-act="dispDel" type="button">×</button></td></tr>`; });
-  const ptrs=props.map((p,i)=>`<tr class="prop" data-prop="${i}"><td>${esc(hhmm(p.depart_time)||'—')}</td><td><b>${esc(p._t.rep)}</b><small>${esc(brandShort(p._t.brand))}</small></td><td class="n">${p._t.pax}</td><td>${esc(legLabel(p.leg))}</td><td></td><td></td><td></td><td><button class="plus" data-act="dispProp" type="button">${esc(tx('addProp'))}</button></td></tr>`);
+  const ptrs=props.map((p,i)=>`<tr class="prop" data-prop="${i}"><td>${esc(hhmm(p.depart_time)||'—')}</td><td><b>${esc(p._t.rep)}</b><small>${esc(brandShort(p._t.brand))}</small></td><td class="n">${p._t.pax}</td><td>${esc(routeLabel(p))}</td><td>${esc(p.vehicle_id&&vehById(p.vehicle_id)?vehById(p.vehicle_id).name:'')}</td><td></td><td>${esc(p.note||'')}</td><td><button class="plus" data-act="dispProp" type="button">${esc(tx('addProp'))}</button></td></tr>`);
   $('#dtbl tbody').innerHTML=(trs.concat(ptrs).join(''))||`<tr><td colspan="8"><div class="empty">—</div></td></tr>`;
   $('#btn-dprop').disabled=!props.length||!HAS_OPS;
 }
-$('#dtbl').addEventListener('change',async e=>{ const tr=e.target.closest('tr[data-did]'); if(!tr||!e.target.dataset.d) return; const row=DAYROWS.find(r=>r.id===Number(tr.dataset.did)); if(!row) return; let v=e.target.value; if(e.target.dataset.d==='vehicle_id') v=v?Number(v):null; await saveDisp(Object.assign({},row,{[e.target.dataset.d]:v})); renderDay(); });
+$('#dtbl').addEventListener('change',e=>{ const tr=e.target.closest('tr[data-did]'); if(!tr||!e.target.dataset.d) return; const id=Number(tr.dataset.did); const row=DAYROWS.find(r=>r.id===id); if(!row) return; const cur=DDR[id]=DDR[id]||{}; let v=e.target.value;
+  if(e.target.dataset.d==='route'){ const [f,vi,to]=v.split('|'); cur.from_pt=f||null; cur.via_pt=vi||null; cur.to_pt=to||null; cur.leg=(window.SZCore&&SZCore.partnerLegOf)?SZCore.partnerLegOf(f,to):'other'; }
+  else { if(e.target.dataset.d==='vehicle_id') v=v?Number(v):null; cur[e.target.dataset.d]=v; }
+  tr.classList.add('dirty'); const nd=Object.keys(DDR).length; const sb=$('#btn-dsave'); sb.hidden=!nd; sb.textContent=tx('dSave',nd); });
+$('#btn-dsave').addEventListener('click',async()=>{ let ok=true; for(const id of Object.keys(DDR)){ const row=DAYROWS.find(r=>r.id===Number(id)); if(!row) continue; const r=await saveDisp(Object.assign({},row,DDR[id])); if(r) delete DDR[id]; else ok=false; } if(ok) toast(tx('saved'),'ok'); renderDay(); });
 $('#dtbl').addEventListener('click',async e=>{ const b=e.target.closest('[data-act]'); if(!b) return;
-  if(b.dataset.act==='dispDel'){ const tr=b.closest('tr[data-did]'); const row=DAYROWS.find(r=>r.id===Number(tr.dataset.did)); if(row) await delDisp(row); }
+  if(b.dataset.act==='dispDel'){ const tr=b.closest('tr[data-did]'); const row=DAYROWS.find(r=>r.id===Number(tr.dataset.did)); if(row&&confirm(tx('delRowConfirm'))){ delete DDR[row.id]; await delDisp(row); } }
   if(b.dataset.act==='dispProp'){ const tr=b.closest('tr[data-prop]'); const p=dayProps()[Number(tr.dataset.prop)]; if(p){ const {_t,...row}=p; const r=await saveDisp(Object.assign({staff:ops(_t.seq).staff||null},row)); if(r) renderDay(); } } });
 $('#btn-dprop').addEventListener('click',async()=>{ for(const p of dayProps()){ const {_t,...row}=p; await saveDisp(Object.assign({staff:ops(_t.seq).staff||null},row)); } renderDay(); });
 $('#btn-dprint').addEventListener('click',()=>printDispatch());
-function setDay(d){ D=d; $('#d').value=D; loadDay(); }
+function setDay(d){ if(Object.keys(DDR).length&&!confirm(tx('unsavedConfirm'))){ $('#d').value=D; return; } DDR={}; D=d; $('#d').value=D; loadDay(); }
 $('#d').addEventListener('change',()=>setDay($('#d').value||today())); $('#d-prev').addEventListener('click',()=>setDay(addDays(D,-1))); $('#d-next').addEventListener('click',()=>setDay(addDays(D,1))); $('#d-today').addEventListener('click',()=>setDay(today()));
 
 // ── 기본 설정 ──
 function regTable(id, title, rows, cols, table){
+  const dirtyMap=REGDIRTY[table]||{}; const nd=Object.keys(dirtyMap).length;
   const head=cols.map(c=>`<th>${esc(c.label)}</th>`).join('');
-  const body=rows.map(r=>`<tr data-id="${r.id}">${cols.map(c=>{ const v=r[c.f]; if(c.type==='bool') return `<td style="text-align:center"><input type="checkbox" data-r="${c.f}" ${v?'checked':''}></td>`; if(c.type==='number') return `<td><input class="inp sm" type="number" data-r="${c.f}" value="${v==null?'':v}" style="width:80px"></td>`; if(c.type==='date') return `<td><input class="inp sm" type="date" data-r="${c.f}" value="${esc(v||'')}"></td>`; return `<td><input class="inp" data-r="${c.f}" value="${esc(v||'')}"></td>`; }).join('')}<td><button class="x" data-act="del" type="button" title="${esc(tx('del'))}">×</button></td></tr>`).join('');
-  $('#'+id).innerHTML=`<h3>${esc(title)}<span class="n">${rows.length}</span><span style="margin-left:auto"><button class="plus" data-act="add" type="button">${esc(tx('add'))}</button></span></h3><table class="mini" data-table="${table}"><thead><tr>${head}<th></th></tr></thead><tbody>${body}</tbody></table>`;
+  const body=rows.map(r0=>{ const r=Object.assign({},r0,dirtyMap[r0.id]||{}); return `<tr data-id="${r.id}"${dirtyMap[r0.id]?' class="dirty"':''}>${cols.map(c=>{ const v=r[c.f]; if(c.type==='bool') return `<td style="text-align:center"><input type="checkbox" data-r="${c.f}" ${v?'checked':''}></td>`; if(c.type==='number') return `<td><input class="inp sm" type="number" data-r="${c.f}" value="${v==null?'':v}" style="width:80px"></td>`; if(c.type==='date') return `<td><input class="inp sm" type="date" data-r="${c.f}" value="${esc(v||'')}"></td>`; return `<td><input class="inp" data-r="${c.f}" value="${esc(v||'')}"></td>`; }).join('')}<td><button class="x" data-act="del" type="button" title="${esc(tx('del'))}">×</button></td></tr>`; }).join('');
+  $('#'+id).innerHTML=`<h3>${esc(title)}<span class="n">${rows.length}</span><span class="regsave">${nd?`<button class="btn sm" data-act="regSave" type="button">${esc(tx('regSave',nd))}</button>`:''}<button class="plus" data-act="add" type="button">${esc(tx('add'))}</button></span></h3><table class="mini" data-table="${table}"><thead><tr>${head}<th></th></tr></thead><tbody>${body}</tbody></table>`;
 }
 function renderDefs(){
   if(VIEW!=='def') return;
-  regTable('def-hotels', tx('defHotels'), HOTELS, [{f:'name_ja',label:tx('nameJa')},{f:'name_ko',label:tx('nameKo')},{f:'block_twin',label:tx('blockTwin'),type:'number'},{f:'block_from',label:tx('blockFrom'),type:'date'},{f:'block_to',label:tx('blockTo'),type:'date'},{f:'surcharge',label:tx('surcharge'),type:'number'},{f:'active',label:tx('active'),type:'bool'}], 'partner_hotels');
-  regTable('def-courses', tx('defCourses'), COURSES, [{f:'name_ja',label:tx('nameJa')},{f:'name_ko',label:tx('nameKo')},{f:'active',label:tx('active'),type:'bool'}], 'partner_courses');
+  const al=HAS_ALIASES?[{f:'aliases',label:tx('aliases')}]:[];
+  regTable('def-hotels', tx('defHotels'), HOTELS, [{f:'name_ja',label:tx('nameJa')},{f:'name_ko',label:tx('nameKo')}].concat(al).concat([{f:'block_twin',label:tx('blockTwin'),type:'number'},{f:'block_from',label:tx('blockFrom'),type:'date'},{f:'block_to',label:tx('blockTo'),type:'date'},{f:'surcharge',label:tx('surcharge'),type:'number'},{f:'active',label:tx('active'),type:'bool'}]), 'partner_hotels');
+  regTable('def-courses', tx('defCourses'), COURSES, [{f:'name_ja',label:tx('nameJa')},{f:'name_ko',label:tx('nameKo')}].concat(al).concat([{f:'active',label:tx('active'),type:'bool'}]), 'partner_courses');
   regTable('def-vehicles', tx('defVehicles'), VEHICLES, [{f:'name',label:tx('nameJa')},{f:'capacity',label:tx('capacity'),type:'number'},{f:'active',label:tx('active'),type:'bool'}], 'partner_vehicles');
   regTable('def-staff', tx('defStaff'), STAFF, [{f:'name',label:tx('nameJa')},{f:'active',label:tx('active'),type:'bool'}], 'partner_staff');
   renderRatesPanel();
 }
+async function regSaveAll(table){ const dm=REGDIRTY[table]||{}; let ok=true; for(const id of Object.keys(dm)){ const before=Object.keys(dm[id]).length; await saveReg(table,Number(id),dm[id]); const arr={partner_hotels:HOTELS,partner_courses:COURSES,partner_vehicles:VEHICLES,partner_staff:STAFF}[table]; const row=arr.find(r=>r.id===Number(id)); if(row&&before&&Object.keys(dm[id]).every(k=>String(row[k]==null?'':row[k])===String(dm[id][k]==null?'':dm[id][k]))) delete dm[id]; else ok=false; } if(!Object.keys(dm).length) delete REGDIRTY[table]; if(ok) toast(tx('saved'),'ok'); PLAN={}; renderAll(); }
 // ── 요금표 패널: SQL 161(partner_rates) 적용 뒤 = 기간별(호텔별·코스별·차량별) / 적용 전 = 옛 공통 한 벌 ──
 function brandDefaultsHTML(){
   return `<div class="frm" style="margin-top:10px">
@@ -767,13 +891,15 @@ async function periodAct(act,pk){
 async function saveReg(table, id, patch){ const {data,error}=await supa.from(table).update(patch).eq('id',id).select().single(); if(error){ toast(tx('saveFail')+': '+error.message,'err'); return; } const arr={partner_hotels:HOTELS,partner_courses:COURSES,partner_vehicles:VEHICLES,partner_staff:STAFF}[table]; const i=arr.findIndex(r=>r.id===id); if(i>=0) arr[i]=data; logChange(table,'reg',`${table}#${id} ${Object.keys(patch).join(',')}`); }
 $('#v-def').addEventListener('change',async e=>{
   const el=e.target; const tbl=el.closest('table[data-table]');
-  if(tbl&&el.dataset.r){ const tr=el.closest('tr[data-id]'); const id=Number(tr.dataset.id); let v=el.type==='checkbox'?el.checked:(el.type==='number'?(el.value===''?0:Number(el.value)):(el.value||null)); await saveReg(tbl.dataset.table,id,{[el.dataset.r]:v}); renderAll(); return; }
+  if(tbl&&el.dataset.r){ const tr=el.closest('tr[data-id]'); const id=Number(tr.dataset.id); let v=el.type==='checkbox'?el.checked:(el.type==='number'?(el.value===''?0:Number(el.value)):(el.value||null)); const table=tbl.dataset.table; REGDIRTY[table]=REGDIRTY[table]||{}; REGDIRTY[table][id]=Object.assign(REGDIRTY[table][id]||{},{[el.dataset.r]:v}); tr.classList.add('dirty');
+    const h3=tbl.closest('.panel').querySelector('.regsave'); if(h3&&!h3.querySelector('[data-act=regSave]')) h3.insertAdjacentHTML('afterbegin',`<button class="btn sm" data-act="regSave" type="button"></button>`); const sb=h3&&h3.querySelector('[data-act=regSave]'); if(sb) sb.textContent=tx('regSave',Object.keys(REGDIRTY[table]).length); return; }
   if(el.dataset.def){ const [k,b]=el.dataset.def.split('.'); DEFAULTS[k]=DEFAULTS[k]||{}; DEFAULTS[k][b]=el.dataset.def.startsWith('hotel')?(el.value?Number(el.value):null):(el.value||null); const {error}=await supa.from('partner_settings').upsert({key:'partner_defaults',value:DEFAULTS,updated_by:who()},{onConflict:'key'}); if(error) toast(tx('saveFail')+': '+error.message,'err'); else toast(tx('saved'),'ok'); }
 });
 $('#v-def').addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]'); if(!b) return; const panel=b.closest('.panel'); const tbl=panel&&panel.querySelector('table[data-table]'); const table=tbl&&tbl.dataset.table;
   if(b.dataset.act==='addPeriod'){ if(!HAS_RATES) return toast(tx('needSql161'),'warn'); PENDP.push({key:'new'+Date.now(),label:'',from:'',to:'',rows:[],saved:false}); renderDefs(); return; }
   if(b.dataset.act==='copyPeriod'||b.dataset.act==='delPeriod'||b.dataset.act==='savePeriod'){ const rp=b.closest('.rp'); if(rp) await periodAct(b.dataset.act,rp.dataset.pk); return; }
+  if(b.dataset.act==='regSave'&&table){ await regSaveAll(table); return; }
   if(b.dataset.act==='add'&&table){ const name=prompt(tx('addPrompt')); if(!name||!name.trim()) return; const row=table==='partner_vehicles'?{name:name.trim(),capacity:9}:(table==='partner_staff'?{name:name.trim()}:{name_ja:name.trim()}); row.sort=({partner_hotels:HOTELS,partner_courses:COURSES,partner_vehicles:VEHICLES,partner_staff:STAFF}[table]).length+1;
     const {data,error}=await supa.from(table).insert(row).select().single(); if(error) return toast(tx('saveFail')+': '+error.message,'err'); ({partner_hotels:HOTELS,partner_courses:COURSES,partner_vehicles:VEHICLES,partner_staff:STAFF}[table]).push(data); logChange(table,'reg_add',name.trim()); renderAll(); }
   if(b.dataset.act==='del'&&table){ const tr=b.closest('tr[data-id]'); const id=Number(tr.dataset.id); if(!confirm(tx('delConfirm'))) return; const {error}=await supa.from(table).delete().eq('id',id); if(error) return toast(tx('saveFail')+': '+error.message,'err'); const arr={partner_hotels:HOTELS,partner_courses:COURSES,partner_vehicles:VEHICLES,partner_staff:STAFF}[table]; const i=arr.findIndex(r=>r.id===id); if(i>=0) arr.splice(i,1); logChange(table,'reg_del',String(id)); renderAll(); }
@@ -816,17 +942,18 @@ function printRoster(t){
 function printDispatch(){
   const P=tx('pv'); const rows=DAYROWS.slice().sort((a,b)=>(a.vehicle_id||999)-(b.vehicle_id||999)||(a.depart_time||'99').localeCompare(b.depart_time||'99'));
   const groups={}; rows.forEach(r=>{ const k=r.vehicle_id||0; (groups[k]=groups[k]||[]).push(r); });
-  const blocks=Object.keys(groups).sort((a,b)=>Number(a)-Number(b)).map(k=>{ const v=vehById(k); const trs=groups[k].map(r=>{ const t=teamOf(r.event_seq)||{rep:'#'+r.event_seq,pax:0}; return `<tr><td class="mono c">${esc(hhmm(r.depart_time)||'—')}</td><td>${esc(legLabel(r.leg))}</td><td><b>${esc(t.rep)}</b> 様</td><td class="c">${t.pax}</td><td>${esc(r.staff||'')}</td><td>${esc(r.note||'')}</td></tr>`; }).join('');
+  const blocks=Object.keys(groups).sort((a,b)=>Number(a)-Number(b)).map(k=>{ const v=vehById(k); const trs=groups[k].map(r=>{ const t=teamOf(r.event_seq)||{rep:'#'+r.event_seq,pax:0}; return `<tr><td class="mono c">${esc(hhmm(r.depart_time)||'—')}</td><td>${esc(routeLabel(r))}</td><td><b>${esc(t.rep)}</b> 様</td><td class="c">${t.pax}</td><td>${esc(r.staff||'')}</td><td>${esc(r.note||'')}</td></tr>`; }).join('');
     return `<h2>${esc(v?`${v.name}（${v.capacity}）`:P.unassigned)}</h2><table><thead><tr><th>${esc(P.time)}</th><th>${esc(P.leg)}</th><th>${esc(P.team)}</th><th>${esc(P.pax)}</th><th>${esc(P.staff)}</th><th>${esc(P.note)}</th></tr></thead><tbody>${trs}</tbody></table>`; }).join('');
   return popup(`dispatch_${D}`, `@page{size:A4 portrait;margin:12mm} h2{font-size:12pt;margin:4mm 0 1.5mm} td,th{font-size:10pt;padding:1.8mm 2.2mm}`,
     `<h1>${esc(P.disp)} <small>${esc(D)}（${esc(wd(D))}） · ${rows.length}便 · ${esc(P.printed)} ${new Date().toLocaleString('ja-JP')}</small></h1>${blocks||'<div class="ft">—</div>'}`);
 }
 $('#btn-print').addEventListener('click',()=>printList());
+window.addEventListener('beforeunload',e=>{ if(dirty()||Object.keys(DDR).length||Object.keys(REGDIRTY).some(t=>Object.keys(REGDIRTY[t]).length)){ e.preventDefault(); e.returnValue=''; } });
 
 // ── 뷰·월·검색 ──
 function setView(v){ VIEW=v; $$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); $('#v-list').hidden=v!=='list'; $('#v-disp').hidden=v!=='disp'; $('#v-def').hidden=v!=='def'; $('#btn-print').style.display=v==='list'?'':'none'; if(v==='disp'){ if(!D) D=today(); $('#d').value=D; loadDay(); } if(v==='def') renderDefs(); }
 $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('button[data-v]'); if(b) setView(b.dataset.v); });
-function setMonth(ym){ YM=ym; $('#m').value=YM; load(); }
+function setMonth(ym){ if(!canLeave()){ $('#m').value=YM; return; } DR=null; DDR={}; YM=ym; $('#m').value=YM; load(); }
 $('#m').addEventListener('change',()=>setMonth($('#m').value||today().slice(0,7))); $('#m-prev').addEventListener('click',()=>setMonth(shiftMonth(YM,-1))); $('#m-next').addEventListener('click',()=>setMonth(shiftMonth(YM,1)));
 if(window.__so_rowSearch) __so_rowSearch('#q','#list tbody','tr.tm',{count:'#qcnt',label:n=>tx('cnt',n)});
 
