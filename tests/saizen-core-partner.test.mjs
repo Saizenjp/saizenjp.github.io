@@ -230,3 +230,9 @@ test('partnerLegPlan — 도착일 골프(호텔 경유/직행)·중간일·귀�
   assert.equal(combo[0].depart_time, '');                                                                      // 콤보 중간 구간 시작일 = 공항 도착 아님
   assert.deepEqual(C.partnerRouteOf('golf_out'), ['hotel', 'course']); assert.equal(C.partnerLegOf('course', 'airport'), 'out'); assert.equal(C.partnerLegOf('hotel', 'hotel'), 'other');
 });
+
+test('partnerBrand — 2027-07 예약리스트 상품명(구마모토 시내·트라이얼 없음)은 전부 빈값, 야마나미 신상품도 자회사 아님', () => {
+  for (const n of ['호텔 숙박 야마나미CC 7박 8일', '쿠쥬 프라이빗 타운 야마나미CC 7박 8일', '돔스테이 야마나미CC 4박 5일', '소보 테라스 야마나미CC 4박 5일',
+    '아소 프레스티지 야마나미CC 4박 5일', '히노키 스테이 야마나미CC 4박 5일', '온천호텔 숙박 스가다이라CC 7박 8일', '호텔 숙박 포틴힐즈CC 7박 8일', '벳푸 아키바 리조트 2색 골프투어 3박 4일'])
+    assert.equal(C.partnerBrand(n), '', n);
+});

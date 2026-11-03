@@ -207,11 +207,39 @@
   //  예) "야마나미CC 골프 투어 \"장기숙박형 별장전용\"" → 숙박지=쿠주힐즈(골프만 야마나미CC).
   function accomFromProduct(name) {
     var s = String(name == null ? '' : name);
-    if (/쿠주힐즈|구주힐즈|久住|장기\s*숙박|별장전용/.test(s)) return '쿠주힐즈';
+    //  2027 상품명 「쿠쥬 프라이빗 타운 야마나미CC N박」(2027-07 예약리스트, Min 2026-11-03) — 숙소 키는 2026 과 같이 '쿠주힐즈'(명칭 전환은 2026 예약 종료 후).
+    if (/쿠주힐즈|구주힐즈|쿠쥬|프라이빗\s*타운|久住|장기\s*숙박|별장전용/.test(s)) return '쿠주힐즈';
     if (/간지|ガーンジー|GUERNSEY/i.test(s)) return '간지호텔';
     if (/시즈노야도|しずの宿/.test(s)) return '시즈노야도 료칸';   // ⚠ 넓은 '료칸' 제거: 벳푸 무츠키 료칸 등 타지 료칸 오분류 방지
     if (/야마나미|돔하우스|관내별장|소보별장|아소별장/.test(s)) return '야마나미리조트';
     return '';   // 미해당 = 타 리조트(스가다이라·14hills·벳푸·시로사토·미야자키 등) → 운영 원장 제외
+  }
+  // 판매구분(sale type) — 상품명 → 어느 객실 풀로 가는지의 단일 진실원.
+  //  room.html 자동배정 라우팅(guessSaleType)·일별 체류 현황의 미배정 구역(needGroup)·現地精算表 룸타입 표기(settle_merit)가 같은 판정을 쓴다.
+  //  2026 상품명: 「… 호텔 트윈 숙박」「… 호텔 소형트윈 숙박」「… 돔하우스 (숙박)」「… 관내별장 숙박」「여행사 …」(=돔하우스, Min 2026-08).
+  //  2027 상품명(2027-07 예약리스트, Min 2026-11-03): 「호텔 숙박 야마나미CC N박」=호텔 트윈 · 「돔스테이 야마나미CC」=돔하우스 ·
+  //    「소보 테라스 야마나미CC」(룸타입 4인)=소보별장(현장 수기) · 「아소 프레스티지 야마나미CC」(8인)=아소별장(현장 수기·아소 후보 목록) ·
+  //    「히노키 스테이 야마나미CC」=히노키 스테이(어느 건물인지 확인 전 — 호텔 트윈으로 자동배정하지 않고 현장 수기) ·
+  //    「쿠쥬 프라이빗 타운 야마나미CC」=쿠주힐즈(accomFromProduct) · 간지·시즈는 2026 과 같다. 「관내별장」 표기는 2027 에 없다(Min).
+  //  ⚠ 순서: 소형트윈 → 돔(돔하우스·돔스테이·여행사) → 별장(소보·아소·관내) → 히노키 → 호텔 트윈. 2026 「여행사 … 호텔 소형트윈」은 소형트윈이 먼저라 호텔.
+  //  accom 을 안 주면 accomFromProduct 로 판정한다. 야마나미 권역이 아니면 ''.
+  function saleTypeFromProduct(name, accom) {
+    var s = String(name == null ? '' : name);
+    var ac = (accom == null || accom === undefined) ? accomFromProduct(s) : String(accom);
+    if (/현지\s*예약/.test(s)) return '현지예약';
+    if (ac === '야마나미리조트') {
+      if (/소형\s*트윈/.test(s)) return '호텔 소형트윈';
+      if (/돔\s*하우스|돔\s*스테이|ドーム|여행사/.test(s)) return '돔하우스';
+      if (/소보\s*테라스|소보\s*별장/.test(s)) return '소보별장';
+      if (/아소\s*프레스티지|아소\s*별장/.test(s)) return '아소별장';
+      if (/별장/.test(s)) return '관내별장';
+      if (/히노키|ヒノキ|hinoki/i.test(s)) return '히노키 스테이';
+      return '호텔 트윈';
+    }
+    if (ac === '쿠주힐즈') return '장기숙박전용';
+    if (ac === '간지호텔') return '호텔';
+    if (ac === '시즈노야도 료칸') return '료칸';
+    return '';
   }
 
   // ── 자회사 상품(구마모토 시내호텔·트라이얼 리조트) — 별도 원장 partner_bookings/partner_members(SQL 159, Min 2026-10-30) ──
@@ -1440,6 +1468,7 @@
     accomRate: accomRate,
     b2bFees: b2bFees,
     accomFromProduct: accomFromProduct,
+    saleTypeFromProduct: saleTypeFromProduct,
     PARTNER_BRANDS: PARTNER_BRANDS,
     partnerBrand: partnerBrand,
     partnerBrandDef: partnerBrandDef,

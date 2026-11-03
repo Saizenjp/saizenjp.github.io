@@ -316,3 +316,50 @@ test('기본 석식 한국어 표 = 일본어 표와 같은 길이·요일 일�
   assert.equal(SZCore.baseDinnerKo('2026-10-25'), '해물전골');               // 일
   assert.equal(SZCore.baseDinnerKo('bad'), '');
 });
+
+// ── 2027 상품명(2027-07 엠클릭 예약리스트, Min 2026-11-03 「이 상품이 2027년 상품 정리야」) — 숙박지·판매구분 실명 표본 ──
+test('accomFromProduct: 2027 상품명 — 쿠쥬 프라이빗 타운=쿠주힐즈, 야마나미 신상품=야마나미, 타 리조트=미해당', () => {
+  assert.equal(SZ.accomFromProduct('쿠쥬 프라이빗 타운 야마나미CC 7박 8일'), '쿠주힐즈');
+  assert.equal(SZ.accomFromProduct('쿠쥬 프라이빗 타운 + 호텔 숙박 야마나미CC 14박 15일'), '쿠주힐즈');   // 콤보 = 앞 숙소(수기 분할)
+  assert.equal(SZ.accomFromProduct('호텔 숙박 야마나미CC 7박 8일'), '야마나미리조트');
+  assert.equal(SZ.accomFromProduct('돔스테이 야마나미CC 4박 5일'), '야마나미리조트');
+  assert.equal(SZ.accomFromProduct('소보 테라스 야마나미CC 4박 5일'), '야마나미리조트');
+  assert.equal(SZ.accomFromProduct('아소 프레스티지 야마나미CC 4박 5일'), '야마나미리조트');
+  assert.equal(SZ.accomFromProduct('히노키 스테이 야마나미CC 4박 5일'), '야마나미리조트');
+  assert.equal(SZ.accomFromProduct('간지호텔 2색 골프 투어 7박 8일'), '간지호텔');
+  assert.equal(SZ.accomFromProduct('간지호텔 2색+시즈노야도 료칸 골프 투어  14박 15일'), '간지호텔');
+  assert.equal(SZ.accomFromProduct('시즈노야도 료칸 골프 투어 4박 5일'), '시즈노야도 료칸');
+  assert.equal(SZ.accomFromProduct('호텔 숙박+시즈노야도+호텔 숙박 야마나미CC 28박 29일'), '시즈노야도 료칸');
+  for (const other of ['온천호텔 숙박 스가다이라CC 7박 8일', '맨션 숙박 스가다이라CC 14박 15일', '호텔 숙박 포틴힐즈CC 7박 8일', '카라반 숙박 포틴힐즈CC 7박 8일',
+    '벳푸 아키바 리조트 2색 골프투어 3박 4일', '시로사토CC 골프 투어 6박 7일', '미야자키 2색 골프투어 5박 6일', '미야자키 국제공항CC 골프 투어 5박 6일'])
+    assert.equal(SZ.accomFromProduct(other), '', other);
+});
+test('saleTypeFromProduct: 2026 규칙 회귀(room.html guessSaleType 와 동일)', () => {
+  const Y = '야마나미리조트';
+  assert.equal(SZ.saleTypeFromProduct('[7박 8일] 야마나미CC 골프 투어 관내별장 숙박', Y), '관내별장');
+  assert.equal(SZ.saleTypeFromProduct('여행사 [3박 4일] 야마나미CC 골프 투어 호텔 소형트윈 숙박', Y), '호텔 소형트윈');   // 소형트윈이 여행사보다 먼저
+  assert.equal(SZ.saleTypeFromProduct('여행사 [4박 5일] 야마나미CC 골프 투어 돔하우스 숙박', Y), '돔하우스');
+  assert.equal(SZ.saleTypeFromProduct('여행사 [2박 3일] 야마나미CC 골프 투어 호텔 트윈 숙박', Y), '돔하우스');            // 「여행사」= 돔하우스(Min 2026-08)
+  assert.equal(SZ.saleTypeFromProduct('[4박 5일] 야마나미CC 골프 투어 돔하우스', Y), '돔하우스');
+  assert.equal(SZ.saleTypeFromProduct('[3박 4일] 야마나미CC 골프 투어', Y), '호텔 트윈');
+  assert.equal(SZ.saleTypeFromProduct('야마나미 현지예약', Y), '현지예약');
+  assert.equal(SZ.saleTypeFromProduct('[7박 8일] 야마나미CC 골프 투어 "장기숙박형 별장전용"', '쿠주힐즈'), '장기숙박전용');
+  assert.equal(SZ.saleTypeFromProduct('[7박 8일] 간지호텔 2색 골프 투어', '간지호텔'), '호텔');
+  assert.equal(SZ.saleTypeFromProduct('[7박 8일] 시즈노야도 료칸 골프 투어', '시즈노야도 료칸'), '료칸');
+  assert.equal(SZ.saleTypeFromProduct('시즈노야도 현지예약', '시즈노야도 료칸'), '현지예약');
+  assert.equal(SZ.saleTypeFromProduct('[7박 8일] 스가다이라 그린CC 골프 투어', ''), '');
+  // accom 생략 = accomFromProduct 로 판정
+  assert.equal(SZ.saleTypeFromProduct('[7박 8일] 야마나미CC 골프 투어 관내별장 숙박'), '관내별장');
+});
+test('saleTypeFromProduct: 2027 상품명 — 호텔 숙박=호텔 트윈 · 돔스테이=돔하우스 · 소보 테라스=소보별장 · 아소 프레스티지=아소별장 · 히노키 스테이=수기 · 쿠쥬=장기숙박전용', () => {
+  assert.equal(SZ.saleTypeFromProduct('호텔 숙박 야마나미CC 7박 8일'), '호텔 트윈');
+  assert.equal(SZ.saleTypeFromProduct('호텔 숙박 야마나미CC 14박 15일'), '호텔 트윈');
+  assert.equal(SZ.saleTypeFromProduct('돔스테이 야마나미CC 3박 4일'), '돔하우스');
+  assert.equal(SZ.saleTypeFromProduct('소보 테라스 야마나미CC 4박 5일'), '소보별장');
+  assert.equal(SZ.saleTypeFromProduct('아소 프레스티지 야마나미CC 4박 5일'), '아소별장');
+  assert.equal(SZ.saleTypeFromProduct('히노키 스테이 야마나미CC 4박 5일'), '히노키 스테이');
+  assert.equal(SZ.saleTypeFromProduct('쿠쥬 프라이빗 타운 야마나미CC 7박 8일'), '장기숙박전용');
+  assert.equal(SZ.saleTypeFromProduct('간지호텔 2색 골프 투어 4박 5일'), '호텔');
+  assert.equal(SZ.saleTypeFromProduct('시즈노야도 료칸 골프 투어 7박 8일'), '료칸');
+  assert.equal(SZ.saleTypeFromProduct('온천호텔 숙박 스가다이라CC 7박 8일'), '');
+});

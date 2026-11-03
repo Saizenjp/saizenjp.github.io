@@ -165,7 +165,7 @@
   table.dt tr.cl td .clb{display:inline-block;font-size:10.5px;font-weight:800;color:#fff;background:#c2410c;border-radius:5px;padding:1px 6px}
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.9">
 </head>
 <body data-so-area="occupancy">
 <div class="topbar so-bar">
@@ -196,8 +196,8 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-core.js?v=58"></script>
-<script src="../assets/saizen-ops.js?v=36.8"></script>
+<script src="../assets/saizen-core.js?v=59"></script>
+<script src="../assets/saizen-ops.js?v=36.9"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -521,6 +521,7 @@ async function load(){
     DOMEQ={}; DQD={};
     RBOOK.forEach(b=>{
       const fac=GACC[b.event_seq]||''; if(needGroup(fac,b.product_name||'')!=='돔하우스') return;
+      if(!/돔하우스/.test(String(b.product_name||''))) return;   // 2026 「돔하우스」 상품명만 — 2027 「돔스테이」는 회원 홈피 판매라 여행사 표기가 없는 것이 정상(2026-11-03)
       if(/여행사|旅行社|agency/i.test(String(b.product_name||''))) return;
       DOMEQ[b.event_seq]=true;
       const c=SZCore.parseLocalDate(b.dep_date), e=SZCore.parseLocalDate(b.arr_date); if(isNaN(c)||isNaN(e)) return;
@@ -675,7 +676,13 @@ function groupIdx(g){ const i=GROUP_ORDER.indexOf(g); return i<0?GROUP_ORDER.len
 function isLocalGroup(g){ return (g||[]).some(b=>/현지\s*예약/.test(String(b.product_name||''))); }
 function needGroup(fac, product){
   if(fac!=='야마나미리조트') return '';
-  return /돔하우스|ドームハウス|dome/i.test(String(product||''))?'돔하우스':'호텔동';
+  // 판정 = SZCore.saleTypeFromProduct(방배정 화면과 같은 단일 진실원). 2027: 돔스테이→돔하우스 줄 · 소보 테라스(4인 1동)→소보5동 줄 · 아소 프레스티지(8인)→아소별장 줄.
+  const st=(window.SZCore&&SZCore.saleTypeFromProduct)?SZCore.saleTypeFromProduct(product,fac):'';
+  if(st==='돔하우스') return '돔하우스';
+  if(st==='소보별장') return '소보5동';
+  if(st==='아소별장') return '아소별장';
+  if(st) return '호텔동';
+  return /돔하우스|ドームハウス|dome/i.test(String(product||''))?'돔하우스':'호텔동';   // core 미로드 폴백
 }
 //  싱글 객실 타입이 있는 숙소(야마나미)만 싱글 신청을 따로 세운다 — 없는 숙소는 트윈 필요실에 합친다(Min 2026-09)
 function hasSingle(fac){ return INV.some(i=>i.facility===fac && typeLabel(i.room_type)==='싱글'); }
