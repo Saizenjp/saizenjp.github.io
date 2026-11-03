@@ -34,14 +34,18 @@ Min 지시(2026-11-02): 「이 파일 그대로가 아닌 우리 스타일에 �
 - **밤 구분**: 금·토·일·祝日·祝前日 밤 = 휴일 요금 / 그 외 평일 — 현지 日別 料金表 365일(2026-11~2027-10)과 대조해 전부 일치(`SZCore.partnerNightType`).
 - **골프 구분**: 토 / 일·祝日 / 그 외(금요일 포함 평일) (`SZCore.partnerGolfType`).
 - 파일의 4泊5日(월~금) 싱글·3泊4日(금~월) 싱글·트윈 합계는 이 식과 1円까지 일치했다. 4泊5日 트윈 합계만 파일 쪽 더하기가 2,000 어긋나 있었다(식의 결과를 믿는다).
-- **숫자는 저장소에 없다** — 기본 설정 › 요금표(partner_settings.rates)에 담당자가 넣는다. 테스트는 가상 요금으로 식만 고정.
+- **숫자는 저장소에 없다** — 기본 설정 › 요금표에 담당자가 넣는다. 테스트는 가상 요금으로 식만 고정.
+- **기간별·대상별 요금표(2026-11-03, Min 「호텔·골프장·송영 각각 · 기간마다 · 2~3월 평일/주말, 그 안에 또 다를 수 있고」)**: SQL 161 `partner_rates` 1행 = 종류(hotel/golf/transfer/guide) × 대상(호텔·코스·차량 id, null=공통) × 기간(from/to, null=상시) → `prices` jsonb. 화면은 「기간」 묶음(이름·시작~종료)마다 호텔별·코스별·차량별 칸을 한 번에 편집([이 기간 저장]·[이 기간 복사]). 해석(`SZCore.partnerPrice`) = 대상 지정 > 공통 · 좁은 기간 > 넓은 기간 · 칸 단위 폴백 → 「2~3월」 위에 「2/10~2/14」를 토요일 골프 칸만 적어 두면 그 칸만 바뀐다. 옛 `partner_settings.rates`(공통 한 벌)는 행이 없을 때 폴백.
+- **송영**은 저장된 배차의 (날짜·차량)마다 1대·1일 요금을 팀 단위로 더한다(1인 요금 밖). 요금 행이 없어도 「요금 없음」으로 치지 않는다(引率에 포함되는 상품이 보통).
+- **호텔 블록 사용/사용 안 함**(`partner_ops.use_block`, 기본 true): 끄면 그 팀 객실은 블록 띠·블록 초과·검수 ㉓에서 빠진다(별도 예약·블록 외).
 - 싱글: 블록이 없으므로 싱글 객실이 있으면 요금(팀 입력 또는 요금표 싱글 단가)이 꼭 있어야 한다 → 없으면 「싱글 요금 미정」 빨강 + 검수 짝 `partner_single_norate`.
 
 ## 3. 표 · 권한 · 검수
 
 - SQL 160(2026-11-02 적용 완료 — 표 10·정책 32·롤백 드라이런 통과): `partner_ops`(팀별 1행) · `partner_golf` · `partner_dispatch` · 등록표 `partner_hotels`(블록·가산)/`partner_courses`/`partner_vehicles`(정원)/`partner_staff` · `partner_settings`(rates·partner_defaults) · `partner_bookings.agency`.
 - 권한: 화면·카드는 `partner_kumamoto` / `partner_trial`(둘 중 하나). RLS 읽기 = 그 상품 키 보기 이상, 쓰기 = 그 상품 키 수정(등록표는 partner 키).
-- 검수(§3-3): `data_audit` ㉓ `partner_block_over`(블록 초과 밤 = 화면 빨간 칸 수) · ㉔ `partner_single_norate`.
+- 검수(§3-3): `data_audit` ㉓ `partner_block_over`(블록 초과 밤 = 화면 빨간 칸 수, use_block=false 제외) · ㉔ `partner_single_norate`(팀 수기 요금·기본값·`partner_rates` 싱글 행 모두 없을 때).
+- SQL 161(2026-11-03 파일): `partner_ops.use_block` · `partner_rates`(RLS 등록표와 동일) · data_audit ㉓㉔ 갱신. 화면은 미적용이어도 동작(블록 체크 잠김·옛 공통 요금표).
 
 ## 4. 파일 대조 결과(수치 없이)
 

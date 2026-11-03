@@ -318,34 +318,83 @@
     var d = parseLocalDate(ds); if (isNaN(d)) return 'wk';
     var wd = d.getDay(); if (wd === 6) return 'sat'; if (wd === 0 || JP_HOLIDAYS.indexOf(fmtDate(d)) >= 0) return 'sun'; return 'wk';
   }
-  //  o = { from, to(체크아웃), golfDates[](없으면 밤마다), surcharge(호텔 1인·1박 가산), twin, single, triple(객실 수), pax, adj(1인 가산), singleRate(싱글 1박 수기 요금 — 있으면 표 대신) }
-  //  rates = { hotel:{twin:{wk,hi}, single:{wk,hi}, triple:{wk,hi}}, golf:{wk,sat,sun}, guide:{day,last} }
+  // ── 기간별 요금표(SQL 161 partner_rates) ───────────────────────────────────
+  //  row = { id, kind:'hotel'|'golf'|'transfer'|'guide', ref_id(호텔/코스/차량 id · null=공통), label, from_date, to_date(null=상시), prices:{…} }
+  //    prices — hotel:{twin:{wk,hi},single:{wk,hi},triple:{wk,hi}} / golf:{wk,sat,sun} / transfer:{day}(1대·1일) / guide:{day,last}
+  //  해석(Min 2026-11-02 「호텔·골프장·송영 각각 · 기간마다 · 2~3월 평일/주말, 그 안에 또 다를 수 있고」):
+  //    대상 지정 행 > 공통 행 · 좁은 기간 > 넓은 기간(상시가 가장 넓음) · 같으면 최근 행(id 큰 것) — 칸(키) 단위로 폴백.
+  //    → 「2~3월」 넓은 기간 위에 「2/10~2/14」 좁은 기간을 토요일 골프 칸만 적어 두면 그 칸만 바뀐다.
+  function partnerRateRows(legacy) {            // 옛 partner_settings.rates(공통 한 벌) → 행 배열(기간 없음·공통)
+    var out = []; legacy = legacy || {};
+    ['hotel', 'golf', 'guide', 'transfer'].forEach(function (k) { if (legacy[k] && typeof legacy[k] === 'object' && Object.keys(legacy[k]).length) out.push({ id: 0, kind: k, ref_id: null, label: '', from_date: null, to_date: null, prices: legacy[k] }); });
+    return out;
+  }
+  function partnerRateCands(rows, kind, refId, ds) {
+    ds = String(ds || '').slice(0, 10); var ref = (refId == null || refId === '') ? null : Number(refId);
+    var refOf = function (r) { return (r.ref_id == null || r.ref_id === '') ? null : Number(r.ref_id); };
+    var list = (rows || []).filter(function (r) {
+      if (!r || r.kind !== kind) return false;
+      var rr = refOf(r); if (rr !== null && rr !== ref) return false;
+      if (r.from_date && ds < String(r.from_date).slice(0, 10)) return false;
+      if (r.to_date && ds > String(r.to_date).slice(0, 10)) return false;
+      return true;
+    });
+    var spanOf = function (r) { var f = r.from_date ? String(r.from_date).slice(0, 10) : '', t = r.to_date ? String(r.to_date).slice(0, 10) : ''; if (f && t) return Math.max(0, nightsBetween(f, t)); if (f || t) return 1e9; return 2e9; };
+    list.sort(function (a, b) {
+      var ra = refOf(a) === null ? 1 : 0, rb = refOf(b) === null ? 1 : 0; if (ra !== rb) return ra - rb;
+      var sa = spanOf(a), sb = spanOf(b); if (sa !== sb) return sa - sb;
+      return (Number(b.id) || 0) - (Number(a.id) || 0);
+    });
+    return list;
+  }
+  function partnerPrice(rows, kind, refId, ds, path) {
+    var cands = partnerRateCands(rows, kind, refId, ds); path = Array.isArray(path) ? path : String(path || '').split('.').filter(Boolean);
+    for (var i = 0; i < cands.length; i++) {
+      var v = cands[i].prices || {}; for (var j = 0; j < path.length && v != null; j++) v = v[path[j]];
+      if (v != null && v !== '' && isFinite(Number(v))) return Number(v);
+    }
+    return null;
+  }
+  //  o = { from, to(체크아웃), hotelId, golf:[{date,courseId}](없으면 golfDates, 그것도 없으면 밤마다 공통 코스), transfer:[{date,vehicleId}](저장된 배차 — 팀 단위 송영),
+  //        surcharge(호텔 1인·1박 가산), twin, single, triple(객실 수), pax, adj(1인 가산), singleRate(싱글 1박 수기 요금 — 있으면 표 대신) }
+  //  rates = partner_rates 행 배열(기간별) 또는 옛 공통 객체 { hotel:{…}, golf:{…}, guide:{…} }(partnerRateRows 로 변환)
+  //  결과 = { ok, complete(요금 빠진 칸 없음), missing:['hotel:YYYY-MM-DD','golf:…','single:…'], nights, rounds, twin/single/triple(1인), golf, guide, transfer(팀 단위), transferDays, persons, pax, total(팀=1인×인원+송영), roomsMatch }
+  //  송영 요금이 없는 날은 빠진 칸으로 치지 않는다(引率에 포함되는 상품이 보통이라 선택 항목).
   function partnerQuote(o, rates) {
-    o = o || {}; rates = rates || {};
-    var H = rates.hotel || {}, G = rates.golf || {}, GD = rates.guide || {};
+    o = o || {}; var rows = Array.isArray(rates) ? rates : partnerRateRows(rates);
     var num = function (v) { var n = Number(v); return isFinite(n) ? n : 0; };
     var from = String(o.from || '').slice(0, 10), to = String(o.to || '').slice(0, 10);
     var n = nightsBetween(from, to);
-    if (!(n > 0)) return { ok: false, nights: 0, rounds: 0, twin: 0, single: 0, triple: 0, golf: 0, guide: 0, persons: 0, total: 0, roomsMatch: true };
+    var empty = { ok: false, complete: false, missing: [], nights: 0, rounds: 0, twin: 0, single: 0, triple: 0, golf: 0, guide: 0, transfer: 0, transferDays: 0, persons: 0, pax: num(o.pax), total: 0, roomsMatch: true };
+    if (!(n > 0)) return empty;
     var nights = []; for (var i = 0; i < n; i++) { var d = parseLocalDate(from); d.setDate(d.getDate() + i); nights.push(fmtDate(d)); }
-    var golfDates = Array.isArray(o.golfDates) ? o.golfDates.filter(Boolean) : nights.slice();
+    var golfs = Array.isArray(o.golf) ? o.golf.filter(function (g) { return g && g.date; }).map(function (g) { return { date: String(g.date).slice(0, 10), courseId: g.courseId == null ? null : g.courseId }; })
+      : (Array.isArray(o.golfDates) ? o.golfDates.filter(Boolean).map(function (d) { return { date: String(d).slice(0, 10), courseId: null }; }) : nights.map(function (d) { return { date: d, courseId: null }; }));
+    var hotelId = (o.hotelId == null || o.hotelId === '') ? null : o.hotelId;
+    var tw = num(o.twin), sg = num(o.single), tr = num(o.triple), pax = num(o.pax);
+    var missing = [];
     var hotelOf = function (type) {
-      var r = H[type] || (type === 'triple' ? H.twin : null) || {}; var sum = 0;
+      var sum = 0;
       nights.forEach(function (ds) {
-        var k = partnerNightType(ds);
-        var base = (type === 'single' && o.singleRate != null && o.singleRate !== '') ? num(o.singleRate) : num(r[k]);
+        var k = partnerNightType(ds), base;
+        if (type === 'single' && o.singleRate != null && o.singleRate !== '') base = num(o.singleRate);
+        else {
+          base = partnerPrice(rows, 'hotel', hotelId, ds, [type, k]);
+          if (base == null && type === 'triple') base = partnerPrice(rows, 'hotel', hotelId, ds, ['twin', k]);   // 트리플 요금 없으면 트윈 요금
+          if (base == null) { base = 0; if (type === 'twin') missing.push('hotel:' + ds); if (type === 'single' && sg > 0) missing.push('single:' + ds); }
+        }
         sum += base + num(o.surcharge);
       });
       return sum;
     };
-    var golf = 0; golfDates.forEach(function (ds) { golf += num(G[partnerGolfType(ds)]); });
-    var guide = num(GD.day) * n + num(GD.last);
+    var golf = 0; golfs.forEach(function (g) { var p = partnerPrice(rows, 'golf', g.courseId, g.date, [partnerGolfType(g.date)]); if (p == null) { p = 0; missing.push('golf:' + g.date); } golf += p; });
+    var guide = 0; nights.forEach(function (ds) { guide += num(partnerPrice(rows, 'guide', null, ds, ['day'])); }); guide += num(partnerPrice(rows, 'guide', null, to, ['last']));
+    var transfer = 0, tdays = 0; (Array.isArray(o.transfer) ? o.transfer : []).forEach(function (t) { if (!t || !t.date) return; tdays++; transfer += num(partnerPrice(rows, 'transfer', t.vehicleId, t.date, ['day'])); });
     var adj = num(o.adj);
     var pp = { twin: hotelOf('twin') + golf + guide + adj, single: hotelOf('single') + golf + guide + adj, triple: hotelOf('triple') + golf + guide + adj };
-    var tw = num(o.twin), sg = num(o.single), tr = num(o.triple), pax = num(o.pax);
     var persons = tw * 2 + sg + tr * 3;
-    return { ok: true, nights: n, rounds: golfDates.length, twin: pp.twin, single: pp.single, triple: pp.triple, golf: golf, guide: guide,
-      persons: persons, pax: pax, total: pp.twin * tw * 2 + pp.single * sg + pp.triple * tr * 3, roomsMatch: !pax || persons === pax };
+    return { ok: true, complete: missing.length === 0, missing: missing, nights: n, rounds: golfs.length, twin: pp.twin, single: pp.single, triple: pp.triple, golf: golf, guide: guide,
+      transfer: transfer, transferDays: tdays, persons: persons, pax: pax, total: pp.twin * tw * 2 + pp.single * sg + pp.triple * tr * 3 + transfer, roomsMatch: !pax || persons === pax };
   }
 
   // ── 비회원 F풀 코드 재사용 충돌 판정(30일 쿨다운) ──────────────────────────
@@ -1254,6 +1303,7 @@
     partnerSegment: partnerSegment,
     partnerAgency: partnerAgency,
     partnerNightType: partnerNightType, partnerGolfType: partnerGolfType, partnerQuote: partnerQuote,
+    partnerRateRows: partnerRateRows, partnerRateCands: partnerRateCands, partnerPrice: partnerPrice,
     nmCodeConflict: nmCodeConflict,
     weekday: weekday,
     mdWd: mdWd,
