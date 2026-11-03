@@ -57,7 +57,7 @@ Min 지시(2026-11-02): 「이 파일 그대로가 아닌 우리 스타일에 �
 - 권한: 화면·카드는 `partner_kumamoto` / `partner_trial`(둘 중 하나). RLS 읽기 = 그 상품 키 보기 이상, 쓰기 = 그 상품 키 수정(등록표는 partner 키).
 - 검수(§3-3): `data_audit` ㉓ `partner_block_over`(블록 초과 밤 = 화면 빨간 칸 수, use_block=false 제외) · ㉔ `partner_single_norate`(팀 수기 요금·기본값·`partner_rates` 싱글 행 모두 없을 때).
 - SQL 161(2026-11-03 MCP 적용 완료): `partner_ops.use_block` · `partner_rates`(RLS 등록표와 동일) · data_audit ㉓㉔ 갱신. 화면은 미적용이어도 동작(블록 체크 잠김·옛 공통 요금표).
-- SQL 162(2026-11-03 파일 — ⚠ 적용 전): `partner_hotels/courses.aliases`(별칭 seed) · `partner_ops.auto_sig` · `partner_golf.auto` · `partner_dispatch.from_pt/via_pt/to_pt`(+check). RLS·RPC 변경 없음. 화면·step1 은 미적용이어도 동작(별칭=이름만 · 서명/auto 없이 · 구간은 leg 로).
+- SQL 162(2026-11-03 적용 완료): `partner_hotels/courses.aliases`(별칭 seed) · `partner_ops.auto_sig` · `partner_golf.auto` · `partner_dispatch.from_pt/via_pt/to_pt`(+check). RLS·RPC 변경 없음. 화면·step1 은 미적용이어도 동작(별칭=이름만 · 서명/auto 없이 · 구간은 leg 로).
 
 ## 4. 파일 대조 결과(수치 없이)
 

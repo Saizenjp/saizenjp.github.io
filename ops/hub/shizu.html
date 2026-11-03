@@ -245,7 +245,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.9">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.0">
 </head>
 <body data-so-area="shizu_sheet">
 <div class="topbar so-bar">
@@ -284,8 +284,8 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=59"></script>
-<script src="../assets/saizen-ops.js?v=36.9"></script>
+<script src="../assets/saizen-core.js?v=60"></script>
+<script src="../assets/saizen-ops.js?v=37.0"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(予約表 산출물·도메인 데이터는 일본어 유지) ──
@@ -389,6 +389,9 @@ const _deepYm=/^\d{4}-\d{2}$/.test(_deepQ.get('ym')||'')?_deepQ.get('ym'):null;
 let _deepDate=/^\d{4}-\d{2}-\d{2}$/.test(_deepQ.get('date')||'')?_deepQ.get('date'):null;
 let RFROM='', RTO='';          // 달력 범위(월경계 이어보기). 비면 선택 월 전체(monthBounds).
 let BOOK={};                   // event_seq → {rep_name, remark, remark_local, remark_ja, remark_local_ja}
+let SHZ_HAS_RT=false;          // bookings.room_type(엠클릭 룸타입 열, SQL 163) 유무 — 「별채(개인온천O)」= 別棟 선호(Min 2026-11-03)
+async function shzHasRt(){ try{ const r=await supa.from('bookings').select('room_type',{count:'exact',head:true}); return !r.error; }catch(e){ return false; } }
+const shzRtAnnex=rt=>(window.SZCore&&SZCore.roomTypeAnnex)?SZCore.roomTypeAnnex(rt):/별채|別棟/.test(String(rt||''));
 let _trWarned=false;           // 번역 실패 토스트 1회만
 let ROSTER=[];                 // 그 달 시즈 전체 인원 [{member_id,event_seq,dep,arr,nameKr,nameEn}]
 let UNASSIGNED=[];             // ROSTER 중 미배정(방 없음)
@@ -584,6 +587,7 @@ async function load(){
   NOTES={}; BSEL.clear();
   try{
     const {start,end}=curBounds();
+    SHZ_HAS_RT=await shzHasRt();
     // 시즈노야도 배정(월 겹침): check_in <= 월말 AND check_out > 월초
     const {data:rms,error}=await supa.from('rooms').select('id,inventory_id,member_id,event_seq,room_no,check_in,check_out,assigned_pax,assign_source')
       .eq('facility',FACILITY).lte('check_in',end).gt('check_out',start).not('member_id','is',null);
@@ -605,7 +609,7 @@ async function load(){
     });
     // ※ 온천 사전신청·물채우기 직접 관리 폐지(Min) — 현지에서는 아래 現地備考(메리트 현지비고)만 보고 판단
     // 비고·현지비고(+일본어 캐시) — 예약표 참고용
-    const bks = seqs.length? await pagedIn('bookings','event_seq,event_no,rep_name,product_name,origin,airline,remark,remark_local,remark_ja,remark_local_ja,dep_date,arr_date','event_seq',seqs) : [];
+    const bks = seqs.length? await pagedIn('bookings','event_seq,event_no,rep_name,product_name,origin,airline,remark,remark_local,remark_ja,remark_local_ja,dep_date,arr_date'+(SHZ_HAS_RT?',room_type':''),'event_seq',seqs) : [];
     BOOK={}; bks.forEach(b=>BOOK[b.event_seq]=b);
     // 담당자 메모(영속) — 그 달 범위
     MEMOS={}; try{ const {data:mm}=await supa.from('shizu_memo').select('memo_date,note').gte('memo_date',start).lte('memo_date',end); (mm||[]).forEach(m=>{ MEMOS[String(m.memo_date).slice(0,10)]=m.note||''; }); }catch(e){}
@@ -626,7 +630,7 @@ async function load(){
       // 로스터 소스 = ① accom 이 시즈인 팀 + ② 상품명에 '시즈'가 든 번들예약 팀(시즈+간지·시즈+야마나미 등).
       //   ②가 없으면 번들예약은 accom 이 야마나미/간지로 기록돼 있어, 배정을 풀는 순간 미배정 목록에서
       //   사라져 다시 배정할 입구가 없어진다(실제 사고: 박영철·전외윤).
-      const GSEL='event_seq,accom,bookings!inner(dep_date,arr_date,product_name,remark_local,event_no,rep_name,origin,airline)';
+      const GSEL='event_seq,accom,bookings!inner(dep_date,arr_date,product_name,remark_local,event_no,rep_name,origin,airline'+(SHZ_HAS_RT?',room_type':'')+')';
       const [r1,r2]=await Promise.all([
         supa.from('guests').select(GSEL).eq('accom',FACILITY).neq('bookings.status','대기'),
         supa.from('guests').select(GSEL).ilike('bookings.product_name','%시즈%').neq('bookings.status','대기')
@@ -637,7 +641,7 @@ async function load(){
       (tgs||[]).forEach(g=>{ const b=g.bookings||{}; const dep=String(b.dep_date||'').slice(0,10), arr=String(b.arr_date||'').slice(0,10);
         if(dep&&arr&&dep<=end&&arr>start){ tMap[g.event_seq]={dep,arr,product:b.product_name||'',remark:b.remark_local||''};
           // 미배정 팀은 BOOK(배정팀만 로드)에 없음 → 여기서 행사번호·대표자 채움(헤더 #예약번호 폴백 방지)
-          if(!BOOK[g.event_seq]) BOOK[g.event_seq]={event_seq:g.event_seq,event_no:b.event_no||null,rep_name:b.rep_name||null,product_name:b.product_name||null,origin:b.origin||null,airline:b.airline||null,remark_local:b.remark_local||null,dep_date:dep,arr_date:arr}; } });
+          if(!BOOK[g.event_seq]) BOOK[g.event_seq]={event_seq:g.event_seq,event_no:b.event_no||null,rep_name:b.rep_name||null,product_name:b.product_name||null,origin:b.origin||null,airline:b.airline||null,remark_local:b.remark_local||null,room_type:b.room_type||null,dep_date:dep,arr_date:arr}; } });
       const tSeqs=Object.keys(tMap).map(Number);
       const rgms=tSeqs.length? await pagedIn('guest_members','id,event_seq,name_kr,name_en','event_seq',tSeqs) : [];
       const asg=new Set(GUESTS.map(g=>g.member_id));
@@ -748,7 +752,7 @@ function rackTeams(date){
     const mates=GUESTS.filter(g=>String(g.event_seq)===String(seq))
       .filter((g,i,a)=>a.findIndex(x=>x.member_id===g.member_id)===i)
       .map(g=>({nm:nameOf(g),room:g.room_no}));
-    const annex=SHZ_ANNEX_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''));
+    const annex=SHZ_ANNEX_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''))||shzRtAnnex(bk.room_type);   // 룸타입 「별채」도 別棟 선호(SQL 163)
     return {seq,rep:repEnOf(seq)||bk.rep_name||'',ms,mates,annex,port:portOf(seq),dep:ms[0].dep,arr:ms[0].arr};
   }).sort((a,b)=>(a.port||'').localeCompare(b.port||'')||(a.dep||'').localeCompare(b.dep||'')||(a.seq-b.seq));   // 出発地(ICN/PUS)끼리 묶어 표시(Min)
 }
@@ -1081,7 +1085,7 @@ function bigoFor(date){
     const b=BOOK[seq]; if(!b)return;
     const rep=String(b.rep_name||'').trim();
     // 현지비고에 '별채/별관/別棟/別館' 포함 = 別棟 사전신청 → 객실 개인욕탕 물 채우기 필요
-    const annex=SHZ_ANNEX_RE.test(String(b.remark_local||'')+' '+String(b.remark||''));
+    const annex=SHZ_ANNEX_RE.test(String(b.remark_local||'')+' '+String(b.remark||''))||shzRtAnnex(b.room_type);
     const segs=[];
     const add=(orig,ja)=>{ orig=String(orig||'').replace(/\s*[\r\n]+\s*/g,' ').trim(); if(!orig)return;
       const jaT=String(ja||'').replace(/\s*[\r\n]+\s*/g,' ').trim();
@@ -1213,7 +1217,7 @@ async function autoAssignShizu(){
     if(!teams.length){ toast(tx('autoNone'),'warn'); return; }
     const seqs=[...new Set(teams.map(t=>t.seq))];
     const gms=seqs.length? await pagedIn('guest_members','id,event_seq','event_seq',seqs) : [];
-    const bks=seqs.length? await pagedIn('bookings','event_seq,remark,remark_local','event_seq',seqs) : [];
+    const bks=seqs.length? await pagedIn('bookings','event_seq,remark,remark_local'+(SHZ_HAS_RT?',room_type':''),'event_seq',seqs) : [];
     // 팀 최고령 나이 — 「어르신이 있는 팀을 本館(2층)에」 우선 배정용(Min). 생년월일은 passengers 보유.
     const pxAge=seqs.length? await pagedIn('passengers','event_seq,birth,birth_yymmdd','event_seq',seqs) : [];
     const bkMap={}; bks.forEach(b=>bkMap[b.event_seq]=b);
@@ -1222,7 +1226,7 @@ async function autoAssignShizu(){
     const keep=new Set(manual.map(g=>g.member_id));
     const byTeam={}; gms.forEach(m=>{ if(!keep.has(m.id)){ (byTeam[m.event_seq]=byTeam[m.event_seq]||[]).push(m.id); } });
     // 현지비고에 별채/별관 포함 = 別棟(별채) 선호
-    const annexPref={}; teams.forEach(t=>{ const b=bkMap[t.seq]||{}; annexPref[t.seq]=SHZ_ANNEX_RE.test(String(b.remark_local||'')+' '+String(b.remark||'')); });
+    const annexPref={}; teams.forEach(t=>{ const b=bkMap[t.seq]||{}; annexPref[t.seq]=SHZ_ANNEX_RE.test(String(b.remark_local||'')+' '+String(b.remark||''))||shzRtAnnex(b.room_type); });   // 룸타입 「별채(개인온천O)」(SQL 163)
     //  · 일반팀: 本館 201·202·204(志津·合歓·山法師) → 203(北條) → 離れ 301·302·303(吉祥·瑞雲·馬酔木)
     //    (北條은 완전 최후가 아니라 '本館 중 후순위' — 別棟보다는 먼저)
     //  · 別棟 선호팀(별채 사전신청): 離れ(吉祥·瑞雲·馬酔木) 먼저 → 本館(志津·合歓·山法師) → 北條

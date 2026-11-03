@@ -390,6 +390,7 @@
   .zone-label .zstat .zwarn{color:var(--warn);font-weight:700}
   .team-card .cdates{font-size:11.5px;color:var(--text2);margin-top:3px;font-weight:600}
   .team-card .cloc{display:inline-block;font-size:9px;font-weight:800;border:1px solid #999;border-radius:3px;padding:0 3px;color:#555;line-height:1.5;vertical-align:middle}   /* 현지예약 = 현장 수기 */
+  .team-card .rtb{display:inline-block;font-size:9.5px;border:1px solid var(--border);border-radius:3px;padding:0 4px;color:var(--muted);line-height:1.5;vertical-align:middle}   /* 엠클릭 룸타입 열(SQL 163) */
   .team-card .cdates .cnew{color:var(--accent);background:var(--accentSoft);border-radius:4px;padding:1px 5px;font-size:10px;margin-left:4px}
 
   /* 보기 토글 (카드 / 타임라인) */
@@ -519,7 +520,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=36.9">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.0">
 </head>
 <body data-so-area="room_assign">
 <div class="topbar so-bar">
@@ -648,8 +649,8 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-core.js?v=59"></script>
-<script src="../assets/saizen-ops.js?v=36.9"></script>
+<script src="../assets/saizen-core.js?v=60"></script>
+<script src="../assets/saizen-ops.js?v=37.0"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -722,7 +723,7 @@ const L={
     sgOnsite:'現地割当', sgOnsiteT:'どなたが使うかは現地で決める — 当日に割り当てます',
     holdCatSgWait:'現地割当 待ち', holdFixSgWait:'室数は決まっています — 当日、どなたが使うかを決めて割り当ててください',
     hdRmk:'備考', hdRmkLocal:'現地備考',
-    sgWhyNames:n=>`単独は ${n}(名簿と一致)`, sgWhyNoRoom:(need,free)=>`シングル室不足(${need}名必要・滞在中ずっと空くシングル ${free}室)`, sgAutoNote:'(全員シングル・氏名指定 → シングル室が確保できれば自動で1名1室)', sgWhyPart:'滞在の一部だけシングル', sgWhyAll:'全員シングル(シングル室のない施設 — 手動)', sgWhyUnsure:'誰が単独か未指定', sgWhyMixed:'(ツイン混在 — 要確認)',
+    sgWhyNames:n=>`単独は ${n}(名簿と一致)`, sgWhyNoRoom:(need,free)=>`シングル室不足(${need}名必要・滞在中ずっと空くシングル ${free}室)`, sgAutoNote:'(全員シングル・氏名指定 → シングル室が確保できれば自動で1名1室)', sgWhyPart:'滞在の一部だけシングル', sgWhyRt:rt=>`ルームタイプ「${rt}」`, rtT:'エムクリックのルームタイプ列(SQL 163)', sgWhyAll:'全員シングル(シングル室のない施設 — 手動)', sgWhyUnsure:'誰が単独か未指定', sgWhyMixed:'(ツイン混在 — 要確認)',
     sgAuto:'全員シングル → 自動で1人1室',
     sgDoc:'手配書', sgDocT:'現地手配書をポップアップで開く(備考を確認して割り当て)',
     holdNoRoster:gc=>`${gc} 名簿未登録`,
@@ -868,7 +869,7 @@ const L={
     holdsApply:'この方法で再配置',
     holdsApplyNote:'チェックした方法だけを有効にして自動配置をやり直します。手動で入れた配置はそのまま残ります。',
     holdOddTeam:gc=>`${gc} 3名チーム 保留`, holdSingle:gc=>`${gc} シングル指定 — 手動配置`, holdNoFloor:(gc,n)=>`${gc} ${n}泊: 泊数ルールで可能な階なし(フレックス階満室) — 手動確認`,
-    holdOddLeft:(gc,name)=>`${gc} ${name}: 奇数残り`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} 客室不足`,
+    holdOddLeft:(gc,name)=>`${gc} ${name}: 奇数残り`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} 客室不足`, holdNoUnit:(gc,n,label)=>`${gc} ${n}名: ${label} 1棟が滞在中ずっと空いていない`, soboUnit:'ソボ5号(4名1棟)',
     deluxe:'デラックス', byReservation:'予約種別',
     autoNoTarget:n=>n?`自動割当対象なし · 保留 ${n}件`:'自動割当する未割当人員がいません',
     autoSaveFail:e=>'自動割当の保存に失敗: '+e,
@@ -983,7 +984,7 @@ const L={
     sgOnsite:'현장 배정', sgOnsiteT:'누가 쓸지는 현장에서 정하는 건 — 당일에 배정합니다',
     holdCatSgWait:'현장 배정 대기', holdFixSgWait:'방 수는 정해져 있습니다 — 당일에 누가 쓸지 정해 배정하세요',
     hdRmk:'비고', hdRmkLocal:'현지비고',
-    sgWhyNames:n=>`단독은 ${n}(명단과 일치)`, sgWhyNoRoom:(need,free)=>`싱글 객실 부족(${need}명 필요 · 체류 내내 빈 싱글 ${free}실)`, sgAutoNote:'(전원 싱글·이름 지정 → 싱글 객실이 확보되면 자동 1인 1실)', sgWhyPart:'체류 일부만 싱글', sgWhyAll:'전원 싱글(싱글 객실 없는 숙소 — 수기)', sgWhyUnsure:'누가 단독인지 미지정', sgWhyMixed:'(트윈 섞임 — 확인 필요)',
+    sgWhyNames:n=>`단독은 ${n}(명단과 일치)`, sgWhyNoRoom:(need,free)=>`싱글 객실 부족(${need}명 필요 · 체류 내내 빈 싱글 ${free}실)`, sgAutoNote:'(전원 싱글·이름 지정 → 싱글 객실이 확보되면 자동 1인 1실)', sgWhyPart:'체류 일부만 싱글', sgWhyRt:rt=>`룸타입 「${rt}」`, rtT:'엠클릭 룸타입 열(SQL 163)', sgWhyAll:'전원 싱글(싱글 객실 없는 숙소 — 수기)', sgWhyUnsure:'누가 단독인지 미지정', sgWhyMixed:'(트윈 섞임 — 확인 필요)',
     sgAuto:'전원 싱글 → 자동으로 1인 1실',
     sgDoc:'수배서', sgDocT:'현지수배서를 팝업으로 열기(비고 확인 후 바로 배정)',
     holdNoRoster:gc=>`${gc} 명단미등록`,
@@ -1125,7 +1126,7 @@ const L={
     holdsApply:'이 방법으로 재배정',
     holdsApplyNote:'체크한 방법만 켜서 자동배정을 다시 돌립니다. 수기로 넣은 배정은 그대로 남습니다.',
     holdOddTeam:gc=>`${gc} 3명팀 보류`, holdSingle:gc=>`${gc} 싱글 지정 — 수기 배정`, holdNoFloor:(gc,n)=>`${gc} ${n}박: 박수 규칙 가능 층 없음(유동층 만석) — 수기 확인`,
-    holdOddLeft:(gc,name)=>`${gc} ${name}: 홀수 잔여`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} 객실부족`,
+    holdOddLeft:(gc,name)=>`${gc} ${name}: 홀수 잔여`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} 객실부족`, holdNoUnit:(gc,n,label)=>`${gc} ${n}명: ${label} 한 동이 체류 내내 비어 있지 않음`, soboUnit:'소보 5호(4인 1동)',
     deluxe:'디럭스', byReservation:'예약종류',
     autoNoTarget:n=>n?`자동배정 대상 없음 · 보류 ${n}건`:'자동배정할 미배정 인원이 없습니다',
     autoSaveFail:e=>'자동배정 저장 실패: '+e,
@@ -1237,7 +1238,7 @@ const L={
     sgOnsite:'On-site', sgOnsiteT:'Who takes them is decided on site — assign on the day',
     holdCatSgWait:'Waiting for on-site assignment', holdFixSgWait:'The room count is fixed — decide who takes them and assign on the day',
     hdRmk:'Remarks', hdRmkLocal:'On-site remarks',
-    sgWhyNames:n=>`single: ${n} (matched roster)`, sgWhyNoRoom:(need,free)=>`not enough single rooms (${need} needed, ${free} free for the whole stay)`, sgAutoNote:'(all-single / named → auto 1 per room when single rooms are available)', sgWhyPart:'only part of the stay', sgWhyAll:'all single (no single rooms here — manual)', sgWhyUnsure:'who is alone is not stated', sgWhyMixed:'(twin mixed in — check)',
+    sgWhyNames:n=>`single: ${n} (matched roster)`, sgWhyNoRoom:(need,free)=>`not enough single rooms (${need} needed, ${free} free for the whole stay)`, sgAutoNote:'(all-single / named → auto 1 per room when single rooms are available)', sgWhyPart:'only part of the stay', sgWhyRt:rt=>`room type "${rt}"`, rtT:'M-Click room type column (SQL 163)', sgWhyAll:'all single (no single rooms here — manual)', sgWhyUnsure:'who is alone is not stated', sgWhyMixed:'(twin mixed in — check)',
     sgAuto:'all single → auto 1 person per room',
     sgDoc:'Dispatch', sgDocT:'Open the local dispatch sheet in a popup',
     holdNoRoster:gc=>`${gc} roster not registered`,
@@ -1379,7 +1380,7 @@ const L={
     holdsApply:'Re-assign this way',
     holdsApplyNote:'Re-runs auto-assign with only the ticked relaxations. Manual assignments stay untouched.',
     holdOddTeam:gc=>`${gc} 3-person team held`, holdSingle:gc=>`${gc} single requested — manual`, holdNoFloor:(gc,n)=>`${gc} ${n}n: no floor available by night-count rule (flex floors full) — manual check`,
-    holdOddLeft:(gc,name)=>`${gc} ${name}: odd leftover`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} not enough rooms`,
+    holdOddLeft:(gc,name)=>`${gc} ${name}: odd leftover`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} not enough rooms`, holdNoUnit:(gc,n,label)=>`${gc} ${n} pax: no ${label} unit free for the whole stay`, soboUnit:'Sobo 5 (4-pax unit)',
     deluxe:'Deluxe', byReservation:'Reservation type',
     autoNoTarget:n=>n?`No auto-assign target · held ${n}`:'No unassigned guests to auto-assign',
     autoSaveFail:e=>'Auto-assign save failed: '+e,
@@ -1487,7 +1488,9 @@ const ROOMTYPE_MAP={
   '장기숙박전용':'2인1동',    // 쿠주
   '호텔':'트윈',              // 간지
   '료칸':'트윈',              // 시즈노야도
-  // 2027 상품 「소보 테라스」(소보별장)·「아소 프레스티지」(아소별장)·「히노키 스테이」는 표에 없다 = 미배정 카드에 「현장지정」, 자동배정 제외(autoRoute null).
+  '소보 테라스':'4인실(소보 5호)',   // 2027 — 소보 5호 한 동 통째(Min 2026-11-03)
+  '히노키 스테이':'트윈(소보별장)',   // 2027 — 소보별장 2·3호 트윈(Min 2026-11-03 「히노키 스테이는 소보별장」)
+  // 2027 「아소 프레스티지」(아소별장)는 표에 없다 = 미배정 카드에 「현장지정」(아소별장 후보 목록에서 옮긴다), autoRoute null.
 };
 
 // ── 객실 타입 한글 → 영문 (외국인 직원용 병기) ──
@@ -1737,9 +1740,10 @@ async function loadDay(){
 
   // 점유 판정: dep_date <= to(범위끝) AND arr_date > from(범위시작)
   //   → 그 기간에 체크인~체크아웃이 한 번이라도 걸치는 팀
+  const _bkRt=await hasBkRoomType();   // 엠클릭 룸타입 열(SQL 163) — 있을 때만 읽는다
   const gres=await pagedQuery(()=>supa
     .from('guests')
-    .select('event_seq,team_tag,group_code,accom,accom_prefix,pax,check_status,bookings!inner(event_no,rep_name,dep_date,arr_date,product_name,member_type,remark,remark_local,status)')
+    .select('event_seq,team_tag,group_code,accom,accom_prefix,pax,check_status,bookings!inner(event_no,rep_name,dep_date,arr_date,product_name,member_type,remark,remark_local,status'+(_bkRt?',room_type':'')+')')
     .lte('bookings.dep_date',to)
     .gt('bookings.arr_date',from)
     .order('event_seq'));
@@ -1755,6 +1759,7 @@ async function loadDay(){
     status:x.bookings?.status||'',            // 구분: 견적/대기/확정/정산 (대기=대기예약)
     remark:x.bookings?.remark||'',
     remark_local:x.bookings?.remark_local||'',   // 현지비고(싱글 지정 탐지용)
+    room_type:x.bookings?.room_type||'',          // 엠클릭 룸타입 열(SQL 163, 2027~: 싱글 / 싱글,트윈 / 컴팩트 / 본관·별채 …) — Min 2026-11-03
     isNewCheckin: x.bookings?.dep_date===from,   // 이 범위 시작일에 신규 체크인
     sale_type:guessSaleType(x.bookings?.product_name, x.accom),
   }));
@@ -1878,8 +1883,14 @@ async function loadDay(){
   }catch(e){ console.warn('자동 실행 건너뜀:',e&&e.message); }
 }
 
+// bookings.room_type(엠클릭 룸타입 열, SQL 163) 유무 — 없는 DB 에서는 select 에 넣지 않는다(넣으면 guests 로드가 통째로 실패).
+let _hasBkRt=null;
+async function hasBkRoomType(){
+  if(_hasBkRt===null){ try{ const r=await supa.from('bookings').select('room_type',{count:'exact',head:true}); _hasBkRt=!r.error; }catch(e){ _hasBkRt=false; } }
+  return _hasBkRt;
+}
 function guessSaleType(pname,accom){
-  // 판정의 단일 진실원 = SZCore.saleTypeFromProduct(2027 상품명 포함: 돔스테이=돔하우스 · 소보 테라스=소보별장 · 아소 프레스티지=아소별장 · 히노키 스테이=현장 수기 · 쿠쥬 프라이빗 타운=쿠주힐즈).
+  // 판정의 단일 진실원 = SZCore.saleTypeFromProduct(2027 상품명 포함: 돔스테이=돔하우스 · 소보 테라스=소보 5호 통째 · 히노키 스테이=소보별장 트윈 · 아소 프레스티지=아소별장(수기) · 쿠쥬 프라이빗 타운=쿠주힐즈).
   //   아래 본문은 core 미로드 때의 폴백(2026 규칙)이다.
   if(window.SZCore&&SZCore.saleTypeFromProduct) return SZCore.saleTypeFromProduct(pname,accom);
   const s=String(pname||'');
@@ -2735,7 +2746,7 @@ function renderUnassigned(){
       ${singleNote(g)?`<div class="tc-s" style="padding-top:0">${singleBadgeHtml(g)}</div>`:''}
       ${noteLine(g)}
       <div class="tc-s">${fmtMD(g.dep)} → ${fmtMD(g.arr)} · ${teamNights(g)}${tx('nightUnit')} · ${g.pax}${tx('nameUnit')}${g.isNewCheckin?` <b class="cnew">${tx('todayCheckin')}</b>`:''}
-        <br>${esc(g.accom||'')} · ${g.sale_type==='현지예약'?'<b class="cloc">現地</b> ':''}<b>${esc(g.sale_type||'')} → ${esc(ROOMTYPE_MAP[g.sale_type]||tx('onsiteFix'))}</b></div>
+        <br>${esc(g.accom||'')} · ${g.sale_type==='현지예약'?'<b class="cloc">現地</b> ':''}<b>${esc(g.sale_type||'')} → ${esc(ROOMTYPE_MAP[g.sale_type]||tx('onsiteFix'))}</b>${g.room_type?` · <span class="rtb" title="${esc(tx('rtT'))}">${esc(g.room_type)}</span>`:''}</div>
       <div class="roster">${rosterHtml}</div>
       ${doneN?`<button type="button" class="dtog" data-seq="${g.event_seq}">${tx('doneToggle',doneN,openDone)}</button>`:''}`;
     // 행 선택 토글 (행 어디를 눌러도 1회 토글). 체크박스/행 클릭 일원화.
@@ -3223,9 +3234,10 @@ function teamPlaceKeys(g){
   const st=g.sale_type, ac=g.accom;
   if(ac==='야마나미리조트'){
     if(st==='돔하우스') return ['돔하우스'];
-    if(st==='소보별장') return ['소보5동','소보별장'];   // 2027 「소보 테라스」(룸타입 4인) — 현장 수기, 소보 칩에서 보인다
+    if(st==='소보 테라스') return ['소보5동'];           // 2027 — 소보 5호(4인 1동) 통째 자동배정
+    if(st==='히노키 스테이') return ['소보별장'];        // 2027 — 소보별장 2·3호 트윈 자동배정(2027 이름 「히노키 스테이」)
     if(st==='아소별장') return ['아소별장'];              // 2027 「아소 프레스티지」(8인) — 현장 수기·아소별장 후보 목록
-    // 호텔 트윈·소형트윈·관내별장(2026)·히노키 스테이(2027, 정체 확인 전) = 호텔 칩. 호텔 트윈·소형트윈·관내별장은 전부 호텔 배정 팀(Min 2026-08).
+    // 호텔 트윈·소형트윈·관내별장(2026) = 호텔 칩 — 전부 호텔 배정 팀(Min 2026-08).
     // 별장 이동 후보면 그 칩에서도 보이게 키를 하나 더 붙인다.
     const k=['호텔'];
     if(asoEligible(g)) k.push('아소별장');
@@ -4612,7 +4624,10 @@ function autoRoute(g){
     if(st==='호텔 소형트윈') return {fac:ac, floorOnly:true, genTypes:GEN_TYPES, deluxe:true};
     if(st==='관내별장')      return {fac:ac, floorOnly:true, genTypes:GEN_TYPES, deluxe:true}; // 소보 비우고 호텔로
     if(st==='돔하우스')      return {fac:ac, zone:'돔하우스', genTypes:['트윈'],      deluxe:false};
-    return null; // 그 외(소보·아소 현장지정) 제외
+    // 2027 소보별장 상품(Min 2026-11-03 「소보 테라스는 5호로 자동배정해, 히노키 스테이는 소보별장이야」)
+    if(st==='소보 테라스')   return {fac:ac, zone:'소보별장', unit:/5\s*호/,         deluxe:false};  // 4인 1동 = 소보 5호 한 동 통째(placeUnit)
+    if(st==='히노키 스테이') return {fac:ac, zone:'소보별장', genTypes:['트윈'],      deluxe:false};  // 소보별장 2·3호 트윈(2인 1실)
+    return null; // 그 외(아소 프레스티지·아소별장 현장지정) 제외
   }
   if(ac==='쿠주힐즈')        return {fac:ac, any:true, deluxe:false};
   if(ac==='간지호텔')        return {fac:ac, any:true, deluxe:false};
@@ -4671,6 +4686,7 @@ function roomPool(route, kind){
   let rooms=state.inventory.filter(r=>r.facility===route.fac && r.active);
   if(route.floorOnly)      rooms=rooms.filter(r=>/^\d+층$/.test(r.zone||''));
   else if(route.zone)      rooms=rooms.filter(r=>(r.zone||'')===route.zone);
+  if(route.unit)           rooms=rooms.filter(r=>route.unit.test(String(r.room_no||'')));   // 한 동 통째 상품(소보 테라스=소보 5호)
   // 공통 1순위: 높은 층 우선(3층=기피층이라 맨 뒤). 예약 빠른 팀이 먼저 좋은 층을 받음.
   const byFloorDesc=(a,b)=>floorOf(b)-floorOf(a);
   if(kind==='deluxe'){
@@ -4863,6 +4879,19 @@ function placeSingles(g,list,primaryPool,fallbackPool,label,pending,holds,occ,fl
   }
 }
 
+// 한 동 통째 배정(2027 「소보 테라스」= 소보 5호 4인 1동, Min 2026-11-03):
+//   팀 전원이 체류 내내 들어가는 빈 동 하나에 전원을 넣고, 그 기간 그 동은 다른 팀이 못 쓰게 잠근다(_soloSpans —
+//   2명 팀이라도 남은 침대에 남을 넣지 않는다, 한 동 상품). 체류 내내 빈 동이 없으면 보류(수기).
+function placeUnit(g,roster,pool,label,pending,holds,occ){
+  if(!roster||!roster.length) return false;
+  const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq));
+  const inv=pickRoom(pool,g.dep,g.arr,roster.length,pending,occ);
+  if(!inv){ holds.push(mkHold(tx('holdNoUnit',gc,roster.length,label)+' — '+noRoomWhy([pool],g.dep,g.arr,roster.length,pending,occ),g,'noRoom')); return false; }
+  roster.forEach(m=>pending.push(mkRow(g,m,inv)));
+  _soloSpans.push({id:inv.id, ci:g.dep, co:g.arr});   // 이 동은 그 기간 이 팀 전용
+  return true;
+}
+
 // 홀수로 남는 1명 = 싱글 방(정원 1)에 배정. 허용 층 → 전층 순.
 //  ⚠ 트윈을 1인용으로 대신 쓰는 것은 **그 시설에 애초에 싱글 타입이 없을 때만**이다
 //    (간지호텔·쿠주힐즈·돔하우스 = 트윈/2인1동뿐, 다른 선택지가 없다).
@@ -5029,6 +5058,16 @@ async function autoAssign(){
           && SZCore.singleOnsite((g.remark_local||'')+'\n'+(g.remark||''));
         holds.push(mkHold(tx('holdSingle',gc)+singleWhy(_sp),g,_onsite?'sgWait':'single',_sp)); continue;
       }
+      // ── 엠클릭 룸타입 열(SQL 163 bookings.room_type, Min 2026-11-03 「3번은 그렇게 다 설정되어 있는거야」= 그렇게 설정된 값이니 믿고 쓴다) ──
+      //   비고에 싱글 언급이 있으면 위 비고 규칙이 먼저(이름 지정이 더 정확) — 비고가 조용할 때(또는 「싱글 불가」처럼 막힌 건 제외)만 룸타입을 본다.
+      //   「싱글」(싱글만)=전원 1인 1실 → 비고 「전원 싱글」과 같은 경로(호텔동 + 체류 내내 빈 싱글이 인원수만큼 있을 때만, 아니면 보류).
+      //   「싱글,트윈」=일부만 싱글 → 홀수 팀은 남는 1명이 싱글(평소 규칙) / 짝수 팀은 누가 싱글인지 비고에 없으면 보류(수기).
+      const _rt=(window.SZCore&&SZCore.roomTypeSingles&&!(_sp&&_sp.kind==='blocked'))?SZCore.roomTypeSingles(g.room_type, roster.length):null;
+      if(_rt && _rt.kind==='all'){
+        if(route.floorOnly){ plans.push({g,route,roster,floorOrder,gc,singles:roster.slice(),sp:{kind:'all',src:'roomtype'}}); continue; }
+        holds.push(mkHold(tx('holdSingle',gc)+' — '+tx('sgWhyRt',g.room_type)+' · '+tx('sgWhyAll'),g,'single',{kind:'all'})); continue;
+      }
+      if(_rt && _rt.kind==='mixed'){ holds.push(mkHold(tx('holdSingle',gc)+' — '+tx('sgWhyRt',g.room_type)+' · '+tx('sgWhyUnsure'),g,'single',{kind:'unsure'})); continue; }
       plans.push({g,route,roster,floorOrder,gc});
     }
     // ── 관내별장 예약 = 호텔 우선, 소보별장은 넘칠 때만 (Min 2026-09 「호텔이 비어 있으면 안 채우는 것이 원칙」) ──
@@ -5056,6 +5095,7 @@ async function autoAssign(){
         for(const inv of pool){
           if(left<=0) break;
           if(used.includes(inv.id)) continue;
+          if(isSoloRoom(inv.id,g.dep,g.arr)) continue;   // 2027 소보 테라스가 통째로 잡은 동(남은 침대에 남을 안 넣는다)
           const cap=inv.max_capacity||inv.capacity;
           const free=cap-dbUsedFor(inv,g.dep,g.arr,occ,pending);
           if(free<=0) continue;
@@ -5152,8 +5192,12 @@ async function autoAssign(){
           placeGivenPairs(g, generalPairs, gp, dlxAny, tx('byReservation'), pending, holds, occ, floorOrder);
           if(leftovers.length) placeLeftovers(g, route, leftovers, flr, pending, holds, occ, floorOrder, gp.concat(dlxAny));
         }
+      }else if(route.unit){
+        // 2027 「소보 테라스」(4인 1동) = 소보 5호 한 동 통째. 패스 순서는 비디럭스 시설과 같다(회원 포함 팀=회원 패스).
+        if((phase==='member')===roster.some(isMember))
+          placeUnit(g, roster, roomPool(route,'general'), tx('soboUnit'), pending, holds, occ);
       }else{
-        // 비디럭스 시설(쿠주·간지·돔): 룸타입 없음 → 회원 포함 팀은 회원 패스, 순수 일반팀은 일반 패스(회원 우선 일관)
+        // 비디럭스 시설(쿠주·간지·돔·2027 히노키 스테이=소보별장 트윈): 룸타입 없음 → 회원 포함 팀은 회원 패스, 순수 일반팀은 일반 패스(회원 우선 일관)
         if((phase==='member')===roster.some(isMember))
           placePairs(g, roster, flr(roomPool(route,'general')), null, route.fac, pending, holds, occ, floorOrder);
       }

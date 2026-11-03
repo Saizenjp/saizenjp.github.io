@@ -10,6 +10,7 @@
 --  ④ partner_dispatch.from_pt / via_pt / to_pt — 송영 구간의 출발·경유·도착지(airport|hotel|course|other). 없으면 leg 로 해석(in=공항→호텔 …).
 --  RLS·RPC 변경 없음(anon secdef 15 유지). 멱등. 00_VERIFY 162.
 --  적용: Supabase MCP(Min 「sql 162 적용해」) 또는 SQL Editor. 화면·step1 은 미적용이어도 동작(별칭=이름만 · 서명/auto/구간 없이 저장).
+--  ✅ 적용 완료 2026-11-03(MCP, Min 「sql162 적용해줘」) — 검증: 컬럼 7 · 호텔 별칭 5 · 골프장 별칭 6 · 제약 partner_dispatch_pts_chk 1 · anon secdef 15 유지.
 -- ============================================================================
 
 -- ① 별칭

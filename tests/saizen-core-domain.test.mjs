@@ -351,15 +351,34 @@ test('saleTypeFromProduct: 2026 규칙 회귀(room.html guessSaleType 와 동일
   // accom 생략 = accomFromProduct 로 판정
   assert.equal(SZ.saleTypeFromProduct('[7박 8일] 야마나미CC 골프 투어 관내별장 숙박'), '관내별장');
 });
-test('saleTypeFromProduct: 2027 상품명 — 호텔 숙박=호텔 트윈 · 돔스테이=돔하우스 · 소보 테라스=소보별장 · 아소 프레스티지=아소별장 · 히노키 스테이=수기 · 쿠쥬=장기숙박전용', () => {
+test('saleTypeFromProduct: 2027 상품명 — 호텔 숙박=호텔 트윈 · 돔스테이=돔하우스 · 소보 테라스=소보 5호 · 히노키 스테이=소보별장 · 아소 프레스티지=아소별장(수기) · 쿠쥬=장기숙박전용', () => {
   assert.equal(SZ.saleTypeFromProduct('호텔 숙박 야마나미CC 7박 8일'), '호텔 트윈');
   assert.equal(SZ.saleTypeFromProduct('호텔 숙박 야마나미CC 14박 15일'), '호텔 트윈');
   assert.equal(SZ.saleTypeFromProduct('돔스테이 야마나미CC 3박 4일'), '돔하우스');
-  assert.equal(SZ.saleTypeFromProduct('소보 테라스 야마나미CC 4박 5일'), '소보별장');
+  assert.equal(SZ.saleTypeFromProduct('소보 테라스 야마나미CC 4박 5일'), '소보 테라스');     // 소보 5호 통째(Min 2026-11-03)
+  assert.equal(SZ.saleTypeFromProduct('야마나미CC 소보별장 숙박 4박 5일'), '히노키 스테이');      // 2027 소보별장=히노키 스테이
   assert.equal(SZ.saleTypeFromProduct('아소 프레스티지 야마나미CC 4박 5일'), '아소별장');
   assert.equal(SZ.saleTypeFromProduct('히노키 스테이 야마나미CC 4박 5일'), '히노키 스테이');
   assert.equal(SZ.saleTypeFromProduct('쿠쥬 프라이빗 타운 야마나미CC 7박 8일'), '장기숙박전용');
   assert.equal(SZ.saleTypeFromProduct('간지호텔 2색 골프 투어 4박 5일'), '호텔');
   assert.equal(SZ.saleTypeFromProduct('시즈노야도 료칸 골프 투어 7박 8일'), '료칸');
   assert.equal(SZ.saleTypeFromProduct('온천호텔 숙박 스가다이라CC 7박 8일'), '');
+});
+
+// ── 엠클릭 룸타입 열(2027-07 예약리스트 실측값, Min 2026-11-03 「3번은 그렇게 다 설정되어 있는거야」) ──
+test('roomTypeSingles: 싱글=전원 · 싱글,트윈=3명 1실/4명 2실/그 외 비고 확인 · 트윈=없음', () => {
+  assert.deepEqual(SZ.roomTypeSingles('싱글', 4), { kind: 'all', n: 4 });
+  assert.deepEqual(SZ.roomTypeSingles('싱글', 8), { kind: 'all', n: 8 });
+  assert.deepEqual(SZ.roomTypeSingles('싱글,트윈', 4), { kind: 'mixed', n: 2 });
+  assert.deepEqual(SZ.roomTypeSingles('싱글,트윈', 3), { kind: 'odd', n: 1 });
+  assert.deepEqual(SZ.roomTypeSingles('싱글,트윈', 5), { kind: 'odd', n: 1 });
+  assert.deepEqual(SZ.roomTypeSingles('싱글,트윈', 6), { kind: 'mixed', n: 0 });
+  assert.deepEqual(SZ.roomTypeSingles('싱글,컴팩트', 4), { kind: 'mixed', n: 2 });
+  for (const rt of ['트윈', '컴팩트', '본관(개인온천X)', '별채(개인온천O)', '4인(4PERSON)', '8인(8PERSON)', '', null])
+    assert.equal(SZ.roomTypeSingles(rt, 4), null, String(rt));
+  assert.equal(SZ.roomTypeAnnex('별채(개인온천O)'), true);
+  assert.equal(SZ.roomTypeAnnex('별채(개인온천O),트윈'), true);
+  assert.equal(SZ.roomTypeAnnex('본관(개인온천X)'), false);
+  assert.equal(SZ.roomTypeAnnex('본관(개인온천X),트윈'), false);
+  assert.equal(SZ.roomTypeAnnex(null), false);
 });

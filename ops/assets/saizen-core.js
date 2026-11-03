@@ -218,10 +218,10 @@
   //  room.html 자동배정 라우팅(guessSaleType)·일별 체류 현황의 미배정 구역(needGroup)·現地精算表 룸타입 표기(settle_merit)가 같은 판정을 쓴다.
   //  2026 상품명: 「… 호텔 트윈 숙박」「… 호텔 소형트윈 숙박」「… 돔하우스 (숙박)」「… 관내별장 숙박」「여행사 …」(=돔하우스, Min 2026-08).
   //  2027 상품명(2027-07 예약리스트, Min 2026-11-03): 「호텔 숙박 야마나미CC N박」=호텔 트윈 · 「돔스테이 야마나미CC」=돔하우스 ·
-  //    「소보 테라스 야마나미CC」(룸타입 4인)=소보별장(현장 수기) · 「아소 프레스티지 야마나미CC」(8인)=아소별장(현장 수기·아소 후보 목록) ·
-  //    「히노키 스테이 야마나미CC」=히노키 스테이(어느 건물인지 확인 전 — 호텔 트윈으로 자동배정하지 않고 현장 수기) ·
+  //    「소보 테라스 야마나미CC」(룸타입 4인)=소보 테라스(소보 5호 4인 1동 통째 자동배정) · 「히노키 스테이 야마나미CC」=히노키 스테이(=소보별장 2·3호 트윈 자동배정) ·
+  //    「아소 프레스티지 야마나미CC」(8인)=아소별장(현장 수기·아소 후보 목록) — Min 2026-11-03 「소보 테라스는 5호로 자동배정해, 히노키 스테이는 소보별장이야. 2027년부터는 이름이 바뀐다」·
   //    「쿠쥬 프라이빗 타운 야마나미CC」=쿠주힐즈(accomFromProduct) · 간지·시즈는 2026 과 같다. 「관내별장」 표기는 2027 에 없다(Min).
-  //  ⚠ 순서: 소형트윈 → 돔(돔하우스·돔스테이·여행사) → 별장(소보·아소·관내) → 히노키 → 호텔 트윈. 2026 「여행사 … 호텔 소형트윈」은 소형트윈이 먼저라 호텔.
+  //  ⚠ 순서: 소형트윈 → 돔(돔하우스·돔스테이·여행사) → 소보 테라스 → 히노키(소보별장) → 아소 → 별장(관내) → 호텔 트윈. 2026 「여행사 … 호텔 소형트윈」은 소형트윈이 먼저라 호텔.
   //  accom 을 안 주면 accomFromProduct 로 판정한다. 야마나미 권역이 아니면 ''.
   function saleTypeFromProduct(name, accom) {
     var s = String(name == null ? '' : name);
@@ -230,10 +230,10 @@
     if (ac === '야마나미리조트') {
       if (/소형\s*트윈/.test(s)) return '호텔 소형트윈';
       if (/돔\s*하우스|돔\s*스테이|ドーム|여행사/.test(s)) return '돔하우스';
-      if (/소보\s*테라스|소보\s*별장/.test(s)) return '소보별장';
+      if (/소보\s*테라스/.test(s)) return '소보 테라스';
+      if (/히노키|ヒノキ|hinoki|소보\s*별장/i.test(s)) return '히노키 스테이';
       if (/아소\s*프레스티지|아소\s*별장/.test(s)) return '아소별장';
       if (/별장/.test(s)) return '관내별장';
-      if (/히노키|ヒノキ|hinoki/i.test(s)) return '히노키 스테이';
       return '호텔 트윈';
     }
     if (ac === '쿠주힐즈') return '장기숙박전용';
@@ -241,6 +241,26 @@
     if (ac === '시즈노야도 료칸') return '료칸';
     return '';
   }
+
+  // 엠클릭 예약리스트 「룸타입」 열 → 싱글 요청(Min 2026-11-03 「3번은 그렇게 다 설정되어 있는거야」 = 엠클릭에서 그렇게 설정된 값이니 믿고 쓴다).
+  //  값: 「싱글」 / 「싱글,트윈」 / 「트윈」 / 「컴팩트」 / 「본관(개인온천X)」 / 「별채(개인온천O)」 / 「4인(4PERSON)」 / 「8인(8PERSON)」 … (2027-07 예약리스트 실측)
+  //  · 「싱글」(트윈 계열 없이) = 전원 1인 1실 → {kind:'all', n:인원}
+  //  · 「싱글,트윈」 = 일부만 싱글: s 싱글 + t 트윈 = 인원(s,t ≥ 1) 이 유일한 건 3명(1+1실)·4명(2+1실)뿐 →
+  //      3명·홀수 = 남는 1명이 싱글(기존 홀수 규칙과 같다) {kind:'odd', n:1} / 4명 = {kind:'mixed', n:2}(누가 싱글인지는 모름) /
+  //      그 외 짝수 = {kind:'mixed', n:0}(비고 확인). 자동배정은 'all' 만 1인 1실, 'mixed' 는 보류(수기), 'odd' 는 평소대로.
+  //  · 싱글 언급 없음 = null(비고 규칙만).
+  function roomTypeSingles(rt, pax) {
+    var s = String(rt == null ? '' : rt);
+    if (!/싱글|single|シングル/i.test(s)) return null;
+    var twin = /트윈|twin|ツイン|컴팩트|더블|더블/i.test(s), p = Number(pax) || 0;
+    if (!twin) return { kind: 'all', n: p };
+    if (p === 4) return { kind: 'mixed', n: 2 };
+    if (p % 2 === 1) return { kind: 'odd', n: 1 };
+    return { kind: 'mixed', n: 0 };
+  }
+  // 룸타입 열 → 시즈노야도 別棟(별채) 선호(「별채(개인온천O)」). 현지비고 키워드(SHZ_ANNEX_RE)와 OR 로 쓴다.
+  var ROOMTYPE_ANNEX_RE = /별채|別棟|離れ/;
+  function roomTypeAnnex(rt) { return ROOMTYPE_ANNEX_RE.test(String(rt == null ? '' : rt)); }
 
   // ── 자회사 상품(구마모토 시내호텔·트라이얼 리조트) — 별도 원장 partner_bookings/partner_members(SQL 159, Min 2026-10-30) ──
   //  야마나미 권역 숙소가 아니라 step1 이 bookings 에서 버리던 상품. 야마나미 운영 표(bookings·guests…)에는 넣지 않고
@@ -1469,6 +1489,7 @@
     b2bFees: b2bFees,
     accomFromProduct: accomFromProduct,
     saleTypeFromProduct: saleTypeFromProduct,
+    roomTypeSingles: roomTypeSingles, roomTypeAnnex: roomTypeAnnex, ROOMTYPE_ANNEX_RE: ROOMTYPE_ANNEX_RE,
     PARTNER_BRANDS: PARTNER_BRANDS,
     partnerBrand: partnerBrand,
     partnerBrandDef: partnerBrandDef,
