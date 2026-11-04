@@ -172,7 +172,7 @@
   .regsave{margin-left:auto;display:flex;gap:6px;align-items:center} .mini tr.dirty td{background:#fbf3e2} .lt tr.dirty td{background:#fbf3e2}
   .grow .auto{font-size:10px;font-weight:800;color:var(--accent2);border:1px solid var(--accent2);border-radius:4px;padding:0 4px;justify-self:center}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.1">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.2">
 </head>
 <body data-so-area="partner_kumamoto partner_trial">
 <div class="topbar so-bar">
@@ -259,7 +259,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=37.1"></script>
+<script src="../assets/saizen-ops.js?v=37.2"></script>
 <script>
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -601,7 +601,7 @@ function renderBlocks(){
 }
 function statusDots(o){ return `<div class="dots">${[['H','roster_hotel_at','stH'],['G','roster_golf_at','stG'],['日','itinerary_at','stI'],['請','invoiced_at','stB']].map(([c,f,k])=>`<i class="dot${o[f]?' ok':''}" title="${esc(tx(k))}${o[f]?' ✓':''}">${c}</i>`).join('')}</div>`; }
 function roomsText(o){ const parts=[]; if(o.twin) parts.push(`${tx('twin')}${o.twin}`); if(o.single) parts.push(`${tx('single')}${o.single}`); if(o.triple) parts.push(`${tx('triple')}${o.triple}`); return parts.join(' '); }
-const RMK_OPEN=new Set();   // 비고를 펼친 팀(Min 2026-11-03 「현지비고란을 클릭해서 볼 수 있게」) — 재렌더에도 유지
+const RMK_CLOSED=new Set(); // 비고를 접은 팀 — 기본은 펼침(Min 2026-11-04 「비고란은 디폴트를 펼쳐짐 상태로」), 접은 상태는 재렌더에도 유지
 function rmkRowHTML(t){ return `<tr class="rmkrow" data-seq="${t.seq}"><td colspan="9"><div class="rmkbox">${t.remark_local?`<b>${esc(tx('dRemarkLocal'))}</b><div>${esc(t.remark_local)}</div>`:''}${t.remark?`<b>${esc(tx('dRemark'))}</b><div>${esc(t.remark)}</div>`:''}${(!t.remark&&!t.remark_local)?`<span class="hint">${esc(tx('rmkNone'))}</span>`:''}</div></td></tr>`; }
 function renderList(){
   const vis=visible();
@@ -614,14 +614,14 @@ function renderList(){
       <td>${statusDots(o)}${isD?`<span class="bd warn">${esc(tx('unsavedBadge'))}</span>`:''}</td>
       <td class="nw"><span class="mono">${esc(mmdd(t.dep))}→${esc(mmdd(t.arr))}</span><small>${esc(tx('nights',nightsOf(t).length))}${t.sure?'':` <span class="bd warn" title="${esc(tx('unsureT'))}">${esc(tx('unsure'))}</span>`}</small></td>
       <td class="n">${t.pax}</td>
-      <td class="nw"><b>${esc(t.rep)}</b> <span class="bd brand">${esc(brandShort(t.brand))}</span>${t.combo?` <span class="bd info">${esc(tx('combo'))}</span>`:''}<small>${esc(agencyOf(t))}</small>${(t.remark||t.remark_local)?`<button class="rmkbtn${RMK_OPEN.has(t.seq)?' on':''}" data-act="rmk" data-seq="${t.seq}" type="button">${esc(tx(RMK_OPEN.has(t.seq)?'rmkClose':'rmkOpen'))}</button>`:''}</td>
+      <td class="nw"><b>${esc(t.rep)}</b> <span class="bd brand">${esc(brandShort(t.brand))}</span>${t.combo?` <span class="bd info">${esc(tx('combo'))}</span>`:''}<small>${esc(agencyOf(t))}</small>${(t.remark||t.remark_local)?`<button class="rmkbtn${RMK_CLOSED.has(t.seq)?'':' on'}" data-act="rmk" data-seq="${t.seq}" type="button">${esc(tx(RMK_CLOSED.has(t.seq)?'rmkOpen':'rmkClose'))}</button>`:''}</td>
       <td class="nw">${esc(hotelName(h)||(o.hotel_note||''))}${h&&h.block_twin>0&&o.use_block===false?` <span class="bd info">${esc(tx('blockOut'))}</span>`:''}<small>${esc(roomsText(o))}</small>${!o.hotel_id&&p.hotelId?`<small class="sug">${esc(tx('remarkTag'))}: ${esc(hotelName(hotelById(p.hotelId)))}</small>`:''}</td>
       <td>${gl}<small>${g.length}/${nightsOf(t).length}</small>${!g.length&&p.golf.length?`<small class="sug">${esc(tx('remarkTag'))}: ${esc(tx('remarkGolf',p.golf.length))}</small>`:''}</td>
       <td class="nw">${esc(o.staff||'')}</td>
       <td class="n yen">${q&&q.ok&&ratesReady()&&q.complete?yen(q.total):''}</td>
-      <td>${iss.map(i=>`<span class="bd ${i.sev}">${esc(i.n!=null?tx(i.k,i.n):tx(i.k))}</span>`).join('')}</td></tr>${RMK_OPEN.has(t.seq)?rmkRowHTML(t):''}`; }).join('');
+      <td>${iss.map(i=>`<span class="bd ${i.sev}">${esc(i.n!=null?tx(i.k,i.n):tx(i.k))}</span>`).join('')}</td></tr>${((t.remark||t.remark_local)&&!RMK_CLOSED.has(t.seq))?rmkRowHTML(t):''}`; }).join('');
 }
-$('#list').addEventListener('click',e=>{ const rb=e.target.closest('[data-act=rmk]'); if(rb){ e.stopPropagation(); const s=Number(rb.dataset.seq); if(RMK_OPEN.has(s)) RMK_OPEN.delete(s); else RMK_OPEN.add(s); renderList(); return; }   // 비고 보기 토글(팀 선택과 무관)
+$('#list').addEventListener('click',e=>{ const rb=e.target.closest('[data-act=rmk]'); if(rb){ e.stopPropagation(); const s=Number(rb.dataset.seq); if(RMK_CLOSED.has(s)) RMK_CLOSED.delete(s); else RMK_CLOSED.add(s); renderList(); return; }   // 비고 보기 토글(팀 선택과 무관)
   const tr=e.target.closest('tr.tm'); if(!tr) return; const seq=Number(tr.dataset.seq); if(seq===SEL) return; if(!canLeave()) return; DR=null; SEL=seq; renderList(); renderDetail(); });
 $('#btn-remark-all').addEventListener('click',async()=>{ const cand=remarkCandidates(); if(!cand.length) return; if(!confirm(tx('applyRemarkAllConfirm',cand.length))) return; let n=0,gn=0;
   for(const t of cand){ const p=planFor(t); const row={event_seq:t.seq,twin:p.twin,single:p.single,triple:p.triple}; if(p.hotelId) row.hotel_id=p.hotelId; else if((DEFAULTS.hotel||{})[t.brand]) row.hotel_id=DEFAULTS.hotel[t.brand]; if((DEFAULTS.staff||{})[t.brand]) row.staff=DEFAULTS.staff[t.brand]; if(p.agencyExplicit&&p.agency!==t.agency) row.agency=p.agency; if(HAS_AUTOSIG) row.auto_sig=p.sig;
