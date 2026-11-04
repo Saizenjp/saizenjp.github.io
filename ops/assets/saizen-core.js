@@ -346,19 +346,39 @@
     return { from: from, to: to, nights: n, sure: true, pos: idx === 0 ? 'first' : (idx === lod.length - 1 ? 'last' : 'mid') };
   }
 
-  //  여행사(판매처) — Min 2026-11-02 「타 여행사 원장도 엠클릭에 넣고 메리트투어가 함께 관리 · 여행사 명은 따로 적어줄거임」.
-  //   ① 예약리스트에 여행사/거래처/판매처 열이 있으면 그 값(explicit) ② 비고·현지비고의 「여행사: ○○」「여행사 ○○투어」「[○○투어]」
-  //   ③ 상품명이 「여행사」로 시작하면 '여행사(미기재)'(어느 여행사인지 적어 달라는 표시) ④ 그 외 '메리트투어'(엠클릭 기본 판매처).
+  //  여행사(판매처) — Min 2026-11-02 「타 여행사 원장도 엠클릭에 넣고 메리트투어가 함께 관리 · 여행사 명은 따로 적어줄거임」
+  //                 + Min 2026-11-04 「비고뿐 아니라 상품명에도 여행사·여행사명을 기재할 것 — 그것도 판정」.
+  //   ① 예약리스트에 여행사/거래처/판매처 열이 있으면 그 값(explicit)
+  //   ② 비고·현지비고의 「여행사: ○○」「여행사(○○)」「여행사 ○○투어」「[○○투어]」「○○여행사 …」 — 그 예약에만 적은 것이라 상품명보다 먼저
+  //   ③ 상품명의 같은 형태(예 「여행사 우속투어 [2박 3일] 구마모토 시내 호텔 + 3색 골프」·「여행사: SOM 트래블 [3박 4일] …」)
+  //   ④ 상품명에 「여행사」만 있으면 '여행사(미기재)'(어느 여행사인지 적어 달라는 표시) ⑤ 그 외 '메리트투어'(엠클릭 기본 판매처).
+  //   「여행사」라는 말이 없는 「○○투어」 토큰은 보지 않는다 — 「시즈노야도 료칸 골프 투어」처럼 상품명 자체에 「투어」가 흔해 오판한다.
   var AGENCY_SUFFIX = '(?:투어|여행사|여행|트래블|관광|ツアー|トラベル|観光|旅行|tour|travel)';
+  var AG_STOP = '\\n,，、/|)）\\]\\[(（·';                                  // 이름이 끝나는 글자(구분자·괄호·대괄호·가운뎃점)
+  var AG_TOK = '[^\\s' + AG_STOP + ']';
+  var AG_RE_COLON = new RegExp('여행사\\s*[:：=]\\s*([^' + AG_STOP + ']+)');                                                           // 여행사: ○○
+  var AG_RE_PAREN = new RegExp('여행사\\s*[(（]\\s*([^)）\\n]{1,30}?)\\s*[)）]');                                                        // 여행사(○○)
+  var AG_RE_WORD = new RegExp('여행사\\s+((?:[^\\s\\d' + AG_STOP + ']' + AG_TOK + '*\\s+)?' + AG_TOK + '*' + AGENCY_SUFFIX + AG_TOK + '*)', 'i');   // 여행사 ○○투어 · 여행사 SOM 트래블
+  var AG_RE_BRACK = new RegExp('\\[\\s*([^\\]\\n]{1,24}?' + AGENCY_SUFFIX + ')\\s*\\]', 'i');                                        // [○○투어]
+  var AG_RE_LEAD = new RegExp('^\\s*(' + AG_TOK + '{1,20}여행사)(?=\\s|\\[|$)');                                                        // 한성여행사 [2박 3일] …
+  var AG_RE_SUFFIX_END = new RegExp(AGENCY_SUFFIX + '$', 'i');
+  function _agencyIn(txt) {                       // 한 문자열(비고 또는 상품명)에서 여행사 이름 — 없으면 ''
+    txt = String(txt == null ? '' : txt); if (!txt) return '';
+    var m = txt.match(AG_RE_COLON) || txt.match(AG_RE_PAREN) || txt.match(AG_RE_WORD) || txt.match(AG_RE_BRACK) || txt.match(AG_RE_LEAD);
+    if (!m) return '';
+    var tok = m[1].trim().split(/\s+/).filter(Boolean);
+    for (var i = 0; i < tok.length; i++) if (AG_RE_SUFFIX_END.test(tok[i])) { tok = tok.slice(0, i + 1); break; }   // 「여행사: 한성투어 늦은 도착」 → 한성투어
+    var name = tok.join(' ');
+    return /^여행사$/.test(name) ? '' : name;
+  }
   function partnerAgency(o) {
     o = o || {};
     var ex = String(o.explicit == null ? '' : o.explicit).trim(); if (ex) return ex;
-    var txt = [o.remark, o.remark_local].map(function (x) { return String(x == null ? '' : x); }).join('\n');
-    var m = txt.match(/여행사\s*[:：=]\s*([^\n,，、/|)\]]+)/)
-      || txt.match(new RegExp('여행사\\s+([^\\s,，、/|)\\]]*' + AGENCY_SUFFIX + '[^\\s,，、/|)\\]]*)', 'i'))
-      || txt.match(new RegExp('\\[\\s*([^\\]\\n]{1,24}?' + AGENCY_SUFFIX + ')\\s*\\]', 'i'));
-    if (m) return m[1].trim();
-    if (/^\s*여행사/.test(String(o.product_name == null ? '' : o.product_name))) return '여행사(미기재)';
+    var a = _agencyIn([o.remark, o.remark_local].map(function (x) { return String(x == null ? '' : x); }).join('\n'));
+    if (a) return a;
+    var pn = String(o.product_name == null ? (o.product == null ? '' : o.product) : o.product_name);
+    a = _agencyIn(pn); if (a) return a;
+    if (/(^|[\s\[(（])여행사(?![가-힣A-Za-z])/.test(pn)) return '여행사(미기재)';
     return '메리트투어';
   }
 
@@ -423,7 +443,7 @@
   //   객실   = singleRequested(싱글룸 N·전원 싱글·이름 나열·홀수 1명) + 트리플(「트리플 N」·「3인 1실」) → 나머지 2명씩 트윈, 남는 1명은 싱글(odd)
   //   골프장 = 적힌 순서대로 날짜별 1라운드. 날짜는 이름 앞의 「11/5」「2일차」「둘째날」(또는 바로 뒤의 M/D)을 읽고, 없으면 이어서 하루씩 —
   //            코스 수가 박수보다 적으면 도착 다음 날부터(4박 3코스 → 2·3·4일차), 같거나 많으면 도착일부터. 추정한 날짜는 explicit=false(화면 「날짜 확인」).
-  //   여행사 = partnerAgency(「여행사: ○○」·「○○투어」)
+  //   여행사 = partnerAgency(비고 「여행사: ○○」·「○○투어」 → 상품명 「여행사 ○○투어 [2박 3일] …」(ctx.product_name/product))
   //   sig    = 비고+인원 서명(partner_ops.auto_sig 에 저장 → 비고가 바뀌면 「비고 변경」)
   function partnerRemarkPlan(text, ctx) {
     ctx = ctx || {}; var txt = String(text == null ? '' : text);
@@ -454,11 +474,13 @@
       golf.push({ courseId: h.id, name: h.row.name_ko || h.row.name_ja || h.row.name || '', date: date, explicit: explicit });
       if (date) cur = isoShift(date, 1);
     });
-    var agency = partnerAgency({ remark: txt });
+    var pn = ctx.product_name != null ? ctx.product_name : ctx.product;
+    var agency = partnerAgency({ remark: txt, product_name: pn });
+    var pa = _agencyIn(pn);                       // 상품명에서 읽힌 여행사 — 있을 때만 서명에 넣는다(여행사 없는 상품명은 기존 auto_sig 불변)
     return { hotelId: hotel ? hotel.id : null, hotelName: hotel ? (hotel.row.name_ko || hotel.row.name_ja || hotel.row.name || '') : '', hotels: hotelIds,
       single: single, twin: twin, triple: triple, singleHow: sg.how, odd: odd === 1,
       golf: golf, golfAssumed: assumed, agency: agency, agencyExplicit: agency !== '메리트투어' && agency !== '여행사(미기재)',
-      empty: !hotel && !golf.length && !SG_WORD.test(txt) && !tm, sig: _psig(t + '|' + pax) };
+      empty: !hotel && !golf.length && !SG_WORD.test(txt) && !tm, sig: _psig(t + '|' + pax + (pa ? '|' + pa : '')) };
   }
   //  송영 차량 배분 — pax 명을 차량 등록표(capacity·sort)로. 20명 미만=하이에스(정원<20)를 sort 순으로 채우고 모자라면 큰 차, 20명 이상=큰 차(정원 큰 순) 먼저.
   //  → {vehicles:[{vehicleId,name,capacity,pax}], short(못 태운 인원)}. 8명=하이에스 1대 · 12명=2대 · 20명=마이크로버스 1대.

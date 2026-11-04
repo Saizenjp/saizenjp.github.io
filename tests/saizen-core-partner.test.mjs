@@ -85,6 +85,34 @@ test('partnerAgency — 여행사(판매처): 명시 열 → 비고 「여행사
   assert.equal(C.partnerAgency({ product_name: '여행사 [2박 3일] 구마모토 시내 호텔 + 3색 골프 (TW/KE)' }), '여행사(미기재)');   // 실제 상품명
   assert.equal(C.partnerAgency({ product_name: '[4박 5일] 구마모토 시내 호텔 + 3색 골프', remark: '트윈 2' }), '메리트투어');
   assert.equal(C.partnerAgency({}), '메리트투어'); assert.equal(C.partnerAgency(null), '메리트투어');
+  assert.equal(C.partnerAgency({ remark: '여행사: 한성투어 (10명)' }), '한성투어');                     // 괄호 앞에서 끊는다
+  assert.equal(C.partnerAgency({ remark: '여행사: 한성투어 늦은 도착' }), '한성투어');                   // 접미(투어)가 붙은 토큰까지만
+  assert.equal(C.partnerAgency({ remark: '여행사(마스투어) 결제대행' }), '마스투어');
+});
+
+test('partnerAgency — 상품명에도 여행사·여행사명(Min 2026-11-04): 비고가 먼저 · 「여행사」만이면 미기재 · 「○○투어」만 있는 상품명은 안 본다', () => {
+  assert.equal(C.partnerAgency({ product_name: '여행사 우속투어 [2박 3일] 구마모토 시내 호텔 + 3색 골프 (TW/KE)' }), '우속투어');
+  assert.equal(C.partnerAgency({ product_name: '여행사: SOM 트래블 [3박 4일] 구마모토 시내 호텔 + 3색 골프' }), 'SOM 트래블');
+  assert.equal(C.partnerAgency({ product_name: '여행사(한성투어) [4박 5일] 구마모토 시내 호텔 + 3색 골프' }), '한성투어');
+  assert.equal(C.partnerAgency({ product_name: '[2박 3일] 구마모토 시내 호텔 + 3색 골프 (여행사: 타이세이투어)' }), '타이세이투어');
+  assert.equal(C.partnerAgency({ product_name: '한성여행사 [2박 3일] 구마모토 시내 호텔 + 3색 골프' }), '한성여행사');
+  assert.equal(C.partnerAgency({ product: '여행사 SOM투어 [2박 3일] 트라이얼 리조트 골프' }), 'SOM투어');                        // product 키도 받는다(staychart)
+  assert.equal(C.partnerAgency({ product_name: '여행사 우속투어 [2박 3일] 구마모토 시내 호텔', remark: '여행사: 마스투어 / 결제대행' }), '마스투어');   // 비고(그 예약 고유)가 상품명보다 먼저
+  assert.equal(C.partnerAgency({ product_name: '여행사 [2박 3일] 구마모토 시내 호텔 + 3색 골프 (TW/KE)', remark: '트윈 2' }), '여행사(미기재)');
+  // 실제 2026·2027 상품명 — 「투어」가 들어가도 여행사가 아니다(오판 0)
+  ['시즈노야도 료칸 골프 투어 4박 5일', '간지호텔 2색 골프 투어 3박 4일', '간지호텔 2색+시즈노야도 료칸 골프 투어  14박 15일', '미야자키 2색 골프투어 5박 6일',
+   '벳푸 아키바 리조트 3색 골프투어 4박 5일', '시로사토CC 골프 투어 6박 7일', '미야자키 국제공항CC 골프 투어 5박 6일',
+   '[14박 15일] 간지호텔 골프 투어+야마나미CC 골프 투어', '[7박 8일] 야마나미CC 골프 투어 "장기 숙박형 별장전용"', '[4박 5일] 야마나미CC 골프 투어 돔하우스',
+   '[4박 5일] 구마모토 시내 호텔 + 3색 골프', '쿠쥬 프라이빗 타운 야마나미CC 7박 8일', '[호텔트윈] - 아소야마나미리조트호텔&골프클럽3박4일 (테스트상품)']
+    .forEach(n => assert.equal(C.partnerAgency({ product_name: n }), '메리트투어', n));
+  // partnerRemarkPlan 도 상품명을 본다(수배 목록 「비고대로」·step1 자동 채움) — 상품명 여행사는 서명에 들어가고, 없으면 서명 불변
+  const base = { pax: 3, segFrom: '2026-11-09', segTo: '2026-11-12' };
+  const p1 = C.partnerRemarkPlan('워싱턴호텔 / 싱글룸 1', Object.assign({ product: '여행사 우속투어 [3박 4일] 구마모토 시내 호텔 + 3색 골프' }, base));
+  assert.equal(p1.agency, '우속투어'); assert.equal(p1.agencyExplicit, true);
+  assert.notEqual(p1.sig, C.partnerRemarkPlan('워싱턴호텔 / 싱글룸 1', base).sig);
+  const p2 = C.partnerRemarkPlan('워싱턴호텔 / 싱글룸 1', Object.assign({ product: '[3박 4일] 구마모토 시내 호텔 + 3색 골프' }, base));
+  assert.equal(p2.agency, '메리트투어'); assert.equal(p2.agencyExplicit, false); assert.equal(p2.sig, C.partnerRemarkPlan('워싱턴호텔 / 싱글룸 1', base).sig);
+  assert.equal(C.partnerRemarkPlan('여행사: 마스투어 / 워싱턴호텔', Object.assign({ product: '여행사 우속투어 [3박 4일] 구마모토' }, base)).agency, '마스투어');
 });
 
 test('partnerNightType/partnerGolfType — 밤 요금 구분(금·토·일·祝日·祝前日=hi) · 골프 구분(토 sat · 일/祝日 sun · 금 wk) = 현지 日別 料金表 규칙', () => {
