@@ -403,3 +403,12 @@ test('roomTypeOn: 2026 입국 예약은 룸타입을 보지 않는다(2027-01-01
   assert.deepEqual(SZ.roomTypeSingles('싱글', 2, '2027-01-01'), { kind: 'all', n: 2 });
   assert.equal(SZ.roomTypeAnnex('별채(개인온천O)', '2027-03-05'), true);
 });
+
+// 현지 담당 회사 日別 料金表(2026-11-01~2027-10-31)의 공휴일 목록 17개 — 전부 JP_HOLIDAYS 에 있어야 한다(2026-11-04 대조, 2027-03-21 春分の日 보충)
+test('JP_HOLIDAYS: 2026-11~2027-10 공휴일 17개(현지 요금표 목록) 전부 포함 · 금/祝前日은 휴일 단가(partnerNightType hi)', () => {
+  const list = ['2026-11-03','2026-11-23','2027-01-01','2027-01-11','2027-02-11','2027-02-23','2027-03-21','2027-03-22','2027-04-29','2027-05-03','2027-05-04','2027-05-05','2027-07-19','2027-08-11','2027-09-20','2027-09-23','2027-10-11'];
+  for (const d of list) assert.ok(SZ.JP_HOLIDAYS.includes(d), d);
+  assert.equal(SZ.partnerNightType('2026-11-06'), 'hi');   // 금요일 — 현지 표는 平日로 적지만 단가는 휴일
+  assert.equal(SZ.partnerNightType('2026-12-31'), 'hi');   // 祝前日(元日 전날)
+  assert.equal(SZ.partnerNightType('2026-11-04'), 'wk');   // 수요일
+});
