@@ -17,7 +17,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 수배 목록</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=63"></script>
+<script src="../assets/saizen-core.js?v=64"></script>
 <style>
   /* ── 공통 chrome (docs/ops-page-skeleton.html 정본 — 통째 복사) ── */
   :root{
@@ -172,7 +172,7 @@
   .regsave{margin-left:auto;display:flex;gap:6px;align-items:center} .mini tr.dirty td{background:#fbf3e2} .lt tr.dirty td{background:#fbf3e2}
   .grow .auto{font-size:10px;font-weight:800;color:var(--accent2);border:1px solid var(--accent2);border-radius:4px;padding:0 4px;justify-self:center}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.4">
 </head>
 <body data-so-area="partner_kumamoto partner_trial">
 <div class="topbar so-bar">
@@ -259,12 +259,12 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=37.3"></script>
+<script src="../assets/saizen-ops.js?v=37.4"></script>
 <script>
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let supa=null, YM='', VIEW='list', BR=new Set(), SEL=null, D='', HAS_OPS=true, LOADING=false;
-let TEAMS=[], OPS={}, GOLF={}, DISP={}, DAYROWS=[], DAYTEAMS={}, HOTELS=[], COURSES=[], VEHICLES=[], STAFF=[], DEFAULTS={}, RATES={}, RATEROWS=[], HAS_RATES=false, HAS_USE_BLOCK=false, PENDP=[];
+let TEAMS=[], OPS={}, GOLF={}, DISP={}, DAYROWS=[], DAYTEAMS={}, HOTELS=[], COURSES=[], VEHICLES=[], STAFF=[], DEFAULTS={}, RATES={}, RATEROWS=[], HAS_RATES=false, HAS_USE_BLOCK=false, PENDP=[], HAS_PASSPORT=null;
 let HAS_PTS=false, HAS_ALIASES=false, HAS_AUTOSIG=false, HAS_GAUTO=false, PLAN={}, DR=null, DDR={}, REGDIRTY={}, TMP=-1;   // SQL 162 프로브 · 비고 플랜 캐시 · 초안(상세/날짜별 배차/등록표)
 
 // ── i18n(로컬 사전, ja/ko/en 키 동일) ──
@@ -299,6 +299,7 @@ const L={
     ptAirport:'空港', ptHotel:'ホテル', ptCourse:'ゴルフ場', ptOther:'その他', via:'経由', dRoute:'区間', vehSplit:(i,n,p)=>`${i}/${n}台 · ${p}名`,
     aliases:'別名(カンマ区切り)', regSave:n=>`保存(${n})`, dSave:n=>`保存(${n})`, delRowConfirm:'この行を削除しますか？',
     defHotelBrand:'既定ホテル', defStaffBrand:'既定担当', brandK:'熊本市内', brandT:'トライアル', defSave:'既定値を保存',
+    hotelList:'ホテル提出用 名簿 xlsx', hotelListT:'ホテルのフロントへ送る宿泊者名簿（日本語・性別 M/F・旅券情報）', hotelListDone:n=>`宿泊者名簿 xlsx をダウンロードしました（${n}名）`, hotelListNone:'名簿がありません（登録データに同行者なし）', hotelListNoCol:n=>`旅券・生年月日が空の人が ${n}名 — SQL 164 適用後にその月を再登録してください`, hotelListFail:'xlsx 作成に失敗',
     pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', printed:'印刷' },
     fail:'失敗' },
   ko:{ step:'구마모토 시내 · 트라이얼 · 수배 목록', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
@@ -331,6 +332,7 @@ const L={
     ptAirport:'공항', ptHotel:'호텔', ptCourse:'골프장', ptOther:'기타', via:'경유', dRoute:'구간', vehSplit:(i,n,p)=>`${i}/${n}대 · ${p}명`,
     aliases:'별칭(쉼표 구분)', regSave:n=>`저장(${n})`, dSave:n=>`저장(${n})`, delRowConfirm:'이 줄을 삭제할까요?',
     defHotelBrand:'기본 호텔', defStaffBrand:'기본 담당', brandK:'구마모토 시내', brandT:'트라이얼', defSave:'기본값 저장',
+    hotelList:'호텔 제출용 명단 xlsx', hotelListT:'일본 호텔 프런트에 보내는 宿泊者名簿(일본어·성별 M/F·여권 정보)', hotelListDone:n=>`宿泊者名簿 xlsx 내려받음(${n}명)`, hotelListNone:'명단이 없습니다(등록 데이터에 동행자 없음)', hotelListNoCol:n=>`여권·생년월일이 빈 사람 ${n}명 — SQL 164 적용 뒤 그 달을 다시 등록하세요`, hotelListFail:'xlsx 생성 실패',
     pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', printed:'印刷' },
     fail:'실패' },
   en:{ step:'Kumamoto city · Trial · Arrangement list', connHint:'Connection info is stored only in this browser.',
@@ -363,6 +365,7 @@ const L={
     ptAirport:'Airport', ptHotel:'Hotel', ptCourse:'Course', ptOther:'Other', via:'via', dRoute:'Route', vehSplit:(i,n,p)=>`${i}/${n} veh · ${p} pax`,
     aliases:'Aliases (comma)', regSave:n=>`Save (${n})`, dSave:n=>`Save (${n})`, delRowConfirm:'Delete this row?',
     defHotelBrand:'Default hotel', defStaffBrand:'Default staff', brandK:'Kumamoto city', brandT:'Trial', defSave:'Save defaults',
+    hotelList:'Hotel guest list (xlsx)', hotelListT:'Guest list for the hotel front desk (Japanese, gender M/F, passport data)', hotelListDone:n=>`Guest list downloaded (${n} guests)`, hotelListNone:'No roster (no members in registered data)', hotelListNoCol:n=>`${n} guests have no passport/birth data — apply SQL 164 and re-register the month`, hotelListFail:'Could not build xlsx',
     pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', printed:'印刷' },
     fail:'Failed' }
 };
@@ -508,7 +511,8 @@ async function load(){
     const {data:bs,error}=await supa.from('partner_bookings').select('event_seq,brand,event_no,status,rep_name,pax,dep_date,arr_date,seg_from,seg_to,seg_nights,seg_sure,combo,product_name,origin,airline,remark,remark_local,agency')
       .lte('seg_from',mEnd).gt('seg_to',m1).neq('status','대기').order('seg_from').order('event_seq'); if(error) throw error;
     const seqs=(bs||[]).map(b=>b.event_seq);
-    const ms=await fetchIn('partner_members','event_seq,seq_in_team,is_rep,name_kr,name_en,gender,dep_flight,ret_flight,origin,airline,dep_time,loc_arr_time,ret_dep_time,kor_arr_time','event_seq',seqs);
+    if(HAS_PASSPORT==null){ const pp=await supa.from('partner_members').select('passport_no',{count:'exact',head:true}); HAS_PASSPORT=!pp.error; }   // SQL 164(호텔 제출 명단 열) 적용 여부
+    const ms=await fetchIn('partner_members','event_seq,seq_in_team,is_rep,name_kr,name_en,gender,dep_flight,ret_flight,origin,airline,dep_time,loc_arr_time,ret_dep_time,kor_arr_time'+(HAS_PASSPORT?',name_en_last,name_en_first,birth,passport_no,passport_exp,passport_country':''),'event_seq',seqs);
     const byTeam={}; ms.forEach(m=>{ (byTeam[m.event_seq]=byTeam[m.event_seq]||[]).push(m); });
     TEAMS=(bs||[]).map(b=>({ seq:b.event_seq, brand:b.brand, no:String(b.event_no||b.event_seq), rep:b.rep_name||'', pax:Number(b.pax||0)||0, status:b.status,
       dep:String(b.seg_from||b.dep_date||'').slice(0,10), arr:String(b.seg_to||b.arr_date||'').slice(0,10), fullDep:String(b.dep_date||'').slice(0,10), fullArr:String(b.arr_date||'').slice(0,10),
@@ -716,7 +720,7 @@ function renderDetail(){
     </div>
 
     <div class="sec"><h4>${esc(tx('secChecks'))}</h4><div class="checks">${chk('roster_hotel_at','roster_hotel_by','stH')}${chk('roster_golf_at','roster_golf_by','stG')}${chk('itinerary_at','itinerary_by','stI')}${chk('invoiced_at','invoiced_by','stB')}</div></div>
-    <div class="sec"><h4>${esc(tx('secMemo'))}<span class="r"><button class="plus" data-act="roster" type="button">${esc(tx('pv').roster)} ${esc(tx('pv').printed)}</button></span></h4><textarea class="inp" data-f="memo" ${HAS_OPS?'':'disabled'}>${esc(o.memo||'')}</textarea></div>`;
+    <div class="sec"><h4>${esc(tx('secMemo'))}<span class="r"><button class="plus" data-act="roster" type="button">${esc(tx('pv').roster)} ${esc(tx('pv').printed)}</button> <button class="plus" data-act="hotelList" type="button" title="${esc(tx('hotelListT'))}">${esc(tx('hotelList'))}</button></span></h4><textarea class="inp" data-f="memo" ${HAS_OPS?'':'disabled'}>${esc(o.memo||'')}</textarea></div>`;
   box.classList.add('open'); if(!d.dirty) box.scrollTop=0;
 }
 function dispRowHTML(r,prop,i){
@@ -758,6 +762,7 @@ $('#detail').addEventListener('click',async e=>{
   else if(act==='dispAdd'){ d.disp.push({id:TMP--,event_seq:t.seq,trip_date:t.dep,leg:'other',depart_time:'',staff:d.ops.staff||null}); mark(); renderDetail(); }
   else if(act==='dispDel'){ const tr=b.closest('[data-did]'); const id=Number(tr.dataset.did); const i=d.disp.findIndex(r=>r.id===id); if(i>=0){ if(id>0) d.dispDel.push(id); d.disp.splice(i,1); mark(); renderDetail(); } }
   else if(act==='roster'){ printRoster(t); }
+  else if(act==='hotelList'){ downloadHotelList(t); }
   else if(act==='closeDetail'){ if(!canLeave()) return; DR=null; SEL=null; renderList(); renderDetail(); }
 });
 
@@ -934,6 +939,29 @@ function printList(){
     `<h1>${esc(P.title)} <small>${esc(YM)} · ${vis.length}チーム · ${vis.reduce((a,t)=>a+t.pax,0)}名 · ${esc(P.printed)} ${new Date().toLocaleString('ja-JP')}</small></h1>
      <table><thead><tr><th>${esc(P.period)}</th><th>${esc(P.nights)}</th><th>${esc(P.pax)}</th><th>${esc(P.rep)}</th><th>${esc(P.agency)}</th><th>${esc(P.air)}</th><th>${esc(P.hotel)}</th><th>${esc(P.golf)}</th><th>${esc(P.staff)}</th><th>${esc(P.chk)}</th><th>見積</th><th>${esc(P.note)}</th></tr></thead><tbody>${rows}</tbody></table>
      <div class="ft">${esc(P.chk)} = ■済 □未</div>`);
+}
+// ── 호텔 제출용 숙박자 명단(宿泊者名簿) xlsx — Min 2026-11-04 「여권 제출 없이 처리되게」. 표 내용은 SZCore.partnerHotelList(순수 함수), 여기서는 ExcelJS 로 쓰기만 ──
+function loadExcelJS(){ if(window.ExcelJS) return Promise.resolve(window.ExcelJS); return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js'; s.onload=()=>res(window.ExcelJS); s.onerror=()=>rej(new Error('ExcelJS load')); document.head.appendChild(s); }); }
+function hotelListData(t){ const o=ops(t.seq), h=hotelById(o.hotel_id);
+  return SZCore.partnerHotelList({ seq:t.seq, rep:t.rep, pax:t.pax, from:t.dep, to:t.arr, agency:agencyOf(t) }, t.members||[],
+    { hotel:(h?(h.name_ja||h.name_ko):'')||o.hotel_note||'', rooms:{ twin:o.twin||0, single:o.single||0, triple:o.triple||0 }, staff:o.staff||'' }); }
+async function downloadHotelList(t){
+  if(!(t.members||[]).length){ toast(tx('hotelListNone'),'warn'); return; }
+  const d=hotelListData(t);
+  try{
+    const X=await loadExcelJS(); const wb=new X.Workbook(); wb.creator='SaiZen ops';
+    const ws=wb.addWorksheet(d.sheet,{ views:[{ state:'frozen', ySplit:d.meta.length+3 }], pageSetup:{ paperSize:9, orientation:'landscape', fitToPage:true, fitToWidth:1, fitToHeight:0 } });
+    const N=d.head.length, thin={ style:'thin' }, box={ top:thin, left:thin, bottom:thin, right:thin };
+    ws.addRow([d.title]); ws.mergeCells(1,1,1,N); ws.getRow(1).font={ size:16, bold:true }; ws.getRow(1).height=26;
+    d.meta.forEach(([k,v])=>{ const r=ws.addRow([k,v]); r.getCell(1).font={ bold:true }; ws.mergeCells(r.number,2,r.number,N); });
+    ws.addRow([]);
+    const hr=ws.addRow(d.head); hr.font={ bold:true }; hr.eachCell(c=>{ c.fill={ type:'pattern', pattern:'solid', fgColor:{ argb:'FFE7ECE0' } }; c.border=box; c.alignment={ horizontal:'center', vertical:'middle' }; });
+    d.rows.forEach(row=>{ const r=ws.addRow(row); r.eachCell({ includeEmpty:true },(c,i)=>{ c.border=box; if([1,5,6,8,9,10].includes(i)) c.alignment={ horizontal:'center' }; }); });
+    [6,14,16,16,6,12,14,14,9,9,10].forEach((w,i)=>{ ws.getColumn(i+1).width=w; });
+    const buf=await wb.xlsx.writeBuffer(); const blob=new Blob([buf],{ type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=d.file; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+    if(d.missing.passport) toast(tx('hotelListNoCol',d.missing.passport),'warn'); else toast(tx('hotelListDone',d.rows.length));
+  }catch(e){ toast(tx('hotelListFail')+': '+((e&&e.message)||e),'err'); }
 }
 function printRoster(t){
   const P=tx('pv'), o=ops(t.seq), h=hotelById(o.hotel_id), g=golf(t.seq).filter(r=>r.course_id||r.course_note);

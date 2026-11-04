@@ -498,6 +498,58 @@
   function _hm(v) { var s = String(v == null ? '' : v).trim(); var m = s.match(/(\d{1,2}):(\d{2})/); if (m) return (m[1].length < 2 ? '0' : '') + m[1] + ':' + m[2]; m = s.match(/^(\d{1,2})(\d{2})$/); if (m) return (m[1].length < 2 ? '0' : '') + m[1] + ':' + m[2]; return ''; }
   function _hmAdd(hm, d) { var s = _hm(hm); if (!s) return ''; var t = Number(s.slice(0, 2)) * 60 + Number(s.slice(3)) + d; t = Math.max(0, Math.min(23 * 60 + 59, t)); var h = Math.floor(t / 60), mm = t % 60; return (h < 10 ? '0' : '') + h + ':' + (mm < 10 ? '0' : '') + mm; }
   //  구간(leg) ↔ 지점(from/via/to). 옛 행(지점 없음)은 leg 로 해석한다.
+  // ── 호텔 제출용 숙박자 명단(宿泊者名簿) — Min 2026-11-04 「호텔 제출용 명단 엑셀: 고객명·영문성·영문이름·성별(M/F)·생년월일·여권번호·여권만료일·발행국가 + 호텔명·제목」 ──
+  //  일본 호텔 프런트가 받아 보는 표라 제목·머리글은 일본어, 성별은 M/F, 날짜는 YYYY/MM/DD, 発行国은 코드(KOR). 순수 함수 — 엑셀 쓰기는 페이지(ExcelJS).
+  //  team = { seq, rep, pax, from, to(체크아웃), agency } · members = partner_members 행(seq_in_team·is_rep·name_kr·name_en_last/first(없으면 name_en 을 성+이름으로 분리)·gender·birth·passport_no·passport_exp·passport_country)
+  //  opts = { hotel(호텔명), rooms:{twin,single,triple}, staff(手配担当), company, today(YYYY-MM-DD) }
+  var HL_HEAD = ['No.', '氏名（韓国語）', '姓（ローマ字）', '名（ローマ字）', '性別', '生年月日', '旅券番号', '旅券有効期限', '発行国', '国籍', '備考'];
+  var HL_WD = ['日', '月', '火', '水', '木', '金', '土'];
+  function partnerGenderMF(v) { v = String(v == null ? '' : v).trim(); if (!v) return ''; if (/^(남|男|m|male)/i.test(v)) return 'M'; if (/^(여|女|f|female)/i.test(v)) return 'F'; return ''; }
+  function partnerCountryCode(v) {
+    var s = String(v == null ? '' : v).trim(); if (!s) return '';
+    if (/^(KOR|KR)$/i.test(s) || /한국|대한민국|韓国|korea/i.test(s)) return 'KOR';
+    if (/^(JPN|JP)$/i.test(s) || /일본|日本|japan/i.test(s)) return 'JPN';
+    if (/^(USA|US)$/i.test(s) || /미국|米国|united states/i.test(s)) return 'USA';
+    if (/^[A-Za-z]{3}$/.test(s)) return s.toUpperCase();
+    return s;
+  }
+  function _hlDate(v) { var d = parseFlexDate(v); return d ? d.replace(/-/g, '/') : ''; }
+  function _hlDateWd(ds) { var d = parseFlexDate(ds); if (!d) return ''; var dt = parseLocalDate(d); return d.replace(/-/g, '/') + '（' + HL_WD[dt.getDay()] + '）'; }
+  function partnerHotelList(team, members, opts) {
+    team = team || {}; opts = opts || {}; var list = (members || []).slice();
+    list.sort(function (a, b) { return (Number(a.seq_in_team) || 0) - (Number(b.seq_in_team) || 0); });
+    var rows = [], male = 0, female = 0, unknown = 0, noPass = 0, noBirth = 0;
+    list.forEach(function (m, i) {
+      var last = String(m.name_en_last == null ? '' : m.name_en_last).trim(), first = String(m.name_en_first == null ? '' : m.name_en_first).trim();
+      if (!last && !first) { var en = String(m.name_en == null ? '' : m.name_en).trim().split(/\s+/).filter(Boolean); last = en.shift() || ''; first = en.join(' '); }
+      var mf = partnerGenderMF(m.gender); if (mf === 'M') male++; else if (mf === 'F') female++; else unknown++;
+      var pno = String(m.passport_no == null ? '' : m.passport_no).trim(); if (!pno) noPass++;
+      var birth = _hlDate(m.birth); if (!birth) noBirth++;
+      var cc = partnerCountryCode(m.passport_country);
+      rows.push([i + 1, String(m.name_kr == null ? '' : m.name_kr).trim(), last, first, mf, birth, pno, _hlDate(m.passport_exp), cc, cc, m.is_rep ? '代表' : '']);
+    });
+    var from = String(team.from || '').slice(0, 10), to = String(team.to || '').slice(0, 10);
+    var n = (from && to) ? Math.max(0, nightsBetween(from, to)) : 0;
+    var rooms = opts.rooms || {}; var roomParts = [];
+    if (Number(rooms.twin) > 0) roomParts.push('ツイン' + Number(rooms.twin) + '室');
+    if (Number(rooms.single) > 0) roomParts.push('シングル' + Number(rooms.single) + '室');
+    if (Number(rooms.triple) > 0) roomParts.push('トリプル' + Number(rooms.triple) + '室');
+    var pax = Number(team.pax) || list.length;
+    var meta = [
+      ['ホテル名', String(opts.hotel || '')],
+      ['宿泊期間', from && to ? ('チェックイン ' + _hlDateWd(from) + ' 〜 チェックアウト ' + _hlDateWd(to) + '　' + n + '泊') : ''],
+      ['団体名', (team.rep ? team.rep + ' 様 ご一行' : '') + (team.seq ? '（予約番号 ' + team.seq + '）' : '')],
+      ['人数', pax + '名' + (male || female ? '（男' + male + '・女' + female + (unknown ? '・不明' + unknown : '') + '）' : '')],
+      ['部屋構成', roomParts.join('・')],
+      ['旅行会社', String(team.agency || '')],
+      ['手配担当', [opts.company, opts.staff].filter(Boolean).join(' / ')],
+      ['提出日', _hlDate(opts.today || fmtDate(new Date()))],
+      ['備考', '※ 事前提出用。旅券情報は旅行会社の登録データ（旅券記載どおり）です。']
+    ];
+    return { title: '宿泊者名簿（団体）', sheet: '宿泊者名簿', meta: meta, head: HL_HEAD.slice(), rows: rows,
+      counts: { male: male, female: female, unknown: unknown, total: list.length }, missing: { passport: noPass, birth: noBirth },
+      file: 'hotel_guest_list_' + (team.seq || 'team') + (from ? '_' + from.replace(/-/g, '') : '') + '.xlsx' };
+  }
   function partnerRouteOf(leg) { return { in: ['airport', 'hotel'], golf_out: ['hotel', 'course'], golf_back: ['course', 'hotel'], out: ['hotel', 'airport'] }[leg] || ['', '']; }
   function partnerLegOf(from, to) { if (from === 'airport') return 'in'; if (to === 'airport') return 'out'; if (from === 'hotel' && to === 'course') return 'golf_out'; if (from === 'course' && to === 'hotel') return 'golf_back'; return 'other'; }
   //  송영 구간 계획 — team={dep(구간 시작),arr(구간 끝=체크아웃),fullDep,fullArr,arrTime(현지 도착),retTime(현지 출발)} · golf=[{play_date,tee_time}]
@@ -1535,6 +1587,7 @@
     PARTNER_TRAVEL_MIN: PARTNER_TRAVEL_MIN, PARTNER_BUS_MIN: PARTNER_BUS_MIN, PARTNER_POINTS: PARTNER_POINTS,
     partnerAliasList: partnerAliasList, partnerFindNames: partnerFindNames, partnerRemarkPlan: partnerRemarkPlan,
     partnerVehiclePlan: partnerVehiclePlan, partnerLegPlan: partnerLegPlan, partnerRouteOf: partnerRouteOf, partnerLegOf: partnerLegOf,
+    partnerHotelList: partnerHotelList, partnerGenderMF: partnerGenderMF, partnerCountryCode: partnerCountryCode,
     nmCodeConflict: nmCodeConflict,
     weekday: weekday,
     mdWd: mdWd,

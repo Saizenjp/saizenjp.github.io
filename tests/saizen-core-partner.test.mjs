@@ -90,6 +90,28 @@ test('partnerAgency — 여행사(판매처): 명시 열 → 비고 「여행사
   assert.equal(C.partnerAgency({ remark: '여행사(마스투어) 결제대행' }), '마스투어');
 });
 
+test('partnerHotelList — 호텔 제출용 宿泊者名簿(Min 2026-11-04): 일본어 머리·M/F·YYYY/MM/DD·発行国 코드·대표·순서·누락 수', () => {
+  const members = [
+    { seq_in_team: 2, name_kr: '이영희', name_en_last: 'LEE', name_en_first: 'YOUNG HEE', gender: '여', birth: '1975-03-09', passport_no: 'M12345678', passport_exp: '2030-01-02', passport_country: '대한민국', is_rep: false },
+    { seq_in_team: 1, name_kr: '김대표', name_en: 'KIM DAE PYO', gender: '남', birth: new Date(1970, 0, 5), passport_no: 'M87654321', passport_exp: '2031-12-31', passport_country: 'KOR', is_rep: true },
+    { seq_in_team: 3, name_kr: '박무기', name_en: 'PARK', gender: '', birth: null, passport_no: null, passport_exp: null, passport_country: null, is_rep: false },
+  ];
+  const r = C.partnerHotelList({ seq: 30012500, rep: '김대표', pax: 3, from: '2026-12-03', to: '2026-12-06', agency: '우속투어' }, members,
+    { hotel: 'ワシントンホテル', rooms: { twin: 1, single: 1 }, staff: 'カイヤ', today: '2026-11-04' });
+  assert.equal(r.title, '宿泊者名簿（団体）'); assert.equal(r.sheet, '宿泊者名簿'); assert.equal(r.file, 'hotel_guest_list_30012500_20261203.xlsx');
+  assert.deepEqual(r.head.slice(0, 5), ['No.', '氏名（韓国語）', '姓（ローマ字）', '名（ローマ字）', '性別']);
+  assert.deepEqual(r.rows[0], [1, '김대표', 'KIM', 'DAE PYO', 'M', '1970/01/05', 'M87654321', '2031/12/31', 'KOR', 'KOR', '代表']);   // seq_in_team 순 · name_en 분리 · Date 생년
+  assert.deepEqual(r.rows[1], [2, '이영희', 'LEE', 'YOUNG HEE', 'F', '1975/03/09', 'M12345678', '2030/01/02', 'KOR', 'KOR', '']);        // 대한민국 → KOR
+  assert.deepEqual(r.rows[2], [3, '박무기', 'PARK', '', '', '', '', '', '', '', '']);                                                     // 정보 없는 사람은 빈 칸(만들지 않는다)
+  assert.deepEqual(r.counts, { male: 1, female: 1, unknown: 1, total: 3 }); assert.deepEqual(r.missing, { passport: 1, birth: 1 });
+  const meta = Object.fromEntries(r.meta);
+  assert.equal(meta['ホテル名'], 'ワシントンホテル'); assert.equal(meta['宿泊期間'], 'チェックイン 2026/12/03（木） 〜 チェックアウト 2026/12/06（日）　3泊');
+  assert.equal(meta['団体名'], '김대표 様 ご一行（予約番号 30012500）'); assert.equal(meta['人数'], '3名（男1・女1・不明1）'); assert.equal(meta['部屋構成'], 'ツイン1室・シングル1室');
+  assert.equal(meta['旅行会社'], '우속투어'); assert.equal(meta['手配担当'], 'カイヤ'); assert.equal(meta['提出日'], '2026/11/04');
+  assert.equal(C.partnerGenderMF('男性'), 'M'); assert.equal(C.partnerGenderMF('Female'), 'F'); assert.equal(C.partnerGenderMF('?'), '');
+  assert.equal(C.partnerCountryCode('한국'), 'KOR'); assert.equal(C.partnerCountryCode('jpn'), 'JPN'); assert.equal(C.partnerCountryCode('Republic of Korea'), 'KOR'); assert.equal(C.partnerCountryCode('Deutschland'), 'Deutschland');
+});
+
 test('partnerAgency — 상품명에도 여행사·여행사명(Min 2026-11-04): 비고가 먼저 · 「여행사」만이면 미기재 · 「○○투어」만 있는 상품명은 안 본다', () => {
   assert.equal(C.partnerAgency({ product_name: '여행사 우속투어 [2박 3일] 구마모토 시내 호텔 + 3색 골프 (TW/KE)' }), '우속투어');
   assert.equal(C.partnerAgency({ product_name: '여행사: SOM 트래블 [3박 4일] 구마모토 시내 호텔 + 3색 골프' }), 'SOM 트래블');
