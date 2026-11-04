@@ -249,7 +249,19 @@
   //      3명·홀수 = 남는 1명이 싱글(기존 홀수 규칙과 같다) {kind:'odd', n:1} / 4명 = {kind:'mixed', n:2}(누가 싱글인지는 모름) /
   //      그 외 짝수 = {kind:'mixed', n:0}(비고 확인). 자동배정은 'all' 만 1인 1실, 'mixed' 는 보류(수기), 'odd' 는 평소대로.
   //  · 싱글 언급 없음 = null(비고 규칙만).
-  function roomTypeSingles(rt, pax) {
+  //  ⚠ 룸타입 규칙은 **입국일(dep_date) 2027-01-01 이후 예약에만**(Min 2026-11-03 「2026년 예약은 그대로 조건 건드리지말고 해. 2027년부터야」).
+  //    세 번째 인자 dep(입국일 'YYYY-MM-DD' 또는 Date)이 ROOMTYPE_FROM 앞이거나 없으면 null — 2026 예약은 종전 규칙(비고만) 그대로.
+  //    step1 도 2026 입국 예약에는 room_type 을 저장하지 않고, SQL 163 의 _shizu_autofill_impl 도 같은 날짜(ROOMTYPE_FROM)로 거른다.
+  var ROOMTYPE_FROM = '2027-01-01';
+  function roomTypeOn(dep) {
+    if (dep == null || dep === '') return false;
+    var s;
+    if (dep instanceof Date) { if (isNaN(dep.getTime())) return false; var m = dep.getMonth() + 1, d = dep.getDate(); s = dep.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (d < 10 ? '0' : '') + d; }
+    else s = String(dep).slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) && s >= ROOMTYPE_FROM;
+  }
+  function roomTypeSingles(rt, pax, dep) {
+    if (!roomTypeOn(dep)) return null;   // 2026 예약 불변
     var s = String(rt == null ? '' : rt);
     if (!/싱글|single|シングル/i.test(s)) return null;
     var twin = /트윈|twin|ツイン|컴팩트|더블|더블/i.test(s), p = Number(pax) || 0;
@@ -258,9 +270,9 @@
     if (p % 2 === 1) return { kind: 'odd', n: 1 };
     return { kind: 'mixed', n: 0 };
   }
-  // 룸타입 열 → 시즈노야도 別棟(별채) 선호(「별채(개인온천O)」). 현지비고 키워드(SHZ_ANNEX_RE)와 OR 로 쓴다.
+  // 룸타입 열 → 시즈노야도 別棟(별채) 선호(「별채(개인온천O)」). 현지비고 키워드(SHZ_ANNEX_RE)와 OR 로 쓴다. dep(입국일) 2027~ 만(roomTypeOn).
   var ROOMTYPE_ANNEX_RE = /별채|別棟|離れ/;
-  function roomTypeAnnex(rt) { return ROOMTYPE_ANNEX_RE.test(String(rt == null ? '' : rt)); }
+  function roomTypeAnnex(rt, dep) { return roomTypeOn(dep) && ROOMTYPE_ANNEX_RE.test(String(rt == null ? '' : rt)); }
 
   // ── 자회사 상품(구마모토 시내호텔·트라이얼 리조트) — 별도 원장 partner_bookings/partner_members(SQL 159, Min 2026-10-30) ──
   //  야마나미 권역 숙소가 아니라 step1 이 bookings 에서 버리던 상품. 야마나미 운영 표(bookings·guests…)에는 넣지 않고
@@ -1489,7 +1501,7 @@
     b2bFees: b2bFees,
     accomFromProduct: accomFromProduct,
     saleTypeFromProduct: saleTypeFromProduct,
-    roomTypeSingles: roomTypeSingles, roomTypeAnnex: roomTypeAnnex, ROOMTYPE_ANNEX_RE: ROOMTYPE_ANNEX_RE,
+    roomTypeSingles: roomTypeSingles, roomTypeAnnex: roomTypeAnnex, ROOMTYPE_ANNEX_RE: ROOMTYPE_ANNEX_RE, ROOMTYPE_FROM: ROOMTYPE_FROM, roomTypeOn: roomTypeOn,
     PARTNER_BRANDS: PARTNER_BRANDS,
     partnerBrand: partnerBrand,
     partnerBrandDef: partnerBrandDef,

@@ -366,19 +366,40 @@ test('saleTypeFromProduct: 2027 상품명 — 호텔 숙박=호텔 트윈 · 돔
 });
 
 // ── 엠클릭 룸타입 열(2027-07 예약리스트 실측값, Min 2026-11-03 「3번은 그렇게 다 설정되어 있는거야」) ──
-test('roomTypeSingles: 싱글=전원 · 싱글,트윈=3명 1실/4명 2실/그 외 비고 확인 · 트윈=없음', () => {
-  assert.deepEqual(SZ.roomTypeSingles('싱글', 4), { kind: 'all', n: 4 });
-  assert.deepEqual(SZ.roomTypeSingles('싱글', 8), { kind: 'all', n: 8 });
-  assert.deepEqual(SZ.roomTypeSingles('싱글,트윈', 4), { kind: 'mixed', n: 2 });
-  assert.deepEqual(SZ.roomTypeSingles('싱글,트윈', 3), { kind: 'odd', n: 1 });
-  assert.deepEqual(SZ.roomTypeSingles('싱글,트윈', 5), { kind: 'odd', n: 1 });
-  assert.deepEqual(SZ.roomTypeSingles('싱글,트윈', 6), { kind: 'mixed', n: 0 });
-  assert.deepEqual(SZ.roomTypeSingles('싱글,컴팩트', 4), { kind: 'mixed', n: 2 });
+test('roomTypeSingles: 싱글=전원 · 싱글,트윈=3명 1실/4명 2실/그 외 비고 확인 · 트윈=없음 (입국일 2027~)', () => {
+  const D = '2027-07-01';   // 2027 입국 예약
+  assert.deepEqual(SZ.roomTypeSingles('싱글', 4, D), { kind: 'all', n: 4 });
+  assert.deepEqual(SZ.roomTypeSingles('싱글', 8, D), { kind: 'all', n: 8 });
+  assert.deepEqual(SZ.roomTypeSingles('싱글,트윈', 4, D), { kind: 'mixed', n: 2 });
+  assert.deepEqual(SZ.roomTypeSingles('싱글,트윈', 3, D), { kind: 'odd', n: 1 });
+  assert.deepEqual(SZ.roomTypeSingles('싱글,트윈', 5, D), { kind: 'odd', n: 1 });
+  assert.deepEqual(SZ.roomTypeSingles('싱글,트윈', 6, D), { kind: 'mixed', n: 0 });
+  assert.deepEqual(SZ.roomTypeSingles('싱글,컴팩트', 4, D), { kind: 'mixed', n: 2 });
   for (const rt of ['트윈', '컴팩트', '본관(개인온천X)', '별채(개인온천O)', '4인(4PERSON)', '8인(8PERSON)', '', null])
-    assert.equal(SZ.roomTypeSingles(rt, 4), null, String(rt));
-  assert.equal(SZ.roomTypeAnnex('별채(개인온천O)'), true);
-  assert.equal(SZ.roomTypeAnnex('별채(개인온천O),트윈'), true);
-  assert.equal(SZ.roomTypeAnnex('본관(개인온천X)'), false);
-  assert.equal(SZ.roomTypeAnnex('본관(개인온천X),트윈'), false);
-  assert.equal(SZ.roomTypeAnnex(null), false);
+    assert.equal(SZ.roomTypeSingles(rt, 4, D), null, String(rt));
+  assert.equal(SZ.roomTypeAnnex('별채(개인온천O)', D), true);
+  assert.equal(SZ.roomTypeAnnex('별채(개인온천O),트윈', D), true);
+  assert.equal(SZ.roomTypeAnnex('본관(개인온천X)', D), false);
+  assert.equal(SZ.roomTypeAnnex('본관(개인온천X),트윈', D), false);
+  assert.equal(SZ.roomTypeAnnex(null, D), false);
+});
+
+// Min 2026-11-03 「2026년 예약은 그대로 조건 건드리지말고 해. 2027년부터야」 — 룸타입 규칙은 입국일 2027-01-01 이후 예약에만
+test('roomTypeOn: 2026 입국 예약은 룸타입을 보지 않는다(2027-01-01 경계·Date·빈값)', () => {
+  assert.equal(SZ.ROOMTYPE_FROM, '2027-01-01');
+  assert.equal(SZ.roomTypeOn('2026-12-31'), false);
+  assert.equal(SZ.roomTypeOn('2027-01-01'), true);
+  assert.equal(SZ.roomTypeOn('2027-07-15T00:00:00'), true);
+  assert.equal(SZ.roomTypeOn(new Date(2027, 0, 1)), true);
+  assert.equal(SZ.roomTypeOn(new Date(2026, 11, 31)), false);
+  for (const v of ['', null, undefined, 'abc']) assert.equal(SZ.roomTypeOn(v), false, String(v));
+  // 2026 예약: 룸타입이 「싱글」·「별채」라도 종전 규칙(비고만)
+  assert.equal(SZ.roomTypeSingles('싱글', 4, '2026-12-10'), null);
+  assert.equal(SZ.roomTypeSingles('싱글,트윈', 4, '2026-11-20'), null);
+  assert.equal(SZ.roomTypeSingles('싱글', 4), null);                 // 입국일 없음 = 적용 안 함(안전 기본값)
+  assert.equal(SZ.roomTypeAnnex('별채(개인온천O)', '2026-12-10'), false);
+  assert.equal(SZ.roomTypeAnnex('별채(개인온천O)'), false);
+  // 2027 예약: 적용
+  assert.deepEqual(SZ.roomTypeSingles('싱글', 2, '2027-01-01'), { kind: 'all', n: 2 });
+  assert.equal(SZ.roomTypeAnnex('별채(개인온천O)', '2027-03-05'), true);
 });

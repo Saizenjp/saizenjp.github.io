@@ -17,7 +17,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 수배 목록</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=60"></script>
+<script src="../assets/saizen-core.js?v=61"></script>
 <style>
   /* ── 공통 chrome (docs/ops-page-skeleton.html 정본 — 통째 복사) ── */
   :root{
@@ -104,6 +104,9 @@
   .lt td.n,.lt th.n{text-align:right;font-family:var(--mono);font-weight:800}
   .lt small{display:block;color:var(--muted);font-size:11px;font-weight:600;line-height:1.3}
   .lt .mono{font-family:var(--mono);font-weight:700}
+  /* 비고 보기(Min 2026-11-03 「엠클릭의 현지비고란을 보고 싶을 때 클릭해서 볼 수 있게」) — 대표자 칸의 작은 버튼 → 아래 줄에 현지비고·비고 원문 */
+  .lt .rmkbtn{display:inline-block;margin-top:3px;font-size:11px;font-weight:700;color:var(--accent);background:transparent;border:1px solid var(--border2);border-radius:6px;padding:1px 7px;cursor:pointer;line-height:1.5} .lt .rmkbtn.on{background:var(--accentSoft);border-color:var(--accent)}
+  .lt tr.rmkrow td{background:var(--surface2);padding:6px 10px 9px 28px;cursor:default} .rmkbox{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12.5px;line-height:1.5} .rmkbox b{white-space:nowrap;color:var(--text2)} .rmkbox div{white-space:pre-wrap;word-break:keep-all}
   .dots{display:flex;gap:3px} .dot{width:16px;height:16px;border-radius:50%;background:var(--surface3);color:var(--muted);font-size:9.5px;font-weight:900;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border2)}
   .dot.ok{background:var(--ok);border-color:var(--ok);color:#fff}
   .bd{display:inline-block;font-size:10.5px;font-weight:800;border-radius:5px;padding:1px 6px;margin:1px 2px 1px 0;white-space:nowrap}
@@ -148,8 +151,8 @@
   .veh{display:inline-flex;flex-direction:column;border:1px solid var(--border2);border-radius:9px;padding:5px 10px;background:var(--surface);font-size:12px;font-weight:700;min-width:120px}
   .veh small{font-weight:600;color:var(--muted);font-size:10.5px} .veh.over{border-color:var(--err);background:#f7e6e2}
   /* 기본값 */
-  .defs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-  .defs .panel{margin:0;overflow:auto} #def-hotels,#def-rates{grid-column:1/-1}
+  .defs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}   /* 호텔 블록·골프장·요금표 = 전폭 한 줄, 그 아래 차량·담당자 둘 나란히(Min 2026-11-03) */
+  .defs .panel{margin:0;overflow:auto} #def-hotels,#def-courses,#def-rates{grid-column:1/-1}
   @media (max-width:1100px){ .defs{grid-template-columns:1fr} }
   /* 기간별 요금표(SQL 161) */
   .rp{border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-top:10px;background:var(--surface2)} .rp.pend{border-style:dashed;border-color:var(--accent)}
@@ -169,7 +172,7 @@
   .regsave{margin-left:auto;display:flex;gap:6px;align-items:center} .mini tr.dirty td{background:#fbf3e2} .lt tr.dirty td{background:#fbf3e2}
   .grow .auto{font-size:10px;font-weight:800;color:var(--accent2);border:1px solid var(--accent2);border-radius:4px;padding:0 4px;justify-self:center}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.1">
 </head>
 <body data-so-area="partner_kumamoto partner_trial">
 <div class="topbar so-bar">
@@ -256,7 +259,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=37.0"></script>
+<script src="../assets/saizen-ops.js?v=37.1"></script>
 <script>
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -272,7 +275,7 @@ const L={
     noSql:'手配表(partner_ops など、SQL 160)がまだありません — 一覧は見えますが入力は保存できません。管理者に SQL 160 の適用を依頼してください。',
     loading:'読み込み中…', loadFail:'読み込み失敗', saveFail:'保存失敗', saved:'保存しました', sum:(t,p)=>`${t}チーム · ${p}名`,
     brandAll:'全部', blocks:'ホテル ブロック（夜ごとのツイン使用／確保）', blocksHint:'数字=その夜のツイン使用数／確保数。赤=ブロック超過（追加確保が必要）。シングルはブロック外（料金を設定）。',
-    hDate:'期間', hPax:'人数', hRep:'代表者', hProd:'商品', hHotel:'ホテル・部屋', hGolf:'ゴルフ', hStaff:'担当', hYen:'見積(チーム)', hIss:'要確認', hSt:'状態',
+    rmkOpen:'備考を見る', rmkClose:'備考を閉じる', rmkNone:'備考なし', hDate:'期間', hPax:'人数', hRep:'代表者', hProd:'商品', hHotel:'ホテル・部屋', hGolf:'ゴルフ', hStaff:'担当', hYen:'見積(チーム)', hIss:'要確認', hSt:'状態',
     nights:n=>n+'泊', solo:'単独', combo:'コンボ', unsure:'確認', unsureT:'商品名から宿泊区間を読めず、予約期間全体を表示しています',
     stH:'名簿→ホテル', stG:'名簿→ゴルフ場', stI:'日程表', stB:'請求書', notYet:'未',
     issNoHotel:'ホテル未指定', issRooms0:'部屋数未入力', issRoomsMis:'部屋数≠人数', issSingleRate:'シングル料金未設定', issGolf:n=>`ゴルフ未指定 ${n}日`, issStaff:'担当未指定', issAgency:'旅行会社 未記載', issDisp:'配車なし', issBlock:'ブロック超過', issRates:'料金表 未登録',
@@ -304,7 +307,7 @@ const L={
     noSql:'수배 표(partner_ops 등, SQL 160)가 아직 없습니다 — 목록은 보이지만 입력은 저장되지 않습니다. 관리자에게 SQL 160 적용을 요청하세요.',
     loading:'불러오는 중…', loadFail:'불러오기 실패', saveFail:'저장 실패', saved:'저장했습니다', sum:(t,p)=>`${t}팀 · ${p}명`,
     brandAll:'전체', blocks:'호텔 블록(밤마다 트윈 사용/확보)', blocksHint:'숫자=그 밤의 트윈 사용 수/확보 수. 빨강=블록 초과(추가 확보 필요). 싱글은 블록 밖(요금을 정합니다).',
-    hDate:'기간', hPax:'인원', hRep:'대표자', hProd:'상품', hHotel:'호텔·객실', hGolf:'골프', hStaff:'담당', hYen:'견적(팀)', hIss:'요확인', hSt:'상태',
+    rmkOpen:'비고 보기', rmkClose:'비고 닫기', rmkNone:'비고 없음', hDate:'기간', hPax:'인원', hRep:'대표자', hProd:'상품', hHotel:'호텔·객실', hGolf:'골프', hStaff:'담당', hYen:'견적(팀)', hIss:'요확인', hSt:'상태',
     nights:n=>n+'박', solo:'단독', combo:'콤보', unsure:'확인', unsureT:'상품명에서 숙박 구간을 못 읽어 예약 기간 전체를 표시합니다',
     stH:'명단→호텔', stG:'명단→골프장', stI:'일정표', stB:'청구서', notYet:'미',
     issNoHotel:'호텔 미지정', issRooms0:'객실 수 미입력', issRoomsMis:'객실 수≠인원', issSingleRate:'싱글 요금 미정', issGolf:n=>`골프 미지정 ${n}일`, issStaff:'담당 미지정', issAgency:'여행사 미기재', issDisp:'배차 없음', issBlock:'블록 초과', issRates:'요금표 미등록',
@@ -336,7 +339,7 @@ const L={
     noSql:'Arrangement tables (partner_ops etc., SQL 160) are not applied yet — the list is visible but edits cannot be saved. Ask the administrator to apply SQL 160.',
     loading:'Loading…', loadFail:'Load failed', saveFail:'Save failed', saved:'Saved', sum:(t,p)=>`${t} teams · ${p} pax`,
     brandAll:'All', blocks:'Hotel blocks (twin used / blocked per night)', blocksHint:'Number = twins used / blocked that night. Red = over the block (extra rooms needed). Singles are outside the block (set a rate).',
-    hDate:'Dates', hPax:'Pax', hRep:'Representative', hProd:'Product', hHotel:'Hotel · rooms', hGolf:'Golf', hStaff:'Staff', hYen:'Quote (team)', hIss:'To check', hSt:'Status',
+    rmkOpen:'Show remarks', rmkClose:'Hide remarks', rmkNone:'No remarks', hDate:'Dates', hPax:'Pax', hRep:'Representative', hProd:'Product', hHotel:'Hotel · rooms', hGolf:'Golf', hStaff:'Staff', hYen:'Quote (team)', hIss:'To check', hSt:'Status',
     nights:n=>n+'N', solo:'single', combo:'combo', unsure:'check', unsureT:'Stay segment could not be read from the product name — full booking span shown',
     stH:'Roster→hotel', stG:'Roster→course', stI:'Itinerary', stB:'Invoice', notYet:'—',
     issNoHotel:'No hotel', issRooms0:'No rooms', issRoomsMis:'Rooms≠pax', issSingleRate:'Single rate missing', issGolf:n=>`Golf missing ${n}d`, issStaff:'No staff', issAgency:'Agency not noted', issDisp:'No dispatch', issBlock:'Over block', issRates:'Rates not set',
@@ -598,6 +601,8 @@ function renderBlocks(){
 }
 function statusDots(o){ return `<div class="dots">${[['H','roster_hotel_at','stH'],['G','roster_golf_at','stG'],['日','itinerary_at','stI'],['請','invoiced_at','stB']].map(([c,f,k])=>`<i class="dot${o[f]?' ok':''}" title="${esc(tx(k))}${o[f]?' ✓':''}">${c}</i>`).join('')}</div>`; }
 function roomsText(o){ const parts=[]; if(o.twin) parts.push(`${tx('twin')}${o.twin}`); if(o.single) parts.push(`${tx('single')}${o.single}`); if(o.triple) parts.push(`${tx('triple')}${o.triple}`); return parts.join(' '); }
+const RMK_OPEN=new Set();   // 비고를 펼친 팀(Min 2026-11-03 「현지비고란을 클릭해서 볼 수 있게」) — 재렌더에도 유지
+function rmkRowHTML(t){ return `<tr class="rmkrow" data-seq="${t.seq}"><td colspan="9"><div class="rmkbox">${t.remark_local?`<b>${esc(tx('dRemarkLocal'))}</b><div>${esc(t.remark_local)}</div>`:''}${t.remark?`<b>${esc(tx('dRemark'))}</b><div>${esc(t.remark)}</div>`:''}${(!t.remark&&!t.remark_local)?`<span class="hint">${esc(tx('rmkNone'))}</span>`:''}</div></td></tr>`; }
 function renderList(){
   const vis=visible();
   $('#list thead').innerHTML=`<tr><th>${esc(tx('hSt'))}</th><th>${esc(tx('hDate'))}</th><th class="n">${esc(tx('hPax'))}</th><th>${esc(tx('hRep'))}</th><th>${esc(tx('hHotel'))}</th><th>${esc(tx('hGolf'))}</th><th>${esc(tx('hStaff'))}</th><th class="n">${esc(tx('hYen'))}</th><th>${esc(tx('hIss'))}</th></tr>`;
@@ -609,14 +614,15 @@ function renderList(){
       <td>${statusDots(o)}${isD?`<span class="bd warn">${esc(tx('unsavedBadge'))}</span>`:''}</td>
       <td class="nw"><span class="mono">${esc(mmdd(t.dep))}→${esc(mmdd(t.arr))}</span><small>${esc(tx('nights',nightsOf(t).length))}${t.sure?'':` <span class="bd warn" title="${esc(tx('unsureT'))}">${esc(tx('unsure'))}</span>`}</small></td>
       <td class="n">${t.pax}</td>
-      <td class="nw"><b>${esc(t.rep)}</b> <span class="bd brand">${esc(brandShort(t.brand))}</span>${t.combo?` <span class="bd info">${esc(tx('combo'))}</span>`:''}<small>${esc(agencyOf(t))}</small></td>
+      <td class="nw"><b>${esc(t.rep)}</b> <span class="bd brand">${esc(brandShort(t.brand))}</span>${t.combo?` <span class="bd info">${esc(tx('combo'))}</span>`:''}<small>${esc(agencyOf(t))}</small>${(t.remark||t.remark_local)?`<button class="rmkbtn${RMK_OPEN.has(t.seq)?' on':''}" data-act="rmk" data-seq="${t.seq}" type="button">${esc(tx(RMK_OPEN.has(t.seq)?'rmkClose':'rmkOpen'))}</button>`:''}</td>
       <td class="nw">${esc(hotelName(h)||(o.hotel_note||''))}${h&&h.block_twin>0&&o.use_block===false?` <span class="bd info">${esc(tx('blockOut'))}</span>`:''}<small>${esc(roomsText(o))}</small>${!o.hotel_id&&p.hotelId?`<small class="sug">${esc(tx('remarkTag'))}: ${esc(hotelName(hotelById(p.hotelId)))}</small>`:''}</td>
       <td>${gl}<small>${g.length}/${nightsOf(t).length}</small>${!g.length&&p.golf.length?`<small class="sug">${esc(tx('remarkTag'))}: ${esc(tx('remarkGolf',p.golf.length))}</small>`:''}</td>
       <td class="nw">${esc(o.staff||'')}</td>
       <td class="n yen">${q&&q.ok&&ratesReady()&&q.complete?yen(q.total):''}</td>
-      <td>${iss.map(i=>`<span class="bd ${i.sev}">${esc(i.n!=null?tx(i.k,i.n):tx(i.k))}</span>`).join('')}</td></tr>`; }).join('');
+      <td>${iss.map(i=>`<span class="bd ${i.sev}">${esc(i.n!=null?tx(i.k,i.n):tx(i.k))}</span>`).join('')}</td></tr>${RMK_OPEN.has(t.seq)?rmkRowHTML(t):''}`; }).join('');
 }
-$('#list').addEventListener('click',e=>{ const tr=e.target.closest('tr.tm'); if(!tr) return; const seq=Number(tr.dataset.seq); if(seq===SEL) return; if(!canLeave()) return; DR=null; SEL=seq; renderList(); renderDetail(); });
+$('#list').addEventListener('click',e=>{ const rb=e.target.closest('[data-act=rmk]'); if(rb){ e.stopPropagation(); const s=Number(rb.dataset.seq); if(RMK_OPEN.has(s)) RMK_OPEN.delete(s); else RMK_OPEN.add(s); renderList(); return; }   // 비고 보기 토글(팀 선택과 무관)
+  const tr=e.target.closest('tr.tm'); if(!tr) return; const seq=Number(tr.dataset.seq); if(seq===SEL) return; if(!canLeave()) return; DR=null; SEL=seq; renderList(); renderDetail(); });
 $('#btn-remark-all').addEventListener('click',async()=>{ const cand=remarkCandidates(); if(!cand.length) return; if(!confirm(tx('applyRemarkAllConfirm',cand.length))) return; let n=0,gn=0;
   for(const t of cand){ const p=planFor(t); const row={event_seq:t.seq,twin:p.twin,single:p.single,triple:p.triple}; if(p.hotelId) row.hotel_id=p.hotelId; else if((DEFAULTS.hotel||{})[t.brand]) row.hotel_id=DEFAULTS.hotel[t.brand]; if((DEFAULTS.staff||{})[t.brand]) row.staff=DEFAULTS.staff[t.brand]; if(p.agencyExplicit&&p.agency!==t.agency) row.agency=p.agency; if(HAS_AUTOSIG) row.auto_sig=p.sig;
     const {data,error}=await supa.from('partner_ops').upsert(row,{onConflict:'event_seq'}).select().single(); if(error){ toast(tx('saveFail')+': '+error.message,'err'); break; } OPS[t.seq]=data; n++;

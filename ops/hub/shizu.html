@@ -245,7 +245,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.1">
 </head>
 <body data-so-area="shizu_sheet">
 <div class="topbar so-bar">
@@ -284,8 +284,8 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=60"></script>
-<script src="../assets/saizen-ops.js?v=37.0"></script>
+<script src="../assets/saizen-core.js?v=61"></script>
+<script src="../assets/saizen-ops.js?v=37.1"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(予約表 산출물·도메인 데이터는 일본어 유지) ──
@@ -391,7 +391,7 @@ let RFROM='', RTO='';          // 달력 범위(월경계 이어보기). 비면 
 let BOOK={};                   // event_seq → {rep_name, remark, remark_local, remark_ja, remark_local_ja}
 let SHZ_HAS_RT=false;          // bookings.room_type(엠클릭 룸타입 열, SQL 163) 유무 — 「별채(개인온천O)」= 別棟 선호(Min 2026-11-03)
 async function shzHasRt(){ try{ const r=await supa.from('bookings').select('room_type',{count:'exact',head:true}); return !r.error; }catch(e){ return false; } }
-const shzRtAnnex=rt=>(window.SZCore&&SZCore.roomTypeAnnex)?SZCore.roomTypeAnnex(rt):/별채|別棟/.test(String(rt||''));
+const shzRtAnnex=(rt,dep)=>(window.SZCore&&SZCore.roomTypeAnnex)?SZCore.roomTypeAnnex(rt,dep):(String(dep||'').slice(0,10)>='2027-01-01'&&/별채|別棟/.test(String(rt||'')));   // 입국일 2027~ 만(2026 예약은 현지비고 키워드만, Min 2026-11-03)
 let _trWarned=false;           // 번역 실패 토스트 1회만
 let ROSTER=[];                 // 그 달 시즈 전체 인원 [{member_id,event_seq,dep,arr,nameKr,nameEn}]
 let UNASSIGNED=[];             // ROSTER 중 미배정(방 없음)
@@ -752,7 +752,7 @@ function rackTeams(date){
     const mates=GUESTS.filter(g=>String(g.event_seq)===String(seq))
       .filter((g,i,a)=>a.findIndex(x=>x.member_id===g.member_id)===i)
       .map(g=>({nm:nameOf(g),room:g.room_no}));
-    const annex=SHZ_ANNEX_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''))||shzRtAnnex(bk.room_type);   // 룸타입 「별채」도 別棟 선호(SQL 163)
+    const annex=SHZ_ANNEX_RE.test(String(bk.remark_local||'')+' '+String(bk.remark||''))||shzRtAnnex(bk.room_type,bk.dep_date);   // 룸타입 「별채」도 別棟 선호(SQL 163, 입국일 2027~ 만)
     return {seq,rep:repEnOf(seq)||bk.rep_name||'',ms,mates,annex,port:portOf(seq),dep:ms[0].dep,arr:ms[0].arr};
   }).sort((a,b)=>(a.port||'').localeCompare(b.port||'')||(a.dep||'').localeCompare(b.dep||'')||(a.seq-b.seq));   // 出発地(ICN/PUS)끼리 묶어 표시(Min)
 }
@@ -1085,7 +1085,7 @@ function bigoFor(date){
     const b=BOOK[seq]; if(!b)return;
     const rep=String(b.rep_name||'').trim();
     // 현지비고에 '별채/별관/別棟/別館' 포함 = 別棟 사전신청 → 객실 개인욕탕 물 채우기 필요
-    const annex=SHZ_ANNEX_RE.test(String(b.remark_local||'')+' '+String(b.remark||''))||shzRtAnnex(b.room_type);
+    const annex=SHZ_ANNEX_RE.test(String(b.remark_local||'')+' '+String(b.remark||''))||shzRtAnnex(b.room_type,b.dep_date);
     const segs=[];
     const add=(orig,ja)=>{ orig=String(orig||'').replace(/\s*[\r\n]+\s*/g,' ').trim(); if(!orig)return;
       const jaT=String(ja||'').replace(/\s*[\r\n]+\s*/g,' ').trim();
@@ -1217,7 +1217,7 @@ async function autoAssignShizu(){
     if(!teams.length){ toast(tx('autoNone'),'warn'); return; }
     const seqs=[...new Set(teams.map(t=>t.seq))];
     const gms=seqs.length? await pagedIn('guest_members','id,event_seq','event_seq',seqs) : [];
-    const bks=seqs.length? await pagedIn('bookings','event_seq,remark,remark_local'+(SHZ_HAS_RT?',room_type':''),'event_seq',seqs) : [];
+    const bks=seqs.length? await pagedIn('bookings','event_seq,remark,remark_local,dep_date'+(SHZ_HAS_RT?',room_type':''),'event_seq',seqs) : [];
     // 팀 최고령 나이 — 「어르신이 있는 팀을 本館(2층)에」 우선 배정용(Min). 생년월일은 passengers 보유.
     const pxAge=seqs.length? await pagedIn('passengers','event_seq,birth,birth_yymmdd','event_seq',seqs) : [];
     const bkMap={}; bks.forEach(b=>bkMap[b.event_seq]=b);
@@ -1226,7 +1226,7 @@ async function autoAssignShizu(){
     const keep=new Set(manual.map(g=>g.member_id));
     const byTeam={}; gms.forEach(m=>{ if(!keep.has(m.id)){ (byTeam[m.event_seq]=byTeam[m.event_seq]||[]).push(m.id); } });
     // 현지비고에 별채/별관 포함 = 別棟(별채) 선호
-    const annexPref={}; teams.forEach(t=>{ const b=bkMap[t.seq]||{}; annexPref[t.seq]=SHZ_ANNEX_RE.test(String(b.remark_local||'')+' '+String(b.remark||''))||shzRtAnnex(b.room_type); });   // 룸타입 「별채(개인온천O)」(SQL 163)
+    const annexPref={}; teams.forEach(t=>{ const b=bkMap[t.seq]||{}; annexPref[t.seq]=SHZ_ANNEX_RE.test(String(b.remark_local||'')+' '+String(b.remark||''))||shzRtAnnex(b.room_type,b.dep_date); });   // 룸타입 「별채(개인온천O)」(SQL 163, 입국일 2027~ 만)
     //  · 일반팀: 本館 201·202·204(志津·合歓·山法師) → 203(北條) → 離れ 301·302·303(吉祥·瑞雲·馬酔木)
     //    (北條은 완전 최후가 아니라 '本館 중 후순위' — 別棟보다는 먼저)
     //  · 別棟 선호팀(별채 사전신청): 離れ(吉祥·瑞雲·馬酔木) 먼저 → 本館(志津·合歓·山法師) → 北條

@@ -17,7 +17,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 월간 숙박 현황표</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=60"></script>
+<script src="../assets/saizen-core.js?v=61"></script>
 <style>
   /* ── 공통 chrome (docs/ops-page-skeleton.html 정본 — 통째 복사) ── */
   :root{
@@ -95,6 +95,7 @@
   .sc th.tt{background:#e4e9dc}
   .sc td.cls{font-size:.9em} .sc td.name{font-weight:700}
   .sc td.kind{font-size:.9em} .sc td .unsure{color:#b13b2c;font-weight:800;font-size:.85em;margin-left:3px}   /* 자회사 모드: 区分 · 구간 못 읽음 표시 */
+  .sc td.ag,.sc td.ho,.sc td.st{font-size:.9em;white-space:nowrap} .sc td.rm{font-size:.85em;white-space:nowrap;letter-spacing:.2px}   /* 자회사 모드: 여행사·호텔·객실·담당(수배 목록 입력값, Min 2026-11-03) */
   .sc td.pax{font-weight:800}
   /* 입국·귀국 날짜 칸: 토=파랑 · 일/공휴일=빨강(머리줄과 같은 색) / 4명 이상 팀: 왼쪽 정보 칸 연노랑·인원 칸 진한 노랑(Min 2026-10-26) */
   .sc td.dt.sun{color:#b3261e;font-weight:800} .sc td.dt.sat{color:#2b5fa8;font-weight:800}
@@ -131,7 +132,7 @@
     .sc td,.sc th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.1">
 </head>
 <body data-so-area="staychart">
 <script>(function(){ var b=new URLSearchParams(location.search).get('brand')||''; if(/^(kumamoto|trial)$/.test(b)) document.body.setAttribute('data-so-area','partner_'+b); })();</script>
@@ -178,7 +179,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=37.0"></script>
+<script src="../assets/saizen-ops.js?v=37.1"></script>
 <script>
 const $=s=>document.querySelector(s);
 const L={
@@ -186,19 +187,19 @@ const L={
        desc:'チーム×日付の宿泊表（泊まる夜ごとに人数）。登録データから自動生成 — 待機予約は除外、前月入国・翌月帰国のチームはこの月の夜だけ表示。到着/出発時刻は名簿の代表者の便。印刷はA3横、ページごとに見出しを繰り返します。ヤマナミ以外（クジュ・ガンジー・志津）は文字を自動で縮めて必ず1枚に収めます。入国日・帰国日が土日祝なら日付欄に色（日・祝は赤、土は青）、4名以上のチームは左の情報欄が黄色。',
        all:'すべて', accY:'ヤマナミ', accK:'クジュ', accG:'ガンジー', accS:'志津', loading:'読み込み中…', empty:'この月の宿泊はありません', needConn:'接続後に表示します',
        sum:(t,p,n)=>`${t}チーム · ${p}名 · 延べ${n}泊`, outAt:'出力', teams:'チーム', pax:'名', nights:'延べ泊', loadFail:'読み込み失敗', zoomT:'画面の文字サイズ(このPCに保存 · 印刷には影響しません)', fit:p=>`1枚に収める: 文字 ${p}%`, fitMulti:'ヤマナミを含む → 複数枚',
-       stepP:b=>`${b} · 月間宿泊現況表`, descP:'熊本市内・トライアル商品の宿泊表（チーム×日付、泊まる夜ごとに人数）。登録データ（別台帳 partner_bookings）から自動生成 — 待機予約は除外。IN/OUT はこの商品の宿泊区間: 単独商品は予約期間全体、コンボ（例: 熊本市内ホテル3泊＋ヤマナミ2泊）は商品名の「N泊」と順序で切り、相手側の宿泊先を小さく表示。区間を読めなかったチームは予約期間全体を表示し「確認」を付けます。到着/出発時刻は、その日が入国日/帰国日のときだけ名簿の代表者の便から。印刷はA3横で必ず1枚。',
+       stepP:b=>`${b} · 月間宿泊現況表`, descP:'熊本市内・トライアル商品の宿泊表（チーム×日付、泊まる夜ごとに人数）。登録データ（別台帳 partner_bookings）から自動生成 — 待機予約は除外。IN/OUT はこの商品の宿泊区間: 単独商品は予約期間全体、コンボ（例: 熊本市内ホテル3泊＋ヤマナミ2泊）は商品名の「N泊」と順序で切り、相手側の宿泊先を小さく表示。区間を読めなかったチームは予約期間全体を表示し「確認」を付けます。到着/出発時刻は、その日が入国日/帰国日のときだけ名簿の代表者の便から。旅行会社・ホテル・部屋数（T=ツイン S=シングル Tr=トリプル）・担当は手配リストの入力値（旅行会社はエムクリック備考から読んだ値も）。印刷はA3横で必ず1枚。',
        kindSolo:'単独', kindCombo:'コンボ', unsureT:'商品名から宿泊区間を読めませんでした — 予約期間全体を表示（Mクリックの商品名を確認）', needSql:'熊本市内・トライアルの台帳（partner_bookings）がありません — 管理者に SQL 159 の適用を依頼してください' },
   ko:{ step:'객실 · 월간 숙박 현황표', connHint:'연결 정보는 이 브라우저에만 저장됩니다.', group:'숙소별 묶음', print:'🖨 인쇄 (A3 가로)',
        desc:'팀×날짜 숙박표(묵는 밤마다 인원). 등록 데이터에서 자동 생성 — 대기 예약 제외, 전달 입국·다음 달 귀국 팀은 이 달 밤만 표시. 도착/출발 시각은 명단 대표자의 항공편. 인쇄는 A3 가로, 페이지마다 머리 반복. 야마나미를 뺀 숙소(쿠주·간지·시즈)는 글자를 자동으로 줄여 무조건 한 장에 맞춥니다. 입국·귀국일이 토·일·공휴일이면 날짜 칸에 색(일·공휴일 빨강, 토 파랑), 4명 이상 팀은 왼쪽 정보 칸이 노랗게 표시됩니다.',
        all:'전체', accY:'야마나미', accK:'쿠주', accG:'간지', accS:'시즈', loading:'불러오는 중…', empty:'이 달 숙박이 없습니다', needConn:'연결 후 표시됩니다',
        sum:(t,p,n)=>`${t}팀 · ${p}명 · 연 ${n}박`, outAt:'출력', teams:'팀', pax:'명', nights:'연박', loadFail:'불러오기 실패', zoomT:'화면 글자 크기(이 PC에 저장 · 인쇄에는 영향 없음)', fit:p=>`한 장 맞춤: 글자 ${p}%`, fitMulti:'야마나미 포함 → 여러 장',
-       stepP:b=>`${b} · 월간 숙박 현황표`, descP:'구마모토 시내 · 트라이얼 상품의 숙박표(팀×날짜, 묵는 밤마다 인원). 등록 데이터(별도 원장 partner_bookings)에서 자동 생성 — 대기 예약 제외. IN/OUT은 이 상품의 숙박 구간: 단독 상품은 예약 기간 전체, 콤보(예: 구마모토 시내호텔 3박 + 야마나미 2박)는 상품명의 「N박」과 순서로 잘라 상대 쪽 숙소를 작게 표시합니다. 구간을 못 읽은 팀은 예약 기간 전체를 보이고 「確認」을 붙입니다. 도착/출발 시각은 그날이 입국일/귀국일일 때만 명단 대표자의 항공편에서. 인쇄는 A3 가로 무조건 한 장.',
+       stepP:b=>`${b} · 월간 숙박 현황표`, descP:'구마모토 시내 · 트라이얼 상품의 숙박표(팀×날짜, 묵는 밤마다 인원). 등록 데이터(별도 원장 partner_bookings)에서 자동 생성 — 대기 예약 제외. IN/OUT은 이 상품의 숙박 구간: 단독 상품은 예약 기간 전체, 콤보(예: 구마모토 시내호텔 3박 + 야마나미 2박)는 상품명의 「N박」과 순서로 잘라 상대 쪽 숙소를 작게 표시합니다. 구간을 못 읽은 팀은 예약 기간 전체를 보이고 「確認」을 붙입니다. 도착/출발 시각은 그날이 입국일/귀국일일 때만 명단 대표자의 항공편에서. 여행사·호텔·객실 수(T=트윈 S=싱글 Tr=트리플)·담당은 수배 목록(手配リスト)에 입력된 값(여행사는 엠클릭 비고에서 읽은 값도). 인쇄는 A3 가로 무조건 한 장.',
        kindSolo:'단독', kindCombo:'콤보', unsureT:'상품명에서 숙박 구간을 못 읽었습니다 — 예약 기간 전체를 표시(엠클릭 상품명 확인)', needSql:'구마모토 시내 · 트라이얼 원장(partner_bookings)이 없습니다 — 관리자에게 SQL 159 적용을 요청하세요' },
   en:{ step:'Rooms · Monthly stay chart', connHint:'Connection info is stored only in this browser.', group:'Group by lodging', print:'🖨 Print (A3 landscape)',
        desc:'Team × date stay chart (guests per night). Built from registered data — waiting bookings excluded; teams spanning month edges show only this month\'s nights. Arrival/departure times come from the representative\'s flights. Prints on A3 landscape with the header repeated per page. Lodgings other than Yamanami (Kuju, Ganji, Shizu) are always fitted on one page by shrinking the text. Arrival/return dates on weekends or holidays are coloured (Sun/holiday red, Sat blue) and teams of 4 or more have a yellow info block.',
        all:'All', accY:'Yamanami', accK:'Kuju', accG:'Ganji', accS:'Shizu', loading:'Loading…', empty:'No stays this month', needConn:'Shown after connecting',
        sum:(t,p,n)=>`${t} teams · ${p} guests · ${n} guest-nights`, outAt:'Printed', teams:'teams', pax:'guests', nights:'guest-nights', loadFail:'Load failed', zoomT:'On-screen text size (saved on this PC · does not affect printing)', fit:p=>`Fit to one page: text ${p}%`, fitMulti:'Includes Yamanami → several pages',
-       stepP:b=>`${b} · Monthly stay chart`, descP:'Stay chart for Kumamoto city · Trial products (team × date, guests per night). Built from registered data (separate ledger partner_bookings) — waiting bookings excluded. IN/OUT is the stay segment of this product: single products span the whole booking; combos (e.g. Kumamoto city hotel 3 nights + Yamanami 2 nights) are cut by the "N nights" in the product name and their order, with the other lodging shown small. Teams whose segment could not be read show the full booking span with 確認. Arrival/departure times appear only when that day is the arrival/return day. Prints on A3 landscape, always one page.',
+       stepP:b=>`${b} · Monthly stay chart`, descP:'Stay chart for Kumamoto city · Trial products (team × date, guests per night). Built from registered data (separate ledger partner_bookings) — waiting bookings excluded. IN/OUT is the stay segment of this product: single products span the whole booking; combos (e.g. Kumamoto city hotel 3 nights + Yamanami 2 nights) are cut by the "N nights" in the product name and their order, with the other lodging shown small. Teams whose segment could not be read show the full booking span with 確認. Arrival/departure times appear only when that day is the arrival/return day. Agency · hotel · rooms (T=twin S=single Tr=triple) · staff come from the arrangement list (agency also read from the M-click remark). Prints on A3 landscape, always one page.',
        kindSolo:'Single', kindCombo:'Combo', unsureT:'Stay segment could not be read from the product name — full booking span shown (check the product name in M-click)', needSql:'Kumamoto city · Trial ledger (partner_bookings) is missing — ask the administrator to apply SQL 159' },
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
@@ -215,9 +216,9 @@ const ACCOM_FULL={Y:'ヤマナミリゾート',K:'クジュヒルズ',G:'ガン�
 const WD_JA=['日','月','火','水','木','金','土'];
 const HOL=new Set((window.SZCore&&SZCore.JP_HOLIDAYS)||[]);
 
-// ── 자회사 상품 모드(?brand=kumamoto|trial, SQL 159) — 같은 양식, 별도 원장. 열 9개(태그·회원구분·숙소 없음) ──
+// ── 자회사 상품 모드(?brand=kumamoto|trial, SQL 159) — 같은 양식, 별도 원장. 열 13개(태그·회원구분·숙소 없음 · 여행사·호텔·객실·담당은 수배 목록 입력값, Min 2026-11-03) ──
 const BRAND=(()=>{ const b=new URLSearchParams(location.search).get('brand')||''; return (/^(kumamoto|trial)$/.test(b) && window.SZCore && SZCore.partnerBrandDef && SZCore.partnerBrandDef(b))?b:''; })();
-const INFO_N=BRAND?9:11;   // 왼쪽 정보 칸 수(colspan 계산)
+const INFO_N=BRAND?13:11;   // 왼쪽 정보 칸 수(colspan 계산) — 자회사 모드는 여행사·호텔·객실·담당 4칸 추가
 function brandLabel(short){ return BRAND?SZCore.partnerLabel(BRAND, lang(), !!short):''; }
 // ── 상태 ──
 let supa=null, YM='', TEAMS=[], ACC=new Set(), GROUP=true, LOADED='';
@@ -274,13 +275,19 @@ async function loadPartner(){
   const m1=dstr(YM,1), mEnd=dstr(YM,daysIn(YM));
   $('#sum').textContent=tx('loading');
   try{
-    const bs=await fetchAll(supa.from('partner_bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,seg_from,seg_to,seg_nights,seg_sure,combo,pax,product_name,origin,airline,status,nights_label').eq('brand',BRAND).lte('seg_from',mEnd).gt('seg_to',m1).neq('status','대기').order('seg_from').order('event_seq'));
-    const seqs=bs.map(b=>b.event_seq), REP={};
+    const bsel=withAg=>supa.from('partner_bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,seg_from,seg_to,seg_nights,seg_sure,combo,pax,product_name,origin,airline,status,nights_label,remark,remark_local'+(withAg?',agency':'')).eq('brand',BRAND).lte('seg_from',mEnd).gt('seg_to',m1).neq('status','대기').order('seg_from').order('event_seq');
+    let bs; try{ bs=await fetchAll(bsel(true)); }catch(e){ if(/agency/i.test(String(e&&e.message||e))) bs=await fetchAll(bsel(false)); else throw e; }   // agency 열(SQL 160) 없는 DB 도 그린다
+    const seqs=bs.map(b=>b.event_seq), REP={}, OPS={}, HOT={};
+    // 수배 목록(手配リスト, SQL 160) 입력값 — 여행사·호텔·객실 수·담당(Min 2026-11-03 「여행사 명도 추가 … 필요한 게 있으면 넣으면」). 표가 없으면 그 칸만 빈 칸.
+    try{ const {data:hs,error:he}=await supa.from('partner_hotels').select('id,name_ja,name_ko'); if(he) throw he; (hs||[]).forEach(h=>HOT[h.id]=h);
+      for(let i=0;i<seqs.length;i+=200){ const {data:os,error}=await supa.from('partner_ops').select('event_seq,agency,staff,hotel_id,hotel_note,twin,single,triple').in('event_seq',seqs.slice(i,i+200)); if(error) throw error; (os||[]).forEach(o=>OPS[o.event_seq]=o); }
+    }catch(e){ console.warn('partner_ops/partner_hotels 없음 — 수배 칸은 빈 칸:', e&&e.message||e); }
     for(let i=0;i<seqs.length;i+=200){ const ch=seqs.slice(i,i+200);
       const {data:ms,error}=await supa.from('partner_members').select('event_seq,is_rep,seq_in_team,dep_flight,ret_flight,origin,airline,loc_arr_time,ret_dep_time').in('event_seq',ch); if(error) throw error;
       (ms||[]).forEach(r=>{ const cur=REP[r.event_seq]; if(!cur || (r.is_rep&&!cur.is_rep) || (!!r.is_rep===!!cur.is_rep && (r.seq_in_team||99)<(cur.seq_in_team||99))) REP[r.event_seq]=r; });
     }
-    TEAMS=bs.map(b=>{ const p=REP[b.event_seq]||{};
+    TEAMS=bs.map(b=>{ const p=REP[b.event_seq]||{}, o=OPS[b.event_seq]||{}, h=HOT[o.hotel_id]||null;
+      const agency=(o.agency&&o.agency.trim())||((window.SZCore&&SZCore.partnerAgency)?SZCore.partnerAgency({explicit:b.agency,remark:b.remark,remark_local:b.remark_local,product:b.product_name,product_name:b.product_name}):(b.agency||''));   // 수배 목록 수정값 > 엠클릭 열 > 비고 「여행사: ○○」
       const fullDep=String(b.dep_date||'').slice(0,10), fullArr=String(b.arr_date||'').slice(0,10);
       const dep=String(b.seg_from||b.dep_date||'').slice(0,10), arr=String(b.seg_to||b.arr_date||'').slice(0,10);
       const otherAcc=b.combo&&window.SZCore&&SZCore.accomFromProduct?SZCore.accomFromProduct(b.product_name||''):'';
@@ -288,7 +295,8 @@ async function loadPartner(){
         dep, arr, fullDep, fullArr, combo:!!b.combo, sure:b.seg_sure!==false, other:otherAcc?(ACCOM_JA[accomKey(otherAcc)]||otherAcc):'',
         arrT:(dep===fullDep)?hhmm(p.loc_arr_time):'', depT:(arr===fullArr)?hhmm(p.ret_dep_time):'',
         port:(dep===fullDep)?portOf(p.origin||b.origin, p.dep_flight||b.airline):'', retPort:(arr===fullArr)?portOf(p.origin||b.origin, p.ret_flight||b.airline):'',
-        nights:nightsOf(dep,arr), member:false }; });
+        nights:nightsOf(dep,arr), member:false,
+        agency:agency||'', hotelJa:h?(h.name_ja||''):'', hotelKo:h?(h.name_ko||h.name_ja||''):'', hotelNote:o.hotel_note||'', rooms:{t:Number(o.twin)||0,s:Number(o.single)||0,tr:Number(o.triple)||0}, staff:o.staff||'' }; });
     LOADED=YM; render();
   }catch(e){ const m=String(e&&e.message||e); toast((/partner_bookings|partner_members|schema cache|does not exist/i.test(m)?tx('needSql')+' · ':'')+tx('loadFail')+': '+m,'err'); $('#sum').textContent=''; }
 }
@@ -308,7 +316,7 @@ function dayCls(ym,d){ return dateCls(dstr(ym,d)); }
 const BIG_PAX=4;   // 이 인원 이상이면 팀 줄을 노랗게(Min 2026-10-26)
 function headHTML(ym, tot){
   const N=daysIn(ym);
-  const info=BRAND?[['No.','행사'],['代表者','대표자'],['区分','구분'],['人数','인원'],['IN','체크인'],['到着','도착'],['OUT','체크아웃'],['出発','출발'],['泊','박수']]
+  const info=BRAND?[['No.','행사'],['代表者','대표자'],['旅行会社','여행사'],['ホテル','호텔'],['部屋','객실'],['担当','담당'],['区分','구분'],['人数','인원'],['IN','체크인'],['到着','도착'],['OUT','체크아웃'],['出発','출발'],['泊','박수']]
                   :[['No.','행사'],['代表者','대표자'],['タグ','태그'],['区分','회원구분'],['人数','인원'],['宿泊先','숙소'],['入国','입국'],['到着','도착'],['帰国','귀국'],['出発','출발'],['泊','박수']];
   const r1='<tr>'+info.map(([j,k])=>`<th rowspan="5" class="tt">${j}<small>${k}</small></th>`).join('')+Array.from({length:N},(_,i)=>`<th class="d day num${dayCls(ym,i+1)}">${i+1}</th>`).join('')+'</tr>';
   const r2='<tr>'+Array.from({length:N},(_,i)=>`<th class="d day${dayCls(ym,i+1)}"><span class="wd">${WD_JA[wdOf(dstr(ym,i+1))]}</span></th>`).join('')+'</tr>';
@@ -327,8 +335,10 @@ function teamRowHTML(t, ym){
     const unsure=t.sure?'':`<span class="unsure" title="${esc(tx('unsureT'))}">確認</span>`;
     const inFrom=(t.combo&&t.fullDep&&t.dep>t.fullDep&&t.other)?`<small>← ${esc(t.other)}</small>`:'';
     const outTo=(t.combo&&t.fullArr&&t.arr<t.fullArr&&t.other)?`<small>→ ${esc(t.other)}</small>`:'';
+    const hotel=(lang()==='ja'?t.hotelJa:(t.hotelKo||t.hotelJa))||t.hotelNote||'';   // 수배 목록의 호텔(등록 외 호텔은 메모)
+    const rm=[t.rooms&&t.rooms.t?`T${t.rooms.t}`:'',t.rooms&&t.rooms.s?`S${t.rooms.s}`:'',t.rooms&&t.rooms.tr?`Tr${t.rooms.tr}`:''].filter(Boolean).join(' ');   // T=ツイン S=シングル Tr=トリプル
     return `<tr class="team${t.pax>=BIG_PAX?' big':''}${t.sure?'':' unsure'}" data-seq="${t.seq}">`
-      +`<td class="mono num" title="${esc(t.no)}">${esc(noTail)}</td><td class="l name">${esc(t.rep)}</td><td class="kind">${kind}${unsure}</td><td class="pax">${t.pax}</td>`
+      +`<td class="mono num" title="${esc(t.no)}">${esc(noTail)}</td><td class="l name">${esc(t.rep)}</td><td class="l ag">${esc(t.agency||'')}</td><td class="l ho">${esc(hotel)}</td><td class="rm" title="T=ツイン · S=シングル · Tr=トリプル">${esc(rm)}</td><td class="l st">${esc(t.staff||'')}</td><td class="kind">${kind}${unsure}</td><td class="pax">${t.pax}</td>`
       +`<td class="mono dt${dateCls(t.dep)}">${md(t.dep)}${inFrom}</td><td class="mono">${esc(t.arrT)}${t.port?`<small>${t.port}</small>`:''}</td><td class="mono dt${dateCls(t.arr)}">${md(t.arr)}${outTo}</td><td class="mono">${esc(t.depT)}${t.retPort?`<small>${t.retPort}</small>`:''}</td><td>${t.nights}</td>`+cells+'</tr>';
   }
   return `<tr class="team${t.member?' mem':''}${t.pax>=BIG_PAX?' big':''}" data-seq="${t.seq}">`
@@ -338,7 +348,7 @@ function teamRowHTML(t, ym){
 function totRowHTML(label, list, ym, cls){
   const N=daysIn(ym), tot=dayTotals(list,ym);
   const pax=list.reduce((s,t)=>s+t.pax,0), nights=list.reduce((s,t)=>s+nightSpan(t,ym).length*t.pax,0);
-  return `<tr class="${cls}"><td colspan="${BRAND?3:4}" class="l">${label}</td><td class="pax">${pax}</td><td colspan="${BRAND?4:5}" class="l"><small>${list.length} ${esc(tx('teams'))} · ${nights} ${esc(tx('nights'))}</small></td><td></td>`
+  return `<tr class="${cls}"><td colspan="${BRAND?7:4}" class="l">${label}</td><td class="pax">${pax}</td><td colspan="${BRAND?4:5}" class="l"><small>${list.length} ${esc(tx('teams'))} · ${nights} ${esc(tx('nights'))}</small></td><td></td>`
     +Array.from({length:N},(_,i)=>`<td class="d${dayCls(ym,i+1)}">${tot.stay[i+1]||''}</td>`).join('')+'</tr>';
 }
 function sortTeams(a,b){ return a.dep<b.dep?-1:a.dep>b.dep?1:(a.arr<b.arr?-1:a.arr>b.arr?1:String(a.rep).localeCompare(String(b.rep),'ko')); }

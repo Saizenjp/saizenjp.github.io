@@ -520,7 +520,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.1">
 </head>
 <body data-so-area="room_assign">
 <div class="topbar so-bar">
@@ -649,8 +649,8 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-core.js?v=60"></script>
-<script src="../assets/saizen-ops.js?v=37.0"></script>
+<script src="../assets/saizen-core.js?v=61"></script>
+<script src="../assets/saizen-ops.js?v=37.1"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -1759,7 +1759,7 @@ async function loadDay(){
     status:x.bookings?.status||'',            // 구분: 견적/대기/확정/정산 (대기=대기예약)
     remark:x.bookings?.remark||'',
     remark_local:x.bookings?.remark_local||'',   // 현지비고(싱글 지정 탐지용)
-    room_type:x.bookings?.room_type||'',          // 엠클릭 룸타입 열(SQL 163, 2027~: 싱글 / 싱글,트윈 / 컴팩트 / 본관·별채 …) — Min 2026-11-03
+    room_type:(window.SZCore&&SZCore.roomTypeOn&&SZCore.roomTypeOn(x.bookings?.dep_date))?(x.bookings?.room_type||''):'',   // 엠클릭 룸타입 열(SQL 163) — 입국일 2027-01-01 이후 예약만(2026 은 빈값=종전 규칙, Min 2026-11-03 「2026년 예약은 그대로」)
     isNewCheckin: x.bookings?.dep_date===from,   // 이 범위 시작일에 신규 체크인
     sale_type:guessSaleType(x.bookings?.product_name, x.accom),
   }));
@@ -5062,7 +5062,7 @@ async function autoAssign(){
       //   비고에 싱글 언급이 있으면 위 비고 규칙이 먼저(이름 지정이 더 정확) — 비고가 조용할 때(또는 「싱글 불가」처럼 막힌 건 제외)만 룸타입을 본다.
       //   「싱글」(싱글만)=전원 1인 1실 → 비고 「전원 싱글」과 같은 경로(호텔동 + 체류 내내 빈 싱글이 인원수만큼 있을 때만, 아니면 보류).
       //   「싱글,트윈」=일부만 싱글 → 홀수 팀은 남는 1명이 싱글(평소 규칙) / 짝수 팀은 누가 싱글인지 비고에 없으면 보류(수기).
-      const _rt=(window.SZCore&&SZCore.roomTypeSingles&&!(_sp&&_sp.kind==='blocked'))?SZCore.roomTypeSingles(g.room_type, roster.length):null;
+      const _rt=(window.SZCore&&SZCore.roomTypeSingles&&!(_sp&&_sp.kind==='blocked'))?SZCore.roomTypeSingles(g.room_type, roster.length, g.dep):null;   // g.dep(입국일) 2027~ 만 — 2026 예약은 null
       if(_rt && _rt.kind==='all'){
         if(route.floorOnly){ plans.push({g,route,roster,floorOrder,gc,singles:roster.slice(),sp:{kind:'all',src:'roomtype'}}); continue; }
         holds.push(mkHold(tx('holdSingle',gc)+' — '+tx('sgWhyRt',g.room_type)+' · '+tx('sgWhyAll'),g,'single',{kind:'all'})); continue;
