@@ -172,7 +172,7 @@
   .regsave{margin-left:auto;display:flex;gap:6px;align-items:center} .mini tr.dirty td{background:#fbf3e2} .lt tr.dirty td{background:#fbf3e2}
   .grow .auto{font-size:10px;font-weight:800;color:var(--accent2);border:1px solid var(--accent2);border-radius:4px;padding:0 4px;justify-self:center}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.7">
 </head>
 <body data-so-area="partner_kumamoto partner_trial">
 <div class="topbar so-bar">
@@ -214,7 +214,6 @@
     <input class="inp" id="q" autocomplete="off" style="padding:5px 9px;min-width:160px">
     <span class="hint" id="qcnt"></span>
     <button class="btn sm ghost" id="btn-print" type="button"></button>
-    <button class="btn sm" id="btn-remark-all" type="button" hidden></button>
     <span class="sum" id="sum"></span>
   </div>
   <div class="desc" id="t-desc"></div>
@@ -259,7 +258,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=37.6"></script>
+<script src="../assets/saizen-ops.js?v=37.7"></script>
 <script>
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -270,7 +269,7 @@ let HAS_PTS=false, HAS_ALIASES=false, HAS_AUTOSIG=false, HAS_GAUTO=false, PLAN={
 // ── i18n(로컬 사전, ja/ko/en 키 동일) ──
 const L={
   ja:{ step:'熊本市内・トライアル · 手配リスト', connHint:'接続情報はこのブラウザにのみ保存されます。',
-    desc:'月ごとに1行=1チーム。期間・人数・代表者・旅行会社・航空・備考は登録データ(エムクリック)から自動。担当者はホテル・部屋数・ゴルフ日程・配車・担当・4つのチェック(名簿→ホテル／名簿→ゴルフ場／日程表／請求書)を入力します。基本値(ホテルのブロック・ゴルフ場・車両・担当・料金表)は「基本設定」で。',
+    desc:'月ごとに1行=1チーム。期間・人数・代表者・旅行会社・航空・備考は登録データ(エムクリック)から自動。備考に書かれたホテル・部屋数・ゴルフ場も、画面を開くと自動で入ります(空欄だけ — 入力済みの値はそのまま)。担当者は残り(ティータイム・配車・担当・4つのチェック：名簿→ホテル／名簿→ゴルフ場／日程表／請求書)を入力します。基本値(ホテルのブロック・ゴルフ場・車両・担当・料金表)は「基本設定」で。',
     tabList:'手配リスト', tabDisp:'配車(日別)', tabDef:'基本設定', q:'検索（代表者・旅行会社・ホテル・ゴルフ場）', cnt:n=>n+'件', print:'印刷 月リスト',
     noSql:'手配表(partner_ops など、SQL 160)がまだありません — 一覧は見えますが入力は保存できません。管理者に SQL 160 の適用を依頼してください。',
     loading:'読み込み中…', loadFail:'読み込み失敗', saveFail:'保存失敗', saved:'保存しました', sum:(t,p)=>`${t}チーム · ${p}名`,
@@ -293,7 +292,7 @@ const L={
     defHotels:'ホテル（ブロック）', defCourses:'ゴルフ場', defVehicles:'車両', defStaff:'担当者', defRates:'料金表（1人・円）', nameJa:'名称(日)', nameKo:'名称(韓)', blockTwin:'ツイン確保', blockFrom:'開始', blockTo:'終了', surcharge:'1人1泊加算', capacity:'定員', active:'使用', add:'＋ 追加', addPrompt:'名称を入力', del:'削除', delConfirm:'削除しますか？（使われている行は「使用」を外してください）',
     rHotel:'ホテル', rGolf:'ゴルフ(1R)', rGuide:'引率', rWk:'平日', rHi:'休日(金土日・祝・祝前日)', rSat:'土', rSun:'日・祝', rDay:'1日', rLast:'帰国日', rSave:'料金表を保存', rHint:'夜の区分: 金・土・日・祝日・祝前日の夜=休日料金。ゴルフ: 土／日・祝で別料金、金曜は平日。引率: 泊ごとに1日分、帰国日は帰国日分。',
     save:'保存', cancel:'取消', unsaved:'未保存の変更があります — [保存]で反映', savedState:'保存済み', unsavedConfirm:'未保存の変更があります。破棄して移動しますか？', unsavedBadge:'未保存', applied:'入力しました（[保存]で反映）',
-    remarkH:'備考から読んだ手配', remarkTag:'備考', applyRemark:'備考どおりに入力', applyRemarkAll:n=>`備考どおりに一括入力(${n})`, applyRemarkAllConfirm:n=>`手配行のない ${n}チームに、備考から読んだホテル・部屋数・ゴルフ場を入れますか？（すぐ保存されます）`, applyRemarkAllDone:(n,g)=>`${n}チーム入力（ゴルフ ${g}行）`,
+    remarkH:'備考から読んだ手配', remarkTag:'備考', applyRemark:'備考どおりに入力', autoDone:(n,m,g)=>`備考を自動反映 — 新規 ${n}チーム・空欄の補完 ${m}チーム・ゴルフ ${g}行`,
     remarkNone:'備考に手配情報（ホテル・シングル・ゴルフ場）がありません', remarkGolf:n=>`ゴルフ ${n}R`, remarkOdd:'余り1名はシングル', remarkDateAssumed:'日付は推定（確認）', remarkFmt:'備考の書き方: 「여행사: ○○ / 워싱턴 / 싱글룸 2 / 골프장: 그랜드챔피언, 추오, 그린힐」— 日付は「11/5 추오」「2일차 추오」のように',
     issRemark:'備考 未反映', issRemarkChanged:'備考 変更あり', applyGolfReplace:'既存のゴルフ行を備考の内容で置き換えますか？（「いいえ」=ゴルフはそのまま）', autoRow:'備考',
     ptAirport:'空港', ptHotel:'ホテル', ptCourse:'ゴルフ場', ptOther:'その他', via:'経由', dRoute:'区間', vehSplit:(i,n,p)=>`${i}/${n}台 · ${p}名`,
@@ -303,7 +302,7 @@ const L={
     pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', printed:'印刷' },
     fail:'失敗' },
   ko:{ step:'구마모토 시내 · 트라이얼 · 수배 목록', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
-    desc:'월 단위 1행=1팀. 기간·인원·대표·여행사·항공·비고는 등록 데이터(엠클릭)에서 자동. 담당자는 호텔·객실 수·골프 일정·배차·담당·체크 4종(명단→호텔 / 명단→골프장 / 일정표 / 청구서)을 입력합니다. 기본값(호텔 블록·골프장·차량·담당·요금표)은 「기본 설정」에서.',
+    desc:'월 단위 1행=1팀. 기간·인원·대표·여행사·항공·비고는 등록 데이터(엠클릭)에서 자동. 비고에 적힌 호텔·객실 수·골프장도 화면을 열면 자동으로 들어갑니다(빈 칸만 — 이미 넣은 값은 그대로). 담당자는 나머지(티타임·배차·담당·체크 4종: 명단→호텔 / 명단→골프장 / 일정표 / 청구서)를 입력합니다. 기본값(호텔 블록·골프장·차량·담당·요금표)은 「기본 설정」에서.',
     tabList:'수배 목록', tabDisp:'배차(날짜별)', tabDef:'기본 설정', q:'검색(대표·여행사·호텔·골프장)', cnt:n=>n+'건', print:'인쇄 월 목록',
     noSql:'수배 표(partner_ops 등, SQL 160)가 아직 없습니다 — 목록은 보이지만 입력은 저장되지 않습니다. 관리자에게 SQL 160 적용을 요청하세요.',
     loading:'불러오는 중…', loadFail:'불러오기 실패', saveFail:'저장 실패', saved:'저장했습니다', sum:(t,p)=>`${t}팀 · ${p}명`,
@@ -326,7 +325,7 @@ const L={
     defHotels:'호텔(블록)', defCourses:'골프장', defVehicles:'차량', defStaff:'담당자', defRates:'요금표(1인·円)', nameJa:'이름(일)', nameKo:'이름(한)', blockTwin:'트윈 확보', blockFrom:'시작', blockTo:'종료', surcharge:'1인 1박 가산', capacity:'정원', active:'사용', add:'＋ 추가', addPrompt:'이름을 입력', del:'삭제', delConfirm:'삭제할까요? (쓰이고 있는 줄은 「사용」을 끄세요)',
     rHotel:'호텔', rGolf:'골프(1R)', rGuide:'인솔', rWk:'평일', rHi:'휴일(금토일·공휴일·공휴일 전날)', rSat:'토', rSun:'일·공휴일', rDay:'1일', rLast:'귀국일', rSave:'요금표 저장', rHint:'밤 구분: 금·토·일·공휴일·공휴일 전날 밤=휴일 요금. 골프: 토 / 일·공휴일 별도 요금, 금요일은 평일. 인솔: 밤마다 1일분, 귀국일은 귀국일분.',
     save:'저장', cancel:'취소', unsaved:'저장하지 않은 변경이 있습니다 — [저장]을 눌러야 반영됩니다', savedState:'저장됨', unsavedConfirm:'저장하지 않은 변경이 있습니다. 버리고 이동할까요?', unsavedBadge:'미저장', applied:'채웠습니다([저장]을 눌러야 반영)',
-    remarkH:'비고에서 읽은 수배', remarkTag:'비고', applyRemark:'비고대로 채우기', applyRemarkAll:n=>`비고대로 일괄 채우기(${n})`, applyRemarkAllConfirm:n=>`수배 행이 없는 ${n}팀에 비고에서 읽은 호텔·객실 수·골프장을 넣을까요? (바로 저장됩니다)`, applyRemarkAllDone:(n,g)=>`${n}팀 채움(골프 ${g}줄)`,
+    remarkH:'비고에서 읽은 수배', remarkTag:'비고', applyRemark:'비고대로 채우기', autoDone:(n,m,g)=>`비고 자동 반영 — 새로 ${n}팀 · 빈 칸 보완 ${m}팀 · 골프 ${g}줄`,
     remarkNone:'비고에 수배 정보(호텔·싱글·골프장)가 없습니다', remarkGolf:n=>`골프 ${n}R`, remarkOdd:'남는 1명은 싱글', remarkDateAssumed:'날짜는 추정(확인)', remarkFmt:'비고 쓰는 법: 「여행사: ○○ / 워싱턴 / 싱글룸 2 / 골프장: 그랜드챔피언, 추오, 그린힐」 — 날짜는 「11/5 추오」「2일차 추오」처럼',
     issRemark:'비고 미반영', issRemarkChanged:'비고 변경됨', applyGolfReplace:'기존 골프 줄을 비고 내용으로 바꿀까요? (「아니오」=골프는 그대로)', autoRow:'비고',
     ptAirport:'공항', ptHotel:'호텔', ptCourse:'골프장', ptOther:'기타', via:'경유', dRoute:'구간', vehSplit:(i,n,p)=>`${i}/${n}대 · ${p}명`,
@@ -336,7 +335,7 @@ const L={
     pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', printed:'印刷' },
     fail:'실패' },
   en:{ step:'Kumamoto city · Trial · Arrangement list', connHint:'Connection info is stored only in this browser.',
-    desc:'One row per team per month. Dates, pax, representative, agency, flights and remarks come from registered data (M-Click). Staff enter hotel, rooms, golf schedule, dispatch, person in charge and the 4 checks (roster→hotel / roster→course / itinerary / invoice). Defaults (hotel blocks, courses, vehicles, staff, rates) are in “Defaults”.',
+    desc:'One row per team per month. Dates, pax, representative, agency, flights and remarks come from registered data (M-Click). Hotel, rooms and courses written in the remark are also filled in automatically when the page opens (blank fields only — values already entered are kept). Staff enter the rest (tee times, dispatch, person in charge and the 4 checks: roster→hotel / roster→course / itinerary / invoice). Defaults (hotel blocks, courses, vehicles, staff, rates) are in “Defaults”.',
     tabList:'Arrangement list', tabDisp:'Dispatch (by day)', tabDef:'Defaults', q:'Search (rep · agency · hotel · course)', cnt:n=>n+' rows', print:'Print month list',
     noSql:'Arrangement tables (partner_ops etc., SQL 160) are not applied yet — the list is visible but edits cannot be saved. Ask the administrator to apply SQL 160.',
     loading:'Loading…', loadFail:'Load failed', saveFail:'Save failed', saved:'Saved', sum:(t,p)=>`${t} teams · ${p} pax`,
@@ -359,7 +358,7 @@ const L={
     defHotels:'Hotels (blocks)', defCourses:'Golf courses', defVehicles:'Vehicles', defStaff:'Staff', defRates:'Rate card (per person, ¥)', nameJa:'Name (JA)', nameKo:'Name (KO)', blockTwin:'Twin block', blockFrom:'From', blockTo:'To', surcharge:'Add pp/night', capacity:'Capacity', active:'Active', add:'+ Add', addPrompt:'Enter a name', del:'Delete', delConfirm:'Delete? (if in use, untick “Active” instead)',
     rHotel:'Hotel', rGolf:'Golf (1R)', rGuide:'Escort', rWk:'Weekday', rHi:'Holiday (Fri/Sat/Sun · holiday · eve)', rSat:'Sat', rSun:'Sun · holiday', rDay:'Per day', rLast:'Departure day', rSave:'Save rate card', rHint:'Night type: Fri/Sat/Sun, holidays and holiday eves = holiday rate. Golf: Sat and Sun/holiday rates, Friday = weekday. Escort: one day per night plus the departure-day rate.',
     save:'Save', cancel:'Cancel', unsaved:'Unsaved changes — press Save to apply', savedState:'Saved', unsavedConfirm:'There are unsaved changes. Discard them?', unsavedBadge:'unsaved', applied:'Filled in (press Save to apply)',
-    remarkH:'Read from the remark', remarkTag:'remark', applyRemark:'Fill from remark', applyRemarkAll:n=>`Fill all from remarks (${n})`, applyRemarkAllConfirm:n=>`Fill hotel, rooms and courses from the remarks for ${n} teams without an arrangement row? (saved immediately)`, applyRemarkAllDone:(n,g)=>`${n} teams filled (golf ${g} rows)`,
+    remarkH:'Read from the remark', remarkTag:'remark', applyRemark:'Fill from remark', autoDone:(n,m,g)=>`Remarks applied — ${n} new, ${m} filled in, ${g} golf rows`,
     remarkNone:'No arrangement info (hotel · single · course) in the remark', remarkGolf:n=>`Golf ${n}R`, remarkOdd:'odd 1 pax → single', remarkDateAssumed:'dates assumed (check)', remarkFmt:'Remark format: “여행사: ○○ / 워싱턴 / 싱글룸 2 / 골프장: 그랜드챔피언, 추오, 그린힐” — dates like “11/5 추오” or “2일차 추오”',
     issRemark:'Remark not applied', issRemarkChanged:'Remark changed', applyGolfReplace:'Replace the existing golf rows with the remark? (“No” keeps golf as is)', autoRow:'auto',
     ptAirport:'Airport', ptHotel:'Hotel', ptCourse:'Course', ptOther:'Other', via:'via', dRoute:'Route', vehSplit:(i,n,p)=>`${i}/${n} veh · ${p} pax`,
@@ -448,7 +447,6 @@ function issues(t){
 // ── 비고 플랜(SZCore.partnerRemarkPlan — step1 의 자동 채움과 같은 규칙) · 초안(DR) ──
 function planFor(t){ if(PLAN[t.seq]) return PLAN[t.seq]; let p; try{ p=(window.SZCore&&SZCore.partnerRemarkPlan)?SZCore.partnerRemarkPlan([t.remark,t.remark_local],{pax:t.pax,hotels:HOTELS,courses:COURSES,segFrom:t.dep,segTo:t.arr,product:t.product}):null; }catch(e){ p=null; }
   p=p||{hotelId:null,hotels:[],single:0,twin:0,triple:0,golf:[],golfAssumed:0,agency:'',agencyExplicit:false,empty:true,sig:''}; PLAN[t.seq]=p; return p; }
-function remarkCandidates(){ return HAS_OPS?visible().filter(t=>!OPS[t.seq]&&!planFor(t).empty):[]; }
 function draftFor(t){ if(DR&&DR.seq===t.seq) return DR; DR={seq:t.seq, ops:Object.assign({},OPS[t.seq]||{}), golf:(GOLF[t.seq]||[]).map(r=>Object.assign({},r)), disp:(DISP[t.seq]||[]).map(r=>Object.assign({},r)), golfDel:[], dispDel:[], dirty:false}; return DR; }
 function dirty(){ return !!(DR&&DR.dirty); }
 function mark(){ if(DR&&!DR.dirty){ DR.dirty=true; renderList(); } else if(DR) DR.dirty=true; }
@@ -483,6 +481,75 @@ function applyRemarkToDraft(t,d){
   mark(); renderDetail(); toast(tx('applied'),'ok');
 }
 
+// ── 비고 자동 반영(Min 2026-11-11 「비고에 다 있는데 왜 적용이 안 됨 · 클릭은 번거롭다」) — 화면을 열 때 버튼 없이:
+//   ① 수배 행이 없는 팀 → 비고에서 읽은 호텔·객실 수·골프장으로 새 행(이미 있는 행은 안 건드림 = ignoreDuplicates)
+//   ② 수배 행이 있는데 비고 서명이 다른 팀 → **비어 있는 칸만** 채움(호텔 없음 · 객실 수 0 · 그 날짜에 골프 줄 없음). 값이 있는 칸은 그대로.
+//      채운 뒤 저장값이 비고와 같으면 서명을 맞춰 「비고 변경됨」을 지우고, 다르면 배지를 남겨 사람이 [비고대로 채우기]로 정한다.
+//   읽기 전용 계정은 RLS 에 막히므로 조용히 건너뛴다(「비고 미반영」 배지는 그대로 보인다).
+let LOAD_TOK=0, AUTO_OFF=false;
+function planGolfRows(p){ return (p.golf||[]).filter(x=>x.date&&x.courseId); }
+function planMatches(t,o,p){
+  if(p.empty) return true;
+  if(p.hotelId&&Number(o.hotel_id)!==Number(p.hotelId)) return false;
+  if((Number(o.twin)||0)!==(p.twin||0)||(Number(o.single)||0)!==(p.single||0)||(Number(o.triple)||0)!==(p.triple||0)) return false;
+  const g=GOLF[t.seq]||[], pg=planGolfRows(p), same=(r,x)=>String(r.play_date).slice(0,10)===x.date&&Number(r.course_id)===Number(x.courseId);
+  if(!pg.every(x=>g.some(r=>same(r,x)))) return false;
+  if(HAS_GAUTO&&!g.filter(r=>r.auto).every(r=>pg.some(x=>same(r,x)))) return false;
+  return true;
+}
+async function autoSync(){
+  if(AUTO_OFF||!HAS_OPS||!supa||!TEAMS.length||document.getElementById('so-readonly')) return;
+  const tok=LOAD_TOK, denied=e=>/row-level security|permission denied/i.test(String((e&&e.message)||''));
+  let nNew=0, nFix=0, nGolf=0; const logs=[], fresh=new Set();
+  try{
+    // ① 수배 행이 없는 팀
+    const cand=TEAMS.filter(t=>!OPS[t.seq]&&!planFor(t).empty);
+    if(cand.length){
+      const rows=cand.map(t=>{ const p=planFor(t); const r={event_seq:t.seq, hotel_id:p.hotelId||(DEFAULTS.hotel||{})[t.brand]||null, twin:p.twin||0, single:p.single||0, triple:p.triple||0, staff:(DEFAULTS.staff||{})[t.brand]||null, agency:(p.agencyExplicit&&p.agency!==t.agency)?p.agency:null}; if(HAS_AUTOSIG) r.auto_sig=p.sig; return r; });
+      const {data,error}=await supa.from('partner_ops').upsert(rows,{onConflict:'event_seq',ignoreDuplicates:true}).select();
+      if(error){ if(denied(error)){ AUTO_OFF=true; return; } throw error; }
+      if(tok!==LOAD_TOK) return;
+      const made=data||[], grow=[];
+      made.forEach(o=>{ const t=teamOf(o.event_seq); if(!t) return; OPS[o.event_seq]=o; fresh.add(o.event_seq); const p=planFor(t);
+        if(!(GOLF[o.event_seq]||[]).length) planGolfRows(p).forEach((x,i)=>{ const r={event_seq:o.event_seq,play_date:x.date,course_id:x.courseId,sort:i}; if(HAS_GAUTO) r.auto=true; grow.push(r); });
+        logs.push({id:o.event_seq,action:'remark_auto',label:hotelName(hotelById(o.hotel_id))||''}); });
+      nNew=fresh.size;
+      const late=cand.filter(t=>!fresh.has(t.seq)).map(t=>t.seq);   // 그 사이 다른 사람이 만든 행 = 그대로 읽어 온다
+      if(late.length){ try{ (await fetchIn('partner_ops','*','event_seq',late)).forEach(r=>{ OPS[r.event_seq]=r; }); }catch(e){} }
+      if(grow.length){ const g=await supa.from('partner_golf').insert(grow).select(); if(!g.error){ (g.data||[]).forEach(r=>{ (GOLF[r.event_seq]=GOLF[r.event_seq]||[]).push(r); }); nGolf+=(g.data||[]).length; } }
+      if(tok!==LOAD_TOK) return;
+    }
+    // ② 수배 행이 있는데 비고 서명이 다른 팀 — 빈 칸만
+    if(HAS_AUTOSIG){
+      for(const t of TEAMS){ const o=OPS[t.seq]; if(!o||fresh.has(t.seq)) continue; const p=planFor(t); if(!p.sig||o.auto_sig===p.sig) continue;
+        const patch={}; let added=0;
+        if(!p.empty){
+          if(p.hotelId&&!o.hotel_id&&!String(o.hotel_note||'').trim()) patch.hotel_id=p.hotelId;
+          if(!(Number(o.twin)||0)&&!(Number(o.single)||0)&&!(Number(o.triple)||0)&&(p.twin||p.single||p.triple)){ patch.twin=p.twin||0; patch.single=p.single||0; patch.triple=p.triple||0; }
+          const g=GOLF[t.seq]||[], add=planGolfRows(p).filter(x=>!g.some(r=>String(r.play_date).slice(0,10)===x.date));
+          if(add.length){ const rows=add.map((x,i)=>{ const r={event_seq:t.seq,play_date:x.date,course_id:x.courseId,sort:g.length+i}; if(HAS_GAUTO) r.auto=true; return r; });
+            const gi=await supa.from('partner_golf').insert(rows).select(); if(gi.error){ if(denied(gi.error)){ AUTO_OFF=true; break; } throw gi.error; }
+            if(tok!==LOAD_TOK) return;
+            (gi.data||[]).forEach(r=>{ (GOLF[t.seq]=GOLF[t.seq]||[]).push(r); }); added=(gi.data||[]).length; nGolf+=added; }
+        }
+        if(planMatches(t,Object.assign({},o,patch),p)) patch.auto_sig=p.sig;
+        if(!Object.keys(patch).length){ if(added){ nFix++; logs.push({id:t.seq,action:'remark_auto_fill',label:'golf +'+added}); } continue; }
+        const u=await supa.from('partner_ops').update(patch).eq('event_seq',t.seq).select();
+        if(u.error){ if(denied(u.error)){ AUTO_OFF=true; break; } throw u.error; }
+        if(tok!==LOAD_TOK) return;
+        if(!(u.data||[]).length){ AUTO_OFF=true; break; }   // 0행 = 쓰기 권한 없음(RLS)
+        OPS[t.seq]=u.data[0];
+        const filled=Object.keys(patch).filter(k=>k!=='auto_sig');
+        if(filled.length||added){ nFix++; logs.push({id:t.seq,action:'remark_auto_fill',label:filled.concat(added?['golf +'+added]:[]).join(', ')}); }
+      }
+    }
+  }catch(e){ try{ console.warn('partner_ops autoSync',e); }catch(_){} }
+  if(tok!==LOAD_TOK) return;
+  if(logs.length){ try{ await supa.from('change_log').insert(logs.map(l=>({entity:'partner_ops',entity_id:String(l.id),action:l.action,label:l.label,changes:null,changed_by:who()}))); }catch(e){} }
+  if(nNew||nFix||nGolf){ if(DR&&!DR.dirty) DR=null; toast(tx('autoDone',nNew,nFix,nGolf),'ok'); }
+  renderAll();
+}
+
 // ── 로드 ──
 async function fetchIn(table, sel, col, ids, extra){ let out=[]; for(let i=0;i<ids.length;i+=200){ let q=supa.from(table).select(sel).in(col,ids.slice(i,i+200)); if(extra) q=extra(q); const {data,error}=await q; if(error) throw error; out=out.concat(data||[]); } return out; }
 async function loadRefs(){
@@ -504,7 +571,7 @@ async function loadRates(){   // 기간별 요금표(SQL 161). 표가 없거나 
   if(!RATEROWS.length && window.SZCore&&SZCore.partnerRateRows) RATEROWS=SZCore.partnerRateRows(RATES);
 }
 async function load(){
-  if(!supa||!YM||LOADING) return; LOADING=true;
+  if(!supa||!YM||LOADING) return; LOADING=true; LOAD_TOK++;
   const m1=dstr(YM,1), mEnd=dstr(YM,daysIn(YM));
   $('#sum').textContent=tx('loading');
   try{
@@ -532,6 +599,7 @@ async function load(){
     }catch(e){ const m=String(e&&e.message||e); if(/partner_(ops|golf|dispatch|hotels|courses|vehicles|staff|settings)|schema cache|does not exist/i.test(m)){ HAS_OPS=false; $('#nosql').hidden=false; } else throw e; }
     if(SEL&&!TEAMS.some(t=>t.seq===SEL)) SEL=null;
     renderAll();
+    autoSync();   // 비고 자동 반영(기다리지 않는다 — 목록은 먼저 보이고, 끝나면 다시 그린다)
   }catch(e){ toast(tx('loadFail')+': '+(e&&e.message||e),'err'); $('#sum').textContent=''; }
   finally{ LOADING=false; }
 }
@@ -610,7 +678,6 @@ function rmkRowHTML(t){ return `<tr class="rmkrow" data-seq="${t.seq}"><td colsp
 function renderList(){
   const vis=visible();
   $('#list thead').innerHTML=`<tr><th>${esc(tx('hSt'))}</th><th>${esc(tx('hDate'))}</th><th class="n">${esc(tx('hPax'))}</th><th>${esc(tx('hRep'))}</th><th>${esc(tx('hHotel'))}</th><th>${esc(tx('hGolf'))}</th><th>${esc(tx('hStaff'))}</th><th class="n">${esc(tx('hYen'))}</th><th>${esc(tx('hIss'))}</th></tr>`;
-  const cand=remarkCandidates(); const rb=$('#btn-remark-all'); rb.hidden=!cand.length; rb.textContent=tx('applyRemarkAll',cand.length);
   if(!vis.length){ $('#list tbody').innerHTML=`<tr><td colspan="9"><div class="empty">—</div></td></tr>`; return; }
   $('#list tbody').innerHTML=vis.map(t=>{ const o=ops(t.seq), h=hotelById(o.hotel_id), g=golf(t.seq).filter(r=>r.course_id||r.course_note), q=quoteFor(t), iss=issues(t), p=planFor(t), isD=DR&&DR.seq===t.seq&&DR.dirty;
     const gl=g.map(r=>`<div class="gl">${esc(mmdd(r.play_date))} ${esc(courseName(courseById(r.course_id),true)||r.course_note||'')}${r.tee_time?` <span class="mono">${esc(r.tee_time)}</span>`:''}</div>`).join('');   // 라운드별 한 줄(글자 단위 줄바꿈 금지)
@@ -627,12 +694,6 @@ function renderList(){
 }
 $('#list').addEventListener('click',e=>{ const rb=e.target.closest('[data-act=rmk]'); if(rb){ e.stopPropagation(); const s=Number(rb.dataset.seq); if(RMK_CLOSED.has(s)) RMK_CLOSED.delete(s); else RMK_CLOSED.add(s); renderList(); return; }   // 비고 보기 토글(팀 선택과 무관)
   const tr=e.target.closest('tr.tm'); if(!tr) return; const seq=Number(tr.dataset.seq); if(seq===SEL) return; if(!canLeave()) return; DR=null; SEL=seq; renderList(); renderDetail(); });
-$('#btn-remark-all').addEventListener('click',async()=>{ const cand=remarkCandidates(); if(!cand.length) return; if(!confirm(tx('applyRemarkAllConfirm',cand.length))) return; let n=0,gn=0;
-  for(const t of cand){ const p=planFor(t); const row={event_seq:t.seq,twin:p.twin,single:p.single,triple:p.triple}; if(p.hotelId) row.hotel_id=p.hotelId; else if((DEFAULTS.hotel||{})[t.brand]) row.hotel_id=DEFAULTS.hotel[t.brand]; if((DEFAULTS.staff||{})[t.brand]) row.staff=DEFAULTS.staff[t.brand]; if(p.agencyExplicit&&p.agency!==t.agency) row.agency=p.agency; if(HAS_AUTOSIG) row.auto_sig=p.sig;
-    const {data,error}=await supa.from('partner_ops').upsert(row,{onConflict:'event_seq'}).select().single(); if(error){ toast(tx('saveFail')+': '+error.message,'err'); break; } OPS[t.seq]=data; n++;
-    if(p.golf.length&&!(GOLF[t.seq]||[]).length){ const rows=p.golf.map((x,i)=>{ const r={event_seq:t.seq,play_date:x.date,course_id:x.courseId,sort:i}; if(HAS_GAUTO) r.auto=true; return r; }); const g=await supa.from('partner_golf').insert(rows).select(); if(!g.error){ GOLF[t.seq]=(GOLF[t.seq]||[]).concat(g.data||[]); gn+=rows.length; } }
-    logChange(t.seq,'remark_apply',p.hotelName||''); }
-  if(n) toast(tx('applyRemarkAllDone',n,gn),'ok'); renderAll(); });
 
 function optList(items, val, labelFn, noneLabel, otherLabel){ return `<option value=""${val?'':' selected'}>${esc(noneLabel)}</option>`+items.map(x=>`<option value="${x.id}"${Number(val)===x.id?' selected':''}>${esc(labelFn(x))}</option>`).join('')+(otherLabel?`<option value="other"${val==='other'?' selected':''}>${esc(otherLabel)}</option>`:''); }
 function staffOpts(val){ return `<option value="">—</option>`+STAFF.filter(s=>s.active||s.name===val).map(s=>`<option${s.name===val?' selected':''}>${esc(s.name)}</option>`).join('')+(val&&!STAFF.some(s=>s.name===val)?`<option selected>${esc(val)}</option>`:''); }
