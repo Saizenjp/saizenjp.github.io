@@ -113,7 +113,7 @@
   .navlink:hover{background:rgba(0,0,0,.04)}
   .navlink.cur{background:var(--accentSoft,#e6eeda);color:var(--accent,#647548);border-color:var(--accent,#647548)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=37.6">
 </head>
 <body data-so-area="step1">
 <div class="wrap">
@@ -263,7 +263,7 @@
 <style>@keyframes runspin{to{transform:rotate(360deg)}}</style>
 
 <script src="../assets/saizen-core.js?v=65"></script>
-<script src="../assets/saizen-ops.js?v=37.5"></script>
+<script src="../assets/saizen-ops.js?v=37.6"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -611,9 +611,29 @@ function detectAccom(productName){ return SZCore.accomFromProduct(productName); 
 //   적재된 팀 중 **수배 행(partner_ops)이 없는 새 팀만** SZCore.partnerRemarkPlan(수배 목록의 「비고대로 채우기」와 같은 규칙)으로
 //   호텔(비고 → 없으면 상품별 기본 호텔)·트윈/싱글/트리플 수·담당(기본값)·auto_sig 를 넣고, 비고의 골프장은 날짜별 partner_golf 줄(auto)로 만든다.
 //   이미 수배 행이 있는 팀은 건드리지 않는다(담당자 수정 보호 — 비고가 바뀌면 수배 목록이 「비고 변경」을 보인다). 표·컬럼이 없으면 그 부분만 빼고 진행.
+//   ★ SQL 165(Min 2026-11-11 「등록할 때 자동으로 만들어지게」): 등록 계정은 보통 데이터 등록 권한만 있어 partner_ops 에 직접 못 쓴다(RLS)
+//     → 서버 함수 partner_autofill_refs(호텔·골프장 이름/별칭만)·partner_autofill(새 팀에만 삽입)을 먼저 쓴다. 함수가 없는 DB 는 종전 직접 경로.
+function partnerPlanRows(live, hotels, courses, defaults){
+  return live.map(b=>{ const p=SZCore.partnerRemarkPlan([b.remark,b.remark_local],{pax:b.pax,hotels,courses,segFrom:b.seg_from,segTo:b.seg_to,product:b.product_name});
+    return { event_seq:b.event_seq, hotel_id:p.hotelId||((defaults.hotel||{})[b.brand])||null, hr:!!p.hotelId, twin:p.twin, single:p.single, triple:p.triple,
+      staff:((defaults.staff||{})[b.brand])||null, auto_sig:p.sig, golf:p.golf.filter(x=>x.date&&x.courseId).map((x,i)=>({play_date:x.date,course_id:x.courseId,sort:i})) }; });
+}
 async function partnerAutoFill(bookings){
   if(!(window.SZCore&&SZCore.partnerRemarkPlan)) return null;
   const live=(bookings||[]).filter(b=>b.status!=='대기'); if(!live.length) return null;
+  // ① 서버 함수 경로(SQL 165) — 함수가 없으면(미적용) ②로
+  let refs=null; try{ refs=await supa.rpc('partner_autofill_refs'); }catch(e){ refs=null; }
+  const fnMissing=e=>!e||e.code==='PGRST202'||/could not find the function|does not exist|schema cache/i.test(String(e.message||''));
+  if(refs&&!refs.error&&refs.data){
+    const d=refs.data, hotels=(d.hotels||[]).filter(h=>h.active!==false), courses=(d.courses||[]).filter(c=>c.active!==false);
+    const rows=partnerPlanRows(live,hotels,courses,d.defaults||{});
+    let teams=0, golf=0, hotelsN=0, skipped=0;
+    for(let i=0;i<rows.length;i+=100){ const {data,error}=await supa.rpc('partner_autofill',{p_rows:rows.slice(i,i+100)}); if(error) throw new Error(error.message);
+      teams+=(data&&data.teams)||0; golf+=(data&&data.golf)||0; hotelsN+=(data&&data.hotels)||0; skipped+=(data&&data.skipped)||0; }
+    return {teams,golf,hotels:hotelsN,skipped};
+  }
+  if(refs&&refs.error&&!fnMissing(refs.error)) throw new Error(refs.error.message);   // 함수는 있는데 거부 = 권한 밖(호출부가 안내 한 줄로)
+  // ② 종전 직접 경로(SQL 165 미적용 DB) — 구마모토·트라이얼 권한이 있는 계정만 성공한다
   const probe=await supa.from('partner_ops').select('event_seq',{count:'exact',head:true}); if(probe.error) return null;   // SQL 160 미적용
   const [hs,cs,st]=await Promise.all([supa.from('partner_hotels').select('*'), supa.from('partner_courses').select('*'), supa.from('partner_settings').select('key,value').eq('key','partner_defaults').maybeSingle()]);
   const hotels=(hs.data||[]).filter(h=>h.active!==false), courses=(cs.data||[]).filter(c=>c.active!==false), defaults=(st.data&&st.data.value)||{};
