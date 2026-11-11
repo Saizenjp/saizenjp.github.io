@@ -626,7 +626,7 @@
   // ── 자회사(구마모토 시내·트라이얼) 요금 계산 — 현지 요금표(2026-12 新料金)의 **구조**만 규칙으로(숫자는 DB partner_settings.rates, 저장소엔 없음 §3-2)
   //   밤 요금 구분 partnerNightType: 금·토·일·祝日·祝前日 밤 = 'hi'(休日料金) / 그 외 'wk' — 현지 日別 料金表 365일(2026-11~2027-10)과 전부 일치.
   //   골프 요금 구분 partnerGolfType: 토 'sat' · 일/祝日 'sun' · 그 외(금요일 포함) 'wk'.
-  //   1인 요금 = Σ밤 호텔(객실 종류·밤 구분 + 호텔 가산) + Σ라운드 골프(날 구분) + 引率(밤마다 day, 귀국일 last) + 가산(adj).
+  //   1인 요금 = Σ밤 호텔(객실 종류·밤 구분 + 호텔 가산) + Σ라운드 골프(날 구분) + 인솔(밤마다 day — 귀국일 요금은 없다) + 가산(adj).
   //   기본 골프 = 묵는 밤마다 1라운드(도착일 포함·귀국일 제외) — 현지 「3色ゴルフ」(4泊=4R, 3泊=3R) 과 같다.
   function partnerNightType(ds) {
     var d = parseLocalDate(ds); if (isNaN(d)) return 'wk';
@@ -641,7 +641,7 @@
   }
   // ── 기간별 요금표(SQL 161 partner_rates) ───────────────────────────────────
   //  row = { id, kind:'hotel'|'golf'|'guide', ref_id(호텔 id / 코스 id / 인솔은 상품 번호 partnerBrandRef · null=공통), label, from_date, to_date(null=상시), prices:{…} }
-  //    prices — hotel:{twin:{wk,hi},single:{wk,hi},triple:{wk,hi}} / golf:{wk,sat,sun} / guide:{day(1박당),last(귀국일)}
+  //    prices — hotel:{twin:{wk,hi},single:{wk,hi},triple:{wk,hi}} / golf:{wk,sat,sun} / guide:{day(1박당)} — 귀국일 요금(last)은 2026-11-11 Min 「귀국일 요금은 없애줘」로 폐지: 옛 줄에 값이 남아 있어도 읽지 않는다
   //    송영 요금(kind='transfer')은 2026-11-11 Min 결정으로 쓰지 않는다 — 인솔 요금에 포함(「인솔요금으로 두개를 통합」). DB 의 kind 값은 남아 있어도 읽지 않는다.
   //  해석(Min 2026-11-02 「호텔·골프장·송영 각각 · 기간마다 · 2~3월 평일/주말, 그 안에 또 다를 수 있고」):
   //    대상 지정 행 > 공통 행 · 좁은 기간 > 넓은 기간(상시가 가장 넓음) · 같으면 최근 행(id 큰 것) — 칸(키) 단위로 폴백.
@@ -681,7 +681,7 @@
   //        surcharge(호텔 1인·1박 가산), twin, single, triple(객실 수), pax, adj(1인 가산), singleRate(싱글 1박 수기 요금 — 있으면 표 대신) }
   //  rates = partner_rates 행 배열(기간별) 또는 옛 공통 객체 { hotel:{…}, golf:{…}, guide:{…} }(partnerRateRows 로 변환)
   //  결과 = { ok, complete(요금 빠진 칸 없음), missing:['hotel:YYYY-MM-DD','golf:…','single:…'], nights, rounds, twin/single/triple(1인), golf, guide, persons, pax, total(팀=1인×인원), roomsMatch }
-  //  인솔 요금(1인) = 묵는 밤마다 「1박당」 + 귀국일 「귀국일」 — 그 상품 줄 > 전 상품 공통 줄(칸 단위 폴백). 송영 비용은 인솔 요금에 들어 있다(따로 더하지 않는다).
+  //  인솔 요금(1인) = 묵는 밤마다 「1박당」(귀국일에 따로 더하는 요금 없음) — 그 상품 줄 > 전 상품 공통 줄(칸 단위 폴백). 송영 비용은 인솔 요금에 들어 있다(따로 더하지 않는다).
   function partnerQuote(o, rates) {
     o = o || {}; var rows = Array.isArray(rates) ? rates : partnerRateRows(rates);
     var num = function (v) { var n = Number(v); return isFinite(n) ? n : 0; };
@@ -711,7 +711,7 @@
     };
     var golf = 0; golfs.forEach(function (g) { var p = partnerPrice(rows, 'golf', g.courseId, g.date, [partnerGolfType(g.date)]); if (p == null) { p = 0; missing.push('golf:' + g.date); } golf += p; });
     var gref = partnerBrandRef(o.brand);
-    var guide = 0; nights.forEach(function (ds) { guide += num(partnerPrice(rows, 'guide', gref, ds, ['day'])); }); guide += num(partnerPrice(rows, 'guide', gref, to, ['last']));
+    var guide = 0; nights.forEach(function (ds) { guide += num(partnerPrice(rows, 'guide', gref, ds, ['day'])); });
     var adj = num(o.adj);
     var pp = { twin: hotelOf('twin') + golf + guide + adj, single: hotelOf('single') + golf + guide + adj, triple: hotelOf('triple') + golf + guide + adj };
     var persons = tw * 2 + sg + tr * 3;
