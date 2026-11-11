@@ -188,11 +188,11 @@ test('partnerPrice/partnerRateCands — 기간별 요금표: 대상 지정>공�
   assert.equal(C.partnerPrice(rows, 'hotel', 7, '2027-02-11', ['triple', 'wk']), null);  // 없는 칸 = null(호출 쪽이 트윈으로 폴백)
   assert.deepEqual(C.partnerRateCands(rows, 'hotel', 7, '2027-02-11').map(r => r.id), [3, 2, 1]);
   // 옛 공통 객체 → 행 변환
-  const legacy = C.partnerRateRows({ hotel: { twin: { wk: 1 } }, golf: { wk: 2 }, guide: { day: 3 } });
-  assert.deepEqual(legacy.map(r => r.kind), ['hotel', 'golf', 'guide']);
+  const legacy = C.partnerRateRows({ hotel: { twin: { wk: 1 } }, golf: { wk: 2 }, guide: { day: 3 }, transfer: { day: 9 } });
+  assert.deepEqual(legacy.map(r => r.kind), ['hotel', 'golf', 'guide']);          // 송영 요금은 읽지 않는다(2026-11-11 인솔 요금으로 통합)
   assert.deepEqual(C.partnerRateRows({}), []);
 });
-test('partnerQuote v2 — 행 배열: 호텔별·코스별·좁은 기간 반영, 송영(팀 단위)·빠진 칸(missing)·complete', () => {
+test('partnerQuote v2 — 행 배열: 호텔별·코스별·좁은 기간 반영, 송영 요금 없음(인솔에 통합)·빠진 칸(missing)·complete', () => {
   const rows = [
     { id: 1, kind: 'hotel', ref_id: null, prices: { twin: { wk: 100, hi: 200 }, single: { wk: 150, hi: 300 } } },
     { id: 2, kind: 'hotel', ref_id: 7, from_date: '2026-11-09', to_date: '2026-11-10', prices: { twin: { wk: 130 } } },     // 호텔 7 · 11/9·10 밤만 트윈 130
@@ -201,23 +201,42 @@ test('partnerQuote v2 — 행 배열: 호텔별·코스별·좁은 기간 반영
     { id: 5, kind: 'transfer', ref_id: null, prices: { day: 40 } },
     { id: 6, kind: 'transfer', ref_id: 2, prices: { day: 70 } },
     { id: 7, kind: 'guide', ref_id: null, prices: { day: 5, last: 2 } }];
-  // 월~금 4박(평일), 호텔 7, 골프 11/9 코스 3(12)·11/10 코스 1(10, 코스 행 없음→공통)·11/11 공통(10)·11/12 공통(10), 배차 11/9 차량 2(70)·11/13 차량 1(40)
+  // 월~금 4박(평일), 호텔 7, 골프 11/9 코스 3(12)·11/10 코스 1(10, 코스 행 없음→공통)·11/11 공통(10)·11/12 공통(10). 송영 요금 줄·배차를 줘도 견적에 들어가지 않는다
   const q = C.partnerQuote({ from: '2026-11-09', to: '2026-11-13', hotelId: 7, twin: 2, pax: 4,
     golf: [{ date: '2026-11-09', courseId: 3 }, { date: '2026-11-10', courseId: 1 }, { date: '2026-11-11' }, { date: '2026-11-12' }],
     transfer: [{ date: '2026-11-09', vehicleId: 2 }, { date: '2026-11-13', vehicleId: 1 }] }, rows);
   assert.equal(q.twin, (130 + 130 + 100 + 100) + (12 + 10 + 10 + 10) + (5 * 4 + 2));
-  assert.equal(q.transfer, 110); assert.equal(q.transferDays, 2);
-  assert.equal(q.total, q.twin * 4 + 110); assert.equal(q.complete, true); assert.deepEqual(q.missing, []);
+  assert.equal(q.transfer, undefined); assert.equal(q.transferDays, undefined);
+  assert.equal(q.total, q.twin * 4); assert.equal(q.complete, true); assert.deepEqual(q.missing, []);
   // 호텔 요금이 전혀 없는 날이 있으면 missing + complete=false(합계는 0 으로 계산) · 싱글은 객실이 있을 때만 missing
   const q2 = C.partnerQuote({ from: '2026-11-09', to: '2026-11-11', hotelId: 9, twin: 1, single: 1, pax: 3 },
     [{ id: 1, kind: 'hotel', ref_id: null, from_date: '2026-11-10', to_date: '2026-11-10', prices: { twin: { wk: 100 } } }, { id: 2, kind: 'golf', ref_id: null, prices: { wk: 10 } }]);
   assert.equal(q2.complete, false);
   assert.deepEqual(q2.missing, ['hotel:2026-11-09', 'single:2026-11-09', 'single:2026-11-10']);
-  // 옛 객체를 그대로 줘도 같은 결과(기존 호출 호환) · 송영 요금이 없어도 missing 아님
+  // 옛 객체를 그대로 줘도 같은 결과(기존 호출 호환)
   const legacy = { hotel: { twin: { wk: 100, hi: 200 }, single: { wk: 150, hi: 300 } }, golf: { wk: 10, sat: 20, sun: 30 }, guide: { day: 5, last: 2 } };
   const a = C.partnerQuote({ from: '2026-11-09', to: '2026-11-13', twin: 2, single: 1, pax: 5, transfer: [{ date: '2026-11-09', vehicleId: 1 }] }, legacy);
   const b = C.partnerQuote({ from: '2026-11-09', to: '2026-11-13', twin: 2, single: 1, pax: 5 }, C.partnerRateRows(legacy));
-  assert.equal(a.total, b.total); assert.equal(a.complete, true); assert.equal(a.transfer, 0);
+  assert.equal(a.total, b.total); assert.equal(a.complete, true);
+});
+test('인솔 요금 = 상품별(Min 2026-11-11 「시내투어와 트라이얼이 다르다 · 1박당 비용 · 상품도 정하게」) — ref_id 가 상품 번호, 없으면 공통', () => {
+  assert.equal(C.partnerBrandRef('kumamoto'), 1); assert.equal(C.partnerBrandRef('trial'), 2); assert.equal(C.partnerBrandRef('x'), null); assert.equal(C.partnerBrandRef(''), null);
+  assert.deepEqual(C.PARTNER_BRANDS.map(b => b.ref), [1, 2]);                              // 번호는 DB(partner_rates.ref_id)에 저장되므로 바꾸지 않는다
+  const base = [{ id: 1, kind: 'hotel', ref_id: null, prices: { twin: { wk: 100, hi: 100 } } }, { id: 2, kind: 'golf', ref_id: null, prices: { wk: 10, sat: 10, sun: 10 } }];
+  const guide = [
+    { id: 3, kind: 'guide', ref_id: null, prices: { day: 5, last: 2 } },                   // 전 상품 공통
+    { id: 4, kind: 'guide', ref_id: 2, prices: { day: 9 } },                               // 트라이얼 — 1박당만(귀국일 칸은 공통 값)
+    { id: 5, kind: 'guide', ref_id: 2, from_date: '2026-11-11', to_date: '2026-11-11', prices: { day: 20 } }];   // 트라이얼 · 11/11 밤만
+  const o = { from: '2026-11-09', to: '2026-11-13', twin: 2, pax: 4 };                     // 4박
+  const g = (brand, rows) => C.partnerQuote(Object.assign({ brand }, o), base.concat(rows)).guide;
+  assert.equal(g('kumamoto', guide), 5 * 4 + 2);                                           // 시내 줄이 없으면 공통
+  assert.equal(g('trial', guide), 9 + 9 + 20 + 9 + 2);                                     // 트라이얼 줄 · 좁은 기간 우선 · 귀국일은 공통 값
+  assert.equal(g(undefined, guide), 5 * 4 + 2);                                            // 상품을 안 주면 공통만
+  const only = [{ id: 6, kind: 'guide', ref_id: 1, prices: { day: 7, last: 3 } }, { id: 7, kind: 'guide', ref_id: 2, prices: { day: 9 } }];
+  assert.equal(g('kumamoto', only), 7 * 4 + 3); assert.equal(g('trial', only), 9 * 4);     // 공통 줄이 없으면 그 상품 줄만(빈 칸 = 0)
+  assert.equal(g(undefined, only), 0);                                                     // 다른 상품 줄은 섞이지 않는다
+  const q = C.partnerQuote(Object.assign({ brand: 'trial' }, o), base.concat(only));
+  assert.equal(q.twin, 100 * 4 + 10 * 4 + 36); assert.equal(q.total, q.twin * 4); assert.equal(q.complete, true);
 });
 
 // ── 비고 자동 채움 · 송영 차량/구간 (Min 2026-11-03) ──
