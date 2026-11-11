@@ -17,7 +17,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 수배 목록</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=67"></script>
+<script src="../assets/saizen-core.js?v=68"></script>
 <style>
   /* ── 공통 chrome (docs/ops-page-skeleton.html 정본 — 통째 복사) ── */
   :root{
@@ -146,6 +146,14 @@
   .quote .tot b{color:var(--accentDeep);font-size:14.5px}
   .members{font-size:12px;color:var(--text2);line-height:1.6}
   .members b{color:var(--text);font-weight:700}
+  /* 명단: 객실 배정·골프 조 — 지정한 칸은 굵게(accent 테두리), 자동 칸은 흐리게 */
+  .mrow{display:grid;grid-template-columns:20px minmax(84px,1fr) 24px minmax(104px,132px) minmax(84px,104px);gap:3px 6px;align-items:center;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px}
+  .mrow.hd{font-size:10.5px;font-weight:800;color:var(--text2);padding:2px 0;border-bottom:1px solid var(--border2)}
+  .mrow .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .mrow .nm b{font-weight:700} .mrow .nm small{color:var(--muted);margin-left:4px;font-size:10.5px}
+  .mrow .inp{padding:3px 4px;font-size:12px;width:100%;min-width:0} .mrow .inp.au{color:var(--text2)} .mrow .inp.pin{font-weight:800;border-color:var(--accent);background:var(--accentSoft)}
+  .mrow .c{text-align:center;color:var(--text2)}
+  .asum{margin-top:6px;display:flex;flex-wrap:wrap;gap:3px 4px;align-items:center} .asum>b{font-size:10.5px;font-weight:800;color:var(--text2);margin-right:2px;white-space:nowrap} .asum .bd{white-space:normal;font-weight:700} .asum .bd b{font-weight:900;margin-right:3px} .asum .bd i{font-style:normal;opacity:.65}
+  .mfold .hint{margin-top:6px} .mfold .plus{margin-left:6px}
   .plus{font-size:11.5px;font-weight:700;color:var(--accent);border:1px dashed var(--accent);background:transparent;border-radius:7px;padding:3px 9px;cursor:pointer}
   /* 배차 */
   .veh{display:inline-flex;flex-direction:column;border:1px solid var(--border2);border-radius:9px;padding:5px 10px;background:var(--surface);font-size:12px;font-weight:700;min-width:120px}
@@ -221,7 +229,7 @@
   @media (min-width:1400px) and (max-width:1799px){ .cols:not(.nosel) .lt .cdp{display:none} }
   .detail textarea.inp{width:100%;min-height:64px}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.4">
 </head>
 <body data-so-area="partner_kumamoto partner_trial">
 <div class="topbar so-bar">
@@ -290,13 +298,13 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=38.3"></script>
+<script src="../assets/saizen-ops.js?v=38.4"></script>
 <script>
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let supa=null, YM='', VIEW='list', BR=new Set(), SEL=null, HAS_OPS=true, LOADING=false;
 let TEAMS=[], OPS={}, GOLF={}, DISP={}, HOTELS=[], COURSES=[], VEHICLES=[], STAFF=[], DEFAULTS={}, RATES={}, RATEROWS=[], HAS_RATES=false, HAS_USE_BLOCK=false, PENDP=[], HAS_PASSPORT=null;
-let HAS_PTS=false, HAS_ALIASES=false, HAS_AUTOSIG=false, HAS_GAUTO=false, HAS_QFIX=false, HAS_CBLOCK=false, PLAN={}, EFF={}, RUNS={}, ISS={}, DR=null, REGDIRTY={}, DD={}, TMP=-1, ISSF='', QOPEN=false;   // SQL 162·166 프로브 · 비고 플랜/실효 배차/편/점검 캐시 · 초안(상세/등록표) · 필수 확인 필터 · 견적 수정 펼침
+let HAS_PTS=false, HAS_ALIASES=false, HAS_AUTOSIG=false, HAS_GAUTO=false, HAS_QFIX=false, HAS_CBLOCK=false, PLAN={}, EFF={}, RUNS={}, ISS={}, DR=null, REGDIRTY={}, DD={}, TMP=-1, ISSF='', QOPEN=false, HAS_ASSIGN=false, MOPEN=true, GRPC={};   // SQL 162·166 프로브 · 비고 플랜/실효 배차/편/점검 캐시 · 초안(상세/등록표) · 필수 확인 필터 · 견적 수정 펼침
 
 // ── i18n(로컬 사전, ja/ko/en 키 동일) ──
 const L={
@@ -310,6 +318,10 @@ const L={
     nights:n=>n+'泊', solo:'単独', combo:'コンボ', unsure:'確認', unsureT:'商品名から宿泊区間を読めず、予約期間全体を表示しています',
     stH:'名簿→ホテル', stG:'名簿→ゴルフ場', stI:'日程表', stB:'請求書', notYet:'未',
     issNoHotel:'ホテル未指定', issRooms0:'部屋数未入力', issRoomsMis:'部屋数≠人数', issSingleRate:'シングル料金未設定', issGolf:n=>`ゴルフ未指定 ${n}日`, issStaff:'担当未指定', issAgency:'旅行会社 未記載', issDisp:'配車なし', issBlock:'ブロック超過', issRates:'料金表 未登録',
+    dRoster:'名簿・部屋割り・ゴルフ組', asName:'氏名', asRoom:'部屋', asGrpH:'組', asGrp:n=>`${n}組`, asAuto:'自動(名簿順)', asAutoV:v=>`${v} · 自動`, asNoRoom:'部屋なし', asAutoT:'指定していません — 名簿の順に空いた所へ入ります', asPinT:'指定済み — 「自動」を選ぶと解除',
+    asEmpty:'空き', asUnplaced:n=>`部屋のない人 ${n}名`, asNoRooms:'部屋数が未入力です', asSum:(n,r,g)=>`${n}名 · ${r}室 · ${g}組`, asParty:s=>`まとめたチームと一緒に組を作ります(${s}名) — 薄い名前は相手チームの人`, asReset:'すべて自動に戻す', asNoMembers:'名簿がまだありません(エムクリックの名簿を登録すると表示されます)',
+    asHint:'部屋・組を選ぶとその人だけ「指定」になり、ほかの人は名簿の順に空いた所へ入ります。変更は[保存]で反映 — ホテル提出名簿・名簿印刷にもそのまま出ます。', needSql167:'SQL 167 適用後に指定・保存できます(今は名簿順の自動割り当てのみ表示)',
+    issRoomOver:'部屋の定員超過', issGrpOver:'組が5名以上', hotelListAuto:n=>`部屋割りが自動(名簿順)の人 ${n}名 — 送る前に名簿で確認`,
     selHint:'左のチームを選ぶと、ここで手配内容を入力できます。', dAgency:'旅行会社', dStaff:'担当', dProduct:'商品名', dRemark:'備考(エムクリック)', dRemarkLocal:'現地備考', dFlight:'航空', dIn:'IN', dOut:'OUT', dMembers:'名簿', dMembersN:n=>`${n}名`,
     secHotel:'ホテル・部屋', hotel:'ホテル', hotelNone:'（未指定）', hotelOther:'その他(備考に)', hotelNote:'ホテル備考', twin:'ツイン', single:'シングル', triple:'トリプル', singleRate:'シングル料金(1人1泊)', singleRateHint:r=>r?`空欄=料金表 ¥${r}`:'空欄=料金表(未登録)', priceAdj:'1人加算(円)', priceNote:'確定料金メモ', suggest:'人数から提案',
     blockLine:(u,b)=>`ツイン ${u}／${b}`, blockOver:'ブロック超過',
@@ -334,7 +346,7 @@ const L={
     bHotel:'ホテルブロック', bHotelH:'ツイン 使用/確保 · 赤 = ブロック超過', bGolf:'ゴルフ場', bGolfH:'その日の組数(4名1組) · 確保数があれば 使用/確保', bVeh:'送迎(車両)', bVehH:'その日の便数 · 赤 = 定員超過・時刻の重なり · マスを押すとその日の配車表を印刷', bStaff:'担当者', bStaffH:'その日に受け持つチーム数(到着日〜帰国日)', bNone:'未指定', bOther:'その他', bGroupsN:n=>`${n}組 確保`, capN:n=>`定員 ${n}`,
     hDisp:'配車', hDispT:'日別の時刻・区間・車両。薄い文字 = 自動(保存前)', mustH:n=>`必須確認 ${n}チーム`, mustH1:'必須確認', chkH:'確認', mustNone:'必須確認なし', mustAll:'すべて表示', issVeh:'車両の定員超過・重なり', issFlight:'航空時刻なし', issGolfC:'ゴルフ未指定', issRateMissingC:'料金なし', fixed:'修正', dday:n=>n===0?'本日到着':`D-${n}`,
     qEdit:'見積を修正', qEditHint:'1名料金またはチーム合計を入れると、その金額で見積します。空にすると料金表どおりに戻ります。', needSql166:'SQL 166 適用後に使えます(見積修正値の保存欄)', secEtc:'その他(旅行会社の修正 · まとめ · ホテル備考)', remarkSays:'備考では', autoTag:'自動', autoLegHint:'「自動」の行は航空時刻・ゴルフ日程から計算した配車です。時刻・車両・担当を直すと、その行が保存されます。', autoRowT:'備考から読んだゴルフ場',
-    pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', auto:'自動(未確定)', printed:'印刷' },
+    pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', auto:'自動(未確定)', printed:'印刷', room:'部屋', grp:'組', rooming:'部屋割り', pairing:'組合せ（ゴルフ）' },
     colName:'名称', colTarget:'対象', colPeriod:'期間(開始 / 終了)', colPeriodT:'ブロックと料金が適用される期間 — 両方空欄＝常時', blockTwinT:'毎晩確保しているツインの部屋数 — 0＝ブロックなし', blockGroups:'ブロック(組)', blockGroupsT:'1日に確保している組数 — 0＝ブロックなし', surchargeT:'宿泊1泊ごとに1名料金へ加える金額 — このホテルの料金を直接入れたら0に', capacityT:'1台に乗れる人数(定員超過の判定)', rWkS:'平日', rHiS:'休日', rVehDay:'1台・1日', cmHotel:'共通(全ホテル)', cmCourse:'共通(全ゴルフ場)', cmVeh:'共通(全車両)', cmGuide:'引率(1名)', cmHint:'料金が空欄のところはこの値', exRow:'別期間の料金', exAdd:'＋ 期間', exAddT:'この行と期間が違う料金行を下に追加(特定の週・シーズンだけ違うとき)', cmAdd:'＋ 共通の期間', cmAddT:'共通料金が変わる期間をもう1行', defGuide:'引率料金（送迎込み）', defBrand:'商品別の既定値', defBrandHint:'新しいチームの手配行を作るとき、備考にホテル・担当がなければこの値を入れます。選ぶとすぐ保存されます。',
     defHint:'1行＝ブロック(確保数・開始・終了)とその料金(1名・円)。直したら[保存]を1回。料金が空欄なら一番上の「共通」の値を使い(薄い数字)、期間が重なるときは狭い期間が優先します。', defHintVeh:'車両ごとの定員と送迎料金(1台・1日)。空欄は「共通」の値。見積の送迎＝配車のある日 × 車両。', defHintGuide:'1名あたりの料金です。泊ごとに「1泊あたり」を加算します(帰国日の料金はありません)。送迎費は別に取らず、この料金に含めます。商品を選んだ行はその商品のチームだけに使い、「全商品共通」の行は商品別の行がない、または空欄のところに使います(薄い数字)。期間で変わるときは[＋ 料金の行]で行を追加。', needSql166s:'SQL 166 後', needSql166c:'ゴルフ場ブロック(組・期間)は SQL 166 適用後に保存されます', nameEmpty:'名称が空です',
     colProduct:'商品', prodAll:'全商品共通', rNight:'1泊あたり(1名)', rowAddG:'＋ 料金の行', rowAddGT:'商品・期間が違う料金をもう1行', rDupGuide:'同じ商品・同じ期間の行が2つあります', vehHint:'定員は自動配車で車両を分ける基準です。送迎費は引率料金に含めます(車両ごとの料金欄はありません)。',
@@ -349,6 +361,10 @@ const L={
     nights:n=>n+'박', solo:'단독', combo:'콤보', unsure:'확인', unsureT:'상품명에서 숙박 구간을 못 읽어 예약 기간 전체를 표시합니다',
     stH:'명단→호텔', stG:'명단→골프장', stI:'일정표', stB:'청구서', notYet:'미',
     issNoHotel:'호텔 미지정', issRooms0:'객실 수 미입력', issRoomsMis:'객실 수≠인원', issSingleRate:'싱글 요금 미정', issGolf:n=>`골프 미지정 ${n}일`, issStaff:'담당 미지정', issAgency:'여행사 미기재', issDisp:'배차 없음', issBlock:'블록 초과', issRates:'요금표 미등록',
+    dRoster:'명단 · 객실 배정 · 골프 조', asName:'이름', asRoom:'객실', asGrpH:'조', asGrp:n=>`${n}조`, asAuto:'자동(명단 순)', asAutoV:v=>`${v} · 자동`, asNoRoom:'객실 없음', asAutoT:'지정하지 않음 — 명단 순으로 빈 자리에 들어갑니다', asPinT:'지정함 — 「자동」을 고르면 해제',
+    asEmpty:'비어 있음', asUnplaced:n=>`객실 없는 사람 ${n}명`, asNoRooms:'객실 수가 비어 있습니다', asSum:(n,r,g)=>`${n}명 · ${r}실 · ${g}조`, asParty:s=>`묶음 팀과 함께 조를 짭니다(${s}명) — 흐린 이름은 상대 팀 사람`, asReset:'전부 자동으로', asNoMembers:'아직 명단이 없습니다(엠클릭 명단을 등록하면 나옵니다)',
+    asHint:'객실·조를 고르면 그 사람만 「지정」이 되고, 나머지는 명단 순으로 빈 자리에 들어갑니다. 바꾼 것은 [저장]을 눌러야 반영 — 호텔 제출 명단·명단 인쇄에도 그대로 나옵니다.', needSql167:'SQL 167 적용 뒤 지정·저장할 수 있습니다(지금은 명단 순 자동 배정만 표시)',
+    issRoomOver:'객실 정원 초과', issGrpOver:'조 5명 이상', hotelListAuto:n=>`객실 배정이 자동(명단 순)인 사람 ${n}명 — 보내기 전에 명단에서 확인`,
     selHint:'왼쪽에서 팀을 고르면 여기서 수배 내용을 입력합니다.', dAgency:'여행사', dStaff:'담당', dProduct:'상품명', dRemark:'비고(엠클릭)', dRemarkLocal:'현지 비고', dFlight:'항공', dIn:'IN', dOut:'OUT', dMembers:'명단', dMembersN:n=>`${n}명`,
     secHotel:'호텔·객실', hotel:'호텔', hotelNone:'(미지정)', hotelOther:'기타(비고에)', hotelNote:'호텔 비고', twin:'트윈', single:'싱글', triple:'트리플', singleRate:'싱글 요금(1인 1박)', singleRateHint:r=>r?`비우면 요금표 ¥${r}`:'비우면 요금표(미등록)', priceAdj:'1인 가산(円)', priceNote:'확정 요금 메모', suggest:'인원으로 제안',
     blockLine:(u,b)=>`트윈 ${u}/${b}`, blockOver:'블록 초과',
@@ -373,7 +389,7 @@ const L={
     bHotel:'호텔 블록', bHotelH:'트윈 사용/확보 · 빨강 = 블록 초과', bGolf:'골프장', bGolfH:'그날 조 수(4명 1조) · 확보 수가 있으면 사용/확보', bVeh:'송영(차량)', bVehH:'그날 편수 · 빨강 = 정원 초과·시각 겹침 · 칸을 누르면 그날 배차표 인쇄', bStaff:'담당자', bStaffH:'그날 맡은 팀 수(도착일~귀국일)', bNone:'미지정', bOther:'기타', bGroupsN:n=>`${n}조 확보`, capN:n=>`정원 ${n}`,
     hDisp:'배차', hDispT:'날짜별 시각·구간·차량. 옅은 글씨 = 자동(저장 전)', mustH:n=>`필수 확인 ${n}팀`, mustH1:'필수 확인', chkH:'확인', mustNone:'필수 확인 없음', mustAll:'전체 보기', issVeh:'차량 정원 초과·겹침', issFlight:'항공 시각 없음', issGolfC:'골프 미지정', issRateMissingC:'요금 없음', fixed:'수정', dday:n=>n===0?'오늘 도착':`D-${n}`,
     qEdit:'견적 수정', qEditHint:'1인 요금이나 팀 합계를 적으면 그 값으로 견적합니다. 비우면 다시 요금표대로.', needSql166:'SQL 166 적용 후 쓸 수 있습니다(견적 수정값을 저장하는 칸)', secEtc:'기타(여행사 수정 · 묶음 · 호텔 비고)', remarkSays:'비고에는', autoTag:'자동', autoLegHint:'「자동」 줄은 항공 시각·골프 일정에서 계산한 배차입니다. 시각·차량·담당을 고치면 그 줄이 저장됩니다.', autoRowT:'비고에서 읽은 골프장',
-    pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', auto:'自動(未確定)', printed:'印刷' },
+    pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', auto:'自動(未確定)', printed:'印刷', room:'部屋', grp:'組', rooming:'部屋割り', pairing:'組合せ（ゴルフ）' },
     colName:'이름', colTarget:'대상', colPeriod:'기간(시작 / 종료)', colPeriodT:'블록과 요금이 적용되는 기간 — 둘 다 비우면 상시', blockTwinT:'밤마다 잡아 둔 트윈 객실 수 — 0 = 블록 없음', blockGroups:'블록(조)', blockGroupsT:'하루에 잡아 둔 조 수 — 0 = 블록 없음', surchargeT:'묵는 밤마다 1인 요금에 더하는 금액 — 이 호텔 요금을 직접 적었으면 0으로', capacityT:'한 대에 타는 인원(정원 초과 판정)', rWkS:'평일', rHiS:'휴일', rVehDay:'1대·1일', cmHotel:'공통(전 호텔)', cmCourse:'공통(전 골프장)', cmVeh:'공통(전 차량)', cmGuide:'인솔(1인)', cmHint:'요금을 비운 곳은 이 값', exRow:'다른 기간 요금', exAdd:'＋ 기간', exAddT:'이 줄과 기간이 다른 요금 줄을 아래에 추가(특정 주·시즌만 다를 때)', cmAdd:'＋ 공통 기간', cmAddT:'공통 요금이 바뀌는 기간을 한 줄 더', defGuide:'인솔 요금(송영 포함)', defBrand:'상품별 기본값', defBrandHint:'새 팀의 수배 행을 만들 때 비고에 호텔·담당이 없으면 이 값을 넣습니다. 고르면 바로 저장됩니다.',
     defHint:'한 줄 = 블록(확보 수·시작·종료)과 그 요금(1인·円)입니다. 고친 뒤 [저장] 한 번. 요금 칸을 비우면 맨 위 「공통」 값을 쓰고(흐린 숫자), 기간이 겹치면 좁은 기간이 우선합니다.', defHintVeh:'차량마다 정원과 송영 요금(1대·1일). 비우면 「공통」 값. 견적의 송영 = 배차가 있는 날 × 차량.', defHintGuide:'1인 기준입니다. 묵는 밤마다 「1박당」 요금을 더합니다(귀국일에 따로 더하는 요금은 없습니다). 송영 비용은 따로 받지 않고 이 요금에 포함합니다. 상품을 고른 줄은 그 상품 팀에만 쓰고, 「전 상품 공통」 줄은 상품별 줄이 없거나 칸이 빈 곳에 씁니다(흐린 숫자). 기간에 따라 바뀌면 [＋ 요금 줄]로 줄을 더합니다.', needSql166s:'SQL 166 후', needSql166c:'골프장 블록(조·기간)은 SQL 166 적용 후 저장됩니다', nameEmpty:'이름이 비어 있습니다',
     colProduct:'상품', prodAll:'전 상품 공통', rNight:'1박당(1인)', rowAddG:'＋ 요금 줄', rowAddGT:'상품·기간이 다른 요금을 한 줄 더', rDupGuide:'같은 상품·같은 기간의 줄이 두 개입니다', vehHint:'정원은 자동 배차에서 차량을 나누는 기준입니다. 송영 비용은 인솔 요금에 포함합니다(차량별 요금 칸은 없습니다).',
@@ -388,6 +404,10 @@ const L={
     nights:n=>n+'N', solo:'single', combo:'combo', unsure:'check', unsureT:'Stay segment could not be read from the product name — full booking span shown',
     stH:'Roster→hotel', stG:'Roster→course', stI:'Itinerary', stB:'Invoice', notYet:'—',
     issNoHotel:'No hotel', issRooms0:'No rooms', issRoomsMis:'Rooms≠pax', issSingleRate:'Single rate missing', issGolf:n=>`Golf missing ${n}d`, issStaff:'No staff', issAgency:'Agency not noted', issDisp:'No dispatch', issBlock:'Over block', issRates:'Rates not set',
+    dRoster:'Roster · rooms · golf groups', asName:'Name', asRoom:'Room', asGrpH:'Group', asGrp:n=>`Group ${n}`, asAuto:'Auto (roster order)', asAutoV:v=>`${v} · auto`, asNoRoom:'No room', asAutoT:'Not set — placed in roster order into the free slots', asPinT:'Set by you — choose “Auto” to clear',
+    asEmpty:'Empty', asUnplaced:n=>`${n} without a room`, asNoRooms:'Room counts are empty', asSum:(n,r,g)=>`${n} pax · ${r} rooms · ${g} groups`, asParty:s=>`Groups are formed together with the linked team (${s} pax) — faded names belong to the other team`, asReset:'Reset all to auto', asNoMembers:'No roster yet (shown once the M-Click roster is registered)',
+    asHint:'Choosing a room or group pins only that person; everyone else fills the free slots in roster order. Press [Save] to apply — the hotel list and the roster print use the same assignment.', needSql167:'Available after SQL 167 (for now only the automatic roster-order assignment is shown)',
+    issRoomOver:'Room over capacity', issGrpOver:'Group of 5+', hotelListAuto:n=>`${n} guests have automatic (roster-order) rooms — check the roster before sending`,
     selHint:'Select a team on the left to edit its arrangements here.', dAgency:'Agency', dStaff:'Staff', dProduct:'Product', dRemark:'Remark (M-Click)', dRemarkLocal:'Local remark', dFlight:'Flights', dIn:'IN', dOut:'OUT', dMembers:'Roster', dMembersN:n=>`${n} pax`,
     secHotel:'Hotel · rooms', hotel:'Hotel', hotelNone:'(none)', hotelOther:'Other (in note)', hotelNote:'Hotel note', twin:'Twin', single:'Single', triple:'Triple', singleRate:'Single rate (pp/night)', singleRateHint:r=>r?`blank = rate card ¥${r}`:'blank = rate card (not set)', priceAdj:'Per-person add (¥)', priceNote:'Agreed price memo', suggest:'Suggest from pax',
     blockLine:(u,b)=>`Twin ${u}/${b}`, blockOver:'Over block',
@@ -412,7 +432,7 @@ const L={
     bHotel:'Hotel blocks', bHotelH:'twin used/blocked · red = over the block', bGolf:'Courses', bGolfH:'groups that day (4 per group) · used/blocked when a block is set', bVeh:'Transfers (vehicles)', bVehH:'runs that day · red = over capacity or clashing times · click a cell to print that day’s dispatch sheet', bStaff:'Staff', bStaffH:'teams in their care that day (arrival to departure)', bNone:'Unassigned', bOther:'Other', bGroupsN:n=>`${n} groups blocked`, capN:n=>`seats ${n}`,
     hDisp:'Dispatch', hDispT:'Times, routes and vehicles by day. Faint text = automatic (not saved)', mustH:n=>`Must check — ${n} teams`, mustH1:'Must check', chkH:'Check', mustNone:'Nothing to check', mustAll:'Show all', issVeh:'Vehicle over capacity / clash', issFlight:'No flight time', issGolfC:'Golf not set', issRateMissingC:'No price', fixed:'edited', dday:n=>n===0?'arrives today':`D-${n}`,
     qEdit:'Edit quote', qEditHint:'Enter a per-person price or a team total to quote with that amount. Clear it to go back to the rate table.', needSql166:'Available after SQL 166 (the column that stores the edited quote)', secEtc:'Other (agency override · party · hotel note)', remarkSays:'Remark says', autoTag:'auto', autoLegHint:'“auto” rows are dispatch computed from flight times and the golf schedule. Change a time, vehicle or staff and that row is saved.', autoRowT:'Course read from the remark',
-    pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', auto:'自動(未確定)', printed:'印刷' },
+    pv:{ title:'手配リスト', roster:'名簿', disp:'配車表', period:'期間', nights:'泊', pax:'人数', rep:'代表者', agency:'旅行会社', air:'航空', hotel:'ホテル(部屋)', golf:'ゴルフ(日別)', staff:'担当', chk:'名簿H／名簿G／日程／請求', note:'備考', no:'No', name:'氏名(英)', gender:'性別', time:'時刻', leg:'区間', team:'チーム', vehicle:'車両', unassigned:'車両未定', auto:'自動(未確定)', printed:'印刷', room:'部屋', grp:'組', rooming:'部屋割り', pairing:'組合せ（ゴルフ）' },
     colName:'Name', colTarget:'Applies to', colPeriod:'Period (from / to)', colPeriodT:'When the block and the rate apply — leave both empty for always', blockTwinT:'Twin rooms held per night — 0 = no block', blockGroups:'Block (groups)', blockGroupsT:'Groups held per day — 0 = no block', surchargeT:'Added per person per night — set 0 if you typed this hotel’s own rate', capacityT:'Seats per vehicle (used for over-capacity)', rWkS:'Weekday', rHiS:'Holiday', rVehDay:'Per vehicle/day', cmHotel:'Common (all hotels)', cmCourse:'Common (all courses)', cmVeh:'Common (all vehicles)', cmGuide:'Escort (pp)', cmHint:'used where a rate is blank', exRow:'Rate for another period', exAdd:'+ Period', exAddT:'Add a rate row for a different period below (one week or season only)', cmAdd:'+ Common period', cmAddT:'One more row when the common rate changes', defGuide:'Escort fee (transfers included)', defBrand:'Defaults per product', defBrandHint:'Used when a new team’s remark names no hotel or staff. Saved as soon as you pick.',
     defHint:'One row = a block (quantity, from, to) and its rate (per person, ¥). Edit, then Save once. Blank rate cells use the “Common” row at the top (grey number); when periods overlap the narrower one wins.', defHintVeh:'Seats and transfer rate (per vehicle per day). Blank = “Common”. Quote transfer = days with dispatch × vehicles.', defHintGuide:'Per person. Adds “Per night” for each night (no separate departure-day fee). Transfers are not charged separately — they are included here. A row with a product applies only to that product’s teams; “All products” is used where a product row is missing or a cell is blank (grey number). Use + Rate row when it changes by period.', needSql166s:'after SQL 166', needSql166c:'Course blocks (groups, period) are saved after SQL 166', nameEmpty:'Name is empty',
     colProduct:'Product', prodAll:'All products', rNight:'Per night (pp)', rowAddG:'+ Rate row', rowAddGT:'One more row for another product or period', rDupGuide:'Two rows have the same product and period', vehHint:'Seats decide how automatic dispatch splits vehicles. Transfer cost is included in the escort fee (no per-vehicle rate).',
@@ -467,6 +487,44 @@ const LEGS=['in','golf_out','golf_back','out','other'];
 function legLabel(l){ return tx({in:'lIn',golf_out:'lGolfOut',golf_back:'lGolfBack',out:'lOut',other:'lOther'}[l]||'lOther'); }
 function ratesReady(){ return RATEROWS.length>0; }
 
+// ── 명단: 객실 배정·골프 조(Min 2026-11-11 「명단에서 객실 배정이나 골프 조 편성도 가능하게」) ──
+//   저장 = partner_ops.assign {room:{명단 id:'T1'}, grp:{명단 id:2}} — 「지정」한 사람만 들어간다. 지정하지 않은 사람은 명단 순으로 빈 자리(SZCore.partnerRooming·partnerGolfGroups).
+//   조는 묶음(party) 팀이면 묶음 전체로 짠다(5명+1명 → 3·3). 객실은 팀별(객실 수가 팀별이라).
+const canAssign=()=>!!(window.SZCore&&SZCore.partnerRooming&&SZCore.partnerGolfGroups);
+function assignOf(o){ const a=o&&o.assign, ok=x=>(x&&typeof x==='object'&&!Array.isArray(x))?x:{}; return (a&&typeof a==='object'&&!Array.isArray(a))?{room:ok(a.room),grp:ok(a.grp)}:{room:{},grp:{}}; }
+function pruneAssign(t,a){ const ids=new Set((t.members||[]).map(m=>String(m.id))), room={}, grp={}; Object.keys(a.room||{}).forEach(k=>{ if(ids.has(k)&&a.room[k]) room[k]=a.room[k]; }); Object.keys(a.grp||{}).forEach(k=>{ if(ids.has(k)&&a.grp[k]) grp[k]=a.grp[k]; }); return (Object.keys(room).length||Object.keys(grp).length)?{room,grp}:null; }
+function roomingOf(t,o){ o=o||ops(t.seq); return SZCore.partnerRooming(t.members||[],{twin:o.twin,single:o.single,triple:o.triple},assignOf(o).room); }
+function partyTeams(t,o){ o=o||ops(t.seq); const p=Number(o.party)||0; if(!p) return [t]; return TEAMS.filter(x=>x.seq===t.seq||Number(ops(x.seq).party)===p).sort((a,b)=>a.seq-b.seq); }
+function groupingOf(t,o){ const ov=o||ops(t.seq), ts=partyTeams(t,ov), ids=[], pins={}; ts.forEach(x=>{ const a=assignOf(x.seq===t.seq?ov:ops(x.seq)).grp; (x.members||[]).forEach(m=>{ ids.push(m.id); if(a[m.id]!=null) pins[m.id]=a[m.id]; }); }); const g=SZCore.partnerGolfGroups(ids,pins); g.teams=ts; return g; }
+function savedGrouping(t){ return GRPC[t.seq]||(GRPC[t.seq]=groupingOf(t)); }   // 저장된 값 기준(띠·점검용 캐시 — renderAll 에서 비운다)
+function genderLabel(v){ const g=(window.SZCore&&SZCore.partnerGenderMF)?SZCore.partnerGenderMF(v):''; if(!g) return ''; const lg=lang(); return lg==='ko'?(g==='M'?'남':'여'):(lg==='ja'?(g==='M'?'男':'女'):g); }   // DB 값은 한국어(남/여) — 화면 언어에 맞춰 보인다
+function memberName(m){ return ((lang()==='ko')?(m.name_kr||m.name_en):(m.name_en||m.name_kr))||('#'+(m.seq_in_team||'')); }
+function roomAmbiguous(R){ return R.slots.length>1&&R.slots.some(x=>x.cap>1); }   // 방이 하나뿐이거나 전부 싱글이면 누가 어느 방이든 같다 → 자동이어도 확인할 것이 없다
+function rosterHTML(t,d){
+  const ms=t.members||[], o=d.ops;
+  if(!ms.length||!canAssign()) return `<details class="so-fold mfold"${MOPEN?' open':''}><summary>${esc(tx('dRoster'))} <span class="so-fsum">${esc(tx('dMembersN',ms.length))}</span></summary><div class="hint">${esc(tx('asNoMembers'))}</div></details>`;
+  const R=roomingOf(t,o), G=groupingOf(t,o), lg=lang(), can=HAS_OPS&&HAS_ASSIGN&&!document.getElementById('so-readonly'), dis=can?'':'disabled';
+  const rl=k=>SZCore.partnerRoomLabel(k,lg), byId={}; G.teams.forEach(x=>(x.members||[]).forEach(m=>{ byId[m.id]={m,mine:x.seq===t.seq}; }));
+  const maxG=Math.min(G.n+1,Math.max(1,Object.keys(byId).length));
+  const roomSel=m=>{ const k=R.of[m.id], au=!!R.auto[m.id];
+    return `<select class="inp ${au?'au':'pin'}" data-ar="${m.id}" ${dis} title="${esc(au?tx('asAutoT'):tx('asPinT'))}"><option value=""${au?' selected':''}>${esc(au?(k?tx('asAutoV',rl(k)):tx('asNoRoom')):tx('asAuto'))}</option>${R.slots.map(x=>`<option value="${x.key}"${!au&&k===x.key?' selected':''}>${esc(rl(x.key))}</option>`).join('')}</select>`; };
+  const grpSel=m=>{ const n=G.of[m.id], au=!!G.auto[m.id]; let op=''; for(let i=1;i<=maxG;i++) op+=`<option value="${i}"${!au&&n===i?' selected':''}>${esc(tx('asGrp',i))}</option>`;
+    return `<select class="inp ${au?'au':'pin'}" data-ag="${m.id}" ${dis} title="${esc(au?tx('asAutoT'):tx('asPinT'))}"><option value=""${au?' selected':''}>${esc(au?tx('asAutoV',tx('asGrp',n)):tx('asAuto'))}</option>${op}</select>`; };
+  const rows=ms.map(m=>`<div class="mrow"><span class="c">${m.seq_in_team||''}</span><span class="nm" title="${esc((m.name_kr||'')+' '+(m.name_en||''))}"><b>${esc(memberName(m))}</b>${m.name_kr&&m.name_en?`<small>${esc(lang()==='ko'?m.name_en:m.name_kr)}</small>`:''}${m.is_rep?' ★':''}</span><span class="c">${esc(genderLabel(m.gender))}</span>${roomSel(m)}${grpSel(m)}</div>`).join('');
+  const nm=id=>{ const x=byId[id]; return x?(x.mine?esc(memberName(x.m)):`<i>${esc(memberName(x.m))}</i>`):''; };
+  const roomChips=R.slots.map(x=>`<span class="bd ${x.ids.length>x.cap?'err':(x.ids.length<x.cap?'warn':'info')}"><b>${esc(rl(x.key))}</b>${x.ids.map(nm).join(' · ')||esc(tx('asEmpty'))}</span>`).join('')+(R.unplaced.length?`<span class="bd err">${esc(tx('asUnplaced',R.unplaced.length))}</span>`:'');
+  const grpChips=G.groups.map(x=>`<span class="bd ${x.ids.length>G.size?'err':'info'}"><b>${esc(tx('asGrp',x.no))}</b>${x.ids.map(nm).join(' · ')||esc(tx('asEmpty'))}</span>`).join('');
+  const pinned=R.pinned+ms.filter(m=>!G.auto[m.id]).length, bad=R.over.length||G.over.length||R.unplaced.length;
+  const party=G.teams.length>1?`<div class="hint">${esc(tx('asParty',G.teams.filter(x=>x.seq!==t.seq).map(x=>`${x.rep} ${x.pax}`).join(' · ')))}</div>`:'';
+  return `<details class="so-fold mfold"${MOPEN?' open':''}><summary>${esc(tx('dRoster'))} <span class="so-fsum${bad?' on':''}">${esc(tx('asSum',ms.length,R.slots.length,G.n))}</span></summary>
+      <div class="mrow hd"><span class="c">${esc(tx('pv').no)}</span><span>${esc(tx('asName'))}</span><span></span><span>${esc(tx('asRoom'))}</span><span>${esc(tx('asGrpH'))}</span></div>
+      ${rows}
+      <div class="asum"><b>${esc(tx('asRoom'))}</b>${roomChips||`<span class="hint">${esc(tx('asNoRooms'))}</span>`}</div>
+      <div class="asum"><b>${esc(tx('asGrpH'))}</b>${grpChips}</div>
+      ${party}
+      <div class="hint">${esc(HAS_ASSIGN?tx('asHint'):tx('needSql167'))}${can&&pinned?` <button class="plus" data-act="asReset" type="button">${esc(tx('asReset'))}</button>`:''}</div>
+    </details>`;
+}
 // ── 견적·점검 ──
 function quoteFix(o){ const f=o&&o.quote_fix; return (f&&typeof f==='object'&&!Array.isArray(f))?f:null; }
 function quoteFor(t, ov){   // ov={ops,golf,disp} = 상세 초안(저장 전 값으로 견적). 인솔 요금 = 그 팀 상품(t.brand)의 줄 — 송영 비용은 인솔 요금에 들어 있어 따로 더하지 않는다(Min 2026-11-11)
@@ -497,6 +555,7 @@ function issues(t){
   if(!fixed && Number(o.single||0)>0 && (o.single_rate==null||o.single_rate==='') && (!ratesReady()||(q&&q.missing.some(m=>m.startsWith('single:'))))) out.push({k:'issSingleRate',sev:'err'});
   const h=hotelById(o.hotel_id); if(h&&o.use_block!==false&&nightsOf(t).some(ds=>blockOn(h,ds)>0&&blockUse(h.id,ds)>blockOn(h,ds))) out.push({k:'issBlock',sev:'warn'});   // 블록은 확보 수량이지 상한이 아니다 — 초과는 「확인」(주황)
   if(effLegs(t).some(r=>legBad(t,r))) out.push({k:'issVeh',sev:'err'});
+  if(HAS_ASSIGN&&canAssign()&&(t.members||[]).length){ if(roomingOf(t,o).over.length) out.push({k:'issRoomOver',sev:'warn'}); if(savedGrouping(t).over.length) out.push({k:'issGrpOver',sev:'warn'}); }   // 지정이 정원을 넘었다(객실 2명·조 4명) — 막지 않고 알린다
   const g=golf(t.seq).filter(r=>r.course_id||(r.course_note||'').trim()); const need=nightsOf(t).length; if(g.length<need) out.push({k:'issGolf',sev:'warn',n:need-g.length});
   if(!(o.staff||'').trim()) out.push({k:'issStaff',sev:'warn'});
   if(/미기재/.test(agencyOf(t))) out.push({k:'issAgency',sev:'warn'});
@@ -522,7 +581,8 @@ function rowChanged(saved, row){ if(!saved) return true; return Object.keys(row)
 async function commitDraft(){
   const t=teamOf(DR&&DR.seq); if(!t||!DR) return false; if(!HAS_OPS){ toast(tx('noSql'),'warn'); return false; }
   const d=DR; let ok=true; const clean=r=>{ const row=Object.assign({},r); Object.keys(row).forEach(k=>{ if(k[0]==='_') delete row[k]; }); return row; };   // _ph·_pax·_auto 는 화면 전용
-  const patch={}; OPS_FIELDS.concat(HAS_USE_BLOCK?['use_block']:[]).concat(HAS_AUTOSIG?['auto_sig']:[]).concat(HAS_QFIX?['quote_fix']:[]).forEach(f=>{ if(d.ops[f]!==undefined) patch[f]=d.ops[f]; });
+  const patch={}; OPS_FIELDS.concat(HAS_USE_BLOCK?['use_block']:[]).concat(HAS_AUTOSIG?['auto_sig']:[]).concat(HAS_QFIX?['quote_fix']:[]).concat(HAS_ASSIGN?['assign']:[]).forEach(f=>{ if(d.ops[f]!==undefined) patch[f]=d.ops[f]; });
+  if(patch.assign) patch.assign=pruneAssign(t,assignOf(patch));   // 명단에서 빠진 사람의 옛 지정은 저장하지 않는다
   const prevParty=(OPS[t.seq]||{}).party||null;
   if(!(await saveOps(t.seq,patch,'save',true))) ok=false;
   if(ok&&d.ops.party&&(Number(d.ops.party)!==Number(prevParty))){ const v=Number(d.ops.party); await saveOps(v,{party:Math.min(v,t.seq)},'party',true); await saveOps(t.seq,{party:Math.min(v,t.seq)},'party',true); }
@@ -635,7 +695,7 @@ async function load(){
       .lte('seg_from',mEnd).gt('seg_to',m1).neq('status','대기').order('seg_from').order('event_seq'); if(error) throw error;
     const seqs=(bs||[]).map(b=>b.event_seq);
     if(HAS_PASSPORT==null){ const pp=await supa.from('partner_members').select('passport_no',{count:'exact',head:true}); HAS_PASSPORT=!pp.error; }   // SQL 164(호텔 제출 명단 열) 적용 여부
-    const ms=await fetchIn('partner_members','event_seq,seq_in_team,is_rep,name_kr,name_en,gender,dep_flight,ret_flight,origin,airline,dep_time,loc_arr_time,ret_dep_time,kor_arr_time'+(HAS_PASSPORT?',name_en_last,name_en_first,birth,passport_no,passport_exp,passport_country':''),'event_seq',seqs);
+    const ms=await fetchIn('partner_members','id,event_seq,seq_in_team,is_rep,name_kr,name_en,gender,dep_flight,ret_flight,origin,airline,dep_time,loc_arr_time,ret_dep_time,kor_arr_time'+(HAS_PASSPORT?',name_en_last,name_en_first,birth,passport_no,passport_exp,passport_country':''),'event_seq',seqs);
     const byTeam={}; ms.forEach(m=>{ (byTeam[m.event_seq]=byTeam[m.event_seq]||[]).push(m); });
     TEAMS=(bs||[]).map(b=>({ seq:b.event_seq, brand:b.brand, no:String(b.event_no||b.event_seq), rep:b.rep_name||'', pax:Number(b.pax||0)||0, status:b.status,
       dep:String(b.seg_from||b.dep_date||'').slice(0,10), arr:String(b.seg_to||b.arr_date||'').slice(0,10), fullDep:String(b.dep_date||'').slice(0,10), fullArr:String(b.arr_date||'').slice(0,10),
@@ -652,6 +712,7 @@ async function load(){
       try{ const pr=await supa.from('partner_ops').select('auto_sig',{count:'exact',head:true}); HAS_AUTOSIG=!pr.error; }catch(e){ HAS_AUTOSIG=false; }     // SQL 162 비고 서명
       try{ const pr=await supa.from('partner_golf').select('auto',{count:'exact',head:true}); HAS_GAUTO=!pr.error; }catch(e){ HAS_GAUTO=false; }            // SQL 162 자동 골프 줄
       try{ const pr=await supa.from('partner_ops').select('quote_fix',{count:'exact',head:true}); HAS_QFIX=!pr.error; }catch(e){ HAS_QFIX=false; }        // SQL 166 견적 수정값
+      try{ const pr=await supa.from('partner_ops').select('assign',{count:'exact',head:true}); HAS_ASSIGN=!pr.error; }catch(e){ HAS_ASSIGN=false; }      // SQL 167 명단 객실·조 지정
       try{ const pr=await supa.from('partner_courses').select('block_groups',{count:'exact',head:true}); HAS_CBLOCK=!pr.error; }catch(e){ HAS_CBLOCK=false; }  // SQL 166 골프장 블록(조 수·기간)
       HAS_ALIASES=HOTELS.some(h=>Object.prototype.hasOwnProperty.call(h,'aliases'))||COURSES.some(c=>Object.prototype.hasOwnProperty.call(c,'aliases'));
     }catch(e){ const m=String(e&&e.message||e); if(/partner_(ops|golf|dispatch|hotels|courses|vehicles|staff|settings)|schema cache|does not exist/i.test(m)){ HAS_OPS=false; $('#nosql').hidden=false; } else throw e; }
@@ -666,7 +727,7 @@ async function load(){
 const OPS_FIELDS=['agency','staff','hotel_id','hotel_note','twin','single','triple','single_rate','price_adj','price_note','party','memo','roster_hotel_at','roster_hotel_by','roster_golf_at','roster_golf_by','itinerary_at','itinerary_by','invoiced_at','invoiced_by'];
 async function saveOps(seq, patch, label, quiet){
   if(!HAS_OPS){ toast(tx('noSql'),'warn'); return false; }
-  const cur=OPS[seq]||{}; const row={event_seq:seq}; OPS_FIELDS.concat(HAS_USE_BLOCK?['use_block']:[]).concat(HAS_AUTOSIG?['auto_sig']:[]).concat(HAS_QFIX?['quote_fix']:[]).forEach(f=>{ if(cur[f]!==undefined) row[f]=cur[f]; }); Object.assign(row,patch); if(!HAS_USE_BLOCK) delete row.use_block; if(!HAS_AUTOSIG) delete row.auto_sig; if(!HAS_QFIX) delete row.quote_fix;
+  const cur=OPS[seq]||{}; const row={event_seq:seq}; OPS_FIELDS.concat(HAS_USE_BLOCK?['use_block']:[]).concat(HAS_AUTOSIG?['auto_sig']:[]).concat(HAS_QFIX?['quote_fix']:[]).concat(HAS_ASSIGN?['assign']:[]).forEach(f=>{ if(cur[f]!==undefined) row[f]=cur[f]; }); Object.assign(row,patch); if(!HAS_USE_BLOCK) delete row.use_block; if(!HAS_AUTOSIG) delete row.auto_sig; if(!HAS_QFIX) delete row.quote_fix; if(!HAS_ASSIGN) delete row.assign;
   const {data,error}=await supa.from('partner_ops').upsert(row,{onConflict:'event_seq'}).select().single();
   if(error){ toast(tx('saveFail')+': '+error.message,'err'); return false; }
   OPS[seq]=data; logChange(seq,'ops',label||Object.keys(patch).join(','),patch); if(!quiet) renderAll(); return true;
@@ -748,7 +809,7 @@ function legBad(t,r){ if(!r.trip_date) return false; const x=runsOn(r.trip_date)
 
 
 // ── 렌더 ──
-function renderAll(){ EFF={}; RUNS={}; ISS={}; renderChips(); renderBoard(); renderList(); renderDetail(); if(VIEW==='def') renderDefs(); const vis=visible(); $('#sum').textContent=TEAMS.length?tx('sum',vis.length,vis.reduce((a,t)=>a+t.pax,0)):''; }
+function renderAll(){ EFF={}; RUNS={}; ISS={}; GRPC={}; renderChips(); renderBoard(); renderList(); renderDetail(); if(VIEW==='def') renderDefs(); const vis=visible(); $('#sum').textContent=TEAMS.length?tx('sum',vis.length,vis.reduce((a,t)=>a+t.pax,0)):''; }
 function renderChips(){
   const brands=[...new Set(TEAMS.map(t=>t.brand))];
   $('#brand-chips').innerHTML=`<span class="chip${BR.size?'':' on'}" data-b="">${esc(tx('brandAll'))}</span>`+brands.map(b=>`<span class="chip${BR.has(b)?' on':''}" data-b="${esc(b)}">${esc(brandShort(b))}</span>`).join('');
@@ -757,6 +818,8 @@ $('#brand-chips').addEventListener('click',e=>{ const c=e.target.closest('.chip'
 // ── 월간 가동 현황(띠) — 호텔 블록 · 골프장 · 송영 · 담당자(Min 2026-11-11 「골프장 블록도 호텔 블록 아래에 깔고 송영 블록도, 담당자 배정도」) ──
 //   줄=대상, 칸=날짜. 저장하지 않은 자동 배차도 그대로 센다. 송영 칸을 누르면 그날 配車表 인쇄.
 function courseBlockOn(c, ds){ if(!c||!(c.block_groups>0)) return 0; if(c.block_from&&ds<c.block_from) return 0; if(c.block_to&&ds>c.block_to) return 0; return c.block_groups; }
+function groupCount(ts){ const set=new Set(); ts.forEach(t=>{ const ms=t.members||[]; if(!ms.length||!canAssign()){ for(let i=1;i<=Math.ceil(t.pax/4);i++) set.add(t.seq+'#'+i); return; }
+  const g=savedGrouping(t), pk=(g.teams.length>1)?('p'+g.teams[0].seq):t.seq; ms.forEach(m=>set.add(pk+'#'+g.of[m.id])); }); return set.size; }   // 조 수 = 실제 조 편성(묶음 팀은 묶음 전체로 한 번) · 명단이 없으면 올림(인원÷4)
 function renderBoard(){
   const box=$('#blocks'), pn=$('#blocks-panel'); if(!TEAMS.length||!YM){ pn.style.display='none'; return; } pn.style.display='';
   const N=daysIn(YM), days=[]; for(let d=1;d<=N;d++) days.push(dstr(YM,d)); const td=today();
@@ -771,7 +834,7 @@ function renderBoard(){
   // 골프장 — 그날 조 수(4명 1조) / 확보 조 수
   const gm={}; TEAMS.forEach(t=>golf(t.seq).forEach(r=>{ if(!(r.course_id||(r.course_note||'').trim())) return; const k=r.course_id?String(r.course_id):'x', ds=String(r.play_date||'').slice(0,10); ((gm[k]=gm[k]||{})[ds]=gm[k][ds]||[]).push({t,r}); }));
   const gKeys=COURSES.filter(c=>gm[String(c.id)]||(c.active&&c.block_groups>0)).map(c=>String(c.id)).concat(gm.x?['x']:[]);
-  const gRows=gKeys.map(k=>{ const c=k==='x'?null:courseById(k); return row(c?courseName(c,true):tx('bOther'), c&&c.block_groups>0?tx('bGroupsN',c.block_groups):'', days.map(ds=>{ const xs=(gm[k]||{})[ds]||[], n=xs.reduce((a,x)=>a+Math.ceil(x.t.pax/4),0), b=courseBlockOn(c,ds);
+  const gRows=gKeys.map(k=>{ const c=k==='x'?null:courseById(k); return row(c?courseName(c,true):tx('bOther'), c&&c.block_groups>0?tx('bGroupsN',c.block_groups):'', days.map(ds=>{ const xs=(gm[k]||{})[ds]||[], n=groupCount(xs.map(x=>x.t)), b=courseBlockOn(c,ds);
     const cls=b?(n>b?'over':(n===b?'full':(n?'use':''))):(n?'use':''); return cell(b?`${n}/${b}`:(n?String(n):''), cls, xs.length?mmdd(ds)+' · '+xs.map(x=>`${x.t.rep}(${x.t.pax})${x.r.tee_time?' '+x.r.tee_time:''}`).join(' · '):''); })); });
   // 송영 — 차량별 그날 편수(자동 배차 포함)
   const info=days.map(ds=>runsOn(ds));
@@ -909,6 +972,8 @@ function renderDetail(){
       ${props.length?`<div class="hint">${esc(tx('autoLegHint'))}</div>`:''}
     </div>
 
+    <div class="sec">${rosterHTML(t,d)}</div>
+
     <div class="sec"><h4>${esc(tx('secMemo'))}<span class="r"><button class="plus" data-act="roster" type="button">${esc(tx('pv').roster)} ${esc(tx('pv').printed)}</button> <button class="plus" data-act="hotelList" type="button" title="${esc(tx('hotelListT'))}">${esc(tx('hotelList'))}</button></span></h4><textarea class="inp" data-f="memo" ${dis}>${esc(o.memo||'')}</textarea></div>
     <details class="so-fold" style="margin-top:8px"><summary>${esc(tx('secEtc'))}</summary>
       <div class="frm" style="margin-top:6px">
@@ -916,8 +981,7 @@ function renderDetail(){
         <label>${esc(tx('party'))}<select class="inp" data-f="party" ${dis}><option value="">${esc(tx('partyNone'))}</option>${others.map(x=>`<option value="${x.seq}"${Number(o.party)===x.seq?' selected':''}>${esc(x.rep)} ${esc(mmdd(x.dep))}→${esc(mmdd(x.arr))} ${x.pax}名</option>`).join('')}</select></label>
         <label class="wide">${esc(tx('hotelNote'))}<input class="inp" data-f="hotel_note" value="${esc(o.hotel_note||'')}" ${dis}></label>
       </div></details>
-    <details class="so-fold" style="margin-top:6px"><summary>${esc(tx('dMembers'))} <span class="so-fsum">${esc(tx('dMembersN',t.members.length))}</span></summary>
-      <div class="members">${t.members.map(m=>`${m.seq_in_team}. <b>${esc(m.name_kr||'')}</b> ${esc(m.name_en||'')} ${esc(m.gender||'')}${m.is_rep?' ★':''}`).join('<br>')}</div></details>`;
+`;
   box.classList.add('open'); if(!d.dirty) box.scrollTop=0;
 }
 // 배차 줄 — 저장 행과 자동 줄(prop)을 같은 모양으로. 자동 줄은 고치는 순간 저장 대상이 된다(「제안 추가」 버튼 없음).
@@ -939,6 +1003,9 @@ function setDispField(row, el){ const k=el.dataset.d; let v=el.value;
   else { if(k==='vehicle_id') v=el.value?Number(el.value):null; row[k]=v; } }
 $('#detail').addEventListener('change',e=>{
   const t=teamOf(SEL); if(!t) return; const el=e.target; const d=draftFor(t); const reQuote=()=>{ refreshSaveBar(); const dq=$('#dq'); if(dq) dq.innerHTML=quoteHTML(t,d); };
+  if(el.dataset.ar||el.dataset.ag){ const a=assignOf(d.ops), room=Object.assign({},a.room), grp=Object.assign({},a.grp);   // 명단의 객실·조 지정 — 빈 값(자동)을 고르면 지정 해제
+    if(el.dataset.ar){ if(el.value) room[el.dataset.ar]=el.value; else delete room[el.dataset.ar]; } else { if(el.value) grp[el.dataset.ag]=Number(el.value); else delete grp[el.dataset.ag]; }
+    d.ops.assign=pruneAssign(t,{room,grp}); mark(); renderDetail(); return; }
   if(el.dataset.qf){ const k=el.dataset.qf, f=Object.assign({},quoteFix(d.ops)||{}); if(el.value===''||!isFinite(Number(el.value))) delete f[k]; else f[k]=Number(el.value); d.ops.quote_fix=Object.keys(f).length?f:null; QOPEN=true; mark(); reQuote(); return; }
   if(el.dataset.f){ const f=el.dataset.f; let v=el.type==='checkbox'?el.checked:(el.type==='number'?(el.value===''?null:Number(el.value)):el.value); if(f==='hotel_id'||f==='party') v=el.value?Number(el.value):null; if(f==='agency'&&v===t.agency) v=null;
     d.ops[f]=v; mark(); if(f==='hotel_id'||f==='use_block'||f==='staff'||f==='twin'||f==='single'||f==='triple') renderDetail(); else reQuote(); return; }
@@ -948,12 +1015,13 @@ $('#detail').addEventListener('change',e=>{
     props.filter(x=>x.trip_date===pr.trip_date&&x.leg===pr.leg).forEach(x=>{ const row=Object.assign({id:TMP--,staff:d.ops.staff||null},x); d.disp.push(row); if(x===pr) target=row; });
     if(target) setDispField(target,el); mark(); renderDetail(); }
 });
-$('#detail').addEventListener('toggle',e=>{ if(e.target&&e.target.classList&&e.target.classList.contains('qfix')) QOPEN=e.target.open; },true);
+$('#detail').addEventListener('toggle',e=>{ const c=e.target&&e.target.classList; if(!c) return; if(c.contains('qfix')) QOPEN=e.target.open; else if(c.contains('mfold')) MOPEN=e.target.open; },true);
 $('#detail').addEventListener('click',async e=>{
   const t=teamOf(SEL); if(!t) return; const d=draftFor(t);
   const b=e.target.closest('[data-act]'); if(!b) return; const act=b.dataset.act;
   if(act==='save'){ await commitDraft(); }
   else if(act==='cancel'){ DR=null; renderAll(); }
+  else if(act==='asReset'){ d.ops.assign=null; mark(); renderDetail(); }
   else if(act==='golfAdd'){ const last=d.golf.slice().sort((a,c)=>String(a.play_date||'').localeCompare(String(c.play_date||''))).slice(-1)[0]; const ds2=last?addDays(last.play_date,1):t.dep; d.golf.push({id:TMP--,event_seq:t.seq,play_date:ds2,sort:d.golf.length,_ph:true}); renderDetail(); }
   else if(act==='golfDel'){ const tr=b.closest('[data-gid]'); const id=Number(tr.dataset.gid); const i=d.golf.findIndex(r=>r.id===id); if(i>=0){ const ph=!!d.golf[i]._ph; if(id>0) d.golfDel.push(id); d.golf.splice(i,1); if(!ph) mark(); renderDetail(); } }
   else if(act==='dispAdd'){ d.disp.push({id:TMP--,event_seq:t.seq,trip_date:t.dep,leg:'other',depart_time:'',staff:d.ops.staff||null}); mark(); renderDetail(); }
@@ -1165,7 +1233,7 @@ function printList(){
 function loadExcelJS(){ if(window.ExcelJS) return Promise.resolve(window.ExcelJS); return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js'; s.onload=()=>res(window.ExcelJS); s.onerror=()=>rej(new Error('ExcelJS load')); document.head.appendChild(s); }); }
 function hotelListData(t){ const o=ops(t.seq), h=hotelById(o.hotel_id);
   return SZCore.partnerHotelList({ seq:t.seq, rep:t.rep, pax:t.pax, from:t.dep, to:t.arr, agency:agencyOf(t) }, t.members||[],
-    { hotel:(h?(h.name_ja||h.name_ko):'')||o.hotel_note||'', rooms:{ twin:o.twin||0, single:o.single||0, triple:o.triple||0 }, staff:o.staff||'' }); }
+    { hotel:(h?(h.name_ja||h.name_ko):'')||o.hotel_note||'', rooms:{ twin:o.twin||0, single:o.single||0, triple:o.triple||0 }, staff:o.staff||'', rooming:canAssign()?roomingOf(t,o).of:null }); }
 async function downloadHotelList(t){
   if(!(t.members||[]).length){ toast(tx('hotelListNone'),'warn'); return; }
   const d=hotelListData(t);
@@ -1177,21 +1245,29 @@ async function downloadHotelList(t){
     d.meta.forEach(([k,v])=>{ const r=ws.addRow([k,v]); r.getCell(1).font={ bold:true }; ws.mergeCells(r.number,2,r.number,N); });
     ws.addRow([]);
     const hr=ws.addRow(d.head); hr.font={ bold:true }; hr.eachCell(c=>{ c.fill={ type:'pattern', pattern:'solid', fgColor:{ argb:'FFE7ECE0' } }; c.border=box; c.alignment={ horizontal:'center', vertical:'middle' }; });
-    d.rows.forEach(row=>{ const r=ws.addRow(row); r.eachCell({ includeEmpty:true },(c,i)=>{ c.border=box; if([1,5,6,8,9,10].includes(i)) c.alignment={ horizontal:'center' }; }); });
-    [6,14,16,16,6,12,14,14,9,9,10].forEach((w,i)=>{ ws.getColumn(i+1).width=w; });
+    const HW={'No.':6,'部屋':11,'氏名（韓国語）':14,'姓（ローマ字）':16,'名（ローマ字）':16,'性別':6,'生年月日':12,'旅券番号':14,'旅券有効期限':14,'発行国':9,'国籍':9,'備考':10}, HC=new Set(['No.','部屋','性別','生年月日','旅券有効期限','発行国','国籍']);   // 열 이름으로 폭·가운데 정렬(「部屋」 열이 끼어도 안 밀린다)
+    d.rows.forEach(row=>{ const r=ws.addRow(row); r.eachCell({ includeEmpty:true },(c,i)=>{ c.border=box; if(HC.has(d.head[i-1])) c.alignment={ horizontal:'center' }; }); });
+    d.head.forEach((hn,i)=>{ ws.getColumn(i+1).width=HW[hn]||12; });
     const buf=await wb.xlsx.writeBuffer(); const blob=new Blob([buf],{ type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=d.file; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),3000);
-    if(d.missing.passport) toast(tx(HAS_PASSPORT?'hotelListBlank':'hotelListNoCol',d.missing.passport),'warn'); else toast(tx('hotelListDone',d.rows.length));
+    const R=canAssign()?roomingOf(t):null, nAuto=(R&&roomAmbiguous(R))?Object.keys(R.auto).length:0;   // 누가 어느 방인지 사람이 정하지 않은 인원 — 명단 순으로 넣은 것이라 보내기 전에 확인
+    if(d.missing.passport) toast(tx(HAS_PASSPORT?'hotelListBlank':'hotelListNoCol',d.missing.passport)+(nAuto?' · '+tx('hotelListAuto',nAuto):''),'warn'); else if(nAuto) toast(tx('hotelListDone',d.rows.length)+' · '+tx('hotelListAuto',nAuto),'warn'); else toast(tx('hotelListDone',d.rows.length));
   }catch(e){ toast(tx('hotelListFail')+': '+((e&&e.message)||e),'err'); }
 }
 function printRoster(t){
-  const P=tx('pv'), o=ops(t.seq), h=hotelById(o.hotel_id), g=golf(t.seq).filter(r=>r.course_id||r.course_note);
-  const trs=t.members.map(m=>`<tr><td class="c">${m.seq_in_team}</td><td><b>${esc(m.name_en||'')}</b>${m.name_kr?`<small>${esc(m.name_kr)}</small>`:''}</td><td class="c">${esc(m.gender||'')}</td><td></td></tr>`).join('');
-  return popup(`roster_${t.seq}`, `@page{size:A4 portrait;margin:14mm} td,th{font-size:10.5pt;padding:2mm 2.5mm} .meta{display:grid;grid-template-columns:auto 1fr;gap:1mm 6mm;font-size:10.5pt;margin:3mm 0 5mm} .meta b{color:#333}`,
+  const P=tx('pv'), o=ops(t.seq), h=hotelById(o.hotel_id), g=golf(t.seq).filter(r=>r.course_id||r.course_note), as=canAssign()&&t.members.length;
+  const R=as?roomingOf(t,o):null, G=as?groupingOf(t,o):null, rl=k=>SZCore.partnerRoomLabel(k,'ja'), byId={}; (G?G.teams:[t]).forEach(x=>(x.members||[]).forEach(m=>{ byId[m.id]=m; }));
+  const en=id=>{ const m=byId[id]; return m?esc(m.name_en||m.name_kr||''):''; };
+  const trs=t.members.map(m=>`<tr><td class="c">${m.seq_in_team}</td><td><b>${esc(m.name_en||'')}</b>${m.name_kr?`<small>${esc(m.name_kr)}</small>`:''}</td><td class="c">${esc(m.gender||'')}</td>${as?`<td class="c">${esc(rl(R.of[m.id])||'')}</td><td class="c">${G.of[m.id]||''}</td>`:''}<td></td></tr>`).join('');
+  //  部屋割り・組合せ — 화면 명단에서 정한 것(지정 + 나머지 명단 순). 호텔·골프장에 그대로 보낼 수 있게 이름을 방·조별로 묶어 적는다. 조 순서 = 티타임 순서.
+  const blocks=as?`<div class="as"><h3>${esc(P.rooming)}</h3>${R.slots.map(x=>`<div><b>${esc(rl(x.key))}</b>${x.ids.map(en).join(' ／ ')||'—'}</div>`).join('')}</div>
+     <div class="as"><h3>${esc(P.pairing)}</h3>${G.groups.map(x=>`<div><b>${x.no}${esc(P.grp)}</b>${x.ids.map(en).join(' ／ ')||'—'}</div>`).join('')}</div>`:'';
+  return popup(`roster_${t.seq}`, `@page{size:A4 portrait;margin:14mm} td,th{font-size:10.5pt;padding:2mm 2.5mm} .meta{display:grid;grid-template-columns:auto 1fr;gap:1mm 6mm;font-size:10.5pt;margin:3mm 0 5mm} .meta b{color:#333} .as{margin-top:5mm;font-size:10.5pt;break-inside:avoid} .as h3{font-size:11pt;margin:0 0 1.5mm;border-bottom:1px solid #333;padding-bottom:1mm} .as div{padding:.8mm 0} .as b{display:inline-block;min-width:22mm}`,
     `<h1>${esc(P.roster)} <small>${esc(t.rep)} 様 · ${t.pax}名</small></h1>
      <div class="meta"><b>${esc(P.period)}</b><span>${esc(t.dep)}（${esc(wd(t.dep))}）〜 ${esc(t.arr)}（${esc(wd(t.arr))}） ${nightsOf(t).length}${esc(P.nights)}</span><b>${esc(P.agency)}</b><span>${esc(agencyOf(t))}</span>
        <b>${esc(P.hotel)}</b><span>${esc(hotelName(h)||o.hotel_note||'—')} ${esc(roomsText(o))}</span><b>${esc(P.golf)}</b><span>${g.map(r=>`${esc(mmdd(r.play_date))} ${esc(courseName(courseById(r.course_id))||r.course_note||'')} ${esc(r.tee_time||'')}`).join('<br>')||'—'}</span><b>${esc(P.staff)}</b><span>${esc(o.staff||'')}</span></div>
-     <table><thead><tr><th>${esc(P.no)}</th><th>${esc(P.name)}</th><th>${esc(P.gender)}</th><th>${esc(P.note)}</th></tr></thead><tbody>${trs}</tbody></table>
+     <table><thead><tr><th>${esc(P.no)}</th><th>${esc(P.name)}</th><th>${esc(P.gender)}</th>${as?`<th>${esc(P.room)}</th><th>${esc(P.grp)}</th>`:''}<th>${esc(P.note)}</th></tr></thead><tbody>${trs}</tbody></table>
+     ${blocks}
      <div class="ft">${esc(P.printed)} ${new Date().toLocaleString('ja-JP')}</div>`);
 }
 // 配車表(그날, 차량별) — 「월간 가동 현황」 송영 띠의 칸을 누르면 그날 치를 인쇄한다. 저장하지 않은 자동 배차도 실린다(「自動」 표기).

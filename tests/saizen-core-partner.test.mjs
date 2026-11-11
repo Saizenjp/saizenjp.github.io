@@ -357,3 +357,79 @@ test('partnerAgency·partnerRemarkPlan — 실제 엠클릭 입력 양식(Min 20
   // 「항공 별도」만 있는 비고는 제안할 것이 없다
   assert.equal(plan('항공 별도', 4, P).empty, true); assert.equal(plan('항공 별도', 4, P).agency, '여행사(미기재)');
 });
+
+// ── 명단에서 객실 배정·골프 조 편성(Min 2026-11-11 「명단에서 객실 배정이나 골프 조 편성도 가능하게」 — 구마모토 시내·트라이얼) ──
+test('partnerRoomSlots·partnerRooming — 지정한 사람 먼저, 나머지는 명단 순으로 빈 자리에(트윈 → 트리플 → 싱글)', () => {
+  const slots = C.partnerRoomSlots({ twin: 2, single: 1, triple: 0 });
+  assert.deepEqual(slots.map(s => s.key), ['T1', 'T2', 'S1']);
+  assert.deepEqual(slots.map(s => s.cap), [2, 2, 1]);
+  assert.deepEqual(C.partnerRoomSlots({ twin: 1, triple: 1, single: 1 }).map(s => s.key + ':' + s.type + ':' + s.cap), ['T1:twin:2', 'R1:triple:3', 'S1:single:1']);
+  assert.deepEqual(C.partnerRoomSlots(null), []); assert.deepEqual(C.partnerRoomSlots({ twin: -1, single: 'x' }), []);
+  const ms = [11, 12, 13, 14, 15].map(id => ({ id }));
+  let r = C.partnerRooming(ms, { twin: 2, single: 1 }, null);
+  assert.deepEqual(r.of, { 11: 'T1', 12: 'T1', 13: 'T2', 14: 'T2', 15: 'S1' });
+  assert.equal(Object.keys(r.auto).length, 5); assert.deepEqual(r.over, []); assert.deepEqual(r.unplaced, []); assert.equal(r.pinned, 0);
+  assert.deepEqual(r.slots.map(s => s.ids), [[11, 12], [13, 14], [15]]);
+  // 13번을 T1 로 지정 → 자동이던 12번이 T2 로 밀린다(방 안 순서는 명단 순)
+  r = C.partnerRooming(ms, { twin: 2, single: 1 }, { 13: 'T1' });
+  assert.deepEqual(r.of, { 11: 'T1', 12: 'T2', 13: 'T1', 14: 'T2', 15: 'S1' });
+  assert.deepEqual(Object.keys(r.auto).map(Number).sort((a, b) => a - b), [11, 12, 14, 15]); assert.equal(r.pinned, 1);
+  assert.deepEqual(r.slots.map(s => s.ids), [[11, 13], [12, 14], [15]]);
+  // 싱글 지정
+  r = C.partnerRooming(ms, { twin: 2, single: 1 }, { 11: 'S1' });
+  assert.equal(r.of[11], 'S1'); assert.equal(r.of[15], 'T2'); assert.deepEqual(r.unplaced, []);
+  // 정원보다 많이 지정 → over 표시(막지 않는다), 나머지는 남는 방에
+  r = C.partnerRooming(ms, { twin: 2, single: 1 }, { 11: 'T1', 12: 'T1', 13: 'T1' });
+  assert.deepEqual(r.over, ['T1']); assert.deepEqual(r.unplaced, []); assert.equal(r.of[14], 'T2'); assert.equal(r.of[15], 'T2');
+  // 객실 수를 줄인 뒤 남은 옛 지정(없는 방)은 무시하고 자동으로
+  r = C.partnerRooming(ms, { twin: 2, single: 1 }, { 11: 'T9', 12: 'X', 99: 'T1' });
+  assert.equal(r.of[11], 'T1'); assert.ok(r.auto[11]); assert.equal(r.pinned, 0); assert.equal(r.of[99], undefined);
+  // 객실이 모자라면 못 들어간 사람(unplaced)
+  r = C.partnerRooming(ms, { twin: 1, single: 0 }, null);
+  assert.deepEqual(r.unplaced, [13, 14, 15]); assert.equal(r.of[13], '');
+  // 라벨(화면 언어별 · 호텔 제출 명단은 일본어)
+  assert.equal(C.partnerRoomLabel('T2', 'ja'), 'ツイン2'); assert.equal(C.partnerRoomLabel('T2', 'ko'), '트윈2'); assert.equal(C.partnerRoomLabel('T2', 'en'), 'Twin 2');
+  assert.equal(C.partnerRoomLabel('S1', 'ja'), 'シングル1'); assert.equal(C.partnerRoomLabel('R1', 'ja'), 'トリプル1'); assert.equal(C.partnerRoomLabel('R1', 'ko'), '트리플1');
+  assert.equal(C.partnerRoomLabel('', 'ja'), ''); assert.equal(C.partnerRoomLabel('Z9', 'ja'), '');
+});
+
+test('partnerGolfGroups — 4명 1조 · 인원을 고르게 · 지정한 사람 먼저 · 조 안 순서는 명단 순', () => {
+  const ids = n => Array.from({ length: n }, (_, i) => i + 1);
+  const sizes = (n, pins) => C.partnerGolfGroups(ids(n), pins).groups.map(g => g.ids.length);
+  assert.deepEqual(sizes(0), []); assert.deepEqual(sizes(1), [1]); assert.deepEqual(sizes(4), [4]); assert.deepEqual(sizes(5), [3, 2]);
+  assert.deepEqual(sizes(6), [3, 3]); assert.deepEqual(sizes(7), [4, 3]); assert.deepEqual(sizes(8), [4, 4]); assert.deepEqual(sizes(9), [3, 3, 3]); assert.deepEqual(sizes(10), [4, 3, 3]);
+  let g = C.partnerGolfGroups(ids(8), null);
+  assert.equal(g.n, 2); assert.deepEqual(g.groups.map(x => x.ids), [[1, 2, 3, 4], [5, 6, 7, 8]]); assert.equal(g.of[5], 2); assert.equal(Object.keys(g.auto).length, 8); assert.equal(g.pinned, 0);
+  // 5번을 1조로 지정 → 4번이 2조로
+  g = C.partnerGolfGroups(ids(8), { 5: 1 });
+  assert.deepEqual(g.groups.map(x => x.ids), [[1, 2, 3, 5], [4, 6, 7, 8]]); assert.ok(!g.auto[5]); assert.ok(g.auto[4]); assert.equal(g.pinned, 1);
+  // 새 조를 만든다(8번을 3조로) → 3·3·2
+  g = C.partnerGolfGroups(ids(8), { 8: 3 });
+  assert.equal(g.n, 3); assert.deepEqual(g.groups.map(x => x.ids), [[1, 2, 3], [4, 5, 6], [7, 8]]);
+  // 한 조에 5명 지정 → over(막지 않는다)
+  g = C.partnerGolfGroups(ids(8), { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 });
+  assert.deepEqual(g.over, [1]); assert.deepEqual(g.groups.map(x => x.ids), [[1, 2, 3, 4, 5], [6, 7, 8]]);
+  // 잘못된 지정(0·글자·인원보다 큰 수·명단에 없는 사람)은 무시
+  g = C.partnerGolfGroups(ids(4), { 1: 0, 2: 'x', 3: 99, 77: 1 });
+  assert.equal(g.n, 1); assert.equal(g.pinned, 0); assert.equal(g.of[77], undefined);
+  // 문자열 숫자 지정도 받는다(jsonb 에서 돌아온 값)
+  g = C.partnerGolfGroups(ids(6), { 6: '1' });
+  assert.deepEqual(g.groups.map(x => x.ids), [[1, 2, 6], [3, 4, 5]]);
+});
+
+test('partnerHotelList — 객실 배정(rooming)을 주면 「部屋」 열이 생기고 같은 방끼리 붙는다 · 안 주면 종전 11열 그대로', () => {
+  const members = [
+    { id: 1, seq_in_team: 1, name_kr: '김대표', name_en: 'KIM DAE PYO', gender: '남', is_rep: true },
+    { id: 2, seq_in_team: 2, name_kr: '이영희', name_en: 'LEE YOUNG HEE', gender: '여' },
+    { id: 3, seq_in_team: 3, name_kr: '박무기', name_en: 'PARK MU GI', gender: '남' },
+  ];
+  const team = { seq: 30012500, rep: '김대표', pax: 3, from: '2026-12-03', to: '2026-12-06' };
+  const plain = C.partnerHotelList(team, members, { hotel: 'H', rooms: { twin: 1, single: 1 } });
+  assert.equal(plain.head.length, 11); assert.equal(plain.head[1], '氏名（韓国語）'); assert.equal(plain.rows[1][1], '이영희');
+  const r = C.partnerHotelList(team, members, { hotel: 'H', rooms: { twin: 1, single: 1 }, rooming: { 1: 'T1', 2: 'S1', 3: 'T1' } });
+  assert.equal(r.head.length, 12); assert.deepEqual(r.head.slice(0, 3), ['No.', '部屋', '氏名（韓国語）']);
+  assert.deepEqual(r.rows.map(x => [x[0], x[1], x[2]]), [[1, 'ツイン1', '김대표'], [2, 'ツイン1', '박무기'], [3, 'シングル1', '이영희']]);   // 방 순서(트윈 → 싱글) → 명단 순, No. 는 다시 매긴다
+  assert.equal(r.rows[0][11], '代表');
+  const part = C.partnerHotelList(team, members, { hotel: 'H', rooms: { twin: 1, single: 1 }, rooming: { 1: 'T1' } });   // 방이 없는 사람은 빈 칸으로 맨 뒤
+  assert.deepEqual(part.rows.map(x => [x[1], x[2]]), [['ツイン1', '김대표'], ['', '이영희'], ['', '박무기']]);
+});

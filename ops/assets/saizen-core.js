@@ -561,6 +561,13 @@
   function partnerHotelList(team, members, opts) {
     team = team || {}; opts = opts || {}; var list = (members || []).slice();
     list.sort(function (a, b) { return (Number(a.seq_in_team) || 0) - (Number(b.seq_in_team) || 0); });
+    //  객실 배정(opts.rooming = {명단 id: 방 키}) 을 주면 「部屋」 열을 넣고 같은 방끼리 붙인다(방 순서 → 명단 순). 안 주면 종전 11열 그대로.
+    var rooming = (opts.rooming && typeof opts.rooming === 'object') ? opts.rooming : null, slotIdx = {};
+    if (rooming) {
+      partnerRoomSlots(opts.rooms).forEach(function (sl, i) { slotIdx[sl.key] = i; });
+      var rk = function (m) { var k = rooming[m.id]; return (k && slotIdx[k] != null) ? slotIdx[k] : 9999; };
+      list = list.map(function (m, i) { return { m: m, i: i }; }).sort(function (a, b) { return rk(a.m) - rk(b.m) || a.i - b.i; }).map(function (x) { return x.m; });
+    }
     var rows = [], male = 0, female = 0, unknown = 0, noPass = 0, noBirth = 0;
     list.forEach(function (m, i) {
       var last = String(m.name_en_last == null ? '' : m.name_en_last).trim(), first = String(m.name_en_first == null ? '' : m.name_en_first).trim();
@@ -569,8 +576,11 @@
       var pno = String(m.passport_no == null ? '' : m.passport_no).trim(); if (!pno) noPass++;
       var birth = _hlDate(m.birth); if (!birth) noBirth++;
       var cc = partnerCountryCode(m.passport_country);
-      rows.push([i + 1, String(m.name_kr == null ? '' : m.name_kr).trim(), last, first, mf, birth, pno, _hlDate(m.passport_exp), cc, cc, m.is_rep ? '代表' : '']);
+      var row = [i + 1, String(m.name_kr == null ? '' : m.name_kr).trim(), last, first, mf, birth, pno, _hlDate(m.passport_exp), cc, cc, m.is_rep ? '代表' : ''];
+      if (rooming) { var key = rooming[m.id]; row.splice(1, 0, (key && slotIdx[key] != null) ? partnerRoomLabel(key, 'ja') : ''); }
+      rows.push(row);
     });
+    var head = HL_HEAD.slice(); if (rooming) head.splice(1, 0, '部屋');
     var from = String(team.from || '').slice(0, 10), to = String(team.to || '').slice(0, 10);
     var n = (from && to) ? Math.max(0, nightsBetween(from, to)) : 0;
     var rooms = opts.rooms || {}; var roomParts = [];
@@ -589,9 +599,59 @@
       ['提出日', _hlDate(opts.today || fmtDate(new Date()))],
       ['備考', '※ 事前提出用。旅券情報は旅行会社の登録データ（旅券記載どおり）です。']
     ];
-    return { title: '宿泊者名簿（団体）', sheet: '宿泊者名簿', meta: meta, head: HL_HEAD.slice(), rows: rows,
+    return { title: '宿泊者名簿（団体）', sheet: '宿泊者名簿', meta: meta, head: head, rows: rows,
       counts: { male: male, female: female, unknown: unknown, total: list.length }, missing: { passport: noPass, birth: noBirth },
       file: 'hotel_guest_list_' + (team.seq || 'team') + (from ? '_' + from.replace(/-/g, '') : '') + '.xlsx' };
+  }
+  // ── 명단에서 객실 배정·골프 조 편성(Min 2026-11-11 「명단에서 객실 배정이나 골프 조 편성도 가능하게」 — 구마모토 시내·트라이얼) ──
+  //  방 키 = 종류 글자 + 번호(T1·T2 트윈 / R1 트리플 / S1 싱글). 순서 = 트윈 → 트리플 → 싱글(명단 순으로 채울 때 남는 사람이 싱글).
+  //  「지정」(pins)한 사람을 먼저 놓고, 지정하지 않은 사람은 명단 순으로 빈 자리에 넣는다 — 한 사람만 옮겨도 나머지가 알아서 맞춰진다.
+  //  정원보다 많이 지정하면 막지 않고 over 로 알려 준다(화면이 빨갛게). 없는 방(객실 수를 줄인 뒤 남은 지정)은 무시.
+  var PARTNER_ROOM_TYPES = [['twin', 'T', 2], ['triple', 'R', 3], ['single', 'S', 1]];
+  var PARTNER_ROOM_LABEL = { T: { ja: 'ツイン', ko: '트윈', en: 'Twin ' }, R: { ja: 'トリプル', ko: '트리플', en: 'Triple ' }, S: { ja: 'シングル', ko: '싱글', en: 'Single ' } };
+  function partnerRoomSlots(rooms) {
+    rooms = rooms || {}; var out = [];
+    PARTNER_ROOM_TYPES.forEach(function (t) {
+      var n = Math.floor(Number(rooms[t[0]])); if (!(n > 0)) return; if (n > 99) n = 99;
+      for (var i = 1; i <= n; i++) out.push({ key: t[1] + i, type: t[0], cap: t[2], no: i });
+    });
+    return out;
+  }
+  function partnerRoomLabel(key, lang) {
+    var m = /^([TRS])(\d{1,2})$/.exec(String(key == null ? '' : key)); if (!m) return '';
+    var l = PARTNER_ROOM_LABEL[m[1]]; return (l[lang] || l.ja) + m[2];
+  }
+  function partnerRooming(members, rooms, pins) {
+    var slots = partnerRoomSlots(rooms).map(function (sl) { return { key: sl.key, type: sl.type, cap: sl.cap, no: sl.no, ids: [] }; });
+    var by = {}; slots.forEach(function (sl) { by[sl.key] = sl; });
+    var list = members || [], of = {}, auto = {}, unplaced = [], pinned = 0; pins = (pins && typeof pins === 'object') ? pins : {};
+    list.forEach(function (m) { var k = pins[m.id]; if (k && by[k]) { of[m.id] = k; pinned++; } });
+    var cnt = {}; slots.forEach(function (sl) { cnt[sl.key] = 0; }); Object.keys(of).forEach(function (id) { cnt[of[id]]++; });
+    list.forEach(function (m) {
+      if (of[m.id]) return; auto[m.id] = true;
+      for (var i = 0; i < slots.length; i++) { if (cnt[slots[i].key] < slots[i].cap) { of[m.id] = slots[i].key; cnt[slots[i].key]++; return; } }
+      of[m.id] = ''; unplaced.push(m.id);
+    });
+    list.forEach(function (m) { if (of[m.id]) by[of[m.id]].ids.push(m.id); });           // 방 안 순서 = 명단 순
+    return { slots: slots, of: of, auto: auto, pinned: pinned, unplaced: unplaced, over: slots.filter(function (sl) { return sl.ids.length > sl.cap; }).map(function (sl) { return sl.key; }) };
+  }
+  //  골프 조 — ids(명단 순, 묶음 팀이면 묶음 전체) 를 size(4)명씩. 조 수 = 올림(인원÷4) 또는 지정한 가장 큰 조 번호. 인원은 고르게(10명 → 4·3·3).
+  function partnerGolfGroups(ids, pins, opts) {
+    var list = (ids || []).slice(), N = list.length, size = Math.max(1, Number((opts || {}).size) || 4); pins = (pins && typeof pins === 'object') ? pins : {};
+    var of = {}, auto = {}, pinned = 0, G = Math.ceil(N / size);
+    list.forEach(function (id) { var v = Number(pins[id]); if (v >= 1 && v <= N && Math.floor(v) === v) { of[id] = v; pinned++; if (v > G) G = v; } });
+    var groups = []; for (var g = 1; g <= G; g++) groups.push({ no: g, ids: [] });
+    var base = G ? Math.floor(N / G) : 0, rem = G ? N % G : 0, cnt = groups.map(function () { return 0; });
+    var target = groups.map(function (x, i) { return base + (i < rem ? 1 : 0); });
+    Object.keys(of).forEach(function (id) { cnt[of[id] - 1]++; });
+    list.forEach(function (id) {
+      if (of[id]) return; auto[id] = true; var pick = -1;
+      for (var i = 0; i < G; i++) { if (cnt[i] < target[i]) { pick = i; break; } }
+      if (pick < 0) { pick = 0; for (var j = 1; j < G; j++) if (cnt[j] < cnt[pick]) pick = j; }     // 지정이 몰려 목표가 다 찼으면 가장 적은 조로
+      of[id] = pick + 1; cnt[pick]++;
+    });
+    list.forEach(function (id) { groups[of[id] - 1].ids.push(id); });                      // 조 안 순서 = 명단 순
+    return { n: G, size: size, groups: groups, of: of, auto: auto, pinned: pinned, over: groups.filter(function (x) { return x.ids.length > size; }).map(function (x) { return x.no; }) };
   }
   function partnerRouteOf(leg) { return { in: ['airport', 'hotel'], golf_out: ['hotel', 'course'], golf_back: ['course', 'hotel'], out: ['hotel', 'airport'] }[leg] || ['', '']; }
   function partnerLegOf(from, to) { if (from === 'airport') return 'in'; if (to === 'airport') return 'out'; if (from === 'hotel' && to === 'course') return 'golf_out'; if (from === 'course' && to === 'hotel') return 'golf_back'; return 'other'; }
@@ -1632,6 +1692,7 @@
     partnerAliasList: partnerAliasList, partnerFindNames: partnerFindNames, partnerRemarkPlan: partnerRemarkPlan,
     partnerVehiclePlan: partnerVehiclePlan, partnerLegPlan: partnerLegPlan, partnerRouteOf: partnerRouteOf, partnerLegOf: partnerLegOf,
     partnerHotelList: partnerHotelList, partnerGenderMF: partnerGenderMF, partnerCountryCode: partnerCountryCode,
+    partnerRoomSlots: partnerRoomSlots, partnerRoomLabel: partnerRoomLabel, partnerRooming: partnerRooming, partnerGolfGroups: partnerGolfGroups,
     nmCodeConflict: nmCodeConflict,
     weekday: weekday,
     mdWd: mdWd,

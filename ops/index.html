@@ -48,6 +48,10 @@
   .deptboard{margin-left:8px;font-size:10.5px;font-weight:700;color:var(--text2);text-decoration:none;text-transform:none;letter-spacing:0;white-space:nowrap;background:var(--surface);border:1px solid var(--border2);border-radius:5px;padding:2px 9px}
   .deptboard:hover{border-color:var(--accent);color:var(--accent)}
   /* 새 정보 N 뱃지 */
+  /* 시간별 날씨 — 지역 줄(이름 + 가로로 넘기는 시각 칸). 좁은 화면에서는 이름을 위로 */
+  .wxrow{display:flex;align-items:center;gap:10px} .wxrow + .wxrow{border-top:1px solid var(--border);margin-top:6px;padding-top:6px}
+  .wxname{flex:0 0 104px;font-size:12px;font-weight:800;color:var(--text)} .wxdays{display:flex;gap:6px;overflow-x:auto;flex:1;min-width:0}
+  @media (max-width:600px){ .wxrow{display:block} .wxname{margin-bottom:2px} }
   .nbadge{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;padding:0 4px;margin-left:5px;font-size:9.5px;font-weight:800;color:#fff;background:#b5402f;border-radius:4px;line-height:1;vertical-align:middle}
 
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(244px,1fr));gap:10px}
@@ -102,7 +106,7 @@
   .foot b{color:var(--text2)}
   .foot code{font-family:var(--mono);font-size:11px;background:var(--surface3);padding:1px 6px;border-radius:4px;color:var(--text2)}
 </style>
-<link rel="stylesheet" href="assets/saizen-ops.css?v=38.3">
+<link rel="stylesheet" href="assets/saizen-ops.css?v=38.4">
 </head>
 <body>
 <div class="topbar so-bar">
@@ -155,13 +159,15 @@
     <span style="flex:none;font-size:12px;color:var(--muted);white-space:nowrap" data-i18n="ix_boardOpen"></span>
   </a>
 
-  <!-- 시간별 날씨(아소) — Open-Meteo 공개 API(키 불필요). 지금부터 24시간(자정 넘어 내일까지 이어짐) -->
+  <!-- 시간별 날씨 — 야마나미(아소) · 구마모토 시내 두 곳(Min 2026-11-11 「구마모토 시내 지역도 포함 · 두 날씨 모두 볼 수 있게」).
+       Open-Meteo 공개 API(키 불필요). 지금부터 24시간(자정 넘어 내일까지 이어짐). 두 줄의 시각 칸은 같은 자리에 맞춰 함께 움직인다. -->
   <div id="wx-strip" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:10px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <b style="font-size:12.5px;color:var(--accent)" data-i18n="ix_wxTitle">🗻 야마나미 시간별 날씨</b>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <b style="font-size:12.5px;color:var(--accent)" data-i18n="ix_wxTitle">시간별 날씨</b>
       <span id="wx-meta" style="font-size:11px;color:var(--muted)"></span>
     </div>
-    <div id="wx-days" style="display:flex;gap:6px;overflow-x:auto"></div>
+    <div class="wxrow" id="wx-row-0" style="display:none"><div class="wxname" data-i18n="ix_wxYama">야마나미(아소)</div><div class="wxdays" id="wx-days-0"></div></div>
+    <div class="wxrow" id="wx-row-1" style="display:none"><div class="wxname" data-i18n="ix_wxKuma">구마모토 시내</div><div class="wxdays" id="wx-days-1"></div></div>
   </div>
 
   <!-- 데이터 등록 — 시스템의 출발점(최상단 강조) -->
@@ -528,8 +534,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/saizen-core.js?v=67"></script>
-<script src="assets/saizen-ops.js?v=38.3"></script>
+<script src="assets/saizen-core.js?v=68"></script>
+<script src="assets/saizen-ops.js?v=38.4"></script>
 <script>
 // ── 랜딩 게이트: 미로그인=안내 / 로그인=허용 카드만 표시 ──
 (function(){
@@ -778,23 +784,19 @@
   else setTimeout(gate,60);
 })();
 
-// ── 오늘 시간별 날씨(야마나미 리조트, 아소) — Open-Meteo 공개 API(키·인증 불필요). 라운딩 참고 ──
+// ── 시간별 날씨 — 야마나미(아소) · 구마모토 시내(Min 2026-11-11 「두 날씨 모두 볼 수 있게」). Open-Meteo 공개 API(키·인증 불필요). 라운딩·송영 참고 ──
+//   지역마다 따로 받아 온다 — 한 곳이 실패해도 다른 곳은 보인다(둘 다 실패하면 띠를 숨긴다).
 (function(){
-  var LAT=32.95, LON=131.12;   // 아소 야마나미 리조트 인근
-  function wmap(c){
-    if(c===0) return ['☀️','맑음']; if(c===1||c===2) return ['🌤️','대체로 맑음']; if(c===3) return ['☁️','흐림'];
-    if(c===45||c===48) return ['🌫️','안개']; if(c>=51&&c<=57) return ['🌦️','이슬비'];
-    if(c>=61&&c<=67) return ['🌧️','비']; if(c>=71&&c<=77) return ['🌨️','눈'];
-    if(c>=80&&c<=82) return ['🌧️','소나기']; if(c>=85&&c<=86) return ['🌨️','눈']; if(c>=95) return ['⛈️','뇌우'];
-    return ['·',''];
-  }
+  var PLACES=[{lat:32.95, lon:131.12}, {lat:32.803, lon:130.708}];   // [0] 아소 야마나미 리조트 인근 · [1] 구마모토 시내(시청·구마모토성 부근 = 시내 호텔이 모인 곳)
+  var ICON=['☀️','🌤️','☁️','🌫️','🌦️','🌧️','🌨️','🌧️','⛈️'];
+  var WORD={ ja:['快晴','晴れ','曇り','霧','霧雨','雨','雪','にわか雨','雷雨'], ko:['맑음','대체로 맑음','흐림','안개','이슬비','비','눈','소나기','뇌우'], en:['Clear','Mostly clear','Cloudy','Fog','Drizzle','Rain','Snow','Showers','Thunderstorm'] };
+  function widx(c){ if(c===0) return 0; if(c===1||c===2) return 1; if(c===3) return 2; if(c===45||c===48) return 3; if(c>=51&&c<=57) return 4; if(c>=61&&c<=67) return 5; if(c>=71&&c<=77) return 6; if(c>=80&&c<=82) return 7; if(c>=85&&c<=86) return 6; if(c>=95) return 8; return -1; }
+  function curLang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+  var DATA=[null,null];
   //  지금 시각부터 24시간 — 자정을 넘기면 그대로 내일로 이어진다(Min 2026-08).
   //  예전엔 오늘 것만 받아서 저녁이면 칸이 서너 개만 남고 밤에는 아예 비었다.
-  var url='https://api.open-meteo.com/v1/forecast?latitude='+LAT+'&longitude='+LON
-    +'&hourly=temperature_2m,weather_code,precipitation_probability&timezone=Asia%2FTokyo&forecast_days=2';
-  fetch(url).then(function(r){return r.json();}).then(function(d){
-    if(!d||!d.hourly||!d.hourly.time) return;
-    var H=d.hourly;
+  function stripHTML(H){
+    var words=WORD[curLang()]||WORD.ja;
     // 리조트(JST) 기준 지금 — 보는 사람 시간대와 무관
     var jst=new Date().toLocaleString('sv-SE',{timeZone:'Asia/Tokyo'});   // 'YYYY-MM-DD HH:MM:SS'
     var fromKey=jst.slice(0,10)+'T'+jst.slice(11,13);                     // 이 시각부터
@@ -809,21 +811,37 @@
           +'<div style="font-size:10px;color:var(--muted);white-space:nowrap">'+(+day.slice(5,7))+'/'+(+day.slice(8,10))+'</div></div>';
       }
       prevDay=day; n++;
-      var w=wmap(H.weather_code[i]), cur=(n===1);
+      var wi=widx(H.weather_code[i]), cur=(n===1);
       var pp=H.precipitation_probability?H.precipitation_probability[i]:null;
       html+='<div style="flex:0 0 auto;min-width:62px;text-align:center;padding:6px 4px;border-radius:8px;'
         +(cur?'background:var(--accentSoft,#e4ecd9);':'')+'">'
         +'<div style="font-size:11px;color:var(--text2);font-weight:'+(cur?'800':'600')+'">'+(cur?t('ix_wxNow'):(hh+t('ix_wxHour')))+'</div>'
-        +'<div style="font-size:19px;line-height:1.5" title="'+w[1]+'">'+w[0]+'</div>'
+        +'<div style="font-size:19px;line-height:1.5" title="'+(wi<0?'':words[wi])+'">'+(wi<0?'·':ICON[wi])+'</div>'
         +'<div style="font-size:12px"><b>'+Math.round(H.temperature_2m[i])+'°</b></div>'
         +'<div style="font-size:10px;color:#1a4d8f">💧'+(pp==null?'-':pp+'%')+'</div></div>';
     }
-    if(!html) html='<div style="padding:10px;color:var(--muted);font-size:12px">'+t('ix_wxNone')+'</div>';
-    var days=document.getElementById('wx-days'); if(!days) return;
-    days.innerHTML=html;
+    return html||('<div style="padding:10px;color:var(--muted);font-size:12px">'+t('ix_wxNone')+'</div>');
+  }
+  function draw(){
+    var any=false;
+    PLACES.forEach(function(p,i){ var row=document.getElementById('wx-row-'+i), el=document.getElementById('wx-days-'+i); if(!row||!el) return;
+      if(!DATA[i]){ row.style.display='none'; return; } el.innerHTML=stripHTML(DATA[i]); row.style.display=''; any=true; });
     var mt=document.getElementById('wx-meta'); if(mt) mt.innerHTML=t('ix_wxProvider');   // 후리가나 루비 렌더
-    document.getElementById('wx-strip').style.display='';
-  }).catch(function(){ /* 날씨 로드 실패는 조용히 숨김 */ });
+    var st=document.getElementById('wx-strip'); if(st) st.style.display=any?'':'none';
+  }
+  PLACES.forEach(function(p,i){
+    var url='https://api.open-meteo.com/v1/forecast?latitude='+p.lat+'&longitude='+p.lon
+      +'&hourly=temperature_2m,weather_code,precipitation_probability&timezone=Asia%2FTokyo&forecast_days=2';
+    fetch(url).then(function(r){return r.json();}).then(function(d){ if(!d||!d.hourly||!d.hourly.time) return; DATA[i]=d.hourly; draw(); })
+      .catch(function(){ /* 그 지역 줄만 빠진다(조용히) */ });
+  });
+  // 두 줄은 같은 시각이 같은 자리 — 한 줄을 넘기면 다른 줄도 같이 움직인다
+  var a=document.getElementById('wx-days-0'), b=document.getElementById('wx-days-1');
+  function sync(x,y){ x.addEventListener('scroll',function(){ if(Math.abs(y.scrollLeft-x.scrollLeft)>1) y.scrollLeft=x.scrollLeft; }); }
+  if(a&&b){ sync(a,b); sync(b,a); }
+  // 언어를 바꾸면 「지금·내일·시」와 날씨 낱말을 다시 그린다(받아 둔 데이터로 — 재조회 없음)
+  var prev=window.onSaizenLangChange;
+  window.onSaizenLangChange=function(){ if(typeof prev==='function'){ try{ prev.apply(this,arguments); }catch(e){} } draw(); };
 })();
 </script>
 </body>
