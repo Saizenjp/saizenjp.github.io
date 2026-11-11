@@ -351,6 +351,8 @@
   //   ① 예약리스트에 여행사/거래처/판매처 열이 있으면 그 값(explicit)
   //   ② 비고·현지비고의 「여행사: ○○」「여행사(○○)」「여행사 ○○투어」「[○○투어]」「○○여행사 …」 — 그 예약에만 적은 것이라 상품명보다 먼저
   //   ③ 상품명의 같은 형태(예 「여행사 우속투어 [2박 3일] 구마모토 시내 호텔 + 3색 골프」·「여행사: SOM 트래블 [3박 4일] …」)
+  //   ③-2 상품명에 「여행사」 표시가 있고 **끝에 「 - ○○투어」**가 붙은 꼴(Min 2026-11-11 실제 엠클릭 상품명
+  //        「여행사 [3박 4일] 구마모토 시내 호텔 + 3색 골프 - 우석투어」) → 그 이름. 끝의 (KE) 같은 괄호는 떼고 본다.
   //   ④ 상품명에 「여행사」만 있으면 '여행사(미기재)'(어느 여행사인지 적어 달라는 표시) ⑤ 그 외 '메리트투어'(엠클릭 기본 판매처).
   //   「여행사」라는 말이 없는 「○○투어」 토큰은 보지 않는다 — 「시즈노야도 료칸 골프 투어」처럼 상품명 자체에 「투어」가 흔해 오판한다.
   var AGENCY_SUFFIX = '(?:투어|여행사|여행|트래블|관광|ツアー|トラベル|観光|旅行|tour|travel)';
@@ -371,14 +373,28 @@
     var name = tok.join(' ');
     return /^여행사$/.test(name) ? '' : name;
   }
+  //  상품명 끝의 「 - ○○투어」 — 「여행사」 표시가 있는 상품명에서만, 이름에 투어·여행사·트래블·관광이 들어 있을 때만(「- 대한항공」「- 골프 투어」는 아님).
+  var AG_MARK = /(^|[\s\[(（])여행사(?![가-힣A-Za-z])/;
+  var AG_TAIL_RE = /[-–—―−－]\s*([^-–—―−－+\/|,，、()（）\[\]]{2,24})$/;
+  var AG_TAIL_NO = /골프|호텔|리조트|숙박|료칸|항공|포함|\d\s*(?:박|일|색)/;
+  var AG_SUFFIX_ANY = new RegExp(AGENCY_SUFFIX, 'i'), AG_SUFFIX_ONLY = new RegExp('^' + AGENCY_SUFFIX + '$', 'i');
+  function _agencyTail(pn) {
+    pn = String(pn == null ? '' : pn); if (!AG_MARK.test(pn)) return '';
+    var s = pn.replace(/\s+$/, '');
+    for (var k = 0; k < 3; k++) s = s.replace(/\s*[(（\[][^()（）\[\]]*[)）\]]$/, '');   // 끝의 (KE)·(TW/KE)·[특가] 같은 괄호 덩어리는 떼고 본다
+    var m = s.match(AG_TAIL_RE); if (!m) return '';
+    var name = m[1].trim().replace(/\s+/g, ' ');
+    if (!AG_SUFFIX_ANY.test(name) || AG_SUFFIX_ONLY.test(name) || AG_TAIL_NO.test(name)) return '';
+    return name;
+  }
   function partnerAgency(o) {
     o = o || {};
     var ex = String(o.explicit == null ? '' : o.explicit).trim(); if (ex) return ex;
     var a = _agencyIn([o.remark, o.remark_local].map(function (x) { return String(x == null ? '' : x); }).join('\n'));
     if (a) return a;
     var pn = String(o.product_name == null ? (o.product == null ? '' : o.product) : o.product_name);
-    a = _agencyIn(pn); if (a) return a;
-    if (/(^|[\s\[(（])여행사(?![가-힣A-Za-z])/.test(pn)) return '여행사(미기재)';
+    a = _agencyIn(pn) || _agencyTail(pn); if (a) return a;
+    if (AG_MARK.test(pn)) return '여행사(미기재)';
     return '메리트투어';
   }
 
@@ -438,22 +454,47 @@
     if (ref && cand < ref) { var c2 = fmtDate(new Date(y + 1, m - 1, d)); if (nightsBetween(ref, c2) <= 60) cand = c2; }   // 연말을 넘기는 체류(12/28 입국의 「1/2」)
     return cand;
   }
-  //  비고(엠클릭 비고+현지비고) → 수배 제안. ctx={pax, hotels[], courses[], segFrom, segTo}
+  //  비고(엠클릭 비고+현지비고) → 수배 제안. text=[비고, 현지비고](같은 글이면 한 번만 읽는다) · ctx={pax, hotels[], courses[], segFrom, segTo, product}
   //   호텔   = 등록표 이름·별칭이 처음 나오는 것(둘 이상이면 hotels 에 전부, 화면이 「확인」)
   //   객실   = singleRequested(싱글룸 N·전원 싱글·이름 나열·홀수 1명) + 트리플(「트리플 N」·「3인 1실」) → 나머지 2명씩 트윈, 남는 1명은 싱글(odd)
   //   골프장 = 적힌 순서대로 날짜별 1라운드. 날짜는 이름 앞의 「11/5」「2일차」「둘째날」(또는 바로 뒤의 M/D)을 읽고, 없으면 이어서 하루씩 —
   //            코스 수가 박수보다 적으면 도착 다음 날부터(4박 3코스 → 2·3·4일차), 같거나 많으면 도착일부터. 추정한 날짜는 explicit=false(화면 「날짜 확인」).
-  //   여행사 = partnerAgency(비고 「여행사: ○○」·「○○투어」 → 상품명 「여행사 ○○투어 [2박 3일] …」(ctx.product_name/product))
+  //   여행사 = partnerAgency(비고 「여행사: ○○」·「○○투어」 → 상품명 「여행사 ○○투어 [2박 3일] …」·「여행사 [3박 4일] … - ○○투어」(ctx.product_name/product))
+  //            ※ 서명(sig)에는 상품명 앞쪽 꼴만 넣는다(끝의 「- ○○투어」는 넣지 않음 — 여행사는 등록 때마다 partner_bookings.agency 로 다시 계산되므로 서명이 흔들릴 이유가 없다)
   //   sig    = 비고+인원 서명(partner_ops.auto_sig 에 저장 → 비고가 바뀌면 「비고 변경」)
+  //  비고와 현지비고에 **같은 글을 두 번** 적는 입력 습관(Min 2026-11-11 실제 등록분 20건 전부) — 그대로 이어 붙여 읽으면 골프장이 두 번 잡혀 라운드가 두 배가 된다.
+  //  → 읽는 글(parse)은 한쪽만(같거나 한쪽이 다른 쪽을 품으면 긴 쪽), 서명(sig)은 종전처럼 이어 붙인 글 그대로(이미 저장된 auto_sig 가 흔들리지 않게).
+  //  text 는 [비고, 현지비고] 배열(권장) 또는 이어 붙인 문자열(문자열이면 「앞 절반 = 뒤 절반」일 때만 한쪽을 쓴다).
+  function _remarkParts(text) {
+    if (Array.isArray(text)) {
+      var ps = text.filter(Boolean).map(String), joined = ps.join('\n');
+      var qs = ps.filter(function (x) { return x.trim(); });
+      if (qs.length === 2) {
+        var a = _pnorm(qs[0]), b = _pnorm(qs[1]);
+        if (a && b) { if (a.indexOf(b) >= 0) return { sig: joined, parse: qs[0] }; if (b.indexOf(a) >= 0) return { sig: joined, parse: qs[1] }; }
+      }
+      return { sig: joined, parse: joined };
+    }
+    var txt = String(text == null ? '' : text);
+    for (var i = txt.indexOf('\n'); i >= 0; i = txt.indexOf('\n', i + 1)) {
+      var x = _pnorm(txt.slice(0, i)); if (x && x === _pnorm(txt.slice(i + 1))) return { sig: txt, parse: txt.slice(0, i) };
+    }
+    return { sig: txt, parse: txt };
+  }
   function partnerRemarkPlan(text, ctx) {
-    ctx = ctx || {}; var txt = String(text == null ? '' : text);
+    ctx = ctx || {}; var rp = _remarkParts(text), txt = rp.parse;
     var pax = Number(ctx.pax) || 0, segFrom = String(ctx.segFrom || '').slice(0, 10), segTo = String(ctx.segTo || '').slice(0, 10);
     var hh = partnerFindNames(txt, ctx.hotels || []), ch = partnerFindNames(txt, ctx.courses || []);
     var hotel = hh.length ? hh[0] : null;
     var hotelIds = []; hh.forEach(function (h) { if (hotelIds.indexOf(h.id) < 0) hotelIds.push(h.id); });
     //  「싱글룸 2」「싱글: 2」처럼 단위 없는 수(Min 비고 양식)를 먼저 본다 — 야마나미 비고용 singleRequested 는 단위 없는 수를 세지 않고 이름 나열로 오독할 수 있다
     var sm = txt.match(/(싱글|シングル|single)\s*(?:룸|room|ルーム)?\s*[:：]?\s*(\d{1,2})(?![\/:\d])/i);
-    var sg = (sm && Number(sm[2]) > 0 && Number(sm[2]) <= 30) ? { n: Number(sm[2]), how: 'num' } : singleRequested(txt, pax);
+    //  「1인 1실」(싱글이라는 말 없이 적은 꼴, Min 2026-11-11 양식 「워싱턴 (2인 1실)」의 짝) — 「1인 1실 2방」이면 그 수, 수가 없고 「2인 1실」도 없으면 전원
+    var so = txt.match(/(?:^|[^\d])1\s*인\s*1\s*실(?:\s*[,:：]?\s*(\d{1,2})\s*(?:방|실|룸|개))?/);
+    var solo = !!so && !sm && !SG_WORD.test(txt);
+    var sg = (sm && Number(sm[2]) > 0 && Number(sm[2]) <= 30) ? { n: Number(sm[2]), how: 'num' }
+      : (solo && so[1] && Number(so[1]) > 0) ? { n: Number(so[1]), how: 'num' }
+      : (solo && !/2\s*인\s*1\s*실/.test(txt)) ? { n: pax, how: 'all' } : singleRequested(txt, pax);
     var single = Math.min(pax, Math.max(0, Number(sg.n) || 0));
     var tm = txt.match(/트리플\s*(\d{1,2})|(\d{1,2})\s*트리플|トリプル\s*(\d{1,2})|(\d{1,2})\s*トリプル/);
     var triple = tm ? Number(tm[1] || tm[2] || tm[3] || tm[4]) : (SG_TRIPLE.test(txt) ? 1 : 0);
@@ -480,7 +521,7 @@
     return { hotelId: hotel ? hotel.id : null, hotelName: hotel ? (hotel.row.name_ko || hotel.row.name_ja || hotel.row.name || '') : '', hotels: hotelIds,
       single: single, twin: twin, triple: triple, singleHow: sg.how, odd: odd === 1,
       golf: golf, golfAssumed: assumed, agency: agency, agencyExplicit: agency !== '메리트투어' && agency !== '여행사(미기재)',
-      empty: !hotel && !golf.length && !SG_WORD.test(txt) && !tm, sig: _psig(t + '|' + pax + (pa ? '|' + pa : '')) };
+      empty: !hotel && !golf.length && !SG_WORD.test(txt) && !tm && !solo, sig: _psig(_pnorm(rp.sig) + '|' + pax + (pa ? '|' + pa : '')) };
   }
   //  송영 차량 배분 — pax 명을 차량 등록표(capacity·sort)로. 20명 미만=하이에스(정원<20)를 sort 순으로 채우고 모자라면 큰 차, 20명 이상=큰 차(정원 큰 순) 먼저.
   //  → {vehicles:[{vehicleId,name,capacity,pax}], short(못 태운 인원)}. 8명=하이에스 1대 · 12명=2대 · 20명=마이크로버스 1대.

@@ -286,3 +286,55 @@ test('partnerBrand — 2027-07 예약리스트 상품명(구마모토 시내·�
     '아소 프레스티지 야마나미CC 4박 5일', '히노키 스테이 야마나미CC 4박 5일', '온천호텔 숙박 스가다이라CC 7박 8일', '호텔 숙박 포틴힐즈CC 7박 8일', '벳푸 아키바 리조트 2색 골프투어 3박 4일'])
     assert.equal(C.partnerBrand(n), '', n);
 });
+
+test('partnerAgency·partnerRemarkPlan — 실제 엠클릭 입력 양식(Min 2026-11-11): 상품명 끝 「 - ○○투어」 · 비고 「LGC번호 / 호텔(트윈, N방)」', () => {
+  const P = '여행사 [3박 4일] 구마모토 시내 호텔 + 3색 골프';
+  assert.equal(C.partnerAgency({ product_name: P + ' - 우석투어' }), '우석투어');
+  assert.equal(C.partnerAgency({ product_name: '여행사 [2박 3일] 구마모토 시내 호텔 + 2색 골프 - 오너스투어' }), '오너스투어');
+  assert.equal(C.partnerAgency({ product: P + ' - SOM투어' }), 'SOM투어');
+  assert.equal(C.partnerAgency({ product_name: P + ' - 우석투어 (KE)' }), '우석투어');                 // 끝의 괄호는 떼고 본다
+  assert.equal(C.partnerAgency({ product_name: P + ' – SOM 트래블' }), 'SOM 트래블');                   // en dash · 두 낱말
+  assert.equal(C.partnerAgency({ product_name: P + ' - 트라이얼투어즈' }), '트라이얼투어즈');
+  assert.equal(C.partnerAgency({ product_name: P + ' - 우석투어', remark: 'LGC0001 / 타우(트윈, 2방)', remark_local: 'LGC0001 / 타우(트윈, 2방)' }), '우석투어');
+  assert.equal(C.partnerAgency({ product_name: P + ' - 우석투어', remark: '여행사: 마스투어' }), '마스투어');   // 비고(그 예약 고유)가 먼저
+  assert.equal(C.partnerAgency({ product_name: P, remark: '항공 별도 / 여행사: 메리트투어' }), '메리트투어');   // 여행사 상품을 자사 손님이 쓴 경우
+  // 여행사로 보지 않는 꼬리 — 「여행사」 표시만 남아 미기재
+  [P, P + ' (TW/KE)', P + ' - 대한항공', P + ' - 골프 투어', P + ' - 투어', P + ' - KE', P + ' - 조식 포함 투어']
+    .forEach(n => assert.equal(C.partnerAgency({ product_name: n }), '여행사(미기재)', n));
+  // 「여행사」 표시가 없는 상품명은 끝에 ○○투어가 있어도 종전대로 메리트투어
+  assert.equal(C.partnerAgency({ product_name: '[3박 4일] 구마모토 시내 호텔 + 3색 골프 - 가을투어' }), '메리트투어');
+  assert.equal(C.partnerAgency({ product_name: '[호텔트윈] - 아소야마나미리조트호텔&골프클럽3박4일 (테스트상품)' }), '메리트투어');
+
+  const H2 = HOTELS.concat([{ id: 6, name_ko: '토요코인', name_ja: '東横INN', aliases: '토요코인,토요코,東横,toyoko' }]);
+  const plan = (txt, pax, prod) => C.partnerRemarkPlan([txt, txt].join('\n'), { pax, hotels: H2, courses: COURSES, segFrom: '2026-12-01', segTo: '2026-12-04', product: prod || (P + ' - 우석투어') });
+  const rooms = p => `T${p.twin} S${p.single} Tr${p.triple}`;
+  let p = plan('LGC0001 / 타우(트윈, 2방)', 4);
+  assert.equal(p.hotelName, '호텔 타우'); assert.equal(rooms(p), 'T2 S0 Tr0'); assert.equal(p.golf.length, 0);
+  assert.equal(p.agency, '우석투어'); assert.equal(p.agencyExplicit, true); assert.equal(p.empty, false);
+  assert.equal(rooms(plan('LGC0001 / 워싱턴(트윈, 4방)', 8)), 'T4 S0 Tr0');
+  p = plan('예약번호없어 / 토요코인(트윈,4방)', 8); assert.equal(p.hotelName, '토요코인'); assert.equal(rooms(p), 'T4 S0 Tr0');
+  assert.equal(rooms(plan('LGC0001 / 워싱턴(싱글4방) / KE', 4)), 'T0 S4 Tr0');
+  assert.equal(rooms(plan('LGC0001 / 워싱턴(싱글, 4방)', 4)), 'T0 S4 Tr0');                       // 쉼표를 넣은 꼴도 같다
+  assert.equal(rooms(plan('LGC0001 / 워싱턴(트윈 3방, 싱글 2방)', 8)), 'T3 S2 Tr0');
+  assert.equal(rooms(plan('LGC0001 / 워싱턴(트리플 1방, 트윈 1방)', 5)), 'T1 S0 Tr1');
+  assert.equal(rooms(plan('LGC0001 / 워싱턴 (2인 1실)', 2)), 'T1 S0 Tr0');
+  assert.equal(rooms(plan('LGC0001 / 워싱턴 (1인 1실)', 2)), 'T0 S2 Tr0');                         // 「싱글」이라는 말 없이 적은 1인 1실 = 전원 싱글
+  assert.equal(rooms(plan('LGC0001 / 워싱턴 (2인 1실 2방, 1인 1실 1방)', 5)), 'T2 S1 Tr0');
+  p = plan('LGC0001 / 아마넥(트윈, 2방), 후쿠오카INOUT', 4); assert.equal(p.hotelName, '아마넥 호텔'); assert.equal(rooms(p), 'T2 S0 Tr0');
+  p = plan('LGC0001 / 타우(트윈 2방) /티웨이IN,대한OUT', 4); assert.equal(p.hotelName, '호텔 타우'); assert.equal(rooms(p), 'T2 S0 Tr0');
+  // 비고와 현지비고에 같은 글을 두 번 적어도(Min 입력 습관) 골프장은 한 번만 — 이어 붙인 문자열·[비고, 현지비고] 배열 둘 다
+  const G = 'LGC0001 / 타우(트윈, 2방) / 골프장: 그랜드챔피언, 추오, 그린힐';
+  p = plan(G, 4); assert.deepEqual(p.golf.map(g => g.courseId), [1, 2, 3]); assert.deepEqual(p.golf.map(g => g.date), ['2026-12-01', '2026-12-02', '2026-12-03']);
+  const ctxA = { pax: 4, hotels: H2, courses: COURSES, segFrom: '2026-12-01', segTo: '2026-12-04', product: P + ' - 우석투어' };
+  const arr = C.partnerRemarkPlan([G, G], ctxA);
+  assert.deepEqual(arr.golf.map(g => g.courseId), [1, 2, 3]); assert.equal(arr.sig, p.sig);                 // 서명은 종전(이어 붙인 글) 그대로
+  assert.deepEqual(C.partnerRemarkPlan([G, 'LGC0001 / 타우(트윈, 2방)'], ctxA).golf.map(g => g.courseId), [1, 2, 3]);      // 한쪽이 다른 쪽을 품으면 긴 쪽
+  assert.deepEqual(C.partnerRemarkPlan(['LGC0001 / 타우(트윈, 2방)', G], ctxA).golf.map(g => g.courseId), [1, 2, 3]);
+  assert.deepEqual(C.partnerRemarkPlan(['골프장: 그랜드챔피언, 추오', '타우 / 3일차 그린힐'], ctxA).golf.map(g => g.courseId), [1, 2, 3]);   // 서로 다른 글은 둘 다 읽는다
+  assert.equal(C.partnerRemarkPlan([null, '전원 싱글룸 사용'], { pax: 4 }).sig, C.partnerRemarkPlan('전원 싱글룸 사용', { pax: 4 }).sig);   // 한쪽만 있는 팀의 서명 불변
+  assert.deepEqual(C.partnerRemarkPlan('골프장:\n추오\n추오\n그린힐', ctxA).golf.map(g => g.courseId), [2, 2, 3]);       // 같은 코스 이틀 연속(줄 단위 중복 제거는 하지 않는다)
+  // 서명은 상품명 끝 여행사로 흔들리지 않는다(등록 때마다 partner_bookings.agency 로 다시 계산)
+  assert.equal(plan('LGC0001 / 타우(트윈, 2방)', 4).sig, plan('LGC0001 / 타우(트윈, 2방)', 4, P).sig);
+  // 「항공 별도」만 있는 비고는 제안할 것이 없다
+  assert.equal(plan('항공 별도', 4, P).empty, true); assert.equal(plan('항공 별도', 4, P).agency, '여행사(미기재)');
+});
