@@ -141,7 +141,7 @@ Min 요청: 「배차 날짜별 메뉴는 없애고 수배 목록에서 같이 �
 - 검수(§3-3): `data_audit` ㉓ `partner_block_over`(블록 초과 밤 = 화면 빨간 칸 수, use_block=false 제외) · ㉔ `partner_single_norate`(팀 수기 요금·기본값·`partner_rates` 싱글 행 모두 없을 때).
 - SQL 161(2026-11-03 MCP 적용 완료): `partner_ops.use_block` · `partner_rates`(RLS 등록표와 동일) · data_audit ㉓㉔ 갱신. 화면은 미적용이어도 동작(블록 체크 잠김·옛 공통 요금표).
 - SQL 162(2026-11-03 적용 완료): `partner_hotels/courses.aliases`(별칭 seed) · `partner_ops.auto_sig` · `partner_golf.auto` · `partner_dispatch.from_pt/via_pt/to_pt`(+check). RLS·RPC 변경 없음. 화면·step1 은 미적용이어도 동작(별칭=이름만 · 서명/auto 없이 · 구간은 leg 로).
-- SQL 166(파일 — 적용은 Min 승인 뒤): `partner_ops.quote_fix`(견적 수정값) · `partner_courses.block_groups/block_from/block_to`(골프장 블록). 컬럼만 추가 — RLS·RPC 변경 없음. 화면은 미적용이어도 동작(견적 수정 칸·골프장 블록 칸 잠김).
+- SQL 166(2026-11-11 MCP 적용 완료 — 컬럼 4·check 2·정책 수·anon secdef 15 불변): `partner_ops.quote_fix`(견적 수정값) · `partner_courses.block_groups/block_from/block_to`(골프장 블록). 컬럼만 추가 — RLS·RPC 변경 없음. 미적용 DB 에서도 화면은 동작(견적 수정 칸·골프장 블록 칸 잠김).
 
 ## 4. 파일 대조 결과(수치 없이)
 
