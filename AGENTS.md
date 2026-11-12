@@ -5,8 +5,7 @@
 ## 무엇인가
 일본 법인 SaiZen이 운영하는 아소 야마나미 리조트(구마모토)의 현장 운영 자동화. 한국 골프투어 패키지를 받아 네임택·항공커버·송영·숙박·식사·골프·정산 산출물을 자동 생성한다. 현장=일본어, 고객 소통=한국어. **응답은 한국어 존댓말.**
 
-## 구조 (두 독립 축)
-- `app/index.html` — 단일 HTML, **localStorage** 기반 인쇄·출력. 외부 라이브러리 CDN.
+## 구조 (축은 `/ops/` 하나 — 레거시 `/app/` 은 2026-08 에 삭제)
 - `ops/` — **Supabase** 기반 다중 페이지 Hub. 공유 `ops/assets/saizen-ops.{js,css}` + 순수 도메인 `ops/assets/saizen-core.js`. 페이지는 `ops/hub/*.html`, 마이그레이션은 `ops/hub/sql/NN_*.sql`.
 - `index.html`(루트) → `./ops/` 리다이렉트(게이트 없음). 배포 = GitHub Pages가 `main` 루트 자동 배포.
 

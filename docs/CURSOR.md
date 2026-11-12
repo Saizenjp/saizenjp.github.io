@@ -11,7 +11,6 @@ Claude Code(터미널/웹)와 똑같은 저장소를 Cursor에서도 열어 AI�
 2. Cursor가 자동으로 아래 규칙 파일을 읽습니다(따로 할 것 없음):
    - `.cursor/rules/saizen-core.mdc` — **항상 적용**되는 핵심 규칙(한국어 응답·디자인 색·검증·배포·보안).
    - `.cursor/rules/ops-changes.mdc` — `ops/` 파일을 만질 때 자동 적용되는 체크리스트(i18n·권한·SQL·캐시).
-   - `.cursor/rules/app-print.mdc` — `app/` 파일을 만질 때 적용.
    - `AGENTS.md` / `CLAUDE.md` — 프로젝트 전체 설명(정본).
 3. 덕분에 Cursor의 AI도 **한국어로 답하고, 우리 규칙(색·검증·배포·키 보안)을 지키며** 작업합니다.
 
@@ -65,7 +64,6 @@ git push origin HEAD:main              # 배포(라이브 반영)
 
 | 위치 | 내용 |
 |---|---|
-| `app/index.html` | 인쇄·출력 시스템(단일 파일, 오프라인·가끔 사용) |
 | `ops/index.html` | Hub 랜딩(카드 메뉴) |
 | `ops/hub/*.html` | 각 운영 화면(방배정 room, 정산 settle, POS, 주방 kitchen, 夕食 dinner, 시즈노야도 shizu …) |
 | `ops/assets/saizen-ops.js` | 공유 로직·i18n·설명서(SO_HELP)·권한 가드 |

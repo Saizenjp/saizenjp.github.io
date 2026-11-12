@@ -12,7 +12,7 @@ description: SaiZen Yamanami 운영 시스템(/ops/)에서 새 섹션(페이지)
 ---
 
 ## 0. 작업 범위 판단
-- **`/app/`** = 단일 HTML(localStorage·인쇄). 한 파일 안에서, 외부 라이브러리는 CDN.
+- (레거시 `/app/` 은 2026-08 에 삭제 — 인쇄물도 전부 `ops/hub/` 화면이다.)
 - **`/ops/`** = 다중 페이지 + 공유 `assets/saizen-ops.{js,css}`(Supabase). 공통 변경은 공유 asset에서.
 - 공유 asset(`saizen-ops.js/css`)을 바꾸면 → **§6 캐시 버전 범프 필수**.
 
@@ -23,7 +23,7 @@ description: SaiZen Yamanami 운영 시스템(/ops/)에서 새 섹션(페이지)
 - 로컬 사전은 `const L={ ja:{...}, ko:{...}, en:{...} }` 3개 국어 **키 패리티 동일**하게. `tx(k)`는 현재 언어→ja 폴백.
   - 현재 언어: `function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }`
 - **언어 토글 훅**: `window.onSaizenLangChange=function(){ applyStatic(); if(<상태있으면>) render(); };` (동적 목록도 재렌더).
-- 일본어 기본. 인쇄 산출물(/app/)은 일본어 유지. 동적으로 그리는 라벨은 렌더 함수 안에서 `tx()`로.
+- 일본어 기본. 인쇄 산출물(현장 제출용 표)은 일본어 유지. 동적으로 그리는 라벨은 렌더 함수 안에서 `tx()`로.
 
 ## 2. 페이지 chrome (새 ops 페이지)
 `docs/ops-page-skeleton.html`을 복사해 시작하거나 기존 페이지(frontdesk.html)를 본뜬다. 빠뜨리면 그 페이지만 깨진다.

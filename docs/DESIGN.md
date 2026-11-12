@@ -93,8 +93,7 @@ components: [topbar/so-bar, navhome, pill, btn(+ghost/sm/connected), inp, chip, 
 인쇄 산출물은 별도 네이비/모노톤 — **printNavy** `#1A2540`, **printBlue** `#1A4D8F`. 화면 팔레트로
 인쇄물을 칠하지 않습니다.
 
-> ⚠ **축**: Ops Hub는 위 토큰을 쓰지만 `/app/`(단일 HTML 인쇄 시스템)는 `accent2`가 다릅니다
-> (`/app/` = `#4F5E38` 녹 / Hub = `#9a7322` 골드). 이 문서는 **Ops Hub** 기준입니다.
+> 참고: 옛 `/app/`(단일 HTML 인쇄 시스템, 2026-08 삭제)는 `accent2` 가 달랐습니다(`#4F5E38`). 지금은 Ops Hub 하나뿐입니다.
 
 ## Typography
 - **Sans**: `Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui` — 한·일·영 혼용에 안정적.
