@@ -1669,6 +1669,8 @@
     isMember: isMember,
     ACCOM_LABEL: ACCOM_LABEL,
     accomLabel: accomLabel,
+    roomTypeLabel: roomTypeLabel,
+    zoneLabel: zoneLabel,
     gradeLabel: gradeLabel,
     fmtDate: fmtDate,
     parseFlexDate: parseFlexDate,

@@ -209,6 +209,22 @@ test('nmCodeConflict: 30일 쿨다운', () => {
   assert.equal(SZ.nmCodeConflict('','2026-07-05','2026-08-05','2026-08-09'), true);
 });
 
+// ── 방 타입·층 표시 라벨 (ja/ko/en) — 2026-11 검수: 함수는 있었는데 내보내지 않아 청소·방배정 화면이 일본어·영어에서도 한국어 저장값을 보였다 ──
+test('roomTypeLabel · zoneLabel: 내보내기 + 3개국어', () => {
+  assert.equal(typeof SZCore.roomTypeLabel, 'function');
+  assert.equal(typeof SZCore.zoneLabel, 'function');
+  assert.equal(SZCore.roomTypeLabel('트윈', 'ja'), 'ツイン');
+  assert.equal(SZCore.roomTypeLabel('트윈', 'ko'), '스탠다드 트윈');          // 저장값 「트윈」의 표시명(2026-07)
+  assert.equal(SZCore.roomTypeLabel('디럭스더블트윈', 'en'), 'Deluxe Double Twin');
+  assert.equal(SZCore.roomTypeLabel('없는타입', 'ja'), '없는타입');           // 미등록 = 원문
+  assert.equal(SZCore.roomTypeLabel(null, 'ja'), '');
+  assert.equal(SZCore.zoneLabel('7층', 'ja'), '7階');
+  assert.equal(SZCore.zoneLabel('7층', 'en'), '7F');
+  assert.equal(SZCore.zoneLabel('7층', 'ko'), '7층');
+  assert.equal(SZCore.zoneLabel('돔하우스', 'ja'), 'ドームハウス');            // 층이 아닌 구역 = accomLabel
+  assert.equal(SZCore.zoneLabel('', 'ja'), '');
+});
+
 // ── 숙소·구역 표시 라벨 (ja/ko/en) ──────────────────────────────────────
 test('accomLabel: 3개국어 라벨 · 키 패리티 · 미등록 폴백', () => {
   assert.equal(SZCore.accomLabel('간지호텔', 'en'), 'The Guernsey Hotel');   // Gandhi 아님(건지 젖소 Guernsey)
