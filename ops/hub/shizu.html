@@ -51,6 +51,7 @@
   .stat .l{font-size:10.5px;color:var(--muted);font-weight:700}
   .stat .v{font-size:19px;font-weight:800;color:var(--accent);font-family:var(--mono)}
   .stat .s{font-size:10px;color:var(--text3,#8a937c)}
+  .shz-fail{flex-basis:100%;color:var(--err);font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}   /* 일부 조회 실패 — 사라지지 않는 안내 + 다시 불러오기 */
   .stat.ons .v{color:var(--purple2)}
   /* 온천 사전신청 패널 */
   .ons-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px}
@@ -245,7 +246,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.7">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.8">
 </head>
 <body data-so-area="shizu_sheet">
 <div class="topbar so-bar">
@@ -285,22 +286,22 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=69"></script>
-<script src="../assets/saizen-ops.js?v=39.7"></script>
+<script src="../assets/saizen-ops.js?v=39.8"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(予約表 산출물·도메인 데이터는 일본어 유지) ──
 const L={
   ja:{ step:'志津の宿 予約表', home:'← ホーム', cxHint:'開くと最近の登録·取消の内訳が表示されます。', connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続・再試行',
-    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', loginNeed:'ログイン必要',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', loadFail:'読み込みに失敗しました。もう一度お試しください。', needUrlKey:'URL・key必要', loginNeed:'ログイン必要',
     connHint:'部屋割り(room)の結果を読み込み志津の宿 予約表を出力。参考事項(メリット現地備考)は読取表示・現地メモは現場で予約表に直接記入。',
     waitConn:'接続後に表示されます。', loginCard:'ログインが必要です。', loginCardSub:'中央のログインカードでログイン後、再接続してください。',
     monthSel:'月選択', btnPrint:'🖨 予約表 印刷プレビュー', btnXlsx:'⬇ 予約表 xlsx',
     daySel:'日付', allDays:'全日', dayNote:'日付は複数選択可 — 選んだ日だけ表示・印刷。', dayPrint:'🖨 この日を印刷',
     trFail:'備考の自動翻訳に失敗(原文を表示)。DeepLキー未設定の可能性。',
     swapPickFirst:'先に移動する部屋(名前)をクリック', swapNoInv:'客室情報が見つかりません', swapConflict:'その期間、相手の部屋が別チームで埋まっています', swapAsk:'この2部屋を入れ替えますか？', swapMoveAsk:'空室へ移動しますか？', swapDone:'変更しました', swapFail:'変更失敗: ', swapHint:'💡 名前をクリック→別の部屋をクリックで入替/空室へ移動 · 到着/メモは自動保存',
-    memoFail:'メモ保存失敗: ', tmemoFail:'現地メモ保存失敗: ',
+    memoFail:'メモ保存失敗: ', tmemoFail:'現地メモ保存失敗: ', partFail:'一部の情報を読み込めませんでした(表示が実際と異なる場合があります。再読み込みしてください): ', invL:'客室一覧', retry:'再読み込み', closFailBlock:'客室閉鎖の一覧を読み込めていません。再読み込みしてから配置してください。',
     bedsLbl:(n,b,x)=>`この夜 必要ベッド ${n} / 保有 ${b}`+(x?`（＋トリプル希望 ${x}室）`:''), bedsShort:k=>`${k}名分 不足`, bedsT:'必要=その夜泊まる人数(未割当含む) · 保有=閉鎖を除く客室×2 · トリプル希望チームは1室3名まで',
-    autoBtn:'🪄 月別 再配置', autoT:'その月の自動配置をいったん解いて新ルール(滞在の長い順・同チーム合流・トリプル・best-fit)で組み直す。手動配置は保持、直後に↩で戻せる。', autofillT:'未配置の人だけ空きに入れる(既存配置は動かさない)。', closeBtn:'🔒 客室閉鎖', closeBadgeT:'今月 閉鎖中の客室数', ciT:'チェックイン(チーム数)', coT:'チェックアウト(チーム数)', pvNoStay:'宿泊なし', pvOutN:n=>`${n}チーム チェックアウト`, turnoverH:'チェックイン / チェックアウト チーム', noteH:'現地伝達事項', noteNone:'該当なし', ntCombo:'コンボ滞在', ntAnnex:'別棟希望', ntTriple:'トリプル', ntMeal:'食事・アレルギー', ntEtc:'その他', searchPh:'🔎 名前・英文名・代表者・行事番号で検索', searchCnt:n=>`${n}件`, searchNone:'該当なし', autoNone:'自動割当する未配置がありません', autoConfirm:n=>`今月(表示中の月)の未配置 ${n}名を自動割当しますか？（2名1室・空室不足分は未配置。他の月には影響しません）`, autoDone:n=>`${n}名 自動割当`, autoHold:n=>`未配置 ${n}`, autoFail:'自動割当失敗: ', autofillBtn:'🪄 未配置のみ 配置', autofillDone:n=>`未配置 ${n}名を空室へ配置`, autofillNone:'配置できる未配置がありません(空室不足・奇数1名など)', rngLbl:'📅 期間', rngReset:'月に戻す', rngHint:'月をまたぐチーム(例 7月↔8月)を続けて見るには終了日を翌月まで広げてください。', teamOf:(r)=>`${r}様チーム`,
+    autoBtn:'🪄 月別 再配置', autoT:'その月の自動配置をいったん解いて新ルール(滞在の長い順・同チーム合流・トリプル・best-fit)で組み直す。手動配置は保持、直後に↩で戻せる。', autofillT:'未配置の人だけ空きに入れる(既存配置は動かさない)。', closeBtn:'🔒 客室閉鎖', closeBadgeT:'今月 閉鎖中の客室数', ciT:'チェックイン(チーム数)', coT:'チェックアウト(チーム数)', pvNoStay:'宿泊なし', pvOutN:n=>`${n}チーム チェックアウト`, turnoverH:'チェックイン / チェックアウト チーム', noteH:'現地伝達事項', noteNone:'該当なし', ntCombo:'コンボ滞在', ntAnnex:'別棟希望', ntTriple:'トリプル', ntMeal:'食事・アレルギー', ntEtc:'その他', searchPh:'🔎 名前・英文名・代表者・行事番号で検索', searchCnt:n=>`${n}件`, searchNone:'該当なし', autoNone:'自動割当する未配置がありません', autoConfirm:n=>`今月(表示中の月)の自動配置をいったん解いて、${n}名を新ルールで組み直しますか？ 配置済みの部屋が変わることがあります。（手動配置は保持・2名1室・空室不足分は未配置・直後に↩で戻せます。他の月には影響しません）`, autoDone:n=>`${n}名 自動割当`, autoHold:n=>`未配置 ${n}`, autoFail:'自動割当失敗: ', autofillBtn:'🪄 未配置のみ 配置', autofillDone:n=>`未配置 ${n}名を空室へ配置`, autofillNone:'配置できる未配置がありません(空室不足・奇数1名など)', rngLbl:'📅 期間', rngReset:'月に戻す', rngHint:'月をまたぐチーム(例 7月↔8月)を続けて見るには終了日を翌月まで広げてください。', teamOf:(r)=>`${r}様チーム`,
     unassignedN:n=>`未配置 ${n}名`, assignHere:'客室へ配置', unNone:'未配置はありません', apTitle:d=>`${d} 未配置の配置`, apHint:'2名1室が基本。空室・または既存の部屋に強制追加（最大3名）できます。', apSave:'配置する', apNone:'選択された人がいません', apDone:n=>`${n}名 配置しました`, apFail:'配置失敗: ',
     clPeriod:(f,t,r)=>`🔒 閉鎖 ${f}~${t}${r?' · '+r:''}`, clUpcoming:(f,t,r)=>`🔒 閉鎖期間 ${f}~${t}${r?' · '+r:''}`, closeTitle:'客室閉鎖(期間)', clReason:'事由(任意)', clClose:'閉じる', clAdd:'閉鎖 追加', clList:'閉鎖 一覧', clNone:'閉鎖なし', clNeed:'客室・期間を入力', clRangeErr:'終了日は開始日以降に', clDone:'閉鎖しました', clFail:'失敗: ', clRemoved:'解除しました', swapClosedT:'閉鎖された客室です',
     statLoading:'読込中…', stayN:'宿泊者', onsenN:'温泉事前申請',
@@ -312,16 +313,16 @@ const L={
     waterTip:'現地お湯張り 支払・利用 泊数(請求ではなく記録)', nightUnit:'泊', waterTotal:n=>`現地お湯張り 計 ${n}泊`, waterNote:'請求ではなく現地発生・現地受領の記録',
     boardH:'客室配置ボード', boardHint:'— 左の未配置(名前)を選び、右の客室をクリックで配置。空室・既存の部屋への合流(最大3名)も可。名前クリック=移動選択 · ✕=未配置に戻す · ドラッグでも配置/移動。', focusLbl:d=>`配置対象: ${d}`, rackH:'未配置', selN:n=>`選択 ${n}名`, clearSel:'選択解除', placeNone:'配置する人を選んでください', placeBlocked:'定員超過(最大3)・閉鎖で配置できません', overLbl:'超過', placeSkip:n=>` · ${n}名スキップ(定員/閉鎖)`, placeDone:n=>`${n}名 配置`, unDone:'未配置に戻しました', noFocus:'表示する日付がありません', undo:'元に戻す', restored:'元に戻しました', clearAll:'配置クリア', clearAllConfirm:n=>`この月の配置 ${n}名分をすべて解除しますか？（未配置に戻す）`, clearAllDone:n=>`${n}名 解除`, clearAllNone:'解除する配置がありません', spanBusyLbl:'滞在中(期間)', spanBusyMsg:'選択チームの滞在期間中に他チームが使用中の客室です（空いて見えても配置不可）', spanBtn:'期間', spanT:'このチームの志津の宿 宿泊期間を変える(予約期間より短い連泊コンボ用)', spanPrompt:(cd,ca,bd,ba,h)=>`志津の宿の宿泊期間を入力\n現在: ${cd} ~ ${ca}\n予約期間: ${bd} ~ ${ba}${h?`\n備考から読んだ期間: ${h}`:''}\n形式: 2026-09-09 ~ 2026-09-16 または 9/9-16`, spanBad:'期間が不正です(予約期間の範囲内・開始<終了)', spanBlocked:r=>`${r}: その期間は他のチームで定員超過/閉鎖`, spanDone:n=>`${n}名の期間を変更`, },
   ko:{ step:'시즈노야도 예약표', home:'← 홈', cxHint:'펼치면 최근 등록·취소 내역이 표시됩니다.', connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결·재시도',
-    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', loginNeed:'로그인 필요',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', loadFail:'불러오지 못했습니다. 다시 시도해 주세요.', needUrlKey:'URL·key 필요', loginNeed:'로그인 필요',
     connHint:'방배정(room) 결과를 읽어 志津の宿 予約表를 출력. 참고사항(메리트 현지비고)은 읽기 표시·現地메모는 현장에서 예약표에 직접 기재.',
     waitConn:'연결 후 표시됩니다.', loginCard:'로그인이 필요합니다.', loginCardSub:'중앙 로그인 카드에서 로그인 후 다시 연결해 주세요.',
     monthSel:'월 선택', btnPrint:'🖨 予約表 인쇄 미리보기', btnXlsx:'⬇ 예약표 xlsx',
     daySel:'날짜', allDays:'전체', dayNote:'날짜 여러 개 선택 가능 — 선택한 날짜만 보기·인쇄.', dayPrint:'🖨 이 날짜 인쇄',
     trFail:'비고 자동번역 실패(원문 표시). DeepL 키 미설정일 수 있습니다.',
     swapPickFirst:'먼저 옮길 방(이름)을 클릭', swapNoInv:'객실 정보를 찾을 수 없습니다', swapConflict:'그 기간 상대 방이 다른 팀으로 차 있습니다', swapAsk:'두 방을 맞바꿀까요?', swapMoveAsk:'빈 객실로 이동할까요?', swapDone:'변경했습니다', swapFail:'변경 실패: ', swapHint:'💡 이름 클릭 → 다른 방 클릭으로 맞바꾸기/빈방 이동 · 到着/메모는 자동 저장',
-    memoFail:'메모 저장 실패: ', tmemoFail:'現地메모 저장 실패: ',
+    memoFail:'메모 저장 실패: ', tmemoFail:'現地메모 저장 실패: ', partFail:'일부 정보를 불러오지 못했습니다(표시가 실제와 다를 수 있습니다 — 다시 불러오세요): ', invL:'객실 목록', retry:'다시 불러오기', closFailBlock:'객실 폐쇄 목록을 불러오지 못했습니다. 다시 불러온 뒤 배정하세요.',
     bedsLbl:(n,b,x)=>`이 밤 필요 침대 ${n} / 보유 ${b}`+(x?` (+트리플 요청 ${x}실)`:''), bedsShort:k=>`${k}명 부족`, bedsT:'필요=그날 밤 묵는 인원(미배정 포함) · 보유=폐쇄 제외 객실×2 · 트리플 요청 팀은 한 방 3명까지',
-    autoBtn:'🪄 월별 재배치', autoT:'그 달 자동배정을 한 번 풀고 새 규칙(긴 체류 먼저·같은 팀 합류·트리플·best-fit)으로 다시 짭니다. 수기 배정은 유지, 직후 ↩ 되돌리기 가능.', autofillT:'미배정 인원만 빈 자리에 넣습니다(기존 배정은 안 움직임).', closeBtn:'🔒 객실 폐쇄', closeBadgeT:'이 달 폐쇄된 객실 수', ciT:'체크인(팀 수)', coT:'체크아웃(팀 수)', pvNoStay:'묵는 팀 없음', pvOutN:n=>`${n}팀 체크아웃`, turnoverH:'체크인 / 체크아웃 팀', noteH:'현지 전달사항', noteNone:'해당 없음', ntCombo:'콤보 체류', ntAnnex:'별채 신청', ntTriple:'트리플', ntMeal:'식사·알러지', ntEtc:'기타', searchPh:'🔎 이름·영문명·대표자·행사번호 검색', searchCnt:n=>`${n}건`, searchNone:'검색 결과 없음', autoNone:'자동배정할 미배정 인원이 없습니다', autoConfirm:n=>`이 달(표시 중인 월)의 미배정 ${n}명을 자동배정할까요? (2인 1실·객실 부족분은 미배정. 다른 달에는 영향 없음)`, autoDone:n=>`${n}명 자동배정`, autoHold:n=>`미배정 ${n}`, autoFail:'자동배정 실패: ', autofillBtn:'🪄 미배정만 배정', autofillDone:n=>`미배정 ${n}명을 빈 방에 배정`, autofillNone:'배정 가능한 미배정 인원이 없습니다(빈방 부족·홀수 1명 등)', rngLbl:'📅 기간', rngReset:'월로', rngHint:'월경계 팀(예: 7월↔8월)을 이어서 보려면 종료일을 다음 달까지 넓히세요.', teamOf:(r)=>`${r}様 팀`,
+    autoBtn:'🪄 월별 재배치', autoT:'그 달 자동배정을 한 번 풀고 새 규칙(긴 체류 먼저·같은 팀 합류·트리플·best-fit)으로 다시 짭니다. 수기 배정은 유지, 직후 ↩ 되돌리기 가능.', autofillT:'미배정 인원만 빈 자리에 넣습니다(기존 배정은 안 움직임).', closeBtn:'🔒 객실 폐쇄', closeBadgeT:'이 달 폐쇄된 객실 수', ciT:'체크인(팀 수)', coT:'체크아웃(팀 수)', pvNoStay:'묵는 팀 없음', pvOutN:n=>`${n}팀 체크아웃`, turnoverH:'체크인 / 체크아웃 팀', noteH:'현지 전달사항', noteNone:'해당 없음', ntCombo:'콤보 체류', ntAnnex:'별채 신청', ntTriple:'트리플', ntMeal:'식사·알러지', ntEtc:'기타', searchPh:'🔎 이름·영문명·대표자·행사번호 검색', searchCnt:n=>`${n}건`, searchNone:'검색 결과 없음', autoNone:'자동배정할 미배정 인원이 없습니다', autoConfirm:n=>`이 달(표시 중인 월)의 자동 배정을 모두 풀고 ${n}명을 새 규칙으로 다시 배정할까요? 이미 배정된 방이 바뀔 수 있습니다. (수기 배정은 유지·2인 1실·객실 부족분은 미배정·직후 ↩ 되돌리기 가능. 다른 달에는 영향 없음)`, autoDone:n=>`${n}명 자동배정`, autoHold:n=>`미배정 ${n}`, autoFail:'자동배정 실패: ', autofillBtn:'🪄 미배정만 배정', autofillDone:n=>`미배정 ${n}명을 빈 방에 배정`, autofillNone:'배정 가능한 미배정 인원이 없습니다(빈방 부족·홀수 1명 등)', rngLbl:'📅 기간', rngReset:'월로', rngHint:'월경계 팀(예: 7월↔8월)을 이어서 보려면 종료일을 다음 달까지 넓히세요.', teamOf:(r)=>`${r}様 팀`,
     unassignedN:n=>`미배정 ${n}명`, assignHere:'객실 배정', unNone:'미배정 인원이 없습니다', apTitle:d=>`${d} 미배정 배정`, apHint:'2인 1실이 기본. 빈방 또는 기존 방에 강제 추가(최대 3인)할 수 있습니다.', apSave:'배정', apNone:'선택된 인원이 없습니다', apDone:n=>`${n}명 배정했습니다`, apFail:'배정 실패: ',
     clPeriod:(f,t,r)=>`🔒 폐쇄 ${f}~${t}${r?' · '+r:''}`, clUpcoming:(f,t,r)=>`🔒 폐쇄 기간 ${f}~${t}${r?' · '+r:''}`, closeTitle:'객실 폐쇄(기간)', clReason:'사유(선택)', clClose:'닫기', clAdd:'폐쇄 추가', clList:'폐쇄 목록', clNone:'폐쇄 없음', clNeed:'객실·기간을 입력', clRangeErr:'종료일은 시작일 이후로', clDone:'폐쇄했습니다', clFail:'실패: ', clRemoved:'해제했습니다', swapClosedT:'폐쇄된 객실입니다',
     statLoading:'불러오는 중…', stayN:'숙박객', onsenN:'온천 사전신청',
@@ -333,16 +334,16 @@ const L={
     waterTip:'현장 물채우기 지불·사용 박수(청구 아님·기록)', nightUnit:'박', waterTotal:n=>`현장 물채우기 총 ${n}박`, waterNote:'청구 아님·현장 발생·현장 수령 기록',
     boardH:'객실 배정 보드', boardHint:'— 왼쪽 미배정(이름)을 고르고 오른쪽 객실을 클릭해 배정. 빈방·기존 방 합류(최대 3인)도 됩니다. 이름 클릭=이동 선택 · ✕=미배정으로 · 드래그로도 배정/이동.', focusLbl:d=>`배정 대상: ${d}`, rackH:'미배정', selN:n=>`선택 ${n}명`, clearSel:'선택 해제', placeNone:'배정할 인원을 선택하세요', placeBlocked:'정원 초과(최대 3)·폐쇄로 배정할 수 없습니다', overLbl:'초과', placeSkip:n=>` · ${n}명 제외(정원/폐쇄)`, placeDone:n=>`${n}명 배정`, unDone:'미배정으로 되돌렸습니다', noFocus:'표시할 날짜가 없습니다', undo:'되돌리기', restored:'복구했습니다', clearAll:'배정 비우기', clearAllConfirm:n=>`이 달 배정 ${n}명을 모두 해제할까요? (미배정으로)`, clearAllDone:n=>`${n}명 해제`, clearAllNone:'해제할 배정이 없습니다', spanBusyLbl:'체류중(기간)', spanBusyMsg:'선택 팀의 체류기간 중 다른 팀이 사용 중인 방입니다(그날 비어보여도 배정 불가)', spanBtn:'기간', spanT:'이 팀의 시즈노야도 숙박 기간을 바꿉니다(예약 기간보다 짧은 콤보 상품용)', spanPrompt:(cd,ca,bd,ba,h)=>`시즈노야도 숙박 기간을 입력하세요\n현재: ${cd} ~ ${ca}\n예약 기간: ${bd} ~ ${ba}${h?`\n비고에서 읽은 기간: ${h}`:''}\n형식: 2026-09-09 ~ 2026-09-16 또는 9/9-16`, spanBad:'기간이 올바르지 않습니다(예약 기간 안·시작<종료)', spanBlocked:r=>`${r}: 그 기간에 다른 팀으로 정원 초과/폐쇄`, spanDone:n=>`${n}명 기간 변경`, },
   en:{ step:'Shizu-no-Yado Chart', home:'← Home', cxHint:'Open to see recent imports and cancellations.', connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Connect / retry',
-    notConn:'Not connected', connOk:'Connected', connFail:'Connect failed', needUrlKey:'URL & key required', loginNeed:'Login required',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connect failed', loadFail:'Could not load. Please try again.', needUrlKey:'URL & key required', loginNeed:'Login required',
     connHint:'Reads room-assignment results to output the Shizu-no-Yado chart. 参考事項 (Merit local remarks) are read-only; 現地メモ is typed on-site in the chart.',
     waitConn:'Shown after connecting.', loginCard:'Login required.', loginCardSub:'Log in via the central card, then reconnect.',
     monthSel:'Month', btnPrint:'🖨 Chart print preview', btnXlsx:'⬇ Chart xlsx',
     daySel:'Date', allDays:'All', dayNote:'Select one or more dates — view/print just those.', dayPrint:'🖨 Print this day',
     trFail:'Remark auto-translation failed (showing original). DeepL key may be unset.',
     swapPickFirst:'Click a room (name) to move first', swapNoInv:'Room info not found', swapConflict:'The other room is occupied by another team in that period', swapAsk:'Swap these two rooms?', swapMoveAsk:'Move to the empty room?', swapDone:'Updated', swapFail:'Update failed: ', swapHint:'💡 Click a name → click another room to swap / move to empty · memo auto-saved',
-    memoFail:'Memo save failed: ', tmemoFail:'Local memo save failed: ',
+    memoFail:'Memo save failed: ', tmemoFail:'Local memo save failed: ', partFail:'Some data could not be loaded (the screen may be incomplete — reload): ', invL:'Room list', retry:'Reload', closFailBlock:'Room closures could not be loaded. Reload before assigning.',
     bedsLbl:(n,b,x)=>`Beds needed tonight ${n} / available ${b}`+(x?` (+${x} triple request)`:''), bedsShort:k=>`${k} short`, bedsT:'Needed = people staying that night (incl. unassigned) · available = open rooms × 2 · triple-request teams may take 3 in one room',
-    autoBtn:'🪄 Re-pack month', autoT:'Clears this month’s auto assignments and re-plans with the new rules (longest stays first, same-team join, triples, best-fit). Manual assignments are kept; undo is offered right after.', autofillT:'Only places unassigned people into free beds (existing assignments untouched).', closeBtn:'🔒 Close room', closeBadgeT:'Closed rooms this month', ciT:'Check-in (teams)', coT:'Check-out (teams)', pvNoStay:'No overnight stay', pvOutN:n=>`${n} team(s) checked out`, turnoverH:'Check-in / Check-out teams', noteH:'On-site notes', noteNone:'None', ntCombo:'Combo stay', ntAnnex:'Annex requested', ntTriple:'Triple', ntMeal:'Meal / allergy', ntEtc:'Other', searchPh:'🔎 Search name / Eng / rep / event no.', searchCnt:n=>`${n}`, searchNone:'No match', autoNone:'No unassigned guests to auto-assign', autoConfirm:n=>`Auto-assign ${n} unassigned guests for this month only? (2 per room; overflow left unassigned; other months unaffected)`, autoDone:n=>`${n} auto-assigned`, autoHold:n=>`unassigned ${n}`, autoFail:'Auto-assign failed: ', autofillBtn:'🪄 Fill unassigned', autofillDone:n=>`Placed ${n} unassigned into empty rooms`, autofillNone:'No unassigned could be placed (no empty room / odd single)', rngLbl:'📅 Range', rngReset:'Month', rngHint:'To view month-boundary teams (e.g. Jul↔Aug), extend the end date into the next month.', teamOf:(r)=>`${r}'s team`,
+    autoBtn:'🪄 Re-pack month', autoT:'Clears this month’s auto assignments and re-plans with the new rules (longest stays first, same-team join, triples, best-fit). Manual assignments are kept; undo is offered right after.', autofillT:'Only places unassigned people into free beds (existing assignments untouched).', closeBtn:'🔒 Close room', closeBadgeT:'Closed rooms this month', ciT:'Check-in (teams)', coT:'Check-out (teams)', pvNoStay:'No overnight stay', pvOutN:n=>`${n} team(s) checked out`, turnoverH:'Check-in / Check-out teams', noteH:'On-site notes', noteNone:'None', ntCombo:'Combo stay', ntAnnex:'Annex requested', ntTriple:'Triple', ntMeal:'Meal / allergy', ntEtc:'Other', searchPh:'🔎 Search name / Eng / rep / event no.', searchCnt:n=>`${n}`, searchNone:'No match', autoNone:'No unassigned guests to auto-assign', autoConfirm:n=>`Clear this month’s auto assignments and re-plan ${n} guests with the current rules? Rooms already assigned may change. (Manual assignments are kept; 2 per room; overflow left unassigned; undo is offered right after; other months unaffected)`, autoDone:n=>`${n} auto-assigned`, autoHold:n=>`unassigned ${n}`, autoFail:'Auto-assign failed: ', autofillBtn:'🪄 Fill unassigned', autofillDone:n=>`Placed ${n} unassigned into empty rooms`, autofillNone:'No unassigned could be placed (no empty room / odd single)', rngLbl:'📅 Range', rngReset:'Month', rngHint:'To view month-boundary teams (e.g. Jul↔Aug), extend the end date into the next month.', teamOf:(r)=>`${r}'s team`,
     unassignedN:n=>`${n} unassigned`, assignHere:'Assign to room', unNone:'No unassigned guests', apTitle:d=>`Assign unassigned · ${d}`, apHint:'2 per room by default. You can force-add to an empty or existing room (max 3).', apSave:'Assign', apNone:'No guests selected', apDone:n=>`${n} assigned`, apFail:'Assign failed: ',
     clPeriod:(f,t,r)=>`🔒 Closed ${f}~${t}${r?' · '+r:''}`, clUpcoming:(f,t,r)=>`🔒 Closure ${f}~${t}${r?' · '+r:''}`, closeTitle:'Close room (period)', clReason:'Reason (optional)', clClose:'Close', clAdd:'Add closure', clList:'Closures', clNone:'No closures', clNeed:'Enter room & period', clRangeErr:'End date must be ≥ start', clDone:'Closed', clFail:'Failed: ', clRemoved:'Removed', swapClosedT:'This room is closed',
     statLoading:'Loading…', stayN:'Guests', onsenN:'Onsen pre-app.',
@@ -396,6 +397,7 @@ let _trWarned=false;           // 번역 실패 토스트 1회만
 let ROSTER=[];                 // 그 달 시즈 전체 인원 [{member_id,event_seq,dep,arr,nameKr,nameEn}]
 let UNASSIGNED=[];             // ROSTER 중 미배정(방 없음)
 let UNBYDATE={};               // date → 그 밤 미배정 인원 수(未N 뱃지)
+let _rosterFail=false, _tmemoFail=false, _closFail=false, _failList=[];   // 미배정 명단·現地メモ 조회 실패 표식(실패를 「0명·빈칸」으로 보이지 않게)
 let BSEL=new Set();            // 배정 보드 선택된 member_id(개인 단위 배정·이동)
 
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
@@ -425,7 +427,9 @@ function parseShizuSpan(remark, product, bookDep, bookArr){
   const pd=String(product||''); const bundled=/야마나미|ヤマナミ|山並|간지|ガンジー|쿠주|久住/.test(pd) && /시즈|志津|しずの|しづの/.test(pd);   // 시즈+야마나미뿐 아니라 시즈+간지·시즈+쿠주 콤보도 번들로 인정
   if(!bundled) return null;   // 순수 시즈 = 예약기간이 곧 시즈 숙박(폴백)
   const yr=(String(bookDep||'').slice(0,4))||(String(bookArr||'').slice(0,4)); if(!yr) return null;
-  const p=(mo,d)=>`${yr}-${String(+mo).padStart(2,'0')}-${String(+d).padStart(2,'0')}`;
+  // 연말을 넘기는 예약(12월 입국·1월 귀국): 입국 연도로 만든 날짜가 입국일보다 앞이면 다음 해로 읽는다(그 날짜가 귀국일 이내일 때만). 같은 해 예약은 그대로.
+  const bd=String(bookDep||'').slice(0,10), ba=String(bookArr||'').slice(0,10), cross=!!bd&&!!ba&&ba.slice(0,4)>bd.slice(0,4);
+  const p=(mo,d)=>{ const md=`-${String(+mo).padStart(2,'0')}-${String(+d).padStart(2,'0')}`, s=yr+md, nx=(+yr+1)+md; return (cross&&s<bd&&nx<=ba)?nx:s; };
   for(const ln of String(remark||'').split(/\r?\n/)){
     if(!/시즈|志津|しずの|しづの/.test(ln)) continue;                     // '시즈' 언급된 줄에서만
     //  「9/9-9/16」·「9/9~9/16」 + 「9/9-16일」(뒤 날짜에 월 생략 = 같은 달, 2026-09 사례) 모두 읽는다
@@ -579,21 +583,24 @@ async function pagedIn(table, cols, key, vals){
   return out;
 }
 
+// 불러오기 순번 — 월·기간을 연달아 바꾸면 늦게 끝난 앞 조회가 화면 상태를 덮던 것 방지(마지막 조회만 전역에 쓴다)
+let _loadSeq=0;
 async function load(){
   if(!supa)return;
+  const _my=++_loadSeq, _stale=()=>_my!==_loadSeq;
   if(!RFROM||!RTO){ resetRange(); }   // 최초/월변경 직후 기본=선택 월 전체
   const _f=$('#rng-from'),_t=$('#rng-to'); if(_f&&_f.value!==RFROM)_f.value=RFROM; if(_t&&_t.value!==RTO)_t.value=RTO;
   $('#ym-label').textContent=YM; $('#stat').textContent=tx('statLoading'); $('#btn-print').disabled=true;
-  NOTES={}; BSEL.clear();
+  NOTES={}; BSEL.clear(); const _fails=[]; _rosterFail=false; _closFail=false;
   try{
     const {start,end}=curBounds();
     SHZ_HAS_RT=await shzHasRt();
     // 시즈노야도 배정(월 겹침): check_in <= 월말 AND check_out > 월초
     const {data:rms,error}=await supa.from('rooms').select('id,inventory_id,member_id,event_seq,room_no,check_in,check_out,assigned_pax,assign_source')
       .eq('facility',FACILITY).lte('check_in',end).gt('check_out',start).not('member_id','is',null);
-    if(!SHZ_INV){ try{ const {data:inv}=await supa.from('room_inventory').select('id,room_no').eq('facility',FACILITY); SHZ_INV={}; SHZ_INVROOM={}; (inv||[]).forEach(x=>{SHZ_INV[x.room_no]=x.id; SHZ_INVROOM[x.id]=x.room_no;}); }catch(e){ SHZ_INV={}; SHZ_INVROOM={}; } }
+    if(!SHZ_INV){ try{ const {data:inv,error:invErr}=await supa.from('room_inventory').select('id,room_no').eq('facility',FACILITY); if(invErr) throw invErr; SHZ_INV={}; SHZ_INVROOM={}; (inv||[]).forEach(x=>{SHZ_INV[x.room_no]=x.id; SHZ_INVROOM[x.id]=x.room_no;}); }catch(e){ SHZ_INV=null; SHZ_INVROOM={}; _closFail=true; _fails.push(tx('invL')); } }   // 실패를 「객실 없음」으로 굳히지 않는다(다음 조회에서 다시 읽는다) — 객실을 모르면 폐쇄도 모른다
     // 객실 폐쇄
-    try{ const invIds=Object.values(SHZ_INV||{}); CLOSURES=[]; if(invIds.length){ const {data:cl}=await supa.from('room_closures').select('id,inventory_id,from_date,to_date,reason').in('inventory_id',invIds); CLOSURES=(cl||[]).map(c=>({...c,room_no:SHZ_INVROOM[c.inventory_id]||'',from_date:String(c.from_date).slice(0,10),to_date:String(c.to_date).slice(0,10)})); } }catch(e){ CLOSURES=[]; }
+    try{ const invIds=Object.values(SHZ_INV||{}); CLOSURES=[]; if(invIds.length){ const {data:cl,error:clErr}=await supa.from('room_closures').select('id,inventory_id,from_date,to_date,reason').in('inventory_id',invIds); if(clErr) throw clErr; CLOSURES=(cl||[]).map(c=>({...c,room_no:SHZ_INVROOM[c.inventory_id]||'',from_date:String(c.from_date).slice(0,10),to_date:String(c.to_date).slice(0,10)})); } }catch(e){ CLOSURES=[]; _closFail=true; _fails.push(tx('closeBtn')); }
     if(error)throw error;
     const rows=(rms||[]).filter(r=>r.member_id && SHZ_ROOMS.includes(r.room_no));
     const mids=rows.map(r=>r.member_id), seqs=rows.map(r=>r.event_seq).filter(Boolean);
@@ -610,11 +617,13 @@ async function load(){
     // ※ 온천 사전신청·물채우기 직접 관리 폐지(Min) — 현지에서는 아래 現地備考(메리트 현지비고)만 보고 판단
     // 비고·현지비고(+일본어 캐시) — 예약표 참고용
     const bks = seqs.length? await pagedIn('bookings','event_seq,event_no,rep_name,product_name,origin,airline,remark,remark_local,remark_ja,remark_local_ja,dep_date,arr_date'+(SHZ_HAS_RT?',room_type':''),'event_seq',seqs) : [];
+    if(_stale()) return;
     BOOK={}; bks.forEach(b=>BOOK[b.event_seq]=b);
     // 담당자 메모(영속) — 그 달 범위
     MEMOS={}; try{ const {data:mm}=await supa.from('shizu_memo').select('memo_date,note').gte('memo_date',start).lte('memo_date',end); (mm||[]).forEach(m=>{ MEMOS[String(m.memo_date).slice(0,10)]=m.note||''; }); }catch(e){}
     // 팀 단위 現地메모(현장 수기, 영속) — 표시된 팀만
-    TMEMO={}; TREF={}; try{ if(seqs.length){ const {data:tm}=await supa.from('shizu_team_memo').select('event_seq,note,ref_note').in('event_seq',seqs); (tm||[]).forEach(m=>{ TMEMO[m.event_seq]=m.note||''; TREF[m.event_seq]=m.ref_note||''; }); } }catch(e){}
+    TMEMO={}; TREF={}; _tmemoFail=false; try{ if(seqs.length){ const {data:tm,error:tmErr}=await supa.from('shizu_team_memo').select('event_seq,note,ref_note').in('event_seq',seqs); if(tmErr) throw tmErr; (tm||[]).forEach(m=>{ TMEMO[m.event_seq]=m.note||''; TREF[m.event_seq]=m.ref_note||''; }); } }catch(e){ _tmemoFail=true; _fails.push('現地メモ'); }
+    if(_stale()) return;
     GUESTS = rows.map(r=>{
       const gm=gmMap[r.member_id]||{};
       const nameKr=String(gm.name_kr||'').trim();
@@ -635,7 +644,9 @@ async function load(){
         supa.from('guests').select(GSEL).eq('accom',FACILITY).neq('bookings.status','대기'),
         supa.from('guests').select(GSEL).ilike('bookings.product_name','%시즈%').neq('bookings.status','대기')
       ]);
+      if(_stale()) return;
       const _seen=new Set(); const tgs=[];
+      if(r1.error) throw r1.error; if(r2.error) throw r2.error;   // 조회 실패를 「미배정 0명」으로 보이지 않게
       [...(r1.data||[]),...(r2.data||[])].forEach(g=>{ if(_seen.has(g.event_seq))return; _seen.add(g.event_seq); tgs.push(g); });
       const tMap={};
       (tgs||[]).forEach(g=>{ const b=g.bookings||{}; const dep=String(b.dep_date||'').slice(0,10), arr=String(b.arr_date||'').slice(0,10);
@@ -644,6 +655,7 @@ async function load(){
           if(!BOOK[g.event_seq]) BOOK[g.event_seq]={event_seq:g.event_seq,event_no:b.event_no||null,rep_name:b.rep_name||null,product_name:b.product_name||null,origin:b.origin||null,airline:b.airline||null,remark_local:b.remark_local||null,room_type:b.room_type||null,dep_date:dep,arr_date:arr}; } });
       const tSeqs=Object.keys(tMap).map(Number);
       const rgms=tSeqs.length? await pagedIn('guest_members','id,event_seq,name_kr,name_en','event_seq',tSeqs) : [];
+      if(_stale()) return;
       const asg=new Set(GUESTS.map(g=>g.member_id));
       // ── 팀별 '실제 시즈 숙박구간' 산출(엠클릭 번들예약=시즈+야마나미 한 예약 → 예약기간≠시즈구간) ──
       //   ① 배정된 방이 있으면 그 방들(union)이 시즈 구간 → ② 번들이면 현지비고에서 「M/D-M/D 시즈」 파싱
@@ -657,7 +669,9 @@ async function load(){
       ROSTER=rgms.map(m=>{ const sp=teamSpan[m.event_seq]||tMap[m.event_seq]||{}; return {member_id:m.id,event_seq:m.event_seq,dep:sp.dep,arr:sp.arr,nameKr:m.name_kr||'',nameEn:m.name_en||''}; }).filter(r=>r.dep&&r.arr);
       UNASSIGNED=ROSTER.filter(r=>!asg.has(r.member_id));
       UNBYDATE={}; UNASSIGNED.forEach(r=>nightsBetween(r.dep,r.arr).forEach(d=>{ if(inScope(d)) UNBYDATE[d]=(UNBYDATE[d]||0)+1; }));
-    }catch(e){ ROSTER=[]; UNASSIGNED=[]; UNBYDATE={}; }
+    }catch(e){ ROSTER=[]; UNASSIGNED=[]; UNBYDATE={}; _rosterFail=true; _fails.push(tx('rackH')); }
+    _failList=_fails.slice();   // 통계 띠에 남겨 둔다(토스트는 사라진다) — [다시 불러오기]
+    if(_fails.length) toast(tx('partFail')+_fails.join(' · '),'warn');
     const ax=axis();
     [...DATESEL].forEach(d=>{ if(!ax.includes(d)) DATESEL.delete(d); });   // 다른 달 날짜는 선택 해제
     renderDateChips(); renderStats(); renderBoard(); renderPreview();
@@ -665,7 +679,14 @@ async function load(){
     $('#btn-print').disabled=!ax.length;
     if(_deepDate){ const d=_deepDate; _deepDate=null; if(ax.includes(d)) shzJump(d); }   // 딥링크 날짜 → 보드 포커스(1회)
     if(lang()==='ja') translateRemarks();   // 일본어 모드에서만 비고 자동번역(DeepL 엣지, 캐시 remark_ja). 키 미설정이면 조용히 원문(Min 2026-09)
-  }catch(e){ toast(tx('connFail')+': '+e.message,'err'); $('#stat').textContent=''; }
+  }catch(e){ if(_stale()) return; toast(tx('connFail')+': '+e.message,'err'); $('#stat').textContent='';
+    // 실패 시 이전 달 데이터가 새 달 이름으로 남지 않게 비우고, 「데이터 없음」이 아니라 실패로 표시한다
+    GUESTS=[]; ROSTER=[]; UNASSIGNED=[]; UNBYDATE={};
+    try{ renderDateChips(); renderBoard(); }catch(_){}
+    _failList=[];
+    const fm=`<div class="cnt" style="color:var(--err);padding:20px;text-align:center">${esc(tx('loadFail'))} <button class="btn" type="button" onclick="load()">${esc(tx('retry'))}</button></div>`;
+    const st=$('#stats'), pv=$('#preview'), bd=$('#board'); if(st)st.innerHTML=''; if(pv)pv.innerHTML=fm; if(bd)bd.innerHTML=fm;
+  }
 }
 
 function renderDateChips(){
@@ -706,8 +727,9 @@ function renderStats(){
   const unUniq=new Set(unMonth.map(r=>r.member_id)).size;
   $('#stats').innerHTML=`
     <div class="stat"><div class="l">${tx('stayN')}</div><div class="v">${uniq}</div><div class="s">${tx('nameUnit')}</div></div>
-    <div class="stat"><div class="l">${tx('rackH')}</div><div class="v"${unUniq?' style="color:var(--err)"':''}>${unUniq}</div><div class="s">${tx('nameUnit')}</div></div>
-`;
+    <div class="stat"><div class="l">${tx('rackH')}</div><div class="v"${(unUniq||_rosterFail)?' style="color:var(--err)"':''}>${_rosterFail?'?':unUniq}</div><div class="s">${tx('nameUnit')}</div></div>
+`
+    + (_failList.length?`<div class="shz-fail">${esc(tx('partFail'))}${esc(_failList.join(' · '))} <button class="btn" type="button" onclick="load()">${esc(tx('retry'))}</button></div>`:'');
   updateCloseBadge();
 }
 // 예약표 검색 — 이름·영문명·대표자·행사번호로 배정/미배정 인원을 찾아 그 날짜로 점프
@@ -729,7 +751,8 @@ function onShzSearch(){
     ? res.slice(0,40).map(x=>`<div class="shz-sr" onclick="shzJump('${x.date}')"><b>${esc(x.name)}</b>${x.rep?` <small>${esc(x.rep)}様</small>`:''} · ${x.asg?`🛏 ${esc(x.room)}`:`<span style="color:var(--err)">${esc(tx('rackH'))}</span>`} · <span class="mono">${esc((x.dep||'').slice(5))}〜${esc((x.arr||'').slice(5))}</span></div>`).join('')
     : `<div class="cnt" style="color:var(--muted);padding:6px 2px">${esc(tx('searchNone'))}</div>`;
 }
-function shzJump(date){ if(!date) return; DATESEL.clear(); DATESEL.add(date); renderDateChips(); renderBoard(); renderPreview(); const b=$('#board'); if(b) b.scrollIntoView({behavior:'smooth',block:'start'}); }
+function shzJump(date){ if(!date) return; const _ax=axis(); if(!_ax.includes(date)) date=_ax.find(d=>d>date)||'';   // 체크인이 화면 기간 앞(전달 도착)이면 기간 안 첫 숙박일로, 없으면 전체 보기
+  DATESEL.clear(); if(date) DATESEL.add(date); renderDateChips(); renderBoard(); renderPreview(); const b=$('#board'); if(b) b.scrollIntoView({behavior:'smooth',block:'start'}); }
 // 객실 폐쇄 버튼에 「이 달 폐쇄 N개」 빨간 배지
 function updateCloseBadge(){
   const btn=$('#btn-close'); if(!btn) return;
@@ -758,14 +781,15 @@ function rackTeams(date){
 }
 // 숙소행 출발 시각(야마나미 로비 모니터 「출발 안내」, Min 2026-10-26) — 시즈 담당이 보고 있는 날짜의 시즈노야도행 출발 시각을 적는다(공용 __so_lobbyDeps, lobby_departures)
 let LD=null;
-function mountLobbyDeps(date){ const box=$('#lobbydeps'); if(!box||!window.__so_lobbyDeps||!supa) return; const d=date||new Date(Date.now()+9*3600e3).toISOString().slice(0,10); if(!LD) LD=__so_lobbyDeps(box,supa,{dests:['shizu']}); LD.reload(d); }
+function mountLobbyDeps(date){ const box=$('#lobbydeps'); if(!box||!window.__so_lobbyDeps||!supa) return; const d=date||new Date(Date.now()+9*3600e3).toISOString().slice(0,10); if(!LD||LD._box!==box){ LD=__so_lobbyDeps(box,supa,{dests:['shizu']}); LD._box=box; } LD.reload(d); }   // renderUI(언어 전환)로 #lobbydeps 가 새 요소가 되면 헬퍼를 다시 만든다
 function renderBoard(){
   const board=$('#board'); if(!board) return;
   const ax=axis();
   const fl=$('#brd-focus'), si=$('#brd-selinfo');
   if(si) si.textContent=BSEL.size?tx('selN')(BSEL.size):'';
   // 선택한 날짜만큼 보드 표시(다중선택). 전체(미선택)면 성능상 첫 날짜만.
-  const dates = DATESEL.size ? [...DATESEL].filter(d=>ax.includes(d)).sort() : (ax.length?[ax[0]]:[]);
+  const _td=new Date(Date.now()+9*3600e3).toISOString().slice(0,10);   // 오늘(JST) — 날짜를 고르지 않았으면 이번 달은 오늘을 보드 대상으로(첫 날이 아니라), 다른 달은 첫 날
+  const dates = DATESEL.size ? [...DATESEL].filter(d=>ax.includes(d)).sort() : (ax.length?[ax.includes(_td)?_td:ax[0]]:[]);
   if(!dates.length){ board.innerHTML=`<div class="rk-empty">${tx('noFocus')}</div>`; if(fl)fl.textContent=''; renderTurnover([]); mountLobbyDeps(null); return; }
   if(fl) fl.textContent=tx('focusLbl')(dates.map(fmtDate).join(' · '));
   board.innerHTML = dates.map(date=>renderBoardDay(date, dates.length>1)).join('');
@@ -914,12 +938,25 @@ function bDragOverRack(e,el){ e.preventDefault(); if(el) el.classList.add('drago
 function bDragLeave(el){ if(el) el.classList.remove('dragover'); }
 function bDrop(e,room){ e.preventDefault(); if(e.currentTarget) e.currentTarget.classList.remove('dragover'); const ids=DRAG.slice(); DRAG=[]; if(ids.length) bPlaceIds(ids,room); }
 function bDropRack(e,el){ e.preventDefault(); if(el) el.classList.remove('dragover'); const ids=DRAG.slice(); DRAG=[]; if(ids.length) bUnassignIds(ids); }
+// 화면 밖 점유 다시 읽기(월 경계 팀·달력 범위를 좁힌 경우): GUESTS 는 보는 기간에 걸친 행만 가진다 → [lo,hi) 에 걸치는 시즈 행 중 화면에 없는 것. 조회 실패=null(호출 쪽이 중단)
+async function shzOccOutside(lo,hi){
+  if(!lo||!hi) return [];
+  try{ const {data,error}=await supa.from('rooms').select('id,inventory_id,member_id,event_seq,room_no,check_in,check_out,assign_source').eq('facility',FACILITY).lt('check_in',hi).gt('check_out',lo).not('member_id','is',null);
+    if(error) return null; const have=new Set(GUESTS.map(g=>g.id));
+    return (data||[]).filter(r=>!have.has(r.id) && SHZ_ROOMS.includes(r.room_no)).map(r=>({id:r.id,invId:r.inventory_id,member_id:r.member_id,event_seq:r.event_seq,room_no:r.room_no,ci:String(r.check_in).slice(0,10),co:String(r.check_out).slice(0,10),src:r.assign_source||'auto'}));
+  }catch(e){ return null; }
+}
 // 선택/드래그 인원을 room에 배정/이동/병합(개인 단위). 정원(3)·폐쇄 초과는 스킵.
 function bPlace(room){ if(!BSEL.size){ toast(tx('placeNone'),'warn'); return; } bPlaceIds([...BSEL],room); }
 async function bPlaceIds(ids,room){
   if(!supa||!SHZ_INV){ toast(tx('connFail'),'err'); return; }
+  if(_closFail){ toast(tx('closFailBlock'),'err'); return; }
   const inv=SHZ_INV[room]; if(!inv){ toast(tx('swapNoInv'),'err'); return; }
   const sel=new Set(ids), accepted=[]; let skipped=0;
+  // 월 경계: 대상 인원 체류 구간 전체로 이 방의 화면 밖 점유(다음 달 팀 등)를 다시 읽어 정원에 넣는다
+  let _lo=null,_hi=null; ids.forEach(mid=>{ const s=memSpan(mid); if(!s)return; if(!_lo||s.dep<_lo)_lo=s.dep; if(!_hi||s.arr>_hi)_hi=s.arr; });
+  GUESTS.forEach(g=>{ if(_lo && g.room_no===room){ if(g.ci<_lo)_lo=g.ci; if(g.co>_hi)_hi=g.co; } });
+  const OUT=await shzOccOutside(_lo,_hi); if(!OUT){ toast(tx('connFail'),'err'); return; }
   ids.forEach(mid=>{
     let sp=memSpan(mid); if(!sp){ skipped++; return; }
     // 같은 팀이 이미 이 방에 있으면 그 방 체류기간으로 합류(예약 전체 span이 아니라 실제 방 체류에 맞춤)
@@ -928,7 +965,7 @@ async function bPlaceIds(ids,room){
     if(es!=null){ const mate=GUESTS.find(g=>g.room_no===room && String(g.event_seq)===String(es) && g.ci && g.co); if(mate) sp={dep:mate.ci,arr:mate.co}; }
     if(roomClosed(room,sp.dep,sp.arr)){ skipped++; return; }
     let used=0;
-    GUESTS.forEach(g=>{ if(g.room_no===room && !sel.has(g.member_id) && g.ci<sp.arr && sp.dep<g.co) used++; });   // 기존 점유(이동 대상 제외)
+    GUESTS.concat(OUT).forEach(g=>{ if(g.room_no===room && !sel.has(g.member_id) && g.ci<sp.arr && sp.dep<g.co) used++; });   // 기존 점유(이동 대상 제외)
     accepted.forEach(a=>{ if(a.dep<sp.arr && sp.dep<a.arr) used++; });                                          // 이번에 같이 넣는 인원
     if(used+1>3){ skipped++; return; }   // 정원 2 + 강제 1명(총 3)까지 허용 · 4명째 차단
     accepted.push({mid,dep:sp.dep,arr:sp.arr});
@@ -957,6 +994,7 @@ function shzParseSpanInput(str, yr){
 }
 async function bSetSpan(seq){
   if(!supa){ toast(tx('connFail'),'err'); return; }
+  if(_closFail){ toast(tx('closFailBlock'),'err'); return; }
   const rows=GUESTS.filter(g=>String(g.event_seq)===String(seq) && g.ci && g.co); if(!rows.length) return;
   const cur={dep:rows.reduce((a,g)=>a&&a<g.ci?a:g.ci,null), arr:rows.reduce((a,g)=>a&&a>g.co?a:g.co,null)};
   const b=BOOK[seq]||{}; const bdep=String(b.dep_date||'').slice(0,10), barr=String(b.arr_date||'').slice(0,10);
@@ -968,9 +1006,10 @@ async function bSetSpan(seq){
   if(sp.dep===cur.dep && sp.arr===cur.arr) return;
   // 정원: 새 기간 동안 그 방을 쓰는 다른 팀 + 이 팀 인원 ≤ 3
   const byRoom={}; rows.forEach(g=>{ (byRoom[g.room_no]=byRoom[g.room_no]||[]).push(g); });
+  const OUT=await shzOccOutside(sp.dep,sp.arr); if(!OUT){ toast(tx('connFail'),'err'); return; }   // 새 기간이 화면 기간 밖(다음 달)으로 나가도 그 방 점유를 본다
   for(const room of Object.keys(byRoom)){
     if(roomClosed(room,sp.dep,sp.arr)){ toast(tx('spanBlocked')(room),'warn'); return; }
-    const others=GUESTS.filter(g=>g.room_no===room && String(g.event_seq)!==String(seq) && g.ci<sp.arr && sp.dep<g.co).length;
+    const others=GUESTS.concat(OUT).filter(g=>g.room_no===room && String(g.event_seq)!==String(seq) && g.ci<sp.arr && sp.dep<g.co).length;
     if(others+byRoom[room].length>3){ toast(tx('spanBlocked')(room),'warn'); return; }
   }
   const preSnap=rows.map(g=>({mid:g.member_id, rows:snapMembers([g.member_id])}));
@@ -1005,7 +1044,7 @@ async function bUnassignIds(ids){
     const {error}=await supa.rpc('shizu_unassign',{p_member_ids:assigned});
     if(error)throw error;
     assigned.forEach(m=>BSEL.delete(m));
-    _shzUndo=snap; shzToastUndo(tx('unDone')); load();
+    shzToastUndo(tx('unDone'), ()=>shzRestore(snap)); load();   // 토스트마다 자기 스냅샷으로 복원(전역 하나를 같이 쓰면 연달아 해제 시 엉뚱한 사람이 돌아온다)
   }catch(e){ toast(tx('apFail')+(e.message||e),'err'); }
 }
 // ── 되돌리기(해제 직후) ──
@@ -1026,9 +1065,9 @@ async function shzRestoreAuto(snap,start,end){
     toast(tx('restored'),'ok'); load(); }
   catch(e){ toast(tx('autoFail')+(e.message||e),'err'); }
 }
-async function shzRestore(){
-  if(!supa||!_shzUndo||!_shzUndo.length) return;
-  const rows=_shzUndo; _shzUndo=null;
+async function shzRestore(snap){
+  const rows=snap||_shzUndo; _shzUndo=null;
+  if(!supa||!rows||!rows.length) return;
   try{ const {error}=await supa.rpc('shizu_place',{p_rows:rows}); if(error)throw error; toast(tx('restored'),'ok'); load(); }
   catch(e){ toast(tx('apFail')+(e.message||e),'err'); }
 }
@@ -1042,7 +1081,7 @@ async function bClearAll(){
   try{
     const {error}=await supa.rpc('shizu_unassign',{p_member_ids:ids});
     if(error)throw error;
-    BSEL.clear(); _shzUndo=snap; shzToastUndo(tx('clearAllDone')(ids.length)); load();
+    BSEL.clear(); shzToastUndo(tx('clearAllDone')(ids.length), ()=>shzRestore(snap)); load();
   }catch(e){ toast(tx('apFail')+(e.message||e),'err'); }
 }
 
@@ -1102,13 +1141,19 @@ function bigoFor(date){
 
 
 // 現地메모 = 팀 단위 현장 수기(영속). onblur 저장. 같은 팀은 여러 날짜에 같은 메모 표시(다음 렌더 반영).
+// 같은 팀의 같은 종류 칸(다른 방·다른 날짜)을 방금 저장한 값으로 맞춘다 — 옛 내용이 남은 칸에서 포커스가 빠지며 새 값을 덮어쓰지 않게
+function shzSyncTeamCells(fn, seq, val){
+  document.querySelectorAll(`#preview td.shz-pv-tmemo[data-seq="${seq}"][onblur^="${fn}("]`).forEach(td=>{ if(String(td.textContent||'').trim()!==val) td.textContent=val; });
+}
 async function saveTeamMemo(seq, text){
   seq=Number(seq); if(!seq) return;
   const val=String(text||'').replace(/ /g,' ').trim();
-  TMEMO[seq]=val;
+  const prev=TMEMO[seq]||'';
+  if(val===prev) return;   // 바뀐 것이 없으면 저장하지 않는다 — 같은 팀의 다른 칸(옛 내용)이나 오래 열어 둔 화면을 지나가기만 해도 최신 메모를 덮어쓰던 것 방지
+  TMEMO[seq]=val; shzSyncTeamCells('saveTeamMemo',seq,val);
   if(!supa) return;
   try{
-    const {error}=await supa.from('shizu_team_memo').upsert({event_seq:seq,note:val,updated_by:curUser(),updated_at:new Date().toISOString()},{onConflict:'event_seq'});
+    const {error}=await supa.from('shizu_team_memo').upsert({event_seq:seq,note:val,updated_by:curUser(),updated_at:new Date().toISOString()},{onConflict:'event_seq'}); if(error) TMEMO[seq]=prev;   // 저장 실패 → 다음 blur 에서 다시 저장되게 되돌림
     if(error)throw error;
   }catch(e){ toast(tx('tmemoFail')+(e.message||e),'warn'); }
 }
@@ -1116,10 +1161,12 @@ async function saveTeamMemo(seq, text){
 async function saveTeamRef(seq, text){
   seq=Number(seq); if(!seq) return;
   const val=String(text||'').replace(/ /g,' ').trim();
-  TREF[seq]=val;
+  const prev=TREF[seq]||'';
+  if(val===prev) return;   // 바뀐 것이 없으면 저장하지 않는다(現地メモ와 같은 규칙)
+  TREF[seq]=val; shzSyncTeamCells('saveTeamRef',seq,val);
   if(!supa) return;
   try{
-    const {error}=await supa.from('shizu_team_memo').upsert({event_seq:seq,ref_note:val,updated_by:curUser(),updated_at:new Date().toISOString()},{onConflict:'event_seq'});
+    const {error}=await supa.from('shizu_team_memo').upsert({event_seq:seq,ref_note:val,updated_by:curUser(),updated_at:new Date().toISOString()},{onConflict:'event_seq'}); if(error) TREF[seq]=prev;   // 저장 실패 → 다음 blur 에서 다시 저장되게 되돌림
     if(error)throw error;
   }catch(e){ toast(tx('tmemoFail')+(e.message||e),'warn'); }
 }
@@ -1209,10 +1256,12 @@ function shzPlanAssign(ctx){
 
 async function autoAssignShizu(){
   if(!supa||!SHZ_INV){ toast(tx('connFail'),'err'); return; }
+  if(_closFail){ toast(tx('closFailBlock'),'err'); return; }   // 폐쇄 목록을 모르는 채 다시 짜면 폐쇄 객실에 넣는다
   const {start,end}=monthBounds(YM);
   try{
-    const {data:gs}=await supa.from('guests').select('event_seq,accom,bookings!inner(dep_date,arr_date)').eq('accom',FACILITY).neq('bookings.status','대기');
-    const teams=(gs||[]).map(g=>({seq:g.event_seq,dep:String((g.bookings||{}).dep_date||'').slice(0,10),arr:String((g.bookings||{}).arr_date||'').slice(0,10)}))
+    const {data:gs}=await supa.from('guests').select('event_seq,accom,bookings!inner(dep_date,arr_date,product_name,remark_local)').eq('accom',FACILITY).neq('bookings.status','대기');
+    // 콤보 상품(시즈+간지·야마나미)은 예약 기간이 아니라 현지비고의 실제 시즈 구간으로 — load() 의 미배정 명단·서버 자동채움(142 _shizu_span)과 같은 규칙
+    const teams=(gs||[]).map(g=>{ const b=g.bookings||{}; const dep=String(b.dep_date||'').slice(0,10), arr=String(b.arr_date||'').slice(0,10); const sp=parseShizuSpan(b.remark_local,b.product_name,dep,arr)||{dep,arr}; return {seq:g.event_seq,dep:sp.dep,arr:sp.arr}; })
       .filter(t=>t.dep&&t.arr&&t.dep<=end&&t.arr>start);
     if(!teams.length){ toast(tx('autoNone'),'warn'); return; }
     const seqs=[...new Set(teams.map(t=>t.seq))];
@@ -1222,7 +1271,14 @@ async function autoAssignShizu(){
     const pxAge=seqs.length? await pagedIn('passengers','event_seq,birth,birth_yymmdd','event_seq',seqs) : [];
     const bkMap={}; bks.forEach(b=>bkMap[b.event_seq]=b);
     // 수기(맞바꿈·강제추가)만 점유 시드로 보존 — auto는 서버에서 정리 후 새로 채움
-    const manual=GUESTS.filter(g=>g.src==='manual');
+    //  화면 기간(GUESTS)이 아니라 이 달에 걸친 팀의 전체 체류 구간으로 DB 에서 다시 읽는다 — 기간을 좁히거나 옮겨 둔 채 누르면
+    //  화면 밖 수기 배정자가 보호에서 빠져 다른 방에 한 번 더 들어가고, 되돌리기가 화면 밖 자동 배정을 지웠다. 조회 실패 시 재배치하지 않는다.
+    const lo=teams.reduce((a,t)=>t.dep<a?t.dep:a,start), hi=teams.reduce((a,t)=>t.arr>a?t.arr:a,end);
+    const {data:curRms,error:curErr}=await supa.from('rooms').select('inventory_id,member_id,event_seq,room_no,check_in,check_out,assign_source').eq('facility',FACILITY).lte('check_in',hi).gt('check_out',lo).not('member_id','is',null);
+    if(curErr) throw curErr;
+    const curRows=(curRms||[]).filter(r=>SHZ_ROOMS.includes(r.room_no)).map(r=>({member_id:r.member_id,event_seq:r.event_seq,invId:r.inventory_id,room_no:r.room_no,ci:String(r.check_in).slice(0,10),co:String(r.check_out).slice(0,10),src:r.assign_source||'auto'}));
+    const willClear=g=>g.src!=='manual' && g.ci<=end && g.co>start;   // 서버(shizu_assign_rooms)가 지우는 행 = 이 달에 걸친 auto
+    const manual=curRows.filter(g=>!willClear(g));   // 남는 행(수기 + 이 달 밖 auto) = 점유 시드·보호
     const keep=new Set(manual.map(g=>g.member_id));
     const byTeam={}; gms.forEach(m=>{ if(!keep.has(m.id)){ (byTeam[m.event_seq]=byTeam[m.event_seq]||[]).push(m.id); } });
     // 현지비고에 별채/별관 포함 = 別棟(별채) 선호
@@ -1252,7 +1308,7 @@ async function autoAssignShizu(){
     if(!rows.length){ toast(tx('autoNone'),'warn'); return; }
     if(!confirm(tx('autoConfirm')(rows.length))) return;
     // 되돌리기용: 배정 직전 auto 방 스냅샷(manual 제외 — RPC가 manual은 안 건드림)
-    const autoSnap=GUESTS.filter(g=>g.src!=='manual').map(g=>({member_id:g.member_id,inventory_id:g.invId,room_no:g.room_no,check_in:g.ci,check_out:g.co}));
+    const autoSnap=curRows.filter(willClear).map(g=>({member_id:g.member_id,inventory_id:g.invId,room_no:g.room_no,check_in:g.ci,check_out:g.co}));
     const {data:placedN,error}=await supa.rpc('shizu_assign_rooms',{p_rows:rows,p_clear_from:start,p_clear_to:end});
     if(error)throw error;
     // RPC는 정원초과 행을 건너뛰고 '되는 데까지' 배정 → 실제 배정 수·미배정 수 반영
@@ -1300,7 +1356,7 @@ async function addClosure(){
   const room=$('#cl-room').value, from=$('#cl-from').value, to=$('#cl-to').value, reason=$('#cl-reason').value.trim();
   if(!room||!from||!to){ toast(tx('clNeed'),'warn'); return; }
   if(to<from){ toast(tx('clRangeErr'),'warn'); return; }
-  const inv=SHZ_INV[room]; if(!inv){ toast(tx('swapNoInv'),'err'); return; }
+  const inv=(SHZ_INV||{})[room]; if(!inv){ toast(tx('swapNoInv'),'err'); return; }
   try{
     const {data,error}=await supa.from('room_closures').insert({inventory_id:inv,from_date:from,to_date:to,reason:reason||null}).select().single();
     if(error)throw error;
@@ -1355,8 +1411,8 @@ function renderPreview(){
       <tr><td class="shz-pv-lb">大人</td>${cells.map(c=>`<td>${c.mf}</td>`).join('')}<td class="shz-pv-k">大 ${zen(tot)} 名</td></tr>
       <tr><td class="shz-pv-lb">合計人数</td>${cells.map(c=>`<td>${c.cnt}</td>`).join('')}<td class="shz-pv-k">計 ${zen(tot)} 名</td></tr>
       <tr><td class="shz-pv-lb">連泊</td>${cells.map(c=>`<td>${c.stay}</td>`).join('')}<td class="shz-pv-k">男${zen(tm)} 女${zen(tf)}</td></tr>
-      <tr><td class="shz-pv-lb">現地メモ</td>${cells.map(c=>{const ed=c.seq!=null; return `<td class="shz-pv-tmemo"${ed?` contenteditable="true" spellcheck="false" data-seq="${c.seq}" onblur="saveTeamMemo(${c.seq},this.textContent)"`:''}>${esc(c.memo||'')}</td>`;}).join('')}<td class="shz-pv-k"></td></tr>
-      <tr><td class="shz-pv-lb">参考事項</td>${SHZ_ROOMS.map((room,ri)=>{const c=cells[ri]; const ed=c.seq!=null; return `<td class="shz-pv-tmemo"${ed?` contenteditable="true" spellcheck="false" data-seq="${c.seq}" onblur="saveTeamRef(${c.seq},this.textContent)"`:''}>${esc(c.ref||'')}</td>`;}).join('')}<td class="shz-pv-k"></td></tr>
+      <tr><td class="shz-pv-lb">現地メモ</td>${cells.map(c=>{const ed=c.seq!=null&&!_tmemoFail; return `<td class="shz-pv-tmemo"${ed?` contenteditable="true" spellcheck="false" data-seq="${c.seq}" onblur="saveTeamMemo(${c.seq},this.textContent)"`:''}>${esc(c.memo||'')}</td>`;}).join('')}<td class="shz-pv-k"></td></tr>
+      <tr><td class="shz-pv-lb">参考事項</td>${SHZ_ROOMS.map((room,ri)=>{const c=cells[ri]; const ed=c.seq!=null&&!_tmemoFail; return `<td class="shz-pv-tmemo"${ed?` contenteditable="true" spellcheck="false" data-seq="${c.seq}" onblur="saveTeamRef(${c.seq},this.textContent)"`:''}>${esc(c.ref||'')}</td>`;}).join('')}<td class="shz-pv-k"></td></tr>
       ${(()=>{ const un=UNBYDATE[date]||0; return un?`<tr class="shz-pv-unrow"><td class="shz-pv-lb">未配置</td><td colspan="8" class="shz-pv-un">⚠ ${tx('unassignedN')(un)}</td></tr>`:''; })()}
     </table>`;
   });
@@ -1386,7 +1442,7 @@ function printChart(){
     .shz-pv-hd th.bz{background:#e0e0e0}
     .shz-rno{display:block;font-size:calc(9px*var(--fs,1));color:#555;font-weight:700}
     .shz-annex{display:inline-block;background:#fff;color:#000;border:1px solid #333;border-radius:4px;padding:0 5px;font-size:calc(11px*var(--fs,1));font-weight:800;margin-right:3px}
-    .shz-pv-dt{background:#e0e0e0!important;font-size:calc(15px*var(--fs,1));font-weight:800}
+    .shz-pv-dt{background:#e0e0e0!important;font-size:calc(15px*var(--fs,1));font-weight:800;white-space:nowrap}   /* 두 자리 일자(１１／１２)가 「１１／１」「２」로 끊기지 않게 */
     .shz-pv-dt span{font-size:calc(11px*var(--fs,1));color:#555}
     .shz-pv-io{font-size:calc(11.5px*var(--fs,1));color:#222;letter-spacing:-.02em}
     /* 生年月日 = 滞在日(IN／OUT)와 동일 크기(Min). 이 팝업 CSS에 규칙이 없으면 기본 셀 크기(16px)로 커짐 */
