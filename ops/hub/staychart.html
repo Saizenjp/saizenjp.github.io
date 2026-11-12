@@ -132,7 +132,7 @@
     .sc td,.sc th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.1">
 </head>
 <body data-so-area="staychart">
 <script>(function(){ var b=new URLSearchParams(location.search).get('brand')||''; if(/^(kumamoto|trial)$/.test(b)) document.body.setAttribute('data-so-area','partner_'+b); })();</script>
@@ -179,7 +179,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=40.0"></script>
+<script src="../assets/saizen-ops.js?v=40.1"></script>
 <script>
 const $=s=>document.querySelector(s);
 const L={
@@ -242,23 +242,26 @@ function portOf(origin,flight){ try{ return (window.SZCore&&SZCore.originPort)?(
 
 // ── 로드 ──
 async function fetchAll(q){ let out=[], pg=0; while(true){ const {data,error}=await q.range(pg,pg+999); if(error) throw error; out=out.concat(data||[]); if(!data||data.length<1000) break; pg+=1000; } return out; }
+let _loadSeq=0;   // 순번 표식 — 월을 연달아 넘길 때 늦게 온 앞 달 응답을 버린다(room.html _loadSeq 와 같은 방식)
 async function load(){
   if(!supa||!YM) return;
   if(BRAND) return loadPartner();
-  const m1=dstr(YM,1), mEnd=dstr(YM,daysIn(YM));
+  const ym=YM, my=++_loadSeq;   // 이 호출이 읽는 달 — 끝날 때 전역 YM 이 아니라 이 값을 LOADED 에 넣는다
+  const m1=dstr(ym,1), mEnd=dstr(ym,daysIn(ym));
   $('#sum').textContent=tx('loading');
   try{
-    // 그 달에 밤이 하나라도 있는 예약: dep ≤ 월말 && arr > 월초 (arr=체크아웃일, 그날 밤은 안 묵음). 대기 제외.
-    const bs=await fetchAll(supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax,product_name,origin,airline,status,nights_label').lte('dep_date',mEnd).gt('arr_date',m1).neq('status','대기').order('dep_date').order('event_seq'));
+    // 그 달에 밤이 하나라도 있는 예약(dep ≤ 월말 && arr > 월초, arr=체크아웃일) + 1일 귀국 팀(arr = 월초 — 줄 없이 머리 出発 인원에만). 대기 제외.
+    const bs=await fetchAll(supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax,product_name,origin,airline,status,nights_label').lte('dep_date',mEnd).gte('arr_date',m1).neq('status','대기').order('dep_date').order('event_seq'));
     const seqs=bs.map(b=>b.event_seq);
     const G={}, REP={}, PX={};
     for(let i=0;i<seqs.length;i+=200){ const ch=seqs.slice(i,i+200);
       const {data:gs,error:e1}=await supa.from('guests').select('event_seq,accom,team_tag,group_code,pax').in('event_seq',ch); if(e1) throw e1; (gs||[]).forEach(g=>{ G[g.event_seq]=g; });
-      const {data:gm,error:e2}=await supa.from('guest_members').select('event_seq,is_rep,seq_in_team,passenger_id,member_class,member_grade,member_div').in('event_seq',ch); if(e2) throw e2;
+      const gm=await fetchAll(supa.from('guest_members').select('event_seq,is_rep,seq_in_team,passenger_id,member_class,member_grade,member_div').in('event_seq',ch).order('event_seq').order('id'));   // 팀당 전원 행이라 200팀 묶음이 1000행을 넘을 수 있다 → 쪽 읽기(정렬 끝에 PK)
       (gm||[]).forEach(r=>{ const cur=REP[r.event_seq]; if(!cur || (r.is_rep&&!cur.is_rep) || (!!r.is_rep===!!cur.is_rep && (r.seq_in_team||99)<(cur.seq_in_team||99))) REP[r.event_seq]=r; });
     }
     const pids=Object.values(REP).map(r=>r.passenger_id).filter(Boolean);
     for(let i=0;i<pids.length;i+=200){ const {data:ps,error:e3}=await supa.from('passengers').select('id,loc_arr_time,ret_dep_time,dep_flight,ret_flight,origin,airline').in('id',pids.slice(i,i+200)); if(e3) throw e3; (ps||[]).forEach(p=>{ PX[p.id]=p; }); }
+    if(my!==_loadSeq) return;   // 그 사이 다른 달을 골랐다 — 낡은 응답은 버린다
     TEAMS=bs.map(b=>{ const g=G[b.event_seq]||{}, rep=REP[b.event_seq]||null, p=rep?(PX[rep.passenger_id]||{}):{};
       const accom=g.accom||((window.SZCore&&SZCore.accomFromProduct)?SZCore.accomFromProduct(b.product_name||''):'')||'야마나미리조트';
       const depF=p.dep_flight||'', retF=p.ret_flight||'';
@@ -267,15 +270,17 @@ async function load(){
         arrT:hhmm(p.loc_arr_time), depT:hhmm(p.ret_dep_time), port:portOf(p.origin||b.origin, depF||b.airline), retPort:portOf(p.origin||b.origin, retF||b.airline),
         nights:nightsOf(String(b.dep_date||'').slice(0,10),String(b.arr_date||'').slice(0,10)), member:(rep?!!(window.SZCore&&SZCore.isMember&&SZCore.isMember(rep)):false) };
     });
-    LOADED=YM; render();
-  }catch(e){ toast(tx('loadFail')+': '+(e&&e.message||e),'err'); $('#sum').textContent=''; }
+    LOADED=ym; render();
+  }catch(e){ if(my!==_loadSeq) return; if(LOADED){ YM=LOADED; $('#ym').value=YM; }   // 실패 — 월 입력칸을 지금 표의 달로 되돌린다
+    toast(tx('loadFail')+': '+(e&&e.message||e),'err'); $('#sum').textContent=''; }
 }
 // 자회사 상품: 별도 원장 partner_bookings(그 달에 자회사 숙소 밤이 있는 팀: seg_from ≤ 월말 && seg_to > 월초, 대기 제외) + partner_members(대표자 항공편 시각)
 async function loadPartner(){
-  const m1=dstr(YM,1), mEnd=dstr(YM,daysIn(YM));
+  const ym=YM, my=++_loadSeq;
+  const m1=dstr(ym,1), mEnd=dstr(ym,daysIn(ym));
   $('#sum').textContent=tx('loading');
   try{
-    const bsel=withAg=>supa.from('partner_bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,seg_from,seg_to,seg_nights,seg_sure,combo,pax,product_name,origin,airline,status,nights_label,remark,remark_local'+(withAg?',agency':'')).eq('brand',BRAND).lte('seg_from',mEnd).gt('seg_to',m1).neq('status','대기').order('seg_from').order('event_seq');
+    const bsel=withAg=>supa.from('partner_bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,seg_from,seg_to,seg_nights,seg_sure,combo,pax,product_name,origin,airline,status,nights_label,remark,remark_local'+(withAg?',agency':'')).eq('brand',BRAND).lte('seg_from',mEnd).gte('seg_to',m1).neq('status','대기').order('seg_from').order('event_seq');
     let bs; try{ bs=await fetchAll(bsel(true)); }catch(e){ if(/agency/i.test(String(e&&e.message||e))) bs=await fetchAll(bsel(false)); else throw e; }   // agency 열(SQL 160) 없는 DB 도 그린다
     const seqs=bs.map(b=>b.event_seq), REP={}, OPS={}, HOT={};
     // 수배 목록(手配リスト, SQL 160) 입력값 — 여행사·호텔·객실 수·담당(Min 2026-11-03 「여행사 명도 추가 … 필요한 게 있으면 넣으면」). 표가 없으면 그 칸만 빈 칸.
@@ -286,6 +291,7 @@ async function loadPartner(){
       const {data:ms,error}=await supa.from('partner_members').select('event_seq,is_rep,seq_in_team,dep_flight,ret_flight,origin,airline,loc_arr_time,ret_dep_time').in('event_seq',ch); if(error) throw error;
       (ms||[]).forEach(r=>{ const cur=REP[r.event_seq]; if(!cur || (r.is_rep&&!cur.is_rep) || (!!r.is_rep===!!cur.is_rep && (r.seq_in_team||99)<(cur.seq_in_team||99))) REP[r.event_seq]=r; });
     }
+    if(my!==_loadSeq) return;
     TEAMS=bs.map(b=>{ const p=REP[b.event_seq]||{}, o=OPS[b.event_seq]||{}, h=HOT[o.hotel_id]||null;
       const agency=(o.agency&&o.agency.trim())||((window.SZCore&&SZCore.partnerAgency)?SZCore.partnerAgency({explicit:b.agency,remark:b.remark,remark_local:b.remark_local,product:b.product_name,product_name:b.product_name}):(b.agency||''));   // 수배 목록 수정값 > 엠클릭 열 > 비고 「여행사: ○○」
       const fullDep=String(b.dep_date||'').slice(0,10), fullArr=String(b.arr_date||'').slice(0,10);
@@ -297,12 +303,15 @@ async function loadPartner(){
         port:(dep===fullDep)?portOf(p.origin||b.origin, p.dep_flight||b.airline):'', retPort:(arr===fullArr)?portOf(p.origin||b.origin, p.ret_flight||b.airline):'',
         nights:nightsOf(dep,arr), member:false,
         agency:agency||'', hotelJa:h?(h.name_ja||''):'', hotelKo:h?(h.name_ko||h.name_ja||''):'', hotelNote:o.hotel_note||'', rooms:{t:Number(o.twin)||0,s:Number(o.single)||0,tr:Number(o.triple)||0}, staff:o.staff||'' }; });
-    LOADED=YM; render();
-  }catch(e){ const m=String(e&&e.message||e); toast((/partner_bookings|partner_members|schema cache|does not exist/i.test(m)?tx('needSql')+' · ':'')+tx('loadFail')+': '+m,'err'); $('#sum').textContent=''; }
+    LOADED=ym; render();
+  }catch(e){ if(my!==_loadSeq) return; if(LOADED){ YM=LOADED; $('#ym').value=YM; }
+    const m=String(e&&e.message||e); toast((/partner_bookings|partner_members|schema cache|does not exist/i.test(m)?tx('needSql')+' · ':'')+tx('loadFail')+': '+m,'err'); $('#sum').textContent=''; }
 }
 
 // ── 렌더 ──
-function visibleTeams(){ return TEAMS.filter(t=>!ACC.size||ACC.has(t.ak)); }
+//  귀국일(OUT)이 그 달 1일인 팀 = 이 달 밤이 없다 → 줄로는 그리지 않고 머리 出発(1일) 인원에만 센다
+function visibleTeams(){ const m1=dstr(LOADED||YM,1); return TEAMS.filter(t=>(!ACC.size||ACC.has(t.ak)) && t.arr>m1); }
+function leaveOnlyTeams(){ const m1=dstr(LOADED||YM,1); return TEAMS.filter(t=>(!ACC.size||ACC.has(t.ak)) && t.arr<=m1); }
 function nightSpan(t, ym){   // 이 달 안에서 묵는 날짜 집합(1..N) — dep ≤ d < arr
   const N=daysIn(ym), out=[]; for(let d=1;d<=N;d++){ const ds=dstr(ym,d); if(t.dep<=ds && ds<t.arr) out.push(d); } return out;
 }
@@ -356,7 +365,7 @@ function render(){
   const tbl=$('#tbl'); if(!tbl) return;
   const ym=LOADED||YM; if(!ym||!TEAMS.length){ tbl.innerHTML=`<tbody><tr><td class="empty">${esc(supa?tx('empty'):tx('needConn'))}</td></tr></tbody>`; $('#sum').textContent=''; $('#pt').innerHTML=''; return; }
   const list=visibleTeams().slice().sort(sortTeams);
-  const tot=dayTotals(list,ym);
+  const tot=dayTotals(list.concat(leaveOnlyTeams()),ym);   // 1일 귀국 팀의 出発 인원 포함
   let body='';
   if(GROUP && !BRAND){
     const order=['Y','K','G','S'];
