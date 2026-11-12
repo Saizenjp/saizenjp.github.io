@@ -6,7 +6,7 @@
 select '1_비사이젠 오염(bookings)' as check, count(*) cnt,
        '타 리조트(스가다이라·14hills·벳푸·시로사토·미야자키 등)가 bookings에 적재됨 → step1 accom 게이트 확인' as note
   from bookings
-  where product_name !~ '쿠주|구주힐즈|久住|장기숙박|별장전용|간지|ガーンジー|GUERNSEY|시즈노야도|しずの宿|야마나미|돔하우스|소보별장|아소별장|관내별장'
+  where product_name !~ '쿠주|쿠쥬|구주힐즈|久住|프라이빗 타운|장기숙박|별장전용|간지|ガーンジー|GUERNSEY|시즈노야도|しずの宿|야마나미|돔하우스|돔스테이|소보별장|소보 테라스|아소별장|아소 프레스티지|히노키|관내별장'
 union all
 select '2_태그 불일치(person_tag≠group_code)', count(*),
        'guest_members.person_tag가 팀 group_code로 시작하지 않음 → 코드 재배정/임포트 정합 확인'
@@ -46,4 +46,4 @@ select '8_F코드 30일내 중복(현지 동시존재)', count(*),
     select f1.event_seq from f f1 join f f2
       on f1.group_code=f2.group_code and f1.event_seq<>f2.event_seq
       and f1.dep_date <= f2.arr_date + 30 and f2.dep_date <= f1.arr_date + 30) t
-order by check;
+order by 1;   -- 「check」는 예약어라 order by 에 그대로 쓰면 구문 오류가 난다(첫 열 번호로 정렬)

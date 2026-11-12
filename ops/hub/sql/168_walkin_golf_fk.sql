@@ -17,8 +17,10 @@
 --    ③ 예약·당일 손님이 지워지면 그 번호의 행을 지우는 정리 트리거를 양쪽에 단다(종전 ON DELETE CASCADE 와 같은 결과).
 --    ④ walkin_open 옛 4인자 판을 지운다 — 8인자 판(123)과 인자 이름이 겹쳐, 인자 4개만 보내면 서버가 어느 쪽인지 고르지 못한다.
 --       (pos.html 은 2026-11-12 부터 8인자 판에만 있는 인자를 같이 보내 하나로 정한다.)
+--    ⑤ 120 의 옛 정책 walkins_write·walkins_update(pos·settle)를 지운다 — 123 의 walkins_ins·walkins_upd
+--       (pos·settle·front·golf)가 그대로 덮는 부분집합이라 권한은 달라지지 않는다(같은 일을 하는 정책이 두 벌인 것만 정리).
 --
---  멱등. RLS 정책·화면 권한 변경 없음. 새 함수 둘은 트리거 전용(public·anon·authenticated 실행 권한 회수).
+--  멱등. 권한 변경 없음(⑤ 는 겹치는 옛 정책 정리). 새 함수 둘은 트리거 전용(public·anon·authenticated 실행 권한 회수).
 -- ============================================================================
 
 -- ② 번호 검사 — 예약(bookings) 또는 당일 손님(walkins)에 있는 번호만
@@ -78,6 +80,10 @@ create trigger trg_seq_guard before insert or update of event_seq on public.cart
 -- ④ walkin_open 옛 4인자 판 삭제(8인자 판만 남긴다)
 drop function if exists public.walkin_open(date, text, integer, text);
 
+-- ⑤ 120 의 옛 워크인 쓰기 정책 삭제(123 의 walkins_ins·walkins_upd 가 같은 범위를 포함한다)
+drop policy if exists walkins_write  on public.walkins;
+drop policy if exists walkins_update on public.walkins;
+
 notify pgrst, 'reload schema';
 
 -- 확인용(읽기만):
@@ -86,5 +92,6 @@ notify pgrst, 'reload schema';
 --      and conrelid in ('public.golf_groups'::regclass,'public.golf_skips'::regclass,'public.golf_holes'::regclass,'public.cart_bookings'::regclass);   -- 0행
 --   select tgrelid::regclass, tgname from pg_trigger where tgname in ('trg_seq_guard','trg_golf_cleanup_bookings','trg_golf_cleanup_walkins') and not tgisinternal;   -- 6행
 --   select count(*) from pg_proc where proname='walkin_open';   -- 1
+--   select policyname from pg_policies where schemaname='public' and tablename='walkins' order by 1;   -- walkins_ins · walkins_read · walkins_upd 3행
 --   -- 어디에도 없는 번호(고아) 0 이어야 한다:
 --   select 'golf_groups', count(*) from golf_groups g where not exists(select 1 from bookings b where b.event_seq=g.event_seq) and not exists(select 1 from walkins w where w.event_seq=g.event_seq);

@@ -8,6 +8,8 @@
 --   · 민감 테이블 SELECT 정책만 읽기권한(has_any_read_area)로 교체. 기본값 read_areas='{}'
 --     → 적용 즉시 기존 동작과 동일(아무도 추가 읽기권한 없음).
 --  멱등 재실행 가능. ⚠ Supabase SQL Editor 수동 실행(19·39 이후).
+--  ⚠ 지금은 다시 실행하지 않는다 — has_any_read_area 등은 138(세부 영역 area_expand·차단 계정 active 검사)이 다시 정의했다.
+--     이 파일의 함수 본문은 그 전 판이라, 다시 돌리면 세부 권한(자식 키)이 읽기에서 인정되지 않는다.
 -- ============================================================================
 
 alter table user_access add column if not exists read_areas text[] not null default '{}';

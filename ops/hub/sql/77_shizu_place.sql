@@ -15,6 +15,9 @@
 --  ② shizu_unassign(p_member_ids uuid[]) : 그 사람들의 시즈 배정을 해제(미배정 행거로).
 --     - 반환 = 삭제된 행 수.
 --  멱등(create or replace). ⚠ Supabase SQL Editor 수동 실행 / MCP 적용.
+--  ⚠ 아래 shizu_place 본문은 옛 판이다 — 169_shizu_place_atomic.sql 이 대체한다(운영 DB 는 169 본문).
+--     이 파일의 shizu_place 를 다시 실행하면 「이동이 실패할 때 기존 방배정이 사라지는」 동작으로 되돌아간다.
+--     shizu_unassign 은 이 파일이 그대로 정본이다.
 -- ============================================================================
 
 create or replace function shizu_place(p_rows jsonb)

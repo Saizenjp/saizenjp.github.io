@@ -9,7 +9,7 @@
 /ops/index.html        카드 랜딩(권한별 노출)
 /ops/hub/*.html        화면 36개 — admin, aircover, audit, bill, board, cart, course, dinner, dispatch, frontdesk, groupcodes, housekeeping, inventory, keyslip, kitchen, menu, nametag, notice, occupancy, outings, pos, pos_customer, qrcards, room, roomstats, settle, settle_merit, settle_report, shizu, signage, stats, staychart, step1, transfer, visitor_stats, watchlist
 /ops/assets/           saizen-ops.js(공통 chrome·i18n·권한·헬퍼) · saizen-ops.css · saizen-core.js(순수 도메인 규칙, Node 테스트 공유) · qrcode-generator.js
-/ops/hub/sql/          Supabase 마이그레이션 01~157(번호순·멱등, SQL Editor/MCP 수동 적용) · 00_VERIFY.sql(적용 상태 점검) · 00_DATA_AUDIT.sql
+/ops/hub/sql/          Supabase 마이그레이션 01~169(번호순·멱등, SQL Editor/MCP 수동 적용) · 00_VERIFY.sql(적용 상태 점검) · 00_DATA_AUDIT.sql
 (Edge Function)        translate-remarks — DeepL 비고 번역(Supabase 대시보드에 배포, 저장소 밖 · DEEPL_API_KEY 미설정 시 원문 표시)
 /assets/               로고 SVG
 /docs/                 기술 문서(00_README.md 에 목록) · 설계 명세(04 현장정산 · 06 정산 보강) · 규칙(방배정) · 매뉴얼

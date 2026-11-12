@@ -1,8 +1,13 @@
 -- ============================================================================
---  SaiZen Hub — 설치 상태 종합 점검 (01~40 전체)
+--  SaiZen Hub — 설치 상태 종합 점검 (01~169)
 --  Supabase SQL Editor 에 붙여넣고 Run → 각 항목 ✅/❌ 한눈에.
 --  (to_regclass / information_schema 사용 → 객체가 없어도 에러 없이 동작)
---  ❌ 가 보이면 괄호 안 번호 파일을 SQL Editor 에서 실행하세요.
+--  번호 메모: 43·44·120·121 은 같은 번호 파일이 두 개씩이다(서로 독립 — 안내는 파일 이름까지 적는다). 72 는 결번.
+--            본문이 DB 에만 있는 함수(data_audit 등)는 그 파일 머리말의 안내대로 pg_get_functiondef 로 뽑는다.
+--  ❌ 가 보이면 괄호 안 번호 파일을 먼저 읽어 보고, 빠진 부분만 적용하세요.
+--  ⚠ 옛 번호 파일을 통째로 다시 실행하지 않는다 — 뒤 번호가 같은 정책·함수·뷰를 다시 정의했으면 옛 정의로 되돌아간다.
+--    (01·02·04·08·09·11·12·16 = 비로그인(anon) 전체 허용 정책을 다시 만든다 / 17 = 영역별 정책을 지우고 로그인 전체 허용 하나로 바꾼다
+--     / 05·15 = 객실 행을 지웠다 다시 넣어 방배정의 객실 연결이 끊긴다 / 98 = 이름만 같은 다른 손님을 지운다)
 -- ============================================================================
 select 구분, 항목, 상태
 from (
@@ -37,8 +42,8 @@ from (
   union all select 9,'09 정산','folios',       case when to_regclass('public.folios')       is not null then '✅ 있음' else '❌ 없음 (09)' end
   union all select 9,'09 정산','charges',      case when to_regclass('public.charges')      is not null then '✅ 있음' else '❌ 없음 (09)' end
   union all select 9,'09 정산','payments',     case when to_regclass('public.payments')     is not null then '✅ 있음' else '❌ 없음 (09)' end
-  union all select 9,'09 정산','rounds',       case when to_regclass('public.rounds')       is not null then '✅ 있음' else '❌ 없음 (09)' end
-  union all select 9,'09 정산','dining',       case when to_regclass('public.dining')       is not null then '✅ 있음' else '❌ 없음 (09)' end
+  -- rounds·dining 은 118 에서 삭제(한 번도 쓰지 않은 빈 표) — '없어야 정상' 은 아래 118 검사가 본다. ⚠ 09 는 다시 실행하지 않는다(anon 전체 허용 정책 p_all_* 을 다시 만든다).
+  -- (dining 검사 제거 — 위와 같음)
   union all select 9,'09 정산','transactions', case when to_regclass('public.transactions') is not null then '✅ 있음' else '❌ 없음 (09)' end
   union all select 9,'09 정산','view v_folio_balance',          case when to_regclass('public.v_folio_balance')          is not null then '✅ 있음' else '❌ 없음 (09)' end
   union all select 9,'09 정산','view v_folio_lines',            case when to_regclass('public.v_folio_lines')            is not null then '✅ 있음' else '❌ 없음 (09)' end
@@ -85,7 +90,7 @@ from (
   union all select 25,'25 프로필','user_access.dept',    case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='user_access' and column_name='dept') then '✅ 있음' else '❌ 없음 (25)' end
 
   -- ── 27 키택 / 28 가입요청 / 29 변경이력 ──
-  union all select 27,'27 키택','key_bindings',          case when to_regclass('public.key_bindings')    is not null then '✅ 있음' else '❌ 없음 (27)' end
+  -- key_bindings 는 118 에서 삭제 — 검사 제거(118 검사가 '없어야 정상' 을 본다)
   union all select 28,'28 가입','access_requests',       case when to_regclass('public.access_requests') is not null then '✅ 있음' else '❌ 없음 (28)' end
   union all select 29,'29 이력','change_log',            case when to_regclass('public.change_log')      is not null then '✅ 있음' else '❌ 없음 (29)' end
 
@@ -114,6 +119,9 @@ from (
 
   -- ── 50 정산 결제수단 / 51 조기퇴실 / 52 확인필요(후속조치) ──
   union all select 50,'50 정산','charges.pay_method',      case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='charges' and column_name='pay_method') then '✅ 있음' else '❌ 없음 (50)' end
+  union all select 45,'45 변경 이력','audit_row() 트리거가 붙은 표 1개 이상', case when exists(select 1 from pg_trigger t join pg_proc p on p.oid=t.tgfoid where p.proname='audit_row' and not t.tgisinternal) then '✅ 있음' else '❌ 없음 (45)' end
+  union all select 46,'46 읽기 권한','user_access.read_areas + has_any_read_area()', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='user_access' and column_name='read_areas') and exists(select 1 from pg_proc where proname='has_any_read_area') then '✅ 있음' else '❌ 없음 (46 — 함수 본문은 138 판이 정본)' end
+  union all select 49,'49 계정 차단','user_access.active', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='user_access' and column_name='active') then '✅ 있음' else '❌ 없음 (49)' end
   union all select 51,'51 조기퇴실','guest_members.actual_dep', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='guest_members' and column_name='actual_dep') then '✅ 있음' else '❌ 없음 (51)' end
   union all select 52,'52 후속조치','followups',            case when to_regclass('public.followups') is not null then '✅ 있음' else '❌ 없음 (52)' end
   union all select 53,'53 경영통계','exec_stats() RPC',     case when exists(select 1 from pg_proc where proname='exec_stats') then '✅ 있음' else '❌ 없음 (53)' end
@@ -121,8 +129,8 @@ from (
   union all select 54,'54 공지삭제','ann_delete 정책',       case when exists(select 1 from pg_policies where tablename='announcements' and policyname='ann_delete') then '✅ 있음' else '❌ 없음 (54)' end
   union all select 55,'55 방문통계','visitor_stats() RPC',   case when exists(select 1 from pg_proc where proname='visitor_stats') then '✅ 있음' else '❌ 없음 (55)' end
   union all select 56,'56 운영팀','print_overrides.team_group', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='print_overrides' and column_name='team_group') then '✅ 있음' else '❌ 없음 (56)' end
-  union all select 57,'57 시즈온천','shizu_onsen',          case when to_regclass('public.shizu_onsen') is not null then '✅ 있음' else '❌ 없음 (57)' end
-  union all select 63,'63 시즈영역분리','shizu_onsen ins=room/shizu', case when exists(select 1 from pg_policies where schemaname='public' and tablename='shizu_onsen' and policyname='shizu_onsen_ins' and coalesce(with_check,'') like '%shizu%') then '✅ 적용' else '❌ 미적용 (63)' end
+  -- shizu_onsen 은 118 에서 삭제 — 57·63 의 shizu_onsen 검사 제거(118 검사가 '없어야 정상' 을 본다)
+  -- (63 shizu_onsen 정책 검사 제거 — 표가 없다. ⚠ 63 은 다시 실행하지 않는다: print 권한자에게 shizu 권한을 다시 붙인다)
   union all select 64,'64 비고일본어','bookings.remark_ja', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='bookings' and column_name='remark_local_ja') then '✅ 있음' else '❌ 없음 (64)' end
   union all select 65,'65 그룹코드영역','member_codes sel=groupcodes', case when exists(select 1 from pg_policies where schemaname='public' and tablename='member_codes' and policyname='member_codes_sel' and coalesce(qual,'') like '%groupcodes%') then '✅ 적용' else '❌ 미적용 (65)' end
   union all select 66,'66 대표팀','print_overrides.team_group_rep', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='print_overrides' and column_name='team_group_rep') then '✅ 있음' else '❌ 없음 (66)' end
@@ -134,8 +142,8 @@ from (
   union all select 73,'73 손님청구RPC','guest_bill()', case when exists(select 1 from pg_proc where proname='guest_bill') then '✅ 있음' else '❌ 없음 (73)' end
   union all select 26,'26 골프조편성','golf_groups', case when to_regclass('public.golf_groups') is not null then '✅ 있음' else '❌ 없음 (26)' end
   union all select 74,'74 골프권한','golf_groups ins=golf', case when exists(select 1 from pg_policies where schemaname='public' and tablename='golf_groups' and policyname='golf_groups_ins' and coalesce(with_check,'') like '%golf%') then '✅ 적용' else '❌ 미적용 (74)' end
-  union all select 76,'76 시즈물채우기','shizu_water_fill', case when to_regclass('public.shizu_water_fill') is not null then '✅ 있음' else '❌ 없음 (76)' end
-  union all select 77,'77 시즈개인배정','shizu_place()', case when exists(select 1 from pg_proc where proname='shizu_place') then '✅ 있음' else '❌ 없음 (77)' end
+  -- shizu_water_fill 은 118 에서 삭제 — 검사 제거(118 검사가 '없어야 정상' 을 본다)
+  union all select 77,'77 시즈개인배정','shizu_place() — 기존 방 삭제+새 방 삽입이 한 묶음(삽입 실패 시 기존 방 유지)', case when not exists(select 1 from pg_proc where proname='shizu_place') then '❌ 없음 (77 → shizu_place 본문은 169)' when exists(select 1 from pg_proc where proname='shizu_place' and prosrc ~ 'begin\s+delete from rooms') then '✅ 있음' else '🔴 옛 본문 — 이동이 실패하면 기존 방배정이 사라진다(77 파일 본문을 그대로 다시 적용한 상태 → 169 적용)' end
   union all select 77,'77 시즈배정해제','shizu_unassign()', case when exists(select 1 from pg_proc where proname='shizu_unassign') then '✅ 있음' else '❌ 없음 (77)' end
   union all select 58,'58 별주청구','charges.link_ref',      case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='charges' and column_name='link_ref') then '✅ 있음' else '❌ 없음 (58)' end
   union all select 58,'58 별주청구','dinner_addon 트리거',   case when exists(select 1 from pg_trigger where tgname='trg_dinner_addon_charge') then '✅ 있음' else '❌ 없음 (58)' end
@@ -166,7 +174,7 @@ from (
   union all select 96,'96 간지 실제 호수','room_inventory 201~310호', case when exists(select 1 from room_inventory where facility='간지호텔' and room_no='201호') then '✅ 적용' else '❌ 미적용 (96)' end
   union all select 97,'97 간지 정원 2·최대 3','트리플 요청 허용+초과 표시', case when not exists(select 1 from room_inventory where facility='간지호텔' and (capacity is distinct from 2 or max_capacity is distinct from 3)) and exists(select 1 from room_inventory where facility='간지호텔') then '✅ 적용' else '❌ 미적용 (97)' end
   -- ⚠ 「무기명」은 이름이 같아도 서로 다른 사람이다(팀 명단 미확정) → 중복 판정에서 제외
-  union all select 98,'98 명단 중복 정리','guest_members 동일인 중복', case when not exists(select 1 from (select event_seq,name_kr,name_en from guest_members where coalesce(name_kr,'')<>'' and name_kr not in ('무기명','미정','성명미상') group by 1,2,3 having count(*)>1) t) then '✅ 없음' else '❌ 중복 있음 (98 실행)' end
+  union all select 98,'98 명단 중복 정리','guest_members 같은 사람 두 번(person_key #dup) — 이름만 같은 동명이인은 정상(112)', case when not exists(select 1 from guest_members where person_key like '%#dup%') then '✅ 없음' else '❌ #dup '||(select count(*) from guest_members where person_key like '%#dup%')::text||'행 — 그 팀을 데이터 등록(step1)에서 다시 임포트해 정리(98 은 재실행 금지: 이름만 같은 다른 손님을 지운다)' end
   union all select 99,'99 코스 수기 지정','play_course', case when exists(select 1 from information_schema.tables where table_schema='public' and table_name='play_course') then '✅ 있음' else '❌ 없음 (99)' end
   union all select 100,'100 전기카트 자동청구','trg_cart_charge', case when exists(select 1 from pg_trigger where tgname='trg_cart_charge' and not tgisinternal) then '✅ 있음' else '❌ 없음 (100)' end
   union all select 101,'101 코스 배정표','golf_groups.cart_no', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='golf_groups' and column_name='cart_no') then '✅ 있음' else '❌ 없음 (101)' end
@@ -187,16 +195,19 @@ from (
   union all select 115,'115 객실 쪽지','room_notes', case when to_regclass('public.room_notes') is not null then '✅ 있음' else '❌ 없음 (115)' end
   union all select 116,'116 카트 무료일','cart_sync_charge 입국·귀국일 제외', case when exists(select 1 from pg_proc where proname='cart_sync_charge' and prosrc like '%v_dep%') then '✅ 적용' else '❌ 미적용 (116)' end
   union all select 117,'117 정산 마감','folios.updated_at (없으면 folio UPDATE 전부 실패)', case when exists(select 1 from information_schema.columns where table_name='folios' and column_name='updated_at') then '✅ 있음' else '❌ 없음 (117) — 정산 마감이 안 된다' end
-  union all select 118,'118 죽은 테이블 정리','app_secrets·rounds·dining 등 제거', case when to_regclass('public.app_secrets') is null and to_regclass('public.rounds') is null then '✅ 정리됨' else '❌ 남아 있음 (118)' end
+  union all select 118,'118 죽은 테이블 정리','app_secrets·rounds·dining·key_bindings·shizu_onsen·shizu_water_fill 제거(없어야 정상)', case when to_regclass('public.app_secrets') is null and to_regclass('public.rounds') is null and to_regclass('public.dining') is null and to_regclass('public.key_bindings') is null and to_regclass('public.shizu_onsen') is null and to_regclass('public.shizu_water_fill') is null then '✅ 정리됨' else '❌ 남아 있음 (118) — 옛 번호 파일(27·57·76 등)을 다시 실행했는지 확인' end
+  union all select 118,'118 anon 정책','public 표의 정책 중 anon(또는 public) 대상 = 2개(access_requests 삽입·outings 읽기)', (select case when count(*)=2 then '✅ 2개' else '🔴 '||count(*)||'개 — 비로그인에게 열린 표가 있다(옛 번호 파일 01·02·04·08·09·11·12·16 재실행 여부 확인)' end from pg_policies where schemaname='public' and roles && array['anon','public']::name[])
   union all select 119,'119 RPC 권한','미로그인(anon)이 match_group_codes 를 못 부른다', case when not has_function_privilege('anon','public.match_group_codes(text[])','EXECUTE') then '✅ 차단' else '🔴 anon 이 회원코드를 조회할 수 있다 (119 미적용)' end
   union all select 119,'119 RPC 권한','미로그인(anon)이 today_summary 를 못 부른다', case when not has_function_privilege('anon','public.today_summary()','EXECUTE') then '✅ 차단' else '🔴 anon 이 매출·체크인을 볼 수 있다 (119 미적용)' end
   union all select 119,'119 RPC 권한','손님 QR 청구서 guest_bill 은 anon 유지', case when has_function_privilege('anon','public.guest_bill(text)','EXECUTE') then '✅ 유지' else '❌ 막혔다 — 손님 청구서가 안 열린다 (119)' end
-  union all select 120,'120 재고 부서별','inv_dept_area(dept→영역) 함수', case when exists(select 1 from pg_proc where proname='inv_dept_area') then '✅ 있음' else '❌ 없음 (120) — 골프·청소 등은 저장이 안 된다' end
-  union all select 120,'120 재고 부서별','inv_items 쓰기 = 그 부서 영역만', case when exists(select 1 from pg_policies where tablename='inv_items' and policyname='inv_items_ins' and qual is null and with_check like '%inv_dept_area%') then '✅ 적용' else '❌ 미적용 (120)' end
-  union all select 121,'121 데이터 검수','같은 회원 두 번 등록 점검(member_dup)', case when exists(select 1 from pg_proc where proname='data_audit' and prosrc like '%member_dup%') then '✅ 적용' else '❌ 미적용 (121)' end
+  union all select 120,'120 재고 부서별','inv_dept_area(dept→영역) 함수', case when exists(select 1 from pg_proc where proname='inv_dept_area') then '✅ 있음' else '❌ 없음 (120_inv_depts) — 골프·청소 등은 저장이 안 된다' end
+  union all select 120,'120 재고 부서별','inv_items 쓰기 = 그 부서 영역만', case when exists(select 1 from pg_policies where tablename='inv_items' and policyname='inv_items_ins' and qual is null and with_check like '%inv_dept_area%') then '✅ 적용' else '❌ 미적용 (120_inv_depts)' end
+  union all select 121,'121 데이터 검수','같은 회원 두 번 등록 점검(member_dup)', case when exists(select 1 from pg_proc where proname='data_audit' and prosrc like '%member_dup%') then '✅ 적용' else '❌ 미적용 (121_data_audit_member_dup — 파일 머리말대로 data_audit 본문에 블록 추가)' end
   union all select 122,'122 카트 대수 출처','cart_bookings.auto_qty (인원 변경 시 자동 조정)', case when exists(select 1 from information_schema.columns where table_name='cart_bookings' and column_name='auto_qty') then '✅ 있음' else '❌ 없음 (122)' end
   union all select 123,'123 당일 골프 손님','walkins 골프 칸(holes·tee_pref·course)', case when exists(select 1 from information_schema.columns where table_name='walkins' and column_name='holes') then '✅ 있음' else '❌ 없음 (123)' end
   union all select 123,'123 당일 골프 손님','order_tokens 가 워크인 번호도 받는다(bookings FK 해제)', case when not exists(select 1 from pg_constraint where conrelid='order_tokens'::regclass and conname='order_tokens_event_seq_fkey') then '✅ 해제됨' else '❌ FK 남아 있음 (123)' end
+  union all select 123,'123 당일 골프 손님','예약·당일 손님 삭제 시 QR 토큰 정리 트리거 2개(trg_ot_cleanup_*)', case when (select count(*) from pg_trigger where tgname in ('trg_ot_cleanup_bookings','trg_ot_cleanup_walkins') and not tgisinternal)=2 then '✅ 있음' else '❌ 없음 (123)' end
+  union all select 123,'123 당일 골프 손님','walkins 쓰기 = pos·settle·front·golf(walkins_ins·walkins_upd)', case when (select count(*) from pg_policies where schemaname='public' and tablename='walkins' and policyname in ('walkins_ins','walkins_upd') and (coalesce(qual,'')||coalesce(with_check,'')) like '%front%')=2 then '✅ 적용' else '❌ 미적용 (123)' end
   union all select 124,'124 송영 배차','transfer_dispatch(차량·기사·출발시각)', case when to_regclass('public.transfer_dispatch') is not null then '✅ 있음' else '❌ 없음 (124)' end
   union all select 125,'125 손님 QR 오늘 라운딩','guest_today()', case when exists(select 1 from pg_proc where proname='guest_today') then '✅ 있음' else '❌ 없음 (125)' end
   union all select 125,'125 손님 QR 오늘 라운딩','guest_today 는 anon 실행(손님 비로그인)', case when has_function_privilege('anon','public.guest_today(text)','EXECUTE') then '✅ 유지' else '❌ 막혔다 — 손님 화면이 안 열린다 (125)' end
@@ -244,7 +255,7 @@ from (
   union all select 164,'164 호텔 제출 명단 열','partner_members.name_en_last/first·birth·passport_no/exp/country(宿泊者名簿 xlsx, 2026-11-04)', case when (select count(*) from information_schema.columns where table_schema='public' and table_name='partner_members' and column_name in ('name_en_last','name_en_first','birth','passport_no','passport_exp','passport_country'))=6 then '✅ 적용(그 달 재등록 뒤 값 채워짐)' else '❌ 미적용 (164) — 호텔 제출 명단의 여권·생년 칸이 빈다' end
   union all select 166,'166 견적 수정·골프장 블록','partner_ops.quote_fix + partner_courses.block_groups/block_from/block_to', case when (select count(*) from information_schema.columns where table_schema='public' and ((table_name='partner_ops' and column_name='quote_fix') or (table_name='partner_courses' and column_name in ('block_groups','block_from','block_to'))))=4 then '✅ 적용' else '❌ 미적용 (166) — 수배 목록의 견적 수정 칸·골프장 블록 칸이 잠긴다(자동 견적·띠는 그대로)' end
   union all select 167,'167 명단 객실·조 지정','partner_ops.assign(jsonb) + check 제약', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='partner_ops' and column_name='assign') and exists(select 1 from pg_constraint where conrelid='public.partner_ops'::regclass and conname='partner_ops_assign_chk') then '✅ 적용' else '❌ 미적용 (167) — 수배 목록 명단의 객실·조 지정을 저장할 수 없다(명단 순 자동 배정은 그대로 보인다)' end
-  union all select 168,'168 당일 골프 손님 조 저장','golf_groups·golf_skips·golf_holes·cart_bookings: 예약 FK 대신 검사·정리 트리거(당일 손님 번호 허용) + walkin_open 1개 + 고아 0', case when not exists(select 1 from pg_constraint where contype='f' and confrelid='public.bookings'::regclass and conrelid in ('public.golf_groups'::regclass,'public.golf_skips'::regclass,'public.golf_holes'::regclass,'public.cart_bookings'::regclass)) and (select count(*) from pg_trigger where not tgisinternal and tgname in ('trg_seq_guard','trg_golf_cleanup_bookings','trg_golf_cleanup_walkins'))=6 and (select count(*) from pg_proc p where p.pronamespace='public'::regnamespace and p.proname='walkin_open')=1 and not exists(select 1 from golf_groups g where not exists(select 1 from bookings b where b.event_seq=g.event_seq) and not exists(select 1 from walkins w where w.event_seq=g.event_seq)) then '✅ 적용' else '❌ 미적용 (168 — Min 승인 뒤 적용)' end
+  union all select 168,'168 당일 골프 손님 조 저장','golf_groups·golf_skips·golf_holes·cart_bookings: 예약 FK 대신 검사·정리 트리거(당일 손님 번호 허용) + walkin_open 1개 + walkins 정책 3개 + 고아 0', case when not exists(select 1 from pg_constraint where contype='f' and confrelid='public.bookings'::regclass and conrelid in ('public.golf_groups'::regclass,'public.golf_skips'::regclass,'public.golf_holes'::regclass,'public.cart_bookings'::regclass)) and (select count(*) from pg_trigger where not tgisinternal and tgname in ('trg_seq_guard','trg_golf_cleanup_bookings','trg_golf_cleanup_walkins'))=6 and (select count(*) from pg_proc p where p.pronamespace='public'::regnamespace and p.proname='walkin_open')=1 and (select count(*) from pg_policies where schemaname='public' and tablename='walkins')=3 and not exists(select 1 from golf_groups g where not exists(select 1 from bookings b where b.event_seq=g.event_seq) and not exists(select 1 from walkins w where w.event_seq=g.event_seq)) then '✅ 적용' else '❌ 미적용 (168 — Min 승인 뒤 적용)' end
   union all select 165,'165 수배 자동 채움(등록 시점)','partner_autofill_refs()·partner_autofill(jsonb) — 로그인 전용 security definer(등록 계정에 구마모토·트라이얼 권한이 없어도 새 팀 수배 행 생성, 2026-11-11)', case when (select count(*) from pg_proc p where p.pronamespace='public'::regnamespace and p.proname in ('partner_autofill_refs','partner_autofill') and p.prosecdef and not has_function_privilege('anon', p.oid, 'execute') and has_function_privilege('authenticated', p.oid, 'execute'))=2 then '✅ 적용' else '❌ 미적용 (165) — 등록 계정에 구마모토·트라이얼 권한이 없으면 수배 행이 자동으로 안 만들어진다(수배 목록에서 [비고대로 일괄 채우기])' end
   union all select 161,'161 블록 사용·기간별 요금표','partner_ops.use_block + partner_rates(kind·ref_id·기간·prices jsonb) + RLS 4정책 · anon select 불가', case when exists(select 1 from information_schema.columns where table_schema='public' and table_name='partner_ops' and column_name='use_block') and to_regclass('public.partner_rates') is not null and (select count(*) from pg_policies where tablename='partner_rates')=4 and not has_table_privilege('anon','public.partner_rates','select') then '✅ 적용' else '❌ 미적용 (161) — 블록 사용 체크·기간별 요금표 입력 불가(옛 공통 요금표만)' end
   union all select 161,'161 통계 검산','data_audit partner_block_over 가 use_block 을 보고 · partner_single_norate 가 partner_rates(싱글 요금 행)를 보는가', case when exists(select 1 from pg_proc where proname='data_audit' and prosrc like '%coalesce(o.use_block,true)%' and prosrc like '%partner_rates r%') then '✅ 적용' else '❌ 미적용 (161)' end
