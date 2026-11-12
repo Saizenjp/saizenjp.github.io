@@ -147,18 +147,21 @@ const L={
   ja:{ sndLabel:'通知', sndTitle:'新規注文の通知音',
     needUrlKey:'URL・key必要', connecting:'接続中…', connectedTxt:'接続済', connectedBtn:'✓ 接続済',
     connOkToast:'Supabaseに接続しました', connFail:'接続失敗', connFailBtn:'接続失敗・再試行',
-    connFailToast:'接続失敗', connFailHint:'（厨房SQL 12を実行・keyを確認）',
-    reconnecting:'再接続中…', acceptFail:'受付処理に失敗しました', doneFail:'完了処理に失敗しました' },
+    connFailToast:'接続失敗', connFailHint:'（厨房SQL 12を実行・keyを確認）', connNetHint:'（ネットワークを確認してください。自動で再接続します）',
+    reconnecting:'再接続中…', acceptFail:'受付処理に失敗しました', doneFail:'完了処理に失敗しました',
+    offlineNoAct:'接続が切れているため処理できません。再接続後にもう一度押してください', staleTicket:'反映されませんでした（他の画面で処理済みか、権限がありません）。最新の状態を読み込みました' },
   ko:{ sndLabel:'알림', sndTitle:'신규 주문 알림음',
     needUrlKey:'URL·key 필요', connecting:'연결 중…', connectedTxt:'연결됨', connectedBtn:'✓ 연결됨',
     connOkToast:'Supabase 연결됨', connFail:'연결 실패', connFailBtn:'연결 실패 · 재시도',
-    connFailToast:'연결 실패', connFailHint:'(주방 SQL 12 실행·키 확인)',
-    reconnecting:'재연결 중…', acceptFail:'접수 처리 실패', doneFail:'완료 처리 실패' },
+    connFailToast:'연결 실패', connFailHint:'(주방 SQL 12 실행·키 확인)', connNetHint:'(네트워크를 확인하세요. 자동으로 다시 연결합니다)',
+    reconnecting:'재연결 중…', acceptFail:'접수 처리 실패', doneFail:'완료 처리 실패',
+    offlineNoAct:'연결이 끊겨 처리되지 않았습니다. 다시 연결된 뒤 한 번 더 눌러 주세요', staleTicket:'반영되지 않았습니다(다른 화면에서 이미 처리했거나 권한이 없습니다). 최신 상태를 다시 읽었습니다' },
   en:{ sndLabel:'Sound', sndTitle:'New order alert sound',
     needUrlKey:'URL·key required', connecting:'Connecting…', connectedTxt:'Connected', connectedBtn:'✓ Connected',
     connOkToast:'Connected to Supabase', connFail:'Connection failed', connFailBtn:'Failed · retry',
-    connFailToast:'Connection failed', connFailHint:'(run kitchen SQL 12 · check key)',
-    reconnecting:'Reconnecting…', acceptFail:'Accept failed', doneFail:'Done update failed' }
+    connFailToast:'Connection failed', connFailHint:'(run kitchen SQL 12 · check key)', connNetHint:'(check the network — reconnecting automatically)',
+    reconnecting:'Reconnecting…', acceptFail:'Accept failed', doneFail:'Done update failed',
+    offlineNoAct:'Not connected — nothing was saved. Press again after reconnecting', staleTicket:'Not applied (already handled on another screen, or no permission). Reloaded the latest state' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
@@ -202,6 +205,7 @@ function toast(msg,cls){
 }
 var _connKey=null,_connCls='';   // 마지막 연결 상태(사전 키) — 언어를 바꾸면 applyStatic 이 다시 쓴다
 function setConn(key,cls){const e=$('#conn-state');_connKey=key;_connCls=cls||'';e.removeAttribute('data-i18n');e.textContent=tx(key);e.className='pill'+(cls?' '+cls:'');}   // data-i18n 을 떼지 않으면 공용 applyLang 이 글자만 「미연결」로 되돌린다
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}   // 티켓 카드에 넣는 DB 글자(팀·품목·메모) 이스케이프
 function agoText(sec){
   if(sec<60) return `${sec}${t('ki_sec')}`;
   const m=Math.floor(sec/60); return `${m}${t('ki_min')}`;
@@ -223,7 +227,9 @@ async function connect(){
     await refresh(); startPoll();
   }catch(e){
     setConn('connFail','err');
-    toast(tx('connFailToast')+': '+e.message+' '+tx('connFailHint'),'err');
+    // 네트워크 끊김(fetch 실패)에는 SQL·키 안내 대신 자동 재연결 안내 — 주방 직원이 할 수 없는 조치를 10초마다 띄우지 않는다
+    const net=/failed to fetch|networkerror|load failed/i.test(String((e&&e.message)||''));
+    toast(tx('connFailToast')+': '+e.message+' '+tx(net?'connNetHint':'connFailHint'),'err');
     btn.textContent=tx('connFailBtn'); btn.disabled=false; supa=null;
   }
 }
@@ -278,11 +284,11 @@ function render(){
       : `<button class="accept" data-accept="${tk.id}">${t('ki_accept')}</button>`;
     card.innerHTML=`
       <div class="th">
-        <span class="tteam">${UNI[tk.event_seq]||tk.team_tag||('#'+tk.event_seq)}</span>
+        <span class="tteam">${esc(UNI[tk.event_seq]||tk.team_tag||('#'+tk.event_seq))}</span>
         <span class="tage ${ageTxtCls}">${agoText(sec)}${t('ki_ago')}</span>
       </div>
-      <div class="titem">${tk.item_name} <span class="tqty">×${Number(tk.qty)}</span></div>
-      ${tk.note?`<div class="tnote">${tk.note}</div>`:''}
+      <div class="titem">${esc(tk.item_name)} <span class="tqty">×${Number(tk.qty)}</span></div>
+      ${tk.note?`<div class="tnote">${esc(tk.note)}</div>`:''}
       ${action}`;
     const ab=card.querySelector('[data-accept]'); if(ab) ab.addEventListener('click',()=>markAccept(tk.id));
     const db=card.querySelector('[data-done]'); if(db) db.addEventListener('click',()=>markDone(tk.id));
@@ -292,18 +298,23 @@ function render(){
 
 async function markAccept(id){
   // 낙관적: 상태만 변경(목록에 남김) 후 서버 반영
+  if(!supa){ toast(tx('offlineNoAct'),'err'); return; }   // 재연결 중 — 화면만 바뀌고 서버에는 안 가던 것 방지
   const tk=state.tickets.find(x=>x.id===id); if(tk){ tk.status='accepted'; render(); }
   const by=(window.__so_getUser&&window.__so_getUser())||'';
-  const {error}=await supa.from('kitchen_tickets')
-    .update({status:'accepted',accepted_at:new Date().toISOString(),accepted_by:by}).eq('id',id);
-  if(error){toast(tx('acceptFail')+': '+error.message,'err'); refresh();}
+  // 아직 new 인 티켓만 접수 — 다른 화면에서 이미 완료한 티켓을 조리중으로 되살리지 않는다(0행이면 알리고 새로 읽는다)
+  const {data,error}=await supa.from('kitchen_tickets')
+    .update({status:'accepted',accepted_at:new Date().toISOString(),accepted_by:by}).eq('id',id).eq('status','new').select('id');
+  if(error){toast(tx('acceptFail')+': '+error.message,'err'); refresh(); return;}
+  if(!data||!data.length){ toast(tx('staleTicket'),'warn'); refresh(); }
 }
 
 async function markDone(id){
   // 낙관적 제거 후 서버 반영
+  if(!supa){ toast(tx('offlineNoAct'),'err'); return; }
   state.tickets=state.tickets.filter(x=>x.id!==id); render();
-  const {error}=await supa.from('kitchen_tickets').update({status:'done',done_at:new Date().toISOString()}).eq('id',id);
-  if(error){toast(tx('doneFail')+': '+error.message,'err'); refresh();}
+  const {data,error}=await supa.from('kitchen_tickets').update({status:'done',done_at:new Date().toISOString()}).eq('id',id).in('status',['new','accepted']).select('id');
+  if(error){toast(tx('doneFail')+': '+error.message,'err'); refresh(); return;}
+  if(!data||!data.length){ toast(tx('staleTicket'),'warn'); refresh(); }
 }
 
 function startPoll(){
