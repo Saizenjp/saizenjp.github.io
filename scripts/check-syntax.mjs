@@ -114,10 +114,24 @@ for (const f of files) {
   });
 }
 
-if (errors || undef || midline) {
+// ── 공용 asset 의 HEX 폴백 검사 ─────────────────────────────────────────
+//  규칙(CLAUDE.md §8): CSS 변수만 사용, HEX 폴백 금지 — var(--accent,#3d5424) ✗ → var(--accent) ✓.
+//  공용 파일은 :root 가 값을 주므로 폴백이 쓰이지 않는데, 같은 변수에 서로 다른 폴백 값이 70곳에 흩어져 있었다(2026-11 검수).
+//  설명서 본문(SO_HELP·SO_HELP_TR 줄)은 보지 않는다.
+let hexfb = 0;
+for (const f of ['ops/assets/saizen-ops.css', 'ops/assets/saizen-ops.js']) {
+  readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
+    if (/^\s*'[a-z_0-9]+\.html':/.test(line) || line.startsWith('  var SO_HELP_TR = ')) return;
+    const m = line.match(/var\(--[a-zA-Z0-9-]+,\s*#[0-9a-fA-F]{3,8}\)/);
+    if (m) { hexfb++; console.error(`✗ ${f}:${i + 1} HEX 폴백 ${m[0]} — var(--이름) 만 씁니다.`); }
+  });
+}
+
+if (errors || undef || midline || hexfb) {
   if (errors) console.error(`\n✗ 문법 오류 ${errors}건 — 위 위치를 확인하세요.`);
   if (undef) console.error(`✗ 미정의 헬퍼 ${undef}건 — 위 파일에 정의를 추가하세요.`);
   if (midline) console.error(`✗ 주석에 먹힌 속성 ${midline}건 — 주석을 윗줄로 올리세요.`);
+  if (hexfb) console.error(`✗ 공용 asset 의 HEX 폴백 ${hexfb}건 — var(--이름) 만 씁니다.`);
   process.exit(1);
 }
-console.log('✓ 전체 인라인 스크립트 문법 검사 통과 · 공용 헬퍼 정의 · 주석에 먹힌 속성 확인');
+console.log('✓ 전체 인라인 스크립트 문법 검사 통과 · 공용 헬퍼 정의 · 주석에 먹힌 속성 · 공용 asset HEX 폴백 확인');
