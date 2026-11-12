@@ -5044,9 +5044,15 @@ async function autoAssign(){
     //    매번 1,400여 행이 지워졌다 다시 쓰여 변경이력이 하루 2만 건씩 불어났다(Min 2026-08).
     //    → **계산은 그대로 다시 하되, DB에는 달라진 것만** 반영한다(아래 diff).
     //  ⚠ D-7 안으로 들어온 팀은 auto 배정이어도 **그대로 둔다**(현장 준비가 끝난 방이다).
-    const autoSnap=state.rooms.filter(r=>r.assign_source==='auto' && !frozenRow(r));
+    //  ⚠ 다시 짜는 것은 **이 화면의 자동배정이 맡는 팀**의 auto 행뿐이다(2026-11 검수).
+    //    시즈노야도는 시즈 예약표와 등록 때의 서버 자동채움이 assign_source='auto' 로 넣는데, 이 화면은 시즈를 배정하지 않는다(autoRoute=null).
+    //    예전엔 그 행까지 「계획에 없는 auto 행」으로 잡아, 달을 열어 자동배정이 한 번 돌면 시즈 자동 배정이 전부 해제됐다.
+    //    → 라우팅이 없는 팀(시즈·현지예약·아소 프레스티지 등)의 행과 시즈 객실의 행은 수기 행처럼 그대로 둔다.
+    const _routed={}; state.guests.forEach(g=>{ _routed[g.event_seq]=!!autoRoute(g); });
+    const _ownAuto=r=>r.assign_source==='auto' && !frozenRow(r) && _routed[r.event_seq]===true && r.facility!=='시즈노야도 료칸';
+    const autoSnap=state.rooms.filter(_ownAuto);
     const autoIdSet=new Set(autoSnap.map(r=>r.id));
-    state.rooms=state.rooms.filter(r=>r.assign_source!=='auto' || frozenRow(r));   // 계산은 '비운 상태' 기준(확정 팀은 남긴다)
+    state.rooms=state.rooms.filter(r=>!_ownAuto(r));   // 계산은 '비운 상태' 기준(확정 팀·맡지 않는 팀의 행은 남긴다)
     rebuildAssignMap();
 
     // ── DB 기준 점유원장: 배정 대상 팀들의 전체 체류 구간에 걸치는 '모든' 기존 배정(다른 달 포함) ──
