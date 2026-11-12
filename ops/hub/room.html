@@ -1701,10 +1701,10 @@ async function loadInventory(){
 //   하루 모드: from=to=선택일 → 그날 머무는(dep<=날<arr) 모든 팀
 //   기간 모드: from~to → 그 기간에 한 번이라도 머무는 팀 (dep < to+1 AND arr > from)
 // Supabase 기본 1000행 제한 회피 — event_seq IN 조회를 id 순으로 페이지네이션(전 행 로드)
-async function pagedInSeq(table, sel, seqs){
+async function pagedInSeq(table, sel, seqs, orderCol){   // orderCol: 그 표에 id 가 없으면 지정(print_overrides 는 event_seq 가 PK)
   let out=[], pg=0;
   while(true){
-    const {data,error}=await supa.from(table).select(sel).in('event_seq',seqs).order('id').range(pg,pg+999);
+    const {data,error}=await supa.from(table).select(sel).in('event_seq',seqs).order(orderCol||'id').range(pg,pg+999);
     if(error) return {error};
     out=out.concat(data||[]);
     if(!data || data.length<1000) break;
@@ -1769,7 +1769,7 @@ async function loadDay(){
   const seqs=state.guests.map(g=>g.event_seq);
   if(seqs.length){
     try{
-      const po=await pagedInSeq('print_overrides','event_seq,team_group',seqs);
+      const po=await pagedInSeq('print_overrides','event_seq,team_group',seqs,'event_seq');   // id 컬럼 없음 → event_seq 로 정렬(이전엔 42703 으로 묶음 정보가 늘 비었다)
       if(!po.error) (po.data||[]).forEach(x=>{ if(x.team_group) state.tgroup[x.event_seq]=x.team_group; });
       // 手配書 묶음의 통일 코드(DFな-Y2) — 방배정은 **엠클릭 원본 코드를 그대로 보여주고**,
       //   묶음 코드는 🔗 배지와 검색으로만 잇는다(개인번호까지 바꾸면 자동배정·이력이 가리키는
@@ -4025,8 +4025,8 @@ function openSplitPicker(srcRow){
   }));
 }
 async function commitSplit(inv){
-  if(sp && sp.srcId && !confirmFrozen([sp.srcId], tx('frzWordSplit'))) return;
-  const sp=state.splitPending; if(!sp) return;
+  const sp=state.splitPending; if(!sp) return;   // ⚠ 먼저 읽는다 — 아래 확인보다 뒤에 선언하면 TDZ 로 매번 죽는다(2026-11 검수: 이동·분할 전부 불가였다)
+  if(sp.srcId && !confirmFrozen([sp.srcId], tx('frzWordSplit'))) return;
   const srcRow=state.rooms.find(r=>r.id===sp.srcId);
   if(srcRow && srcRow.inventory_id===inv.id){ toast(tx('sameRoom'),'warn'); return; }
   const cap=inv.max_capacity||inv.capacity;

@@ -351,8 +351,10 @@ async function tick(){
     //  일정 RPC(125)는 실패해도 결제 내역은 보여야 한다 → 따로 잡는다.
     const [bill, today, out] = await Promise.all([
       supa.rpc('guest_bill',{p_token:TOKEN}),
-      supa.rpc('guest_today',{p_token:TOKEN}).catch(()=>({data:null})),
-      supa.rpc('guest_outings',{p_token:TOKEN}).catch(()=>({data:null}))   // 신청 행사(155) — 실패해도 청구·일정은 그대로
+      //  ⚠ supabase-js 의 rpc()/from() 은 then 만 가진 빌더다 — `.catch()` 를 붙이면 「catch is not a function」으로 요청 전에 죽는다
+      //     (2026-11 검수: 이 때문에 손님 청구서가 실제 라이브러리에서는 항상 「불러오지 못했습니다」였다). 실패 처리는 then 의 두 번째 인자로.
+      supa.rpc('guest_today',{p_token:TOKEN}).then(r=>r,()=>({data:null})),
+      supa.rpc('guest_outings',{p_token:TOKEN}).then(r=>r,()=>({data:null}))   // 신청 행사(155) — 실패해도 청구·일정은 그대로
     ]);
     if(bill.error) throw bill.error;
     const data=bill.data;
