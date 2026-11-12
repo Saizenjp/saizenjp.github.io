@@ -571,6 +571,12 @@
         return;
       }
       notice.style.display='none';
+      if(acc.active===false){   // 차단된 계정 — 페이지 가드(guardPage)와 같은 판정. 홈은 가드가 돌지 않으므로 여기서 카드·띠를 열지 않는다
+        groups.forEach(function(g){ g.style.display='none'; });
+        ['fu-strip','stay-strip','reg-strip','ann-strip'].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display='none'; });
+        var npb=document.getElementById('noperm-notice'); if(npb) npb.style.display='block';
+        return;
+      }
       // 고정 공지 띠 — 활성 고정(pin_until 미경과) 여러 건을 5초마다 페이드 전환(캐러셀)
       if(window.__so_authClient){ var _c=__so_authClient();
         if(_c) _c.from('announcements').select('title,pin_until,dept').eq('pinned',true)
@@ -615,6 +621,17 @@
           : areas.some(function(a){ return wr.indexOf(a)>=0 || rd.indexOf(a)>=0; }));
         card.style.display = ok ? '' : 'none';
       });
+      // 띠·부서 공지 링크도 카드와 같은 규칙 — 대상 화면 권한이 없으면 링크를 끈다(내용은 그대로 보이고, 눌러서 「접근 권한이 없습니다」로 가지 않게)
+      var canGo=function(ks){ return all || !(window.SZCore && SZCore.areaAllowed) || !!SZCore.areaAllowed(acc, ks); };
+      [['fu-strip',['frontdesk']],['stay-strip',['stats_mgmt','staycal']],['ann-strip',['board']]].forEach(function(p){
+        var e=document.getElementById(p[0]); if(!e) return;
+        if(!e.dataset.href) e.dataset.href=e.getAttribute('href')||'';
+        var go=canGo(p[1]), tail=e.lastElementChild;
+        if(go) e.setAttribute('href',e.dataset.href); else e.removeAttribute('href');
+        e.style.cursor=go?'':'default';
+        if(tail) tail.style.display=go?'':'none';
+      });
+      document.querySelectorAll('.deptboard').forEach(function(l){ l.style.display=canGo(['board'])?'':'none'; });
       if(acc.role==='admin'){ document.getElementById('admin-group').style.display=''; }
       // 카드가 하나도 없는 그룹은 헤더 숨김
       document.querySelectorAll('.wrap .group').forEach(function(g){
@@ -714,6 +731,8 @@
     var c=__so_authClient(); if(!c) return;
     var d=new Date(), p=function(n){return String(n).padStart(2,'0');};
     var today=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+    // ⚠ 이 함수 안에는 esc 가 없었다(공지 띠 콜백 안에만 있다) — 숙소 칩을 그리다 ReferenceError 가 나고 catch 가 삼켜 「지금 체류」 띠가 아예 뜨지 않았다
+    var esc=function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(ch){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]; }); };
     // 오늘 밤 묵는 팀 = dep_date <= 오늘 < arr_date
     c.from('bookings').select('event_seq,pax,dep_date,arr_date').lte('dep_date',today).gt('arr_date',today).neq('status','대기')
      .then(function(r){

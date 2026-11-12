@@ -1416,7 +1416,12 @@ function renderCart(hitKey){
 
 // ── 전송: folio 확보 후 charges 적재 ──
 async function ensureFolio(){
-  if(state.folioId) return state.folioId;
+  if(state.folioId){   // 캐시한 계산서가 그 사이(정산 화면에서) 마감됐을 수 있다 → 전송 직전에 상태를 다시 읽는다(검수 D9-9)
+    const {data:ck,error:cke}=await supa.from('folios').select('id,status').eq('id',state.folioId).limit(1);
+    if(cke) throw cke;
+    if(ck&&ck.length&&ck[0].status==='open') return state.folioId;
+    state.folioId=null;   // 마감·삭제됨 → 아래에서 열린 계산서를 다시 찾거나 새로 연다
+  }
   const tm=state.team;
   // 혹시 동시간대 다른 단말이 이미 열었을 수 있으니 재조회
   const {data:ex}=await supa.from('folios').select('id').eq('event_seq',tm.event_seq)
@@ -1432,7 +1437,12 @@ async function ensureFolio(){
 // 개인(guest_members.id) 열린 folio 확보(없으면 생성)
 async function ensureMemberFolio(memberId){
   memberId=String(memberId);
-  if(state.memberFolio[memberId]) return state.memberFolio[memberId];
+  if(state.memberFolio[memberId]){   // 개인 계산서도 같은 이유로 전송 직전에 상태를 다시 읽는다(검수 D9-9)
+    const {data:ck,error:cke}=await supa.from('folios').select('id,status').eq('id',state.memberFolio[memberId]).limit(1);
+    if(cke) throw cke;
+    if(ck&&ck.length&&ck[0].status==='open') return state.memberFolio[memberId];
+    delete state.memberFolio[memberId];   // 마감·삭제됨 → 아래에서 다시 찾거나 새로 연다
+  }
   const tm=state.team;
   const {data:ex}=await supa.from('folios').select('id')
     .eq('event_seq',tm.event_seq).eq('subject','member').eq('member_id',memberId).eq('status','open').limit(1);

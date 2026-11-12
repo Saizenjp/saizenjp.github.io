@@ -573,7 +573,11 @@ async function load(){
     state.dayVenue=DVN;
     // 잔액: v_folio_balance(월) → event_seq 합산 + folio 단건 보관(결제는 folio 단위로 넣는다)
     const FOL={};
-    const fb=await pagedQuery(()=>supa.from('v_folio_balance').select('folio_id,event_seq,subject,member_name,status,balance,gross_total,paid_total,charge_count').eq('session_ym',ym));
+    const fb={data:[]};   // ⚠ 달(session_ym)이 아니라 그날 걸친 팀 번호로 읽는다 — folio 의 session_ym 은 입국월이라, 달을 넘겨 묵는 팀의 미수가 다음 달 날짜에서 0 으로 보였다
+    for(let i=0;i<seqs.length;i+=200){
+      const fq=await pagedQuery(()=>supa.from('v_folio_balance').select('folio_id,event_seq,subject,member_name,status,balance,gross_total,paid_total,charge_count').in('event_seq',seqs.slice(i,i+200)).order('folio_id'));
+      fb.data=fb.data.concat(fq.data||[]);
+    }
     (fb.data||[]).forEach(f=>{const b=BAL[f.event_seq]=BAL[f.event_seq]||{bal:0,gross:0,paid:0,cnt:0};b.bal+=Number(f.balance||0);b.gross+=Number(f.gross_total||0);b.paid+=Number(f.paid_total||0);b.cnt+=Number(f.charge_count||0);
       (FOL[f.event_seq]=FOL[f.event_seq]||[]).push({id:f.folio_id, subject:f.subject, name:f.member_name||'', status:f.status,
         bal:Number(f.balance||0), gross:Number(f.gross_total||0), paid:Number(f.paid_total||0), cnt:Number(f.charge_count||0)});});
@@ -947,7 +951,8 @@ function canSettle(){ return _canSettle===null ? true : _canSettle; }
   Promise.resolve(__so_meAccess()).then(a=>{
     if(!a){ _canSettle=null; return; }                    // 미로그인 등 — 판단 보류
     const ar=[].concat(a.areas||[]);
-    _canSettle=(a.role==='admin')||ar.indexOf('settle')>=0||ar.indexOf('pos')>=0;
+    const ex=(window.SZCore&&SZCore.areaExpand)?SZCore.areaExpand(ar):ar;   // 세부 키(settle_onsite·pos_front 등)도 서버 정책(has_any_area)과 같은 규칙으로 인정
+    _canSettle=(a.role==='admin')||ex.indexOf('settle')>=0||ex.indexOf('pos')>=0;
     if(state.selSeq) selectTeam(state.selSeq);            // 이미 열려 있으면 다시 그린다
   }).catch(()=>{ _canSettle=null; });
 })();
@@ -1011,10 +1016,10 @@ async function openReceiptFD(t){
   if(!window.__so_receipt){ toast(tx('rcLoadFail'),'err'); return; }
   let paid=Math.round(Number(t.paid)||0), cash=0;
   try{
-    const {data:fs}=await supa.from('folios').select('folio_id').eq('event_seq',t.seq);
-    const ids=(fs||[]).map(f=>f.folio_id);
+    const {data:fs,error:fe}=await supa.from('folios').select('id').eq('event_seq',t.seq); if(fe) throw fe;
+    const ids=(fs||[]).map(f=>f.id);
     if(ids.length){
-      const {data:ps}=await supa.from('payments').select('amount,method,voided').in('folio_id',ids);
+      const {data:ps,error:pe}=await supa.from('payments').select('amount,method,voided').in('folio_id',ids); if(pe) throw pe;
       const live=(ps||[]).filter(p=>!p.voided);
       paid=Math.round(live.reduce((s,p)=>s+Number(p.amount||0),0));
       cash=Math.round(live.filter(p=>p.method==='현금').reduce((s,p)=>s+Number(p.amount||0),0));
