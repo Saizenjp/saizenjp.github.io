@@ -233,6 +233,15 @@
   .zchip:hover{border-color:var(--accent)}
   .zchip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   .zchip .zn{font-size:10.5px;font-weight:700;opacity:.8;margin-left:6px}
+  @media(max-width:640px){   /* 폰 폭 — 고정 덩어리(층 칩+요약)가 화면을 다 덮지 않게 각각 한 줄 가로 스크롤로. 청소·타월 진행 카드를 맨 앞에 */
+    .zchips{flex-wrap:nowrap;min-width:0}
+    .zchip{flex:0 0 auto;white-space:nowrap}
+    .kpis{display:flex;overflow-x:auto;gap:7px;padding:8px 10px}
+    .kpi{flex:0 0 auto;min-width:92px;padding:6px 10px}
+    .kpi .v{font-size:20px}
+    .kpi.work{order:-1}
+    .dnav{flex-wrap:wrap}
+  }
   .noroom{margin:10px 0 0;padding:10px 13px;border-radius:9px;background:#fbf3e2;border:1px solid #e3d3a8;
     color:#7a5a16;font-size:13px;font-weight:700;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
   .noroom a{color:var(--accent);font-weight:800}
@@ -246,12 +255,17 @@
     .panel{border:none;box-shadow:none;padding:0;margin:0 0 6mm}
     .flr{page-break-inside:auto;break-inside:auto;border:1px solid #999}
     .flr-h{background:#ececec!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    .hkt td,.hkt th{font-size:11pt}
+    /* A4 세로 본문(726px)에 표가 다 들어가게 글자·여백을 줄이고 줄바꿈을 허용 — 예전엔 표가 831px 라 비고 칸이 .flr overflow:hidden 에 잘렸다 */
+    .hkt td,.hkt th{font-size:9.5pt;padding:4px 5px}
+    .hkt td.c-no{font-size:11pt}
+    .hkt td.c-ty,.hkt .tline,.hkt .note{white-space:normal}
+    /* 표 행·객실 카드가 쪽 경계에서 갈리지 않게 */
+    .hkt tr,.rc{break-inside:avoid;page-break-inside:avoid}
     .st,.note,.kpi{-webkit-print-color-adjust:exact;print-color-adjust:exact}
     .flr+.flr{page-break-before:always}
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.5">
 </head>
 <body data-so-area="housekeeping">
 <div class="topbar so-bar">
@@ -300,7 +314,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=69"></script>
-<script src="../assets/saizen-ops.js?v=39.4"></script>
+<script src="../assets/saizen-ops.js?v=39.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -446,6 +460,7 @@ const PRIO={turn:0, out:1, stay:2, in:3, vacant:4, ooo:5};
 
 let supa=null, INV=[], ROWS=[], TEAM={}, CLO=[], TEE={}, COURSE={};
 let NOROOM=0;   // 그날 묵는데 방배정이 없는 팀 수(배정 자체가 비어 있으면 「공실 N」으로 오해한다)
+function noRoomHtml(){ return NOROOM?`<div class="noprint noroom">⚠ ${tx('noRoomWarn')(NOROOM)} <a href="room.html?ym=${esc(DATE.slice(0,7))}&date=${esc(DATE)}">${tx('noRoomGo')}</a></div>`:''; }
 let DONE={};    // 완료 상태 {inventory_id|kind:{by}}
 let NOTES={};   // 객실 쪽지(열린 것) {inventory_id:[{id,kind,body,created_by,created_at}]} — SQL 115
 let ORIGIN={};  // event_seq → 'ICN'|'PUS'
@@ -576,7 +591,7 @@ function renderUI(){
     </div>
     <div class="panel" style="margin-top:10px">
       <div class="lgd noprint"><span>${tx('lgd')}</span><span style="color:var(--muted)">${tx('teeHint')}</span></div>
-      ${NOROOM?`<div class="noprint noroom">⚠ ${tx('noRoomWarn')(NOROOM)} <a href="room.html?ym=${esc(DATE.slice(0,7))}&date=${esc(DATE)}">${tx('noRoomGo')}</a></div>`:''}
+      <div id="noroom-slot">${noRoomHtml()}</div>
     </div>
     <div id="floors"></div>`;
   $('#d-prev').addEventListener('click',()=>{ DATE=shiftDate(DATE,-1); $('#d-pick').value=DATE; load(); });
@@ -772,9 +787,17 @@ async function load(){
       if(!bk.error){
         const staying=new Set((bk.data||[]).map(x=>x.event_seq));
         const placed=new Set(ROWS.map(r=>r.event_seq));
-        NOROOM=[...staying].filter(sq=>!placed.has(sq)).length;
+        let miss=[...staying].filter(sq=>!placed.has(sq));
+        // 간지호텔·시즈노야도 팀은 이 화면 대상이 아니다(HK_EXCLUDE) → 건수에서 뺀다
+        if(miss.length){
+          const ga=await pagedIn('guests','event_seq,accom','event_seq',miss);
+          if(!ga.error){ const ex=new Set((ga.data||[]).filter(g=>/간지|시즈/.test(g.accom||'')).map(g=>g.event_seq)); miss=miss.filter(sq=>!ex.has(sq)); }
+        }
+        NOROOM=miss.length;
       }
     }catch(_){ NOROOM=0; }
+    // 경고는 조회가 끝날 때마다 다시 그린다(renderUI 는 조회 전·언어 전환 때만 불린다)
+    { const ns=$('#noroom-slot'); if(ns) ns.innerHTML=noRoomHtml(); }
     renderAccomChips();
     render();
   }catch(e){ if(st) st.textContent=tx('loadFail'); toast(tx('loadFail')+': '+String(e&&e.message||e),'err'); }
@@ -792,7 +815,7 @@ function roomRecord(inv){
   const stays=night.filter(r=>r.check_in<D);                          // 연박
   const clo=CLO.find(c=>c.inventory_id===inv.id);
   let status;
-  if(clo || inv.active===false) status='ooo';
+  if((clo || inv.active===false) && !night.length && !outs.length) status='ooo';   // 폐쇄·잠금 방이라도 손님이 있으면(폐쇄 등록 전에 넣은 배정이 남은 경우) 투숙 상태로 판정 — 청소·타월 대상에서 빠지지 않게
   else if(outs.length && ins.length) status='turn';
   else if(outs.length) status='out';
   else if(stays.length) status='stay';
@@ -892,7 +915,9 @@ async function toggleFloor(zoneKey, kind){
   const ids=invs.map(r=>r.inv.id);
   const allOn=ids.every(id=>DONE[id+'|'+kind]);
   const by=(window.__so_getUser&&__so_getUser())||null;
-  ids.forEach(id=>{ setDone(id,kind,!allOn,by); paintDone(id,kind); });   // ① 먼저 화면
+  const prev={}; ids.forEach(id=>{ prev[id]=DONE[id+'|'+kind]||null; });   // 누르기 전 상태 — 실패 시 방마다 이 상태로 되돌린다
+  const todo=allOn?ids:ids.filter(id=>!prev[id]);                           // 일괄 완료는 아직 안 끝난 방만(이미 완료된 방의 담당자·시각은 건드리지 않는다)
+  todo.forEach(id=>{ setDone(id,kind,!allOn,by); paintDone(id,kind); });   // ① 먼저 화면
   refreshCounts();
   try{
     if(allOn){
@@ -900,13 +925,13 @@ async function toggleFloor(zoneKey, kind){
       if(error) throw error;
     } else {
       const now=new Date().toISOString();
-      const rows=ids.map(id=>({work_date:DATE, inventory_id:id, kind, done_by:by, done_at:now}));
+      const rows=todo.map(id=>({work_date:DATE, inventory_id:id, kind, done_by:by, done_at:now}));
       const {error}=await supa.from('hk_done').upsert(rows,{onConflict:'work_date,inventory_id,kind'});
       if(error) throw error;
     }
-    toast(allOn?tx('allUndone')(ids.length):tx('allDone')(ids.length),'ok');
+    toast(allOn?tx('allUndone')(ids.length):tx('allDone')(todo.length),'ok');
   }catch(e){
-    ids.forEach(id=>{ setDone(id,kind,allOn,by); paintDone(id,kind); });
+    ids.forEach(id=>{ if(prev[id]) DONE[id+'|'+kind]=prev[id]; else delete DONE[id+'|'+kind]; paintDone(id,kind); });
     refreshCounts(); toast(tx('hkSaveFail')(e.message),'err');
   }
 }
@@ -1108,7 +1133,7 @@ async function saveNote(){
     const {data,error}=await supa.from('room_notes')
       .insert({inventory_id:invId, kind, body, created_by:by}).select('id').single();
     if(error) throw error;
-    tmp.id=data.id;
+    tmp.id=data.id; render();   // 버튼의 data-ndone 을 실제 id 로 다시 그린다 — 안 그리면 [처리 완료]가 tmp- id 를 찾지 못해 반응이 없다
   }catch(e){
     NOTES[invId]=(NOTES[invId]||[]).filter(x=>x.id!==tmp.id); render();
     toast(tx('hkSaveFail')(e.message),'err');

@@ -61,7 +61,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.5">
 </head>
 <body data-so-area="keyslip">
 <div class="topbar so-bar">
@@ -92,7 +92,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=69"></script><!-- 공유 도메인 규칙(숙소 라벨·박수 등) -->
-<script src="../assets/saizen-ops.js?v=39.4"></script>
+<script src="../assets/saizen-ops.js?v=39.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -326,8 +326,10 @@ function renderAccomChips(){
   }));
 }
 
+let _loadSeq=0;   // 달을 연달아 넘기면 앞 달 응답이 나중에 와서 새 달 화면을 덮는다 → 낡은 응답은 버린다(room.html 과 같은 방식)
 async function load(){
   if(!supa) return;
+  const _my=++_loadSeq; const _stale=()=>_my!==_loadSeq;
   $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true;
   const from=ymFirst(YM), to=ymLast(YM);
   try{
@@ -357,6 +359,7 @@ async function load(){
     const px=seqsForPx.length? await pagedIn('passengers','id,event_seq,origin,dep_flight','event_seq',seqsForPx) : {data:[]};
     if(px.error) throw px.error;
     const pmap={}; (px.data||[]).forEach(x=>{ pmap[x.id]=x; });
+    if(_stale()) return;
 
     // 4) 라벨 단위로 묶기 = **같은 방 · 같은 체류구간** (분할 체류는 각각 별도 라벨)
     //   ⚠ 키에 event_seq 를 넣지 않는다 — 키홀더는 방마다 하나다.
@@ -426,6 +429,7 @@ async function load(){
           const {data:m2}=await supa.from('guest_members').select('event_seq,person_tag,seq_in_team').in('event_seq',ch).order('seq_in_team');
           (m2||[]).forEach(m=>{ const e=ext[m.event_seq]; if(e && !e.ptag && m.person_tag) e.ptag=m.person_tag; });
         }
+        if(_stale()) return;
         const strip=t=>SZCore.tagStripSeq(t||'');
         const GRP={}, _seen=new Set();
         ovRows.forEach(r=>{
@@ -465,6 +469,7 @@ async function load(){
         });
       }
     }catch(e){ console.warn('묶음 태그 통일 실패:', e && e.message); }
+    if(_stale()) return;
 
     // 5) 그 달 체크인(입국)인데 방배정이 하나도 없는 팀 — 라벨이 안 나오므로 경고
     const assigned=new Set(rooms.map(r=>r.event_seq));
@@ -480,7 +485,7 @@ async function load(){
     if(!LABELS.length){ $('#stat').textContent=tx('noMonthData'); }
     else $('#stat').textContent=tx('cntRooms')(LABELS.length,new Set(LABELS.map(l=>l.eventSeq)).size);
     renderCatChips(); renderOriginChips(); renderDayChips(); renderAccomChips(); renderUnassigned(); renderPreview();
-  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
+  }catch(e){ if(_stale()) return; $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
 
 function renderUnassigned(){
@@ -579,7 +584,7 @@ function printLabels(){
       <div class="ks-stay">${esc(stayText(l))}</div>
       <div class="ks-meta"><span class="ks-port" style="color:${portColor(l.port)}">${esc(l.port||'')}</span><span class="ks-sep">/</span><span class="ks-nt" style="color:${catColor(l.cat)}">${l.n}泊</span></div>
     </div></div>` : '<div class="ks-cell ks-empty"></div>';
-  const sizeLabel=`${s.label} · ${lang()==='ja'?'1枚':lang()==='en'?'per sheet':'1장'} ${PER}${lang()==='en'?'':'면'}`;
+  const sizeLabel=`${s.label} · ${lang()==='ja'?'1枚':lang()==='en'?'per sheet':'1장'} ${PER}${lang()==='en'?'':lang()==='ja'?'面':'면'}`;
   const html=`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>ルームキー ラベル — ${esc(YM)}</title>
   <style>${window.__SO_JP_FONT||''}
   @page{size:A4 portrait;margin:0}
@@ -692,7 +697,12 @@ function applyStatic(){
   if(supa){ setConn(tx('connOk'),'ok'); if(btn) btn.textContent=tx('connectedBtn'); }
   else { setConn(tx('notConn'),''); if(btn) btn.textContent=tx('connect'); }
 }
-window.onSaizenLangChange=function(){ applyStatic(); if(supa){ renderUI(); renderCatChips(); renderOriginChips(); renderDayChips(); renderAccomChips(); renderUnassigned(); renderPreview(); } };
+window.onSaizenLangChange=function(){ applyStatic(); if(supa){ renderUI();
+  // renderUI 가 달 표시·건수 칸을 빈 채로 다시 만든다 → 다시 채우고, 투숙자 이름도 새 언어 표기로 다시 만든다
+  $('#ym-label').textContent=YM||'';
+  LABELS.forEach(l=>{ l.names=(l.members||[]).map(m=>(window.__so_pname?__so_pname(m.name_kr,m.name_en):(m.name_kr||m.name_en||''))).filter(Boolean); });
+  $('#stat').textContent=LABELS.length?tx('cntRooms')(LABELS.length,new Set(LABELS.map(l=>l.eventSeq)).size):tx('noMonthData');
+  renderCatChips(); renderOriginChips(); renderDayChips(); renderAccomChips(); renderUnassigned(); renderPreview(); } };
 
 $('#btn-connect').addEventListener('click',connect);
 applyStatic();

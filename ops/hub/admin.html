@@ -43,6 +43,8 @@
   table.users{width:100%;border-collapse:collapse;font-size:13px}
   table.users th{text-align:left;font-size:11px;color:#fff;background:var(--accent);font-weight:700;padding:8px;white-space:nowrap}
   table.users td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top}
+  /* 가입 요청은 로그인 전 누구나 적을 수 있는 글 — 띄어쓰기 없는 긴 글이 표를 화면 밖으로 밀지 않게 칸 안에서 꺾는다 */
+  #req-list table.users td{overflow-wrap:anywhere;word-break:break-word;max-width:340px}
   table.users tr.me{background:var(--accentSoft)}
   .uname{font-weight:700}
   .uemail{font-size:11.5px;color:var(--muted);font-family:var(--mono)}
@@ -89,7 +91,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.5">
 </head>
 <body data-so-area="admin">
 <div class="topbar so-bar">
@@ -118,7 +120,7 @@
 
 <div class="wrap">
   <div class="panel" id="req-panel" style="display:none">
-    <h3 id="t-req-h"><span data-i18n="reqTitle">登録申請</span> <span class="pill" id="req-badge" style="display:none"></span></h3>
+    <h3 id="t-req-h"><span id="t-req-title">登録申請</span> <span class="pill" id="req-badge" style="display:none"></span></h3>
     <div class="desc" id="t-req-desc"></div>
     <div id="req-list"><div class="deny" id="t-req-loading" style="color:var(--muted)">読み込み中…</div></div>
   </div>
@@ -132,13 +134,13 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=69"></script>
-<script src="../assets/saizen-ops.js?v=39.4"></script>
+<script src="../assets/saizen-ops.js?v=39.5"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 권한 관리(마스터 전용). 18_access_control.sql 의 RPC를 호출.
 // ════════════════════════════════════════════════════════════════════════
 const $=s=>document.querySelector(s);
-let supa=null, myRole=null, rows=[];
+let supa=null, myRole=null, myUid=null, rows=[];
 
 // ── i18n (한·일 직원 공용. ja 기본) ──
 const L={
@@ -170,7 +172,7 @@ const L={
     thAccount:'アカウント(メール)', thProfile:'氏名・部署・役職', thRole:'役割', thCards:'アクセスカード', thEdit:'編集', thView:'閲覧', sumEdit:'編集', sumRead:'閲覧', sumNone:'カード権限なし — 開いて指定', foldT:'クリックしてカードを開閉',
     phName:'氏名(担当者)', phTitle:'役職(例: 課長)',
     deptNone:'(部署なし)', deptAll:'部署全体', allCardsMaster:'全カードアクセス(マスター)',
-    save:'保存', toastSaved:'保存しました', toastSaveFail:'保存失敗: ',
+    save:'保存', toastSaved:'保存しました', toastSaveFail:'保存失敗: ', selfDemote:'自分のマスター権限は自分では外せません(他のマスターに変更を依頼してください)',
     toastListFail:'一覧の読み込み失敗: ', toastConnFail:'接続失敗: ', connFailHint:' (18_access_control.sql 実行・ログイン確認)',
     // area cards (각 area가 여는 카드 목록)
     ac_step1:'データ登録(STEP1)',
@@ -227,7 +229,7 @@ const L={
     thAccount:'계정(이메일)', thProfile:'이름·부서·직급', thRole:'역할', thCards:'접근 카드', thEdit:'수정', thView:'보기', sumEdit:'수정', sumRead:'보기', sumNone:'카드 권한 없음 — 펼쳐서 지정', foldT:'클릭해 카드 목록 펼치기/접기',
     phName:'이름(작성자)', phTitle:'직급(예: 과장)',
     deptNone:'(부서 없음)', deptAll:'부서 전체', allCardsMaster:'전 카드 접근(마스터)',
-    save:'저장', toastSaved:'저장됨', toastSaveFail:'저장 실패: ',
+    save:'저장', toastSaved:'저장됨', toastSaveFail:'저장 실패: ', selfDemote:'본인 계정의 마스터 권한은 스스로 내릴 수 없습니다(다른 마스터가 변경해야 합니다)',
     toastListFail:'목록 로드 실패: ', toastConnFail:'연결 실패: ', connFailHint:' (18_access_control.sql 실행·로그인 확인)',
     ac_step1:'데이터 등록(STEP1)',
     ac_groupcodes:'그룹코드 + 회원마스터(성명+생년·등급 · 개인정보)',
@@ -279,7 +281,7 @@ const L={
     thAccount:'Account (email)', thProfile:'Name · dept · title', thRole:'Role', thCards:'Access cards', thEdit:'Edit', thView:'View', sumEdit:'Edit', sumRead:'View', sumNone:'No card access — expand to grant', foldT:'Click to expand / collapse the card list',
     phName:'Name (staff)', phTitle:'Title (e.g. Manager)',
     deptNone:'(no dept)', deptAll:'Whole dept', allCardsMaster:'All-card access (Master)',
-    save:'Save', toastSaved:'Saved', toastSaveFail:'Save failed: ',
+    save:'Save', toastSaved:'Saved', toastSaveFail:'Save failed: ', selfDemote:'You cannot remove your own master role (ask another master to change it)',
     toastListFail:'List load failed: ', toastConnFail:'Connection failed: ', connFailHint:' (run 18_access_control.sql · check login)',
     ac_step1:'Data registration (STEP1)',
     ac_groupcodes:'Group codes + member master (name+birth, grade · PII)',
@@ -430,6 +432,7 @@ async function connect(){
     const {data:acc,error}=await supa.rpc('me_access');
     if(error) throw error;
     myRole=(acc&&acc[0]&&acc[0].role)||'staff';
+    myUid=(sess.session.user&&sess.session.user.id)||null;
     setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.classList.add('connected');btn.disabled=false;
     if(myRole!=='admin'){
       $('#users').innerHTML='<div class="deny">'+esc(tx('adminOnly'))+'<small>'+esc(tx('currentRole'))+esc(ROLE_LABEL_(myRole))+esc(tx('noAccess'))+'</small></div>';
@@ -451,6 +454,7 @@ async function load(){
 }
 
 function render(){
+  const keep=[...document.querySelectorAll('#users tr[data-dirty]')];   // 저장 안 한 변경이 있는 줄 — 표를 다시 그려도 입력을 그대로 둔다(아래에서 되돌려 끼움)
   const box=$('#users');
   if(!rows.length){ box.innerHTML='<div class="deny" style="color:var(--muted)">'+esc(tx('noAccounts'))+'</div>'; return; }
   let html='<table class="users"><thead><tr><th>'+esc(tx('thAccount'))+'</th><th>'+esc(tx('thProfile'))+'</th><th>'+esc(tx('thRole'))+'</th><th>'+esc(tx('thCards'))+'(<span style="color:#d8e7c2">'+esc(tx('thEdit'))+'</span> / <span style="color:#f0cd7a">'+esc(tx('thView'))+'</span>)</th><th></th></tr></thead><tbody>';
@@ -494,6 +498,7 @@ function render(){
   });
   box.querySelectorAll('button[data-save]').forEach(b=>b.addEventListener('click',()=>saveRow(b.closest('tr'))));
   box.querySelectorAll('button[data-block]').forEach(b=>b.addEventListener('click',()=>toggleBlock(b.closest('tr'))));
+  keep.forEach(o=>{ const n=box.querySelector('tr[data-id="'+o.dataset.id+'"]'); if(n) n.replaceWith(o); });   // 미저장 줄은 옛 노드(입력·리스너 그대로)로 교체
 }
 // 계정 차단/해제 — admin_set_active(마스터·본인은 서버에서 거부)
 async function toggleBlock(tr){
@@ -503,6 +508,7 @@ async function toggleBlock(tr){
     const {error}=await supa.rpc('admin_set_active',{p_user:id,p_active:!active});
     if(error) throw error;
     toast(active?tx('toastBlocked'):tx('toastUnblocked'),'ok');
+    tr.removeAttribute('data-dirty');   // 차단 상태가 바뀐 줄은 다시 그려야 배지·버튼이 맞는다
     await load();
   }catch(e){ toast(tx('toastBlockFail')+(e.message||e),'err'); }
 }
@@ -513,6 +519,7 @@ async function saveRow(tr){
   const name=(tr.querySelector('[data-f="name"]').value||'').trim();
   const dept=tr.querySelector('[data-f="dept"]').value||'';
   const title=(tr.querySelector('[data-f="title"]').value||'').trim();
+  if(myUid && id===myUid && role!=='admin'){ toast(tx('selfDemote'),'err'); return; }   // 본인 마스터 강등 = 마스터 0명 잠금 방지(차단과 같은 규칙)
   const areas=role!=='admin'
     ? [...tr.querySelectorAll('[data-area]')].filter(c=>c.checked).map(c=>c.dataset.area)
     : [];   // 부모(그룹 전체)·자식(화면) 키가 그대로 저장된다 — 부모 체크 시 자식도 체크돼 함께 저장(구버전 호환)
@@ -524,6 +531,7 @@ async function saveRow(tr){
   const {error}=await supa.rpc('admin_set_access',{p_user:id,p_role:role,p_areas:areas,p_read_areas:read_areas,p_name:name,p_dept:dept,p_title:title});
   if(error){toast(tx('toastSaveFail')+error.message,'err');return;}
   toast(tx('toastSaved'),'ok');
+  tr.removeAttribute('data-dirty');   // 저장된 줄은 서버 값으로 다시 그린다
   await load();
 }
 
@@ -584,7 +592,7 @@ function applyStatic(){
   $('#t-connhint').textContent=tx('connHint');
   const cb=$('#btn-connect'); if(cb && !cb.classList.contains('connected') && !cb.disabled) cb.textContent=tx('connect');
   // 가입 요청 패널
-  const rt=$('#req-panel') && $('#req-panel').querySelector('[data-i18n="reqTitle"]'); if(rt) rt.textContent=tx('reqTitle');
+  const rt=$('#t-req-title'); if(rt) rt.textContent=tx('reqTitle');
   $('#t-req-desc').innerHTML=tx('reqDesc');
   const rl=$('#t-req-loading'); if(rl) rl.textContent=tx('reqLoading');
   // 담당자 권한 관리 패널
@@ -597,6 +605,8 @@ function applyStatic(){
 // 언어 토글 시 정적 라벨 + 동적 표(역할/카드/요청) 재렌더
 window.onSaizenLangChange=function(){ applyStatic(); if(rows.length) render(); if(supa) loadRequests(); };
 
+// 줄 안의 입력·체크가 바뀌면 그 줄을 미저장(data-dirty)으로 표시 — render() 가 그 줄은 보존한다
+['input','change'].forEach(ev=>$('#users').addEventListener(ev,e=>{ const tr=e.target&&e.target.closest&&e.target.closest('tr[data-id]'); if(tr) tr.setAttribute('data-dirty','1'); }));
 $('#btn-connect').addEventListener('click',connect);
 applyStatic();
 loadCreds();
