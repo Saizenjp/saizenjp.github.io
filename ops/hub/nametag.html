@@ -64,7 +64,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.6">
 </head>
 <body data-so-area="nametag">
 <div class="topbar so-bar">
@@ -95,7 +95,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=70"></script><!-- 공유 도메인 규칙(출발지 PUS/ICN 등) -->
-<script src="../assets/saizen-ops.js?v=40.5"></script>
+<script src="../assets/saizen-ops.js?v=40.6"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -165,7 +165,7 @@ function mmdd(d){if(!d)return '-';const m=String(d).match(/(\d{4})-(\d{2})-(\d{2
 // 숙소 구분색·접두 판정 = saizen-core 단일 진실원(네임택·航空カバー·송영표가 같은 색을 쓴다)
 const ACCOM_COLOR=SZCore.ACCOM_COLOR;
 function accomPfx(g){ return g.accom_prefix || SZCore.accomPrefix(g.accom||'') || 'Y'; }
-function portOf(origin){ return SZCore.originPort(origin); }  // PUS/ICN = saizen-core 단일 진실원(김해 포함)
+function portOf(origin,flight){ return SZCore.originPort(origin, flight); }  // PUS/ICN = saizen-core 단일 진실원(항공편 ZE/TW 가 먼저 · 김해 포함)
 
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
@@ -195,12 +195,12 @@ function renderUI(){
         </div>
         <span style="width:1px;height:20px;background:var(--border)"></span>
         <span class="cnt">${tx('origin')}</span>
-        <div class="chip on" data-o="all">${tx('all')}</div>
-        <div class="chip" data-o="icn">${tx('oIcn')}</div>
-        <div class="chip" data-o="pus">${tx('oPus')}</div>
+        <div class="chip ${ORIGIN==='all'?'on':''}" data-o="all">${tx('all')}</div>
+        <div class="chip ${ORIGIN==='icn'?'on':''}" data-o="icn">${tx('oIcn')}</div>
+        <div class="chip ${ORIGIN==='pus'?'on':''}" data-o="pus">${tx('oPus')}</div>
         <span style="width:1px;height:20px;background:var(--border)"></span>
         <span class="cnt">${tx('startSlot')}</span>
-        <input class="inp" id="start-slot" type="number" min="1" max="24" value="1" style="width:64px;text-align:center" title="${tx('startSlotT')}">
+        <input class="inp" id="start-slot" type="number" min="1" max="24" value="${START}" style="width:64px;text-align:center" title="${tx('startSlotT')}">
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
         <button class="btn" id="btn-print" type="button" disabled>${tx('printBtn')}</button>
@@ -264,14 +264,18 @@ function renderAccomChips(){
   }));
 }
 
+let _loadSeq=0;   // load() 순번 표식 — 조회가 겹치면 마지막 것만 화면에 반영(낡은 응답 버림)
 async function load(){
   if(!supa) return;
+  const my=++_loadSeq;
+  CELLS=[]; SELDATES.clear(); SELACCOMS.clear(); renderDayChips(); renderAccomChips(); renderPreview();   // 앞 달 명단·칩을 남기지 않는다(조회 중·실패 시 앞 달 라벨이 새 달 이름으로 인쇄되는 것 방지)
   $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true;
   try{
     // 1) 선택 월 팀(guests+bookings)
     const {data:gs,error:e1}=await supa.from('guests')
       .select('event_seq,group_code,accom,accom_prefix,bookings!inner(rep_name,dep_date,arr_date,origin,session_ym)')
       .eq('session_ym',YM).neq('bookings.status','대기');
+    if(my!==_loadSeq) return;   // 그 사이 다른 조회가 시작됨 → 낡은 응답 버림
     if(e1) throw e1;
     const gmap={}; (gs||[]).forEach(g=>{ gmap[g.event_seq]={accom:g.accom,accom_prefix:g.accom_prefix,b:g.bookings||{}}; });
     const seqs=Object.keys(gmap).map(Number);
@@ -283,7 +287,7 @@ async function load(){
       let pg=0;
       for(;;){
         const {data,error}=await supa.from('guest_members')
-          .select('event_seq,person_tag,seq_in_team,name_kr,name_en,is_rep')
+          .select('event_seq,person_tag,seq_in_team,name_kr,name_en,is_rep,passengers(dep_flight,ret_flight,origin)')
           .in('event_seq',chunk).order('event_seq').order('seq_in_team').range(pg,pg+999);
         if(error) throw error;
         members.push(...(data||[]));
@@ -293,9 +297,11 @@ async function load(){
     // 2.5) 묶음(대표 지정) — 연속 개인번호용 print_overrides
     const OVR={};
     for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
-      const {data:ov}=await supa.from('print_overrides').select('event_seq,team_group,team_group_rep,team_group_seq').in('event_seq',chunk);
+      const {data:ov,error:eOv}=await supa.from('print_overrides').select('event_seq,team_group,team_group_rep,team_group_seq').in('event_seq',chunk);
+      if(eOv) throw eOv;   // 묶음 정보를 못 읽은 채 인쇄하면 手配書와 다른 코드·번호가 나간다 → 로드 실패로 처리
       (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
     }
+    if(my!==_loadSeq) return;
     // 3) 셀 구성
     CELLS=members.map(m=>{
       const g=gmap[m.event_seq]||{}; const b=g.b||{};
@@ -303,7 +309,7 @@ async function load(){
       return {
         eventSeq:m.event_seq, tag:m.person_tag||'', kor:m.name_kr||'', eng:m.name_en||'',
         seq:m.seq_in_team||0,
-        port:portOf(b.origin), dep:mmdd(b.dep_date), arr:mmdd(b.arr_date), depRaw:b.dep_date||'',
+        port:portOf((m.passengers||{}).origin||b.origin, (m.passengers||{}).dep_flight||(m.passengers||{}).ret_flight), dep:mmdd(b.dep_date), arr:mmdd(b.arr_date), depRaw:b.dep_date||'',
         accom:g.accom||'', origin:b.origin||'', accomColor:ACCOM_COLOR[pfx]||'#111'
       };
     }).filter(c=>c.tag||c.kor);
@@ -327,16 +333,16 @@ async function load(){
     try{
       const gkeys=[...new Set(Object.values(OVR).map(o=>o.team_group).filter(Boolean))];
       if(gkeys.length){
-        const {data:allOv}=await supa.from('print_overrides')
+        const {data:allOv,error:eAll}=await supa.from('print_overrides')
           .select('event_seq,team_group,team_group_rep,team_group_seq').in('team_group',gkeys);
-        const ovRows=allOv||[];
+        if(eAll) throw eAll; const ovRows=allOv||[];
         const need=[...new Set(ovRows.map(r=>r.event_seq))].filter(s2=>!gmap[s2]);
         const ext={};
         for(let i=0;i<need.length;i+=200){ const ch=need.slice(i,i+200);
-          const {data:g2}=await supa.from('guests').select('event_seq,group_code,pax,bookings!inner(dep_date,pax)').in('event_seq',ch).neq('bookings.status','대기');
-          (g2||[]).forEach(g=>{ const bb=g.bookings||{}; ext[g.event_seq]={dep:bb.dep_date||'', pax:g.pax||bb.pax||0, tag:g.group_code||''}; });
-          const {data:m2}=await supa.from('guest_members').select('event_seq,person_tag,seq_in_team').in('event_seq',ch).order('seq_in_team');
-          (m2||[]).forEach(m=>{ const e=ext[m.event_seq]; if(e){ e.cnt=(e.cnt||0)+1; if(!e.ptag&&m.person_tag) e.ptag=m.person_tag; } });
+          const {data:g2,error:eG2}=await supa.from('guests').select('event_seq,group_code,pax,bookings!inner(dep_date,pax)').in('event_seq',ch).neq('bookings.status','대기');
+          if(eG2) throw eG2; (g2||[]).forEach(g=>{ const bb=g.bookings||{}; ext[g.event_seq]={dep:bb.dep_date||'', pax:g.pax||bb.pax||0, tag:g.group_code||''}; });
+          const {data:m2,error:eM2}=await supa.from('guest_members').select('event_seq,person_tag,seq_in_team').in('event_seq',ch).order('seq_in_team');
+          if(eM2) throw eM2; (m2||[]).forEach(m=>{ const e=ext[m.event_seq]; if(e){ e.cnt=(e.cnt||0)+1; if(!e.ptag&&m.person_tag) e.ptag=m.person_tag; } });
         }
         const strip=t=>(window.SZCore&&SZCore.tagStripSeq)?SZCore.tagStripSeq(t||''):(t||'');
         const _seen=new Set();
@@ -353,8 +359,9 @@ async function load(){
           });
         });
       }
-    }catch(e){ console.warn('묶음 전원 조회 실패:', e && e.message); }
+    }catch(e){ console.warn('묶음 전원 조회 실패:', e && e.message); throw e; }   // 삼키지 않는다 — 바깥 catch 가 로드 실패로 알린다
 
+    if(my!==_loadSeq) return;
     // 대표 지정 묶음: 개인 태그를 대표 기준코드 기반 '연속 개인번호'로(DRな-1Y…DRな-8Y).
     //  순서 = 手配書와 동일: ① 순번(team_group_seq) 전원 지정 시 그 순서
     //                        ② 아니면 SZCore.orderGroup(대표 먼저 → 입국일 → 행사번호)
@@ -392,7 +399,7 @@ async function load(){
     SELDATES.clear(); SELACCOMS.clear();
     $('#stat').textContent=tx('cntPeopleTeams')(CELLS.length,seqs.length);
     renderDayChips(); renderAccomChips(); renderPreview();
-  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
+  }catch(e){ if(my!==_loadSeq) return; CELLS=[]; renderDayChips(); renderAccomChips(); renderPreview(); $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
 
 // 태그코드(그룹코드)·개인번호 파싱 — "DRな-1Y" → 코드 "DRな" / 번호 1
@@ -450,7 +457,7 @@ function printLabels(){
   for(let i=0;i<slots.length;i+=PER){ const pg=slots.slice(i,i+PER); while(pg.length<PER) pg.push(null); pages.push(pg); }
   const cell=c=> c? `<div class="lp-cell"><div class="lp-hole"></div><div class="lp-body">
       <div class="lp-r1" style="color:${c.accomColor}">${esc(c.tag)}</div>
-      <div class="lp-r2">${esc(c.kor)} <span class="lp-r2-eng">${c.eng?'('+esc(c.eng)+')':''}</span></div>
+      <div class="lp-r2"><span class="lp-kor">${esc(c.kor)}</span> <span class="lp-r2-eng">${c.eng?'('+esc(c.eng)+')':''}</span></div>
       <div class="lp-r3">IN&nbsp; ${esc(c.port)} ${esc(c.dep)}</div>
       <div class="lp-r4">OUT ${esc(c.port)} ${esc(c.arr)}</div>
     </div></div>` : '<div class="lp-cell lp-cell-empty"></div>';
@@ -475,6 +482,24 @@ function printLabels(){
   .lp-r3,.lp-r4{font-size:9.5pt;font-weight:600;text-align:center;font-family:'Consolas','Menlo','SZJpMono',monospace;color:#1a2540;line-height:1.15}
   @media print{html,body{background:#fff}.lp-toolbar{display:none}.lp-container{padding:0}.lp-page{margin:0 auto;box-shadow:none}.lp-cell{border:none}.lp-cell-empty{background:#fff;border:none}}
   </style></head><body>
+  <script>
+  // 긴 이름·태그는 칸 안쪽 폭에 들어갈 때까지 줄인다(항공커버 acFitTags 와 같은 방식 — 실제 폭을 재서 0.5pt씩).
+  //  태그(.lp-r1)·이름(.lp-kor)·영문(.lp-r2-eng)을 줄마다 따로 잰다. 넘치지 않는 줄은 그대로.
+  function lpFit(){
+    document.querySelectorAll('.lp-body').forEach(function(body){
+      var max=body.clientWidth, hole=body.parentNode.querySelector('.lp-hole');
+      // 글자는 가운데 정렬 — 왼쪽 구멍 표시에 닿지 않게, 구멍이 안쪽으로 들어온 만큼을 양쪽에서 뺀다
+      if(hole){ var ov=hole.getBoundingClientRect().right-body.getBoundingClientRect().left; if(ov>0) max-=2*ov+2; }
+      body.querySelectorAll('.lp-r1,.lp-kor,.lp-r2-eng').forEach(function(el){
+        var rg=document.createRange(); rg.selectNodeContents(el);
+        var pt=parseFloat(getComputedStyle(el).fontSize)*72/96;
+        for(var i=0;i<80 && pt>5 && rg.getBoundingClientRect().width>max; i++){ pt-=0.5; el.style.fontSize=pt+'pt'; }
+      });
+    });
+  }
+  window.addEventListener('load',lpFit);
+  window.addEventListener('beforeprint',lpFit);
+  <\/script>
   <div class="lp-toolbar"><h1>${tx('pvTitle')}</h1>
     <div class="meta">${tx('pvMeta')(list.length,pages.length)} · ${YM}</div>
     <div style="flex:1"></div>

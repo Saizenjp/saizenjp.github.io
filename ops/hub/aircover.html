@@ -53,7 +53,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.6">
 </head>
 <body data-so-area="aircover">
 <div class="topbar so-bar">
@@ -84,7 +84,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=70"></script><!-- 공유 도메인 규칙(출발지 PUS/ICN 등) -->
-<script src="../assets/saizen-ops.js?v=40.5"></script>
+<script src="../assets/saizen-ops.js?v=40.6"></script>
 <script>
 const $=s=>document.querySelector(s);
 const L={
@@ -94,7 +94,7 @@ const L={
     notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要',
     needLogin:'ログイン必要', loginNeeded:'ログインが必要です。', loginHint:'中央のログインカードでログイン後、再度接続してください。',
     emptyConnect:'接続後に表示されます。',
-    monthFilter:'月選択 · フィルター', origin:'出発地', all:'全体', dateLbl:'日付', accomLbl:'宿泊施設',
+    monthFilter:'月選択 · フィルター', origin:'出発地', all:'全体', oIcn:'ICN(仁川)', oPus:'PUS(釜山)', dateLbl:'日付', accomLbl:'宿泊施設',
     print:'🖨 航空カバー 印刷プレビュー',
     cardDesc:'チーム別1枚(タグコード・出発地・番号・人数・入国/帰国便・施設)。<b>A5縦、倍率100%</b>で印刷してください。',
     preview:'プレビュー', printTarget:'出力対象', prevUseBtn:'実際のサイズは上の「航空カバー 印刷プレビュー」ボタンで確認してください。', loading:'読み込み中…', noMonthData:'当月データなし', loadFail:'読み込み失敗',
@@ -108,7 +108,7 @@ const L={
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요',
     needLogin:'로그인 필요', loginNeeded:'로그인이 필요합니다.', loginHint:'가운데 로그인 카드에서 로그인 후 다시 연결하세요.',
     emptyConnect:'연결 후 표시됩니다.',
-    monthFilter:'월 선택 · 필터', origin:'출발지', all:'전체', dateLbl:'날짜', accomLbl:'숙소',
+    monthFilter:'월 선택 · 필터', origin:'출발지', all:'전체', oIcn:'ICN(인천)', oPus:'PUS(부산)', dateLbl:'날짜', accomLbl:'숙소',
     print:'🖨 航空カバー 인쇄 미리보기',
     cardDesc:'팀별 1장(태그코드·出発地·番号·人数·入国/帰国 항공편·施設). <b>A5 세로, 배율 100%</b>로 인쇄하세요.',
     preview:'미리보기', printTarget:'출력 대상', prevUseBtn:'실제 크기는 위 「航空カバー 인쇄 미리보기」 버튼으로 확인하세요.', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', loadFail:'로드 실패',
@@ -122,7 +122,7 @@ const L={
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required',
     needLogin:'Login required', loginNeeded:'Login required.', loginHint:'Log in with the central login card, then connect again.',
     emptyConnect:'Shown after connecting.',
-    monthFilter:'Month · Filter', origin:'Origin', all:'All', dateLbl:'Date', accomLbl:'Lodging',
+    monthFilter:'Month · Filter', origin:'Origin', all:'All', oIcn:'ICN (Incheon)', oPus:'PUS (Busan)', dateLbl:'Date', accomLbl:'Lodging',
     print:'🖨 Air-cover print preview',
     cardDesc:'One sheet per team (tag code·出発地·番号·人数·入国/帰国 flights·施設). Print at <b>A5 portrait, 100% scale</b>.',
     preview:'Preview', printTarget:'Print list', prevUseBtn:'Check actual size with the “Air-cover print preview” button above.', loading:'Loading…', noMonthData:'No data for this month', loadFail:'Load failed',
@@ -183,8 +183,8 @@ function renderUI(){
         <span style="width:1px;height:20px;background:var(--border)"></span>
         <span class="cnt" id="t-origin">${tx('origin')}</span>
         <div class="chip on" data-o="all">${tx('all')}</div>
-        <div class="chip" data-o="icn">ICN(인천)</div>
-        <div class="chip" data-o="pus">PUS(부산)</div>
+        <div class="chip" data-o="icn">${tx('oIcn')}</div>
+        <div class="chip" data-o="pus">${tx('oPus')}</div>
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
         <button class="btn" id="btn-print" type="button" disabled>${tx('print')}</button>
@@ -233,15 +233,20 @@ function renderAccomChips(){
   }));
 }
 
+let _loadSeq=0;   // load() 순번 표식 — 조회가 겹치면 마지막 것만 화면에 반영(낡은 응답 버림)
 async function load(){
   if(!supa) return;
+  const my=++_loadSeq;
+  CARDS=[]; SELDATES.clear(); SELACCOMS.clear(); renderDayChips(); renderAccomChips(); renderPreview();   // 앞 달 카드·칩을 남기지 않는다(조회 중·실패 시 앞 달 카드가 새 달 이름으로 인쇄되는 것 방지)
   $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true;
   try{
     const {data:gs,error:e1}=await supa.from('guests')
-      .select('event_seq,group_code,accom,accom_prefix,pax,bookings!inner(rep_name,dep_date,arr_date,origin,pax,session_ym)')
+      .select('event_seq,group_code,team_tag,accom,accom_prefix,pax,bookings!inner(rep_name,dep_date,arr_date,origin,pax,session_ym)')
       .eq('session_ym',YM).neq('bookings.status','대기');
+    if(my!==_loadSeq) return;   // 그 사이 다른 조회가 시작됨 → 낡은 응답 버림
     if(e1) throw e1;
-    const gmap={}; (gs||[]).forEach(g=>{ const b=g.bookings||{}; gmap[g.event_seq]={accom:g.accom,accom_prefix:g.accom_prefix,pax:g.pax||b.pax||0,dep:b.dep_date,arr:b.arr_date,origin:b.origin}; });
+    // gmap 의 team_tag·group_code = 명단(guest_members)이 아직 없는 팀의 태그 폴백용(team_tag → group_code)
+    const gmap={}; (gs||[]).forEach(g=>{ const b=g.bookings||{}; gmap[g.event_seq]={accom:g.accom,accom_prefix:g.accom_prefix,pax:g.pax||b.pax||0,dep:b.dep_date,arr:b.arr_date,origin:b.origin,team_tag:g.team_tag,group_code:g.group_code}; });
     const seqs=Object.keys(gmap).map(Number);
     if(!seqs.length){ CARDS=[]; $('#stat').textContent=tx('noMonthData'); SELDATES.clear();SELACCOMS.clear(); renderDayChips();renderAccomChips();renderPreview(); return; }
     // 대표(guest_members is_rep || 최소 seq) + 항공편(passengers)
@@ -268,7 +273,8 @@ async function load(){
     // 묶음(대표 지정) 통일 태그용 print_overrides
     const OVR={};
     for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
-      const {data:ov}=await supa.from('print_overrides').select('event_seq,team_group,team_group_rep').in('event_seq',chunk);
+      const {data:ov,error:eOv}=await supa.from('print_overrides').select('event_seq,team_group,team_group_rep').in('event_seq',chunk);
+      if(eOv) throw eOv;   // 묶음 정보를 못 읽은 채 인쇄하면 手配書와 다른 코드·번호가 나간다 → 로드 실패로 처리
       (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
     }
     // ── 묶음 전원(달 무관) ─────────────────────────────────────────────────
@@ -280,16 +286,16 @@ async function load(){
     try{
       const gkeys=[...new Set(seqs.map(s2=>(OVR[s2]||{}).team_group).filter(Boolean))];
       if(gkeys.length){
-        const {data:allOv}=await supa.from('print_overrides')
+        const {data:allOv,error:eAll}=await supa.from('print_overrides')
           .select('event_seq,team_group,team_group_rep,team_group_seq').in('team_group',gkeys);
-        const ovRows=allOv||[];
+        if(eAll) throw eAll; const ovRows=allOv||[];
         const need=[...new Set(ovRows.map(r=>r.event_seq))].filter(s2=>!gmap[s2]);
         const ext={};
         for(let i=0;i<need.length;i+=200){ const ch=need.slice(i,i+200);
-          const {data:g2}=await supa.from('guests').select('event_seq,group_code,pax,bookings!inner(dep_date,pax)').in('event_seq',ch).neq('bookings.status','대기');
-          (g2||[]).forEach(g=>{ const b=g.bookings||{}; ext[g.event_seq]={dep:b.dep_date||'', tag:g.group_code||'', pax:g.pax||b.pax||0}; });
-          const {data:m2}=await supa.from('guest_members').select('event_seq,person_tag,seq_in_team').in('event_seq',ch).order('seq_in_team');
-          (m2||[]).forEach(m=>{ const e=ext[m.event_seq]; if(e&&!e.ptag&&m.person_tag) e.ptag=m.person_tag; });
+          const {data:g2,error:eG2}=await supa.from('guests').select('event_seq,group_code,pax,bookings!inner(dep_date,pax)').in('event_seq',ch).neq('bookings.status','대기');
+          if(eG2) throw eG2; (g2||[]).forEach(g=>{ const b=g.bookings||{}; ext[g.event_seq]={dep:b.dep_date||'', tag:g.group_code||'', pax:g.pax||b.pax||0}; });
+          const {data:m2,error:eM2}=await supa.from('guest_members').select('event_seq,person_tag,seq_in_team').in('event_seq',ch).order('seq_in_team');
+          if(eM2) throw eM2; (m2||[]).forEach(m=>{ const e=ext[m.event_seq]; if(e&&!e.ptag&&m.person_tag) e.ptag=m.person_tag; });
         }
         const strip=t=>(window.SZCore&&SZCore.tagStripSeq)?SZCore.tagStripSeq(t||''):(t||'');
         const _seen=new Set();
@@ -305,13 +311,14 @@ async function load(){
           });
         });
       }
-    }catch(e){ console.warn('묶음 전원 조회 실패:',e.message); }
+    }catch(e){ console.warn('묶음 전원 조회 실패:',e.message); throw e; }   // 삼키지 않는다 — 바깥 catch 가 로드 실패로 알린다
 
+    if(my!==_loadSeq) return;
     CARDS=seqs.map(seq=>{
       const g=gmap[seq]||{}; const r=reps[seq]||{};
       // 태그코드는 step1 데이터(person_tag/group_code) 기준 — 수정 불가.
       // 대표만 나오는 출력이라 개인순번 숫자는 빼고 숙소 문자(Y/K/G/S)만 남김("DAあ-1Y"→"DAあ-Y").
-      const tag=(window.SZCore&&SZCore.tagStripSeq)?SZCore.tagStripSeq(r.tag||g.group_code||''):(r.tag||g.group_code||'');
+      const tag=(window.SZCore&&SZCore.tagStripSeq)?SZCore.tagStripSeq(r.tag||g.team_tag||g.group_code||''):(r.tag||g.team_tag||g.group_code||'');
       // /app/ 동일: 태그코드 마지막 글자(Y/K/G/S)로 시설 판정, 없으면 accom_prefix 폴백
       const last=tag.slice(-1); const pfx=ACCOM_COLOR[last]?last:accomPfx(g);
       const inF=r.dep_flight||''; const outF=r.ret_flight||'';
@@ -392,7 +399,7 @@ async function load(){
     SELDATES.clear(); SELACCOMS.clear();
     $('#stat').textContent=`${CARDS.length}${tx('teamUnit')}`;
     renderDayChips(); renderAccomChips(); renderPreview();
-  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
+  }catch(e){ if(my!==_loadSeq) return; CARDS=[]; renderDayChips(); renderAccomChips(); renderPreview(); $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
 
 // 앵커(날짜→ICN/PUS→숙소→그룹코드) 기준 정렬 → 묶은 팀은 대표 앵커 공유로 인접, 그 안은 팀번호(Y1,Y2)순.
@@ -532,6 +539,7 @@ function applyStatic(){
   // renderUI로 만들어진 정적 라벨(접속 후에만 존재)
   const mf=$('#t-monthfilter'); if(mf) mf.textContent=tx('monthFilter');
   const og=$('#t-origin'); if(og) og.textContent=tx('origin');
+  document.querySelectorAll('.chip[data-o]').forEach(c=>{ const k={all:'all',icn:'oIcn',pus:'oPus'}[c.dataset.o]; if(k) c.textContent=tx(k); });   // 출발지 칩 — 언어를 바꾸면 따라 바뀌게
   const dl=$('#t-datelbl'); if(dl) dl.textContent=tx('dateLbl');
   const al=$('#t-accomlbl'); if(al) al.textContent=tx('accomLbl');
   const cd=$('#t-carddesc'); if(cd) cd.innerHTML=tx('cardDesc');
