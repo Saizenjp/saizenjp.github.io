@@ -1333,14 +1333,18 @@ function renderIssues(){
 }
 async function fixBoardIssues(){
   if(!supa||!DATESEL) return;
-  const {dup,coll}=ISSUES; if(!dup.length && !coll.length) return;
+  //  ⚠ 띠를 띄운 뒤 조를 지우거나 제외하면 BOARD 의 번호가 밀린다 → 로드 때 잡아 둔 번호를 쓰면 엉뚱한 조가 지워졌다(2026-11 검수).
+  //    지금 보드로 다시 계산하고, 번호가 아니라 조(객체)로 대상을 잡는다.
+  const cur=findBoardIssues();
+  const dupG=cur.dup.map(i=>BOARD[i]), collG=cur.coll.map(i=>BOARD[i]);
+  if(!dupG.length && !collG.length){ ISSUES=cur; renderIssues(); return; }
   const btn=$('#btn-fixdup'); if(btn) btn.disabled=true;
   const by=(window.__so_getUser&&__so_getUser())||null;
   try{
-    const ids=dup.map(i=>BOARD[i].id).filter(Boolean);
+    const ids=dupG.map(g=>g.id).filter(Boolean);
     if(ids.length){ const {error}=await supa.from('golf_groups').delete().in('id',ids); if(error) throw error; }   // 조원은 cascade
-    const dupSet=new Set(dup); const movedG=coll.map(i=>BOARD[i]);
-    BOARD=BOARD.filter((g,i)=>!dupSet.has(i)); DBIDS=BOARD.map(g=>g.id).filter(Boolean);
+    const dupSet=new Set(dupG); const movedG=collG;
+    BOARD=BOARD.filter(g=>!dupSet.has(g)); DBIDS=BOARD.map(g=>g.id).filter(Boolean);
     movedG.forEach(g=>{ const used=new Set(BOARD.filter(x=>x!==g&&x.course===g.course).map(x=>x.slot)); let s=(g.slot||0)+1; while(used.has(s)) s++; g.slot=s; ensureSlots(s); g.tee=SLOTS[s-1]||g.tee; });
     try{ render(); }catch(e){}   // 그리기가 실패해도 DB 정리는 끝까지
     await save(true);
@@ -1422,11 +1426,11 @@ async function loadBoard(date, skipAuto){
     }catch(e){}
     // 전기카트 신청 대수(카트 배차표와 같은 행, 취소분 제외) — 셀 배지·퀵 액션·손님 화면 EV 표시
     try{
-      let {data:cb,error:ce}=await supa.from('cart_bookings').select('event_seq,qty,cancelled').eq('play_date',date).eq('cart_code','electric');
-      if(ce && /cancelled/i.test(ce.message||'')) ({data:cb,error:ce}=await supa.from('cart_bookings').select('event_seq,qty').eq('play_date',date).eq('cart_code','electric'));
+      const {data:cb,error:ce}=await supa.from('cart_bookings').select('event_seq,qty').eq('play_date',date).eq('cart_code','electric');
       if(stale()) return;
       if(ce && !tblMissing(ce)) EVQ_OK=false;   // 신청을 못 읽었으면 카트 자동 배분을 하지 않는다(전기 신청 팀에 가솔린이 저장된다)
-      (cb||[]).forEach(x=>{ const q=String(x.event_seq); EVQ[q]=(EVQ[q]||0)+Math.max(0,(x.qty||0)-(x.cancelled||0)); });
+      //  qty = 취소분을 이미 뺀 「남은 신청 대수」다(SQL 95·100). 여기서 cancelled 를 또 빼면 부분 취소한 팀의 대수가 한 번 더 줄었다.
+      (cb||[]).forEach(x=>{ const q=String(x.event_seq); EVQ[q]=(EVQ[q]||0)+Math.max(0,x.qty||0); });
     }catch(e){ EVQ_OK=false; }
     // 손님 화면 공개 상태(SQL 146) — 없으면 실시간(종전)
     if(HAS_REL){
@@ -1926,11 +1930,23 @@ async function qaAddEv(gi){
   const v=prompt(tx('qaEvPrompt',cur),'1'); if(v==null) return;
   const n=parseInt(v,10); if(!(n>=1&&n<=20)){ toast(tx('qaBad'),'warn'); return; }
   const by=(window.__so_getUser&&__so_getUser())||null;
-  const row={play_date:DATESEL, event_seq:Number(g.seq), cart_code:'electric', qty:cur+n, cancelled:0, source:'pre', auto_qty:false, created_by:by};
   try{
-    let {error}=await supa.from('cart_bookings').upsert(row,{onConflict:'play_date,event_seq,cart_code,source'});
-    if(error && /cancelled|auto_qty/i.test(error.message||'')){ const o={...row}; delete o.cancelled; delete o.auto_qty;
-      ({error}=await supa.from('cart_bookings').upsert(o,{onConflict:'play_date,event_seq,cart_code,source'})); }
+    //  그 팀의 사전신청 행을 **지금 다시 읽어 대수만 n 늘린다**(취소 기록·다른 구분의 신청은 건드리지 않는다).
+    //  예전엔 날짜를 열 때 세어 둔 합계에 n 을 더해 qty·cancelled 를 통째로 덮어써, 부분 취소가 있으면 대수·요금이 줄고
+    //  그 사이 카트 배차표에서 바꾼 대수도 되돌렸다(2026-11 검수).
+    const q0=()=>supa.from('cart_bookings');
+    const cond=b=>b.eq('play_date',DATESEL).eq('event_seq',Number(g.seq)).eq('cart_code','electric').eq('source','pre');
+    const r0=await cond(q0().select('qty')).limit(1); if(r0.error) throw r0.error;
+    const pre=(r0.data||[])[0]||null;
+    let error;
+    if(pre){
+      ({error}=await cond(q0().update({qty:(pre.qty||0)+n, auto_qty:false})));
+      if(error && /auto_qty/i.test(error.message||'')) ({error}=await cond(q0().update({qty:(pre.qty||0)+n})));
+    }else{
+      const row={play_date:DATESEL, event_seq:Number(g.seq), cart_code:'electric', qty:n, cancelled:0, source:'pre', auto_qty:false, created_by:by};
+      ({error}=await q0().insert(row));
+      if(error && /cancelled|auto_qty/i.test(error.message||'')){ const o={...row}; delete o.cancelled; delete o.auto_qty; ({error}=await q0().insert(o)); }
+    }
     if(error) throw error;
     EVQ[String(g.seq)]=cur+n;
     try{ await loadUnits(); if(recartTeam(g.seq).changed) touch(); }catch(e){}   // 신청이 바뀌었으니 그 팀 카트를 규칙으로 다시(전기로)
@@ -2119,6 +2135,7 @@ function render(){
   const _a=anchorRow();
   _render();
   try{ restoreRow(_a); }catch(e){}
+  if(!TV && !LOADERR){ try{ ISSUES=findBoardIssues(); renderIssues(); }catch(e){} }   // 중복·자리 충돌 띠는 늘 지금 보드 기준
 }
 function _render(){
   _tcMap=null;
