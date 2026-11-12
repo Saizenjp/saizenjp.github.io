@@ -15,7 +15,7 @@
 /assets/               로고 SVG
 /docs/                 기술 문서(00_README.md 에 목록) · 설계 명세(04 현장정산 · 06 정산 보강) · 규칙(방배정) · 매뉴얼
 /scripts/              check-syntax(문법: 전 HTML 인라인 스크립트·저장소의 .js/.mjs 파일 + 공용 헬퍼(esc·tx·lang·toast) 정의 범위·주석에 먹힌 속성·정적 on*= 핸들러·색(HEX 등) 폴백(ops 아래 파일))
-                       check-i18n(언어 전환 회귀) · check-wait(대기 예약 제외 — 화면·공용 JS 의 bookings 표 이름 글자·임베드마다 필터 또는 사유 주석) · check-tracked(올라가는 파일 — 데이터·문서·압축·키 파일 이름, 비밀값 꼴)
+                       check-i18n(언어 전환 회귀) · check-wait(대기 예약 제외 — 화면·공용 JS 의 bookings 표 이름 글자·임베드마다 필터 또는 사유 주석. 행을 읽지 않는 등록 현황·연결 확인 꼴만 「허용 문장」으로 통과) · check-tracked(올라가는 파일 — 데이터·문서·압축·키 파일 이름, 비밀값 꼴)
                        lib/js-skeleton.mjs(검사 스크립트 공용 — 스크립트의 글자를 코드·문자열·주석으로 가린다) · lib/html-entities.mjs(HTML 문자 참조 표). 검사 스크립트의 회귀 테스트 = tests/check-scripts.test.mjs
 /tests/                node:test 단위테스트(saizen-core)
 /design/               디자인 시스템 미리보기(컴포넌트별 HTML — design/README.md)

@@ -8,17 +8,27 @@
  *  ② 헬퍼 범위   esc·tx·lang·toast 를 부르는 자리에서 그 정의가 보이는가
  *               전역 정의로 보는 것: 최상위 선언 · window/globalThis/self.이름 = · Object.assign(window, { … })
  *               · 전역 객체의 다른 이름( (function (global) { global.이름 = … })(window) 의 첫 매개변수 · const w = window )
- *  ③ 주석       여러 줄 객체 첫 줄의 //주석이 뒤 속성을 삼키지 않는가( 닫는 괄호 · 「이름: 값,」 꼴이 주석 안에 있을 때.
- *               「TODO: …」·「상태: 로딩/완료」 같은 설명은 아니다. 콜론 없는 줄임 속성이 삼켜진 것은 보지 못한다)
+ *                 — 그 이름이 보이는 블록 안의 대입만 센다. 인자는 전역 객체 그 자체여야 한다( window.SZ · this.SZ · windowManager 는 아니다.
+ *                 this 는 일반 스크립트 최상위의 IIFE 일 때만). 그 블록에서 같은 이름을 다시 선언·대입·매개변수로 받으면 별칭이 아니다.
+ *                 막는 꼴(올바른데 오류): 화살표 IIFE · !function(g){}(window) · var a = 1, w = window · 다른 <script> 의 const w = window
+ *                 · 같은 스크립트의 다른 함수가 같은 이름의 매개변수를 가진 const w = window → window.이름 = 으로 적는다.
+ *  ③ 주석       여러 줄 객체 첫 줄의 //주석이 뒤 속성을 삼키지 않는가( 닫는 괄호 · 「이름: 값, 이름:」 또는 「이름: 값,」 으로 끝나는 글이
+ *               주석 안에 있을 때 — 값에 빈칸이 들어도( new Set() · a + b ) 본다. 「TODO: 임시, 나중에 지운다」·「상태: 로딩/완료」·
+ *               「참고 https://…, 표 2」 같은 설명은 아니다. 콜론 없는 줄임 속성이 삼켜진 것은 보지 못한다)
  *  ④ on*=       정적 HTML 의 인라인 핸들러(onclick 등) 값이 문법에 맞는가
  *  ⑤ HEX 폴백   ops 아래의 화면·CSS·스크립트에 var(--이름,#hex) 같은 색 폴백이 없는가
  *  · CLAUDE.md §4 의 수동 검사("node --check")를 전 페이지 자동화한 것.
  *  · vm.Script 로 '파싱만' 한다 → DOM·전역 미정의여도 문법 오류만 잡힌다.
  *  · 외부 의존성 0(노드 빌트인만) → CI 에서 npm install 없이 즉시 실행.
- *  · 읽지 못한 것은 통과가 아니라 오류다 — 뼈대를 만들지 못한 화면, 닫히지 않은 <script>, NUL 이 든 화면(UTF-16),
+ *  · 읽지 못한 것은 통과가 아니라 오류다 — 뼈대를 만들지 못한 화면, 닫히지 않은 <script>( 본문의 「<!--」 뒤 「<script」 글자 때문에
+ *    브라우저가 그 </script> 에서 닫지 않는 것 포함 ), NUL 이 든 화면(UTF-16),
  *    UTF-8 이 아닌 화면(EUC-KR·Shift_JIS 로 저장), src 가 있는 <script> 가 뒤의 <script> 를 삼킨 화면
  *    ( <script src="…"/> 로 닫았거나 </script> 를 빠뜨렸다 — 브라우저는 다음 </script> 까지를 버린다).
  *  · 오류가 많아도 끝까지 쓰고 끝낸다(process.exit 로 끊지 않는다 — CI 의 파이프에서 끝의 요약 줄이 잘린다).
+ *  · 보지 못하는 것: 600자를 넘는 var( ) 안의 색 폴백(긴 data: 주소 뒤) · esc?.( ) 꼴의 호출 · 이름이 catch·for 인 메서드와 static 블록 안의
+ *    정의(전역으로 올려 읽는다) · 일반 <script src> 로 싣는 .mjs 의 export. 올바른데 막는 것: 동적 import( ) 로만 싣는 ESM .js(싣는 화면이
+ *    없다고 알린다) · src 가 있는 <script> 본문의 주석에 「<script」 글자가 든 것. 문자열 안에 U+2028 이 있으면 그 뒤 오류의 줄 번호가 밀린다.
+ *    한 줄이 수 MB 인 문자열은 ③ 에서 예외로 끝난다(통과하지는 않는다).
  *  실행:  node scripts/check-syntax.mjs   (저장소 맨 위 폴더에서 — ops 폴더가 없으면 오류로 끝낸다)
  * ========================================================================== */
 import { readFileSync, readdirSync, lstatSync, existsSync } from 'node:fs';
@@ -60,7 +70,7 @@ const files = all.filter((p) => /\.html?$/i.test(p));
      · 닫는 태그가 없는 <script> 는 unclosed(그 줄 번호)로 알린다 — 브라우저는 그 스크립트를 실행하지 않는다. */
 function inlineScripts(raw) {
   const html = blankHtmlComments(raw);      /* 주석 처리된 <script> 는 스크립트가 아니다(길이·줄 수는 그대로) */
-  const { list, unclosed } = scriptsOf(html);
+  const { list, unclosed, dbl } = scriptsOf(html);
   const scripts = [];
   let swallowed = 0;      /* src 가 있는 <script> 의 본문에 또 <script 가 있다 — 「/>」 로 닫았거나 </script> 가 빠져, 다음 </script> 까지(뒤의 스크립트)를 삼켰다 */
   for (const t of list) {
@@ -68,7 +78,7 @@ function inlineScripts(raw) {
     if (t.src !== null || !t.kind || !t.code.trim()) continue;
     scripts.push({ code: t.code, idx: t.idx, module: t.kind === 'module', line: html.slice(0, t.base).split('\n').length });
   }
-  return { scripts, tags: list, unclosed: unclosed < 0 ? 0 : html.slice(0, unclosed).split('\n').length, swallowed };
+  return { scripts, tags: list, unclosed: unclosed < 0 ? 0 : html.slice(0, unclosed).split('\n').length, dbl, swallowed };
 }
 const lineOf = (s, pos) => s.line + s.code.slice(0, pos).split('\n').length - 1;
 
@@ -112,7 +122,9 @@ for (const pg of pages) {
   }
   if (pg.unclosed) {
     unreadPages++;
-    console.error(`✗ ${rel(pg.f)}:${pg.unclosed} <script> 가 닫히지 않았습니다(닫는 태그 없음) — 브라우저는 이 스크립트를 실행하지 않고, 뒤의 내용도 스크립트 글자로 삼킵니다.`);
+    console.error(pg.dbl
+      ? `✗ ${rel(pg.f)}:${pg.unclosed} <script> 가 닫히지 않았습니다 — 본문의 「<!--」 뒤에 「<script」 글자가 있어 브라우저가 그 </script> 를 닫는 태그로 읽지 않습니다(이 스크립트는 실행되지 않고 뒤의 스크립트도 삼킵니다). 주석을 「-->」 로 닫았는지 보고, 문자열 안의 글자는 '<!-' + '-' · '<scr' + 'ipt' 로 나누어 적으세요.`
+      : `✗ ${rel(pg.f)}:${pg.unclosed} <script> 가 닫히지 않았습니다(닫는 태그 없음) — 브라우저는 이 스크립트를 실행하지 않고, 뒤의 내용도 스크립트 글자로 삼킵니다.`);
   }
 }
 
@@ -151,23 +163,27 @@ for (const pg of pages) {
                   vm.Script 가 읽지 못하므로 `node --check` 를 자식 프로세스로 부른다(파싱만, 실행 안 함).
       .ts(엣지 함수 1개)는 보지 않는다. */
 const jsFiles = all.filter((p) => /\.(js|mjs|cjs)$/i.test(p));
+const MODULE_ONLY_ERR = /outside a module|Unexpected token 'export'|top level bodies of modules/;      /* 일반 스크립트로 읽어서 난 오류(모듈 문법 자체) */
 for (const p of jsFiles) {
   if (/\.js$/i.test(p)) {
     const src = readFileSync(p, 'utf8');
     if (moduleSrc.has(p) && !classicSrc.has(p)) {      /* type=module 로만 싣는 파일 — 모듈 문법으로 본다(최상위 await · import.meta · 한 줄로 줄인 export · strict) */
-      const why = checkModuleSyntax(src);
-      if (why) { errors++; console.error(`✗ ${rel(p)}: ${why}`); }
+      const bad = checkModuleSyntaxAt(src);
+      if (bad) { errors++; console.error(`✗ ${rel(p)}: ${bad.line ? `줄 ${bad.line} — ` : ''}${bad.why}`); }
       continue;
     }
     try { new vm.Script(src, { filename: p }); }
     catch (e) {
-      let why = e.message;
-      if (!checkModuleSyntax(src)) {      /* 일반 스크립트로는 읽지 못하고 모듈로는 읽힌다 */
+      let why = e.message, ln = errLine(e);
+      const asModule = checkModuleSyntaxAt(src);
+      if (asModule && MODULE_ONLY_ERR.test(e.message)) { why = asModule.why; ln = asModule.line; }      /* 모듈 문법이 든 파일의 진짜 오류 — 일반 스크립트로 읽으면 늘 첫 import/export 줄에서 멈춘다 */
+      else if (!asModule) {      /* 일반 스크립트로는 읽지 못하고 모듈로는 읽힌다 */
+        ln = 0;
         if (classicSrc.has(p)) why = `일반 <script src> 로 싣는 화면이 있는데 모듈 문법이 들어 있습니다 — 브라우저가 파일 전체를 거부합니다(${e.message})`;
         else if (anyModule) why = '';      /* 다른 모듈이 import 하는 파일일 수 있다 */
         else why = `모듈 문법(import/export 등)이 든 .js 인데 type=module 로 싣는 화면이 없습니다 — 일반 <script src> 로 실으면 브라우저가 파일 전체를 거부합니다(${e.message})`;
       }
-      if (why) { errors++; const ln = errLine(e); console.error(`✗ ${rel(p)}: ${ln && why.includes(e.message) ? `줄 ${ln} — ` : ''}${why}`); }
+      if (why) { errors++; console.error(`✗ ${rel(p)}: ${ln ? `줄 ${ln} — ` : ''}${why}`); }
     }
   } else {
     const r = spawnSync(process.execPath, ['--check', p], { encoding: 'utf8' });
@@ -298,29 +314,65 @@ const prep = (x) => {
   });
   /* 그 스크립트가 self 를 따로 선언했는가 — 그러면 self.이름 = 은 전역 대입이 아니다 */
   const own = /(?:^|[^\w$.])(?:var|let|const)\s+self(?![\w$])|[(,]\s*self\s*[,)=]/.test(x.text) ? ['window', 'globalThis'] : ['window', 'globalThis', 'self'];
-  /* 전역 객체에 붙인 다른 이름 — (function (global) { … })(window) · (function (root) { … }(this)) 의 첫 매개변수, const w = window.
-     공용 파일(saizen-ops.js)이 global.이름 = … 으로 내보낸다. */
-  const GLOBAL_ARG = /^\s*\)?\s*\(\s*(?:window|globalThis|self|this|typeof\s+(?:window|globalThis|self)\b)/;
+  /* 전역 객체에 붙인 다른 이름(별칭) — (function (global) { … })(window) · (function (root) { … }(this)) 의 첫 매개변수, const w = window.
+     별칭은 「보이는 블록」 안에서만 전역 객체다: IIFE 는 그 본문, 선언은 선언한 블록(최상위면 그 스크립트 전체).
+     · 인자는 전역 객체 그 자체여야 한다 — (window.SZ = window.SZ || {}) · (windowManager) · (this.SZ) 는 아니다.
+       this 는 일반 스크립트의 최상위에 놓인 IIFE 일 때만(함수·메서드 안의 this, 모듈의 this 는 전역 객체가 아니다).
+       typeof 꼴은 typeof window !== 'undefined' ? window : … 만(=== 로 뒤집은 것은 아니다).
+     · 그 블록 안에서 같은 이름을 다시 선언·대입했거나 매개변수로 받으면 별칭으로 보지 않는다(오류 쪽으로 넘어진다). */
+  const G = own.join('|');
+  const GLOBAL_ARG = new RegExp('^\\s*\\)?\\s*\\(\\s*(?:(' + G + ')|(this)|typeof\\s+(' + G + ')\\s*!==?\\s*([\'"`])[^\'"`]*\\4\\s*\\?\\s*\\3\\s*:[^(),?]{1,40})\\s*[,)]');
+  const redeclared = (name, a, b, skipA = -1, skipB = -1) => {      /* [a, b) 안에서 그 이름을 다시 선언·대입하거나 매개변수로 받는가([skipA, skipB) 는 별칭의 선언 자신) */
+    const N = name.replace(/\$/g, '\\$');
+    let seg = x.text.slice(a, b);
+    if (skipA >= a && skipB <= b) seg = seg.slice(0, skipA - a) + ' '.repeat(skipB - skipA) + seg.slice(skipB - a);
+    return new RegExp('(?<![\\w$.])(?:var|let|const)\\s+(?:[^;=()]*?[,{\\[]\\s*)?' + N + '(?![\\w$])').test(seg)
+      || new RegExp('(?<![\\w$.])' + N + '\\s*(?:[-+*/%&|^]|\\*\\*|<<|>>>?|\\|\\||&&|\\?\\?)?=(?!=)').test(seg)
+      || new RegExp('(?<![\\w$.])' + N + '\\s*(?:\\+\\+|--)|(?:\\+\\+|--)\\s*' + N + '(?![\\w$])').test(seg)
+      || new RegExp('(?:function\\b[^(]*|catch\\s*)\\((?:[^()]*[,\\s{\\[.])?' + N + '(?![\\w$])[^()]*\\)').test(seg)
+      || new RegExp('\\((?:[^()]*[,\\s{\\[.])?' + N + '(?![\\w$])[^()]*\\)\\s*=>').test(seg);
+  };
+  x.aliases = [];      /* [{ name, blk(보이는 블록 번호 — -1 은 그 스크립트 전체), viaThis }] */
   for (const m of x.text.matchAll(/\(\s*function\s*\(\s*([A-Za-z_$][\w$]*)\s*[,)]/g)) {
     const open = x.text.indexOf('{', m.index + m[0].length - 1);
     if (open < 0) continue;
     let d = 0, j = open;
     for (; j < x.text.length; j++) { const c = x.text[j]; if (c === '{') d++; else if (c === '}' && --d === 0) break; }
-    if (GLOBAL_ARG.test(x.text.slice(j + 1, j + 120))) own.push(m[1]);
+    const g = GLOBAL_ARG.exec(x.text.slice(j + 1, j + 160));
+    if (!g) continue;
+    if (g[2] && x.blk[m.index] !== -1) continue;                   /* 함수·메서드·블록 안의 this 는 전역 객체가 아닐 수 있다 */
+    if (redeclared(m[1], open + 1, j)) continue;
+    x.aliases.push({ name: m[1], blk: x.blk[open + 1], viaThis: !!g[2] });
   }
-  for (const m of x.text.matchAll(/(?:^|[^\w$.])(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:window|globalThis)\s*(?=[;,\n])/g)) own.push(m[1]);
-  x.owners = [...new Set(own)].map((s) => s.replace(/\$/g, '\\$')).join('|');
+  for (const m of x.text.matchAll(/(?:^|[^\w$.])(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:window|globalThis)[ \t]*(?:[;,]|\r?\n(?!\s*[.[(])|$)/g)) {
+    const at = m.index + m[0].indexOf(m[1], m[0].search(/var|let|const/) + 3);
+    if (redeclared(m[1], 0, x.text.length, m.index, m.index + m[0].length)) continue;      /* 다시 대입했거나( w = {} ) 같은 이름의 매개변수가 있다 */
+    x.aliases.push({ name: m[1], blk: x.blk[at], viaThis: false });
+  }
+  x.base = own;
+  x.owners = [...new Set([...own, ...x.aliases.map((a) => a.name)])].map((s) => s.replace(/\$/g, '\\$')).join('|');
   return x;
 };
+/* 그 자리의 이름이 전역 객체인가 — window·globalThis·self 는 어디서나, 별칭은 보이는 블록 안에서만(모듈에서 this 로 받은 별칭은 아니다) */
+function ownerAt(x, name, at, isModule) {
+  if (x.base.includes(name)) return true;
+  for (const a of x.aliases) {
+    if (a.name !== name || (a.viaThis && isModule)) continue;
+    if (a.blk === -1) return true;
+    for (let b = x.blk[at]; b !== undefined && b !== -1; b = x.parent[b]) if (b === a.blk) return true;
+  }
+  return false;
+}
 /* 스크립트 하나(뼈대 x · 원문 code)에서 name 의 정의를 찾는다 → { global, local:[블록 번호 — -1 은 그 스크립트의 최상위(모듈)] } */
 function defsOf(x, code, isModule, name) {
   let global = false;
   const local = [];
   /* 전역 대입 — 문자열 글자(window['이름'])가 들 수 있어 원문에서 찾고, 시작 자리가 코드인지 확인한다 */
   const winRe = new RegExp(`(?:^|[^\\w$.])(${x.owners})\\s*(?:\\.\\s*${name}(?![\\w$])|\\[\\s*(['"\`])${name}\\2\\s*\\])\\s*(?:\\|\\||&&|\\?\\?)?=(?!=)`, 'g');
-  for (const m of code.matchAll(winRe)) if (x.kind[m.index + m[0].indexOf(m[1])] === CODE) global = true;
+  for (const m of code.matchAll(winRe)) { const at = m.index + m[0].indexOf(m[1]); if (x.kind[at] === CODE && ownerAt(x, m[1], at, isModule)) global = true; }
   /* Object.assign(window, { esc, tx: (k) => k, toast(m){ … } }) — 객체의 맨 바깥 쉼표로 나눈 토막마다 첫 이름(키) */
-  for (const m of x.text.matchAll(new RegExp(`Object\\s*\\.\\s*assign\\s*\\(\\s*(?:${x.owners})\\s*,\\s*\\{`, 'g'))) {
+  for (const m of x.text.matchAll(new RegExp(`Object\\s*\\.\\s*assign\\s*\\(\\s*(${x.owners})\\s*,\\s*\\{`, 'g'))) {
+    if (!ownerAt(x, m[1], m.index + m[0].lastIndexOf(m[1]), isModule)) continue;
     const open = m.index + m[0].length - 1;
     const keyOf = (a, b) => (/^\s*(?:async\s+(?=[A-Za-z_$*]))?\*?\s*([A-Za-z_$][\w$]*)/.exec(x.text.slice(a, b)) || [])[1];
     let d = 0, start = open + 1;
@@ -429,6 +481,7 @@ for (const pg of pages) {
 //  판정: `let/const/var 이름 = {` 로 시작하는 줄에 //주석이 있고, 그 줄에서 { 가 닫히지 않았으며,
 //        주석 글 안에 삼켜진 코드로 보이는 것( 이름: · 닫는 } ] )이 있으면 오류.
 //        `const state = {   // 화면 상태` 처럼 설명만 적은 주석은 삼킨 것이 없다(속성은 다음 줄부터).
+const SWALLOWED_PROP = /(?<![\w$])[A-Za-z_$][\w$]{0,40}\s*:(?!\/\/)[^:]*?,\s*(?:[A-Za-z_$][\w$]{0,40}\s*:(?!\/\/)|$)/;      /* 낱말 길이를 한정한다 — 긴 줄에서 2차 시간이 되지 않게 */
 let midline = 0;
 for (const pg of pages) {
   for (const s of pg.scripts) {
@@ -445,8 +498,9 @@ for (const pg of pages) {
       const opens = (head.match(/[{[]/g) || []).length;
       const closes = (head.match(/[}\]]/g) || []).length;
       const tail = bare.slice(cut + 2);
-      /* 삼켜진 코드로 보는 것: 닫는 } ] · 「이름: 값,」(쉼표로 끝나는 속성). 「TODO: …」·「key = class:rate (…)」 같은 설명은 쉼표로 끝나는 값이 없다 */
-      if (opens > closes && (/[}\]]/.test(tail) || /[A-Za-z_$][\w$]*\s*:\s*[^\s,:]+\s*,/.test(tail))) {
+      /* 삼켜진 코드로 보는 것: 닫는 } ] · 「이름: 값,」 뒤에 또 「이름:」 이 오거나 줄이 끝나는 글(값에 빈칸이 들어도 — new Set() · a + b · () => 1).
+         「TODO: 임시, 나중에 지운다」·「참고 https://example.com/a, 표 2」·「open 10:30, close 13:30」·「key = class:rate (…)」 같은 설명은 아니다 */
+      if (opens > closes && (/[}\]]/.test(tail) || SWALLOWED_PROP.test(tail))) {
         midline++;
         console.error(`✗ ${rel(pg.f)}:${s.line + i} 여러 줄 객체 첫 줄의 //주석 안에 속성으로 보이는 글자가 있습니다 — 그 줄의 뒤쪽이 통째로 주석 처리된 것일 수 있습니다(주석은 윗줄로).`);
         console.error(`   ${line.trim().slice(0, 110)}`);

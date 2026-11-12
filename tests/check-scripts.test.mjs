@@ -153,6 +153,10 @@ test('뼈대: 드문 꼴 — 숫자 끝의 소수점 · 이름이 of 인 변수 
   assert.equal(kind('async function g(it){ for await (const x of it) /re"/.test(x) && go(x); }', '/re"/'), REGEX, 'for await ( ) 뒤의 / 는 정규식이다');
   assert.equal(kind('export default /re"x/;\nexport const a = 1;', '/re"x/', { module: true }), REGEX, 'export default 뒤의 / 는 정규식이다');
   assert.equal(kind('// 주석\u2028var s = "문자열";\nvar t = 1;', '"문자열"'), STR, 'U+2028 은 줄 끝이다 — 줄 주석이 거기서 끝난다');
+  assert.equal(kind("function f(x){ return\u3000/'a'/.test(x); }", "/'a'/"), REGEX, '전각 빈칸(U+3000)은 빈칸이다 — return 뒤의 / 는 정규식');
+  assert.equal(kind("x = y;\u00a0/'a'/.test(x);", "/'a'/"), REGEX, 'NBSP 도 빈칸이다');
+  assert.equal(kind("var a = b\u3000/ 2; var s = 'q';", '/ 2'), CODE, '값 뒤의 전각 빈칸 + / 는 나눗셈이다');
+  assert.equal(kind("\ufeff/'a'/.test(x); var s = 'q';", "/'a'/"), REGEX, 'BOM 뒤 문장 머리의 / 는 정규식이다');
 });
 test('HTML 주석: <script> 밖의 주석만 빈칸으로(길이·줄 수 유지), 주석의 끝은 브라우저와 같게', () => {
   const html = "<p>a</p><!-- <script>bad(</script> -->\n<script>const s = '<!-- 글자 -->';</script>";
@@ -194,6 +198,15 @@ test('스크립트 태그: 실행되는 것만 읽는다(type · data-type · sr
   assert.deepEqual(r.list.map((t) => [t.kind, t.src, t.code]), [['classic', 'a.js', ''], ['classic', null, 'var a=1;'], [null, null, '{"a":1}']]);
   assert.equal(r.unclosed, html.indexOf('<script>var b'), '닫는 태그가 없는 <script> 의 자리');
   assert.equal(scriptsOf('<script>var a=1;</script>').unclosed, -1);
+  /* 본문의 「<!--」 뒤( 「-->」 전)에 「<script」 글자가 있으면 브라우저는 그 </script> 에서 닫지 않는다 */
+  const dbl = scriptsOf('<script>var tpl = "<!-- <script>";</script>\n<script>var b=1;</script>');
+  assert.deepEqual([dbl.unclosed, dbl.dbl, dbl.list.length], [0, true, 0]);
+  for (const ok of ['<script>var tpl = "<!-- <script> -->";</script>', '<script>var a = "<script>";</script>', '<script>var a = "<!-->" + "<script>";</script>',
+    '<script>var a = "<!--" + "<scripts>";</script>', '<script>var a = "<!-- x --> <script>";</script>']) {
+    const r2 = scriptsOf(ok);
+    assert.deepEqual([r2.unclosed, r2.dbl, r2.list.length], [-1, false, 1], ok);
+  }
+  assert.equal(scriptsOf('<script>var a = "<!-- <SCRIPT/";</script>').dbl, true, '대소문자·구분자( / )');
 });
 test('속성 값의 문자 참조를 브라우저 규칙대로 푼다', () => {
   for (const [src, want] of [
@@ -209,6 +222,7 @@ test('대기 검사: 직접 조회 — 필터가 그 조회에 있어야 통과�
     ['필터 없음', 'direct miss', "const r=await supa.from('bookings').select('event_seq');"],
     ['필터', 'direct 필터', "const r=await supa.from('bookings').select('event_seq').neq('status','대기');"],
     ['필터 — 빈칸·줄바꿈', 'direct 필터', "const r=await supa.from('bookings')\n  .select('a')\n  . neq ( 'status' , '대기' );"],
+    ['필터 — 전각 빈칸·NBSP( JS 가 빈칸으로 읽는 글자 )', 'direct 필터, direct 필터, direct 필터', "const a=await supa.from('bookings').select('a').neq('status',\u3000'대기'); const b=await supa.from('bookings').select('a').neq('status',\u00a0'대기'); const c=await supa.from('bookings').select('a')\u3000.neq('status','대기');"],
     ['.eq 대기는 대기만 읽는 것(필터 아님)', 'direct miss', "const r=await supa.from('bookings').select('event_seq').eq('status','대기');"],
     ['다른 열의 neq', 'direct miss', "const r=await supa.from('bookings').select('event_seq').neq('check_status','대기');"],
     ['.not · .or 꼴은 필터로 보지 않는다(사유 주석으로)', 'direct miss, direct miss', "const r=await supa.from('bookings').select('a').not('status','eq','대기'); const q=await supa.from('bookings').select('a').or('status.neq.대기');"],
@@ -309,6 +323,7 @@ test('대기 검사: 헬퍼 호출·호출 밖의 표 이름 — 사유 주석�
     ['헬퍼 호출 — 필터 콜백만(헬퍼가 쓰는지 모른다)', 'helper miss', "const r=await pagedIn('bookings','event_seq','event_seq',seqs,q=>q.neq('status','대기'));"],
     ['헬퍼 호출 뒤에 이어 붙인 필터 — 헬퍼가 무엇을 돌려주는지 모른다', 'helper miss', "const r=await pagedIn('bookings','event_seq','event_seq',seqs).neq('status','대기');"],
     ['헬퍼 호출 — 바로 뒤 같은 줄 사유 주석', 'helper 주석', "const r=await pagedIn('bookings','event_seq','event_seq',seqs) /* 대기 포함: 방이 배정된 팀만 읽는다 */;"],
+    ['헬퍼 호출 — NBSP 뒤의 사유 주석', 'helper 주석', "const r=await pagedIn('bookings','event_seq','event_seq',seqs)\u00a0/* 대기 포함: 방이 배정된 팀만 읽는다 */;"],
     ['긴 인자(6천 자가 넘는 배열)를 가진 헬퍼 호출 + 사유 주석', 'helper 주석', `const r=await pagedIn('bookings','event_seq','event_seq',[${Array.from({ length: 1500 }, (_, k) => 1000000 + k).join(',')}]) /* 대기 포함: 방이 배정된 팀만 읽는다 */;`],
     ['괄호 짝을 한도(20만 자) 안에서 찾지 못하면 통과가 아니라 오류', 'helper long', `const r=await pagedIn('bookings','event_seq','event_seq',[${Array.from({ length: 30000 }, (_, k) => 1000000 + k).join(',')}]) /* 대기 포함: 방이 배정된 팀만 읽는다 */;`],
     ['사유 주석 — 윗줄', 'helper miss', "/* 대기 포함: 윗줄 */\nconst r=await pagedIn('bookings','event_seq','event_seq',seqs);"],
@@ -326,6 +341,9 @@ test('대기 검사: 헬퍼 호출·호출 밖의 표 이름 — 사유 주석�
     ['이어 붙인 REST 주소', 'literal miss', "const r=await fetch(URL+'/rest/v1/'+'bookings?select=event_seq');"],
     ['REST 조각 — 기준 주소 변수 + 표 이름으로 시작하는 글자', 'literal miss, literal miss', "const a=await fetch(REST + 'bookings?select=event_seq&dep_date=eq.' + d); const b=await fetch(`${REST}bookings?select=event_seq`);"],
     ['REST 조각 — 이어 붙여 표 이름?select 가 되는 글자', 'literal miss', "const a=await fetch(REST + 'bookings' + '?select=event_seq,pax&dep_date=eq.' + d);"],
+    ['REST 조각 — 앞 슬래시가 붙은 글자', 'literal miss, literal miss, literal miss', "const a=await fetch(REST + '/bookings?select=event_seq&dep_date=eq.' + d); const b=await fetch(`${REST}/bookings?select=event_seq`); const c=await fetch(REST + '/partner_bookings?select=*');"],
+    ['REST 조각 — /bookings 만 있는 글자', 'literal miss', "const a=await fetch(REST + '/bookings', { headers: H });"],
+    ['주소 경로의 다른 낱말은 REST 조각이 아니다', '', "location.href='/bookings-guide.html'; const p='/cart_bookings?x=1'; const q='/guide/bookings?x=1'; const t='/bookings/';"],
   ]);
 });
 test('대기 검사: 허용 문장 — 등록 현황·연결 확인은 정해진 꼴일 때만', () => {
@@ -352,6 +370,16 @@ test('대기 검사: 허용 문장 — 등록 현황·연결 확인은 정해진
     ['연결 확인 — ...rest · 따옴표 키로 받는다', 'direct miss, direct miss', "const {error,...rest}=await supa.from('bookings').select('*',{count:'exact',head:true}); const {'count':n}=await supa.from('bookings').select('*',{count:'exact',head:true});"],
     ['연결 확인 — 속성에 담음 · 호출 인자 · return await', 'direct miss, direct miss, direct miss', "state.total=await supa.from('bookings').select('*',{count:'exact',head:true}); show(await supa.from('bookings').select('*',{count:'exact',head:true})); return await supa.from('bookings').select('*',{count:'exact',head:true});"],
     ['연결 확인 — 먼저 선언한 변수에 담아 count 를 쓴다', 'direct miss', "var res; res=await supa.from('bookings').select('*',{count:'exact',head:true}); kpi.textContent=res.count;"],
+    ['연결 확인 — 바깥에서 선언하고 try 안에서 담아 밖에서 count', 'direct miss', "let res=null; try{ res=await supa.from('bookings').select('*',{count:'exact',head:true}); }catch(e){ res=null; } kpi.textContent=(res?res.count:0)+'팀';"],
+    ['연결 확인 — 괄호 안 대입 뒤 count', 'direct miss', "let r; if ((r=await supa.from('bookings').select('*',{count:'exact',head:true})).error) return; kpi.textContent=r.count;"],
+    ['연결 확인 — 블록 안 var 뒤 블록 밖 count', 'direct miss', "if (window.supa) { var r=await supa.from('bookings').select('*',{count:'exact',head:true}); } kpi.textContent=r.count;"],
+    ['연결 확인 — 객체 인자 뒤의 호출 인자( = 로 받은 것이 아니다 )', 'direct miss', "show({ a: 1 }, await supa.from('bookings').select('*',{count:'exact',head:true}));"],
+    ['연결 확인 — for ( ) 머리의 선언', 'direct miss', "for (let r=await supa.from('bookings').select('*',{count:'exact',head:true}); ; ) { kpi.textContent=r.count; break; }"],
+    ['연결 확인 — 받은 값을 전개( ...res )', 'direct miss', "const res=await supa.from('bookings').select('*',{count:'exact',head:true}); return { ...res, at: 1 };"],
+    ['연결 확인 — 모듈 변수에 담고 다른 함수가 count', 'direct miss', page("let TOTAL=null;\nasync function load(){ TOTAL=await supa.from('bookings').select('*',{count:'exact',head:true}); render(); }\nfunction render(){ kpi.textContent=(TOTAL&&TOTAL.count)+'팀'; }")],
+    ['연결 확인 — 다른 객체의 같은 이름 속성( o.res )은 쓰는 자리가 아니다', 'direct 허용 문장', "const res=await supa.from('bookings').select('room_type',{head:true}).limit(1); HAS=!res.error; cfg.res=1; go(cfg?.res);"],
+    ['연결 확인 — var 로 받아 함수 안에서 error 만', 'direct 허용 문장', "if (go) { var r=await supa.from('bookings').select('room_type',{head:true}).limit(1); } HAS=!r.error;"],
+    ['등록 현황 — NBSP 뒤에 붙은 조건도 조건이다', 'direct miss', "const r=await supa.from('bookings').select('session_ym')\u00a0.eq('dep_date', today);"],
     ['연결 확인 — 값을 받지 않는다', 'direct 허용 문장', "await supa.from('bookings').select('event_seq',{count:'exact',head:true});"],
     ['임베드 등록 현황(session_ym 건수)', 'embed 허용 문장', "const {count}=await supa.from('guests').select('event_seq,bookings!inner(session_ym)',{count:'exact',head:true}).eq('bookings.session_ym',ym);"],
     ['임베드 등록 현황 + 다른 조건', 'embed miss', "const {count}=await supa.from('guests').select('event_seq,bookings!inner(session_ym)',{count:'exact',head:true}).eq('bookings.session_ym',ym).eq('accom','x');"],
@@ -382,6 +410,7 @@ test('대기 검사: 여러 파일 — 공용 JS·허용 파일·인라인 핸�
     'ops/hub/broken.html': page("async function f(){ const r=await supa.from('guests').select('id' ; }"),
     'ops/hub/unreadable.html': page("var q = {} / 2;\n" + read),
     'ops/hub/unclosed.html': '<!doctype html><html><body><script>\nasync function g(){ return supa.from("bookings").select("a"); }\n</script>\n<script>\n' + read + '\n</body></html>\n',
+    'ops/hub/dblesc.html': '<!doctype html><html><body><script>\nvar tpl = "<!-- <script>";\n</script>\n<script>\n' + read + '\n</script>\n</body></html>\n',
     'ops/hub/utf16.html': Buffer.from('\ufeff' + page(read), 'utf16le'),
     'ops/hub/skip.mjs': "export const r = supa.from('bookings').select('a');\n",
     'ops/hub/skip.htm': page(read),
@@ -397,14 +426,15 @@ test('대기 검사: 여러 파일 — 공용 JS·허용 파일·인라인 핸�
     'ops/hub/module.html': 'direct 필터', 'ops/hub/handler.html': 'literal miss', 'ops/hub/handler-bare.html': 'literal miss',
     'ops/hub/step1.html': '', 'ops/hub/room.html': '', 'ops/hub/audit.html': '',
     'ops/hub/sub/step1.html': 'direct miss', 'ops/step1.html': 'direct miss',
-    'ops/hub/broken.html': 'unread miss', 'ops/hub/unreadable.html': 'unread miss', 'ops/hub/unclosed.html': 'unread miss, direct miss', 'ops/hub/utf16.html': 'unread miss',
+    'ops/hub/broken.html': 'unread miss', 'ops/hub/unreadable.html': 'unread miss', 'ops/hub/unclosed.html': 'unread miss, direct miss', 'ops/hub/dblesc.html': 'unread miss', 'ops/hub/utf16.html': 'unread miss',
     'ops/hub/skip.mjs': '', 'ops/hub/skip.htm': '', 'other/outside.html': '',
   };
   for (const [rel, w] of Object.entries(want)) assert.equal(r.sites(rel), w, rel + '\n' + r.of(rel).join('\n'));
   assert.deepEqual(r.flagged, Object.keys(want).filter((k) => /miss/.test(want[k])).sort());
   assert.match(r.of('ops/hub/unreadable.html')[0], /unreadable\.html:3 /, '읽지 못한 줄을 알려 준다');
   assert.match(r.of('ops/hub/unclosed.html').join('\n'), /unclosed\.html:4 .*닫히지 않았습니다/);
-  assert.match(r.err, /✗ 대기 누락 12건 · 읽지 못한 스크립트·파일 4개/);
+  assert.match(r.of('ops/hub/dblesc.html').join('\n'), /dblesc\.html:1 .*본문의 「<!--」 뒤에 「<script」/, '이중 이스케이프 — 브라우저가 그 </script> 에서 닫지 않는다');
+  assert.match(r.err, /✗ 대기 누락 12건 · 읽지 못한 스크립트·파일 5개/);
   assert.match(r.out, /허용 파일 3개/);
 });
 test('대기 검사: 깨끗한 트리는 통과하고, ops 폴더가 없으면 오류다', () => {
@@ -461,14 +491,29 @@ test('문법 검사: 헬퍼 범위 — 호출 자리에서 정의가 보여야 �
     ['로컬 <script src> 파일의 함수 안 정의', [NO_DEF], page('<script src="../assets/h-inner.js"></script>', 'function g(){ return esc(1); }')],
     ['공용 파일이 (function (global) { global.이름 = … })(window) 로 내보낸 전역', [], page('<script src="../assets/h-iife.js"></script>', 'function g(){ return esc(1) + tx("k"); }')],
     ['IIFE 의 인자가 전역 객체가 아니면 전역이 아니다', [NO_DEF], page('<script src="../assets/h-iife2.js"></script>', 'function g(){ return esc(1); }')],
+    ['IIFE 의 인자가 전역 객체의 속성이면 전역이 아니다( window.SZ = window.SZ || {} )', [NO_DEF], page('<script src="../assets/h-ns.js"></script>', 'function g(){ return esc(1); }')],
+    ['IIFE 의 인자 이름이 window 로 시작할 뿐이면 전역이 아니다', [NO_DEF], "(function (g) { g.esc = (s) => s; })(windowManager);\nfunction f(){ return esc(1); }"],
+    ['IIFE 별칭과 이름이 같은 다른 함수의 지역 변수', [NO_DEF], "(function (root) { root.SZ = {}; })(window);\nfunction init(){ const root = document.documentElement; root.lang = 'ja'; }\nfunction g(){ return lang(); }"],
+    ['IIFE 밖에서 쓴 별칭 이름은 전역 객체가 아니다', [NO_DEF], "(function (global) { global.SZ = {}; })(window);\nfunction init(){ global.esc = (s) => s; }\nfunction g(){ return esc(1); }"],
+    ['IIFE 안에서 매개변수를 가린 지역 변수', [NO_DEF], "(function (global) { function inner(){ var global = {}; global.esc = (s) => s; } inner(); })(window);\nfunction g(){ return esc(1); }"],
+    ['typeof 삼항 — window 를 고르는 꼴은 전역', [], "(function (root) { root.esc = (s) => s; })(typeof window !== 'undefined' ? window : this);\nfunction g(){ return esc(1); }"],
+    ['typeof 삼항 — 다른 객체를 고르면 전역이 아니다', [NO_DEF], "(function (root) { root.esc = (s) => s; })(typeof window === 'undefined' ? window : app);\nfunction g(){ return esc(1); }"],
+    ['최상위 IIFE 의 this 는 전역 객체', [], "(function (root) { root.esc = (s) => s; }(this));\nfunction g(){ return esc(1); }"],
+    ['메서드 안 IIFE 의 this 는 전역 객체가 아니다', [NO_DEF], "const o = { boot(){ (function (me) { me.esc = (s) => s; })(this); } };\nfunction g(){ return esc(1); }"],
+    ['모듈 스크립트의 this 로 받은 별칭은 전역 객체가 아니다', [NO_DEF], page('<script type="module">\n(function (root) { root.esc = (s) => String(s); })(this);\n</script>', 'function g(){ return esc(1); }')],
     ['const w = window; w.이름 = …', [], "const w = window;\nfunction init(){ w.esc = (s) => String(s); }\nfunction g(){ return esc(1); }"],
     ['const w = 다른 객체; w.이름 = … 은 전역이 아니다', [NO_DEF], "const w = app;\nfunction init(){ w.esc = (s) => String(s); }\nfunction g(){ return esc(1); }"],
+    ['별칭을 다시 대입하면 전역 객체가 아니다', [NO_DEF], "let w = window;\nw = {};\nw.esc = (s) => s;\nfunction g(){ return esc(1); }"],
+    ['const w = window 다음 줄이 .open( 이면 별칭이 아니다', [NO_DEF], "const w = window\n  .open('about:blank');\nfunction init(){ w.esc = (s) => s; }\nfunction g(){ return esc(1); }"],
+    ['const w = window 가 세미콜론 없이 파일 끝이어도 별칭이다', [], page('<script src="../assets/h-eof.js"></script>', 'function g(){ return esc(1); }')],
     ['문법은 맞지만 뼈대가 읽지 못하는 화면 — 통과가 아니라 오류', ['헬퍼 범위를 따지지 못했습니다'], "var q = {} / 2;\nfunction g(){ return 1; }"],
   ].map(([name, want, body]) => [name, want, body.startsWith('<!doctype') ? body : page(body)]), {
     'ops/assets/h-top.js': 'function esc(s){ return String(s); }\n',
     'ops/assets/h-inner.js': 'function boot(){ function esc(s){ return String(s); } }\n',
     'ops/assets/h-iife.js': '(function (global) {\n  global.esc = function(s){ return String(s); };\n  function tx(k){ return k; }\n  global.tx = tx;\n})(window);\n',
     'ops/assets/h-iife2.js': '(function (global) {\n  global.esc = function(s){ return String(s); };\n})(app);\n',
+    'ops/assets/h-ns.js': '(function (ns) {\n  ns.esc = function(s){ return String(s); };\n})(window.SZ = window.SZ || {});\n',
+    'ops/assets/h-eof.js': 'function boot(){ w.esc = function (s) { return s; }; }\nconst w = window',
   });
 });
 test('문법 검사: 문법 오류 — 인라인·모듈·스크립트 파일, 실행되지 않는 블록은 보지 않는다', () => {
@@ -483,6 +528,8 @@ test('문법 검사: 문법 오류 — 인라인·모듈·스크립트 파일, �
     ['JSON·템플릿 블록은 스크립트가 아니다', [], page('<script type="application/json">{"a": }</script>', '<script type="text/template"><b>{{ a </b></script>')],
     ['src 가 있는 태그의 본문은 실행되지 않는다', [], page('<script src="https://example.com/a.js">var a = ;</script>')],
     ['닫히지 않은 <script>', ['닫히지 않았습니다'], '<!doctype html><html><body><script>\nvar a = 1;\n</body></html>\n'],
+    ['본문의 <!-- 뒤 <script 글자 — 브라우저가 그 </script> 에서 닫지 않는다', ['닫히지 않았습니다 — 본문의'], '<!doctype html><html><body><script>\nvar tpl = "<!-- <script>";\n</script>\n<script>\nvar b = 1;\n</script>\n</body></html>\n'],
+    ['<!-- 를 --> 로 닫았으면 괜찮다', [], page('var tpl = "<!-- <script> -->";', 'var b = 1;')],
     ['UTF-16 으로 저장한 화면', ['NUL 글자'], Buffer.from('\ufeff' + page('var a = 1;'), 'utf16le')],
     ['EUC-KR 로 저장한 화면', ['UTF-8 이 아닌 글자'], Buffer.concat([Buffer.from('<!doctype html><html><body><p>'), Buffer.from([0xc7, 0xd1, 0xb1, 0xdb]), Buffer.from('</p><script>var a = 1;</script></body></html>\n')])],
     ['src 가 있는 <script/> 가 뒤의 스크립트를 삼킨다', ['삼켰습니다'], '<!doctype html><html><body>\n<script src="../assets/plain-ok.js"/>\n<script>\ndocument.title = "x";\n</script>\n</body></html>\n'],
@@ -497,9 +544,10 @@ test('문법 검사: 문법 오류 — 인라인·모듈·스크립트 파일, �
   ]);
   assert.equal(r.status, 1);
   assert.match(r.err, /✗ 문법 오류 10건/);
-  assert.match(r.err, /✗ 읽지 못한 화면 4건/);
+  assert.match(r.err, /✗ 읽지 못한 화면 5건/);
   assert.match(r.of('ops/assets/plain-bad.js')[0], /줄 1 — /, '스크립트 파일의 오류에도 줄 번호');
   assert.match(r.of('tools/x.mjs')[0], /줄 2 — /, '.mjs 파일의 오류에도 줄 번호');
+  assert.match(r.of('ops/assets/esm-bad.js')[0], /esm-bad\.js: 줄 2 — .*Unexpected token ';'/, '모듈 문법 .js 의 오류는 모듈로 읽었을 때의 줄과 이유로 알린다');
 });
 test('문법 검사: import/export 가 든 .js 는 모듈로 싣는 화면이 있을 때만 통과한다', () => {
   const esm = 'import x from "./y.js";\nexport const a = 1;\n';
@@ -522,6 +570,8 @@ test('문법 검사: import/export 가 든 .js 는 모듈로 싣는 화면이 �
     'ops/hub/c.html': page('<script type="module" src="../assets/boot.js"></script>', '<script type="module" src="../assets/min.js"></script>', '<script type="module" src="../assets/old.js"></script>'),
   });
   assert.deepEqual(mod.flagged, ['ops/assets/old.js'], mod.err);
+  const bad = runIn('check-syntax.mjs', { 'ops/assets/m.js': 'const a = 1;\nexport { a };\nexport const b = ;\n', 'ops/hub/c.html': page('<script type="module" src="../assets/m.js"></script>') });
+  assert.match(bad.of('ops/assets/m.js').join('\n'), /m\.js: 줄 3 — .*Unexpected token ';'/, 'type=module 로만 싣는 파일의 오류에도 줄 번호와 이유');
 });
 test('문법 검사: on*= 핸들러 — 브라우저가 읽는 값으로 문법을 본다', () => {
   const r = errTable('check-syntax.mjs', [
@@ -570,8 +620,10 @@ test('문법 검사: 주석에 먹힌 속성 · 깨끗한 트리 · ops 폴더 �
     ['설명 주석의 TODO: · NOTE: · step1: 은 삼킨 것이 아니다', [], page("const CFG = {   // TODO: 서버에서 받기\n  a: 1,\n  b: 2\n};\nlet B = [   // step1: 등록 순서\n  1, 2 ];\nvar C = {   // 상태: 로딩/완료 · https://example.com/a 참고\n  c: 3 };")],
     ['주석이 뒤 속성을 삼킴( 이름: 값, 꼴 )', ['주석 안에 속성으로 보이는 글자'], page("let state={ a:1, grp:null,  // 설명  team:null, cart:[],\n  x:1 };")],
     ['주석이 뒤 속성을 삼킴 — 닫는 괄호 없이 이름: 값, 만', ['주석 안에 속성으로 보이는 글자'], page("let state={ a:1,  // 설명  team:null, grp:null,\n  x:1 };")],
+    ['주석이 뒤 속성을 삼킴 — 값에 빈칸( new Set() · a + b )', ['주석 안에 속성으로 보이는 글자'], page("let state={ rows:[], sel:null,  // 화면 상태  seen:new Set(), byId:new Map(), sum:a + b,\n  cart:[] };")],
+    ['설명 주석의 주소·쉼표·시각은 삼킨 것이 아니다', [], page("const CFG = {   // 참고 https://example.com/a, 표 2\n  a: 1 };\nlet D = [   // TODO: 임시, 서버 연동 뒤 지운다\n  1 ];\nvar E = {   // open 10:30, close 13:30\n  e: 1 };")],
   ]);
-  assert.match(r.err, /✗ 주석에 먹힌 속성 3건/);
+  assert.match(r.err, /✗ 주석에 먹힌 속성 4건/);
   const ok = runIn('check-syntax.mjs', { 'ops/hub/a.html': page("const esc=s=>String(s);\nfunction g(){ return esc(1); }", '<button onclick="g()">x</button>'), 'ops/assets/a.js': 'var x = 1;\n' });
   assert.equal(ok.status, 0, ok.err);
   assert.match(ok.out, /HTML 1개 · 인라인 스크립트 1개 · 스크립트 파일 1개/);

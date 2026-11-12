@@ -11,6 +11,7 @@
 - `partner-ops.md` — 구마모토 시내·트라이얼 수배 목록 설계 메모 / `marshal-ai-export.md` — 마샬 Ai 명단 내보내기 규칙
 - `hardware-list.md` — 현장 도입 물품표(기종·품번). `hardware-list.html` 은 2026-08 판이다(안내 모니터 4·5단계 등 그 뒤 결정은 md 에만 있다) / `deployment-hardware.md`(`deployment-hardware.pptx`) · `deployment-blueprint.html`(`.svg`) — 장비 배치
 - `future-work.md` — 보류·백로그
+- `audit-2026-11.md` — 2026-11 전체 검수의 결과 요약과 **결정 대기 목록**(데이터 정정 · SQL 승인 · 화면별 결정 · 저장소 운영). 새 작업 전에 먼저 본다 — 정해진 줄에는 날짜와 결정을 적는다
 - `ops-page-skeleton.html` — 새 ops 페이지 뼈대(공통 chrome 정본) / `DESIGN.md`(미리보기 `DESIGN-preview.html`) — 디자인 시스템 정리(토큰·컴포넌트)
 - `CURSOR.md` — Cursor 로 작업할 때의 안내 / `maturity-kit.md` — 다른 저장소에 옮겨 쓰는 CI·공유 모듈·단위테스트 골격
 

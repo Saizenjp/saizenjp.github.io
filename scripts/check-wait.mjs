@@ -25,7 +25,8 @@
         pagedIn('bookings', …) · loadAll(supa, 'bookings', …) 처럼 표 이름을 넘기는 호출 → 헬퍼 호출
         (.eq('entity','bookings') 처럼 조회 조건 메서드의 값으로 온 글자는 조회가 아니다)
    ② 호출 밖의 표 이름 글자 — const T='bookings' · {table:'bookings'} · ['bookings', …] · '/rest/v1/bookings?…'
-        · REST + 'bookings?select=…' (기준 주소 변수 뒤에 붙는, 표 이름으로 시작해 ? 로 이어지는 글자)
+        · REST + 'bookings?select=…' · REST + '/bookings?select=…' · `${REST}/bookings?…` · REST + '/bookings'
+          (기준 주소 변수 뒤에 붙는, 표 이름으로 시작해 ? 로 이어지는 글자. 앞 슬래시 하나는 있어도 된다)
         변수·객체·배열에 담은 표 이름은 이 검사가 따라가지 못한다. 그래서 담은 자리에 사유 주석을 요구한다.
    ③ 임베드 — select 문자열 안의 bookings!inner(…) · bookings(…) · b:bookings!left(…) · "bookings"!inner(…) (빈칸·여러 줄 포함)
         임베드로 보는 꼴: 표 이름 앞이 목록의 경계(글자 머리 · 쉼표 · 콜론 · 여는 괄호)이고, 괄호 안이 열 목록 꼴
@@ -73,6 +74,11 @@
    · 연결·열 확인 — from(…).select(…, {head:true}) 뒤에 limit 말고 아무것도 붙지 않고, 그 자리에서 await 하며,
      받은 값에서 error 말고는 꺼내 쓰지 않는 조회(행도 건수도 쓰지 않는다):
        const { error } = await …  ·  const r = await … 뒤에 r 을 r.error 로만 쓴다  ·  (await …).error  ·  값을 받지 않는 await …;
+     r 로 받는 꼴은 선언(const·let·var)과 함께 받은 것만이다 — 먼저 선언한 변수·모듈 변수에 담은 것( let r; try { r = await … } ),
+     괄호 안 대입( (r = await …).error ), for ( ) 머리의 선언은 그 블록 밖에서 r.count 를 쓸 수 있어 허용이 아니다. { ...r } 전개도 쓰는 자리다.
+     허용이 좁다(올바른 열 확인인데 막는 꼴): r.status 를 함께 읽는 것 · r && r.error · 같은 블록의 다른 r( 콜백 매개변수 ) ·
+     if (…) await 조회; · 세미콜론 없는 앞 줄 뒤의 await 조회 · 체인 머리가 호출인 것( getClient().from(…) ) → const { error, status } = await … 로
+     받거나 「대기 무관: 열 확인」 사유 주석을 적는다.
      조건이 붙은 건수 조회, { count }·{ data }·...rest 로 받는 조회, r.count 를 쓰는 조회, 변수에 담아 둔 조회,
      return·호출 인자·속성( state.x = await … )으로 넘긴 조회, await ….then(r => r.count) 는 숫자로 쓰일 수 있으므로 필터나 사유 주석이 있어야 한다.
 
@@ -83,6 +89,14 @@
    · 조건에 따라 필터를 붙이는 코드(체인의 맨 바깥 호출에 필터가 있으면 통과한다),
      괄호로 묶은 조회에 붙인 필터( (supa.from('bookings').select('a')).neq(…) — 사유 주석으로 적는다)
    · 표 이름 글자가 없는 임베드 — FK 열 이름·제약 이름만으로 적은 것( bk:event_seq(dep_date, …) )
+   · select 변수의 「가림」 판정이 넓은 꼴 — 같은 함수 안 for ( const 이름 of … ) 머리의 선언, 세미콜론 없이 끝난 조회 다음 줄의 맨 블록 { … },
+     세미콜론 없는 앞 줄의 식 본문 화살표( const pick = (cols) => cols.split(',') ⏎ 다음 줄이 대입·호출 문장 ),
+     매개변수 기본값 식 안의 이름( function f(n = pick(cols)) ) 뒤의 사용은 그 변수가 아닌 것으로 읽어 자리로 잡지 않는다
+   · 등록 현황·연결 확인의 드문 꼴 — Promise.all([q1, q2].map(q => q.eq(…))) 의 원소, 줄 끝의 점 + 주석 줄 뒤에 이어진 조건,
+     줄바꿈 뒤의 ['eq'](…), await 조회?.then(…), 호출 인자 안에서 기다린 조회( keep(await 조회).error ) 는 허용 문장으로 통과한다
+   · select 변수에 담은 중첩 임베드, 바깥 괄호가 앞 조각에 있는 중첩 임베드는 'bookings.status' 필터로 통과한다(PostgREST 는 그 요청을 거부한다)
+   · 올바른 코드를 막는 꼴: 영어 화면 문구의 낱말( n + ' bookings' + s · label + ': bookings' · 'bookings? none' ) — 임베드 꼬리·REST 조각으로
+     읽혀 사유 주석을 요구한다( `${n} bookings · ${m} members` 같은 한 덩어리 템플릿은 통과한다). 「대기 무관: 화면 문구」 로 적는다
    · 연쇄 대입으로 옮긴 select 변수( a = b = GSEL ), 사유 주석이 안쪽 헬퍼 호출에 붙었는데 바깥 조회까지 통과시키는 꼴
      (사유 주석은 체인 안 어디에 있어도 그 체인의 사유로 읽는다 — 사람이 적은 것이라 그대로 믿는다)
    · 문법은 맞지만 뼈대가 따라가지 못하는 드문 꼴( } 바로 뒤의 나눗셈 등)이 든 스크립트 — 조용히 넘어가지 않고 「읽지 못함」 오류로 알린다
@@ -92,7 +106,7 @@
 */
 import { readFileSync, readdirSync, lstatSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { skeleton, blankHtmlComments, scriptsOf, failLine, CODE, STR, COMMENT } from './lib/js-skeleton.mjs';
+import { skeleton, blankHtmlComments, scriptsOf, failLine, isJsSpace, CODE, STR, COMMENT } from './lib/js-skeleton.mjs';
 
 const ROOT = process.cwd();
 const LIST = process.argv.includes('--list');
@@ -120,7 +134,7 @@ const HINT_SEL = `→ select 문자열을 .select( ) 가 아닌 호출에 넘겼
 const ROWS_OK = new Set(['from', 'select', 'order', 'range', 'limit']);
 
 const TPL_RE = new RegExp('^' + TABLE + '$');
-const REST_RE = new RegExp('(?:/rest/v1/|^[\'"`]?)(' + TABLE + ')(?:(?<=/rest/v1/' + TABLE + ')(?![\\w$])|\\?)');
+const REST_RE = new RegExp('(?:/rest/v1/|^[\'"`]?/?)(' + TABLE + ')(?:(?<=/rest/v1/' + TABLE + ')(?![\\w$])|\\?|(?<=^[\'"`]?/' + TABLE + ')[\'"`$]?$)');
 /* 임베드 — 앞이 select 목록의 경계(문자열 머리 · 쉼표 · 콜론 · 여는 괄호 · 전개)이고, 표 이름 뒤에 !수식어가 0개 이상, 그 뒤가 여는 괄호.
    「imported bookings (via …)」 같은 문장 속 낱말은 앞이 경계가 아니라서 걸리지 않는다. */
 const EMBED_RE = new RegExp('(^|[,:(]|\\.\\.\\.)(\\s*)"?(' + TABLE + ')"?\\s*((?:!\\s*[A-Za-z_]\\w*\\s*)*)\\(', 'g');
@@ -171,7 +185,7 @@ function readStr(R, code, K, i) {
   return { tok, j, continued, whole: val !== null };
 }
 const isWord = (c) => c !== undefined && /[\w$]/.test(c);
-const isSpace = (c) => c === ' ' || c === '\n' || c === '\t' || c === '\r';
+const isSpace = isJsSpace;      /* JS 가 빈칸으로 읽는 글자 전부(NBSP · 전각 빈칸 U+3000 · U+2028 · \v · \f · BOM) — 뼈대와 같은 기준 */
 const rx = (s) => s.replace(/[$.]/g, '\\$&');
 
 function walk(dir, out = []) {
@@ -194,11 +208,11 @@ function segmentsOf(rel, text) {
   const html = blankHtmlComments(text);
   const segs = [];
   /* 브라우저가 실행하는 인라인 스크립트만 — src 가 있는 것·JSON·importmap·템플릿은 아니다 */
-  const { list, unclosed } = scriptsOf(html);
+  const { list, unclosed, dbl } = scriptsOf(html);
   for (const t of list) if (t.src === null && t.kind && t.code.trim()) segs.push({ code: t.code, base: t.base, module: t.kind === 'module' });
   const markup = html.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, (x) => x.replace(/[^\n]/g, ' '));
   /* 닫는 태그가 없는 <script> — 브라우저는 실행하지 않지만, 그 안의 조회를 검사하지 못한 채 통과시키지 않는다 */
-  return { segs, markup, bad: unclosed >= 0 ? { at: unclosed, why: '<script> 가 닫히지 않았습니다(닫는 태그 없음)' } : null };
+  return { segs, markup, bad: unclosed >= 0 ? { at: unclosed, why: dbl ? '<script> 가 닫히지 않았습니다 — 본문의 「<!--」 뒤에 「<script」 글자가 있어 브라우저가 그 </script> 에서 닫지 않습니다(글자를 \'<!-\' + \'-\' 로 나누어 적으세요)' : '<script> 가 닫히지 않았습니다(닫는 태그 없음)' } : null };
 }
 
 /* ── 한 조각(스크립트 하나)을 읽는 도구 ─────────────────────────────────── */
@@ -464,10 +478,19 @@ function reader(code, sk) {
     }
     if (!isWord(code[t])) return false;                                                       /* [a] = await … */
     const w = wordBack(t), name = code.slice(w, t + 1), d = prevSig(w - 1);
-    if (d >= 0 && code[d] === '.' && K[d] === CODE) return false;                             /* state.x = await … */
-    const o = opener(w), end = o >= 0 ? closeOf(o) : n;                                       /* 그 변수가 보이는 블록 안에서 .error 로만 쓰는가 */
-    const re = new RegExp('(?<![\\w$.])' + rx(name) + '(?![\\w$])(?!\\s*\\??\\.\\s*error(?![\\w$]))', 'g');
-    for (const m of sk.text.slice(Math.max(o, 0), end < 0 ? n : end).matchAll(re)) if (Math.max(o, 0) + m.index !== w) return false;
+    const dw = d >= 0 && K[d] === CODE && isWord(code[d]) ? code.slice(wordBack(d), d + 1) : '';
+    if (dw !== 'const' && dw !== 'let' && dw !== 'var') return false;                         /* 먼저 선언한 변수·모듈 변수·속성( state.x = await … )에 담으면 그 블록 밖에서 count 를 쓸 수 있다 */
+    let o = opener(w);
+    if (o >= 0 && code[o] !== '{') return false;                                              /* for ( let r = await … ; ) 같은 괄호 안 선언 */
+    if (dw === 'var') while (o >= 0 && !(code[o] === '{' && sk.isFn[sk.blk[o + 1]])) o = opener(o);   /* var 는 함수 본문까지 보인다 */
+    const end = o >= 0 ? closeOf(o) : n, from = Math.max(o, 0);                               /* 그 변수가 보이는 블록 안에서 .error 로만 쓰는가 */
+    const re = new RegExp('(?<![\\w$])' + rx(name) + '(?![\\w$])(?!\\s*\\??\\.\\s*error(?![\\w$]))', 'g');
+    for (const m of sk.text.slice(from, end < 0 ? n : end).matchAll(re)) {
+      const at0 = from + m.index;
+      if (at0 === w) continue;
+      if (code[at0 - 1] === '.' && code[at0 - 2] !== '.') continue;                           /* x.r — 다른 것의 속성 이름( ...r 전개는 쓰는 자리다) */
+      return false;
+    }
     return true;
   }
   return { prevSig, nextSig, wordBack, openOf, closeOf, opener, enclosingCall, inFilterValue, chainStart, chainEnd, notesAround, hasFilter, allowed };

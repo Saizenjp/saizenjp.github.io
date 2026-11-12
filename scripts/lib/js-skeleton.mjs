@@ -14,7 +14,9 @@
  *    「정규식이 닫히지 않음」 또는 V8 확인 실패로 끝난다 → 값을 괄호로 감싸거나 변수로 빼서 적는다.
  *    같은 식으로 끝나는 드문 꼴: return 바로 뒤에 이름이 of 인 변수의 나눗셈( return of / 2 ).
  *    읽는 꼴(2026-11 보강): 숫자 끝의 소수점( 1. / 3 ) · 이름이 of 인 변수( var x = of / 2 ) · for await ( … ) 뒤의 정규식
- *    · export default /re/ · 줄 끝으로서의 U+2028·U+2029.
+ *    · export default /re/ · 줄 끝으로서의 U+2028·U+2029 · JS 가 빈칸으로 읽는 글자(NBSP · 전각 빈칸 U+3000 · BOM · \v · \f — 이름 글자가 아니다).
+ *    조용히 틀리게 읽는 드문 꼴(알려진 것): for ((x) of /re/ …) · a+++/re/ · 줄 끝에서 끝난 let y · var y · debugger 다음 줄 머리의 /re/
+ *    · U+2028 뒤 줄 머리의 「-->」. 이름이 await·yield 인 변수의 나눗셈, typeof·void·in·new 뒤 of 의 나눗셈은 「읽지 못함」으로 끝난다.
  *    실물 대조(2026-11): 저장소의 스크립트 52개와 바깥 라이브러리 파일 5,137개에서 종류가 어긋난 글자 0(acorn 토큰과 대조).
  *  그 밖: blankHtmlComments(html) · tagEnd(html, 자리) · scriptsOf(html) · scriptKind(여는 태그) · checkModuleSyntax(code)
  * ========================================================================== */
@@ -29,8 +31,11 @@ import { spawnSync } from 'node:child_process';
      — 그 요소는 닫는 태그까지 그대로 둔다(스크립트를 켠 브라우저는 <noscript> 의 내용도 글자로 읽는다).
    · 태그 안(속성 값)의 「<!--」 도 주석이 아니다( <input placeholder="<!-- 로 시작"> ) — 태그는 속성 값의 따옴표까지 읽어 건너뛴다.
    · 알려진 한계: <script 글자를 찾는 일(scriptsOf)은 태그를 가리지 않는다 — 속성 값·<textarea>·<template>·SVG 안에 적힌
-     「<script>」 글자도 스크립트의 시작으로 읽는다. 그런 화면은 검사를 「더」 받거나 문법 오류로 알려질 뿐, 조용히 빠지지는 않는다
-     (Chromium 의 문서 파서와 대조: 저장소의 화면 70개에서 실행되는 인라인 스크립트 48개가 글자 단위로 같다). */
+     「<script>」 글자도 스크립트의 시작으로 읽는다. 그런 화면은 대개 검사를 「더」 받거나 문법 오류로 알려진다
+     (Chromium 의 문서 파서와 대조: 저장소의 화면 70개에서 실행되는 인라인 스크립트 48개가 글자 단위로 같다).
+     조용히 빠지는 꼴(알려진 것 — 이 저장소 0곳): 태그 밖 글자로 적힌 `<script type="application/json">` 이 뒤의 진짜 스크립트를
+     데이터 블록으로 삼키는 것 · 여는 태그의 다른 속성 값 안에 「 type=」·「 src=」 글자가 든 것( <script title="see src=x"> —
+     type·src 는 여는 태그 글자 전체에서 찾는다) · `<![CDATA[ <!-- ]]>` 같은 가짜 주석 안의 「<!--」 뒤 스크립트. */
 /* 「<」 자리에서 시작하는 태그의 끝(「>」 다음 자리). 태그가 아니면 -1. 속성 값의 따옴표를 브라우저처럼 읽는다 —
    값 안의 「>」·「<!--」 는 태그의 일부다( placeholder="<!-- 로 시작" ). */
 const WS = /[\t\n\f\r ]/;
@@ -100,23 +105,48 @@ export function scriptKind(openTag) {
 /* HTML 의 <script> 를 차례로 읽는다(주석은 먼저 blankHtmlComments 로 지운 글을 넣는다) → { list, unclosed }
      list     [{ open(여는 태그 글), at(여는 태그 자리), base(본문 시작), code(본문), src(src 속성이 있는가 — 값), kind('classic'·'module'·null), idx(src 없는 것들 가운데 몇 번째) }]
      unclosed 닫는 태그가 없는 여는 태그의 자리(-1 = 없음). 브라우저는 그 스크립트를 실행하지 않고, 뒤의 내용도 스크립트 글자로 삼킨다.
+     dbl      unclosed 가 「이중 이스케이프」 때문인가 — 본문의 「<!--」 뒤( 「-->」 전)에 「<script」 글자가 있으면 브라우저는
+              그다음 </script> 를 닫는 태그로 읽지 않는다(인쇄 팝업 템플릿의 주석에서 「-->」 를 빠뜨리면 화면이 통째로 죽는다).
    브라우저와 같게 「여는 태그 → 그 뒤 첫 </script」 로 자른다 — 본문 안의 '<script>' 글자(인쇄 팝업을 만드는 문자열)는 새 스크립트가 아니다. */
 export function scriptsOf(html) {
   const list = [];
   const reOpen = /<script\b[^>]*>/gi;
-  let m, idx = 0, unclosed = -1;
+  let m, idx = 0, unclosed = -1, dbl = false;
   while ((m = reOpen.exec(html))) {
     const base = m.index + m[0].length;
     const reClose = /<\/script\s*>/gi;
     reClose.lastIndex = base;
     const c = reClose.exec(html);
     if (!c) { unclosed = m.index; break; }
+    if (scriptEndState(html.slice(base, c.index)) === 2) { unclosed = m.index; dbl = true; break; }
     const sm = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(m[0]);
     const src = sm ? (sm[1] ?? sm[2] ?? sm[3] ?? '') : null;
     list.push({ open: m[0], at: m.index, base, code: html.slice(base, c.index), src, kind: scriptKind(m[0]), idx: src === null ? idx++ : -1 });
     reOpen.lastIndex = c.index + c[0].length;
   }
-  return { list, unclosed };
+  return { list, unclosed, dbl };
+}
+/* <script> 본문을 HTML 표준의 상태대로 훑은 끝 상태 — 0 보통 · 1 이스케이프(「<!--」 뒤) · 2 이중 이스케이프(그 뒤에 「<script」).
+   2 로 끝나면 바로 뒤의 </script> 는 닫는 태그가 아니다(표준 파서 parse5 와 3만 회 대조 — 판정 불일치 0). */
+export function scriptEndState(code) {
+  let st = 0, i = 0;
+  const n = code.length;
+  while (i < n) {
+    if (st === 0) {
+      const k = code.indexOf('<!--', i);
+      if (k < 0) break;
+      st = 1; i = k + 4;
+      let j = i;
+      while (code[j] === '-') j++;
+      if (code[j] === '>') { st = 0; i = j + 1; }      /* 「<!-->」·「<!--->」 는 그 자리에서 끝난다 */
+      continue;
+    }
+    if (code.startsWith('-->', i)) { st = 0; i += 3; continue; }
+    if (st === 1 && /^<script[\t\n\f\r \/>]/i.test(code.slice(i, i + 8))) { st = 2; i += 7; continue; }
+    if (st === 2 && /^<\/script[\t\n\f\r \/>]/i.test(code.slice(i, i + 9))) { st = 1; i += 8; continue; }
+    i++;
+  }
+  return st;
 }
 
 /* ESM(import/export 가 든 스크립트)의 문법만 본다 — '' 이면 통과, 아니면 오류 한 줄.
@@ -142,7 +172,10 @@ export const CODE = 0, STR = 1, COMMENT = 2, REGEX = 3;
 const REGEX_AFTER = new Set(['return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw', 'case', 'do', 'else', 'yield', 'await']);
 const CONTROL = new Set(['if', 'for', 'while', 'switch', 'catch', 'with', 'await']);   /* 이 낱말 뒤 ( ) { 는 함수 본문이 아니다 */
 const STMT_HEAD = new Set(['if', 'for', 'while', 'with']);                              /* 이 낱말의 ( ) 뒤에 오는 / 는 정규식이다 */
-export const isId = (c) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c === '_' || c === '$' || c > '\x7f';
+/* JS 가 빈칸으로 읽는 글자(WhiteSpace + 줄 끝) — NBSP·전각 빈칸(U+3000)·BOM 은 이름 글자가 아니다(입력기·붙여 넣은 코드에 섞인다) */
+const UNI_SPACE = /[\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]/;
+export const isJsSpace = (c) => c === ' ' || c === '\n' || c === '\t' || c === '\r' || c === '\v' || c === '\f' || (c > '\x7f' && UNI_SPACE.test(c));
+export const isId = (c) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c === '_' || c === '$' || (c > '\x7f' && !UNI_SPACE.test(c));
 
 /*  skeleton(src) — 원문과 길이가 같은 「코드 뼈대」와, 글자마다 그 자리를 감싼 블록 번호를 돌려준다.
       · 블록마다 함수 본문인지도 적는다: `) {` 인데 괄호 앞 낱말이 if·for 같은 제어문이 아니거나, `=> {` 이면 함수 본문.
@@ -179,7 +212,7 @@ export function skeleton(src, opts = {}) {
   if (src.startsWith('#!')) { kd = COMMENT; while (i < n && src[i] !== '\n' && src[i] !== '\r') put(' '); kd = CODE; }   /* 파일 첫 줄의 #! 는 주석 */
   while (i < n) {
     const c = src[i], d = src[i + 1];
-    if (c === ' ' || c === '\n' || c === '\t' || c === '\r' || c === '\u2028' || c === '\u2029') { put(c); continue; }
+    if (isJsSpace(c)) { put(c); continue; }
     if (c === '/' && d === '/') { kd = COMMENT; while (i < n && src[i] !== '\n' && src[i] !== '\r' && src[i] !== '\u2028' && src[i] !== '\u2029') put(' '); kd = CODE; continue; }
     /* 일반 스크립트에서는 「<!--」 와 줄 머리의 「-->」 도 줄 주석이다(옛 브라우저용 감싸기 — 모듈에서는 아니다) */
     if (!opts.module && ((c === '<' && src.startsWith('!--', i + 1)) || (c === '-' && src.startsWith('->', i + 1) && lineHead(i)))) {
