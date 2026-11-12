@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 호텔 방배정</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     /* 디자인 리프레시: 중립 회색 캔버스 + 올리브는 '강조'에만 (모던 SaaS 톤) */
@@ -520,7 +519,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.7">
 </head>
 <body data-so-area="room_assign">
 <div class="topbar so-bar">
@@ -650,7 +649,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=68"></script>
-<script src="../assets/saizen-ops.js?v=38.6"></script>
+<script src="../assets/saizen-ops.js?v=38.7"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -710,7 +709,7 @@ const L={
     unpinBtn:'📌 固定解除', unpinT:'この部屋の固定を外し、次の自動割当の対象に戻します(いまの割当はそのまま)',
     unpinNone:'固定された割当がありません', unpinDone:n=>`${n}件の固定を解除しました`, unpinFail:e=>'固定解除に失敗: '+e, unpinLog:'固定解除',
     frzMark:'❄', frzT:`入国まで${'7'}日以内 — 確定した割当です(現場準備が済んでいます)`,
-    frzDday:d=>`D-${d}`, frzWordChange:'変更', frzWordMove:'移動', frzWordUn:'解除', frzWordSwap:'入れ替え', frzWordSplit:'分割',
+    frzDday:d=>`D-${d}`, frzWordChange:'変更', frzWordMove:'移動', frzWordUn:'解除', noRowChanged:'反映されませんでした(権限がないか、すでに変更されています)。再読み込みしてください。', frzWordSwap:'入れ替え', frzWordSplit:'分割',
     frzConfirm:(w)=>`入国まで7日以内の確定チームが含まれています。\nネームタグ・キーラベル・現地手配書はすでに用意されている可能性があります。\nそれでも${w}しますか？`,
     frzNote:'入国7日前からは確定 — 自動割当は動かしません。手で変える時は確認が出ます。',
     autoNote:'月を開くと自動で割り当てます。手動で置いた部屋は📌固定。',
@@ -758,14 +757,14 @@ const L={
     cxBtnT:'キャンセル履歴を開く', histBtnT:'客室割当 変更履歴を開く',
     histTitle:'🕘 客室割当 変更履歴', histTitleSub:'— 誰が・いつ・どこへ (自動割当=要約1件)',
     histQph:'氏名・部屋番号・グループコード 検索', histSearch:'検索',
-    histEmpty:'開くと最近の変更履歴が表示されます。', histMore:'もっと見る (次の40件)',
+    histEmpty:'開くと最近の変更履歴が表示されます。', histMore:'もっと見る (次の40件)', rsCnt:n=>`${n}件${n>40?' · 40件ずつ表示':''}`, rsNone:'該当なし', rsEmpty:'一致する人がいません。', rsUnas:'未割当', rsArr:d=>`${d} 到着`,
     // ── 토스트/확인/렌더 ──
     needUrlKey:'URL・key 必要', connecting:'接続中…', connOk:'接続済', connFail:'接続失敗',
     connOkToast:'Supabase 接続済', connBtnOk:'✓ 接続済', connBtnRetry:'接続失敗・再試行',
     connFailToast:e=>'接続失敗: '+e+' (SQL実行・key確認)',
     invFail:e=>'マスター読み込み失敗: '+e,
     pickDate:'日付を選択してください', teamLoadFail:e=>'チーム読み込み失敗: '+e,
-    roomLoadFail:e=>'割当読み込み失敗: '+e, rosterLoadFail:e=>'名簿読み込み失敗: '+e,
+    roomLoadFail:e=>'割当読み込み失敗: '+e, rosterLoadFail:e=>'名簿読み込み失敗: '+e, loadFailNote:' — 読み込めなかったため画面を空にしました。', invLoadFail:'客室マスターを読み込めませんでした', cloLoadFail:e=>'閉鎖一覧の読み込み失敗: '+e, loadRetry:'再読み込み',
     loadedTeams:(label,n)=>`${label} · 占有 ${n}チーム 読み込み`,
     undoFail:e=>'元に戻すのに失敗: '+e, undone:'↩ 元に戻しました',
     basisSuffix:' 基準', teamPrefix:'チーム', codeUndecided:'(コード未定)', rosterNone:'名簿未登録',
@@ -873,7 +872,7 @@ const L={
     deluxe:'デラックス', byReservation:'予約種別',
     autoNoTarget:n=>n?`自動割当対象なし · 保留 ${n}件`:'自動割当する未割当人員がいません',
     autoSaveFail:e=>'自動割当の保存に失敗: '+e,
-    autoDone:(n,h)=>`自動割当 ${n}名 完了`+(h?` · 保留 ${h}件(コンソール)`:''),
+    autoDone:(n,h)=>`自動割当 ${n}名 完了`+(h?` · 保留 ${h}件(上の「未割当 理由」ボタン)`:''),
     autoHoldsLog:n=>'[自動割当 保留 '+n+'件]\n',
     conflBtnBusy:'チェック中…', conflFail:e=>'チェック失敗: '+e, conflErr:e=>'チェックエラー: '+e,
     conflNone:'✓ 定員超過(競合)なし',
@@ -925,6 +924,7 @@ const L={
     ecoRestoreFail:n=>(n||'')+'様の早期退室は解除しましたが、客室の自動復元に失敗(そのベッドを他の割当が使用 — 手動で再割当)', ecoConfirmFail:'※精算の確認項目の作成に失敗しました(手動でご確認ください)',
     ecoFollowTitle:(n,d)=>(n||'')+'様 早期退室('+d+') — 精算/返金の確認',
     cancelFail:e=>'キャンセル失敗: '+e, assignCancelled:'割当をキャンセルしました',
+    roNoWrite:'閲覧専用のアカウントです。割当の変更はできません。',
     singleChargeFailToast:e=>'料金記録失敗: '+e,
   },
   ko:{
@@ -971,7 +971,7 @@ const L={
     unpinBtn:'📌 고정 해제', unpinT:'이 방의 고정을 풀어 다음 자동배정 대상으로 되돌립니다(지금 배정은 그대로)',
     unpinNone:'고정된 배정이 없습니다', unpinDone:n=>`${n}건 고정을 풀었습니다`, unpinFail:e=>'고정 해제 실패: '+e, unpinLog:'고정 해제',
     frzMark:'❄', frzT:'입국 7일 이내 — 확정된 배정입니다(현장 준비가 끝나 있습니다)',
-    frzDday:d=>`D-${d}`, frzWordChange:'변경', frzWordMove:'이동', frzWordUn:'해제', frzWordSwap:'맞바꾸기', frzWordSplit:'분할',
+    frzDday:d=>`D-${d}`, frzWordChange:'변경', frzWordMove:'이동', frzWordUn:'해제', noRowChanged:'반영되지 않았습니다(권한이 없거나 이미 바뀐 배정입니다). 새로고침해 주세요.', frzWordSwap:'맞바꾸기', frzWordSplit:'분할',
     frzConfirm:(w)=>`입국이 7일 이내로 확정된 팀이 들어 있습니다.\n네임택·키택·現地手配書가 이미 준비돼 있을 수 있습니다.\n그래도 ${w}할까요?`,
     frzNote:'입국 7일 전부터는 확정 — 자동배정이 건드리지 않고, 손으로 바꿀 때 확인을 받습니다.',
     autoNote:'월을 열면 자동으로 배정합니다. 수기로 놓은 방은 📌 고정됩니다.',
@@ -1019,13 +1019,13 @@ const L={
     cxBtnT:'취소 이력 열기', histBtnT:'방배정 변경 이력 열기',
     histTitle:'🕘 방배정 변경 이력', histTitleSub:'— 누가·언제·어디로 (자동배정=요약 1건)',
     histQph:'이름·방번호·그룹코드 검색', histSearch:'검색',
-    histEmpty:'펼치면 최근 변경 이력이 표시됩니다.', histMore:'더 보기 (다음 40건)',
+    histEmpty:'펼치면 최근 변경 이력이 표시됩니다.', histMore:'더 보기 (다음 40건)', rsCnt:n=>`${n}건${n>40?' · 40건씩 표시':''}`, rsNone:'결과 없음', rsEmpty:'일치하는 사람이 없습니다.', rsUnas:'미배정', rsArr:d=>`${d} 도착`,
     needUrlKey:'URL·key 필요', connecting:'연결 중…', connOk:'연결됨', connFail:'연결 실패',
     connOkToast:'Supabase 연결됨', connBtnOk:'✓ 연결됨', connBtnRetry:'연결 실패 · 재시도',
     connFailToast:e=>'연결 실패: '+e+' (SQL 실행·키 확인)',
     invFail:e=>'마스터 로드 실패: '+e,
     pickDate:'날짜를 선택하세요', teamLoadFail:e=>'팀 로드 실패: '+e,
-    roomLoadFail:e=>'배정 로드 실패: '+e, rosterLoadFail:e=>'명단 로드 실패: '+e,
+    roomLoadFail:e=>'배정 로드 실패: '+e, rosterLoadFail:e=>'명단 로드 실패: '+e, loadFailNote:' — 불러오지 못해 화면을 비웠습니다.', invLoadFail:'객실 마스터를 불러오지 못했습니다', cloLoadFail:e=>'폐쇄 목록 로드 실패: '+e, loadRetry:'다시 불러오기',
     loadedTeams:(label,n)=>`${label} · 점유 ${n}팀 로드`,
     undoFail:e=>'되돌리기 실패: '+e, undone:'↩ 되돌렸습니다',
     basisSuffix:' 기준', teamPrefix:'팀', codeUndecided:'(코드미정)', rosterNone:'명단미등록',
@@ -1130,7 +1130,7 @@ const L={
     deluxe:'디럭스', byReservation:'예약종류',
     autoNoTarget:n=>n?`자동배정 대상 없음 · 보류 ${n}건`:'자동배정할 미배정 인원이 없습니다',
     autoSaveFail:e=>'자동배정 저장 실패: '+e,
-    autoDone:(n,h)=>`자동배정 ${n}명 완료`+(h?` · 보류 ${h}건(콘솔)`:''),
+    autoDone:(n,h)=>`자동배정 ${n}명 완료`+(h?` · 보류 ${h}건(위 「미배정 사유」 버튼)`:''),
     autoHoldsLog:n=>'[자동배정 보류 '+n+'건]\n',
     conflBtnBusy:'점검 중…', conflFail:e=>'점검 실패: '+e, conflErr:e=>'점검 오류: '+e,
     conflNone:'✓ 정원 초과(충돌) 없음',
@@ -1179,6 +1179,7 @@ const L={
     ecoRestoreFail:n=>(n||'')+'님 조기 퇴실은 해제했지만 방 자동복구 실패(그 침대를 다른 배정이 차지 — 수기 재배정 필요)', ecoConfirmFail:'※정산 확인 항목 생성에 실패했습니다(수기로 확인해 주세요)',
     ecoFollowTitle:(n,d)=>(n||'')+'님 조기 퇴실('+d+') — 정산/환불 확인',
     cancelFail:e=>'취소 실패: '+e, assignCancelled:'배정 취소됨',
+    roNoWrite:'보기 전용 계정입니다. 배정을 변경할 수 없습니다.',
     singleChargeFailToast:e=>'요금 기록 실패: '+e,
   },
   en:{
@@ -1225,7 +1226,7 @@ const L={
     unpinBtn:'📌 Unpin', unpinT:'Releases the pin so the next auto-assign can move it (the current room stays for now)',
     unpinNone:'Nothing is pinned here', unpinDone:n=>`Unpinned ${n}`, unpinFail:e=>'Unpin failed: '+e, unpinLog:'unpin',
     frzMark:'❄', frzT:'Within 7 days of arrival — this assignment is final (on-site prep is done)',
-    frzDday:d=>`D-${d}`, frzWordChange:'change', frzWordMove:'move', frzWordUn:'release', frzWordSwap:'swap', frzWordSplit:'split',
+    frzDday:d=>`D-${d}`, frzWordChange:'change', frzWordMove:'move', frzWordUn:'release', noRowChanged:'Nothing was changed (no permission, or it was already changed). Please reload.', frzWordSwap:'swap', frzWordSplit:'split',
     frzConfirm:(w)=>`This includes teams arriving within 7 days.\nName tags, key labels and the dispatch sheet may already be printed.\n${w} anyway?`,
     frzNote:'From 7 days before arrival the assignment is final — auto-assign leaves it alone and manual changes ask first.',
     autoNote:'Opens and assigns automatically. Rooms you place by hand are pinned.',
@@ -1273,13 +1274,13 @@ const L={
     cxBtnT:'Open cancellations', histBtnT:'Open assignment history',
     histTitle:'🕘 Room assignment change history', histTitleSub:'— who · when · where (auto-assign = 1 summary)',
     histQph:'Search name · room no. · group code', histSearch:'Search',
-    histEmpty:'Expand to see recent change history.', histMore:'Show more (next 40)',
+    histEmpty:'Expand to see recent change history.', histMore:'Show more (next 40)', rsCnt:n=>`${n} found${n>40?' · showing 40 each':''}`, rsNone:'No results', rsEmpty:'No matching person.', rsUnas:'Unassigned', rsArr:d=>`arrives ${d}`,
     needUrlKey:'URL·key required', connecting:'Connecting…', connOk:'Connected', connFail:'Connection failed',
     connOkToast:'Supabase connected', connBtnOk:'✓ Connected', connBtnRetry:'Failed · retry',
     connFailToast:e=>'Connection failed: '+e+' (check SQL run · key)',
     invFail:e=>'Master load failed: '+e,
     pickDate:'Please select a date', teamLoadFail:e=>'Team load failed: '+e,
-    roomLoadFail:e=>'Assignment load failed: '+e, rosterLoadFail:e=>'Roster load failed: '+e,
+    roomLoadFail:e=>'Assignment load failed: '+e, rosterLoadFail:e=>'Roster load failed: '+e, loadFailNote:' — could not load, so the screen was cleared.', invLoadFail:'Could not load the room master', cloLoadFail:e=>'Closure list load failed: '+e, loadRetry:'Reload',
     loadedTeams:(label,n)=>`${label} · loaded ${n} occupying teams`,
     undoFail:e=>'Undo failed: '+e, undone:'↩ Undone',
     basisSuffix:' basis', teamPrefix:'Team', codeUndecided:'(code TBD)', rosterNone:'Roster not registered',
@@ -1384,7 +1385,7 @@ const L={
     deluxe:'Deluxe', byReservation:'Reservation type',
     autoNoTarget:n=>n?`No auto-assign target · held ${n}`:'No unassigned guests to auto-assign',
     autoSaveFail:e=>'Auto-assign save failed: '+e,
-    autoDone:(n,h)=>`Auto-assign ${n} done`+(h?` · held ${h} (console)`:''),
+    autoDone:(n,h)=>`Auto-assign ${n} done`+(h?` · held ${h} (see the “unassigned — why” button)`:''),
     autoHoldsLog:n=>'[Auto-assign held '+n+']\n',
     conflBtnBusy:'Checking…', conflFail:e=>'Check failed: '+e, conflErr:e=>'Check error: '+e,
     conflNone:'✓ No capacity overflow (conflicts)',
@@ -1433,6 +1434,7 @@ const L={
     ecoRestoreFail:n=>'Cleared early checkout for '+(n||'')+', but room auto-restore failed (that bed is taken by another assignment — reassign manually)', ecoConfirmFail:'※Failed to create settlement follow-up (please check manually)',
     ecoFollowTitle:(n,d)=>(n||'')+' early checkout ('+d+') — settlement/refund check',
     cancelFail:e=>'Cancel failed: '+e, assignCancelled:'Assignment cancelled',
+    roNoWrite:'This account is view-only. Assignments cannot be changed.',
     singleChargeFailToast:e=>'Charge record failed: '+e,
   }
 };
@@ -1461,6 +1463,9 @@ function applyStaticRoom(){
   set('#hist-q','placeholder','histQph'); set('#hist-search','textContent','histSearch');
   const ht=$('#hist-title'); if(ht) ht.innerHTML=`${tx('histTitle')} <span style="font-weight:600;color:var(--muted);font-size:12px">${tx('histTitleSub')}</span>`;
   const hm=$('#hist-more'); if(hm) hm.textContent=tx('histMore');
+  const cm=$('#cx-more'); if(cm) cm.textContent=tx('histMore');   // 취소 이력 「더 보기」(같은 문구)
+  if(_connKey) setConn(_connKey,_connCls);   // 연결 상태 칩을 지금 언어로 다시 쓴다
+  if(window._cxTitleSet) window._cxTitleSet();   // 취소 이력 제목
 }
 
 let _selInit=true;
@@ -1561,7 +1566,8 @@ async function restoreRooms(snaps){
 }
 function _roomSnap(row){ if(!row) return null; const s={...row}; delete s.id; return s; }
 
-function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
+let _connKey=null,_connCls='';   // 마지막 연결 상태(사전 키) — 언어를 바꾸면 applyStaticRoom 이 다시 쓴다
+function setConn(key,cls){const e=$('#conn-state');_connKey=key;_connCls=cls||'';e.removeAttribute('data-i18n');e.textContent=tx(key);e.className='pill'+(cls?' '+cls:'');}   // data-i18n 을 떼지 않으면 공용 applyLang 이 「미연결」로 되돌린다
 
 // ── 날짜/통계 헬퍼 ──
 function isoToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -1597,7 +1603,7 @@ function closureLines(inv, clo, tag){
   const list=(state.closures||[]).filter(c=>c.inventory_id===inv.id).slice().sort((a,b)=>String(a.from_date).localeCompare(String(b.from_date)));
   if(!list.length) return '';
   return list.map(c=>{ const act=clo&&clo.id===c.id;
-    const txt=tx(act?'closedNote':'closedSpan', fmtMD(c.from_date), fmtMD(c.to_date), c.reason);
+    const txt=tx(act?'closedNote':'closedSpan', fmtMD(c.from_date), fmtMD(c.to_date), esc(c.reason));
     return tag==='div' ? `<div class="note" style="color:${act?'#b13b2c':'#c2410c'};font-weight:700">${txt}</div>`
                        : `<span class="c-clo"${act?'':' style="color:#c2410c"'}>${txt}</span>`; }).join('');
 }
@@ -1648,7 +1654,7 @@ async function loadMonth(ym, focusDay){
   $('#date-pick').value=ym+'-01';
   $('#date-to').value=lastDayOfMonth(ym);
   if(supa){ await loadDay(); }            // loadDay 가 state.focus=시작일로 설정
-  if(focusDay){ state.focus=focusDay; render(); }
+  if(focusDay && state.from && focusDay>=state.from && focusDay<=state.to){ state.focus=focusDay; render(); }   // 그 사이 다른 달이 열렸으면([오늘] 직후 ▶) 기준일을 범위 밖으로 되돌리지 않는다
 }
 function shiftMonth(delta){
   const ym=$('#month-pick').value||isoToday().slice(0,7);
@@ -1662,7 +1668,7 @@ function gotoToday(){ const t=isoToday(); loadMonth(t.slice(0,7), t); }
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
+  if(!url||!key){setConn('needUrlKey','err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
   const btn=$('#btn-connect');
   btn.textContent=tx('connecting'); btn.disabled=true; btn.classList.remove('connected');
@@ -1670,18 +1676,21 @@ async function connect(){
     supa=window.supabase.createClient(url,key);
     const {error}=await supa.from('room_inventory').select('id',{count:'exact',head:true});
     if(error) throw error;
-    setConn(tx('connOk'),'ok'); toast(tx('connOkToast'),'ok');
+    setConn('connOk','ok'); toast(tx('connOkToast'),'ok');
     btn.textContent=tx('connBtnOk'); btn.classList.add('connected'); btn.disabled=false;
     $('#btn-load').disabled=false; $('#btn-closure').disabled=false;
     await loadInventory();
     if($('#month-pick').value){ await loadDay(); }   // 연결 후 이번 달 자동 로드
     if(window._deepDate||window._deepSeq){                                                   // 프론트 데스크 딥링크: 그 날짜 + 그 팀 방으로
-      if(window._deepDate){ state.focus=window._deepDate; window._deepDate=null; }
+      if(window._deepDate){ if(state.from && window._deepDate>=state.from && window._deepDate<=state.to) state.focus=window._deepDate; window._deepDate=null; }
+      const _ds=window._deepSeq; window._deepSeq=null;
+      if(_ds){ const dg=state.guests.find(x=>Number(x.event_seq)===_ds);   // 외부 숙소(간지·시즈) 팀은 「전체」 범위에 없어 방이 그려지지 않는다 → 그 숙소 칩을 켠다
+        if(dg && !teamMatch(dg)){ teamPlaceKeys(dg).forEach(k=>teamSel.add(k)); buildFilterBar('#team-filter',teamSel); } }
       render();
-      if(window._deepSeq){ const s=window._deepSeq; window._deepSeq=null; focusTeamDeep(s); }
+      if(_ds) focusTeamDeep(_ds);
     }
   }catch(e){
-    setConn(tx('connFail'),'err');
+    setConn('connFail','err');
     toast(tx('connFailToast',e.message),'err');
     btn.textContent=tx('connBtnRetry'); btn.classList.remove('connected'); btn.disabled=false;
     supa=null; $('#btn-load').disabled=true;
@@ -1724,6 +1733,32 @@ async function pagedQuery(buildFn){
   }
   return {data:out};
 }
+// ── 불러오기 실패 처리(2026-11 검수) ─────────────────────────────────────────
+//  조회 실패를 「데이터 없음」으로 두면 안 된다: 팀만 읽히고 배정·명단을 못 읽으면 전원이 미배정으로 보이거나,
+//  명단이 비어 그 달 배정 전부가 「명단에 없는 사람의 배정」으로 잡혔다(→ [정리]가 그 달 배정을 지움).
+//  → 그 로드를 통째로 실패 처리: 상태를 비우고 다시 그린 뒤, 사라지지 않는 빨간 띠 + [다시 불러오기]를 남긴다.
+function loadFail(msg){
+  state.guests=[]; state.rooms=[]; state.extRooms=[]; state.members={}; state.sel=new Set();
+  window._dupRows=null;
+  try{ rebuildAssignMap(); render(); }catch(e){}
+  let bar=document.getElementById('loadbar');
+  if(!bar){
+    const st=document.querySelector('.stage'); if(st && st.parentNode){
+      bar=document.createElement('div'); bar.id='loadbar';
+      bar.style.cssText='display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fdecea;border:1px solid #e8a39b;color:#8a2a22;border-radius:8px;padding:8px 12px;margin:8px 20px 0;font-size:13px;font-weight:700';
+      st.parentNode.insertBefore(bar,st);
+    }
+  }
+  if(bar){
+    bar.style.display='flex';
+    bar.innerHTML='<span></span><button class="btn sm" type="button"></button>';
+    bar.querySelector('span').textContent=msg+tx('loadFailNote');
+    const b=bar.querySelector('button'); b.textContent=tx('loadRetry'); b.addEventListener('click',()=>loadDay());
+  }
+  toast(msg,'err');
+}
+function clearLoadFail(){ const bar=document.getElementById('loadbar'); if(bar) bar.style.display='none'; }
+
 async function loadDay(){
   const from=$('#date-pick').value;
   let to = $('#date-to').value || from;     // 종료 비우면 단일일
@@ -1736,6 +1771,8 @@ async function loadDay(){
   const _my=++_loadSeq; const _stale=()=>_my!==_loadSeq;
   if(_autoPromise){ try{ await _autoPromise; }catch(e){} }
   if(_stale()) return;
+  clearLoadFail();
+  if(state.from!==from || state.to!==to){ state.lastHolds=[]; updateHoldsBtn(); }   // 다른 달로 넘어가면 이전 달의 보류 사유는 버린다(같은 달 재조회는 유지)
   state.from=from; state.to=to; state.date=from; state.focus=from; state.days=new Set(); state.splitPending=null;   // 기준일=시작, 일별선택·분할모드 초기화
 
   // 점유 판정: dep_date <= to(범위끝) AND arr_date > from(범위시작)
@@ -1747,8 +1784,8 @@ async function loadDay(){
     .lte('bookings.dep_date',to)
     .gt('bookings.arr_date',from)
     .order('event_seq'));
-  if(gres.error){toast(tx('teamLoadFail',gres.error.message),'err');return;}
   if(_stale()) return;
+  if(gres.error){ loadFail(tx('teamLoadFail',gres.error.message)); return; }
   const g=gres.data;
   state.guests=(g||[]).map(x=>({
     event_seq:x.event_seq, team_tag:x.team_tag, group_code:x.group_code,
@@ -1760,7 +1797,7 @@ async function loadDay(){
     remark:x.bookings?.remark||'',
     remark_local:x.bookings?.remark_local||'',   // 현지비고(싱글 지정 탐지용)
     room_type:(window.SZCore&&SZCore.roomTypeOn&&SZCore.roomTypeOn(x.bookings?.dep_date))?(x.bookings?.room_type||''):'',   // 엠클릭 룸타입 열(SQL 163) — 입국일 2027-01-01 이후 예약만(2026 은 빈값=종전 규칙, Min 2026-11-03 「2026년 예약은 그대로」)
-    isNewCheckin: x.bookings?.dep_date===from,   // 이 범위 시작일에 신규 체크인
+    isNewCheckin: x.bookings?.dep_date===isoToday(),   // 실제 오늘 체크인하는 팀(월 단위 로드에서는 범위 시작일=1일이라 from 과 비교하면 안 된다)
     sale_type:guessSaleType(x.bookings?.product_name, x.accom),
   }));
   // 팀 묶음(手配書 묶기) — 아소별장 이동 후보 판정에 쓴다
@@ -1782,8 +1819,8 @@ async function loadDay(){
   state.members={};
   if(seqs.length){
     const rr=await pagedInSeq('rooms','*',seqs);
-    if(rr.error){toast(tx('roomLoadFail',rr.error.message),'err');return;}
     if(_stale()) return;
+    if(rr.error){ loadFail(tx('roomLoadFail',rr.error.message)); return; }   // 팀만 읽힌 채 두면 다음 렌더에서 전원이 「미배정」으로 보인다
     state.rooms=dedupeById(rr.data||[]);
     // 다른 달 팀이 이 기간에 걸쳐 묵고 있는 배정(월경계) — 점유 계산·표시에 포함해야 한다.
     try{
@@ -1800,7 +1837,7 @@ async function loadDay(){
     if(_stale()) return;
     const mm=await pagedInSeq('guest_members','id,event_seq,seq_in_team,person_key,passenger_id,name_kr,name_en,is_rep,member_grade,member_class,member_div,actual_dep,actual_dep_reason',seqs);
     if(_stale()) return;
-    if(mm.error){toast(tx('rosterLoadFail',mm.error.message),'warn');}
+    if(mm.error){ loadFail(tx('rosterLoadFail',mm.error.message)); return; }   // 명단 없이 진행하면 그 달 배정 전부가 「명단에 없는 사람」으로 보인다 → 이 로드를 실패로 처리(배정 로드 실패와 같은 방식)
     else (mm.data||[]).forEach(x=>{(state.members[x.event_seq]=state.members[x.event_seq]||[]).push(x);});
     // 성별(男/女)은 passengers 에만 있다 — guest_members.passenger_id 로 붙인다(골프 화면과 같은 소스).
     //  실패해도 화면은 그대로 뜬다(성별 표시만 빠짐).
@@ -1816,7 +1853,7 @@ async function loadDay(){
     //  화면에서는 한 명으로 합쳐 보여주고(이미 배정된 행을 우선 보존), 재임포트를 안내한다.
     {
       const done=new Set(state.rooms.map(r=>r.member_id));
-      let dup=0; const dupSeqs=[];
+      let dup=0; const dupSeqs=[]; const hiddenIds=new Set();   // 이번 로드에서 실제로 숨긴 중복 인원의 id
       Object.keys(state.members).forEach(seq=>{
         const rows=state.members[seq]||[]; const keep=new Map(); const noName=[];
         rows.forEach(m=>{
@@ -1839,13 +1876,14 @@ async function loadDay(){
         const list=[...keep.values(),...noName].sort((a,b)=>(a.seq_in_team||0)-(b.seq_in_team||0));
         if(rows.length!==list.length) dupSeqs.push(seq+'('+(rows.length-list.length)+')');
         dup+=rows.length-list.length;
+        rows.forEach(m=>{ if(list.indexOf(m)<0) hiddenIds.add(m.id); });
         state.members[seq]=list;
       });
       if(dup>0){ toast(tx('dupHidden',dup),'warn');
         console.warn('명단 중복 숨김 '+dup+'명 — 행사번호(숨긴 수):', dupSeqs.join(', ')); }
       // 숨긴 중복 인원에 이미 붙어 있던 배정 정리 — 같은 방·같은 기간이면 삭제, 아니면 남은 사람으로 옮김
-      const keptIds=new Set(); Object.values(state.members).forEach(a=>a.forEach(m=>keptIds.add(m.id)));
-      const dupRows=state.rooms.filter(r=>r.member_id!=null && !keptIds.has(r.member_id));
+      //  ⚠ 「명단에 없는 사람의 배정」 전체가 아니라 위에서 실제로 숨긴 사람의 배정만 대상으로 한다(명단을 못 읽으면 그 달 배정 전부가 잡혀 [정리]로 지워졌다).
+      const dupRows=state.rooms.filter(r=>r.member_id!=null && hiddenIds.has(r.member_id));
       if(dupRows.length){
         window._dupRows=dupRows;
         toastUndo(tx('dupAssign',dupRows.length), fixDupAssign, tx('dupFix'));
@@ -1854,11 +1892,23 @@ async function loadDay(){
   }
   // 기간 폐쇄(잠금) 로드 — 범위 시작 이후에 끝나는 폐쇄 전부(이 달에 걸친 것 + 앞으로 예정된 것).
   //   카드에 「이 방의 폐쇄 기간」을 늘 보여 주기 위해 예정분도 읽는다(Min 2026-09-15). 가드(roomClosure)는 겹침만 보므로 영향 없다.
+  //   ⚠ 객실 마스터·폐쇄 목록을 못 읽은 채 진행하면 안 된다(2026-11 검수):
+  //     · 마스터가 비면 자동배정이 「넣을 방 0」으로 계획해 그 달 auto 배정을 전부 해제했다.
+  //     · 폐쇄 목록이 비면 폐쇄 객실에 손님이 들어간다(DB 에는 폐쇄를 막는 장치가 없다).
+  //   → 마스터는 한 번 더 읽어 보고, 둘 중 하나라도 못 읽으면 이 로드를 실패로 처리한다(빨간 띠 + 다시 불러오기).
+  if(!state.inventory.length){ try{ await loadInventory(); }catch(e){} if(_stale()) return; }
+  if(!state.inventory.length){ loadFail(tx('invLoadFail')); return; }
   state.closures=[];
-  try{
-    const cl=await supa.from('room_closures').select('*').gte('to_date',from).order('from_date');
-    if(!cl.error) state.closures=cl.data||[];
-  }catch(e){}
+  {
+    let cloErr='';
+    try{
+      const cl=await supa.from('room_closures').select('*').gte('to_date',from).order('from_date');
+      if(!cl.error) state.closures=cl.data||[];
+      else if(!(String(cl.error.code||'')==='PGRST205' || String(cl.error.code||'')==='42P01' || /could not find the table|relation .* does not exist/i.test(String(cl.error.message||'')))) cloErr=cl.error.message||'error';   // 표가 아직 없는 DB 만 「폐쇄 없음」
+    }catch(e){ cloErr=String((e&&e.message)||e); }
+    if(_stale()) return;
+    if(cloErr){ loadFail(tx('cloLoadFail',cloErr)); return; }
+  }
   // 객실 쪽지(열린 것만) — 청소 화면에서 남긴 벌레·고장 표시
   RNOTE={};
   try{
@@ -1877,6 +1927,7 @@ async function loadDay(){
   try{
     const left=state.guests.reduce((n,g)=>n+unassignedMembers(g.event_seq).length,0);
     if(left>0 && autoRunOn() && !_autoRunning && !state.splitPending){
+      if(await isReadOnly()) return;   // 보기 전용 계정은 자동배정을 돌리지 않는다
       toast(tx('autoRunNote',left),'ok');
       await autoAssign();
     }
@@ -1886,7 +1937,13 @@ async function loadDay(){
 // bookings.room_type(엠클릭 룸타입 열, SQL 163) 유무 — 없는 DB 에서는 select 에 넣지 않는다(넣으면 guests 로드가 통째로 실패).
 let _hasBkRt=null;
 async function hasBkRoomType(){
-  if(_hasBkRt===null){ try{ const r=await supa.from('bookings').select('room_type',{count:'exact',head:true}); _hasBkRt=!r.error; }catch(e){ _hasBkRt=false; } }
+  if(_hasBkRt===null){
+    try{ const r=await supa.from('bookings').select('room_type',{count:'exact',head:true});
+      if(!r.error) _hasBkRt=true;
+      else if(!r.status || r.status>=500) return false;   // 통신·서버 오류 = 판단 보류(이번 로드만 없는 것으로, 다음에 다시 확인)
+      else _hasBkRt=false;                                // 열이 없는 DB(163 미적용)
+    }catch(e){ return false; }
+  }
   return _hasBkRt;
 }
 function guessSaleType(pname,accom){
@@ -1947,12 +2004,12 @@ function renderDayStrip(){
   const inScope=g=>teamMatch(g);
   const inByDate={}; state.guests.forEach(g=>{ if(g.dep && inScope(g)) inByDate[g.dep]=(inByDate[g.dep]||0)+1; });
   // 그 날 현지도착인데 아직 미배정인 팀 수(=0 되도록 맞추면 그 날짜 완료)
-  const unByDate={}; state.guests.forEach(g=>{ if(g.dep && inScope(g) && unassignedMembers(g.event_seq).length>0) unByDate[g.dep]=(unByDate[g.dep]||0)+1; });
+  const unByDate={}; state.guests.forEach(g=>{ if(g.dep && inScope(g) && !teamFullyAssigned(g.event_seq)) unByDate[g.dep]=(unByDate[g.dep]||0)+1; });
   // 그 날 퇴실(체크아웃) 팀 수 — 그날 비워지는 방을 같은 날 체크인에 쓸 수 있으므로 도착만큼 중요(Min 2026-08)
   const outByDate={}; state.guests.forEach(g=>{ if(g.arr && inScope(g)) outByDate[g.arr]=(outByDate[g.arr]||0)+1; });
   const scopeTxt = teamSel.size ? [...teamSel].map(k=>accomL(k)).join('·') : tx('dcAll');
   const chip=(d,active)=>{
-    const wd=WD[new Date(d+'T00:00:00').getDay()]; const we=(wd==='토'||wd==='일'); const cin=inByDate[d]||0; const un=unByDate[d]||0; const cout=outByDate[d]||0;
+    const _dw=new Date(d+'T00:00:00').getDay(); const wd=WD[_dw]; const we=(_dw===0||_dw===6); const cin=inByDate[d]||0; const un=unByDate[d]||0; const cout=outByDate[d]||0;
     // 도착이 있는 날 미배정 남으면 「미N」(빨강), 전원 배정 완료면 ✓(초록) — 시즈 예약표와 동일 양식
     const stat = un ? `<span class="dun">${tx('unShort')}${un}</span>` : (cin ? `<span class="dun ok" title="${tx('dcDone')}">✓</span>` : '');
     const io = (cin||cout) ? `<span class="dio">${cin?`<span class="i" title="${tx('dcInT')}">入${cin}</span>`:''}${cout?`<span class="o" title="${tx('dcOutT')}">出${cout}</span>`:''}</span>` : '';
@@ -1998,19 +2055,19 @@ function renderTimeline(){
   html+='<table class="tl"><thead><tr><th class="tl-room">'+tx('tlRoom')+' ('+rooms.length+')</th>';
   dates.forEach(d=>{
     const wd=WD[new Date(d+'T00:00:00').getDay()];
-    html+=`<th class="${(wd==='토'||wd==='일')?'tl-we':''}">${fmtMD(d)}<small>${wd}</small></th>`;
+    html+=`<th class="${[0,6].includes(new Date(d+'T00:00:00').getDay())?'tl-we':''}">${fmtMD(d)}<small>${wd}</small></th>`;
   });
   html+='</tr></thead><tbody>';
   rooms.forEach(inv=>{
     const cap=inv.max_capacity||inv.capacity;
     const pfx=(PFX[inv.facility]||'X').toLowerCase();
-    html+=`<tr><td class="tl-room" title="${inv.facility} · ${typeLabel(inv.room_type,inv.facility,inv.zone)}">`
+    html+=`<tr><td class="tl-room" title="${esc(inv.facility)} · ${esc(typeLabel(inv.room_type,inv.facility,inv.zone))}">`
       +`<span class="tl-fac" style="background:var(--${pfx})"></span>`
-      +`<b>${inv.room_no}</b>${zonePin(inv)}<span>${inv.room_type}</span></td>`;
+      +`<b>${esc(inv.room_no)}</b>${zonePin(inv)}<span>${esc(inv.room_type)}</span></td>`;
     const rr=state.rooms.filter(r=>r.inventory_id===inv.id);
     dates.forEach(d=>{
-      const wd=WD[new Date(d+'T00:00:00').getDay()];
-      const we=(wd==='토'||wd==='일');
+      const _dw=new Date(d+'T00:00:00').getDay(); const wd=WD[_dw];
+      const we=(_dw===0||_dw===6);   // 요일 글자(토/일) 비교는 한국어 화면에서만 맞았다
       const occ=rr.filter(r=> r.check_in<=d && d<r.check_out);
       if(occ.length){
         const used=occ.reduce((s,x)=>s+(x.assigned_pax||0),0);
@@ -2018,8 +2075,8 @@ function renderTimeline(){
         const tag=teamGroupCode(r0.event_seq)||(tx('teamPrefix')+evNo(r0.event_seq));
         const names=[...new Set(occ.map(x=>{const m=x.member_id!=null?memberById(x.member_id):null;return mName(m);}).filter(Boolean))].join(', ');
         html+=`<td class="tl-c occ ${tlTypeClass(inv.room_type)}${used>inv.capacity?' tl-over':''}" `
-          +`title="${tag} · ${names} · ${r0.check_in}~${r0.check_out} (${used}/${inv.capacity})">`
-          +`${r0.check_in===d?`<span class="tl-bar">${tag}</span>`:''}</td>`;
+          +`title="${esc(tag)} · ${esc(names)} · ${r0.check_in}~${r0.check_out} (${used}/${inv.capacity})">`
+          +`${r0.check_in===d?`<span class="tl-bar">${esc(tag)}</span>`:''}</td>`;
       }else{
         html+=`<td class="tl-c${we?' tl-we':''}"></td>`;
       }
@@ -2687,6 +2744,7 @@ async function fixDupAssign(){
   }
   window._dupRows=null;
   rebuildAssignMap(); render();
+  if(del+mov) logAssign('중복 정리', `명단 중복 인원의 배정 정리 — 삭제 ${del}건 · 남은 사람에게 옮김 ${mov}건`);
   toast(tx('dupFixed',del+mov),'ok');
 }
 
@@ -2724,9 +2782,9 @@ function renderUnassigned(){
       const checked=state.sel.has(m.id);
       return `<div class="rmember${m.is_rep?' rep':''}${isDone?' done':''}${checked?' sel':''}" data-mid="${m.id}" ${isDone?'':'draggable="true"'}>
         <input type="checkbox" class="mchk" data-mid="${m.id}" ${isDone?'disabled':''} ${checked?'checked':''}>
-        <span class="rtag">${m.tag||(m.num)}</span>
-        <span class="rname">${mName(m)||'-'}${gsym(m)}${m.is_rep?`<i class="repbadge">${tx('repBadge')}</i>`:''}<i class="gbadge${isMember(m)?' mem':''}" title="${esc(gradeLabel(m))}">${gradeShort(m)}</i></span>
-        <span class="ren">${m.name_en||''}</span>
+        <span class="rtag">${esc(m.tag||(m.num))}</span>
+        <span class="rname">${esc(mName(m)||'-')}${gsym(m)}${m.is_rep?`<i class="repbadge">${tx('repBadge')}</i>`:''}<i class="gbadge${isMember(m)?' mem':''}" title="${esc(gradeLabel(m))}">${gradeShort(m)}</i></span>
+        <span class="ren">${esc(m.name_en||'')}</span>
         ${isDone?`<span class="rdone" title="${tx('assignedRoomT')}">${memberRoomLabel(m.id)} <button class="runassign" data-mid="${m.id}" title="${tx('unassignClearT')}">${tx('unassignClear')}</button></span>`:''}
         ${(!isDone && m.actual_dep)?`<button class="reco-cancel" data-mid="${m.id}" title="${tx('ecoUndoUnassignedT')}" style="margin-left:auto;font-size:10.5px;font-weight:700;color:#9a6b00;background:#fff4d6;border:1px solid #f0d48a;border-radius:99px;padding:1px 7px;cursor:pointer">🛫${fmtMD(m.actual_dep)} ✕</button>`:''}
       </div>`;
@@ -2737,10 +2795,10 @@ function renderUnassigned(){
     card.innerHTML=`
       <div class="tc-h">
         <input type="checkbox" class="tchk" data-seq="${g.event_seq}" title="${tx('selTeamT')}">
-        <span class="tag">${gcode}</span>${uniBadge(g.event_seq)}
+        <span class="tag">${esc(gcode)}</span>${uniBadge(g.event_seq)}
         <span class="mbadge ${isNonMem?'mb-non':'mb-mem'}">${isNonMem?t('rm_nonmember'):t('rm_member')}</span>
         ${String(g.status||'').includes('대기')?`<span class="sgb" style="background:#7a5aa8" title="${esc(tx('waitBadgeT'))}">${tx('waitBadge')}</span>`:''}
-        ${g.event_no?`<span class="evno" title="${tx('evnoT')}">${g.event_no}</span>`:''}
+        ${g.event_no?`<span class="evno" title="${tx('evnoT')}">${esc(g.event_no)}</span>`:''}
         <span class="left${leftN?'':' ok'}">${leftN?tx('leftOf',leftN,roster.length||g.pax):tx('allDone')}</span>
       </div>
       ${singleNote(g)?`<div class="tc-s" style="padding-top:0">${singleBadgeHtml(g)}</div>`:''}
@@ -2947,7 +3005,8 @@ async function unpinRows(ids){
   if(!ids.length){ toast(tx('unpinNone'),'warn'); return; }
   const before=ids.map(id=>{ const r=state.rooms.find(x=>String(x.id)===String(id)); return r?{id:r.id, src:r.assign_source}:null; }).filter(Boolean);
   try{
-    const {error}=await supa.from('rooms').update({assign_source:'auto'}).in('id',ids);
+    const {data:_up,error}=await supa.from('rooms').update({assign_source:'auto'}).in('id',ids).select('id');
+    if(!error && !(_up&&_up.length)) throw new Error(tx('noRowChanged'));   // 0행 = 권한 없음 또는 이미 바뀐 행
     if(error) throw error;
     before.forEach(b=>{ const r=state.rooms.find(x=>String(x.id)===String(b.id)); if(r) r.assign_source='auto'; });
     render();
@@ -3091,8 +3150,8 @@ function openAssignPicker(inv){
     const rows=mem.map(m=>`<label class="ap-m" data-hay="${esc([m.name_kr,m.name_en,mName(m),m.tag,m.num,gcode,uniTagOf(g.event_seq),g.event_no,g.rep].filter(Boolean).join(' ').toLowerCase())}" style="display:flex;align-items:center;gap:7px;padding:5px 9px;cursor:pointer;border-top:1px solid var(--border)">
         <input type="checkbox" class="ap-chk" data-mid="${m.id}" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer">
         <span style="font-family:var(--mono);font-size:11px;color:var(--text2);min-width:30px">${m.tag||m.num||''}</span>
-        <span style="font-size:13px;font-weight:600">${mName(m)||'-'}${m.is_rep?` <i style="font-size:8px;font-weight:800;color:var(--accent2)">${tx('repBadge')}</i>`:''}${gbadge(m)}</span>
-        <span style="margin-left:auto;font-size:11px;color:var(--muted)">${m.name_en||''}</span>
+        <span style="font-size:13px;font-weight:600">${esc(mName(m))||'-'}${m.is_rep?` <i style="font-size:8px;font-weight:800;color:var(--accent2)">${tx('repBadge')}</i>`:''}${gbadge(m)}</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--muted)">${esc(m.name_en||'')}</span>
       </label>`).join('');
     return `<div class="ap-team" data-hay="${esc([gcode,g.rep,g.event_no,g.accom].filter(Boolean).join(' ').toLowerCase())}" style="border:1px solid ${fit?'var(--accent)':'var(--border)'};border-radius:9px;margin-bottom:8px;overflow:hidden;${fit?'box-shadow:0 0 0 1px var(--accent) inset':''}">
       <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2)">
@@ -3644,8 +3703,8 @@ function roomChipsHtml(assigned, refDay, compact){
     const flag = !refDay ? '' : (isIn?`<span class="cflag cf-in">${tx('flagIn')}</span>` : `<span class="cflag cf-cont">${tx('flagCont')}</span>`);
     const mem=r=>{
       const m=r.member_id!=null?memberById(r.member_id):null;
-      const nameKr=m?(mName(m)||'-'):gcode;
-      const nameEn=m?(m.name_en||''):'';
+      const nameKr=esc(m?(mName(m)||'-'):gcode);
+      const nameEn=esc(m?(m.name_en||''):'');
       const gb=m?`<i class="gbadge${isMember(m)?' mem':''}" title="${esc(gradeLabel(m))}">${gradeShort(m)}</i>`:'';
       const ecoMk=(m&&m.actual_dep)?`<span class="ceco" title="${tx('ecoMark',m.actual_dep)}">🛫${fmtMD(m.actual_dep)}</span>`:'';
       const ecoBtn=m?`<span class="ceco-btn${m.actual_dep?' on':''}" data-room-id="${r.id}" title="${tx('chipEcoT')}">🛫</span>`:'';
@@ -3656,12 +3715,12 @@ function roomChipsHtml(assigned, refDay, compact){
       return `<div class="cmem${(m&&m.actual_dep)?' eco':''}">${nm}<span class="cmen">${nameEn}</span>${gb}${ecoMk}<span class="cmem-act">${acts}</span></div>`;
     };
     if(compact){
-      return `<span class="tchip${chipCls}" data-seq="${seq}"><span class="ctag">${gcode}</span>${uniBadge(seq)}${pin}${asoB}${flag}`
+      return `<span class="tchip${chipCls}" data-seq="${seq}"><span class="ctag">${esc(gcode)}</span>${uniBadge(seq)}${pin}${asoB}${flag}`
         + rows.map(mem).join('')
         + `<span class="tdate">${fmtMD(r0.check_in)}~${fmtMD(r0.check_out)}</span></span>`;
     }
     return `<div class="chip${chipCls}" data-seq="${seq}">
-      <div class="chip-head"><span class="ctag">${gcode}</span>${uniBadge(seq)}${pin}${asoB}${flag}<span class="cnum">${rows.length}${tx('nameUnit')}</span><span class="cdate">${fmtMD(r0.check_in)}~${fmtMD(r0.check_out)}</span></div>
+      <div class="chip-head"><span class="ctag">${esc(gcode)}</span>${uniBadge(seq)}${pin}${asoB}${flag}<span class="cnum">${rows.length}${tx('nameUnit')}</span><span class="cdate">${fmtMD(r0.check_in)}~${fmtMD(r0.check_out)}</span></div>
       <div class="cmems">${rows.map(mem).join('')}</div>
     </div>`;
   }).join('') + extHtml;
@@ -3692,9 +3751,9 @@ function renderRoom(inv){
   div.innerHTML=`
     <span class="cap">${usedPax}/${inv.capacity}</span>
     <span class="lock" data-inv-id="${inv.id}" title="${inv.active?tx('lockOnT'):tx('lockOffT')}">${inv.active?'🔓':'🔒'}</span>
-    <div class="rn">${inv.room_no}${zonePin(inv)}${noteMark(inv)}</div>
+    <div class="rn">${esc(inv.room_no)}${zonePin(inv)}${noteMark(inv)}</div>
     <div class="rt">${typeLabel(inv.room_type,inv.facility,inv.zone)}</div>
-    ${inv.note?`<div class="note">${inv.note}</div>`:''}
+    ${inv.note?`<div class="note">${esc(inv.note)}</div>`:''}
     ${closureLines(inv,clo,'div')}
     <div class="assigned">${chips}</div>
     ${usedPax>inv.capacity?`<span class="badge">${tx('over')}${usedPax>cap?'!':''}</span>`:''}`;
@@ -3756,7 +3815,7 @@ function renderRoomRow(inv){
   const refDay = _span ? null : (state.focus||state.from);
   const chips=roomChipsHtml(assigned, refDay, true);
   tr.innerHTML=`
-    <td class="c-no">${inv.room_no}${zonePin(inv)}${noteMark(inv)}<span class="lock" data-inv-id="${inv.id}" title="${inv.active?tx('lockOnT'):tx('lockOffT')}">${inv.active?'🔓':'🔒'}</span></td>
+    <td class="c-no">${esc(inv.room_no)}${zonePin(inv)}${noteMark(inv)}<span class="lock" data-inv-id="${inv.id}" title="${inv.active?tx('lockOnT'):tx('lockOffT')}">${inv.active?'🔓':'🔒'}</span></td>
     <td class="c-ty">${typeLabel(inv.room_type,inv.facility,inv.zone)}</td>
     <td class="c-cap"><span${usedPax>inv.capacity?' style="color:var(--err);font-weight:800"':''}>${usedPax}/${inv.capacity}</span>${usedPax>inv.capacity?` <span class="badge">${tx('over')}${usedPax>cap?'!':''}</span>`:''}</td>
     <td class="c-gu">${chips}${closureLines(inv,clo,'span')}${inv.note?`<span class="c-clo" style="color:var(--muted);font-weight:600">${esc(inv.note)}</span>`:''}</td>`;
@@ -4086,12 +4145,12 @@ async function commitSplit(inv){
 function renderSplitBar(){
   const old=document.getElementById('split-bar'); if(old) old.remove();
   const sp=state.splitPending; if(!sp) return;
-  if(document.querySelector('.modal-bg')) return;   // 팝업이 떠 있으면 그 버튼을 가리므로 숨긴다
+  if([...document.querySelectorAll('.modal-bg')].some(e=>e.style.display!=='none')) return;   // 팝업이 떠 있으면 그 버튼을 가리므로 숨긴다 — 늘 문서에 있는 숨김 상자(#cxbox·#histbox)는 세지 않는다
   const b=document.createElement('div'); b.id='split-bar';
   b.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:120;'
     +'display:flex;align-items:center;gap:12px;font-size:12.5px;font-weight:700;color:#fff;'
     +'background:var(--accent2);border-radius:10px;padding:10px 14px;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:94vw';
-  b.innerHTML=`<span>${tx('splitMode',sp.name||'',sp.from,sp.to)}</span>`
+  b.innerHTML=`<span>${tx('splitMode',esc(sp.name||''),sp.from,sp.to)}</span>`
     +`<button class="btn ghost sm" id="split-cancel" type="button" style="color:#fff;border-color:#fff">${tx('cancel')}</button>`;
   document.body.appendChild(b);
   b.querySelector('#split-cancel').addEventListener('click',cancelSplit);
@@ -4187,7 +4246,8 @@ async function toggleActive(inv){
     const assigned=state.rooms.filter(r=>r.inventory_id===inv.id);
     if(assigned.length && !confirm(tx('toggleConfirm',inv.room_no))) return;
   }
-  const {error}=await supa.from('room_inventory').update({active:next}).eq('id',inv.id);
+  const {data:_up,error}=await supa.from('room_inventory').update({active:next}).eq('id',inv.id).select('id');
+  if(!error && !(_up&&_up.length)){toast(tx('invActiveToggleFail',tx('noRowChanged')),'err');return;}   // 0행 = 권한 없음 — 화면만 바뀌지 않게
   if(error){toast(tx('invActiveToggleFail',error.message),'err');return;}
   inv.active=next;
   render();
@@ -4380,7 +4440,7 @@ function renderFloorRing(zoneRooms){
       const m=r.member_id!=null?memberById(r.member_id):null;
       const tag=m?personTag(r.event_seq,m.seq_in_team||1):(teamGroupCode(r.event_seq)||(tx('teamPrefix')+evNo(r.event_seq)));
       const nm=mName(m);
-      return `<span class="rchip"><b>${tag}</b> ${nm}</span>`;   // 평면도에선 ✕ 취소 없음(카드에서만)
+      return `<span class="rchip"><b>${esc(tag)}</b> ${esc(nm)}</span>`;   // 평면도에선 ✕ 취소 없음(카드에서만)
     }).join('');
     node.innerHTML=`
       <span class="rlock" data-inv-id="${inv.id}" title="${inv.active?tx('lockOnT'):tx('lockOffT')}">${inv.active?'':'🔒'}</span>
@@ -4530,7 +4590,7 @@ function openByeolcheModal(inv, list){
       <div class="mrow" style="grid-template-columns:1fr"><div>
         ${list.map((x,i)=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer">
           <input type="checkbox" class="bz-chk" data-i="${i}" style="width:16px;height:16px">
-          ${mName(x.m)||tx('bzNoName')} <span class="desc">· ${x.nights}${tx('bzNight')} → +¥${(BYEOLCHE_FEE*x.nights).toLocaleString()}</span></label>`).join('')}
+          ${esc(mName(x.m))||tx('bzNoName')} <span class="desc">· ${x.nights}${tx('bzNight')} → +¥${(BYEOLCHE_FEE*x.nights).toLocaleString()}</span></label>`).join('')}
       </div></div>
     </div>
     <div class="mfoot">
@@ -4944,6 +5004,16 @@ function confirmFrozen(ids, what){
 
 // 월을 열 때 자동배정을 돌릴지 — 끄면 수기 전용(Min 2026-08)
 function autoRunOn(){ try{ return localStorage.getItem('saizen_room_autorun')!=='0'; }catch(e){ return true; } }
+// 쓰기 권한이 없는 계정(보기 전용 read_areas)인지 — RLS 가 delete 는 0행·insert 는 거부라, 그대로 쓰기를 시도하면 화면만 DB 와 어긋나고 거짓 이력이 남는다.
+let _roP=null;
+function isReadOnly(){
+  if(!_roP) _roP=(async()=>{ try{
+    if(!window.__so_meAccess||!window.SZCore||!SZCore.areaAllowed) return false;
+    const acc=await __so_meAccess(); if(!acc) return false;
+    return SZCore.areaAllowed(acc,(document.body.getAttribute('data-so-area')||'').split(/[\s,]+/).filter(Boolean))!=='write';
+  }catch(e){ return false; } })();
+  return _roP;
+}
 let _autoRunning=false;
 let _autoPromise=null;   // 도는 중인 자동배정(loadDay 가 끝나기를 기다린다)
 let _loadSeq=0;          // loadDay 순번(마지막 것만 유효)
@@ -5358,12 +5428,14 @@ async function clearZone(fac,zone){
   const zoneInvIds=new Set(state.inventory.filter(r=>r.facility===fac && (r.zone||fac)===zone).map(r=>r.id));
   const targets=state.rooms.filter(r=>zoneInvIds.has(r.inventory_id));
   if(!targets.length){toast(tx('zoneNoAssign',zone),'warn');return;}
-  if(!confirm(tx('zoneClearConfirm',zone,targets.length))) return;
+  if(!confirm(tx('zoneClearConfirm',zone,targets.length)+'\n'+state.from+' ~ '+state.to)) return;   // 지워지는 범위 = 불러온 기간 전체(머리줄의 기준일 하루가 아님)를 확인창에 밝힌다
+  if(!confirmFrozen(targets.map(r=>r.id), tx('frzWordUn'))) return;   // D-7 확정 팀이 섞여 있으면 다른 해제와 같이 한 번 더 확인
   const ids=targets.map(r=>r.id);
   const error=await deleteRoomsByIds(ids);
   if(error){toast(tx('zoneClearFail',error.message),'err');return;}
   state.rooms=state.rooms.filter(r=>!ids.includes(r.id));
   rebuildAssignMap(); render();
+  logAssign('해제', `${fac} ${zone} 층 비우기 ${ids.length}건 (${state.from}~${state.to})`);
   toast(tx('zoneCleared',zone,ids.length),'ok');
 }
 
@@ -5424,9 +5496,11 @@ function openSingleFeeModal(g, inv, nights, roomId, preMember){
 
 async function unassign(roomId, opts){
   opts=opts||{};
+  if(await isReadOnly()){ toast(tx('roNoWrite'),'warn'); return null; }   // 보기 전용 계정 — DB 는 그대로인데 화면에서만 해제되고 이력이 남던 것 차단
   const row=state.rooms.find(r=>r.id===roomId);
   const snap=_roomSnap(row);
-  const {error}=await supa.from('rooms').delete().eq('id',roomId);
+  const {data:_del,error}=await supa.from('rooms').delete().eq('id',roomId).select('id');
+  if(!error && !(_del&&_del.length)){toast(tx('cancelFail',tx('noRowChanged')),'err');return null;}   // 0행 = 읽기 전용 계정(RLS) 또는 이미 바뀐 배정 — 성공으로 알리지 않고 이력도 남기지 않는다
   if(error){toast(tx('cancelFail',error.message),'err');return null;}
   if(row){ const _mm=memberById(row.member_id); logAssign('해제', `${row.facility||''} ${row.room_no} ✕ ${(_mm&&(_mm.name_kr||_mm.name_en))||''}(${teamGroupCode(row.event_seq)||evNo(row.event_seq)||''})`, { undo:'reassign', room:{ inventory_id:row.inventory_id, event_seq:row.event_seq, member_id:row.member_id, check_in:row.check_in, check_out:row.check_out, assigned_pax:row.assigned_pax, assign_source:row.assign_source } }); }
   // 연동 추가요금 정리(같은 팀·해당 객실 설명 매칭)
@@ -5599,7 +5673,7 @@ async function loadCancelHist(reset){
   finally{ _cxLoading=false; }
 }
 (function bindCx(){ const box=$('#cxbox'); if(!box) return;
-  const ttl=$('#cx-title'); if(ttl) ttl.innerHTML=`🚫 ${_cxT('취소 이력','キャンセル履歴','Cancellations')} <span style="font-weight:600;color:var(--muted);font-size:12px">— ${_cxT('팀·개인 취소 (행사번호·일정·팀·영문명)','チーム·個人キャンセル (行事番号·日程·チーム·英文名)','team/person (event no · dates · team · eng name)')}</span>`;
+  const ttl=$('#cx-title'); window._cxTitleSet=()=>{ if(ttl) ttl.innerHTML=`🚫 ${_cxT('취소 이력','キャンセル履歴','Cancellations')} <span style="font-weight:600;color:var(--muted);font-size:12px">— ${_cxT('팀·개인 취소 (행사번호·일정·팀·영문명)','チーム·個人キャンセル (行事番号·日程·チーム·英文名)','team/person (event no · dates · team · eng name)')}</span>`; }; window._cxTitleSet();   // 언어를 바꾸면 applyStaticRoom 이 다시 부른다
   const ob=$('#btn-cxhist'); if(ob) ob.addEventListener('click', openCxBox);
   const cb2=$('#cx-close'); if(cb2) cb2.addEventListener('click', closeCxBox);
   box.addEventListener('click', e=>{ if(e.target===box) closeCxBox(); });
@@ -5608,7 +5682,7 @@ async function loadCancelHist(reset){
 })();
 function openClosureModal(){
   if(!supa){toast(tx('closeFirstConnect'),'warn');return;}
-  const today=new Date().toISOString().slice(0,10);
+  const today=(d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'))(new Date());   // 현장 날짜 — UTC 로 뽑으면 09시 전에는 어제가 기본값이 된다
   const invs=(state.inventory||[]).slice().sort((a,b)=>String(a.facility).localeCompare(String(b.facility))||(a.sort_order||0)-(b.sort_order||0));
   if(!invs.length){toast(tx('closeLoadInv'),'warn');return;}
   const opts=invs.map(r=>`<option value="${r.id}">${_lsEsc(r.facility)} · ${_lsEsc(r.room_no)}${r.zone?(' ('+_lsEsc(r.zone)+')'):''}</option>`).join('');
@@ -5719,7 +5793,7 @@ $('#facilities').style.display=(viewMode==='timeline')?'none':'';
 $('#timeline').style.display  =(viewMode==='timeline')?'':'none';
 (function(){ const c=$('#ck-autorun'); if(!c) return; c.checked=autoRunOn();
   c.addEventListener('change',()=>{ try{ localStorage.setItem('saizen_room_autorun', c.checked?'1':'0'); }catch(e){} }); })();
-$('#btn-unassigned')&&$('#btn-unassigned').addEventListener('click',openWizard);
+$('#btn-unassigned')&&$('#btn-unassigned').addEventListener('click',()=>openWizard());   // 이벤트 객체가 opts 로 들어가지 않게
 $('#ua-close')&&$('#ua-close').addEventListener('click',()=>uaOpen(false));
 try{ if(localStorage.getItem('saizen_room_ua')==='1') uaOpen(true); }catch(e){}
 $('#view-card').addEventListener('click',()=>setView('card'));
@@ -5781,7 +5855,7 @@ $('#unassigned').addEventListener('drop',e=>{ e.preventDefault(); });
 // 월 기본값(이번 달) + 저장된 연결정보로 자동 연결·자동 로드
 loadCreds();
 // 프론트 데스크 등에서 ?ym=&date= 딥링크 → 그 달 로드 후 그 날짜로 포커스
-(function(){ const q=new URLSearchParams(location.search); const m=q.get('ym')||isoToday().slice(0,7); $('#month-pick').value=m; $('#date-pick').value=m+'-01'; $('#date-to').value=lastDayOfMonth(m); window._deepDate=q.get('date')||null; window._deepSeq=q.get('seq')?Number(q.get('seq')):null; })();
+(function(){ const q=new URLSearchParams(location.search); const dd=q.get('date'); const dOk=!!(dd&&/^\d{4}-\d{2}-\d{2}$/.test(dd)); const m=dOk?dd.slice(0,7):(q.get('ym')||isoToday().slice(0,7)); /* date 가 있으면 그 날짜가 속한 달을 연다(프론트 데스크는 ym=입국월로 보내 월을 넘긴 팀은 기준일이 범위 밖이 됐다) */ $('#month-pick').value=m; $('#date-pick').value=m+'-01'; $('#date-to').value=lastDayOfMonth(m); window._deepDate=dOk?dd:null; window._deepSeq=q.get('seq')?Number(q.get('seq')):null; })();
 if($('#sb-url').value && $('#sb-key').value){ connect(); }   // 진입 시 자동 연결
 
 // 언어 전환 시 정적 chrome + 현재 화면 다시 그리기(로드된 데이터가 있으면)
@@ -5841,7 +5915,7 @@ try{ applyStaticRoom(); }catch(e){}
     });
     unhits.sort((a,b)=>String(a.dep).localeCompare(String(b.dep))||String(a.nameKr).localeCompare(String(b.nameKr)));
     const total=hits.length+unhits.length;
-    cnt.textContent = total ? `${total}건${total>40?' · 40건씩 표시':''}` : '결과 없음';
+    cnt.textContent = total ? tx('rsCnt',total) : tx('rsNone');
     const aHtml=hits.slice(0,40).map(h=>{ const r=h.r;
       const cur=(lastPick===(r.inventory_id+'|'+(r.check_in||'')));
       return `<div class="rs-item${cur?' seen':''}" data-inv="${r.inventory_id}" data-date="${r.check_in||''}">
@@ -5853,9 +5927,9 @@ try{ applyStaticRoom(); }catch(e){}
       `<div class="rs-item" data-date="${h.dep}" data-uns="1">
         <b>${_lsEsc(h.nameKr||h.gcode||'-')}</b>${h.nameEn?`<span class="rs-en">${_lsEsc(h.nameEn)}</span>`:''}
         <span class="rs-tag">${_lsEsc(h.tag||h.gcode)}</span>${h.eno?`<span class="rs-eno">#${_lsEsc(h.eno)}</span>`:''}
-        <span class="rs-loc" style="color:#9a6b00">⚠ 미배정${h.eco?` · 🛫${fmtMD(h.eco)}`:''} · ${fmtMD(h.dep)} 도착</span>
+        <span class="rs-loc" style="color:#9a6b00">⚠ ${tx('rsUnas')}${h.eco?` · 🛫${fmtMD(h.eco)}`:''} · ${tx('rsArr',fmtMD(h.dep))}</span>
       </div>`).join('');
-    box.innerHTML = (aHtml+uHtml) || '<div class="rs-empty">일치하는 사람이 없습니다.</div>';
+    box.innerHTML = (aHtml+uHtml) || ('<div class="rs-empty">'+tx('rsEmpty')+'</div>');
     box.classList.add('on');
   }
   //  한 사람이 여러 방·여러 날짜에 걸쳐 나오면 결과를 연달아 눌러 보게 된다.

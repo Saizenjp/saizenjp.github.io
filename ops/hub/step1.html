@@ -113,7 +113,7 @@
   .navlink:hover{background:rgba(0,0,0,.04)}
   .navlink.cur{background:var(--accentSoft,#e6eeda);color:var(--accent,#647548);border-color:var(--accent,#647548)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.7">
 </head>
 <body data-so-area="step1">
 <div class="wrap">
@@ -263,7 +263,7 @@
 <style>@keyframes runspin{to{transform:rotate(360deg)}}</style>
 
 <script src="../assets/saizen-core.js?v=68"></script>
-<script src="../assets/saizen-ops.js?v=38.6"></script>
+<script src="../assets/saizen-ops.js?v=38.7"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 1 적재 모듈
@@ -454,6 +454,7 @@ function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
 // 잔여 정적 라벨(month-del-panel·done-modal 경고)을 현재 언어로 — saizen-ops t()가 못 덮는 부분
 function applyStaticLocal(){
+  if(_connKey) setConn(_connKey,_connCls);   // 연결 상태 칩을 지금 언어로
   const md=$('#t-mdH'); if(md) md.innerHTML=tx('mdH')+' <span style="font-weight:500;color:var(--muted);font-size:11px">— '+tx('mdHsub')+'</span>';
   const mdLbl=$('#t-mdLbl'); if(mdLbl) mdLbl.textContent=tx('mdLbl');
   const mdDel=$('#btn-month-del'); if(mdDel) mdDel.textContent=tx('mdDelBtn');
@@ -710,7 +711,7 @@ function loadCreds(){
 async function connect(){
   const url = $('#sb-url').value.trim();
   const key = $('#sb-key').value.trim();
-  if(!url || !key){ setConn(t('s1_dyn_connNeedInput'),'err'); return false; }
+  if(!url || !key){ setConn('s1_dyn_connNeedInput','err'); return false; }
   localStorage.setItem('saizen_sb_url', url);
   localStorage.setItem('saizen_sb_key', key);
   try{
@@ -718,23 +719,26 @@ async function connect(){
     // 가벼운 헤드 카운트로 연결 확인
     const {error} = await supa.from('bookings').select('event_seq',{count:'exact',head:true});
     if(error) throw error;
-    setConn(t('connState_ok'),'ok');
+    setConn('connState_ok','ok');
     log(''+t('s1_dyn_connOk'),'ok');
     refreshRunBtn();
     loadHistory();
     loadMonths();
     return true;
   }catch(err){
-    setConn(t('connState_fail'),'err');
+    setConn('connState_fail','err');
     log(`✗ ${t('s1_dyn_connFail')}: ${err.message}`, 'err');
     supa = null;
     refreshRunBtn();
     return false;
   }
 }
-function setConn(txt, cls){
+var _connKey=null,_connCls='';   // 마지막 연결 상태(공용 사전 키) — 언어를 바꾸면 applyStaticLocal 이 다시 쓴다
+function setConn(key, cls){
   const el = $('#conn-state');
-  el.textContent = plain(txt);
+  _connKey=key; _connCls=cls||'';
+  el.removeAttribute('data-i18n');   // 떼지 않으면 공용 applyLang 이 글자만 「미연결」로 되돌린다
+  el.textContent = plain(t(key));
   el.className = 'pill' + (cls?' '+cls:'');
 }
 

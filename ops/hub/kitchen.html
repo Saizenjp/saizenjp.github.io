@@ -82,7 +82,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.7">
 </head>
 <body data-so-area="kds">
 <script>(function(){ if(new URLSearchParams(location.search).get('view')==='front') document.body.setAttribute('data-so-area','kds_front'); })();</script>
@@ -130,7 +130,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=68"></script><!-- 묶음 통일 태그 계산(SZCore) -->
-<script src="../assets/saizen-ops.js?v=38.6"></script>
+<script src="../assets/saizen-ops.js?v=38.7"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 주방 화면(KDS)  · docs 정산명세(04) Phase 3
@@ -163,6 +163,7 @@ const L={
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]||k); }
 function applyStatic(){
+  if(_connKey) setConn(_connKey,_connCls);   // 연결 상태 칩을 지금 언어로
   const sl=$('#t-snd'); if(sl) sl.textContent=tx('sndLabel');
   const lab=$('#snd-label'); if(lab) lab.title=tx('sndTitle');
 }
@@ -199,7 +200,8 @@ function toast(msg,cls){
   t.textContent=msg; $('#toast').appendChild(t);
   setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2400);
 }
-function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
+var _connKey=null,_connCls='';   // 마지막 연결 상태(사전 키) — 언어를 바꾸면 applyStatic 이 다시 쓴다
+function setConn(key,cls){const e=$('#conn-state');_connKey=key;_connCls=cls||'';e.removeAttribute('data-i18n');e.textContent=tx(key);e.className='pill'+(cls?' '+cls:'');}   // data-i18n 을 떼지 않으면 공용 applyLang 이 글자만 「미연결」로 되돌린다
 function agoText(sec){
   if(sec<60) return `${sec}${t('ki_sec')}`;
   const m=Math.floor(sec/60); return `${m}${t('ki_min')}`;
@@ -208,7 +210,7 @@ function agoText(sec){
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
+  if(!url||!key){setConn('needUrlKey','err');return;}
   initAudio();   // 연결 클릭=사용자 제스처 → 알림음 언락
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
   const btn=$('#btn-connect'); btn.textContent=tx('connecting'); btn.disabled=true;
@@ -216,11 +218,11 @@ async function connect(){
     supa=window.supabase.createClient(url,key);
     const {error}=await supa.from('kitchen_tickets').select('id',{count:'exact',head:true});
     if(error) throw error;
-    setConn(tx('connectedTxt'),'ok'); toast(tx('connOkToast'),'ok');
+    setConn('connectedTxt','ok'); toast(tx('connOkToast'),'ok');
     btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
     await refresh(); startPoll();
   }catch(e){
-    setConn(tx('connFail'),'err');
+    setConn('connFail','err');
     toast(tx('connFailToast')+': '+e.message+' '+tx('connFailHint'),'err');
     btn.textContent=tx('connFailBtn'); btn.disabled=false; supa=null;
   }
@@ -312,7 +314,7 @@ function stopPoll(){ if(pollTimer){clearInterval(pollTimer);pollTimer=null;} }
 function handleConnLoss(err){
   // 연결 끊김 → 끊고 워치독이 자동 재연결. 재연결 후 기존 큐로 알림 안 울리게 firstLoad 리셋.
   if(reconnecting) return; reconnecting=true;
-  setConn(tx('reconnecting'),'err'); supa=null; stopPoll(); firstLoad=true;
+  setConn('reconnecting','err'); supa=null; stopPoll(); firstLoad=true;
 }
 
 // ── 부팅 ──

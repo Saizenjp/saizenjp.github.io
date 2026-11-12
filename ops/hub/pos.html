@@ -264,7 +264,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.7">
 </head>
 <body data-so-area="pos_front pos_golf pos_restaurant">
 <script>(function(){ var o=new URLSearchParams(location.search).get('outlet')||''; var M={front:'pos_front',golf:'pos_golf',restaurant:'pos_restaurant'}; if(M[o]) document.body.setAttribute('data-so-area',M[o]); })();</script>
@@ -457,7 +457,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=68"></script>
-<script src="../assets/saizen-ops.js?v=38.6"></script>
+<script src="../assets/saizen-ops.js?v=38.7"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -658,9 +658,11 @@ function toast(msg,cls){
   t.textContent=msg; $('#toast').appendChild(t);
   setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);
 }
-function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
+var _connKey=null,_connCls='';   // 마지막 연결 상태(사전 키) — 언어를 바꾸면 applyStatic 이 다시 쓴다
+function setConn(key,cls){const e=$('#conn-state');_connKey=key;_connCls=cls||'';e.removeAttribute('data-i18n');e.textContent=tx(key);e.className='pill'+(cls?' '+cls:'');}   // data-i18n 을 떼지 않으면 공용 applyLang 이 글자만 「미연결」로 되돌린다
 // data-i18n(saizen-ops.js) 미사용 정적 요소 — 언어 토글 시 직접 갱신
 function applyStatic(){
+  if(_connKey) setConn(_connKey,_connCls);   // 연결 상태 칩을 지금 언어로
   const today=$('#btn-today'); if(today){ today.textContent=tx('today'); today.title=tx('backToday'); }
   const dp=$('#btn-day-prev'); if(dp) dp.title=tx('prevDay');
   const dn=$('#btn-day-next'); if(dn) dn.title=tx('nextDay');
@@ -677,7 +679,7 @@ function applyStatic(){
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
+  if(!url||!key){setConn('needUrlKey','err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
   const btn=$('#btn-connect'); btn.textContent=tx('connecting'); btn.disabled=true;
   try{
@@ -685,14 +687,14 @@ async function connect(){
     const {error}=await supa.from('menu_items').select('id',{count:'exact',head:true});
     if(error) throw error;
     { const {error:te}=await supa.from('charges').select('tax_rate').limit(1); HAS_TAXCOL=!te; if(!HAS_TAXCOL) console.warn('charges.tax_rate 없음 — SQL 158 미적용:', te.message); }
-    setConn(tx('connOk'),'ok'); toast(tx('connectedToast'),'ok');
+    setConn('connOk','ok'); toast(tx('connectedToast'),'ok');
     btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
     $('#btn-load').disabled=false;
     await loadMenu();
     await loadTeams();
     $('#ko-status').style.display=''; setKoView(koView); startKoPoll();
   }catch(e){
-    setConn(tx('connFail'),'err');
+    setConn('connFail','err');
     toast(tx('connFailToast')(e.message),'err');
     btn.textContent=tx('connFailBtn'); btn.classList.remove('connected'); btn.disabled=false;
     supa=null; $('#btn-load').disabled=true;
@@ -1740,7 +1742,7 @@ $('#qr-usecam').addEventListener('click',()=>openScan(true));
 // ── 부팅 ──
 $('#btn-connect').addEventListener('click',connect);
 $('#btn-load').addEventListener('click',loadTeams);
-$('#btn-qr-scan').addEventListener('click',openScan);
+$('#btn-qr-scan').addEventListener('click',()=>openScan());   // 함수를 그대로 넘기면 클릭 이벤트가 useCam 인자로 들어가 리더기가 있는 PC 에서도 카메라가 켜졌다
 $('#btn-walkin').addEventListener('click',openWalkinModal);
 $('#wi-close').addEventListener('click',closeWalkinModal);
 $('#wi-cancel').addEventListener('click',closeWalkinModal);
@@ -1774,7 +1776,7 @@ $('#btn-day-prev').addEventListener('click',()=>shiftPosDay(-1));
 $('#btn-day-next').addEventListener('click',()=>shiftPosDay(1));
 $('#btn-today').addEventListener('click',()=>{ $('#date-pick').value=isoToday(); if(supa) loadTeams(); });
 $('#date-pick').addEventListener('change',()=>{ if(supa) loadTeams(); });
-$('#btn-back').addEventListener('click',openScan);
+$('#btn-back').addEventListener('click',()=>openScan());
 // ── 누적 내역 ─────────────────────────────────────────────────────────
 //  헤더엔 「이 팀 누적 ¥6,000」 금액만 있어 무엇으로 그 금액이 됐는지 확인할 수 없었다.
 //  버튼 한 번으로 그 팀의 전체 청구(팀공통+개인)를 시간순으로 펼친다.

@@ -167,7 +167,7 @@
      왼쪽으로 밀렸다가 제자리로 튀었다(Min 2026-08). 세로 이동만 남긴다. */
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.7">
 </head>
 <body data-so-area="settle_onsite">
 <div class="topbar so-bar">
@@ -230,7 +230,7 @@
 
 <script src="../assets/qrcode-generator.js?v=1"></script>
 <script src="../assets/saizen-core.js?v=68"></script>
-<script src="../assets/saizen-ops.js?v=38.6"></script>
+<script src="../assets/saizen-ops.js?v=38.7"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -563,7 +563,8 @@ function teamPresentOnDay(b){
   return dep && arr && dep<=state.day && state.day<=arr;   // 체크아웃일 포함
 }
 function settleHay(b){
-  return ((b.rep_name||'')+' '+(b.event_no||'')+' '+(b.product_name||'')+' '+(state.tagBySeq[b.event_seq]||'')+' '+(((state.uni||{})[b.event_seq])||'')+' '+roomsOfS(b.event_seq).join(' ')).toLowerCase();
+  const mem=(state.folios||[]).filter(f=>f.event_seq===b.event_seq&&f.member_name).map(f=>f.member_name).join(' ');   // 개인 계산서 이름(카드에 보이는 이름)도 검색 대상
+  return ((b.rep_name||'')+' '+(b.event_no||'')+' '+(b.product_name||'')+' '+(state.tagBySeq[b.event_seq]||'')+' '+(((state.uni||{})[b.event_seq])||'')+' '+roomsOfS(b.event_seq).join(' ')+' '+mem).toLowerCase();
 }
 // folio 미개설 팀 카드 — 청구가 없으니 잔액은 ¥0. 클릭하면 청구 추가(계정 자동 개설).
 // 통일 코드 + 원래 코드 병기(화면용) / 통일 코드만(손님 인쇄물용)
@@ -579,8 +580,8 @@ function pendingCard(b){
   const rl=roomLabelS(b.event_seq);
   card.title=tx('cardHint');
   card.innerHTML=`
-    <div class="fh"><span class="ftag">${tag}</span><span class="frep">${b.rep_name||''}</span></div>
-    <div class="fmeta">${state.accomBySeq[b.event_seq]||''}${rl?' · '+rl:''} · ${(b.arr_date||'').slice(5)} ${tx('checkout')} · ${tx('chargeCount0')}</div>
+    <div class="fh"><span class="ftag">${esc(tag)}</span><span class="frep">${esc(b.rep_name||'')}</span></div>
+    <div class="fmeta">${esc(state.accomBySeq[b.event_seq]||'')}${rl?' · '+esc(rl):''} · ${(b.arr_date||'').slice(5)} ${tx('checkout')} · ${tx('chargeCount0')}</div>
     <div class="fbal zero">${tx('balanceLabel')} ${yen(0)}</div>`;
   card.addEventListener('click',()=>ensureFolioAndSelect(b.event_seq));
   return card;
@@ -612,8 +613,8 @@ function renderTeamFolios(box, seq, list){
   const grp=document.createElement('div'); grp.className='folio-group';
   grp.innerHTML=`
     <div class="fg-head">
-      <span class="fg-tag">${tag}</span>
-      <span class="fg-rep">${teamF.rep_name||''}</span>
+      <span class="fg-tag">${esc(tag)}</span>
+      <span class="fg-rep">${esc(teamF.rep_name||'')}</span>
       <span class="fg-split">${tx('splitN')} ${members.length}${tx('personUnit')}</span>
       <span class="fg-bal ${gCls}">${tx('teamTotalBal')} ${yen(gBal)}</span>
     </div>`;
@@ -633,17 +634,17 @@ function folioCard(f){
   const balCls=bal<=0?'zero':'due';
   // 개인 folio: 작은 팀태그 + 개인명 강조 / 팀 folio: 팀태그 + 대표자
   const head=isMember
-    ? `<span class="ftag">${tag}</span>
-       <span class="frep">${f.member_name||f.rep_name||''}</span>
+    ? `<span class="ftag">${esc(tag)}</span>
+       <span class="frep">${esc(f.member_name||f.rep_name||'')}</span>
        <span class="sbadge s-${f.status}">${statusLabel(f.status)}</span>
        <span class="sbadge s-member">${tx('personBadge')}</span>`
-    : `<span class="ftag">${tag}</span>
-       <span class="frep">${f.rep_name||''}</span>
+    : `<span class="ftag">${esc(tag)}</span>
+       <span class="frep">${esc(f.rep_name||'')}</span>
        <span class="sbadge s-${f.status}">${statusLabel(f.status)}</span>`;
   const rl=(!isMember)?roomLabelS(f.event_seq):'';
   card.innerHTML=`
     <div class="fh">${head}</div>
-    <div class="fmeta">${rl?rl+' · ':''}${tx('chargeMeta')} ${f.charge_count||0}${tx('chargeWord')} · ${tx('totalWord')} ${yen(f.gross_total)} · ${tx('paidWord')} ${yen(f.paid_total)}</div>
+    <div class="fmeta">${rl?esc(rl)+' · ':''}${tx('chargeMeta')} ${f.charge_count||0}${tx('chargeWord')} · ${tx('totalWord')} ${yen(f.gross_total)} · ${tx('paidWord')} ${yen(f.paid_total)}</div>
     <div class="fbal ${balCls}">${tx('balanceLabel')} ${yen(bal)}</div>`;
   card.addEventListener('click',()=>selectFolio(f.folio_id));
   return card;
@@ -672,14 +673,17 @@ function renderFolioList(){
   });
 }
 
+let _selSeq=0;   // 선택 순번 — 늦게 도착한 옛 응답(다른 계산서 것)은 버린다(room.html _loadSeq 와 같은 방식)
 async function selectFolio(id){
+  const my=++_selSeq;
   state.selId=id;
   const {data:c,error:ce}=await supa.from('charges').select('*').eq('folio_id',id).order('charged_at');
+  if(my!==_selSeq) return;
   if(ce){toast(tx('chargeLoadFail')+': '+ce.message,'err');return;}
-  state.charges=c||[];
   const {data:p,error:pe}=await supa.from('payments').select('*').eq('folio_id',id).order('paid_at');
+  if(my!==_selSeq) return;
   if(pe){toast(tx('payLoadFail')+': '+pe.message,'err');return;}
-  state.payments=p||[];
+  state.charges=c||[]; state.payments=p||[];   // 청구·결제를 한 쌍으로 교체(다른 계산서 것과 섞이지 않게)
   renderFolioList(); renderDetail();
 }
 
@@ -725,11 +729,11 @@ function renderDetail(){
     <tr class="${c.voided?'voided':''}">
       <td><span class="catpill cat-${c.category}">${catLabel(c.category)}</span></td>
       <td>${taxCell(c)}</td>
-      <td>${c.description||''}</td>
+      <td>${esc(c.description||'')}</td>
       <td class="num">${Number(c.qty||0)}</td>
       <td class="num">${yen(c.unit_price)}</td>
       <td class="num">${yen(SZCore.lineGross(c))}</td>
-      <td>${c.voided?'':(editable?paySel(c):(c.pay_method?methodLabel(c.pay_method):'<span style="color:var(--muted)">-</span>'))}</td>
+      <td>${c.voided?'':(editable?paySel(c):(c.pay_method?esc(methodLabel(c.pay_method)):'<span style="color:var(--muted)">-</span>'))}</td>
       <td>${c.voided?'':'<button class="vbtn" data-void-charge="'+c.id+'">'+tx('voidBtn')+'</button>'}</td>
     </tr>`).join('') || '<tr><td colspan="8" class="empty-hint">'+tx('noCharges')+'</td></tr>';
 
@@ -738,7 +742,7 @@ function renderDetail(){
       <td>${methodLabel(p.method)}</td>
       <td class="num">${yen(p.amount)}</td>
       <td class="mono">${esc(payWhen(p.paid_at))}</td>
-      <td>${p.received_by||''}</td>
+      <td>${esc(p.received_by||'')}</td>
       <td>${p.voided?'':'<button class="vbtn" data-void-pay="'+p.id+'">'+tx('voidBtn')+'</button>'}</td>
     </tr>`).join('') || '<tr><td colspan="5" class="empty-hint">'+tx('noPays')+'</td></tr>';
 
@@ -748,8 +752,8 @@ function renderDetail(){
   box.innerHTML=`
     <div class="det-head">
       <div>
-        <div class="dt">${tag} <span class="sbadge s-${f.status}">${statusLabel(f.status)}</span></div>
-        <div class="ds">${f.rep_name||''} · ${f.subject==='member'?(tx('personPrefix')+' '+(f.member_name||'')):tx('teamEventUnit')} · event #${evNo(f.event_seq)}</div>
+        <div class="dt">${esc(tag)} <span class="sbadge s-${f.status}">${statusLabel(f.status)}</span></div>
+        <div class="ds">${esc(f.rep_name||'')} · ${f.subject==='member'?(tx('personPrefix')+' '+esc(f.member_name||'')):tx('teamEventUnit')} · event #${esc(evNo(f.event_seq))}</div>
       </div>
       <div class="dactions">
         <button class="btn ghost sm" id="btn-statement" type="button" data-i18n="st_btnStatement"></button>
@@ -819,6 +823,7 @@ function renderDetail(){
 
   // 동적 라벨 다국어 적용
   if(window.SaizenOps) window.SaizenOps.apply();
+  try{ refreshConn(); }catch(e){}   // apply() 가 #conn-state(data-i18n=connState_none) 글자를 「미연결」로 되돌린다 → 연결 표시를 복원
 
   // 이벤트 바인딩
   box.querySelectorAll('[data-void-charge]').forEach(b=>b.addEventListener('click',()=>voidCharge(b.dataset.voidCharge)));
@@ -970,13 +975,22 @@ async function settleClose(f){
     if(!confirm(msg)) return;
   }
 
+  if(settleClose._busy) return;   // 마감 진행 중 재진입 차단(같은 결제가 두 번 들어가는 것 방지)
+  settleClose._busy=true;
+  let payDone=false;
   try{
-    if(rows.length){ const {error}=await supa.from('payments').insert(rows); if(error)throw error; }
+    if(rows.length){ const {error}=await supa.from('payments').insert(rows); if(error)throw error; payDone=true; }
     const {error:e2}=await supa.from('folios').update({status:'settled',closed_at:new Date().toISOString()}).eq('id',f.folio_id);
     if(e2)throw e2;
     toast(tx('settledDone'),'ok');
     await refreshAfterChange(f.folio_id);
-  }catch(e){ toast(tx('statusChangeFail')+': '+e.message,'err'); }
+  }catch(e){
+    toast(tx('statusChangeFail')+': '+e.message,'err');
+    // 결제는 들어갔는데 마감(상태 변경)만 실패한 경우 — 화면 상태가 옛것이면 다시 누를 때 같은 결제가 한 번 더 들어간다.
+    //  방금 넣은 결제를 화면 상태에 먼저 반영하고(재조회까지 실패해도 잔액 0 → 「마감만」 분기) 서버에서 다시 읽는다.
+    if(payDone && state.selId===f.folio_id) state.payments=state.payments.concat(rows.map(r=>Object.assign({voided:false},r)));
+    try{ await refreshAfterChange(f.folio_id); }catch(_){}
+  }finally{ settleClose._busy=false; }
 }
 // folio 목록 잔액 갱신 + 현재 상세 재로딩
 async function refreshAfterChange(folioId){

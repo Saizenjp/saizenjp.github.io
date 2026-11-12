@@ -88,7 +88,7 @@
   .notax .taxcol{display:none}
   select[data-f="tax"]{min-width:92px}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.7">
 </head>
 <body data-so-area="menu">
 <div class="topbar so-bar">
@@ -177,7 +177,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=68"></script>
-<script src="../assets/saizen-ops.js?v=38.6"></script>
+<script src="../assets/saizen-ops.js?v=38.7"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 메뉴 관리(menu_items CRUD)  · POS/KDS 단가·station 마스터
@@ -324,6 +324,7 @@ function fillCatSelect(){
 }
 // 정적 chrome(데이터-i18n 외) 갱신
 function applyStatic(){
+  if(_connKey) setConn(_connKey,_connCls);   // 연결 상태 칩을 지금 언어로
   const cd=$('#n-code'); if(cd) cd.placeholder=tx('phCode');
   const nc=$('#btn-nextcode'); if(nc) nc.title=tx('tipNextCode');
   const ko=$('#n-ko'); if(ko) ko.placeholder=tx('phNameKo');
@@ -346,13 +347,14 @@ function refreshConnBtn(){
 }
 
 function toast(msg,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.textContent=msg;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
-function setConn(txt,cls){const e=$('#conn-state');e.textContent=txt;e.className='pill'+(cls?' '+cls:'');}
+var _connKey=null,_connCls='';   // 마지막 연결 상태(사전 키) — 언어를 바꾸면 applyStatic 이 다시 쓴다
+function setConn(key,cls){const e=$('#conn-state');_connKey=key;_connCls=cls||'';e.removeAttribute('data-i18n');e.textContent=tx(key);e.className='pill'+(cls?' '+cls:'');}   // data-i18n 을 떼지 않으면 공용 applyLang 이 글자만 「미연결」로 되돌린다
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
 async function connect(){
   const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
-  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
+  if(!url||!key){setConn('needUrlKey','err');return;}
   localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
   const btn=$('#btn-connect'); btn.textContent=tx('connecting'); btn.disabled=true;
   try{
@@ -360,12 +362,12 @@ async function connect(){
     const {error}=await supa.from('menu_items').select('id',{count:'exact',head:true});
     if(error) throw error;
     { const {error:te}=await supa.from('menu_items').select('tax_rate').limit(1); HAS_TAX=!te; document.body.classList.toggle('notax',!HAS_TAX); if(!HAS_TAX) console.warn('menu_items.tax_rate 없음 — SQL 158 미적용:', te.message); }
-    setConn(tx('connOk'),'ok'); toast(tx('connectedToast'),'ok');
+    setConn('connOk','ok'); toast(tx('connectedToast'),'ok');
     btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
     $('#btn-add').disabled=false; $('#btn-saveall').disabled=false;
     await load();
   }catch(e){
-    setConn(tx('connFail'),'err');
+    setConn('connFail','err');
     toast(tx('connFailToast')(e.message),'err');
     btn.textContent=tx('connFailBtn'); btn.disabled=false; supa=null;
   }
