@@ -559,7 +559,7 @@ function renderDrops(){
       <div class="tag">${slotText(slot,'tag')}</div>
       <div class="name">${slotText(slot,'name')}</div>
       <div class="desc">${slotText(slot,'desc')}</div>
-      <div class="file">${slot.file ? `<b>✓</b> ${slot.file} · ${slot.data.length.toLocaleString()}${t('s1_dyn_rows')}` : t('s1_dropEmpty')}</div>
+      <div class="file">${slot.file ? `<b>✓</b> ${esc(slot.file)} · ${slot.data.length.toLocaleString()}${t('s1_dyn_rows')}` : t('s1_dropEmpty')}</div>
       <input type="file" accept=".xlsx,.xls" multiple data-slot="${slot.id}">`;
     const inp = card.querySelector('input');
     inp.addEventListener('change', e=>handleFile(slot.id, e.target.files));
@@ -598,7 +598,7 @@ function handleFile(slotId, fileList){
       }
       if(--pending<=0){
         slot.data = merged;
-        slot.file = files.length>1 ? `${files.length}${t('s1_dyn_filesMerged')}` : files[0].name;
+        slot.file = files.length>1 ? `${files.length}${plain(t('s1_dyn_filesMerged'))}` : files[0].name;
         log(`${slotText(slot,'name')} ${t('s1_dyn_load')}: ${slot.data.length.toLocaleString()}${t('s1_dyn_rows')}${files.length>1?' ('+files.length+t('s1_dyn_filesMerged')+')':''}`, 'ok');
         renderDrops();
         detectSession();
@@ -1899,7 +1899,7 @@ function showStats(stat){
   ];
   items.forEach(([k,label])=>{
     const div = document.createElement('div'); div.className='stat';
-    div.innerHTML = `<div class="k">${label}</div><div class="v">${(stat[k]??0).toLocaleString()}<small> ${tx('statUnit')}</small></div>`;
+    div.innerHTML = `<div class="k">${label}</div><div class="v">${esc((stat[k]??0).toLocaleString())}<small> ${tx('statUnit')}</small></div>`;
     box.appendChild(div);
   });
 }
@@ -1922,7 +1922,7 @@ function fmtChanges(ch){
   //  이름·행사번호·등급은 파일(엠클릭)에서 온 글자다 — 화면에 넣기 전에 이스케이프한다.
   const nof = x => esc((x && typeof x==='object') ? (x.no!=null?x.no:x.seq) : x);
   let d='';
-  tr.forEach(t=>d+=`<div style="margin-left:20px;color:var(--err)">${tx('chRowCancel')(nof(t),esc(t.rep),t.n)}</div>`);
+  tr.forEach(t=>d+=`<div style="margin-left:20px;color:var(--err)">${tx('chRowCancel')(nof(t),esc(t.rep),Number(t.n)||0)}</div>`);
   ta.forEach(s=>d+=`<div style="margin-left:20px;color:var(--ok)">${tx('chRowNew')(nof(s))}</div>`);
   pr.forEach(x=>d+=`<div style="margin-left:20px">${tx('chRowOut')(nof(x),esc(x.name))}</div>`);
   pa.forEach(x=>d+=`<div style="margin-left:20px">${tx('chRowIn')(nof(x),esc(x.name))}</div>`);
@@ -1947,7 +1947,7 @@ async function loadHistory(){
         //  등록 이력은 초까지 — 같은 분에 두 번 올리면 순서를 못 가린다
         const ts = (window.__so_ts?__so_ts(r.uploaded_at):String(r.uploaded_at||''));
         const c = r.counts||{};
-        const cnt = (c.bookings!=null) ? ` · ${c.bookings}/${c.passengers}/${c.guests}` : '';
+        const cnt = (c.bookings!=null) ? ` · ${esc(c.bookings)}/${esc(c.passengers)}/${esc(c.guests)}` : '';
         return `<div>· <b>${esc(ts)}</b> · ${esc(r.uploaded_by||'-')} · ${esc(r.session_ym||'')} · ${esc(r.files||'')}${cnt}</div>${fmtChanges(r.changes)}`;
       }).join('');
     }
@@ -1955,7 +1955,7 @@ async function loadHistory(){
     const rs = $('#reg-status');
     if(rows.length && rows[0].counts){
       try{ showStats(rows[0].counts); }catch(e){}
-      if(rs){ rs.innerHTML = '\u2713 '+t('s1_regStatusDone')+' ('+(rows[0].session_ym||'')+(rows[0].uploaded_by?' · '+rows[0].uploaded_by:'')+'). '+t('s1_regStatusHint'); rs.style.display='block'; }
+      if(rs){ rs.innerHTML = '\u2713 '+t('s1_regStatusDone')+' ('+esc(rows[0].session_ym||'')+(rows[0].uploaded_by?' · '+esc(rows[0].uploaded_by):'')+'). '+t('s1_regStatusHint'); rs.style.display='block'; }
     } else if(rs){ rs.style.display='none'; }
     $('#history-panel').style.display='block';
   } catch(e){}
@@ -1977,7 +1977,7 @@ async function loadMonths(){
     }
     const arr = [...seen].sort();
     if(arr.length){
-      sel.innerHTML = arr.map(m=>`<option value="${m}">${m}</option>`).join('');
+      sel.innerHTML = arr.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
       $('#btn-month-del').disabled = false;
     } else {
       sel.innerHTML = '<option value="">'+tx('mdNoMonths')+'</option>';

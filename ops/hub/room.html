@@ -2308,9 +2308,10 @@ async function loadWzOcc(g){
   _wzOcc=null;
   if(!g||!g.dep||!g.arr||!supa) return;
   try{
-    const {data,error}=await supa.from('rooms')
+    //  ⚠ 장기 체류 팀(28박 등)은 그 기간 배정이 1000행을 넘는다 → id 순 페이지네이션. 잘리면 찬 방이 빈 방으로 보인다.
+    const {data,error}=await pagedQuery(()=>supa.from('rooms')
       .select('id,inventory_id,event_seq,member_id,check_in,check_out,assigned_pax')
-      .lt('check_in',g.arr).gt('check_out',g.dep);
+      .lt('check_in',g.arr).gt('check_out',g.dep).order('id'));
     if(error) throw error;
     const have=new Set((occRows()||[]).map(r=>String(r.id)));
     _wzOcc=(data||[]).filter(r=>!have.has(String(r.id)));
@@ -3484,7 +3485,7 @@ function renderFacilities(){
   } else if(state.from && state.to && state.from!==state.to){
     const h=document.createElement('div');
     h.style.cssText='font-size:12px;color:var(--text2);background:var(--surface3);border-radius:7px;padding:7px 12px;margin-bottom:10px';
-    h.innerHTML=tx('rangeNote',state.focus||state.from);
+    h.innerHTML=tx('rangeNote',esc(state.focus||state.from));
     box.appendChild(h);
   }
   box.appendChild(roomViewBar());   // 빈 방만 · 📌 직접 배정만 — 카드·표 공통(보기를 바꿔도 그대로 있다)

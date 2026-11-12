@@ -707,13 +707,17 @@ async function load(){
       const [o,g,d]=await Promise.all([fetchIn('partner_ops','*','event_seq',seqs), fetchIn('partner_golf','*','event_seq',seqs), fetchIn('partner_dispatch','*','event_seq',seqs)]);
       o.forEach(r=>{ OPS[r.event_seq]=r; }); g.forEach(r=>{ (GOLF[r.event_seq]=GOLF[r.event_seq]||[]).push(r); }); d.forEach(r=>{ (DISP[r.event_seq]=DISP[r.event_seq]||[]).push(r); });
       HAS_OPS=true; $('#nosql').hidden=true;
-      try{ const pr=await supa.from('partner_ops').select('use_block',{count:'exact',head:true}); HAS_USE_BLOCK=!pr.error; }catch(e){ HAS_USE_BLOCK=false; }   // SQL 161 적용 여부(블록 사용 체크)
-      try{ const pr=await supa.from('partner_dispatch').select('from_pt',{count:'exact',head:true}); HAS_PTS=!pr.error; }catch(e){ HAS_PTS=false; }         // SQL 162 송영 구간(출발·경유·도착)
-      try{ const pr=await supa.from('partner_ops').select('auto_sig',{count:'exact',head:true}); HAS_AUTOSIG=!pr.error; }catch(e){ HAS_AUTOSIG=false; }     // SQL 162 비고 서명
-      try{ const pr=await supa.from('partner_golf').select('auto',{count:'exact',head:true}); HAS_GAUTO=!pr.error; }catch(e){ HAS_GAUTO=false; }            // SQL 162 자동 골프 줄
-      try{ const pr=await supa.from('partner_ops').select('quote_fix',{count:'exact',head:true}); HAS_QFIX=!pr.error; }catch(e){ HAS_QFIX=false; }        // SQL 166 견적 수정값
-      try{ const pr=await supa.from('partner_ops').select('assign',{count:'exact',head:true}); HAS_ASSIGN=!pr.error; }catch(e){ HAS_ASSIGN=false; }      // SQL 167 명단 객실·조 지정
-      try{ const pr=await supa.from('partner_courses').select('block_groups',{count:'exact',head:true}); HAS_CBLOCK=!pr.error; }catch(e){ HAS_CBLOCK=false; }  // SQL 166 골프장 블록(조 수·기간)
+      // 컬럼 존재 확인 7건 — 차례로 보내면 월 이동·재조회마다 왕복 7회가 더해진다 → 한꺼번에 보낸다(판정은 종전과 같다: 오류 = 미적용).
+      { const _has=async(t,c)=>{ try{ const pr=await supa.from(t).select(c,{count:'exact',head:true}); return !pr.error; }catch(e){ return false; } };
+        [HAS_USE_BLOCK,HAS_PTS,HAS_AUTOSIG,HAS_GAUTO,HAS_QFIX,HAS_ASSIGN,HAS_CBLOCK]=await Promise.all([
+          _has('partner_ops','use_block'),        // SQL 161 적용 여부(블록 사용 체크)
+          _has('partner_dispatch','from_pt'),     // SQL 162 송영 구간(출발·경유·도착)
+          _has('partner_ops','auto_sig'),         // SQL 162 비고 서명
+          _has('partner_golf','auto'),            // SQL 162 자동 골프 줄
+          _has('partner_ops','quote_fix'),        // SQL 166 견적 수정값
+          _has('partner_ops','assign'),           // SQL 167 명단 객실·조 지정
+          _has('partner_courses','block_groups')  // SQL 166 골프장 블록(조 수·기간)
+        ]); }
       HAS_ALIASES=HOTELS.some(h=>Object.prototype.hasOwnProperty.call(h,'aliases'))||COURSES.some(c=>Object.prototype.hasOwnProperty.call(c,'aliases'));
     }catch(e){ const m=String(e&&e.message||e); if(/partner_(ops|golf|dispatch|hotels|courses|vehicles|staff|settings)|schema cache|does not exist/i.test(m)){ HAS_OPS=false; $('#nosql').hidden=false; } else throw e; }
     if(SEL&&!TEAMS.some(t=>t.seq===SEL)) SEL=null;

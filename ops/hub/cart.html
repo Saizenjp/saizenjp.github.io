@@ -607,7 +607,8 @@ async function load(){
     if(ge && /cart_type/i.test(ge.message||'')) ({data:gg}=await supa.from('golf_groups').select('event_seq,course_code,tee_time,cart_no,slot_no').eq('play_date',DATE).order('slot_no',{nullsFirst:false}));   // SQL 147 미적용
     (gg||[]).forEach(g=>{ if(g.event_seq==null) return; if(!GG[g.event_seq]) GG[g.event_seq]=g;
       (GCARTS[g.event_seq]=GCARTS[g.event_seq]||[]).push({course:g.course_code||'',tee:g.tee_time||'',no:g.cart_no||'',type:g.cart_type||''}); });
-    const {data:cb}=await supa.from('cart_bookings').select('*').eq('play_date',DATE);
+    const {data:cb,error:cbe}=await supa.from('cart_bookings').select('*').eq('play_date',DATE);
+    if(cbe) throw cbe;   // ⚠ 저장된 신청을 못 읽었는데 「미저장」으로 보면 autoConfirm 이 규칙값으로 덮어쓴다(대수·취소·메모·auto_qty 소실) — 실패는 실패로 끝낸다
     (cb||[]).forEach(x=>{ (CB[x.event_seq]=CB[x.event_seq]||{})[x.cart_code]=x; });
     // 팀 묶음 — 手配書에서 묶은 운영팀(print_overrides.team_group) 또는 비고의 「팀:」 라벨.
     //   같은 묶음 팀은 카트도 같이 움직이므로 이 표에서도 한눈에 보이게 한다(Min 2026-08).

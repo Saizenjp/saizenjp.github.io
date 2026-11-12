@@ -346,6 +346,7 @@ function render(){
 async function tick(){
   const L=T[lang];
   if(!TOKEN){ if(lastSig!=='no'){ stateView(L.noToken,L.noTokenSub); lastSig='no'; } return; }
+  if(document.hidden) return;   // 화면이 가려진 동안은 폴링을 쉰다(익명 RPC 3건/8초) — 다시 보이면 맨 아래 visibilitychange 가 바로 한 번 갱신
   if(!supa){ try{ supa=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ return; } }
   try{
     //  일정 RPC(125)는 실패해도 결제 내역은 보여야 한다 → 따로 잡는다.
@@ -365,7 +366,7 @@ async function tick(){
       if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
       return;
     }
-    if(!data || data.ok!==true){ if(lastSig!=='inv'){ stateView(L.invalid,L.invalidSub); lastSig='inv'; } return; }
+    if(!data || data.ok!==true){ if(lastSig!=='inv'){ stateView(L.invalid,L.invalidSub); lastSig='inv'; } if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } return; }   // 없는 토큰은 다시 살아나지 않는다 → 만료와 같이 폴링 중단
     BILL=data; TODAY=(today&&today.data&&today.data.ok===true)?today.data:null; OUT=(out&&out.data&&out.data.ok===true)?out.data:null;
     const sig=curSig();
     if(sig!==lastSig){ render(); lastSig=sig; }
@@ -403,6 +404,7 @@ stateView(T[lang].loading,'');
 tick();
 initStaffBar();
 pollTimer=setInterval(tick, 8000);   // 8초 폴링 — 직원이 청구 추가하면 자동 갱신
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden && pollTimer) tick(); });
 </script>
 </body>
 </html>

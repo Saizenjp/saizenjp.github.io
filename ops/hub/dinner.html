@@ -618,7 +618,8 @@ async function load(){
     EARLY={};   // event_seq → [조기퇴실 실제일…] (개인별 actual_dep) — 식수 차감용
     for(let i=0;i<seqs.length;i+=200){
       const chunk=seqs.slice(i,i+200);
-      const {data:gs}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,pax').in('event_seq',chunk);
+      const {data:gs,error:gsErr}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,pax').in('event_seq',chunk);
+      if(gsErr)throw gsErr;   // 못 읽은 청크의 팀이 「숙소 없음」으로 걸러져 목록·식수에서 사라지지 않게
       (gs||[]).forEach(g=>{GMAP[g.event_seq]=g;});
       // 대표 origin/tag/name: guest_members.is_rep → passenger
       let mg=0;
@@ -645,13 +646,15 @@ async function load(){
     // 제외·묶기(print_overrides) — 태그·인원 수정은 폐지(step1 데이터 기준). 묶기는 航空カバー 영향 없음. event_seq 기준(월경계 포함)
     OVR={};
     for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
-      const {data:ov}=await supa.from('print_overrides').select('event_seq,excluded,exclude_reason,team_group,team_group_rep').in('event_seq',chunk);
+      const {data:ov,error:ovErr}=await supa.from('print_overrides').select('event_seq,excluded,exclude_reason,team_group,team_group_rep').in('event_seq',chunk);
+      if(ovErr)throw ovErr;   // 못 읽으면 석식 제외·팀 묶음이 풀린 채 인쇄된다
       (ov||[]).forEach(o=>{ OVR[o.event_seq]=o; });
     }
     // 別注(추가/업그레이드 메뉴) + 알레르기 — event_seq 기준(월경계 포함)
     ADDONS=[];
     for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
-      const {data:ad}=await supa.from('dinner_addons').select('id,order_date,event_seq,kind,item,price,qty,unit,note').in('event_seq',chunk).order('id');
+      const {data:ad,error:adErr}=await supa.from('dinner_addons').select('id,order_date,event_seq,kind,item,price,qty,unit,note').in('event_seq',chunk).order('id');
+      if(adErr)throw adErr;   // 못 읽으면 별주·알레르기 줄이 빠진 채 인쇄된다
       (ad||[]).forEach(a=>{ a.order_date=fmtDate(a.order_date); ADDONS.push(a); });
     }
     TEAMS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{}; const r=REP[b.event_seq]||{}; const o=ORI[b.event_seq]||{}; const ov=OVR[b.event_seq]||{};
