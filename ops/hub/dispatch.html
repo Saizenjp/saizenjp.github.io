@@ -70,7 +70,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.4">
 </head>
 <body data-so-area="dispatch">
 <div class="topbar so-bar">
@@ -101,7 +101,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=70"></script>
-<script src="../assets/saizen-ops.js?v=40.3"></script>
+<script src="../assets/saizen-ops.js?v=40.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -217,7 +217,7 @@ function today(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMon
 function fmtDate(d){ if(!d)return ''; if(d instanceof Date){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;} return String(d).slice(0,10); }
 function parseLocalDate(s){ return SZCore.parseLocalDate(s); }  // 공유 모듈 위임
 // 요일 표기 = SZCore 단일 진실원(전 화면 동일·화면 언어 연동)
-function getWD(d){ const w=SZCore.weekday(d,lang()); return w?`(${w})`:''; }
+function getWD(d,lg){ const w=SZCore.weekday(d,lg||lang()); return w?`(${w})`:''; }
 // 공휴일 목록은 SZCore.JP_HOLIDAYS 하나뿐이다(라운딩 일정 dispatchGolfRows → SZCore.golfRows 가 본다) — 이 화면의 옛 사본은 쓰이지 않아 지웠다
 
 // ── /app/ 동일 시설·룸타입·코스·비고 헬퍼 ──────────────────
@@ -457,16 +457,17 @@ async function load(){
     } }
     const BMAP={}; bs.forEach(b=>{BMAP[b.event_seq]=b;});
     const seqs=Object.keys(BMAP).map(Number);
+    if(_gen!==_loadGen) return;        // 낡은 조회는 여기서 버린다(전역 ROWS 를 건드리기 전)
     if(!seqs.length){ ROWS=[]; $('#stat').textContent=tx('noMonthData'); DATESEL.clear();ACCOMSEL.clear(); renderDateChips();renderAccomChips(); renderOriginChips();renderList(); return; }
     // 부속 테이블은 event_seq로 조회(범위가 여러 달이어도 정확) — 200개씩 청크
     const GMAP={}, NMAP={}, OMAP={};
     for(let i=0;i<seqs.length;i+=200){ const chunk=seqs.slice(i,i+200);
-      const {data:gs}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,accom_prefix,pax').in('event_seq',chunk);
+      const {data:gs,error:eG}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,accom_prefix,pax').in('event_seq',chunk); if(eG)throw eG;
       (gs||[]).forEach(g=>{GMAP[g.event_seq]=g;});
-      const {data:ns}=await supa.from('event_notes').select('event_seq,remarks,memo').in('event_seq',chunk);
+      const {data:ns,error:eN}=await supa.from('event_notes').select('event_seq,remarks,memo').in('event_seq',chunk); if(eN)throw eN;
       (ns||[]).forEach(n=>{NMAP[n.event_seq]=n;});
       // 운영 팀 라벨(print_overrides.team_group) — 手配書 チーム 칸에서 정의·표시
-      const {data:os}=await supa.from('print_overrides').select('event_seq,team_group,team_group_rep,team_group_seq').in('event_seq',chunk);
+      const {data:os,error:eO}=await supa.from('print_overrides').select('event_seq,team_group,team_group_rep,team_group_seq').in('event_seq',chunk); if(eO)throw eO;   // 묶음이 풀린 것처럼 보이면 안 된다
       (os||[]).forEach(o=>{OMAP[o.event_seq]=o;});
     }
     // 주문 QR 토큰: 기존 로드 + 없는 팀은 즉시 발급(팀 고유 랜덤). 발급 권한(print/room) 없으면 조용히 건너뜀.
@@ -501,7 +502,7 @@ async function load(){
       }
     }
     // 행사별 카드 데이터 구성 (출발일 → 대표자명 순)
-    ROWS=seqs.map(seq=>{
+    const _rows=seqs.map(seq=>{
       const b=BMAP[seq]||{}, g=GMAP[seq]||{}, note=NMAP[seq]||{};
       const paxList=(PAX[seq]||[]).slice().sort((a,b2)=>(a.seq_in_team||99)-(b2.seq_in_team||99));
       const rep=REP[seq]||{};
@@ -535,14 +536,14 @@ async function load(){
     // ── 묶음 전원(기간 무관) ───────────────────────────────────────────────
     //  이 화면은 날짜 범위로 읽으므로 묶음 상대가 범위 밖이면 순번이 어긋난다
     //  (航空カバー와 코드·번호가 갈리는 원인). 그룹 전원을 따로 조회해 기준을 고정한다.
-    GFULL={};
+    const _gfull={};
     try{
-      const gkeys=[...new Set(ROWS.map(r=>r.rec.teamGroup).filter(Boolean))];
+      const gkeys=[...new Set(_rows.map(r=>r.rec.teamGroup).filter(Boolean))];
       if(gkeys.length){
         const {data:allOv}=await supa.from('print_overrides')
           .select('event_seq,team_group,team_group_rep,team_group_seq').in('team_group',gkeys);
         const ovRows=allOv||[];
-        const inView={}; ROWS.forEach(r=>{ inView[r.seq]=r; });
+        const inView={}; _rows.forEach(r=>{ inView[r.seq]=r; });
         const need=[...new Set(ovRows.map(r=>r.event_seq))].filter(s2=>!inView[s2]);
         const ext={};
         for(let i=0;i<need.length;i+=200){ const ch=need.slice(i,i+200);
@@ -557,7 +558,7 @@ async function load(){
           // ⚠ 같은 팀이 두 번 들어가면 순번이 2,4,6 으로 밀린다(로드 겹침 시 실제 발생).
           const _k=r.team_group+'|'+r.event_seq; if(_seen.has(_k)) return; _seen.add(_k);
           const v=inView[r.event_seq], e=ext[r.event_seq]||{};
-          (GFULL[r.team_group]=GFULL[r.team_group]||[]).push({
+          (_gfull[r.team_group]=_gfull[r.team_group]||[]).push({
             seq:String(r.event_seq), rep:!!r.team_group_rep,
             gseq:(r.team_group_seq==null?null:r.team_group_seq),
             dep: v? (v.dep||'') : (e.dep||''),
@@ -567,6 +568,7 @@ async function load(){
       }
     }catch(e){ console.warn('묶음 전원 조회 실패:',e.message); }
     if(_gen!==_loadGen) return;      // 그 사이 새 로드가 시작됐으면 이 결과는 버린다
+    ROWS=_rows; GFULL=_gfull;        // 최신 조회일 때만 전역에 반영
     computeGroupTags();              // GTAG·GREP(대표) 먼저 → 팀별 규칙 정렬에 사용
     ROWS.sort(dispatchOrder);        // 入国→ICN/PUS→숙소→코드→묶음번호(Y1,Y2 인접)→대표자
     ROWS.forEach((d,i)=>{ d.no=i+1; });
@@ -580,7 +582,7 @@ async function load(){
       if(ROWS.some(r=>String(r.seq)===seq)){ SEARCHQ=seq.toLowerCase(); const sx=$('#search'); if(sx) sx.value=seq; renderList(); printDispatch(seq); }
       else toast(tx('noTargets'),'err');
     }
-  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
+  }catch(e){ if(_gen!==_loadGen) return; $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
 
 function pass(d){
@@ -620,7 +622,11 @@ function computeAnomBaseline(){
   Object.keys(byN).forEach(n=>{ ANOM.ci[n]=_mode(byN[n].ci).v; ANOM.co[n]=_mode(byN[n].co).v; });
 }
 const _WDJP=['日','月','火','水','木','金','土'];
-function teamAnomaly(d){
+function teamAnomaly(d,lg){
+  // lg='ja' = 인쇄용(手配書는 화면 언어와 무관하게 일본어). 요일 글자도 문장 언어에 맞춘다(한국어·영어 문장에 火 가 섞이지 않게).
+  const _lg=lg||lang(), _dic=L[_lg]||L.ja;
+  const tx=k=>(_dic[k]!==undefined?_dic[k]:(L.ja[k]||k));
+  const wdOf=s=>SZCore.weekday(s,_lg);
   const r=[];
   if(_comboCount(d.prodName)>=2) r.push(tx('anoCombo'));
   // 공항: 출≠귀(비대칭)·팀내 혼재만 특이 (PUS/ICN 자체는 둘 다 기본이라 단독으로는 정상)
@@ -631,11 +637,11 @@ function teamAnomaly(d){
   // 요일: 표준 패턴(3박 목~일·4박 일~목·7박 수~수) 외 = 특이. 그 외 박수는 입/퇴실이 수·목·일이 아니면 특이.
   const n=d.rec.nights, ci=_anWd(d.rec.dep), co=_anWd(d.rec.arr), std=STD_STAY[n];
   if(std){
-    if(ci!==-1 && ci!==std.ci) r.push(tx('anoWdIn')(_WDJP[ci]));
-    if(co!==-1 && co!==std.co) r.push(tx('anoWdOut')(_WDJP[co]));
+    if(ci!==-1 && ci!==std.ci) r.push(tx('anoWdIn')(wdOf(d.rec.dep)));
+    if(co!==-1 && co!==std.co) r.push(tx('anoWdOut')(wdOf(d.rec.arr)));
   }else{
-    if(ci!==-1 && STD_WDAYS.indexOf(ci)<0) r.push(tx('anoWdIn')(_WDJP[ci]));
-    if(co!==-1 && STD_WDAYS.indexOf(co)<0) r.push(tx('anoWdOut')(_WDJP[co]));
+    if(ci!==-1 && STD_WDAYS.indexOf(ci)<0) r.push(tx('anoWdIn')(wdOf(d.rec.dep)));
+    if(co!==-1 && STD_WDAYS.indexOf(co)<0) r.push(tx('anoWdOut')(wdOf(d.rec.arr)));
   }
   // 항공: 기본편(TW287/288·ZE967/968) 외 = 비표준. 정보 없으면 결측.
   const flights=[d.depFlight,d.retFlight].concat((d.paxList||[]).map(p=>p.dep_flight),(d.paxList||[]).map(p=>p.ret_flight)).map(_fnorm).filter(Boolean);
@@ -656,9 +662,12 @@ function computeGroupTags(){
   const keys=Object.keys(GFULL||{});
   const groups={};
   ROWS.forEach(r=>{ const g=r.rec.teamGroup; if(g){ (groups[g]=groups[g]||[]).push(r); } });
-  (keys.length?keys:Object.keys(groups)).forEach(k=>{
-    const all=(GFULL&&GFULL[k])||null;
+  // ⚠ GFULL 은 load() 때만 만든다 → 묶기·해제 직후에는 화면에 있는 팀을 현재 값(ROWS)으로 바꿔 읽는다(범위 밖 팀만 조회 시점 값).
+  const inV={}; ROWS.forEach(r=>{ inV[String(r.seq)]=1; });
+  [...new Set(keys.concat(Object.keys(groups)))].forEach(k=>{
     const list=groups[k]||[];
+    const cur=list.map(r=>({seq:String(r.seq),rep:!!r.rec.teamGroupRep,gseq:r.rec.teamGroupSeq,dep:r.dep,tag:r.tagCode||''}));
+    const all=(GFULL&&GFULL[k]) ? GFULL[k].filter(x=>!inV[x.seq]).concat(cur) : null;
     let src = all && all.length ? all
               : (list.length>1 ? list.map(r=>({seq:String(r.seq),rep:!!r.rec.teamGroupRep,gseq:r.rec.teamGroupSeq,dep:r.dep,tag:r.tagCode||''})) : null);
     if(!src || src.length<2) return;                       // 단독은 번호 없음
@@ -801,18 +810,17 @@ function openRepPicker(rows){
     const rep=listEl.querySelector('input[name="rep-pick"]:checked'); if(!rep)return;
     const orderedSeqs=[...listEl.children].map(el=>el.dataset.seq);
     close();
-    await saveTeamGroupBulk(orderedSeqs, rep.value);   // orderedSeqs 순서 = 순번(team_group_seq)
-    toast(tx('grouped'),'ok');
+    if(await saveTeamGroupBulk(orderedSeqs, rep.value)) toast(tx('grouped'),'ok');   // orderedSeqs 순서 = 순번(team_group_seq) · 저장 실패면 완료 문구를 띄우지 않는다
   });
 }
 async function ungroupSelected(){
   const seqs=_dCkSeqs();
   if(!seqs.length){ toast(tx('ungroupSel'),'warn'); return; }
-  await saveTeamGroupBulk(seqs,null);  toast(tx('ungrouped'),'ok');
+  if(await saveTeamGroupBulk(seqs,null)) toast(tx('ungrouped'),'ok');
 }
 // repSeq=대표 event_seq(null이면 묶음 해제). team_group=대표 기준코드, team_group_rep=대표만 true.
 async function saveTeamGroupBulk(seqs,repSeq){
-  if(!supa){toast(tx('connectFirst'),'warn');return;}
+  if(!supa){toast(tx('connectFirst'),'warn');return false;}
   try{
     const repRow=repSeq!=null?ROWS.find(r=>String(r.seq)===String(repSeq)):null;
     // ⚠ 묶음 이름은 유니크해야 한다. 태그코드만 쓰면 코드가 재사용될 때(F풀 재활용·
@@ -830,8 +838,8 @@ async function saveTeamGroupBulk(seqs,repSeq){
       const {error}=await supa.from('print_overrides').upsert(row,{onConflict:'event_seq'}); if(error)throw error;
       const r=ROWS.find(x=>String(x.seq)===String(seq)); if(r){ r.rec.teamGroup=label||''; r.rec.teamGroupRep=isRep; r.rec.teamGroupSeq=gseq; r.rec.teamName=(label?label.replace(/#\d+$/,''):(r.rec._teamLabelBase||'')); }
     }
-    renderList();
-  }catch(e){ toast(tx('teamSaveFail')+e.message,'err'); }
+    renderList(); return true;
+  }catch(e){ toast(tx('teamSaveFail')+e.message,'err'); renderList(); return false; }   // 실패해도 그때까지 저장된 팀은 화면에 반영
 }
 // 現地メモ(event_notes.memo) 편집 — print 영역도 가능한 RPC 경유(memo만 갱신 + 변경이력 기록)
 async function saveDispatchMemo(seq,val){
@@ -877,10 +885,10 @@ function dispatchFrontHTML(d,masked){
         <div class="hp-sub" style="margin-top:1.5mm">発行日 ${today()} ・ SaiZen運営システム</div>
       </div>
     </div>
-    ${(function(){ const rs=teamAnomaly(d); return rs.length?`<div class="hp-anom">⚠ 要確認 — ${esc(rs.join(' / '))}</div>`:''; })()}
+    ${(function(){ const rs=teamAnomaly(d,'ja'); return rs.length?`<div class="hp-anom">⚠ 要確認 — ${esc(rs.join(' / '))}</div>`:''; })()}
     <table class="hp-t">
-      <tr><th style="width:11%">出発日</th><td class="c mono" style="width:15%">${esc(r.dep||'')} ${getWD(r.dep)}</td>
-          <th style="width:11%">到着日</th><td class="c mono" style="width:15%">${esc(r.arr||'')} ${getWD(r.arr)}</td>
+      <tr><th style="width:11%">出発日</th><td class="c mono" style="width:15%">${esc(r.dep||'')} ${getWD(r.dep,'ja')}</td>
+          <th style="width:11%">到着日</th><td class="c mono" style="width:15%">${esc(r.arr||'')} ${getWD(r.arr,'ja')}</td>
           <th style="width:9%">期間</th><td class="c" style="width:11%">${periodStr}</td>
           <th style="width:9%">人数</th><td class="c"><b>${r.pax}名</b></td></tr>
       <tr><th>代表者</th><td class="c"><b>${esc(r.repName||'-')}</b></td>

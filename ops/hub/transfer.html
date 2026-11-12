@@ -117,7 +117,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.4">
 </head>
 <body data-so-area="transfer frontdesk">
 <div class="topbar so-bar">
@@ -148,7 +148,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=70"></script>
-<script src="../assets/saizen-ops.js?v=40.3"></script>
+<script src="../assets/saizen-ops.js?v=40.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -174,7 +174,8 @@ const L={
     boarded:'乗車完了', boardedOff:'乗車確認', teamAll:'チーム全員', clearTeam:'解除',
     prog:(a,b)=>`${a}/${b}`, progPax:(a,b)=>`${a}/${b}名`,
     noRoster:'名簿がまだ登録されていません(予約人数のみ)。',
-    saveFail:'保存に失敗しました' },
+    saveFail:'保存に失敗しました',
+    dpStale:'保存されませんでした — 変更権限がないか、他の端末で削除された行です。最新の内容を読み直しました。', noWrite:'変更する権限がありません(閲覧のみ)' },
   ko:{ step:'송영표', home:'← 홈',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패·재시도',
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
@@ -195,7 +196,8 @@ const L={
     boarded:'승차 완료', boardedOff:'승차 확인', teamAll:'팀 전원', clearTeam:'해제',
     prog:(a,b)=>`${a}/${b}`, progPax:(a,b)=>`${a}/${b}명`,
     noRoster:'명단이 아직 등록되지 않았습니다(예약 인원만).',
-    saveFail:'저장 실패' },
+    saveFail:'저장 실패',
+    dpStale:'저장되지 않았습니다 — 수정 권한이 없거나 다른 기기에서 이미 지운 줄입니다. 최신 내용으로 다시 불러왔습니다.', noWrite:'수정 권한이 없습니다(읽기 전용)' },
   en:{ step:'Transfer sheet', home:'← Home',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', needLogin:'Login required',
@@ -216,7 +218,8 @@ const L={
     boarded:'Boarded', boardedOff:'Confirm boarding', teamAll:'Whole team', clearTeam:'Clear',
     prog:(a,b)=>`${a}/${b}`, progPax:(a,b)=>`${a}/${b} pax`,
     noRoster:'No roster yet (booking headcount only).',
-    saveFail:'Save failed' }
+    saveFail:'Save failed',
+    dpStale:'Not saved — you have no edit permission, or this row was deleted on another device. Reloaded the latest data.', noWrite:'You do not have permission to change this (read-only)' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
 function tx(k,...a){ const d=L[lang()]||L.ja; let v=d[k]; if(v===undefined) v=L.ja[k]; if(v===undefined) return k; return (typeof v==='function')?v(...a):v; }
@@ -238,6 +241,8 @@ const STAY_PLAN={
   '쿠주힐즈':      { golf:'none' }
 };
 function korPort(r){ const v=(r.dir==='in')?r.from:r.to; return (window.SZCore&&SZCore.airportCode)?SZCore.airportCode(v):(v||''); }
+//  칩 라벨 — 공항 코드(ICN·PUS)는 그대로, 체류중 줄의 행선지(숙소·골프장 = DB 한글 원문)는 화면 언어 표기로. 필터 값(data-p)은 원문 그대로 둔다.
+function portChipL(p){ const k=String(p||'').trim(); if(lang()==='ko'||!/[가-힣]/.test(k)) return k; return PLACE_JA[k]||accomL(k)||k; }
 // 인쇄물(직원용)은 일본어 우선 — 숙소명도 일본어 표기로 낸다(Min 2026-08).
 // 숙소가 아닌 목적지(골프장)도 같은 표기 규칙으로 낸다.
 const PLACE_JA={ '구주고원CC':'九重高原CC' };
@@ -348,6 +353,8 @@ async function connect(){
   }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
 }
 
+//  표가 아직 없는 환경(SQL 미적용)만 「빈 값」으로 넘긴다 — 그 밖의 조회 실패는 「데이터 없음」으로 취급하지 않는다
+function _noTable(e){ const c=String((e&&e.code)||''), m=String((e&&e.message)||''); return c==='PGRST205'||c==='42P01'||/could not find the table|relation .* does not exist/i.test(m); }
 async function pagedIn(table, cols, col, vals){
   const out=[];
   for(let i=0;i<vals.length;i+=200){
@@ -361,25 +368,32 @@ async function pagedIn(table, cols, col, vals){
 
 // ── 그날 송영 = 그날 입국(dep_date)한 팀의 도착편 + 그날 귀국(arr_date)하는 팀의 출발편 ──
 //    같은 팀이라도 출발지가 섞일 수 있어(인천·부산) 便 단위로 쪼개 인원을 센다.
+let _loadSeq=0;   // load() 겹침 방지 — 날짜를 빠르게 넘기면 낡은 조회가 뒤늦게 덮어쓴다(마지막 호출만 반영)
 async function load(){
   if(!supa) return;
+  const _my=++_loadSeq;
   const box=$('#list'); if(box) box.innerHTML=`<div class="deny" style="color:var(--muted)">${tx('loading')}</div>`;
   try{
     // 도착·출발뿐 아니라 **그날 묵고 있는 팀**(체류중 송영)까지 함께 본다.
     const {data:bs,error:e1}=await supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax')
       .lte('dep_date',DATE).gte('arr_date',DATE).neq('status','대기');
     if(e1) throw e1;
+    if(_my!==_loadSeq) return;   // 낡은 조회는 버린다(전역을 건드리기 전)
     const seqs=(bs||[]).map(b=>b.event_seq);
     if(!seqs.length){ ROWS=[]; renderList(); return; }
-    const {data:gs}=await pagedIn('guests','event_seq,group_code,team_tag,accom','event_seq',seqs);
-    const {data:ps}=await pagedIn('passengers','id,event_seq,gender,origin,dest,airline,dep_flight,ret_flight,dep_time,loc_arr_time,ret_dep_time','event_seq',seqs);
+    const {data:gs,error:eG}=await pagedIn('guests','event_seq,group_code,team_tag,accom','event_seq',seqs);
+    if(eG) throw eG;
+    const {data:ps,error:eP}=await pagedIn('passengers','id,event_seq,gender,origin,dest,airline,dep_flight,ret_flight,dep_time,loc_arr_time,ret_dep_time','event_seq',seqs);
+    if(eP) throw eP;   // 편명·시각 없는 줄로 조용히 그리지 않는다
     const gBy={}; (gs||[]).forEach(g=>{ gBy[g.event_seq]=g; });
     const pBy={}; (ps||[]).forEach(p=>{ (pBy[p.event_seq]=pBy[p.event_seq]||[]).push(p); });
     // 現地手配書에서 묶은 팀은 대표팀 코드+팀번호로 통일(手配書·航空カバー·네임택과 같은 코드)
     const GT=(window.__so_groupTags? await __so_groupTags(supa,seqs) : {});
     // 미팅·샌딩 담당자는 이름 명단을 본다 → 그날 팀의 명단을 먼저 읽는다(조기퇴실 판정에 필요해 출발/도착 행 만들기 전에 로드).
+    const {data:gm,error:eM}=await pagedIn('guest_members','id,event_seq,seq_in_team,name_kr,name_en,passenger_id,actual_dep','event_seq',seqs);
+    if(eM) throw eM;
+    if(_my!==_loadSeq) return;   // 여기부터 ROWS 대입까지는 await 가 없다 → DATE 는 이 조회의 날짜 그대로
     MEM={};
-    const {data:gm}=await pagedIn('guest_members','id,event_seq,seq_in_team,name_kr,name_en,passenger_id,actual_dep','event_seq',seqs);
     // 성별 — 현장 명단표가 M/F 를 함께 본다(같은 이름이 섞여도 구분되고, 방·좌석 배치에 쓴다)
     const gBySeqId={}; (ps||[]).forEach(x=>{ if(x.id!=null) gBySeqId[x.id]=x.gender||''; });
     (gm||[]).forEach(m=>{ const g=String(gBySeqId[m.passenger_id]||'');
@@ -476,10 +490,11 @@ async function load(){
     ROWS=rows;
     await loadChecks();
     await loadDispatch();
+    if(_my!==_loadSeq) return;
     renderPortChips();
     renderAccomChips();
     renderList();
-  }catch(e){ const b2=$('#list'); if(b2) b2.innerHTML=`<div class="deny">${esc(tx('loadFail')+': '+(e.message||e))}</div>`; }
+  }catch(e){ if(_my!==_loadSeq) return; const b2=$('#list'); if(b2) b2.innerHTML=`<div class="deny">${esc(tx('loadFail')+': '+(e.message||e))}</div>`; }
 }
 
 // ── 현장 점검 상태(태블릿) ────────────────────────────────────────────
@@ -487,28 +502,40 @@ async function load(){
 async function loadDispatch(){
   DISP={};
   try{
-    const {data}=await supa.from('transfer_dispatch')
+    const _d=DATE;
+    const {data,error}=await supa.from('transfer_dispatch')
       .select('id,leg,grp_key,seq,vehicle,driver,depart,dest,note')
-      .eq('work_date',DATE).order('seq');
+      .eq('work_date',_d).order('seq');
+    if(error) throw error;
+    if(_d!==DATE) return;   // 그 사이 날짜가 바뀌었으면 버린다
     (data||[]).forEach(d=>{ const k=d.leg+'|'+d.grp_key; (DISP[k]=DISP[k]||[]).push(d); });
-  }catch(e){}   // 표가 없으면 빈칸으로(예전처럼 손기입)
+  }catch(e){ if(!_noTable(e)) throw e; }   // 표가 없으면 빈칸으로(예전처럼 손기입) — 그 밖의 조회 실패는 load() 가 알린다
 }
 async function loadChecks(){
   CK={in:{team:new Set(),member:new Set()}, out:{team:new Set(),member:new Set()},
       stay_am:{team:new Set(),member:new Set()}, stay_pm:{team:new Set(),member:new Set()}};
   try{
-    const {data}=await supa.from('transfer_checks').select('leg,kind,ref').eq('work_date',DATE);
+    const _d=DATE;
+    const {data,error}=await supa.from('transfer_checks').select('leg,kind,ref').eq('work_date',_d);
+    if(error) throw error;
+    if(_d!==DATE) return;   // 그 사이 날짜가 바뀌었으면 버린다
     (data||[]).forEach(c=>{ if(CK[c.leg]&&CK[c.leg][c.kind]) CK[c.leg][c.kind].add(String(c.ref)); });
-  }catch(e){}
+  }catch(e){ if(!_noTable(e)) throw e; }   // 조회 실패를 「체크 없음」으로 보이지 않는다
 }
 async function toggleCheck(leg,kind,ref,seq){
   const on=ckHas(leg,kind,ref);
   const by=(window.__so_getUser&&__so_getUser())||null;
   try{
     if(on){
-      const {error}=await supa.from('transfer_checks').delete()
-        .eq('work_date',DATE).eq('leg',leg).eq('kind',kind).eq('ref',String(ref));
+      const {data:del,error}=await supa.from('transfer_checks').delete()
+        .eq('work_date',DATE).eq('leg',leg).eq('kind',kind).eq('ref',String(ref)).select('ref');
       if(error) throw error;
+      if(!(del&&del.length)){   // 0행 = 권한 없음(RLS 는 오류 없이 0행) 또는 다른 기기가 먼저 해제 → 아직 남아 있는지 본다
+        const {data:still,error:e2}=await supa.from('transfer_checks').select('ref')
+          .eq('work_date',DATE).eq('leg',leg).eq('kind',kind).eq('ref',String(ref));
+        if(e2) throw e2;
+        if(still&&still.length) throw new Error(tx('noWrite'));
+      }
       CK[leg][kind].delete(String(ref));
     }else{
       const {error}=await supa.from('transfer_checks').upsert(
@@ -531,7 +558,7 @@ function visible(){ return ROWS.filter(pass); }
 function groupByFlight(rows){
   const g={};
   rows.forEach(r=>{ const k=r.dir+'|'+(r.leg||'')+'|'+(r.early?'E':'')+'|'+(r.flight||'-')+'|'+(r.time||'')+'|'+r.from+'|'+r.to;
-    (g[k]=g[k]||{dir:r.dir,leg:r.leg||'',early:!!r.early,flight:r.flight,time:r.time,from:r.from,to:r.to,rows:[]}).rows.push(r); });
+    (g[k]=g[k]||{dir:r.dir,leg:r.leg||'',accom:(r.dir==='stay'?(r.accom||''):''),early:!!r.early,flight:r.flight,time:r.time,from:r.from,to:r.to,rows:[]}).rows.push(r); });
   const dord=d=>d==='in'?0:(d==='stay'?1:2);
   return Object.values(g).sort((a,b)=>
     dord(a.dir)-dord(b.dir) || tmv(a.time)-tmv(b.time) || String(a.flight).localeCompare(String(b.flight)))
@@ -619,7 +646,7 @@ function renderPortChips(){
   if(have.length<=1){ box.innerHTML=''; PORTSEL.clear(); return; }
   const allOn=PORTSEL.size===0;
   box.innerHTML=`<button type="button" class="chip${allOn?' on':''}" data-p="__all">${esc(tx('all'))}</button>`
-    +have.map(p=>`<button type="button" class="chip${PORTSEL.has(p)?' on':''}" data-p="${esc(p)}">${esc(p)}<span class="c">${ROWS.filter(r=>korPort(r)===p).length}</span></button>`).join('');
+    +have.map(p=>`<button type="button" class="chip${PORTSEL.has(p)?' on':''}" data-p="${esc(p)}">${esc(portChipL(p))}<span class="c">${ROWS.filter(r=>korPort(r)===p).length}</span></button>`).join('');
   box.querySelectorAll('[data-p]').forEach(b=>b.addEventListener('click',()=>{
     const k=b.dataset.p;
     if(k==='__all') PORTSEL.clear();
@@ -768,11 +795,20 @@ async function dispAdd(k){
     list.push(data); renderList();
   }catch(e){ toast(tx('dpFail',e.message||e),'err'); }
 }
+//  쓰기가 0행으로 끝났을 때 — 권한이 없거나(RLS 는 오류 없이 0행) 다른 기기가 그 줄을 먼저 지웠다. 성공으로 알리지 않고 DB 값으로 되돌린다.
+//   포커스를 먼저 푼다: 다시 그리며 지워지는 입력칸의 change 가 옛 순번으로 다른 줄에 저장되지 않게.
+async function dispResync(){
+  const ae=document.activeElement; if(ae&&ae.blur) ae.blur();
+  toast(tx('dpStale'),'err');
+  const keep=DISP; try{ await loadDispatch(); }catch(e){ DISP=keep; }
+  renderList();
+}
 async function dispDel(k,i){
   const d=(DISP[k]||[])[i]; if(!d) return;
   try{
-    const {error}=await supa.from('transfer_dispatch').delete().eq('id',d.id);
+    const {data:del,error}=await supa.from('transfer_dispatch').delete().eq('id',d.id).select('id');
     if(error) throw error;
+    if(!(del&&del.length)){ await dispResync(); return; }
     DISP[k].splice(i,1); renderList();
   }catch(e){ toast(tx('dpFail',e.message||e),'err'); }
 }
@@ -780,8 +816,9 @@ async function dispSave(k,i,field,val){
   const d=(DISP[k]||[])[i]; if(!d || d[field]===val) return;
   d[field]=val;
   try{
-    const {error}=await supa.from('transfer_dispatch').update({[field]:val||null}).eq('id',d.id);
+    const {data:upd,error}=await supa.from('transfer_dispatch').update({[field]:val||null}).eq('id',d.id).select('id');
     if(error) throw error;
+    if(!(upd&&upd.length)){ await dispResync(); return; }   // 0행을 성공으로 알리지 않는다
     toast(tx('dpSaved'),'ok');
   }catch(e){ toast(tx('dpFail',e.message||e),'err'); }
 }
@@ -823,7 +860,7 @@ function printSheet(){
   const subtotal=rows=>{
     const m={}; rows.forEach(r=>{ const k=r.accom||''; m[k]=(m[k]||0)+r.pax; });
     return Object.keys(m).sort((a,b)=>accomOrd(a)-accomOrd(b))
-      .map(k=>`${acHTML(k)} <u>${m[k]}</u>名`).join('　·　');
+      .map(k=>`<span class="sbi">${acHTML(k)} <u>${m[k]}</u>名</span>`).join('　·　');
   };
   //  배차 기입란 — 「차량·기사·출발시각」은 한 몸이라 한 줄로 묶는다(Min 2026-08).
   //   행선지가 갈리면 버스도 갈리므로 **숙소(행선지)별 한 줄**. 줄 수 = 필요한 최소 대수.
@@ -952,7 +989,7 @@ function printSheet(){
   .blk-h .unit{font-size:calc(8.5pt * var(--fs))}
   .blk-h .cnt{font-size:calc(9pt * var(--fs));font-weight:700}
   .fl{border:0.9pt solid #111;border-top:none;break-inside:auto}
-  .fl-h{display:flex;align-items:baseline;gap:3mm;background:#ececec;border-bottom:0.6pt solid #111;
+  .fl-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:0.4mm 3mm;background:#ececec;border-bottom:0.6pt solid #111;
     padding:calc(1mm * var(--fs)) 2.5mm;break-after:avoid;page-break-after:avoid;white-space:nowrap;overflow:hidden}
   .fl-h b{font-size:calc(12pt * var(--fs));font-weight:800}
   .fl-h .tm{font-size:calc(12pt * var(--fs));font-weight:800}
@@ -961,7 +998,8 @@ function printSheet(){
   .fl-h .rt{font-size:calc(13pt * var(--fs));font-weight:800;color:#111}
   .fl-h .rt i{font-size:calc(9.5pt * var(--fs));font-weight:700;font-style:normal;color:#444;margin-left:3px}
   .fl-h .nn{font-size:calc(12pt * var(--fs));font-weight:800}
-  .fl-h .sb{margin-left:auto;font-size:calc(9pt * var(--fs));white-space:nowrap}
+  .fl-h .sb{margin-left:auto;font-size:calc(9pt * var(--fs));white-space:normal;text-align:right}
+  .fl-h .sb .sbi{display:inline-block;white-space:nowrap}
   .fl-h .sb b{font-size:calc(10.5pt * var(--fs))}
   .fl-h .sb u{text-decoration:none;font-weight:800;font-family:Consolas,'SZJpMono',monospace;font-size:calc(10.5pt * var(--fs))}
   /* 배차 기입란 — 행선지별 한 줄(차량·기사·출발이 한 세트). 마지막 줄만 特記 */
@@ -994,7 +1032,7 @@ function printSheet(){
   @media print{ @page{size:A4 portrait;margin:0} body{background:#fff} .bar{display:none}
     .page{margin:0;width:auto;min-height:auto;padding:8mm 10mm} }
 </style></head><body>
-  <div class="bar"><h1>送迎表 / 송영표</h1><div class="meta">${DATE} · ${vis.length}${lang()==='ja'?'件':(lang()==='en'?' rows':'건')}</div><div style="flex:1"></div>
+  <div class="bar"><h1>${lang()==='ja'?'送迎表':(lang()==='en'?'Transfer sheet':'송영표')}</h1><div class="meta">${DATE} · ${vis.length}${lang()==='ja'?'件':(lang()==='en'?' rows':'건')}</div><div style="flex:1"></div>
     <button onclick="window.print()">\u{1F5A8} ${lang()==='ja'?'印刷':(lang()==='en'?'Print':'인쇄')}</button>
     <button class="x" onclick="window.close()">✕ ${lang()==='ja'?'閉じる':(lang()==='en'?'Close':'닫기')}</button></div>
   ${body}
@@ -1187,7 +1225,7 @@ function printMeet(){
     .page{margin:0;width:auto;min-height:auto;padding:8mm 9mm}
     .page{break-after:page;page-break-after:always} .page:last-child{break-after:auto;page-break-after:auto} }
 </style></head><body>
-  <div class="bar"><h1>送迎名簿 / 송영 명단표</h1><div class="meta">${DATE} · ${PAGES.length}枚</div><div style="flex:1"></div>
+  <div class="bar"><h1>${lang()==='ja'?'送迎名簿':(lang()==='en'?'Transfer roster':'송영 명단표')}</h1><div class="meta">${DATE} · ${PAGES.length}${lang()==='ja'?'枚':(lang()==='en'?(PAGES.length===1?' sheet':' sheets'):'장')}</div><div style="flex:1"></div>
     <button onclick="window.print()">\u{1F5A8} ${lang()==='ja'?'印刷':(lang()==='en'?'Print':'인쇄')}</button>
     <button class="x" onclick="window.close()">✕ ${lang()==='ja'?'閉じる':(lang()==='en'?'Close':'닫기')}</button></div>
   ${pagesHTML}
