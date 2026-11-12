@@ -39,7 +39,7 @@
   · 표기 원칙(Min): 손님용 = 한국어 우선 · 한·일 병기. 공개 장소라 방번호·연락처·생년은 어디에도 없다.
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=69"></script>
+<script src="../assets/saizen-core.js?v=70"></script>
 <style>
   /* 기본 = 밝은 화면(Min 2026-10-26 「밝은 테마로 진행해」 — 고령층 가독성: 밝은 바탕에 진한 글자). 어두운 복도는 ?theme=dark(아래 팔레트). 토큰 이름은 둘이 같다. */
   :root{ --bg:#f4f6f2; --panel:#ffffff; --panel2:#e9eee3; --line:#d2d8cc; --line2:#b4bfab; --ink:#1b211b; --ink2:#2f3a2f; --muted:#5d6a5a;
@@ -425,6 +425,13 @@ function tick(){ $('#clock').textContent=hhmm(); if(window.__soTheme) window.__s
 function setUpd(ok){ const e=$('#upd'); if(ok){ LASTOK=hhmm(); e.className='upd'; e.textContent=LASTOK+' 갱신'; }
   else { e.className='upd err'; e.textContent='갱신 실패 '+hhmm()+(LASTOK?' · 마지막 '+LASTOK:''); } }
 
+// supabase-js(CDN)를 못 받은 채 열린 무인 TV 는 load() 가 주기마다 같은 자리에서 실패한다 → 라이브러리만 다시 받는다(사람이 새로고침하지 않아도 복구). 한 번에 한 요청만.
+let _sbLibBusy=false;
+function retrySbLib(){ if(window.supabase||_sbLibBusy) return; _sbLibBusy=true;
+  const o=document.querySelector('script[src*="supabase-js"]'), s=document.createElement('script');
+  s.src=(o&&o.getAttribute('src'))||'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+  s.onload=()=>{ _sbLibBusy=false; if(window.supabase) load(); else s.remove(); }; s.onerror=()=>{ _sbLibBusy=false; s.remove(); };
+  document.head.appendChild(s); }
 async function load(){
   const date=targetDate();
   try{
@@ -441,6 +448,7 @@ async function load(){
     if(SCREEN==='lobby') renderLobby(); else if(SCREEN==='wall') renderWall(); else if(SCREEN==='course') renderCourse(); else if(SCREEN==='office') renderOffice(); else if(SCREEN==='guide') renderGuide(); else render();
   }catch(e){
     setUpd(false);
+    if(!window.supabase) retrySbLib();   // CDN 라이브러리를 못 받은 상태면 다음 주기 전에 다시 받는다
     if(!DATA){ const el=$({lobby:'#w-list',wall:'#wm-list',course:'#crs',office:'#kpi',guide:'#p-guide'}[SCREEN]||'#list'); el.innerHTML='<div class="none">데이터를 불러오지 못했습니다<br>データを取得できませんでした</div>'; if(SCREEN==='lobby'){ showPane('p-welcome'); } if(SCREEN==='wall'){ showPane('p-wmeal'); } if(SCREEN==='course'){ showPane('p-course'); } if(SCREEN==='office'){ showPane('p-office'); } if(SCREEN==='dinner'){ showPane('p-dinner'); } if(SCREEN==='guide'){ PANES=['p-guide']; PI=0; showPane('p-guide'); } }
   }
 }

@@ -140,9 +140,19 @@
 
   // 다양한 입력(Date·엑셀 직렬·한국어·YYYY선두·MM/DD/YYYY) → 'YYYY-MM-DD'. 실패 시 ''.
   //   엠클릭 엑셀이 SheetJS로 숫자(직렬)·문자 등 제각각으로 들어오는 걸 흡수.
+  //  SheetJS(cellDates) 는 날짜 칸을 「1899-12-30 로컬 자정 + 일수」로 만들면서 그 기준 시각의 시간대 차이를 **분 단위로만** 본다.
+  //  1899년의 서울은 지방평균시(+08:27:52)라 52초 모자란 Date 가 되어, 그대로 읽으면 날짜 칸이 하루 전으로 읽힌다(도쿄·UTC·미국은 오차 0).
+  //  → 그 PC 시간대의 오차만큼만 더해 읽는다. 고정 60초를 더하면 오차가 없는 시간대에서 「23:59:30」처럼 시각이 붙은 칸이 다음 날로 넘어간다.
+  //  오차 = 엔진이 분 단위로 알려 준 차이(getTimezoneOffset) − 실제 차이. 동쪽(서울 52초·상하이 43초)은 이르게 나와 그만큼 더하고,
+  //  서쪽(상파울루 등)은 늦게 나와 날짜 칸이 이미 그날 0시 뒤라 더하지 않는다(0) — 빼는 보정은 하지 않는다(자정에 맞춘 보통 Date 가 하루 전으로 밀린다).
+  //  ※ 표준시가 바뀐 날의 날짜 칸(서울 1954-03-21, 도쿄 1948~51 서머타임 시작일)은 30분·1시간 어긋나 하루 전으로 읽힌다 — 알려진 한계(칸이 글자면 해당 없음).
+  var SHEET_FIX_MS = (function () {
+    var b = new Date(1899, 11, 30), early = b.getTimezoneOffset() * 60000 - (b.getTime() - Date.UTC(1899, 11, 30));   // SheetJS 가 이르게 낸 만큼(ms)
+    return (early > 0 && early < 60000) ? Math.round(early) : 0;
+  })();
   function parseFlexDate(v) {
     if (v === null || v === undefined || v === '') return '';
-    if (v instanceof Date && !isNaN(v)) return fmtDate(v);
+    if (v instanceof Date && !isNaN(v)) return fmtDate(new Date(v.getTime() + SHEET_FIX_MS));
     // 엑셀 직렬 날짜(숫자) — cellDates 없이 읽으면 숫자(예: 45900). UTC 기준 환산.
     if (typeof v === 'number' && v > 20000 && v < 80000) {
       var d = new Date(Math.round((v - 25569) * 86400000));
@@ -408,7 +418,9 @@
   var PARTNER_TRAVEL_MIN = 50;          // 공항↔호텔↔골프장 이동 시간(분)
   var PARTNER_BUS_MIN = 20;             // 이 인원부터 큰 차(마이크로버스)를 먼저 쓴다 — 그 아래는 하이에스(정원 9) 먼저
   var PARTNER_POINTS = ['airport', 'hotel', 'course', 'other'];
-  function _pnorm(s) { return String(s == null ? '' : s).toLowerCase().replace(/[\s　·・\-ー_~〜()（）\[\]「」『』'"\.]/g, ''); }
+  //  정규화에서 지우는 글자(공백·문장부호) — _pnorm 과 partnerFindNames 의 자리 지도가 **같은 한 벌**을 쓴다(자리가 어긋나면 날짜·코스 짝이 틀어진다)
+  var _PN_DROP = /[\s　·・\-ー_~〜()（）\[\]「」『』'"\.]/, _PN_DROP_G = new RegExp(_PN_DROP.source, 'g');
+  function _pnorm(s) { return String(s == null ? '' : s).toLowerCase().replace(_PN_DROP_G, ''); }
   var _PN_STRIP = /(ホテル|호텔|hotel|ゴルフクラブ|カントリークラブ|ゴルフ倶楽部|ゴルフ場|カントリー|골프클럽|골프장|컨트리클럽|컨트리|골프|\bcc\b|\bgc\b)/ig;
   //  등록표 행(name_ja·name_ko·name·aliases 쉼표 구분) → 비고에서 찾을 때 쓰는 정규화 별칭 목록(2자 이상). 「○○호텔」「○○カントリークラブ」는 접미를 뗀 짧은 꼴도 넣는다.
   function partnerAliasList(row) {
@@ -424,8 +436,12 @@
   }
   //  비고 안에서 등록표 이름을 전부 찾는다 → [{id,row,pos,len,alias}] (적힌 순서, 겹치면 긴 별칭 우선 — 「미나미아소트라이얼」 안의 「아소트라이얼」은 안 잡힌다).
   //  같은 이름이 두 번 적히면 두 번 잡힌다(골프장 2일 연속 같은 코스). 영문 별칭은 단어 경계(restaurant 안의 tau 같은 오탐 방지).
+  //  경계는 **원문에서** 본다 — 정규화한 글에서 보면 「TAU twin」이 「tautwin」, 「Washington Hotel」이 「washingtonhotel」이 되어 이름을 놓친다.
+  //   low = 소문자 원문, t = 정규화한 글(= _pnorm(text)), map[i] = t 의 i번째 글자가 low 에서 있던 자리. 돌려주는 pos·len 은 종전대로 t 기준.
   function partnerFindNames(text, rows) {
-    var t = _pnorm(text); if (!t) return [];
+    var low = String(text == null ? '' : text).toLowerCase(), t = '', map = [], k, c;
+    for (k = 0; k < low.length; k++) { c = low.charAt(k); if (!_PN_DROP.test(c)) { t += c; map.push(k); } }
+    if (!t) return [];
     var hits = [];
     (rows || []).forEach(function (r) {
       if (!r || r.active === false) return;
@@ -433,7 +449,7 @@
         var ascii = /^[a-z0-9]+$/.test(a); var i = t.indexOf(a);
         while (i >= 0) {
           var ok = true;
-          if (ascii) { var b = t.charAt(i - 1), e = t.charAt(i + a.length); if (/[a-z]/.test(b) || /[a-z]/.test(e)) ok = false; }   // 글자 경계만(앞의 날짜 「11/11kao」는 허용)
+          if (ascii) { var b = low.charAt(map[i] - 1), e = low.charAt(map[i + a.length - 1] + 1); if (/[a-z]/.test(b) || /[a-z]/.test(e)) ok = false; }   // 원문의 앞뒤 글자가 영문이면 낱말 한가운데(앞의 날짜 「11/11kao」·뒤의 공백 「tau twin」은 허용)
           if (ok) hits.push({ id: r.id, row: r, pos: i, len: a.length, alias: a });
           i = t.indexOf(a, i + 1);
         }
@@ -448,6 +464,12 @@
     });
     return out;
   }
+  //  뿌리가 같은 호텔·골프장(「○○호텔」·「○○골프」 — 접미를 뗀 짧은 별칭이 서로 같다): 다른 등록표의 **더 긴** 이름 안에 통째로 든 것은 그 이름의 일부다.
+  //   「○○호텔」 안의 「○○」는 골프장이 아니고, 「○○골프」 안의 「○○」는 호텔이 아니다. 길이가 같으면(뿌리만 적은 꼴) 어느 쪽인지 알 수 없어 그대로 둔다.
+  function _dropInside(hits, others) {
+    if (!hits.length || !others.length) return hits;
+    return hits.filter(function (h) { return !others.some(function (o) { return o.len > h.len && o.pos <= h.pos && h.pos + h.len <= o.pos + o.len; }); });
+  }
   function _psig(s) { var h = 5381; for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
   function _mdToIso(m, d, ref) {
     var y = Number(String(ref || '').slice(0, 4)) || new Date().getFullYear();
@@ -457,7 +479,7 @@
     return cand;
   }
   //  비고(엠클릭 비고+현지비고) → 수배 제안. text=[비고, 현지비고](같은 글이면 한 번만 읽는다) · ctx={pax, hotels[], courses[], segFrom, segTo, product}
-  //   호텔   = 등록표 이름·별칭이 처음 나오는 것(둘 이상이면 hotels 에 전부, 화면이 「확인」)
+  //   호텔   = 등록표 이름·별칭이 처음 나오는 것(둘 이상이면 hotels 에 전부, 화면이 「확인」). 골프장 이름 안에 든 호텔 짧은 별칭은 세지 않는다(_dropInside — 골프장도 같다)
   //   객실   = singleRequested(싱글룸 N·전원 싱글·이름 나열·홀수 1명) + 트리플(「트리플 N」·「3인 1실」) → 나머지 2명씩 트윈, 남는 1명은 싱글(odd)
   //   골프장 = 적힌 순서대로 날짜별 1라운드. 날짜는 이름 앞의 「11/5」「2일차」「둘째날」(또는 바로 뒤의 M/D)을 읽고, 없으면 이어서 하루씩 —
   //            코스 수가 박수보다 적으면 도착 다음 날부터(4박 3코스 → 2·3·4일차), 같거나 많으면 도착일부터. 추정한 날짜는 explicit=false(화면 「날짜 확인」).
@@ -486,7 +508,17 @@
   function partnerRemarkPlan(text, ctx) {
     ctx = ctx || {}; var rp = _remarkParts(text), txt = rp.parse;
     var pax = Number(ctx.pax) || 0, segFrom = String(ctx.segFrom || '').slice(0, 10), segTo = String(ctx.segTo || '').slice(0, 10);
-    var hh = partnerFindNames(txt, ctx.hotels || []), ch = partnerFindNames(txt, ctx.courses || []);
+    //  골프장 날짜를 읽기 전에 **조각 경계**를 표식으로 남긴다(정규화 _pnorm 이 공백·줄바꿈을 지우기 전에) — 날짜는 같은 조각 안의 코스에만 붙는다.
+    //   「‡」 = 숙박 기간(「12/1~12/5」「11/4-11/8」 — 코스 날짜가 아니다) · 「|」 = 날짜의 끝(「12/1 4명」이 「12/14명」으로 붙지 않게) ·
+    //   「¶」 = 줄바꿈 · 「§」 = 구분자로 쓴 슬래시(앞뒤 한쪽이라도 빈칸 — 날짜의 슬래시는 숫자에 붙어 있다). 이름 찾기에는 영향이 없다.
+    var txtG = txt.replace(/\d{1,2}\/\d{1,2}[ \t　]*[~〜\-–—][ \t　]*(?:\d{1,2}\/)?\d{1,2}(?![\d\/:])/g, '‡')
+      .replace(/(\d{1,2}\/\d{1,2})(?=[\s　·・\-ー_~〜()（）\[\]「」『』'"\.])/g, '$1|')
+      .replace(/([\s　·・\-ー_~〜()（）\[\]「」『』'"\.])(\d{1,2}\/\d{1,2})(?!\d)/g, '$1|$2')                 // 날짜의 앞도(「트윈 2 11/5」가 「트윈211/5」로 붙지 않게)
+      .replace(/\r?\n/g, '¶').replace(/[ \t　]+\/[ \t　]*|[ \t　]*\/[ \t　]+/g, '§');
+    var hh = partnerFindNames(txt, ctx.hotels || []), ch = partnerFindNames(txtG, ctx.courses || []);
+    //  두 등록표를 같은 글에서 맞댄다(자리 비교는 같은 정규화 글끼리 — 호텔은 txt, 골프장은 txtG)
+    hh = _dropInside(hh, partnerFindNames(txt, ctx.courses || []));
+    ch = _dropInside(ch, partnerFindNames(txtG, ctx.hotels || []));
     var hotel = hh.length ? hh[0] : null;
     var hotelIds = []; hh.forEach(function (h) { if (hotelIds.indexOf(h.id) < 0) hotelIds.push(h.id); });
     //  「싱글룸 2」「싱글: 2」처럼 단위 없는 수(Min 비고 양식)를 먼저 본다 — 야마나미 비고용 singleRequested 는 단위 없는 수를 세지 않고 이름 나열로 오독할 수 있다
@@ -503,16 +535,87 @@
     if (triple * 3 + single > pax) triple = Math.max(0, Math.floor((pax - single) / 3));
     var rest = pax - single - triple * 3; var twin = Math.max(0, Math.floor(rest / 2)); var odd = rest - twin * 2;
     if (odd === 1) single += 1;
-    var t = _pnorm(txt), nights = (segFrom && segTo) ? nightsBetween(segFrom, segTo) : 0;
+    var t = _pnorm(txtG), nights = (segFrom && segTo) ? nightsBetween(segFrom, segTo) : 0;
     var cur = segFrom ? isoShift(segFrom, (ch.length && nights > 0 && ch.length < nights) ? 1 : 0) : '';
     var golf = [], assumed = 0, days = ['첫', '둘', '셋', '넷', '다섯', '여섯', '일곱'];
+    //  날짜 토큰 — M/D(앞에 연도·다른 수가 「/」로 이어져도 뒤의 둘: 「2026/11/5」「26/11/5」「싱글룸2/11/5」) · N일차/N일째/N日目 · 첫날/둘째날 …
+    //   코스 날짜로 쓰지 않는 것(ex): 숙박 기간(‡) · 체류(segFrom~segTo) 밖 날짜(접수일·다른 구간) · 「12/5 귀국」처럼 귀국·체크아웃이 붙은 날짜.
+    //   ex 토큰도 자리는 남긴다 — 그 너머의 날짜를 코스가 끌어오지 못하게.
+    var toks = [], dm, dre = /(?:\d{1,4}\/)?(\d{1,2})\/(\d{1,2})(?!\d)(?!일차|일째|日目|명|인|팀|조|대|홀|名|人|組|台)(?!\/(?!\d{1,2}(?:명|인|팀|조|대|홀|名|人|組|台)))|(\d{1,2})(?:일차|일째|日目)|(첫|둘|셋|넷|다섯|여섯|일곱)째?날|‡/g;
+    while ((dm = dre.exec(t))) {
+      if (dm[1] && (/\d/.test(t.charAt(dm.index - 1)) || (t.charAt(dm.index - 1) === '/' && /\d/.test(t.charAt(dm.index - 2))))) { dre.lastIndex = dm.index + 1; continue; }   // 더 긴 수·더 긴 「/」 사슬의 한가운데
+      var iso = '', ex = dm[0] === '‡';
+      if (dm[1]) iso = _mdToIso(Number(dm[1]), Number(dm[2]), segFrom);
+      else if (dm[3]) iso = segFrom ? isoShift(segFrom, Number(dm[3]) - 1) : '';
+      else if (dm[4]) iso = segFrom ? isoShift(segFrom, days.indexOf(dm[4])) : '';
+      if (!ex && (!iso || (segFrom && segTo && (iso < segFrom || iso > segTo)))) ex = true;
+      if (!ex && dm[1] && /^\|?(?:귀국|출국|체크아웃|帰国|チェックアウト)/.test(t.slice(dre.lastIndex, dre.lastIndex + 8))) ex = true;
+      toks.push({ pos: dm.index, end: dre.lastIndex, iso: iso, ex: ex, used: false });
+    }
+    //  조각 — ¶·§·쉼표·세미콜론·글머리표, 그리고 날짜 밖의 슬래시에서 끊는다. nl = 그 조각 앞의 경계가 줄바꿈 하나뿐인가(이웃한 줄).
+    var segs = [], sa = 0, sprev = '', si, sc, inDate = function (p) { return toks.some(function (d) { return p >= d.pos && p < d.end; }); };
+    for (si = 0; si <= t.length; si++) {
+      sc = t.charAt(si);
+      if (si === t.length || sc === '¶' || sc === '§' || /[,，、;；■●◆※▶•]/.test(sc) || (sc === '/' && !inDate(si))) {
+        segs.push({ a: sa, b: si, nl: sprev === '¶' && sa > 0 && t.charAt(sa - 2) !== '¶' });
+        sa = si + 1; sprev = sc;
+      }
+    }
+    segs.forEach(function (g) {
+      g.cs = ch.filter(function (h) { return h.pos >= g.a && h.pos < g.b; });
+      g.ds = toks.filter(function (d) { return d.pos >= g.a && d.pos < g.b; });
+      //  날짜만 적힌 조각(요일·시각·오전/오후는 붙어 있어도 된다)
+      var live = g.ds.filter(function (d) { return !d.ex; });
+      g.dateOnly = !g.cs.length && g.ds.length === 1 && live.length === 1 &&
+        /^(?:[월화수목금토일]요일|[월화수목금토일]|[月火水木金土日]曜?日?|오전|오후|am|pm|\d{1,2}:\d{2}|일|日|\|)*$/.test(t.slice(g.a, live[0].pos) + t.slice(live[0].end, g.b));
+    });
+    //  한 조각 안에서 코스와 날짜를 잇는다. 두 가지 꼴(날짜 → 코스 / 코스 → 날짜)을 모두 해 보고 더 많이 이어지는 쪽을 고른다 —
+    //   같으면 글 전체의 꼴(「코스 1 + 날짜 1」 조각들의 다수결), 그래도 같으면 첫 코스에 더 가까운 쪽, 그다음은 조각의 첫 토큰.
+    //   사이가 너무 멀거나(24자) 사이에 다른 날짜(ex 포함)가 있으면 잇지 않는다.
+    var GAP = 24;
+    function pairSeg(g, dateFirst) {
+      var out = [], used = [];
+      g.cs.forEach(function (h, ci) {
+        var lo = ci > 0 ? g.cs[ci - 1].pos + g.cs[ci - 1].len : g.a, hi = ci < g.cs.length - 1 ? g.cs[ci + 1].pos : g.b, end = h.pos + h.len, k, d, pick = null;
+        if (dateFirst) {
+          for (k = g.ds.length - 1; k >= 0; k--) { d = g.ds[k]; if (d.end <= h.pos && d.pos >= lo) { if (!d.ex && !d.used && used.indexOf(d) < 0 && h.pos - d.end <= GAP) pick = d; break; } }
+        } else {
+          for (k = 0; k < g.ds.length; k++) { d = g.ds[k]; if (d.pos >= end && d.end <= hi) { if (!d.ex && !d.used && used.indexOf(d) < 0 && d.pos - end <= GAP) pick = d; break; } }
+        }
+        if (pick) { used.push(pick); out.push({ h: h, d: pick }); }
+      });
+      return out;
+    }
+    var vf = 0, vn = 0;
+    segs.forEach(function (g) {
+      var live = g.ds.filter(function (d) { return !d.ex; });
+      if (g.cs.length === 1 && g.ds.length === 1 && live.length === 1) { if (live[0].end <= g.cs[0].pos) vf++; else vn++; }
+    });
+    var dateOf = {};
+    segs.forEach(function (g) {
+      if (!g.cs.length || !g.ds.length) return;
+      var pf = pairSeg(g, true), pn2 = pairSeg(g, false), useF;
+      if (pf.length !== pn2.length) useF = pf.length > pn2.length;
+      else if (vf !== vn) useF = vf > vn;
+      else {
+        var h0 = g.cs[0], gl = Infinity, gr = Infinity;
+        g.ds.forEach(function (d) { if (d.ex) return; if (d.end <= h0.pos) gl = Math.min(gl, h0.pos - d.end); else if (d.pos >= h0.pos + h0.len) gr = Math.min(gr, d.pos - h0.pos - h0.len); });
+        useF = gl !== gr ? gl < gr : (g.ds[0].pos < h0.pos);
+      }
+      (useF ? pf : pn2).forEach(function (p) { p.d.used = true; dateOf[p.h.pos] = p.d.iso; });
+    });
+    //  줄을 나눠 적은 꼴(날짜만 적힌 줄 ↔ 코스만 적힌 줄) — 바로 이웃한 줄끼리만 잇는다(쉼표·슬래시 너머로는 잇지 않는다)
+    segs.forEach(function (g, gi) {
+      if (!g.cs.length || g.ds.length) return;
+      var pv = segs[gi - 1], nx = segs[gi + 1], first = g.cs[0], last = g.cs[g.cs.length - 1];
+      var pOk = !!(pv && g.nl && pv.dateOnly && !pv.ds[0].used && first.pos === g.a && dateOf[first.pos] == null);
+      var nOk = !!(nx && nx.nl && nx.dateOnly && !nx.ds[0].used && last.pos + last.len === g.b && dateOf[last.pos] == null);
+      if (pOk && nOk) { if (vn > vf) pOk = false; else nOk = false; }
+      if (pOk) { pv.ds[0].used = true; dateOf[first.pos] = pv.ds[0].iso; }
+      else if (nOk) { nx.ds[0].used = true; dateOf[last.pos] = nx.ds[0].iso; }
+    });
     ch.forEach(function (h) {
-      var before = t.slice(Math.max(0, h.pos - 10), h.pos), after = t.slice(h.pos + h.len, h.pos + h.len + 8), date = '', m;
-      if ((m = before.match(/(\d{1,2})\/(\d{1,2})(?:일|日)?$/))) date = _mdToIso(Number(m[1]), Number(m[2]), segFrom);
-      else if ((m = after.match(/^(\d{1,2})\/(\d{1,2})/))) date = _mdToIso(Number(m[1]), Number(m[2]), segFrom);
-      else if ((m = before.match(/(\d{1,2})(?:일차|일째|日目)$/))) date = segFrom ? isoShift(segFrom, Number(m[1]) - 1) : '';
-      else if ((m = before.match(/(첫|둘|셋|넷|다섯|여섯|일곱)째?날$/))) date = segFrom ? isoShift(segFrom, days.indexOf(m[1])) : '';
-      var explicit = !!date;
+      var date = dateOf[h.pos] || '', explicit = !!date;
       if (!date) { date = cur; if (segTo && date > segTo) date = segTo; assumed++; }
       golf.push({ courseId: h.id, name: h.row.name_ko || h.row.name_ja || h.row.name || '', date: date, explicit: explicit });
       if (date) cur = isoShift(date, 1);
@@ -847,7 +950,9 @@
   //  · 입국일 = ICN 팀만 18H(부산편은 도착이 늦어 없음)
   //  · 귀국일 = PUS 팀만 **오전 18H 스루**(Min 2026-10-25 — 9H 폐기. 인천편은 오전 출발이라 라운딩 없음)
   //  · 체류 중 = 전원 18H. 단 간지호텔은 평일이면 九重高原CC, 주말·공휴일은 やまなみCC.
-  var JP_HOLIDAYS = ['2025-01-01','2025-01-13','2025-02-11','2025-02-23','2025-02-24','2025-03-20','2025-04-29','2025-05-03','2025-05-04','2025-05-05','2025-05-06','2025-07-21','2025-08-11','2025-09-15','2025-09-22','2025-09-23','2025-10-13','2025-11-03','2025-11-23','2025-11-24','2026-01-01','2026-01-12','2026-02-11','2026-02-23','2026-03-20','2026-04-29','2026-05-03','2026-05-04','2026-05-05','2026-05-06','2026-07-20','2026-08-11','2026-09-21','2026-09-22','2026-09-23','2026-10-12','2026-11-03','2026-11-23','2027-01-01','2027-01-11','2027-02-11','2027-02-23','2027-03-21','2027-03-22','2027-04-29','2027-05-03','2027-05-04','2027-05-05','2027-07-19','2027-08-11','2027-09-20','2027-09-23','2027-10-11','2027-11-03','2027-11-23'];
+  var JP_HOLIDAYS = ['2025-01-01','2025-01-13','2025-02-11','2025-02-23','2025-02-24','2025-03-20','2025-04-29','2025-05-03','2025-05-04','2025-05-05','2025-05-06','2025-07-21','2025-08-11','2025-09-15','2025-09-23','2025-10-13','2025-11-03','2025-11-23','2025-11-24','2026-01-01','2026-01-12','2026-02-11','2026-02-23','2026-03-20','2026-04-29','2026-05-03','2026-05-04','2026-05-05','2026-05-06','2026-07-20','2026-08-11','2026-09-21','2026-09-22','2026-09-23','2026-10-12','2026-11-03','2026-11-23','2027-01-01','2027-01-11','2027-02-11','2027-02-23','2027-03-21','2027-03-22','2027-04-29','2027-05-03','2027-05-04','2027-05-05','2027-07-19','2027-08-11','2027-09-20','2027-09-23','2027-10-11','2027-11-03','2027-11-23',
+    //  2028 — 春分(3/20)·秋分(9/22)은 예정일(전년 2월 官報 로 확정). 일요일과 겹치는 날이 없어 振替休日 없음. 다음 해 목록은 内閣府 「国民の祝日」 발표를 보고 추가한다(단위테스트가 7월부터 내년 목록을 요구한다).
+    '2028-01-01','2028-01-10','2028-02-11','2028-02-23','2028-03-20','2028-04-29','2028-05-03','2028-05-04','2028-05-05','2028-07-17','2028-08-11','2028-09-18','2028-09-22','2028-10-09','2028-11-03','2028-11-23'];
   var JP_HOLIDAY_SET = new Set(JP_HOLIDAYS);
   function isJpHoliday(date) { return JP_HOLIDAY_SET.has(String(date).slice(0, 10)); }
   function isNonWorkday(date) {
@@ -1041,36 +1146,237 @@
   //  ⚠ 「전기카드」는 카트→카드 오타다(메리트 비고 실측). 이 도메인에서 달리 해석될 수 없어
   //    **확정(sure)으로 인정**한다(Min 승인 2026-08). 「전기」 한 단어만 온 경우는 여전히
   //    'maybe' → 화면의 「재확인 필요」로 빠진다.
-  var CART_ELECTRIC = /전기\s*카[트드]|전동\s*카[트드]|電動\s*カ[ーー]?ト|EV\s*카[트드]|EV\s*カ[ーー]?ト|E\s*카[트드]/i;
-  function wantsElectricCart(remark) {
-    return CART_ELECTRIC.test(String(remark == null ? '' : remark));
+  //  「E카트」의 E 는 낱말 첫머리일 때만 — 「lotte 카드 결제」「THE 카드」처럼 영문 낱말 끝의 E 는 전기카트가 아니다.
+  var CART_WORD = '전기\\s*카[트드]|전동\\s*카[트드]|電動\\s*カ[ーー]?ト|EV\\s*카[트드]|EV\\s*カ[ーー]?ト|(?:^|[^A-Za-z])E\\s*카[트드]';
+  var CART_ELECTRIC = new RegExp(CART_WORD, 'i');
+  //  ── 부정·미확정 문구 ── 전기카트에 「취소·불필요·신청 안 함·대기 …」가 붙으면 확정이 아니다(자동 저장·청구하지 않고 사람이 본다).
+  //  틀렸을 때의 손해가 다르다: 취소된 카트를 확정으로 읽으면 청구가 나가고, 신청을 재확인으로 읽으면 사람이 한 번 더 본다 — 애매하면 재확인 쪽.
+  //  다만 **다른 항목**(석식·싱글룸·송영 …)의 취소·대기까지 잡으면 평범한 신청이 날마다 손입력이 된다. 그래서 「그 카트의 것」을 이렇게 가른다:
+  //   ① 절 = 줄바꿈·쉼표·슬래시(날짜 제외)·세미콜론·탭·글머리표·번호 목록·「 - 」·「+ & | *」에서 끊는다. 숫자 사이의 쉼표·가운뎃점·마침표는 끊지 않는다(「1,2일차」).
+  //   ② 같은 절 안(낱말 뒤): **센 낱말**(취소·캔슬·불필요·신청 안 함·대신 가솔린 …)은 절 끝까지 본다 — 사유가 길어도 취소는 취소(「…고객 요청으로 취소」).
+  //      **여린 낱말**(대기·없음·불가·미정·제외·문의 …)은 낱말과의 사이에 신청·수량·날짜·재고 말만 있을 때만(「전기카트 2대 대기」 ○ / 「변경 없음」「페어웨이 진입 불가」 ×).
+  //      절 안에 다른 항목 이름(석식·싱글·송영·티타임 …)이 나오면 거기서부터는 그 항목 얘기다(「전기카트 2대 석식 취소」).
+  //   ③ 괄호: 안에 센 낱말이 있으면 그 카트의 것(「(전체 취소)」「(고객 사정 취소)」) — 앞에 다른 항목 이름이나 단서(「우천 시」)가 있을 때만 건너뛴다. 여린 낱말은 ②와 같다.
+  //   ④ 끊긴 자리 **바로 뒤 조각**: 제 주어·목적어가 없는 부정은 앞 항목에 붙는다 — 앞이 신청·수량·날짜 말뿐이고(「1대 취소」「신청 안 함」) 뒤가 비었거나 요청·종결 말일 때
+  //      (「취소 부탁드립니다」「취소해 주시면 감사하겠습니다」). 「취소 2명」「대기: 싱글룸」「취소분 나오면 …」처럼 제 목적어가 있으면 다른 얘기다.
+  //   ⑤ 낱말 앞: 「취소: 전기카트」「취소 요청: …」「(취소) …」, 취소 머리줄(「■취소」) 아래에 적힌 줄. 앞에 다른 낱말이 있으면(「석식 취소 - 전기카트」) 아니다.
+  //   ⑥ 단서·이중 부정(「취소 시 연락」「대기 없이 확정」「취소 불가」「안되면 가솔린」)과 취소 규정·수수료 얘기는 부정이 아니다 — 그 낱말만 건너뛰고 뒤를 계속 본다.
+  //   ⑦ 대수가 둘 이상 적혔거나(「2대→1대」「1대 추가 (총 3대)」) 0대면 사람이 본다.
+  //  칸이 여럿이면(현지비고·비고) **칸마다 따로** 판정한다 — 다른 칸의 「없음」「미정」이 이 칸의 카트에 붙지 않게.
+  var _CART_REQ = '사전\\s*신청|신청|사용|이용|예약|요청|대여|필요|희망|申請|申込み?|申し込み|利用|使用|予約|希望';
+  var _CART_CXLW = '취소|캔슬|켄슬|캔설|cancel(?:l?ed)?|\\bCXL\\b|\\bCNX\\b|キャンセル|取消|取り消し';
+  var _CART_STRONG = 'キャンセル待ち|취소\\s*대기|' + _CART_CXLW +
+    '|(?:' + _CART_REQ + ')\\s*(?:은|는|을|를|이|가|도|は|を|も)?\\s*(?:하지\\s*않|치\\s*않|안\\s*(?:함|합|해|하|할|했)|없[음이습다어]|[xX×✕✖](?![\\dA-Za-z])|しません|しない|せず|なし|無し)' +
+    '|(?:하지|치|타지|쓰지|원하지|원치)\\s*않' +
+    '|안\\s*(?:함|합|해|하|할|했|씀|쓰|써|쓴|씁|탐|타요|타심|타십|탑니다|탄다)' +
+    '|불필요|필요\\s*없|미신청|미사용|미이용|철회|삭제|포기|뺐|빼\\s*(?:주|고|달|줘)|아님|아닙니다' +
+    '|不要|使いません|使わない|要りません|いりません|要らない|いらない|中止|辞退|見送り|not\\s+needed|no\\s+need';
+  var _CART_WEAK = '없[음이습다어]|불가|대기|보류|미정|미확정|제외|마감|매진|품절|소진|안\\s*[되됨돼]|なし|無し|不可|保留|待ち|待機|ウェイティング|웨이팅|未定|未確定|除く|除外' +
+    '|문의|가능\\s*여부|여부\\s*확인|가능한지|가능할지|될지|되는지|추후|검토|고민|検討|確認中';
+  var _CART_NEG_G = new RegExp('(' + _CART_STRONG + ')|(' + _CART_WEAK + ')', 'ig');
+  //  부정 낱말 뒤가 이러면 단서·이중 부정이다(그 낱말과 함께 건너뛴다)
+  var _CART_COND_POST = /^\s*(?:능\s*)?(?:시(?:에는?|엔|는)?(?![가-힣])|時|の場合|した場合|되면|하면|이면|라면|으면|면(?![가-힣])|할\s*경우|일\s*경우|한\s*경우|의\s*경우|가능(?!\s*(?:할까|한가|한지|하나요|할지|할런지|여부|\?|？))|可能(?!か)|可(?![否能])|불가(?!능)|不可|없이|없음|없습니다|아님|아닙니다|풀림|해제|(?:→|->|=>)\s*(?:확정|OK|완료|確定|完了))/i;
+  //  부정 낱말 뒤가 이러면 취소 규정·수수료 얘기다(뒤따르는 「없음·발생·안내」까지 건너뛴다)
+  var _CART_FEE_POST = /^\s*(?:규정|수수료|위약금|차지|챠지|료(?![가-힣])|料|規定|ポリシー|policy|charge|fee)(?:\s*(?:은|는|이|가|도|は|が|も)?\s*(?:없[음이습다어]|있음|있습니다|발생[가-힣]*|안내|확인|부과[가-힣]*|なし|無し|あり))?/i;
+  //  부정 낱말 **앞**이 이러면 단서다(「우천 시 취소」「비 오면 취소」)
+  var _CART_COND_PRE = /(?:[가-힣)]\s*시(?:에는?|엔|는)?|時|(?:하|되|오|이|으|라|가|나|보|주|시)면|경우(?:에는?|엔)?|の場合|なら|たら)\s*$/;
+  var _CART_NEUTRAL_PRE = /(?:변경|변동|문제|이상|사항|変更|問題|異常|事項)\s*(?:은|는|이|가|도|は|が|も)?\s*$/;                     // 「변경 없음」「특이사항·문의사항 없음」
+  var _CART_PAXQ = /\d{1,2}\s?(?:명|인|팀|분|名|人)/;                                                                        // 인원 수 — 「1명 취소」는 사람 얘기다
+  var _CART_KEEP_PRE = /(?:환불|변경|교환|양도|연기|返金|変更|払戻)\s*$/;
+  //  다른 항목 이름 — 절·괄호 안에서 이것이 나오면 그 뒤의 부정은 그 항목의 것이다
+  var _CART_ITEM = /싱글|트윈|투윈|더블|트리플|객실|조식|중식|석식|식사|특식|도시락|캐디|송영|차량|픽업|샌딩|버스|택시|온천|항공|좌석|수하물|호텔|숙박|쿠폰|환불|결제|지불|입금|현금|요금|비용|체크인|체크아웃|티타임|티업|라운딩|골프|シングル|ツイン|ダブル|トリプル|部屋|客室|朝食|昼食|夕食|食事|キャディ|送迎|温泉|航空|ホテル|宿泊|料金|支払|決済|ゴルフ|ラウンド/;
+  //  부정 앞에 와도 되는 말(신청·수량·날짜·재고) — 이것뿐이면 그 부정은 카트 얘기다. 한 번에 지워 보고 남는 글자가 없는지 본다(되돌아가기 없는 치환).
+  var _CART_OKTOK_G = /[\s\d\/.\-–~:：,·()（）\[\]【】]|사전\s*신청|신청|예약|요청|희망|사용|이용|대여|필요|예정|사전|현재|아직|일단|우선|전체|전부|모두|전원|하지|재고|수량|부족|일차|일째|박째|첫째\s*날|둘째\s*날|셋째\s*날|넷째\s*날|첫\s*날|마지막\s*날|마지막|입국일?|귀국일?|도착일?|출발일?|당일|익일|전일|[월화수목금토일]요일|오전|오후|으로|부터|까지|에는|에서|대|개|台|명|인|名|팀|건|회|만|은|는|이|가|을|를|도|의|에|로|일|날|申請|申込み?|申し込み|利用|使用|予約|希望|初日|最終日|到着日|出発日|当日|日目|日|のみ|は|を|も|が|の|に|まで|から|全て|全部|すべて|在庫/g;
+  function _cartOnlyReq(s) { return String(s).replace(_CART_OKTOK_G, '') === ''; }
+  var _CART_LEAD = /^[\s■□●○◆◇※▶▷•·ㆍ・★☆◎▪\-–—→:：(\[（【<=>*]+/;
+  var _CART_HEAD_TAIL = new RegExp('(?:' + _CART_CXLW + ')\\s*(?:요청|건|사항|항목|내역|목록|리스트|됨|분|된|한|하신|済み?)?\\s*[:：)\\]）】>→\\-–—]*\\s*$', 'i');
+  //  낱말 앞의 글이 취소 낱말(+요청·건·사항 …)로 끝나는가 — 그 앞에 다른 항목·인원 수가 있으면(「석식 취소 - 전기카트」「1명 취소 / …」) 아니다
+  function _cartHeadNeg(h) {
+    var m = _CART_HEAD_TAIL.exec(h); if (!m) return false;
+    var pre = h.slice(0, m.index);
+    return pre.length <= 12 && !_CART_ITEM.test(pre) && !_CART_PAXQ.test(pre);
+  }
+  var _CART_X = /(?:^|[\s:：(（]|카[트드]|ト|신청|사용|이용|\d\s*[대台개])\s*[xX×✕✖](?!\s*(?:[\dA-Za-z]|전\s*일|양일|매일|全日|毎日))/;
+  var _CART_SWAP = /(?:가솔린|일반\s*카트|乗用|ガソリン)[^\n]{0,8}?(?:변경|変更|교체)/;
+  var _CART_SEPC = /[\n\t;；。／|｜+＋&＆*＊■□●○◆◇※▶▷•★☆◎▪]/;
+  function _cartNorm(text) {
+    return String(text == null ? '' : text).replace(/\r\n?/g, '\n').replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+  }
+  //  i 자리에서 시작하는 「끊는 자리」의 길이(없으면 0)
+  function _cartSepLen(t, i) {
+    var c = t.charAt(i), p = t.charAt(i - 1), n = t.charAt(i + 1), code = t.charCodeAt(i);
+    if (_CART_SEPC.test(c)) return 1;
+    if (code >= 0x2460 && code <= 0x2473) return 1;                                              // ①~⑳
+    if (c === ',' || c === '，' || c === '、' || c === '·' || c === 'ㆍ' || c === '・') return (/\d/.test(p) && /\d/.test(n)) ? 0 : 1;   // 「1,2일차」
+    if (c === '/') return (/\d/.test(p) && /\d/.test(n)) ? 0 : 1;                                // 날짜의 슬래시
+    if (c === '.') return (!(/\d/.test(p) && /\d/.test(n)) && (n === '' || /\s/.test(n))) ? 1 : 0;
+    if ((c === '-' || c === '–' || c === '—') && /\s/.test(p) && /\s/.test(n)) return 1;          // 앞뒤가 빈칸인 줄표
+    if (c >= '0' && c <= '9' && (i === 0 || /\s/.test(p))) {                                     // 번호 목록 「2) 」
+      var j = i; while (j - i < 2 && /\d/.test(t.charAt(j))) j++;
+      if (t.charAt(j) === ')' && (j + 1 >= t.length || /\s/.test(t.charAt(j + 1)))) return j - i + 1;
+    }
+    return 0;
+  }
+  function _cartOpen(c) { return c === '(' || c === '（' || c === '[' || c === '【'; }
+  function _cartClose(c) { return c === ')' || c === '）' || c === ']' || c === '】'; }
+  //  from 부터 한 절을 모은다 — 괄호 안은 따로(parens), 본문(main)에는 빈칸으로. at = 멈춘 자리, len = 그 자리의 끊는 글자 길이(0 = 글의 끝·바깥 괄호의 끝·길이 한도)
+  function _cartCollect(t, from, cap) {
+    var main = '', parens = [], i = from, c, L, close, k;
+    for (; i < t.length && main.length < cap; i++) {
+      c = t.charAt(i);
+      if (_cartOpen(c)) {
+        for (close = i + 1; close < t.length && close - i <= 60; close++) { k = t.charAt(close); if (_cartClose(k) || k === '\n') break; }
+        parens.push(t.slice(i + 1, close));
+        i = _cartClose(t.charAt(close)) ? close : close - 1; main += ' '; continue;
+      }
+      if (_cartClose(c)) break;                                                                  // 그 카트가 괄호 안에 적혀 있다 — 괄호가 닫히면 끝
+      L = _cartSepLen(t, i);
+      if (L) return { main: main, parens: parens, at: i, len: L };
+      main += c;
+    }
+    return { main: main, parens: parens, at: i, len: 0 };
+  }
+  //  s 에서 「걸리는 부정 낱말」을 차례로 찾는다 — 단서·수수료·환불불가·「1대기준」은 건너뛴다. cb(낱말 정보) 가 true 를 돌려주면 거기서 끝(true).
+  function _cartEachNeg(s, cb) {
+    var m, w, pre, post, cm, fm;
+    _CART_NEG_G.lastIndex = 0;
+    while ((m = _CART_NEG_G.exec(s))) {
+      w = m[0]; pre = s.slice(0, m.index); post = s.slice(m.index + w.length);
+      if ((fm = _CART_FEE_POST.exec(post))) { _CART_NEG_G.lastIndex = m.index + w.length + fm[0].length; continue; }   // 「취소 수수료 없음」
+      if ((cm = _CART_COND_POST.exec(post))) { _CART_NEG_G.lastIndex = m.index + w.length + cm[0].length; continue; }   // 「취소 시 연락」「대기 없이」「취소 불가」
+      if (_CART_COND_PRE.test(pre)) continue;                                                    // 「우천 시 취소」
+      if ((w === '불가' || w === '不可') && _CART_KEEP_PRE.test(pre)) continue;                   // 「환불불가」「변경 불가」
+      if (w === '대기' && /\d$/.test(pre)) continue;                                           // 「1대기준」의 대+기
+      if (!m[1] && /^없|^なし|^無し/.test(w) && _CART_NEUTRAL_PRE.test(pre)) continue;            // 「변경 없음」「問題なし」
+      if (w === '문의' && /^\s?사항/.test(post)) continue;                                        // 「문의사항 없음」
+      if (m[1] && /^안/.test(w) && /[가-힣]$/.test(pre) && !/(?:신청|사용|이용|예약|요청|대여|필요|희망|카[트드]|[은는도이가을를])$/.test(pre)) continue;   // 「편안하게」의 안+하
+      if (cb({ strong: !!m[1], word: w, idx: m.index, end: m.index + w.length, pre: pre, post: post })) return true;
+    }
+    return false;
+  }
+  //  낱말 뒤 같은 절(다른 항목 이름 앞까지)
+  function _cartNegTail(tail) {
+    var im = _CART_ITEM.exec(tail), s = im ? tail.slice(0, im.index) : tail, sw;
+    if (/^\s*(?:에서|은|는|이|가)?\s*(?:대신|말고|아니고)/.test(s)) return true;                   // 「전기카트 대신 가솔린」
+    if ((sw = _CART_SWAP.exec(s)) && !_CART_COND_PRE.test(s.slice(0, sw.index)) && !/(?:시|時|면|경우|場合)\s/.test(s.slice(0, sw.index))) return true;   // 「일반카트로 변경」
+    if (_cartEachNeg(s, function (n) { return n.strong || _cartOnlyReq(n.pre); })) return true;
+    return _CART_X.test(s);
+  }
+  //  괄호 안 — 쉼표 등으로 나눈 조각마다
+  function _cartNegParen(inner) {
+    if (/^\s*[xX×✕✖]\s*$/.test(inner)) return true;
+    var parts = String(inner).split(/[,，、;；\/／]/), k, hit = false;
+    for (k = 0; k < parts.length && !hit; k++) {
+      hit = _cartEachNeg(parts[k], function (n) {
+        if (_CART_ITEM.test(n.pre)) return false;                                                // 「(석식 1회 취소)」「(싱글룸 대기)」
+        return n.strong || _cartOnlyReq(n.pre);
+      });
+    }
+    return hit;
+  }
+  //  부정 낱말 뒤가 비었거나 요청·종결 말뿐인가(제 목적어가 없다)
+  function _cartEndingOnly(post) {
+    if (/^(?:분|건)?[\s:：]*\d{1,2}\s?(?:대|台)(?!\s?(?:기|당))/.test(post)) return true;       // 「취소: 1대」「취소분 1대」 — 대수가 붙은 취소는 카트 얘기다
+    if (/^(?:자|분|팀|건|수|료|율|표|석|인원|待ち)/.test(post)) return false;                      // 취소자·취소분·취소팀·대기석 = 제 낱말
+    if (_CART_ITEM.test(post)) return false;
+    var p = post.replace(/^[가-힣]{0,8}/, '');                                                   // 같은 낱말의 꼬리(취소**해**·안 합**니다**)
+    return /^[\s)\]）】>.!~。*]*(?:(?:で|を|に)?\s*(?:요청|부탁|바랍|바람|드립|드려|합니다|해\s*주|주세요|주시|처리|완료|예정|입니다|요망|희망|원함|원합|중|お願い|です|でした|します|しました|済み?)[가-힣ぁ-んァ-ヶー一-龥\s.!~。*]*)?$/.test(p);
+  }
+  //  끊긴 자리 바로 뒤 조각 — 앞이 신청·수량·날짜 말뿐이고 뒤에 제 목적어가 없는 부정
+  function _cartNegFrag(s, bare) {
+    s = String(s).replace(_CART_LEAD, '');
+    return _cartEachNeg(s, function (n) {
+      if (!_cartEndingOnly(n.post)) return false;
+      if (_cartOnlyReq(n.pre)) return bare || !(/^(?:없|なし|無し)/.test(n.word) && !n.pre.replace(/\s/g, ''));   // 조각이 「없음」뿐이면 다른 항목·다른 물음의 답이다(낱말만 적힌 머리 뒤라면 그 카트의 답)
+      return n.strong && !_CART_ITEM.test(n.pre) && !_CART_PAXQ.test(n.pre);                              // 「고객 요청으로 취소」 — 사유가 앞에 붙은 취소(다른 항목·인원 수가 앞에 있으면 아니다)
+    });
+  }
+  //  그 절의 대수들(서로 다른 값) — 「N대당」「N대기준」은 대수가 아니다. 다른 항목이 적힌 괄호의 수는 세지 않는다.
+  function _cartQtys(head, tail, parens) {
+    var out = [], m, re, im = _CART_ITEM.exec(tail), s = im ? tail.slice(0, im.index) : tail;
+    function add(n) { n = Number(n); if (out.indexOf(n) < 0) out.push(n); }
+    function scan(x) { re = /(\d{1,2})\s*(?:대(?!\s*(?:기|당))|台|개(?![월동소인]))/g; while ((m = re.exec(x))) add(m[1]); }
+    if ((m = /(\d{1,2})\s*(?:대|台)\s*(?:의|은|는|を|の)?\s*$/.exec(head))) add(m[1]);             // 「2대 전기카트」
+    scan(s);
+    parens.forEach(function (p) { if (!_CART_ITEM.test(p)) scan(p); });
+    return out;
+  }
+  //  글 안의 전기카트 낱말마다 살핀다 → { neg: 그 카트의 부정·미확정이 있다, qty: 처음 읽힌 대수(없으면 null) }
+  function _cartScan(text) {
+    var t = _cartNorm(text), re = new RegExp(CART_WORD, 'ig'), m, neg = false, qty = null;
+    while ((m = re.exec(t))) {
+      var ks = m.index, ke = ks + m[0].length;
+      var T = _cartCollect(t, ke, 80);
+      //  낱말 앞(같은 줄, 마지막 끊는 자리 뒤)
+      var ls = t.lastIndexOf('\n', ks - 1) + 1, ls0 = ls; if (ks - ls > 60) ls = ks - 60;
+      var q = ls, hs = ls, sepAt = -1, L;
+      while (q < ks) { L = _cartSepLen(t, q); if (L) { sepAt = q; q += L; hs = q; } else q++; }
+      var head = t.slice(hs, ks), qs = _cartQtys(head, T.main, T.parens);
+      if (qs.length > 1 || qs[0] === 0) neg = true;                                               // 「2대→1대」「0대」
+      else if (qs.length === 1 && qty == null && qs[0] <= 20) qty = qs[0];
+      if (neg) continue;
+      if (_cartNegTail(T.main) || T.parens.some(_cartNegParen)) { neg = true; continue; }
+      //  끊긴 자리 바로 뒤 조각(글머리표·빈칸은 건너뛰되 줄은 한 번만 넘는다)
+      if (T.len) {
+        var j = T.at + T.len, nl = t.charAt(T.at) === '\n' ? 1 : 0, c2;
+        for (; j < t.length; j++) { c2 = t.charAt(j); if (c2 === '\n') { if (nl) break; nl = 1; continue; } if (!/[\s■□●○◆◇※▶▷•·ㆍ・★☆◎▪\-–—→:：=>*]/.test(c2)) break; }
+        if (j < t.length && t.charAt(j) !== '\n') {
+          var F = _cartCollect(t, j, 80), bare = !T.parens.length && !T.main.replace(/[\s:：\-–—=>→]/g, '') && !head.replace(_CART_LEAD, '');   // 낱말만 적힌 머리(「전기카트 / 없음」)
+          if (F.main.replace(_CART_LEAD, '') ? _cartNegFrag(F.main, bare) : (F.parens.length ? _cartNegFrag(F.parens[0], bare) : false)) { neg = true; continue; }
+        }
+      }
+      //  낱말 앞: 「취소: 전기카트」 · 같은 줄 앞 조각이 취소 머리말(「취소됨 - 전기카트」) · 윗줄이 취소 머리줄(「■취소」)
+      var h = head.replace(_CART_LEAD, '');
+      if (h) { if (_cartHeadNeg(h)) neg = true; continue; }
+      if (sepAt > ls) { if (_cartHeadNeg(t.slice(ls, sepAt).replace(_CART_LEAD, '').trim())) neg = true; continue; }
+      if (ls === ls0 && !t.slice(ls0, ks).replace(_CART_LEAD, '')) {
+        var e = ls0 - 1, k, line;
+        for (k = 0; k < 4 && e > 0; k++) {
+          var b = t.lastIndexOf('\n', e - 1) + 1; line = t.slice(b, e).trim();
+          if (!line || line.length > 60) break;
+          if (_cartHeadNeg(line.replace(_CART_LEAD, ''))) { neg = true; break; }
+          if (/^[■□●◆◇※▶★☆◎]/.test(line)) break;                                                // 다른 머리줄
+          e = b - 1;
+        }
+      }
+    }
+    return { neg: neg, qty: neg ? null : qty };
+  }
+  function _cartFields(remark) {
+    return (Array.isArray(remark) ? remark : [remark]).map(function (v) { return String(v == null ? '' : v); });
   }
   //  비고 표기 판정 3단계(Min 2026-08) — 메리트투어가 현지전달비고에 적어 보내는 문구가
   //  「전기카트 신청」처럼 명확할 때도 있고 「전기」 한 단어만 올 때도 있다.
-  //   'sure'  = 전기/전동/EV + 카트 → 그대로 집계
-  //   'maybe' = 전기·電気·EV 는 있는데 '카트'가 없다 → **재확인 필요**(집계에서 뺀다)
+  //   'sure'  = 전기/전동/EV + 카트 → 그대로 집계(단 그 카트에 「취소·불필요·신청 안 함·대기」 같은 부정·미확정 문구가 붙으면 'maybe')
+  //   'maybe' = 전기·電気·EV 는 있는데 '카트'가 없다, 또는 부정 문구가 붙었다 → **재확인 필요**(집계에서 뺀다)
   //   'none'  = 언급 없음
+  //  remark 는 글 하나 또는 **칸의 배열**([현지비고, 비고]) — 배열이면 칸마다 따로 판정해 합친다.
   var CART_ELEC_HINT = /전기|전동|電動|電気|\bEV\b/i;
   function cartRemarkKind(remark) {
-    var t = String(remark == null ? '' : remark);
-    if (!t.trim()) return 'none';
-    if (CART_ELECTRIC.test(t)) return 'sure';
-    if (CART_ELEC_HINT.test(t)) return 'maybe';
-    return 'none';
+    var fs = _cartFields(remark), sure = false, hint = false, i, t;
+    for (i = 0; i < fs.length; i++) {
+      t = fs[i];
+      if (!t.trim()) continue;
+      if (CART_ELECTRIC.test(t)) { if (_cartScan(t).neg) return 'maybe'; sure = true; }          // 한 칸이라도 그 카트의 부정이면 사람이 본다
+      else if (CART_ELEC_HINT.test(t)) hint = true;
+    }
+    return sure ? 'sure' : (hint ? 'maybe' : 'none');
   }
+  function wantsElectricCart(remark) { return cartRemarkKind(remark) === 'sure'; }
   //  pax → {code, qty}. electric=true 면 전기카트, 아니면 가솔린(2인승/4인승).
   //  code 는 cart_types.code 와 동일: 'electric' | 'gas2' | 'gas4'
   //  비고에 적힌 **신청 대수**를 읽는다(있으면 4명당 1대 추정보다 우선).
   //   실측 문구: 「■전기카드 1개 신청 / 2인용으로 사용예정」 · 「전기카트 2대 신청」
-  //   전기 키워드 근처의 숫자만 본다(다른 숫자에 오염되지 않게).
-  var CART_QTY_AFTER  = /(?:전기|전동|EV|電動|電気)\s*(?:카[트드]|カ[ーー]?ト)?[^0-9]{0,8}(\d{1,2})\s*(?:대|개|台)/i;
-  var CART_QTY_BEFORE = /(\d{1,2})\s*(?:대|개|台)[^0-9]{0,8}(?:전기|전동|EV|電動|電気)\s*(?:카[트드]|カ[ーー]?ト)?/i;
+  //   전기카트가 적힌 **절** 안의 대수만 본다(「싱글룸 2개 / 전기카트 신청」의 2 는 대수가 아니다). 낱말 앞은 바로 붙은 「N대」만.
+  //   대수가 둘 이상 적혔으면(바뀐 대수) 고르지 않는다 — cartRemarkKind 가 재확인으로 보낸다.
   function cartQtyFromRemark(remark) {
-    var t = String(remark == null ? '' : remark);
-    var m = t.match(CART_QTY_AFTER) || t.match(CART_QTY_BEFORE);
-    if (!m) return null;
-    var n = parseInt(m[1], 10);
-    return (n > 0 && n <= 20) ? n : null;
+    var fs = _cartFields(remark), i, r;
+    for (i = 0; i < fs.length; i++) {
+      if (!CART_ELECTRIC.test(fs[i])) continue;
+      r = _cartScan(fs[i]);
+      if (r.qty != null && r.qty > 0) return r.qty;
+    }
+    return null;
   }
 
   //  전기카트 요금 무료일(Min 2026-08).
@@ -1091,43 +1397,228 @@
   //    애매하면 언제나 사람에게 넘긴다.
   var SG_WORD  = /싱글|single|シングル|1인실|일인실|독방|독실/i;   // 「독실」도 싱글(Min 2026-09: 앞으로 5인 팀은 독실·싱글룸·1인실 등으로 꼭 적는다)
   var SG_BLOCK = /대기|불가|어려울|어렵|만실|취소|보류/;
-  var SG_MIX   = /트윈|ツイン|더블|ダブル|트리플|トリプル/;
+  //  싱글이 적힌 절 안에서만 보는 「확정이 아니다」 낱말(일본어·외래어 표기) — 글 전체에서 찾는 SG_BLOCK 과 달리 다른 항목의 취소에는 걸리지 않는다
+  var SG_BLOCK2 = /캔슬|켄슬|철회|웨이팅|キャンセル|取消|取り消し|不可|満室|待ち|保留|ウェイティング/;
+  var SG_MIX   = /트윈|투윈|ツイン|더블|ダブル|트리플|トリプル/;
   var SG_ALL   = /전원|전부|모두|全員/;
+  //  ── 싱글 판정 공용 도우미(29차) ──
+  //  전각 숫자는 반각으로 읽는다(「２방」). 탭은 빈칸으로, 길게 이어진 빈칸·빈 줄은 하나로 줄인다(고정폭으로 채운 비고에서 정규식이 멈추지 않게).
+  function _sgHalf(s) {
+    return String(s == null ? '' : s).replace(/\r\n?/g, '\n').replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+      .replace(/[ \t　]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n');
+  }
+  //  수량이 아닌 숫자 — 가격(「1인당」「추가요금 1인 2만원」「5천엔」「15,000엔」), 나눠 쓰는 방식(「각 1실」「1방씩」「1인 1실」). 세기 전에 지운다.
+  //   ⚠ 요금 낱말 없이 붙은 「1인 15000엔」「1명 15000엔」의 1 은 지우지 않는다 — 「싱글 1명 15000엔 현지지불」(한 명만 싱글)과 꼴이 같다.
+  var _SG_AMT = '(?:\\d[\\d,.]{2,14}\\s?(?:엔|원|円)|\\d[\\d,.]{0,14}\\s?(?:천|만)\\s?(?:엔|원|円)?)';
+  //   가격으로 보는 자리 = 요금 낱말 바로 뒤(「추가요금 1인 2만원」) 또는 괄호의 첫머리(「4명 싱글룸 희망 (1인 15000엔 현지지불)」 — 인원을 적은 뒤의 덧말).
+  var _SG_FEEAMT = new RegExp('((?:요금|차지|챠지|비용|금액|가격|料金|チャージ|charge)\\s?(?:은|는|이|가|[:：])?\\s?|[(（]\\s?)\\d{1,3}\\s?(?:인|명|名|人)\\s?' + _SG_AMT, 'gi');
+  var _SG_NOISE = new RegExp('\\d{1,3}\\s?(?:인|명|名|人)\\s?당(?:\\s?' + _SG_AMT + ')?|' + _SG_AMT +
+    '|각자?\\s?1\\s?(?:실|방|개|룸)\\s?씩?|1\\s?(?:실|방|개|룸)\\s?씩|1\\s?인\\s?1\\s?실|1\\s?人\\s?1\\s?室', 'g');
+  function _sgClean(s) { return String(s).replace(_SG_FEEAMT, '$1 ').replace(_SG_NOISE, ' ').replace(/ {2,}/g, ' '); }
+  //  「싱글룸 없음·사용 안함·사용하지 않음·미사용·X」「싱글차지 없음」「no single」 — 싱글 낱말에 바로 붙은 부정은 요청이 아니다(사이에 「추가요금」 같은 다른 말이 끼면 해당 없음).
+  var _SG_NEG = new RegExp('(?:싱글|シングル|single|1인실|일인실|독방|독실)(?:\\s?(?:룸|room|ルーム))?(?:\\s?(?:차지|챠지|charge|チャージ))?(?:\\s?(?:방|객실))?' +
+    '(?:\\s?(?:사용|요청|신청|희망|이용|利用|使用|希望))?(?:\\s?(?:은|는|이|가|을|를|도|は|を|も))?\\s?[:：\\-(（]?\\s?' +
+    '(?:없음|없습니다|없어요|없이|안\\s?함|안\\s?합니다|안\\s?씀|안\\s?씁니다|안\\s?(?:쓰|쓴|써)[가-힣]*|안\\s?됨|하지\\s?않[가-힣]*|치\\s?않[가-힣]*|불필요|필요\\s?없음?|미사용|미신청|해당\\s?(?:사항\\s?)?없음|아님|아닙니다' +
+    '|なし|無し|不要|しない|しません|使いません|使わない|[xX✕✖×](?!\\s?[\\dA-Za-z]))[)）]?|\\bno\\s+(?:single|싱글|シングル)(?:\\s?room)?', 'gi');
+  //  요금 얘기 — 「싱글차지 별도」는 수량·이름이 아니다
+  var _SG_FEE = /(?:싱글|シングル|single)\s?(?:룸|room|ルーム)?\s?(?:차지|챠지|charge|チャージ)/gi;
+  //  아직 정해지지 않았다는 말 — 전원·이름이 적혀 있어도 사람이 본다
+  //   「마감·매진·솔드아웃·품절·소진」도 여기 — 방이 없다는 말일 수도, 접수를 끝냈다는 말일 수도 있어 글만으로는 정할 수 없다(설명서·규칙 문서의 「마감 문구는 보류」)
+  var SG_ASK = /마감|매진|솔드\s?아웃|품절|소진|sold\s?out|締め?切り?|〆切|売り?切れ?|미정|미확정|未定|未確定|문의|가능\s?여부|여부\s?확인|가능한지|가능할지|가능할까|가능한가|가능\s?[?？]|될지|되는지|되나요|될까|확정\s?아님|확인\s?(?:요청|요망|필요|부탁|바람|바랍|중)|검토|고려|検討|確認中|可否|要確認|問い合わせ|[?？]\s*$/;
+  //  부정·미확정을 뜻하는 꼴(낱말 목록에 없는 말투까지) — 싱글 낱말 뒤 같은 절에 있으면 전원·이름으로 확정하지 않는다
+  var _SG_DOUBT = /않|못\s?[가-힣]|안\s?(?:함|합|해|하|할|했|씀|쓰|써|쓴|씁|됨|되|돼|정)|아직|아님|아닙|아니[라고면]|없[음이습다어]/;
+  //  일부만 싱글이라는 말
+  var _SG_PARTQ = /일부(?![터러])|대표자?\s?만|(?:명|인|분|名|人)\s?중(?![식간순앙복급])|[가-힣]\s?만\s?(?:싱글|1인실|일인실|독실|독방|シングル)|제외|빼고|외\s?\d{1,2}\s?(?:명|인|분)/;
+  //  다른 항목 이름 — 절 안에서 이것이 나오면 그 뒤의 미정·없음은 그 항목 얘기다(「전원 싱글룸 조식 없음」「(카트 미정)」)
+  var _SG_ITEM = /전기|카트|카드|조식|중식|석식|식사|특식|도시락|캐디|송영|차량|픽업|샌딩|온천|항공|air|좌석|골프|라운딩|티타임|환불|쿠폰|결제|입금|잔금|명단|여권|요금|비용|금액|수수료|체크인|체크아웃|朝食|昼食|夕食|送迎|カート|ゴルフ/i;
+  //  한 줄을 절로 나눈다 — 쉼표·슬래시·세미콜론·글머리표·뒤가 빈칸인 마침표. 숫자 사이의 쉼표·마침표·슬래시(「15,000엔」「12/1」)는 끊는 자리가 아니다. 괄호 안은 그 절에 딸린 글(parens)로 따로 둔다.
+  function _sgClauses(line) {
+    var out = [], cur = { main: '', parens: [], sep: '' }, depth = 0, buf = '', i, c, n, p;
+    function push(sepCh) { if (cur.main.trim() || cur.parens.length) out.push(cur); cur = { main: '', parens: [], sep: sepCh || '' }; }   // sep = 이 절 앞의 구분자
+    for (i = 0; i < line.length; i++) {
+      c = line.charAt(i); n = line.charAt(i + 1); p = line.charAt(i - 1);
+      if (depth > 0) {
+        if (c === ')' || c === '）') { depth--; if (depth === 0) { cur.parens.push(buf); buf = ''; cur.main += ' '; } else buf += c; }
+        else { if (c === '(' || c === '（') depth++; buf += c; }
+        continue;
+      }
+      if (c === '(' || c === '（') { depth = 1; buf = ''; continue; }
+      if ((c === ',' || c === '.' || c === '/') && /\d/.test(p) && /\d/.test(n)) { cur.main += c; continue; }   // 「15,000엔」「12/1」
+      if (/[\/／,，、;；■●◆※▶•·ㆍ。]/.test(c) || (c === '.' && (n === '' || /\s/.test(n)))) { push(c); continue; }
+      cur.main += c;
+    }
+    if (depth > 0 && buf) cur.parens.push(buf);
+    push();
+    return out;
+  }
+  //  그 절에서 수량을 세는 글 = 본문 + (수량만 적힌 괄호 · 싱글 낱말이 든 괄호). 「(1인 15000엔 현지지불)」「(석식 3명)」「(2개동)」은 다른 얘기라 뺀다.
+  var _SG_BAREQ = /^\s?\d{1,2}\s?(?:명|인|개|방|실|룸|분|室|名|人|部屋)\s?(?:만|씩|사용|이용|요청|희망)?\s?$/;
+  function _sgCountText(cl) {
+    var s = cl.main;
+    cl.parens.forEach(function (p) { if (SG_WORD.test(p) || _SG_BAREQ.test(p)) s += ' ' + p + ' '; });
+    return s;
+  }
+  //  그 절에서 「미정·부정·일부·기간」을 보는 글 = 싱글 낱말 앞(다른 항목 이름이 없을 때만) + 싱글 낱말부터 다른 항목 이름 앞까지 + 다른 항목이 아닌 괄호
+  //  흔한 맺음말 — 「특이사항 없음」「변경 없음」「문의사항 없습니다」의 없음·문의는 싱글 얘기가 아니다
+  var _SG_NEUTRAL_G = /(?:[가-힣]{0,4}\s?사항|변경|변동|문제|이상)\s?(?:은|는|이|가|도)?\s?없[음이습다어][가-힣]*/g;
+  var _SG_PERIOD = /\d+\s?일\s?(?:차|째)?\s?(?:부터|까지)|\d+\s?泊|\d+\s?日\s?(?:から|まで)/;
+  function _sgZone(cl) {
+    var m = cl.main, sm = SG_WORD.exec(m), s;
+    if (sm) {
+      var pre = m.slice(0, sm.index), post = m.slice(sm.index), im = _SG_ITEM.exec(post.slice(sm[0].length));
+      if (im) post = post.slice(0, sm[0].length + im.index);
+      s = (_SG_ITEM.test(pre) ? '' : pre) + post;
+    } else s = m;
+    cl.parens.forEach(function (p) { if (!_SG_ITEM.test(p)) s += ' ' + p + ' '; });
+    if (cl.ext) s += ' ' + cl.ext;                                                               // 쉼표로 이어진 뒤 조각(「…, 가능할까요?」「…, 3일부터」)
+    return s.replace(_SG_NEUTRAL_G, ' ');
+  }
+  var _SG_KNUM = { '한': 1, '두': 2, '세': 3, '네': 4, '다섯': 5, '여섯': 6 };
+  //  「2싱글」처럼 싱글에 바로 붙은 수의 앞 글자 — 날짜(「8/5 싱글룸」)·시각·범위의 숫자는 수량이 아니다.
+  //  단 「1-1/4싱글」「1트윈/1싱글」처럼 예약 순번·다른 항목 뒤의 「/」는 구분자라 센다(실제 비고에 흔한 꼴).
+  function _sgBareOk(t, at) {
+    var p = t.charAt(at - 1);
+    if (!p) return true;
+    if (/[\d\-.:]/.test(p)) return false;
+    if (p === '/') return !/(^|[^\d\-])\d{1,2}$/.test(t.slice(Math.max(0, at - 8), at - 1));
+    return true;
+  }
+  //  「싱글룸 2」「싱글2/트윈1」 — 단위 없이 싱글 뒤에 적은 수. 뒤가 날짜·시각·층이면 수량이 아니다(「싱글룸 12/1 입국」「싱글룸 12층」).
+  var _SG_BARE_AFTER = '(?:싱글|シングル|독실|독방)\\s?(?:룸|ルーム|room)?\\s?[:：]?\\s?(\\d{1,2})(?!\\s?[\\/.\\-:~]\\s?\\d)(?!\\s?[월일])(?=\\s|$|[,，、\\/)）])';
+  //  절 안의 수량들 → [{n, unit}] . unit=true 는 명·인·분·개·방·실·룸·객실 이 붙은 수(전원 판정의 근거가 된다),
+  //  false 는 「2싱글」·「한 명」·「싱글 1」처럼 단위가 없거나 한글로 적은 수, 그리고 일본어 단위(室·名·人·部屋 — 일본어 비고는 부정·기간 표현을 다 알지 못하므로 전원의 근거로 쓰지 않는다). 전원을 막는 데만 쓴다.
+  function _sgCounts(text) {
+    var s = _sgClean(text).replace(/1인실|일인실/g, ' '), out = [], m, re;
+    re = /(\d{1,2})\s?(?:명|인(?![실용승조])|분|개(?![동월소])|방|실|룸|객실)/g;
+    while ((m = re.exec(s))) out.push({ n: Number(m[1]), unit: true });
+    re = /(\d{1,2})\s?(?:室|部屋|名|人)/g;
+    while ((m = re.exec(s))) out.push({ n: Number(m[1]), unit: false });
+    re = /(\d{1,2})\s?(?:싱글|シングル)/g;
+    while ((m = re.exec(s))) { if (_sgBareOk(s, m.index)) out.push({ n: Number(m[1]), unit: false }); }
+    re = /(?:^|[^가-힣])(한|두|세|네|다섯|여섯)\s?(?:명|분|개|방|룸|실|사람)/g;
+    while ((m = re.exec(s))) out.push({ n: _SG_KNUM[m[1]], unit: false });
+    re = new RegExp(_SG_BARE_AFTER, 'gi');
+    while ((m = re.exec(s))) out.push({ n: Number(m[1]), unit: false });
+    return out;
+  }
+  //  명단의 이름을 그 조각에서 찾는다 → 싱글 쪽에 적힌 사람들. block=true 면 그 조각의 이름으로는 확정하지 않는다(제외·빼고·전원·외 N명).
+  //   · 「○○○팀」의 이름은 사람이 아니다 · 긴 이름 안의 짧은 이름은 세지 않는다 · 괄호 안은 이름만 적힌 괄호일 때만 본다(「(담당 ○○○)」 제외)
+  //   · 조각에 트윈·더블도 적혀 있으면 이름을 가까운 방 종류에 붙인다: 조각이 방 종류로 시작하면 「종류: 이름들」, 아니면 「이름들 종류」.
+  function _sgNamesIn(seg, names) {
+    var list = (names || []).map(function (n) { return { ref: n, nm: String((n && n.name != null) ? n.name : n).trim() }; })
+      .filter(function (x) { return x.nm.length >= 2; }).sort(function (a, b) { return b.nm.length - a.nm.length; });
+    if (!list.length) return { hits: [], block: false };
+    //  괄호: 이름·구분자·님/씨뿐인 괄호만 남긴다
+    var s = String(seg).replace(/[(（]([^()（）]*)[)）]/g, function (all, inner) {
+      var rest = inner; list.forEach(function (x) { rest = rest.split(x.nm).join(''); });
+      return SG_WORD.test(inner) || !rest.replace(/사용|이용|배정|요청|희망|예정|확정|\d{1,2}\s?(?:명|인|분)|[\s,，、·.\/님씨様]/g, '') ? ' ' + inner + ' ' : ' ';
+    });
+    var isAll = SG_ALL.test(s), isPart = _SG_PARTQ.test(s), block = isPart || isAll;
+    var taken = [], found = [];
+    list.forEach(function (x) {
+      var i = s.indexOf(x.nm);
+      while (i >= 0) {
+        var e = i + x.nm.length, over = taken.some(function (r) { return i < r[1] && e > r[0]; });
+        if (!over && s.charAt(e) !== '팀') { taken.push([i, e]); found.push({ ref: x.ref, pos: i }); }
+        i = s.indexOf(x.nm, e);
+      }
+    });
+    if (!found.length) return { hits: [], block: block };
+    //  같은 이름이 명단에 둘 이상이면 누구인지 정할 수 없다 — 이름으로 확정하지 않는다(사람이 본다)
+    if (found.some(function (f) { var nm = String((f.ref && f.ref.name != null) ? f.ref.name : f.ref).trim(); return list.filter(function (x) { return x.nm === nm; }).length > 1; })) return { hits: [], block: true };
+    var types = [], m, re = /싱글|single|シングル|1인실|일인실|독방|독실|트윈|투윈|ツイン|더블|ダブル|트리플|トリプル/gi;
+    while ((m = re.exec(s))) types.push({ pos: m.index, sg: SG_WORD.test(m[0]) });
+    var hits = [];
+    if (!types.some(function (t) { return !t.sg; })) hits = found;                                // 방 종류가 싱글뿐 — 조각의 이름 전부
+    else {
+      var lead = s.replace(/^[\s■●◆※▶•·ㆍ\-–:：]+/, ''), typeFirst = /^(?:싱글|single|シングル|1인실|일인실|독방|독실|트윈|투윈|ツイン|더블|ダブル|트리플|トリプル)/i.test(lead);
+      found.forEach(function (f) {
+        var own = null;
+        if (typeFirst) types.forEach(function (t) { if (t.pos < f.pos) own = t; });
+        else for (var k = 0; k < types.length; k++) { if (types[k].pos > f.pos) { own = types[k]; break; } }
+        if (own && own.sg) hits.push(f);
+      });
+    }
+    var out = [];
+    (names || []).forEach(function (n) { if (out.indexOf(n) < 0 && hits.some(function (f) { return f.ref === n; })) out.push(n); });   // 명단 순서(종전과 같다)
+    return { hits: out, block: block, all: isAll && !isPart };
+  }
+  //  → {kind, why?, names?, n?, mixed?}
+  //   blocked 의 why: 'none' = 싱글 요청이 없다고 적혔다(「싱글룸 없음」) · 'block' = 대기·불가·취소 — 둘 다 평소대로 짝을 짓는다
+  //   unsure  의 why: 'ask' = 미정·문의·부정 꼴 · 'partial' = 일부·N명 중·제외 · 'who' = 수량만 있거나 누구인지 모른다
   function singlePlan(text, pax, names) {
-    var t = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+    var t = _sgHalf(text), n0 = Number(pax) || 0;
     if (!SG_WORD.test(t)) return null;
+    if (SG_BLOCK.test(t)) return { kind: 'blocked', why: 'block' };
+    //  「싱글룸 없음·사용 안함」을 뺀 나머지에 싱글 얘기가 없으면 요청이 아니다(대기·취소와 같은 취급 — 평소대로 짝을 짓는다)
+    t = t.replace(_SG_NEG, ' ');
+    if (!SG_WORD.test(t)) return { kind: 'blocked', why: 'none' };
     //  싱글 얘기가 들어 있는 줄만 본다. 단 현장은 「싱글 룸」 머리줄 아래에 이름만 죽 적기도 하므로
     //  머리줄이 나오면 다른 룸타입 머리줄(트윈룸 등)이 나올 때까지 이어지는 줄도 함께 본다.
-    var SG_HEAD = /^(싱글|1인실|일인실|독방|독실|シングル|single)\s*(룸|room|ルーム)?\s*[:：]?$/i;
-    var MIX_HEAD = /^(트윈|더블|트리플|ツイン|ダブル|トリプル|twin|double|triple)\s*(룸|room|ルーム)?\s*[:：]?$/i;
-    var sgTxt = '', inSg = false;
+    var SG_HEAD = /^(싱글|1인실|일인실|독방|독실|シングル|single)\s?(룸|room|ルーム)?\s?[:：]?$/i;
+    var MIX_HEAD = /^(트윈|더블|트리플|ツイン|ダブル|トリプル|twin|double|triple)\s?(룸|room|ルーム)?\s?[:：]?$/i;
+    var sgTxt = '', inSg = false, sgCl = [], segs = [], headLines = [];        // sgCl = 싱글 낱말이 든 절들(수량·전원 판정은 여기서만) · segs = 이름을 찾는 조각(「/」·글머리표로 끊은 것)
     t.split('\n').forEach(function (raw) {
       var l = raw.trim();
       if (!l) return;
       if (MIX_HEAD.test(l)) { inSg = false; return; }
       if (SG_HEAD.test(l)) { inSg = true; return; }
       if (inSg || SG_WORD.test(l)) sgTxt += l + ' ';
+      if (SG_WORD.test(l)) {
+        var lastSg = null;
+        _sgClauses(l).forEach(function (cl) {
+          if (SG_WORD.test(cl.main) || cl.parens.some(function (p) { return SG_WORD.test(p); })) { sgCl.push(cl); lastSg = cl; return; }
+          //  쉼표로 이어진 뒤 조각 — 다른 항목·다른 방 종류가 적혀 있지 않으면 앞 싱글 절에 딸린 말이다(「…, 가능할까요?」「…, 3일부터」「싱글룸: A, B 문의」)
+          if (lastSg && /[,，、]/.test(cl.sep) && !_SG_ITEM.test(cl.main) && !SG_MIX.test(cl.main)) {
+            var fr = cl.main + ' ' + cl.parens.filter(function (p) { return !_SG_ITEM.test(p); }).join(' ');
+            //  기간 말고 다른 글이 함께 있으면(「15일까지 회신 부탁」) 그 기간은 체류 얘기가 아니다
+            if (_SG_PERIOD.test(fr) && fr.replace(new RegExp(_SG_PERIOD.source, 'g'), '').replace(/[\s~\-〜.만사용이용のみ]/g, '')) fr = fr.replace(new RegExp(_SG_PERIOD.source, 'g'), ' ');
+            lastSg.ext = (lastSg.ext || '') + ' ' + fr;
+            return;
+          }
+          lastSg = null;
+        });
+        var parts = l.split(/[\/／■●◆※▶•]/), pi;
+        for (pi = 0; pi < parts.length; pi++) {
+          if (!SG_WORD.test(parts[pi])) continue;
+          //  「싱글룸 사용자 / 이름들」 — 머리말뿐인 조각은 다음 조각(이름 목록)과 잇는다
+          if (pi + 1 < parts.length && /^\s?(?:싱글|1인실|일인실|독방|독실|シングル|single)\s?(?:룸|room|ルーム)?\s?(?:사용자|사용|자|使用者)?\s?[:：]?\s?$/i.test(parts[pi]) && !SG_WORD.test(parts[pi + 1])) { segs.push(parts[pi] + ' ' + parts[pi + 1]); pi++; }
+          else segs.push(parts[pi]);
+        }
+      } else if (inSg) headLines.push(l);
     });
     sgTxt = sgTxt.trim();
-    if (SG_BLOCK.test(t)) return { kind: 'blocked' };
-    if (/\d+\s*박/.test(sgTxt) || /\d+\s*\/\s*\d+\s*[-~〜]\s*\d+\s*\/\s*\d+/.test(sgTxt)) return { kind: 'part' };
+    var zones = sgCl.map(_sgZone);
+    if (/\d+\s?박/.test(sgTxt) || /\d+\s?\/\s?\d+\s?[-~〜]\s?\d+\s?\/\s?\d+/.test(sgTxt)) return { kind: 'part' };              // 「2박만」「11/3~11/5」 = 체류 일부만 싱글
+    if (zones.some(function (z) { return /\d+\s?일\s?(?:차|째)?\s?(?:부터|까지)|\d+\s?泊|\d+\s?日\s?(?:から|まで)/.test(z); })) return { kind: 'part' };   // 「3일부터」「2泊」 — 싱글 절 안에서만(다른 절의 「잔금 15일까지」는 아니다)
     var mixed = SG_MIX.test(t);
-    // 명단 대조 — 후보(그 팀 사람)를 문장에서 찾는다
-    var hit = [];
-    (names || []).forEach(function (n) {
-      var nm = String((n && n.name != null) ? n.name : n).trim();
-      if (nm.length >= 2 && sgTxt.indexOf(nm) >= 0) hit.push(n);
-    });
+    if (zones.some(function (z) { return SG_BLOCK2.test(z); })) return { kind: 'blocked', why: 'block' };                      // 「싱글룸 4개 캔슬」「シングル4室 キャンセル」
+    //  「미정·문의·가능 여부 확인 요청」·부정 꼴 — 싱글 절(다른 항목이 아닌 괄호 포함)에 붙어 있으면 이름·전원이 적혀 있어도 사람이 본다
+    if (zones.some(function (z, i) { var sm = SG_WORD.exec(z); return SG_ASK.test(z) || (sm && _SG_DOUBT.test(z.slice(sm.index))); })) return { kind: 'unsure', why: 'ask', mixed: mixed };
+    // 명단 대조 — 후보(그 팀 사람)를 싱글이 적힌 조각에서 찾는다
+    var hit = [], nameBlock = false, allNames = 0;
+    segs.forEach(function (sg) { var r = _sgNamesIn(sg, names); if (r.block) { if (r.hits.length) { nameBlock = true; if (r.all) allNames = Math.max(allNames, r.hits.length); } return; } r.hits.forEach(function (n) { if (hit.indexOf(n) < 0) hit.push(n); }); });
+    headLines.forEach(function (l) { _sgNamesIn(l, names).hits.forEach(function (n) { if (hit.indexOf(n) < 0) hit.push(n); }); });
     if (hit.length) return { kind: 'names', names: hit, mixed: mixed };
-    var n = Number(pax) || 0;
+    var n = n0, partial = nameBlock && zones.some(function (z) { return _SG_PARTQ.test(z); });
+    //  「전원 싱글룸: A, B」(4명 팀) — 전원이라면서 같은 조각에 적힌 이름 수가 인원과 다르다. 누구까지인지 사람이 본다.
+    if (allNames > 0 && n > 0 && allNames !== n) return { kind: 'unsure', why: 'who', mixed: mixed };
     if (!mixed && n > 0) {
-      if (SG_ALL.test(sgTxt)) return { kind: 'all', n: n };
-      var m = sgTxt.match(/(\d+)\s*(명|인)/);                      // 「4명 싱글룸희망」
-      if (m && Number(m[1]) === n) return { kind: 'all', n: n };
-      var m2 = sgTxt.match(/싱글[^0-9]{0,4}(\d+)\s*(개|방|실)/);    // 「싱글룸 4개」
-      if (m2 && Number(m2[1]) === n) return { kind: 'all', n: n };
-    }
-    return { kind: 'unsure', mixed: mixed };
+      //  싱글이 적힌 **절** 안의 수량이 모두 팀 인원과 같을 때만 전원이다 — 「4명 중 1명 싱글」「8명 싱글 2방」「4명 싱글 1룸」을
+      //  전원으로 읽으면 팀 전체가 1인 1실로 배정된다. 하나라도 다르거나 「일부·대표자만·N명 중」이 붙으면 사람에게 넘긴다.
+      //  같은 줄의 다른 항목(「/ 전기카트 1개」「, 골프 3인」)·가격(「1인 15000엔」)·「1인실」「1인 1실」의 숫자는 수량이 아니다.
+      var cnts = [], allWord = false;
+      sgCl.forEach(function (cl, i) {
+        var ct = _sgCountText(cl);
+        cnts = cnts.concat(_sgCounts(ct));
+        if (_SG_PARTQ.test(ct) || _SG_PARTQ.test(zones[i])) partial = true;
+        if (SG_ALL.test(ct)) allWord = true;
+      });
+      //  「전원」이 적혀 있으면 인원보다 **큰** 수는 여러 예약을 묶은 팀 전체 인원이다(「팀:A+B / 4명 전원싱글룸」, 이 예약은 3명) — 작은 수만 모순으로 본다.
+      if (!partial && allWord && cnts.every(function (c) { return c.n >= n; })) return { kind: 'all', n: n };                     // 「전원 싱글」
+      if (!partial && cnts.length && cnts.every(function (c) { return c.n === n; }) && cnts.some(function (c) { return c.unit; })) return { kind: 'all', n: n };   // 「4명 싱글룸희망」·「싱글룸 4개」
+    } else if (zones.some(function (z) { return _SG_PARTQ.test(z); })) partial = true;
+    return { kind: 'unsure', why: partial ? 'partial' : 'who', mixed: mixed };
   }
 
   //  「싱글 4방」 — 방 수만 뽑는다. 누가 쓸지는 현장에서 정해도 **몇 방인지는 계약된 수량**이라
@@ -1135,18 +1626,56 @@
   //   「싱글룸 4개」·「싱글 4실」·「싱글 4방」·「シングル4室」·「싱글룸 4명」 → 4
   //  ⚠ 「대기·불가·보류」가 섞여 있어도 **수량은 낸다**(Min 2026-08) — 확정이 아니어도
   //    몇 방이 필요한 요청인지는 알아야 준비가 된다. 확정 여부는 singleTentative() 로 따로.
+  var _SG_MIXW = '(?:트윈|투윈|더블|트리플|ツイン|ダブル|トリプル)';
   function singleCount(text) {
-    var t = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+    var t = _sgHalf(text);
     if (!SG_WORD.test(t)) return 0;
-    var best = 0;
-    //  싱글이라는 말과 숫자가 **가까이** 있을 때만 센다 — 멀면 다른 이야기의 숫자다.
-    var re = /(싱글|1인실|일인실|독방|독실|シングル|single)[^0-9\n]{0,6}(\d{1,2})\s*(개|방|실|명|인|室|部屋)/gi;
-    var m;
-    while ((m = re.exec(t))) { var n = Number(m[2]); if (n > 0 && n <= 30 && n > best) best = n; }
+    t = t.replace(_SG_NEG, ' ');                       // 「싱글 없음」은 수요가 아니다(다른 줄에 요청이 있으면 그 수)
+    if (!SG_WORD.test(t)) return 0;
+    var so = t.match(/1\s?인\s?1\s?실\s?[,:：]?\s?(\d{1,2})\s?(?:방|실|룸|개)/);   // 「1인 1실 2방 (싱글차지 지불 완료)」 — 그 방 수가 곧 싱글 수
+    t = _sgClean(t);                                   // 가격(「1인 5000엔」)·「1인 1실」·「각 1실」의 숫자는 수량이 아니다
+    t = t.replace(/[(（]\s?(\d{1,2}\s?(?:명|인|개|방|실|룸|분|室|名|人|部屋)\s?(?:만|씩|사용|이용|요청|희망)?)\s?[)）]/g, ' $1 ');   // 「싱글룸(2개)」「싱글(2명)」 — 수량만 적힌 괄호는 풀어서 읽는다
+    var best = 0, m, n;
+    if (so && Number(so[1]) > 0 && Number(so[1]) <= 30) best = Number(so[1]);
+    //  싱글이라는 말과 숫자가 **가까이**(6자 안, 같은 절 — 쉼표·슬래시·괄호를 넘지 않는다) 있을 때만 센다. 사이에 트윈이 끼었거나(「싱글, 트윈 2방」)
+    //  그 수가 조사를 사이에 두고 트윈으로 이어지면(「싱글 3명은 트윈으로」) 세지 않는다. 싱글에 바로 붙은 수는 뒤에 트윈이 와도 싱글의 수다(「싱글 1방 트윈 2방」).
+    var re = /(싱글|1인실|일인실|독방|독실|シングル|single)([^0-9\n,，、\/／;；()（）]{0,6})(\d{1,2})\s?(개|방|실|룸|객실|명|인|분|室|部屋|名|人)(?!\s?실)/gi;
+    while ((m = re.exec(t))) {
+      if (SG_MIX.test(m[2])) continue;
+      if (new RegExp('^\\s?(?:은|는|이|가)\\s?' + _SG_MIXW).test(t.slice(re.lastIndex, re.lastIndex + 8))) continue;
+      n = Number(m[3]); if (n > 0 && n <= 30 && n > best) best = n;
+    }
+    var rek = /(?:싱글|1인실|일인실|독방|독실)\s?(?:룸)?[^0-9\n가-힣]{0,4}(한|두|세|네|다섯|여섯)\s?(?:개|방|실|룸|명|분)/g;      // 「싱글룸 한개」·「싱글 두개」
+    while ((m = rek.exec(t))) { n = _SG_KNUM[m[1]]; if (n > best) best = n; }
     if (best) return best;
-    //  숫자가 앞에 오는 표기 — 「4방 싱글」·「4名 シングル」
-    var re2 = /(\d{1,2})\s*(개|방|실|명|인|室|部屋)[^0-9\n]{0,6}(싱글|1인실|일인실|독방|독실|シングル|single)/gi;
-    while ((m = re2.exec(t))) { var n2 = Number(m[1]); if (n2 > 0 && n2 <= 30 && n2 > best) best = n2; }
+    //  숫자가 앞에 오는 표기 — 「4방 싱글」·「4名 シングル」·「2방(싱글)」·「2명, 싱글룸 사용」
+    //   · 숫자 **바로 앞**이 트윈·더블·트리플이면 그 방의 수다(「트윈 2방 싱글룸 희망」) — 단 그 트윈이 제 수를 따로 갖고 있으면 센다(「2명 트윈 2명 싱글」).
+    //   · 구분자 너머의 요금 얘기는 세지 않는다(「성인 2명, 싱글차지 별도」). 사이에 트윈이 끼어도 세지 않는다(「2방 트윈, 싱글 희망」).
+    var re2 = /(\d{1,2})\s?(개|방|실|룸|객실|명|인|분|室|部屋|名|人)(?!\s?실)([^0-9\n]{0,6}?)(싱글|1인실|일인실|독방|독실|シングル|single)(\s?(?:룸|room|ルーム)?\s?(?:차지|챠지|charge|チャージ))?/gi;
+    while ((m = re2.exec(t))) {
+      if (SG_MIX.test(m[3])) continue;
+      if (m[5] && /[\/／,，、()（）]/.test(m[3])) continue;
+      var before = t.slice(t.lastIndexOf('\n', m.index) + 1, m.index);
+      if (m[5] && SG_MIX.test(before)) continue;                                        // 「성인 4명 트윈 2방 싱글차지 별도」 — 요금 얘기 앞의 수는 트윈 것일 수 있다(0 이면 화면이 비고 확인을 시킨다)
+      var mb = before.match(new RegExp(_SG_MIXW + '\\s?(?:룸|ルーム)?\\s?[:：]?\\s?$'));
+      if (mb && !/\d{1,2}\s?(?:개|방|실|룸|객실|명|인|室|部屋|名|人)\s?(?:은|는|이|가)?\s?$/.test(before.slice(0, mb.index))) continue;
+      n = Number(m[1]); if (n > 0 && n <= 30 && n > best) best = n;
+    }
+    var rek2 = /(?:^|[^가-힣])(한|두|세|네|다섯|여섯)\s?(?:개|방|실|룸|명|분)[^0-9\n]{0,6}?(?:싱글|1인실|일인실|독방|독실)/g;                  // 「4명 중 한 명 싱글」
+    while ((m = rek2.exec(t))) { n = _SG_KNUM[m[1]]; if (n > best) best = n; }
+    if (best) return best;
+    //  「2싱글 + 1트윈」·「1싱글 사용」·「1-1/4싱글」·「2트윈 1싱글」 — 숫자가 싱글에 바로 붙은 꼴(날짜 「8/5 싱글룸」의 5, 「트윈1 싱글1」의 앞 1 은 아니다)
+    var MIX_END = new RegExp(_SG_MIXW + '\\s?(?:룸|ルーム)?\\s?[:：]?\\s?$');
+    var re3 = /(\d{1,2})(\s?)(?:싱글|シングル)/g, bf;
+    while ((m = re3.exec(t))) {
+      bf = t.slice(0, m.index);
+      if (!_sgBareOk(t, m.index) || (MIX_END.test(bf) && !(m[2] === '' && /\s$/.test(bf)))) continue;
+      n = Number(m[1]); if (n > 0 && n <= 30 && n > best) best = n;
+    }
+    if (best) return best;
+    //  「싱글1」·「싱글룸 2」 — 단위 없이 싱글 바로 뒤에 적은 수(뒤가 빈칸·구분자·끝일 때만 — 「싱글룸 12층」「싱글룸 12/1 입국」의 12 는 아니다)
+    var re4 = new RegExp(_SG_BARE_AFTER, 'gi');
+    while ((m = re4.exec(t))) { n = Number(m[1]); if (n > 0 && n <= 30 && n > best) best = n; }
     return best;
   }
   //  「싱글룸 현지에서 배정예정」 — 수량은 정해졌고 **누가 쓸지만** 현장에서 정하는 경우.
@@ -1166,45 +1695,45 @@
   //  「싱글 신청 수」 — 객실 여유 현황 「싱글 신청」 줄용. singleCount(숫자 표기)로 못 읽는 비고까지 센다(Min 2026-09).
   //   실측(9~11월 75팀): 숫자 표기 36팀뿐, 「전원 싱글룸」 24팀·이름 나열 5팀·그 외 10팀은 0으로 빠져 있었다.
   //   ① 숫자   「싱글 4방」·「2인 싱글룸」·「2싱글」·「싱글룸 1룸」 → 그 수
-  //   ② 전원   「전원 싱글룸」·「○○○팀 전원 싱글룸」 → 팀 인원(pax)
+  //   ② 전원   「전원 싱글룸」·「○○○팀 전원 싱글룸」 → 팀 인원(pax). 방배정 판정(singlePlan)이 전원이면 적힌 다른 수보다 인원이 먼저다(두 화면이 같은 수를 말하게).
   //   ③ 이름   「싱글룸: 김OO, 이OO」·「싱글자: 김OO」·「김OO, 이OO님 싱글룸 사용」·「싱글룸 김OO」·
   //            「싱글 룸」 머리줄 아래 한 줄에 한 명씩 → 이름 수(2~4자 한글, 흔한 낱말(요청·사용…)은 제외)
   //   ④ 못 읽음 싱글 말은 있는데 수량이 없음(「싱글룸 :」·「싱글룸 요청」) → n=0, how='none' (화면은 「?」 비고 확인)
   //   ⑤ 홀수   싱글·트리플 언급이 없는데 인원이 홀수(5명 팀 등) → 남는 한 명 = 싱글 1방(how='odd', Min 2026-09).
   //            실측 9~11월 홀수 팀 58팀 중 29팀은 비고가 없어 싱글 수요에서 빠져 있었다. 트리플 언급이 있으면 세지 않는다.
+  //            「싱글 없음」이라고 적힌 홀수 팀도 같다 — 방배정이 남는 한 명을 싱글 객실에 넣기 때문이다.
   //  → {n, how:'num'|'all'|'names'|'none'|'odd'|''}  ('' = 싱글 수요 없음)
   //  ⚠ 어림 규칙이다 — 툴팁에 팀별 수를 같이 내어 사람이 대조할 수 있게 한다.
   var SG_STOP = /(요청|사용|희망|배정|신청|확인|현지|비용|추가|가능|불가|대기|보류|필요|예정|변경|지불|결제|안내|부탁|드립|입니|사전|좌석|호텔|리조트|트윈|더블|골프|숙박|쿠폰|카트|팀장|회원|객실|위탁|블럭|블록|전원|전부|모두|별도|개별|발권|진행|후|및)/;
-  var SG_HEAD2 = /^(싱글|1인실|일인실|독방|독실|シングル|single)\s*(룸|room|ルーム)?\s*(사용자|자)?\s*[:：]?$/i;
-  var MIX_HEAD2 = /^(트윈|더블|트리플|ツイン|ダブル|トリプル|twin|double|triple)\s*(룸|room|ルーム)?\s*[:：]?$/i;
+  //  낱말 **전체**가 이것일 때만 이름이 아니다 — 부분 일치로 두면 「차지○」 같은 이름이 빠진다.
+  var SG_STOPW = /^(?:차지|싱글차지|요금|금액|없음|있음|아님|포함|불포함|상품|성인|소아|유아|부부|가족|일행|본인|인원|총원|남자|여자|남성|여성|조식|중식|석식|입국|귀국|체크인|입금완료|취소|캔슬|켄슬|철회|웨이팅|만실|마감|미정|미확정|문의|확정|완료|검토|불필요)$/;   // 끝의 열넷 = 상태를 말하는 낱말(「싱글룸 취소」의 취소는 사람이 아니다)
+  var SG_HEAD2 = /^(싱글|1인실|일인실|독방|독실|シングル|single)\s?(룸|room|ルーム)?\s?(사용자|자)?\s?[:：]?$/i;
+  var MIX_HEAD2 = /^(트윈|더블|트리플|ツイン|ダブル|トリプル|twin|double|triple)\s?(룸|room|ルーム)?\s?[:：]?$/i;
   function _sgNames(seg) {
     var s = String(seg || '').replace(/\([^)]*\)/g, ' ').replace(/（[^）]*）/g, ' ');
     var out = 0;
     s.split(/[,，、·\/\s]+/).forEach(function (tok) {
       tok = tok.replace(/(님|씨|様)$/, '');
-      if (/^[가-힣]{2,4}$/.test(tok) && !SG_STOP.test(tok) && !/팀$/.test(tok)) out++;
+      if (/^[가-힣]{2,4}$/.test(tok) && !SG_STOP.test(tok) && !SG_STOPW.test(tok) && !/팀$/.test(tok)) out++;
     });
     return out;
   }
   //  트리플은 현장이 비고에 꼭 적는다(Min): 「트리플」·「3인 1실」·「3인실」·「3명 1실」·「3人1室」
   var SG_TRIPLE = /트리플|トリプル|triple|3\s*(인|명|人)\s*(1\s*)?(실|室|룸|방)/i;
   function singleRequested(text, pax) {
-    var t = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
-    if (!SG_WORD.test(t)) {
-      var px = Number(pax) || 0;
-      if (px > 0 && px % 2 === 1 && !SG_TRIPLE.test(t)) return { n: 1, how: 'odd' };
-      return { n: 0, how: '' };
+    var t = _sgHalf(text), px = Number(pax) || 0;
+    var oddOne = (px > 0 && px % 2 === 1 && !SG_TRIPLE.test(t)) ? { n: 1, how: 'odd' } : null;
+    if (!SG_WORD.test(t)) return oddOne || { n: 0, how: '' };
+    t = t.replace(_SG_NEG, ' ');
+    if (!SG_WORD.test(t)) return oddOne || { n: 0, how: '' };                          // 「싱글 없음」 = 싱글 얘기가 없는 것과 같다(홀수 팀의 남는 한 명만)
+    var n = singleCount(t);                                                            // 「싱글 4방」·「2싱글」·「싱글룸 1룸」
+    var pl = px > 0 ? singlePlan(t, px, []) : null, isAll = !!(pl && pl.kind === 'all');
+    if (n > 0 && !(isAll && n !== px)) return { n: n, how: 'num' };
+    if (isAll) return { n: px, how: 'all' };                                           // 방배정이 전원으로 읽는 글 — 다른 절의 수(「(석식 3명)」)가 아니라 인원
+    if (/(전원|전부|모두|全員)\s?[가-힣]{0,3}\s?(싱글|シングル|1인실|일인실|독방|독실)/.test(t) || /(싱글|シングル)[^\n]{0,6}(전원|전부|모두|全員)/.test(t)) {
+      return px > 0 ? { n: px, how: 'all' } : { n: 0, how: 'none' };
     }
-    var n = singleCount(t);
-    if (n > 0) return { n: n, how: 'num' };
-    var m = t.match(/(\d{1,2})\s*(싱글|シングル)/);                                   // 「2싱글 + 1트윈」·「1싱글 사용」
-    if (!m) m = t.match(/(?:싱글|シングル)[^0-9\n]{0,6}(\d{1,2})\s*룸/);               // 「싱글룸 1룸 12층으로」
-    if (m && Number(m[1]) > 0 && Number(m[1]) <= 30) return { n: Number(m[1]), how: 'num' };
-    if (/(전원|전부|모두|全員)\s*[가-힣]{0,3}\s*(싱글|シングル|1인실|일인실|독방|독실)/.test(t) || /(싱글|シングル)[^\n]{0,6}(전원|전부|모두|全員)/.test(t)) {
-      var p = Number(pax) || 0;
-      return p > 0 ? { n: p, how: 'all' } : { n: 0, how: 'none' };
-    }
-    var best = 0, inSg = false, block = 0;
+    var best = 0, inSg = false, block = 0, feeOnly = true;
     t.split('\n').forEach(function (raw) {
       var line = raw.trim();
       if (inSg) {                                   // 「싱글 룸」 머리줄 아래 이름 줄들
@@ -1212,15 +1741,27 @@
         if (!line || MIX_HEAD2.test(line) || !c0) { inSg = false; if (block > best) best = block; block = 0; }
         else { block += c0; return; }
       }
-      if (SG_HEAD2.test(line)) { inSg = true; block = 0; return; }
+      if (SG_HEAD2.test(line)) { inSg = true; block = 0; feeOnly = false; return; }
       if (!SG_WORD.test(line)) return;
+      if (!SG_WORD.test(line.replace(_SG_FEE, ' '))) {                                 // 「싱글차지 별도」뿐인 줄 — 요금 얘기다
+        //  같은 조각(마지막 「/」 뒤) 앞쪽에 이름이 적혀 있으면 그 사람들의 싱글이다(「홍길동, 가나다 싱글차지 현지지불」). 앞 조각의 호텔 이름 등은 세지 않는다.
+        _SG_FEE.lastIndex = 0; var fm = _SG_FEE.exec(line); _SG_FEE.lastIndex = 0;
+        var head = fm ? line.slice(0, fm.index) : ''; head = head.slice(Math.max(head.lastIndexOf('/'), head.lastIndexOf('／')) + 1);
+        var cf = _sgNames(head);
+        if (cf > 0) { feeOnly = false; if (cf > best) best = cf; }
+        return;
+      }
+      feeOnly = false;
       var i = line.search(SG_WORD);
-      var after = line.slice(i).replace(/^(싱글|シングル|1인실|일인실|독방|독실|single)\s*(룸|room|ルーム)?\s*(사용자|자|使用者)?\s*[:：\/]?\s*/i, '');
+      var after = line.slice(i).replace(/^(싱글|シングル|1인실|일인실|독방|독실|single)\s?(룸|room|ルーム)?\s?(사용자|자|使用者)?\s?[:：\/]?\s?/i, '');
       var c = Math.max(_sgNames(after), _sgNames(line.slice(0, i)));
       if (c > best) best = c;
     });
     if (block > best) best = block;
     if (best > 0) return { n: best, how: 'names' };
+    //  요금 얘기(「싱글차지 현지결제」)뿐이고 수량이 없다 — 홀수 팀이면 남는 한 명의 싱글(홀수 규칙), 짝수 팀이면 「?」(비고 확인)
+    if (feeOnly && oddOne) return oddOne;
+    if (px === 1) return { n: 1, how: 'odd' };                                         // 혼자 온 손님 — 비고를 어떻게 적었든 방 하나
     return { n: 0, how: 'none' };
   }
 
@@ -1403,7 +1944,7 @@
   // ── 한글 이름 → 가타카나 요미카타(후리가나) ── 표준 한일 음역 규칙(베스트에포트, 약 85~90%).
   //   초성 자음행 + 중성 모음 합성 + 종성 받침. 비한글 문자는 그대로 통과.
   var _KANA_ROW = {
-    k:['カ','キ','ク','ケ','コ'], n:['ナ','ニ','ヌ','ネ','ノ'], t:['タ','チ','ツ','テ','ト'],
+    k:['カ','キ','ク','ケ','コ'], n:['ナ','ニ','ヌ','ネ','ノ'], t:['タ','ティ','トゥ','テ','ト'],   // 디·티=ティ, 두·투=トゥ(チ·ツ 는 다른 소리)
     r:['ラ','リ','ル','レ','ロ'], m:['マ','ミ','ム','メ','モ'], p:['パ','ピ','プ','ペ','ポ'],
     s:['サ','シ','ス','セ','ソ'], '':['ア','イ','ウ','エ','オ'],
     j:['ジャ','ジ','ジュ','ジェ','ジョ'], ch:['チャ','チ','チュ','チェ','チョ'], h:['ハ','ヒ','フ','ヘ','ホ']
@@ -1423,12 +1964,25 @@
       var cho = Math.floor(c / 588), jung = Math.floor((c % 588) / 28), jong = c % 28;
       var row = _CHO_ROW[cho], base = _KANA_ROW[row], jv = _JUNG[jung], syl;
       if (jv[0] === 0) syl = base[jv[1]];
-      else if (jv[0] === 1) syl = (row === '') ? _YV[jv[1]] : base[1] + _Y[jv[1]];
-      else syl = (row === '') ? _WV[jv[1]] : base[2] + _W[jv[1]];
+      else if (jv[0] === 1) syl = (row === '') ? _YV[jv[1]] : (row === 't' ? 'テ' : base[1]) + _Y[jv[1]];   // 튜·듀 = テュ(ティュ 아님)
+      else syl = (row === '') ? _WV[jv[1]] : ((row === 'j' || row === 'ch') && jv[1] === 'e') ? base[3] : base[2] + _W[jv[1]];   // 최·죄·쵀 = チェ·ジェ(チュェ 아님)
       out += syl + _JONG[jong];
     }
     return out;
   }
+  //  명단에서 대표 줄 고르기 — 예약의 대표고객(rep_name)과 이름(띄어쓰기 무시)이 같은 줄 가운데 첫 줄, 없으면 첫 줄(0).
+  //  데이터 등록(명단·묶음 대표·자회사 명단)·통보 명단이 같은 규칙을 쓴다. rows = [{name_kr}] 또는 이름 문자열 배열.
+  function repIndex(rows, repName) {
+    var rn = String(repName == null ? '' : repName).replace(/\s+/g, '');
+    if (!rn || !rows || !rows.length) return 0;
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i], nm = (r && typeof r === 'object') ? (r.name_kr != null ? r.name_kr : r.name) : r;
+      if (String(nm == null ? '' : nm).replace(/\s+/g, '') === rn) return i;
+    }
+    return 0;
+  }
+  //  묶음 이름(print_overrides.team_group)의 표시 — 「태그#대표행사번호」의 끝 #번호는 다른 시기의 같은 코드와 겹치지 않게 하는 키라 화면에는 보이지 않는다.
+  function teamGroupLabel(g) { return String(g == null ? '' : g).replace(/#\d+$/, ''); }
   // 한글 성명을 성/명으로 분리(복성 포함). {sur, given} 의 가타카나 반환.
   var _COMPOUND_SUR = ['황보','남궁','선우','독고','제갈','사공','서문','동방','어금','망절'];
   function nameYomi(nameKr) {
@@ -1455,6 +2009,7 @@
   var _EN_CODA = { ng:'ン', n:'ン', m:'ム', k:'ク', g:'グ', l:'ル', r:'ル', p:'プ', b:'ブ', t:'ト', s:'ス', ch:'チ', h:'' };
   // 모음/이중모음 (긴 것부터). [철자, 활음(''/y/w), 핵모음idx(0a·1i·2u·3e·4o)]
   var _VOW = [
+    ['woo','',2],   // WOO = 우(ウ) — 없으면 wo(ウォ)+o(オ)로 쪼개져 ウォオ 가 된다
     ['yeo','y',4],['yae','y',3],['weo','w',4],['wae','w',3],['you','y',4],['yoo','y',2],
     ['eo','',4],['eu','',2],['ae','',3],['oe','w',3],['ui','w',1],['oo','',2],['ou','',4],['ee','',1],['uu','',2],
     ['ya','y',0],['yu','y',2],['ye','y',3],['yo','y',4],['yi','y',1],
@@ -1476,7 +2031,7 @@
     }
     function compose(onset, glide, idx) {
       var base = _EN_ROW[onset] || _EN_ROW[''];
-      if (glide === 'y') { var yc = ({0:'a',1:'i',2:'u',3:'e',4:'o'})[idx]; return onset === '' ? (_YV[yc] || base[idx]) : (base[1] + (_Y[yc] || '')); }
+      if (glide === 'y') { var yc = ({0:'a',1:'i',2:'u',3:'e',4:'o'})[idx], ys = _Y[yc] || ''; return onset === '' ? (_YV[yc] || base[idx]) : (((ys && onset === 't') ? 'テ' : (ys && onset === 'd') ? 'デ' : base[1]) + ys); }
       if (glide === 'w') { var wc = ({0:'a',1:'i',2:'u',3:'e',4:'o'})[idx]; return onset === '' ? (_WV[wc] || base[idx]) : (base[2] + (_W[wc] || '')); }
       return base[idx];
     }
@@ -1490,11 +2045,14 @@
         else if (DBL[two]) { onsetKey = DBL[two]; adv = 2; }
         else { onsetKey = (c === 'c' ? 'k' : c === 'v' ? 'b' : c); adv = 1; }
         var after = i + adv;
-        if (after < N && isNuc(s.charAt(after))) {
+        var wooNext = s.substr(after, 3) === 'woo';   // 「GILWOO·MINWOO」 — 자음 + woo 는 w 활음 음절이 아니라 앞 음절의 받침 + 우(ウ)
+        //  「JINWON·GILWON·SAMWON」 — 받침 n·l·m 뒤의 w 도 다음 음절(원·완)의 첫소리다(놔·눠·뤄·뭐 는 이름에 없다). 첫소리 kw·gw·hw(권·관·황)는 그대로.
+        var codaW = adv === 1 && i > 0 && (c === 'n' || c === 'l' || c === 'm') && s.charAt(after) === 'w';
+        if (after < N && isNuc(s.charAt(after)) && !wooNext && !codaW) {
           var v = matchVowel(after);
           if (v) { var ok = (_EN_ROW[onsetKey] !== undefined) ? onsetKey : ''; out += compose(ok, v.glide, v.idx); i = v.next; continue; }
         }
-        if (c === 'n' && s.charAt(i + 1) === 'g' && !isNuc(s.charAt(i + 2))) { out += 'ン'; i += 2; continue; }   // 종성 ng
+        if (c === 'n' && s.charAt(i + 1) === 'g' && (!isNuc(s.charAt(i + 2)) || s.substr(i + 2, 3) === 'woo' || (s.charAt(i + 2) === 'w' && s.charAt(i - 1) !== 'i'))) { out += 'ン'; i += 2; continue; }   // 종성 ng(「DONGWOOK·DONGWON」의 ng 도 — 단 「MINGWAN」(민관)처럼 i 뒤는 n + gw)
         out += (_EN_CODA[onsetKey] !== undefined ? _EN_CODA[onsetKey] : (_EN_CODA[c] || '')); i += adv; continue;
       }
       if (isNuc(c)) { var v2 = matchVowel(i); if (v2) { out += compose('', v2.glide, v2.idx); i = v2.next; continue; } }
@@ -1673,7 +2231,7 @@
     zoneLabel: zoneLabel,
     gradeLabel: gradeLabel,
     fmtDate: fmtDate,
-    parseFlexDate: parseFlexDate,
+    parseFlexDate: parseFlexDate, SHEET_FIX_MS: SHEET_FIX_MS,
     parseLocalDate: parseLocalDate,
     overlaps: overlaps,
     nightsBetween: nightsBetween,
@@ -1763,7 +2321,7 @@
     MEAL_OFFSITE: MEAL_OFFSITE,
     mealOffsite: mealOffsite,
     mealPlan: mealPlan,
-    hangulToKana: hangulToKana,
+    hangulToKana: hangulToKana, repIndex: repIndex, teamGroupLabel: teamGroupLabel,
     nameYomi: nameYomi,
     romajiToKana: romajiToKana,
     nameYomiEn: nameYomiEn,

@@ -164,8 +164,20 @@
   table.dt tfoot tr.sum:hover td{background:var(--surface2)}
   table.dt tr.cl td .clb{display:inline-block;font-size:10.5px;font-weight:800;color:#fff;background:#c2410c;border-radius:5px;padding:1px 6px}
   .tag{font-family:var(--mono);font-weight:800;color:var(--accent2)}
+  /* 인쇄 — 화면을 그대로 찍는 페이지: 조작부(.noprint)·상단바를 숨기고, 스크롤 상자를 풀어 표 전체를 찍는다. @page 는 @media print 밖(staychart 와 같은 이유) */
+  @page{size:A3 landscape;margin:8mm}
+  @media print{
+    body{background:#fff;min-height:0}
+    .topbar,.conn,.noprint,.tw-top,#toast,.so-totop,.so-footer{display:none!important}
+    main{padding:0;max-width:none}
+    .panel{border:0;box-shadow:none;padding:0;margin:0 0 4mm}
+    .tw{overflow:visible;max-height:none;border:0}
+    #grid{zoom:var(--pz,1)}   /* 표가 용지보다 넓으면 beforeprint 에서 계산한 배율로 줄인다 */
+    table.oc thead th,table.oc th.rh,table.oc td.rh{position:static}
+    table.oc th,table.oc td,.lgd i,.una-box,.una-box *,table.dt th,table.dt td,table.dt td *{-webkit-print-color-adjust:exact;print-color-adjust:exact}   /* 범례·상세 표(폐쇄 줄)·미배정 상자도 색 유지 */
+  }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.3">
 </head>
 <body data-so-area="occupancy">
 <div class="topbar so-bar">
@@ -196,8 +208,8 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-core.js?v=69"></script>
-<script src="../assets/saizen-ops.js?v=40.2"></script>
+<script src="../assets/saizen-core.js?v=70"></script>
+<script src="../assets/saizen-ops.js?v=40.3"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -392,7 +404,7 @@ function renderUI(){
         <span>${tx('lgDomeQ')}</span>
       </div>
     </div>
-    <div class="panel">
+    <div class="panel${SEL?'':' noprint'}">
       <h3 id="dt-title">${tx('dtTitle')('')}</h3>
       <div id="detail"><div class="cnt" style="color:var(--muted);padding:8px 0">${tx('dtPick')}</div></div>
     </div>`;
@@ -651,6 +663,7 @@ async function load(){
   }catch(e){ if(stale()) return; $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+String(e&&e.message||e),'err');
     //  실패한 범위에 앞 범위의 표를 남기지 않는다 — 월 칩은 새 범위인데 표·상세는 옛 범위라 날짜가 어긋난다
     ROWS=[]; SEL=null; const g=$('#grid'); if(g){ g.innerHTML=`<div class="cnt" style="color:var(--err);padding:12px 0">${esc(tx('loadFail'))} <button class="btn sm ghost" type="button" id="btn-retry">${tx('reload')}</button></div>`; const b=$('#btn-retry'); if(b) b.addEventListener('click',()=>load()); }
+    renderDetail();   // 선택이 풀렸으니 상세 패널도 인쇄 대상에서 뺀다(제목·noprint 되돌림)
     const dt=$('#detail'); if(dt) dt.innerHTML=''; }
 }
 
@@ -960,11 +973,19 @@ function renderGrid(){
   syncTopBar();
   box.innerHTML=`<table class="oc"><thead><tr><th class="rh">${esc(tx('thRow'))}</th>${head}</tr></thead><tbody>${body.join('')}</tbody></table>`;
   box.querySelectorAll('td.c[data-k]').forEach(td=>td.addEventListener('click',()=>{
-    SEL={key:td.dataset.k, date:td.dataset.d}; renderGrid(); renderDetail();
+    const same=SEL&&SEL.key===td.dataset.k&&SEL.date===td.dataset.d;   // 고른 칸을 다시 누르면 해제 — 상세가 닫히고 인쇄에도 붙지 않는다
+    SEL=same?null:{key:td.dataset.k, date:td.dataset.d}; renderGrid(); renderDetail();
   }));
 }
 
 // 표 위 좌우 이동바 = 표 스크롤 폭과 같은 빈 띠, 양쪽 scrollLeft 동기(넓은 표에서 아래까지 안 내려가도 좌우 이동)
+// 인쇄 폭 맞춤 — 표가 A3 가로 인쇄 폭(420mm − 여백 16mm)보다 넓으면 그 비율만큼 줄인다(1개월=100%, 달을 여러 개 고르면 작아진다)
+let _prScroll=null;   // 인쇄 전 스크롤 위치(창·표 상자)
+window.addEventListener('beforeprint',()=>{ const t=document.querySelector('#grid table'); const w=t?t.scrollWidth:0, lim=(420-16)/25.4*96; document.documentElement.style.setProperty('--pz', w>lim?String(Math.floor(lim/w*1000)/1000):'1');
+  _prScroll={ x:window.scrollX, y:window.scrollY, tw:Array.from(document.querySelectorAll('.tw')).map(e=>[e,e.scrollLeft,e.scrollTop]) }; });
+window.addEventListener('afterprint',()=>{ const s=_prScroll; if(!s) return; _prScroll=null;
+  const back=()=>{ s.tw.forEach(a=>{ if(a[0].isConnected){ a[0].scrollLeft=a[1]; a[0].scrollTop=a[2]; } }); window.scrollTo(s.x,s.y); };
+  back(); requestAnimationFrame(back); setTimeout(back,60); });   // 배치가 돌아오는 시점이 브라우저마다 달라 세 번 맞춘다
 let _topSynced=false;
 function syncTopBar(){
   const top=$('#grid-top'), tw=document.querySelector('.tw'); if(!top||!tw) return;
@@ -977,7 +998,8 @@ function syncTopBar(){
 // 칸 클릭 → 그날 그 룸타입에 든 팀
 function renderDetail(){
   const box=$('#detail'), ttl=$('#dt-title'); if(!box) return;
-  if(!SEL){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:8px 0">${tx('dtPick')}</div>`; return; }
+  { const pn=box.closest('.panel'); if(pn) pn.classList.toggle('noprint', !SEL); }   // 칸을 고르지 않았을 때는 상세 패널을 인쇄하지 않는다(고른 채 인쇄하면 상세 표가 표 아래에 함께 찍힌다)
+  if(!SEL){ if(ttl) ttl.textContent=tx('dtTitle')(''); box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:8px 0">${tx('dtPick')}</div>`; return; }
   const invMap={}; INV_ALL.forEach(i=>{ invMap[i.id]=i; });   // 칸 숫자(buildRows)와 같은 기준 — 비활성 방에 넣은 수기 배정도 상세에 나온다
   const rows=ROOMS.filter(r=>{
     const inv=invMap[r.inventory_id]; if(!inv || rowKey(inv)!==SEL.key) return false;
@@ -1001,7 +1023,7 @@ function renderDetail(){
   //  폐쇄 중인 방도 한 줄씩(칸 숫자에 폐쇄가 들어 있으니 상세에서도 어느 방·왜·언제까지인지 보인다, Min 2026-09-15)
   const closedRows=INV.filter(inv=>rowKey(inv)===SEL.key).map(inv=>({inv, c:closedOn(inv.id,SEL.date)})).filter(x=>x.c)
     .map(x=>({room:x.inv.room_no||'', reason:x.c.reason||'', ci:x.c.from, co:x.c.to, closed:true}));
-  if(!rows.length && !closedRows.length){ box.innerHTML=`<div style="padding:6px 0 10px">${goBtn}</div>${unaHtml}<div class="cnt" style="color:var(--muted);padding:8px 0">${tx('dtNone')}</div>`; return; }
+  if(!rows.length && !closedRows.length){ box.innerHTML=`<div class="noprint" style="padding:6px 0 10px">${goBtn}</div>${unaHtml}<div class="cnt" style="color:var(--muted);padding:8px 0">${tx('dtNone')}</div>`; return; }
   // 방 단위로 묶는다 — 같은 방에 두 팀이 들어가 있으면 한 줄에 함께(실수 계산과 일치)
   const g={};
   rows.forEach(r=>{
@@ -1021,7 +1043,7 @@ function renderDetail(){
       tag:ts.map(t=>t.tag).join(' + '), rep:ts.map(t=>`${t.rep}(${t.pax})`).join(' + '), names:x.names.join(' · '),
       ci:x.ci, co:x.co, multi:ts.length>1, dq:ts.some(t=>t.dq)};
   }).concat(closedRows).sort((a,b)=>String(a.room).localeCompare(String(b.room),undefined,{numeric:true}));
-  box.innerHTML=`<div style="padding:6px 0 10px">${goBtn}</div>${unaHtml}<table class="dt"><thead><tr>
+  box.innerHTML=`<div class="noprint" style="padding:6px 0 10px">${goBtn}</div>${unaHtml}<table class="dt"><thead><tr>
       <th>${tx('cRoom')}</th><th>${tx('cTeam')}</th><th>${tx('cRep')}</th><th>${tx('cGuests')}</th>
       <th>${tx('cPax')}</th><th>${tx('cStay')}</th><th>${tx('cAccom')}</th>
     </tr></thead><tbody>${list.map(x=>x.closed?`<tr class="cl">

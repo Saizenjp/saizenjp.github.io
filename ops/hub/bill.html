@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title>SaiZen · ご精算確認 / 결제 내역</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=69"></script>
+<script src="../assets/saizen-core.js?v=70"></script>
 <style>
   :root{
     --bg:#f4f6f2; --surface:#ffffff; --line:#d8ddce; --text:#23291d; --text2:#5d6650; --muted:#8b937c;
@@ -343,11 +343,18 @@ function render(){
   document.querySelectorAll('.oc .mb').forEach(b=>b.addEventListener('click',()=>setOut(b.dataset.o,b.dataset.m,b.dataset.on!=='1',b)));
 }
 
+// supabase-js(CDN)를 못 받은 채 열리면 tick() 이 매번 같은 자리에서 돌아간다 → 라이브러리만 다시 받는다(받으면 바로 tick). 한 번에 한 요청만.
+let _sbLibBusy=false;
+function retrySbLib(){ if(window.supabase||_sbLibBusy) return; _sbLibBusy=true;
+  const o=document.querySelector('script[src*="supabase-js"]'), s=document.createElement('script');
+  s.src=(o&&o.getAttribute('src'))||'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+  s.onload=()=>{ _sbLibBusy=false; if(window.supabase){ tick(); if(!STAFF) initStaffBar(); } else s.remove(); }; s.onerror=()=>{ _sbLibBusy=false; s.remove(); };   // 직원 바(POS·정산 바로가기)도 다시 시도 — 처음엔 라이브러리가 없어 조용히 끝났다
+  document.head.appendChild(s); }
 async function tick(){
   const L=T[lang];
   if(!TOKEN){ if(lastSig!=='no'){ stateView(L.noToken,L.noTokenSub); lastSig='no'; } return; }
   if(document.hidden) return;   // 화면이 가려진 동안은 폴링을 쉰다(익명 RPC 3건/8초) — 다시 보이면 맨 아래 visibilitychange 가 바로 한 번 갱신
-  if(!supa){ try{ supa=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ return; } }
+  if(!supa){ try{ supa=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ if(lastSig!=='err'){ stateView(L.errH,L.errSub); lastSig='err'; } retrySbLib(); return; } }   // 라이브러리 누락: 「불러오는 중…」에 멈추지 않고 안내 + 재요청
   try{
     //  일정 RPC(125)는 실패해도 결제 내역은 보여야 한다 → 따로 잡는다.
     const [bill, today, out] = await Promise.all([

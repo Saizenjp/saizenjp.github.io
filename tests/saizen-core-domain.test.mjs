@@ -428,3 +428,178 @@ test('JP_HOLIDAYS: 2026-11~2027-10 공휴일 17개(현지 요금표 목록) 전�
   assert.equal(SZ.partnerNightType('2026-12-31'), 'hi');   // 祝前日(元日 전날)
   assert.equal(SZ.partnerNightType('2026-11-04'), 'wk');   // 수요일
 });
+
+// 검수 D14-2 — 전기카트 비고: 취소·불필요 같은 부정 문구는 확정(sure)이 아니라 재확인(maybe) · 영문 낱말 끝의 E + 「카드」 오탐 없음
+test('cartRemarkKind — 부정 문구는 재확인 / 「lotte 카드」는 전기카트가 아니다', () => {
+  for (const s of ['전기카트 취소', '전기카트 신청 안함', '전동카트 불필요', '전기카트 대기', '전기카트 없음', '電動カート キャンセル'])
+    assert.equal(SZ.cartRemarkKind(s), 'maybe', s);
+  assert.equal(SZ.cartRemarkKind('lotte 카드 결제'), 'none');
+  assert.equal(SZ.cartRemarkKind('THE 카드'), 'none');
+  assert.equal(SZ.cartRemarkKind('E카트 신청'), 'sure');
+  assert.equal(SZ.cartRemarkKind('■E 카트 1대'), 'sure');
+  assert.equal(SZ.cartRemarkKind('전기카트 신청 / 싱글룸 대기'), 'sure');   // 다른 항목의 「대기」는 상관없다
+  assert.equal(SZ.cartRemarkKind('전기카트 2대 신청\n석식 1회 취소'), 'sure');
+  assert.equal(SZ.wantsElectricCart('전기카트 취소'), false);
+  assert.equal(SZ.wantsElectricCart('전기카트 신청'), true);
+  assert.equal(SZ.wantsElectricCart('lotte 카드 결제'), false);
+});
+// 검수 D14-6 — 여권 영문 WOO 는 ウ(ウォオ 가 아니다) · 한글 폴백 최→チェ·두→トゥ
+test('nameYomiEn: WOO → ウ · WON 은 ウォン 그대로', () => {
+  assert.equal(SZ.nameYomiEn('HONG GILWOO').given, 'ギルウ');
+  assert.equal(SZ.nameYomiEn('HONG GIL WOO').given, 'ギルウ');
+  assert.equal(SZ.nameYomiEn('HONG DONG WOOK').given, 'ドンウク');
+  assert.equal(SZ.nameYomiEn('HONG WOONG').given, 'ウン');
+  assert.equal(SZ.nameYomiEn('HONG WONHO').given, 'ウォンホ');
+  assert.equal(SZ.nameYomiEn('PARK MOO SIL').given, 'ムシル');
+  assert.equal(SZ.nameYomiEn('WOO GILDONG').sur, 'ウ');
+});
+test('hangulToKana(영문 이름이 없을 때의 폴백): 최→チェ · 죄→ジェ · 두→トゥ · 디→ティ', () => {
+  assert.equal(SZ.hangulToKana('최'), 'チェ');
+  assert.equal(SZ.hangulToKana('죄'), 'ジェ');
+  assert.equal(SZ.hangulToKana('두'), 'トゥ');
+  assert.equal(SZ.hangulToKana('디'), 'ティ');
+  assert.equal(SZ.hangulToKana('수'), 'ス');          // 그 밖의 행은 그대로
+  assert.equal(SZ.hangulToKana('추'), 'チュ');
+  assert.equal(SZ.hangulToKana('과'), 'クァ');
+  assert.deepEqual(SZ.nameYomi('홍길동'), { sur: 'ホン', given: 'キルトン' });
+  assert.deepEqual(SZ.nameYomi('남궁가나'), { sur: 'ナムクン', given: 'カナ' });
+});
+// 검수 D14-11 — 공휴일 목록: 2025-09-22 는 공휴일이 아니다 · 2028 추가 · 하반기에는 내년 목록이 있어야 한다
+test('JP_HOLIDAYS: 연도별 개수(2025=19·2026=18·2027=17·2028=16) · 2028 요일 규칙 대조 · 내년 목록', () => {
+  const by = y => SZ.JP_HOLIDAYS.filter(d => d.startsWith(y + '-')).length;
+  assert.deepEqual([by(2025), by(2026), by(2027), by(2028)], [19, 18, 17, 16]);
+  assert.equal(SZ.isJpHoliday('2025-09-22'), false);
+  assert.equal(SZ.isJpHoliday('2025-09-23'), true);
+  // 요일로 정해지는 2028 공휴일(成人の日·海の日·敬老の日·スポーツの日) — 날짜 계산으로 대조
+  const nthMon = (y, m, n) => { const d = new Date(Date.UTC(y, m - 1, 1)); const off = (8 - d.getUTCDay()) % 7; return y + '-' + String(m).padStart(2, '0') + '-' + String(1 + off + (n - 1) * 7).padStart(2, '0'); };
+  for (const [m, n] of [[1, 2], [7, 3], [9, 3], [10, 2]]) assert.ok(SZ.JP_HOLIDAYS.includes(nthMon(2028, m, n)), nthMon(2028, m, n));
+  for (const d of ['2028-01-01', '2028-02-11', '2028-02-23', '2028-04-29', '2028-05-03', '2028-05-04', '2028-05-05', '2028-08-11', '2028-11-03', '2028-11-23']) assert.ok(SZ.JP_HOLIDAYS.includes(d), d);
+  // 일요일과 겹치는 2028 공휴일이 없어 振替休日 은 없다
+  assert.equal(SZ.JP_HOLIDAYS.filter(d => d.startsWith('2028-') && new Date(d + 'T00:00:00Z').getUTCDay() === 0).length, 0);
+  assert.equal(SZ.partnerNightType('2028-01-09'), 'hi');   // 일요일이자 祝前日
+  // 7월부터는 내년 목록이 있어야 한다(내년 예약이 가을에 열린다 — 内閣府 발표는 2월)
+  const now = new Date(), need = now.getFullYear() + (now.getMonth() >= 6 ? 1 : 0);
+  const last = Math.max(...SZ.JP_HOLIDAYS.map(d => Number(d.slice(0, 4))));
+  assert.ok(last >= need, 'JP_HOLIDAYS 에 ' + need + '년 목록이 없습니다 — 内閣府 「国民の祝日」 발표를 보고 saizen-core.js 에 추가하세요');
+});
+// 검수 D14-9 — 지금까지 테스트가 없던 분기: 간지호텔 코스 판정(코스·카트·配車 공용)·방 구역 판정(방배정 필터·청소 화면 공용)
+test('golfRows: 간지호텔 체류 중 평일=九重高原CC / 주말·공휴일=やまなみCC · usesYamanamiCC · isNonWorkday', () => {
+  const gz = { accom: '간지호텔', dep: '2026-11-19', arr: '2026-11-24' };
+  assert.deepEqual(SZ.golfRows(gz, false).map(r => [r.date.slice(5), r.course, r.note]), [
+    ['11-19', 'やまなみCC', '入国日'], ['11-20', '九重高原CC', '+9Hサービス対象'], ['11-21', 'やまなみCC', '週末'],
+    ['11-22', 'やまなみCC', '週末'], ['11-23', 'やまなみCC', '祝日']]);
+  assert.equal(SZ.usesYamanamiCC(gz, false, '2026-11-20'), false);   // 평일 = 九重高原CC → 전기카트 사전신청 대상 아님
+  assert.equal(SZ.usesYamanamiCC(gz, false, '2026-11-23'), true);    // 공휴일(勤労感謝の日)
+  assert.equal(SZ.usesYamanamiCC(gz, false, '2026-11-24'), false);   // 인천편 귀국일 = 라운딩 없음
+  assert.equal(SZ.usesYamanamiCC({ accom: '야마나미리조트', dep: '2026-11-19', arr: '2026-11-24' }, false, '2026-11-20'), true);
+  assert.equal(SZ.isJpHoliday('2026-11-23'), true); assert.equal(SZ.isJpHoliday('2026-11-24'), false);
+  assert.equal(SZ.isNonWorkday('2026-11-21'), true); assert.equal(SZ.isNonWorkday('2026-11-23'), true); assert.equal(SZ.isNonWorkday('2026-11-24'), false);
+});
+test('roomPlaceKeys·placeInScope: 호텔 층·소보 5호·별장·오프사이트 구역 판정', () => {
+  const Y = '야마나미리조트';
+  assert.deepEqual(SZ.roomPlaceKeys({ facility: Y, zone: '3층', room_no: '301' }), ['호텔']);
+  assert.deepEqual(SZ.roomPlaceKeys({ facility: Y, zone: '소보별장', room_no: '5호-1' }), ['소보5동']);
+  assert.deepEqual(SZ.roomPlaceKeys({ facility: Y, zone: '소보별장', room_no: '3호' }), ['소보별장']);
+  assert.deepEqual(SZ.roomPlaceKeys({ facility: Y, zone: '아소별장', room_no: 'A-5' }), ['아소별장']);
+  assert.deepEqual(SZ.roomPlaceKeys({ facility: Y, zone: '돔하우스', room_no: 'D1' }), ['돔하우스']);
+  assert.deepEqual(SZ.roomPlaceKeys({ facility: '시즈노야도 료칸', zone: '', room_no: '吉祥' }), ['시즈노야도']);
+  assert.deepEqual(SZ.roomPlaceKeys({ facility: '어딘가', zone: '' }), []); assert.deepEqual(SZ.roomPlaceKeys(null), []);
+  assert.equal(SZ.placeInScope(['호텔'], []), true);                 // 선택 없음 = 「전체」
+  assert.equal(SZ.placeInScope(['간지호텔'], new Set()), false);     // 「전체」는 오프사이트 제외
+  assert.equal(SZ.placeInScope(['쿠주힐즈'], null), true);
+  assert.equal(SZ.placeInScope(['간지호텔'], new Set(['간지호텔'])), true);
+  assert.equal(SZ.placeInScope(['호텔'], ['소보별장', '소보5동']), false);
+  assert.equal(SZ.placeInScope([], []), false);
+});
+
+// 29차 반박 검토(CORE-1·2) — 부정 낱말은 전기카트와 **같은 절** 안에서만 본다(쉼표·슬래시·탭·마침표·글머리표·다른 항목의 괄호에서 끊는다),
+//  「취소 시 연락·대기 없이·취소 불가」 같은 단서는 부정이 아니다. 낱말 보강(미사용·제외·캔슬·なし·取消 …)·키워드 앞의 「취소:」·날짜가 낀 부정.
+test('cartRemarkKind — 다른 항목의 부정 낱말·괄호 안 단서에는 걸리지 않는다(확정 유지)', () => {
+  for (const s of ['전기카트 2대 신청(취소 시 연락)', '전기카트 신청, 싱글룸 대기', '전기카트 신청. 싱글룸 대기', '전기카트 신청 ／ 싱글룸 대기',
+    '전기카트 신청\t석식 취소', '전기카트1대,캐디 불필요', '전기카트 2대, 조식 불가', '전기카트 신청(환불불가)', '전기카트 신청 (우천시 취소 가능)',
+    '전기카트 1대 신청 (대기 없이 확정)', '전기카트 확정(대기 풀림)', '전기카트 1대, 싱글차지 없음', '전기카트 2대 신청(없음 시 가솔린)',
+    '전기카트 신청, 송영 불필요', '電動カート申請、送迎不要', '電動カート2台（昼食不要）', '電動カート希望（キャンセル時は連絡）',
+    '전기카트 2대 x 3일', '전기카트 신청 / 싱글룸 대기', '전기카트 2대 신청\n석식 1회 취소', '전기카트 2대 신청 (취소 불가)', '전기카트 변경 불가',
+    '■전기카드 1개 신청 ■싱글룸 대기', '전기카트 신청 · 조식 불필요', '석식 취소 전기카트 신청', '전기카트 1대기준 4인', '전기카트 신청입니다.', '전기카트 사전신청 완료'])
+  { assert.equal(SZ.cartRemarkKind(s), 'sure', s); assert.equal(SZ.wantsElectricCart(s), true, s); }
+});
+test('cartRemarkKind — 부정 낱말 보강·키워드 앞의 취소·날짜가 낀 부정·다음 줄의 취소는 재확인', () => {
+  for (const s of ['전기카트 안 씀', '전기카트 미사용', '전기카트 제외', '전기카트 빼주세요', '전기카트 없이 진행', '전기카트 X', '전기카트 캔슬',
+    '전기카트 cancel', '전기카트 CXL', '電動カートなし', '電動カート無し', '電動カート取消', '電動カート取り消し', '電動カート申込なし', '電動カート保留',
+    '電動カート待ち', '電動カート未定', '電動カート不可', '취소: 전기카트', '(취소) 전기카트 2대', '취소된 전기카트', '전기카트\n취소',
+    '전기카트 2대 신청 (11/12 대기)', '전기카트 신청 2026/11/12 취소', '전기카트(취소)', '전기카트 2대 (취소됨)', '전기카트 2대 신청 / 전기카트 1대 취소',
+    '전기카트 취소', '전기카트 신청 안함', '전동카트 불필요', '전기카트는 필요 없습니다', '전기카트 신청 없이 진행', '전기카트 안됨', '전기카트 X 싱글룸 O'])
+  { assert.equal(SZ.cartRemarkKind(s), 'maybe', s); assert.equal(SZ.wantsElectricCart(s), false, s); }
+});
+// 낱말만 있는 줄 다음 줄이 「신청 안 함」「사용 안 합니다」처럼 **신청·사용 + 부정**으로 시작하면 그 낱말의 부정이다(다음 줄이 부정 낱말로 바로 시작하는 꼴만 보던 것 보강).
+//   다음 줄의 신청 내용 뒤에 붙은 단서(「신청 2대 (우천 시 취소)」)는 부정이 아니다.
+test('cartRemarkKind — 낱말만 있는 줄 + 다음 줄 「신청 안 함」은 재확인 · 다음 줄의 신청 내용은 그대로 신청', () => {
+  for (const s of ['전기카트\n신청 안 함', '전기카트\n- 사용 안 합니다', '전기카트:\n신청은 없습니다', '전동카트\n이용 안함', '電動カート\n申込なし', '電動カート\n利用しません'])
+  { assert.equal(SZ.cartRemarkKind(s), 'maybe', s); assert.equal(SZ.wantsElectricCart(s), false, s); }
+  for (const s of ['전기카트\n신청합니다', '전기카트\n신청 2대 (우천 시 취소)', '전기카트\n2대 신청', '전기카트\n사용 예정 / 석식 취소', '電動カート\n利用希望'])
+  { assert.equal(SZ.cartRemarkKind(s), 'sure', s); assert.equal(SZ.wantsElectricCart(s), true, s); }
+});
+// 29차 검증 반영 — 구분자 **바로 뒤**가 부정 낱말이면 그 카트의 것(「전기카트 2대, 취소」) · 괄호 뒤로 이어지는 부정(「전기카트(2대) 취소」) ·
+//   괄호 안의 날짜·수량 + 부정(「(2일차 취소)」「(입국일 제외)」「(1대만 취소)」) · 숫자 사이 쉼표는 끊는 자리가 아니다(「1,2일차 취소」).
+//   다른 항목의 괄호(「（昼食不要）」「(싱글룸 대기)」)·취소 규정/수수료 얘기·단서(「취소 시 연락」)는 신청 그대로.
+test('cartRemarkKind — 구분자 바로 뒤의 부정·괄호 뒤/괄호 안의 부분 취소는 재확인 · 다른 항목의 괄호·취소 규정은 신청 그대로', () => {
+  for (const s of ['전기카트 2대, 취소', '전기카트 신청. 취소', '전기카트 2대 / 취소', '전기카트 신청; 취소', '전기카트 2대\t취소', '전기카트 2대 신청\n취소',
+    '전기카트(2대) 취소', '전기카트 2대(취소)', '전기카트 11/13 취소', '전기카트 2대 (11/12 대기)', '전기카트 1,2일차 취소', '전기카트 취소시켜 주세요',
+    '전기카트 2대 (입국일 제외)', '전기카트 2대 (2일차 취소)', '전기카트 2대 (1대만 취소)', '전기카트 2대 신청 (마지막날 제외)', '電動カート2台（最終日なし）',
+    '전기카트 취소 수수료 발생, 취소', '전기카트 2대 신청\n- 취소'])
+  { assert.equal(SZ.cartRemarkKind(s), 'maybe', s); assert.equal(SZ.wantsElectricCart(s), false, s); }
+  for (const s of ['전기카트 2대, 취소 시 연락', '전기카트 2대. 취소 불가', '電動カート2台（昼食不要）', '전기카트 신청 (싱글룸 대기)', '전기카트 2대 신청\n취소 규정: 3일 전',
+    '전기카트 2대 신청 / 취소 수수료 없음', '전기카트 2대, 캔슬차지 있음', '전기카트 신청(환불불가) 2대', '전기카트 2대 신청\n■취소료 안내', '電動カート2台、キャンセル料あり',
+    '전기카트 2대 신청 (석식 1회 취소)', '전기카트 2대 (4인승 불가 시 2대)', '전기카트 2대 신청\n싱글룸 대기', '전기카트 2대 신청\n대기 없이 확정',
+    // 끊긴 자리 뒤가 부정 낱말로 시작해도 **긴 문장**이면 다른 얘기다(실제 비고의 꼴: 다음 줄이 「취소분 나오면 호텔 숙박 희망」)
+    '전기카트 1대 신청\n취소분 나오면 호텔숙박 희망합니다.', '전기카트 1대 신청, 취소분 나오면 호텔 숙박 희망', '전기카트 2대 신청\n대기 중인 싱글룸 확정되면 연락 바랍니다'])
+  { assert.equal(SZ.cartRemarkKind(s), 'sure', s); assert.equal(SZ.wantsElectricCart(s), true, s); }
+});
+// 29차 반박 검토(DATE-2·5) — 받침 ng·n·l·m 뒤의 w(원·완)는 다음 음절의 첫소리가 아니다 / ㄷ·ㅌ + ㅑㅕㅛㅠ 는 テャ·テュ·テョ
+test('nameYomiEn: DONGWON → ドンウォン(グォン 이 아니다) · 권(GWON·KWON)은 그대로', () => {
+  assert.equal(SZ.nameYomiEn('KIM DONGWON').given, 'ドンウォン');
+  assert.equal(SZ.nameYomiEn('KIM DONG WON').given, 'ドンウォン');
+  assert.equal(SZ.nameYomiEn('LEE JUNGWON').given, 'ジュンウォン');
+  assert.equal(SZ.nameYomiEn('PARK SEUNGWAN').given, 'スンワン');
+  assert.equal(SZ.nameYomiEn('KIM JINWON').given, 'ジンウォン');
+  assert.equal(SZ.nameYomiEn('KIM GILWON').given, 'ギルウォン');
+  assert.equal(SZ.nameYomiEn('KIM DONGWOOK').given, 'ドンウク');          // WOO 는 종전대로
+  assert.equal(SZ.nameYomiEn('KWON GILDONG').sur, 'クォン');             // 첫소리 kw·gw 는 그대로
+  assert.equal(SZ.nameYomiEn('GWON GILDONG').sur, 'グォン');
+  assert.equal(SZ.nameYomiEn('KIM MINGWAN').given, 'ミングァン');         // i + ngw 는 민관(n + gw)
+  assert.equal(SZ.nameYomiEn('KIM MINGYU').given, 'ミンギュ');
+  assert.equal(SZ.nameYomiEn('HWANG GILDONG').sur, 'ファン');
+});
+test('hangulToKana: ㄷ·ㅌ + ㅑㅕㅛㅠ = テャ·テョ·テュ(ティュ 가 아니다) · 디·티·두·투 는 그대로', () => {
+  assert.equal(SZ.hangulToKana('튜'), 'テュ');
+  assert.equal(SZ.hangulToKana('매튜'), 'メテュ');
+  assert.equal(SZ.hangulToKana('듀'), 'テュ');
+  assert.equal(SZ.hangulToKana('탸'), 'テャ');
+  assert.equal(SZ.hangulToKana('툐'), 'テョ');
+  assert.equal(SZ.hangulToKana('티'), 'ティ');
+  assert.equal(SZ.hangulToKana('투'), 'トゥ');
+  assert.equal(SZ.hangulToKana('규'), 'キュ');
+});
+// 29차 반박 검토(DATA-4) — 대표 줄 고르기는 한 규칙: 예약의 대표고객과 이름(띄어쓰기 무시)이 같은 줄 가운데 첫 줄, 없으면 첫 줄
+test('repIndex — 대표고객 이름과 같은 첫 줄 · 없으면 0', () => {
+  const L = n => n.map(x => ({ name_kr: x }));
+  assert.equal(SZ.repIndex(L(['가가가', '나다라', '다다다']), '나다라'), 1);
+  assert.equal(SZ.repIndex(L(['바바바', '마바사', '마바사']), '마바사'), 1);      // 같은 이름이 여럿이면 그중 첫 줄(이름이 다른 첫 줄이 아니다)
+  assert.equal(SZ.repIndex(L(['사사사', '아자차']), '아 자차'), 1);               // 띄어쓰기만 다른 이름
+  assert.equal(SZ.repIndex(L(['라라라', '마마마']), '없는이'), 0);
+  assert.equal(SZ.repIndex(L(['라라라', '마마마']), ''), 0);
+  assert.equal(SZ.repIndex(L(['라라라']), null), 0);
+  assert.equal(SZ.repIndex([], '가가가'), 0);
+  assert.equal(SZ.repIndex(['가가가', '나 다라'], '나다라'), 1);                  // 이름 문자열 배열도 받는다
+  assert.equal(SZ.teamGroupLabel('DAあ-Y#30020001'), 'DAあ-Y');                  // 묶음 이름의 표시(끝의 #행사번호를 뗀다)
+  assert.equal(SZ.teamGroupLabel('DAあ-Y'), 'DAあ-Y');
+  assert.equal(SZ.teamGroupLabel(null), '');
+});
+
+test('hangulToKana: ㄷ·ㅌ + ㅘㅙㅚㅝㅞㅟ 는 다른 행과 같은 합성(ウ단 + 작은 모음) — 되 = トゥェ(괴 = クェ 와 같은 식)', () => {
+  assert.equal(SZ.hangulToKana('되'), 'トゥェ');
+  assert.equal(SZ.hangulToKana('뒤'), 'トゥィ');
+  assert.equal(SZ.hangulToKana('둬'), 'トゥォ');
+  assert.equal(SZ.hangulToKana('괴'), 'クェ');
+  assert.equal(SZ.hangulToKana('권'), 'クォン');
+});

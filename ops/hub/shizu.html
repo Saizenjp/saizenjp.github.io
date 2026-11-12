@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 志津の宿 予約表</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 <style>
   :root{
     --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
@@ -246,7 +245,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.3">
 </head>
 <body data-so-area="shizu_sheet">
 <div class="topbar so-bar">
@@ -285,8 +284,8 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=69"></script>
-<script src="../assets/saizen-ops.js?v=40.2"></script>
+<script src="../assets/saizen-core.js?v=70"></script>
+<script src="../assets/saizen-ops.js?v=40.3"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(予約表 산출물·도메인 데이터는 일본어 유지) ──
@@ -639,7 +638,7 @@ async function load(){
       // 로스터 소스 = ① accom 이 시즈인 팀 + ② 상품명에 '시즈'가 든 번들예약 팀(시즈+간지·시즈+야마나미 등).
       //   ②가 없으면 번들예약은 accom 이 야마나미/간지로 기록돼 있어, 배정을 풀는 순간 미배정 목록에서
       //   사라져 다시 배정할 입구가 없어진다(실제 사고 2건).
-      const GSEL='event_seq,accom,bookings!inner(dep_date,arr_date,product_name,remark_local,event_no,rep_name,origin,airline'+(SHZ_HAS_RT?',room_type':'')+')';
+      const GSEL='event_seq,accom,bookings!inner(dep_date,arr_date,product_name,remark_local,remark_local_ja,event_no,rep_name,origin,airline'+(SHZ_HAS_RT?',room_type':'')+')';
       const [r1,r2]=await Promise.all([
         supa.from('guests').select(GSEL).eq('accom',FACILITY).neq('bookings.status','대기'),
         supa.from('guests').select(GSEL).ilike('bookings.product_name','%시즈%').neq('bookings.status','대기')
@@ -652,7 +651,7 @@ async function load(){
       (tgs||[]).forEach(g=>{ const b=g.bookings||{}; const dep=String(b.dep_date||'').slice(0,10), arr=String(b.arr_date||'').slice(0,10);
         if(dep&&arr&&dep<=end&&arr>start){ tMap[g.event_seq]={dep,arr,product:b.product_name||'',remark:b.remark_local||''};
           // 미배정 팀은 BOOK(배정팀만 로드)에 없음 → 여기서 행사번호·대표자 채움(헤더 #예약번호 폴백 방지)
-          if(!BOOK[g.event_seq]) BOOK[g.event_seq]={event_seq:g.event_seq,event_no:b.event_no||null,rep_name:b.rep_name||null,product_name:b.product_name||null,origin:b.origin||null,airline:b.airline||null,remark_local:b.remark_local||null,room_type:b.room_type||null,dep_date:dep,arr_date:arr}; } });
+          if(!BOOK[g.event_seq]) BOOK[g.event_seq]={event_seq:g.event_seq,event_no:b.event_no||null,rep_name:b.rep_name||null,product_name:b.product_name||null,origin:b.origin||null,airline:b.airline||null,remark_local:b.remark_local||null,remark_local_ja:b.remark_local_ja||null,room_type:b.room_type||null,dep_date:dep,arr_date:arr}; } });
       const tSeqs=Object.keys(tMap).map(Number);
       const rgms=tSeqs.length? await pagedIn('guest_members','id,event_seq,name_kr,name_en','event_seq',tSeqs) : [];
       if(_stale()) return;

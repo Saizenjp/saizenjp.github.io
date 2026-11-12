@@ -519,7 +519,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.3">
 </head>
 <body data-so-area="room_assign">
 <div class="topbar so-bar">
@@ -648,8 +648,8 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-core.js?v=69"></script>
-<script src="../assets/saizen-ops.js?v=40.2"></script>
+<script src="../assets/saizen-core.js?v=70"></script>
+<script src="../assets/saizen-ops.js?v=40.3"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -2226,14 +2226,13 @@ function noteLinkedHtml(g, editable){
 function singleNeed(g){
   if(!g) return 0;
   const t=[g.remark_local,g.remark].filter(Boolean).join('\n');
-  let n=(window.SZCore&&SZCore.singleCount)?SZCore.singleCount(t):0;
-  if(!n){   // 「싱글: 홍길동, 김철수」처럼 이름으로 적혀 있으면 그 인원 수가 곧 방 수
-    const sp=(window.SZCore&&SZCore.singlePlan)
-      ? SZCore.singlePlan(t, g.pax, (state.members[g.event_seq]||[]).map(m=>({id:m.id,name:m.name_kr||''}))) : null;
-    if(sp&&sp.kind==='names') n=(sp.names||[]).length;
-    else if(sp&&sp.kind==='all') n=Number(sp.n)||0;
-  }
-  return n;
+  //  자동배정이 읽는 수를 먼저 쓴다 — 「4명 싱글룸 (석식 3명)」을 4명 1인 1실로 넣고 배지는 「3방 필요」라고 말하지 않게.
+  //  전원·이름 지정이 아닐 때만 글에 적힌 수량(singleCount)을 쓴다.
+  const sp=(window.SZCore&&SZCore.singlePlan)
+    ? SZCore.singlePlan(t, g.pax, (state.members[g.event_seq]||[]).map(m=>({id:m.id,name:m.name_kr||''}))) : null;
+  if(sp&&sp.kind==='names'&&(sp.names||[]).length) return sp.names.length;   // 「싱글: 홍길동, 김철수」 = 그 인원 수가 곧 방 수
+  if(sp&&sp.kind==='all'&&Number(sp.n)>0) return Number(sp.n);
+  return (window.SZCore&&SZCore.singleCount)?SZCore.singleCount(t):0;
 }
 function isSingleInv(inv){ return /싱글|single|シングル/i.test(String((inv&&inv.room_type)||'')); }
 function singleHave(g){
@@ -4201,7 +4200,7 @@ function cancelSplit(){ closeSplitPicker(); if(state.splitPending){ state.splitP
 //   · guest_members.actual_dep 기록 + 그 사람 방을 퇴실일로 단축(이후 방은 해제) → 침대 그날부터 비움.
 //   · 다른 메뉴(정산 환불)에 후속 작업을 남기므로 「확인 필요(followups)」 항목 자동 생성 → 놓치지 않게.
 //   · B2B 정산(settle_merit)은 불변. 환불은 현장 御請求書.
-function settleDeepLink(seq){ const ym=($('#month-pick')&&$('#month-pick').value)||((state.from||'').slice(0,7)); return `settle.html?ym=${encodeURIComponent(ym)}&seq=${encodeURIComponent(seq)}`; }
+function settleDeepLink(seq){ const _g=(state.guests||[]).find(x=>String(x.event_seq)===String(seq)); const _d=String((_g&&_g.dep)||''); const ym=/^\d{4}-\d{2}/.test(_d)?_d.slice(0,7):(($('#month-pick')&&$('#month-pick').value)||((state.from||'').slice(0,7))); /* 정산은 입국월(session_ym)로 읽는다 — 달을 넘겨 묵는 팀은 보고 있는 달이 아니라 입국월로 보낸다 */ return `settle.html?ym=${encodeURIComponent(ym)}&seq=${encodeURIComponent(seq)}`; }
 // 프론트 데스크 딥링크(?seq): 그 팀이 배정된 방 카드로 스크롤 + 강조(rs-flash). 카드 뷰로 전환.
 function focusTeamDeep(seq){
   if(typeof viewMode!=='undefined' && viewMode==='timeline'){ setView('card'); }   // 표 보기는 행으로 스크롤 가능

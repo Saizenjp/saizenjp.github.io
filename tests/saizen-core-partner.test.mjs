@@ -433,3 +433,144 @@ test('partnerHotelList — 객실 배정(rooming)을 주면 「部屋」 열이 
   const part = C.partnerHotelList(team, members, { hotel: 'H', rooms: { twin: 1, single: 1 }, rooming: { 1: 'T1' } });   // 방이 없는 사람은 빈 칸으로 맨 뒤
   assert.deepEqual(part.rows.map(x => [x[1], x[2]]), [['ツイン1', '김대표'], ['', '이영희'], ['', '박무기']]);
 });
+
+// 검수 D14-4 — 「코스 날짜」를 줄바꿈·괄호·공백으로 나열해도 각 코스가 자기 뒤의 날짜를 받는다(앞 코스의 날짜를 다시 쓰지 않는다)
+test('partnerRemarkPlan — 이름 뒤 날짜 나열(줄바꿈·괄호·공백)', () => {
+  const ctx = { pax: 4, hotels: HOTELS, courses: COURSES, segFrom: '2026-12-01', segTo: '2026-12-04' };
+  const d = t => C.partnerRemarkPlan(t, ctx).golf.map(g => g.date.slice(5) + (g.explicit ? '' : '?'));
+  assert.deepEqual(d('그랜드챔피언 12/1\n추오 12/2\nKAO 12/3'), ['12-01', '12-02', '12-03']);
+  assert.deepEqual(d('그랜드챔피언(12/1) 추오(12/2) KAO(12/3)'), ['12-01', '12-02', '12-03']);
+  assert.deepEqual(d('그랜드챔피언 12/2 추오 12/3'), ['12-02', '12-03']);
+  assert.deepEqual(d('12/1 그랜드챔피언 12/2 추오 12/3 KAO'), ['12-01', '12-02', '12-03']);   // 날짜가 앞인 꼴은 그대로
+  assert.deepEqual(d('12/1 그랜드챔피언, 12/2 추오'), ['12-01', '12-02']);
+});
+
+// 29차 반박 검토(DATE-1·4) — 날짜를 앞에 쓰는 꼴에서 날짜와 이름 사이에 낱말(오후·도착·요일·시각)이 끼어도 자기 날짜를 받는다 ·
+//  날짜 뒤에 숫자(인원·티타임)가 이어져도 일(日)에 붙여 읽지 않는다 · 체류 밖 날짜는 쓰지 않는다
+test('partnerRemarkPlan — 날짜가 앞/뒤 어느 쪽이든 자기 날짜 · 사이에 낀 낱말·뒤따르는 숫자', () => {
+  const ctx = { pax: 4, hotels: HOTELS, courses: COURSES, segFrom: '2026-12-01', segTo: '2026-12-05' };
+  const d = t => C.partnerRemarkPlan(t, ctx).golf.map(g => g.date.slice(5) + (g.explicit ? '' : '?'));
+  assert.deepEqual(d('12/1 오후 그랜드챔피언\n12/2 추오\n12/3 그린힐\n12/4 KAO'), ['12-01', '12-02', '12-03', '12-04']);
+  assert.deepEqual(d('12/1 도착 그랜드챔피언 12/2 추오 12/3 KAO'), ['12-01', '12-02', '12-03']);
+  assert.deepEqual(d('첫날 그랜드챔피언 12/2 추오 12/3 KAO'), ['12-01', '12-02', '12-03']);
+  assert.deepEqual(d('12/1(월) 그랜드챔피언 12/2 추오 12/3 KAO'), ['12-01', '12-02', '12-03']);
+  assert.deepEqual(d('12/1 13:00 그랜드챔피언\n12/2 추오\n12/3 KAO'), ['12-01', '12-02', '12-03']);
+  assert.deepEqual(d('12/1 골프장 그랜드챔피언\n12/2 추오\n12/3 KAO'), ['12-01', '12-02', '12-03']);
+  assert.deepEqual(d('12/1 그랜드챔피언 2일차 추오 12/3 KAO'), ['12-01', '12-02', '12-03']);
+  // 이름 뒤 날짜(D14-4) 는 그대로
+  assert.deepEqual(d('그랜드챔피언 12/1\n추오 12/2\nKAO 12/3'), ['12-01', '12-02', '12-03']);
+  assert.deepEqual(d('그랜드챔피언(12/1) 추오(12/2) KAO(12/3)'), ['12-01', '12-02', '12-03']);
+  assert.deepEqual(d('그랜드챔피언: 12/2, 추오: 12/3'), ['12-02', '12-03']);
+  // DATE-4 — 날짜 뒤의 인원·티타임
+  assert.deepEqual(d('그랜드챔피언 12/1 4명\n추오 12/2 4명'), ['12-01', '12-02']);
+  assert.deepEqual(d('그랜드챔피언 12/1 08:30\n추오 12/2 09:00'), ['12-01', '12-02']);
+  assert.deepEqual(d('12/1 4명 그랜드챔피언\n12/2 4명 추오'), ['12-01', '12-02']);
+  // 체류(12/1~12/5) 밖 날짜는 그 코스의 날짜로 쓰지 않는다(접수일·다른 구간의 날짜)
+  assert.deepEqual(d('11/25 접수. 그랜드챔피언 12/2, 추오 12/3'), ['12-02', '12-03']);
+  assert.deepEqual(d('11/25 그랜드챔피언, 추오'), ['12-02?', '12-03?']);                       // 5박 2코스 → 2·3일차 추정
+  // 날짜 없는 코스는 앞 코스 다음 날로 잇는다
+  assert.deepEqual(d('12/2 그랜드챔피언, 추오, KAO'), ['12-02', '12-03?', '12-04?']);
+  // 쉼표·줄바꿈으로 끊은 조각 안의 「코스 1개 + 날짜 1개」 짝이 글의 꼴을 정한다 — 첫 코스 앞에 입국일이 적혀 있어도 「코스 → 날짜」 글이면 그렇게 읽는다
+  assert.deepEqual(d('12/1 입국 그랜드챔피언 12/2, 추오 12/3, KAO'), ['12-02', '12-03', '12-04?']);
+  assert.deepEqual(d('12/1 입국\n그랜드챔피언 12/2\n추오 12/3'), ['12-02', '12-03']);
+  assert.deepEqual(d('12/1 그랜드챔피언, 12/2 추오, 12/3 KAO'), ['12-01', '12-02', '12-03']);
+  assert.deepEqual(d('입국 12/1, 그랜드챔피언 12/2, 추오 12/3'), ['12-02', '12-03']);
+});
+
+// 29차 2차 반박 검토(PARTNER-1~4) — 날짜는 **같은 조각**(줄·쉼표·구분 슬래시로 끊은 것) 안의 코스에만 붙는다.
+//  설명서가 권하는 「 / 」 구분 양식에서 앞 항목의 숫자(「싱글룸 2 / 11/5 …」)·숙박 기간(「12/1~12/5」)·입국일이 코스 날짜로 붙지 않아야 한다.
+test('partnerRemarkPlan — 구분 슬래시 양식: 앞 항목의 숫자·숙박 기간·입국일은 코스 날짜가 아니다', () => {
+  const mk = (from, to) => { const ctx = { pax: 4, hotels: HOTELS, courses: COURSES, segFrom: from, segTo: to }; return t => C.partnerRemarkPlan(t, ctx).golf.map(g => g.date.slice(5) + (g.explicit ? '' : '?')); };
+  let d = mk('2026-11-04', '2026-11-08');
+  // PARTNER-1 — 「숫자 / M/D 코스」
+  assert.deepEqual(d('워싱턴 / 싱글룸 2 / 11/5 그랜드챔피언 / 11/6 추오 / 11/7 그린힐'), ['11-05', '11-06', '11-07']);
+  assert.deepEqual(d('워싱턴 트윈 2 / 11/5 그랜드챔피언 / 11/6 추오'), ['11-05', '11-06']);
+  assert.deepEqual(d('여행사: 가나투어 / 워싱턴 / 싱글룸 2 / 11/5 그랜드챔피언 / 11/6 추오 / 11/7 그린힐'), ['11-05', '11-06', '11-07']);
+  assert.deepEqual(d('워싱턴 / 싱글룸 / 11/5 그랜드챔피언 / 11/6 추오'), ['11-05', '11-06']);
+  assert.deepEqual(d('4명 / 11/5 그랜드챔피언 / 11/6 추오'), ['11-05', '11-06']);
+  assert.deepEqual(d('싱글룸2/11/5그랜드챔피언/11/6추오'), ['11-05', '11-06']);                       // 붙여 쓴 꼴 — 수가 셋 이어지면 뒤의 둘이 날짜
+  assert.deepEqual(d('26/11/5 그랜드챔피언, 26/11/6 추오'), ['11-05', '11-06']);                     // 두 자리 연도
+  assert.deepEqual(d('2026/11/5 그랜드챔피언, 2026/11/6 추오'), ['11-05', '11-06']);
+  // PARTNER-2 — 숙박 기간·입국일·귀국일
+  assert.deepEqual(d('11/4 입국 / 그랜드챔피언 11/5 / 추오 11/6 / 11/8 귀국'), ['11-05', '11-06']);
+  assert.deepEqual(d('워싱턴 11/4~11/8 / 그랜드챔피언 11/5 / 추오 11/6'), ['11-05', '11-06']);
+  assert.deepEqual(d('워싱턴 11/4-11/8 트윈 2 / 그랜드챔피언 11/5 / 추오 11/6'), ['11-05', '11-06']);
+  assert.deepEqual(d('워싱턴 11/4~11/8 트윈 2\n골프장: 그랜드챔피언, 추오, 그린힐'), ['11-05?', '11-06?', '11-07?']);
+  // PARTNER-3 — 「코스 / M/D 코스」: 앞 코스가 뒤 코스의 날짜를 가져가지 않는다
+  assert.deepEqual(d('워싱턴 / 그랜드챔피언 / 11/6 추오 / 11/7 그린힐'), ['11-05?', '11-06', '11-07']);
+  assert.deepEqual(d('골프장: 그랜드챔피언 / 11/6 추오 / 11/7 그린힐'), ['11-05?', '11-06', '11-07']);
+  assert.deepEqual(d('워싱턴 / 싱글룸 2 / 그랜드챔피언 / 11/6 추오 / 11/7 그린힐'), ['11-05?', '11-06', '11-07']);
+  // PARTNER-4 — 차수를 이름 뒤에 적은 꼴
+  assert.deepEqual(d('그랜드챔피언 2일차, 추오 3일차'), ['11-05', '11-06']);
+  assert.deepEqual(d('그랜드챔피언 2일차 / 추오 3일차 / KAO 4일차'), ['11-05', '11-06', '11-07']);
+  assert.deepEqual(d('2일차 그랜드챔피언 / 3일차 추오'), ['11-05', '11-06']);
+
+  d = mk('2026-12-01', '2026-12-05');
+  assert.deepEqual(d('워싱턴 12/1~12/5\n골프장: 그랜드챔피언, 추오, KAO'), ['12-02?', '12-03?', '12-04?']);
+  assert.deepEqual(d('워싱턴 (12/1~12/5) / 골프장: 그랜드챔피언, 추오, KAO'), ['12-02?', '12-03?', '12-04?']);
+  assert.deepEqual(d('12/1 입국\n골프장: 그랜드챔피언, 추오, 그린힐'), ['12-02?', '12-03?', '12-04?']);
+  assert.deepEqual(d('12/1 입국 12/5 귀국 / 그랜드챔피언, 추오, KAO'), ['12-02?', '12-03?', '12-04?']);
+  assert.deepEqual(d('12/1 입국 12/5 귀국 그랜드챔피언 추오 KAO'), ['12-02?', '12-03?', '12-04?']);   // 구분자가 없어도 귀국일은 코스 날짜가 아니다
+  assert.deepEqual(d('골프 12/2, 12/3, 12/4\n코스: 그랜드챔피언, 추오, KAO'), ['12-02?', '12-03?', '12-04?']);
+  assert.deepEqual(d('12/1 입국 / 그랜드챔피언 12/2 / 추오 12/3 / 12/5 귀국'), ['12-02', '12-03']);
+  assert.deepEqual(d('워싱턴 12/1~12/5 / 그랜드챔피언 12/2 / 추오 12/3'), ['12-02', '12-03']);
+  assert.deepEqual(d('워싱턴 / 싱글룸 2 / 12/2 그랜드챔피언 / 12/3 추오'), ['12-02', '12-03']);
+  assert.deepEqual(d('워싱턴 트윈 2 / 12/2 그랜드챔피언 / 12/3 추오 / 12/4 KAO'), ['12-02', '12-03', '12-04']);
+  assert.deepEqual(d('워싱턴 / 그랜드챔피언 / 12/3 추오 / 12/4 KAO'), ['12-02?', '12-03', '12-04']);
+  // 날짜만 적힌 줄 + 코스만 적힌 줄(줄을 나눠 적은 꼴) — 바로 이웃한 줄끼리만 잇는다
+  assert.deepEqual(d('12/2\n그랜드챔피언\n12/3\n추오'), ['12-02', '12-03']);
+  assert.deepEqual(d('그랜드챔피언\n12/2\n추오\n12/3'), ['12-02', '12-03']);
+  assert.deepEqual(d('12/2(수)\n그랜드챔피언\n12/3(목)\n추오'), ['12-02', '12-03']);
+  // 한 줄에 날짜 하나·코스 하나면 사이에 말이 끼어도 그 코스의 날짜
+  assert.deepEqual(d('12/2 오전 08:30 티오프 그랜드챔피언\n12/3 추오'), ['12-02', '12-03']);
+
+  d = mk('2026-12-30', '2027-01-03');
+  assert.deepEqual(d('워싱턴 싱글 1 / 1/2 추오'), ['01-02']);
+  assert.deepEqual(d('워싱턴 트윈 1 / 12/31 그랜드챔피언 / 1/2 추오'), ['12-31', '01-02']);
+});
+
+test('partnerRemarkPlan — 날짜 앞뒤의 다른 수: 「트윈 2 11/5 코스」·「코스 11/5/4명」·「싱글룸2/2일차 코스」', () => {
+  const ctx = { pax: 4, hotels: HOTELS, courses: COURSES, segFrom: '2026-11-04', segTo: '2026-11-08' };
+  const d = t => C.partnerRemarkPlan(t, ctx).golf.map(g => g.date.slice(5) + (g.explicit ? '' : '?'));
+  assert.deepEqual(d('워싱턴 트윈 2 11/5 그랜드챔피언 / 11/6 추오'), ['11-05', '11-06']);          // 빈칸으로 띄운 앞 수는 날짜에 붙지 않는다
+  assert.deepEqual(d('워싱턴 / 싱글룸 2 11/5 그랜드챔피언, 11/6 추오'), ['11-05', '11-06']);
+  assert.deepEqual(d('그랜드챔피언 11/5/4명/추오 11/6/4명'), ['11-05', '11-06']);                   // 날짜 뒤 「/N명」은 인원
+  assert.deepEqual(d('워싱턴/싱글룸2/2일차 그랜드챔피언 3일차 추오'), ['11-05', '11-06']);          // 「2/2일차」의 2/2 는 날짜가 아니다
+  assert.deepEqual(d('싱글룸2/11/5그랜드챔피언/11/6추오'), ['11-05', '11-06']);                     // 종전대로
+  assert.deepEqual(d('2026/11/5 그랜드챔피언, 2026/11/6 추오'), ['11-05', '11-06']);
+});
+
+test('partnerRemarkPlan — 뿌리가 같은 호텔·골프장 이름(「○○호텔」·「○○골프」): 다른 등록표의 더 긴 이름 안에 든 짧은 별칭은 세지 않는다', () => {
+  //  접미(호텔·골프)를 뗀 짧은 별칭이 서로 같다 — 「가나다호텔」 안의 「가나다」를 골프장으로, 「가나다골프」 안의 「가나다」를 호텔로 읽으면 안 된다
+  const HS = [{ id: 1, name_ko: '가나다호텔' }, { id: 2, name_ko: '라마바호텔' }], CS2 = [{ id: 7, name_ko: '가나다골프' }];
+  const ctx = { pax: 4, hotels: HS, courses: CS2, segFrom: '2026-11-16', segTo: '2026-11-19' };
+  const g = p => p.golf.map(x => x.date.slice(5) + '@' + x.courseId + (x.explicit ? '' : '?'));
+  const a = C.partnerRemarkPlan('가나다호텔 / 11/17 골프장: 가나다골프', ctx);            // 라운드는 뒤의 한 번뿐(호텔 이름은 코스가 아니다)
+  assert.equal(a.hotelId, 1); assert.deepEqual(a.hotels, [1]); assert.deepEqual(g(a), ['11-17@7']); assert.equal(a.golfAssumed, 0);
+  const b = C.partnerRemarkPlan('골프장: 가나다골프, 가나다골프', ctx);                   // 호텔을 적지 않은 비고 — 골프장 이름으로 호텔이 채워지지 않는다
+  assert.equal(b.hotelId, null); assert.deepEqual(b.hotels, []); assert.equal(b.golf.length, 2);
+  const c = C.partnerRemarkPlan('라마바호텔 / 골프장: 가나다골프', ctx);                  // 다른 호텔을 적은 비고 — 호텔이 둘로 읽히지 않는다
+  assert.equal(c.hotelId, 2); assert.deepEqual(c.hotels, [2]); assert.equal(c.golf.length, 1);
+  const d = C.partnerRemarkPlan('가나다호텔 / 골프장: 가나다', ctx);                      // 뿌리만 적은 이름은 어느 쪽인지 알 수 없다 — 종전대로(호텔은 처음 나온 것, 코스 1회)
+  assert.equal(d.hotelId, 1); assert.deepEqual(d.hotels, [1]); assert.equal(d.golf.length, 1);
+  //  겹치지 않는 이름(실제 등록표 꼴)은 그대로
+  const e = C.partnerRemarkPlan('워싱턴 / 11/17 그랜드챔피언 / 11/18 추오', { pax: 4, hotels: HOTELS, courses: COURSES, segFrom: '2026-11-16', segTo: '2026-11-19' });
+  assert.equal(e.hotels.length, 1); assert.deepEqual(e.golf.map(x => x.date.slice(5)), ['11-17', '11-18']);
+});
+
+test('partnerFindNames — 영문 별칭의 글자 경계는 원문에서 본다: 공백·줄바꿈·문장부호 너머의 영문은 다른 낱말이다', () => {
+  //  정규화(공백·문장부호 제거)한 글에서 경계를 보면 「TAU twin」이 「tautwin」이 되어 호텔을 놓친다
+  const ids = (t, rows) => C.partnerFindNames(t, rows).map(h => h.id);
+  assert.deepEqual(ids('TAU twin 2', HOTELS), [2]);
+  assert.deepEqual(ids('Washington Hotel', HOTELS), [1]);
+  assert.deepEqual(ids('KAO\nTAU', HOTELS), [2]); assert.deepEqual(ids('KAO\nTAU', COURSES), [4]);
+  assert.deepEqual(ids('hotel: tau / golf: kao cc, KAO', COURSES), [4, 4]);
+  assert.deepEqual(ids('restaurant 예약', HOTELS), []);                      // 낱말 한가운데는 여전히 아니다
+  assert.deepEqual(ids('taurus / kaolin', HOTELS.concat(COURSES)), []);
+  assert.deepEqual(ids('11/11KAO', COURSES), [4]);                          // 숫자·날짜에 붙은 것은 종전대로
+  const en = [{ id: 9, name_ko: '가나다', aliases: 'aso trial' }, { id: 8, name_ko: '라마바', aliases: 'minami aso' }];
+  assert.deepEqual(ids('Minami Aso Trial', en), [8]);                       // 겹치면 앞의 긴 이름
+  //  플랜에서도 — 영문으로 적은 호텔·골프장
+  const p = C.partnerRemarkPlan('Washington Hotel twin 2 / 11/5 KAO CC', { pax: 4, hotels: HOTELS, courses: COURSES, segFrom: '2026-11-04', segTo: '2026-11-08' });
+  assert.equal(p.hotelId, 1); assert.deepEqual(p.golf.map(g => g.date.slice(5) + '@' + g.courseId + (g.explicit ? '' : '?')), ['11-05@4']);
+});
