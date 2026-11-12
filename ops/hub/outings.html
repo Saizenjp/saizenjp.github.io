@@ -109,7 +109,7 @@
   .golfnote{font-size:12px;color:var(--text2);background:var(--accentSoft);border-left:4px solid var(--accent);border-radius:8px;padding:8px 12px;margin-bottom:10px;word-break:keep-all}
   .rsum{font-size:12.5px;color:var(--text2);font-weight:700;margin-bottom:8px}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.7">
 </head>
 <body data-so-area="frontdesk">
 <div class="topbar so-bar">
@@ -182,7 +182,7 @@
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<script src="../assets/saizen-ops.js?v=39.6"></script>
+<script src="../assets/saizen-ops.js?v=39.7"></script>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -195,7 +195,7 @@ const L={
     desc:'ラウンドの代わりにショッピング・観光などを希望者だけで行く日の受付。日付ごとに行事を登録し、その日宿泊中のチーム名簿から申込者（チーム内の一人・二人でも）を選びます。',
     golfNote:'申込者は その日のコース組合せ表で自動的に「不参加」になります（残りのメンバーはそのままラウンド）。取消すと参加に戻ります。ロビー画面には題名・集合時刻・申込人数だけが表示されます（お名前なし）。',
     date:'日付', kind:'種類', k_shopping:'ショッピング', k_tour:'観光', k_other:'その他', meet:'集合時刻', ret:'帰着予定', titleKo:'題名（韓国語）', titleJa:'題名（日本語）', place:'集合場所', cap:'定員（空欄＝制限なし）', fee:'お一人料金（円・空欄＝無料/未定）', vehicle:'車両・運転手', noteKo:'案内文（韓国語）', noteJa:'案内文（日本語）',
-    save:'保存', cancel:'取消', del:'削除', delConfirm:n=>`「${n}」を削除しますか？ 申込（${n}）も消え、コース組合せ表の不参加も戻ります。`, print:'名簿印刷', titleNeed:'題名（韓国語か日本語）を入力してください',
+    save:'保存', cancel:'取消', del:'削除', delConfirm:n=>`「${n}」を削除しますか？ 申込も一緒に消え、コース組合せ表の不参加も戻ります。`, print:'名簿印刷', titleNeed:'題名（韓国語か日本語）を入力してください',
     st_open:'募集中', st_closed:'締切', st_cancelled:'取消', outings:'この日の行事', signups:'申込者', selectHint:'左の行事を選ぶと申込者が表示されます', addSign:'＋ 申込を追加', pickSave:n=>`選択 ${n}名を申込`, pickCancel:'閉じる', qrBtn:'QR読取', qrTitle:'お客様のQRカードを読み取る', qrHint:'リーダーがあればどの欄にカーソルがあってもかざすだけで読めます。カメラは端末のカメラで QR を映してください。', qrScanning:'QR を映してください…', qrOpenFail:'カメラを開けません — リーダーをかざすか検索してください', qrNoMatch:'登録されていない QR です', qrNotStay:'この QR のチームはこの日に宿泊していません', qrNoOuting:'先に左の行事を選んでください', qrMatched:(tag,n)=>`${tag} チームを選択 — 未申込 ${n}名にチェック。確認して[申込]を押してください`, search:'チーム・代表者・お名前で検索',
     staying:'この日宿泊中のチーム', none:'行事がありません', noSign:'申込者はまだいません', noStay:'この日宿泊中のチームがありません', done:'申込済', absOther:'他の理由で不参加', member:'会員',
     saved:'保存しました', deleted:'削除しました', signSaved:n=>`${n}名を申し込みました — コース組合せ表に反映`, signRemoved:'申込を取消しました', fail:'失敗', loading:'読み込み中…', capWarn:(n,c)=>`定員 ${c}名を超えます（申込 ${n}名）。それでも登録しますか？`,
@@ -234,6 +234,9 @@ window.onSaizenLangChange=function(){ applyStatic(); render(); };
 
 // ── 공통 ──
 function setConn(t,c){ const e=$('#conn-state'); if(e){ e.textContent=t; e.className='pill'+(c?' '+c:''); } }
+//  표시 전용 — 숙소는 화면 언어 라벨(SZCore 단일 진실원), 대표자는 일본어 화면이면 가타카나(프론트 데스크와 같은 규칙). 검색은 원문 그대로 건다.
+function accomL(a,lg){ return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(a,lg||lang()):(a||''); }
+function pn(kr){ return window.__so_pname?__so_pname(kr,''):(kr||''); }
 function toast(msg,cls){ const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.textContent=msg;
   $('#toast').appendChild(t); setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); },2600); }
 function who(){ try{ return (window.__so_getUser&&__so_getUser())||null; }catch(e){ return null; } }
@@ -248,33 +251,39 @@ async function logChange(id,action,label,changes){ try{ await supa.from('change_
 async function fetchIn(table, sel, col, ids, chunk){ let out=[]; for(let i=0;i<ids.length;i+=(chunk||200)){ const {data,error}=await supa.from(table).select(sel).in(col,ids.slice(i,i+(chunk||200))); if(error) throw error; out=out.concat(data||[]); } return out; }
 
 // ── 로드 ──
+let _loadSeq=0;   // 날짜 전환·연속 저장으로 조회가 겹칠 때 낡은 응답을 버리는 순번 표식
 async function load(){
   if(!supa||!D) return;
+  const my=++_loadSeq, d=D, stale=()=>my!==_loadSeq;
   $('#olist').innerHTML=`<div class="hint">${esc(tx('loading'))}</div>`;
   try{
-    const {data:os,error}=await supa.from('outings').select('*').eq('outing_date',D).order('meet_time',{nullsFirst:false}).order('id'); if(error) throw error;
-    OUTS=os||[];
-    const ids=OUTS.map(o=>o.id);
-    SIGN=ids.length?await fetchIn('outing_signups','outing_id,member_id,event_seq,note,signed_by,signed_at','outing_id',ids):[];
-    await loadStay();
+    const {data:os,error}=await supa.from('outings').select('*').eq('outing_date',d).order('meet_time',{nullsFirst:false}).order('id'); if(error) throw error;
+    if(stale()) return;
+    const ids=(os||[]).map(o=>o.id);
+    const sign=ids.length?await fetchIn('outing_signups','outing_id,member_id,event_seq,note,signed_by,signed_at','outing_id',ids):[];
+    if(stale()) return;
+    await loadStay(d); if(stale()) return;
+    OUTS=os||[]; SIGN=sign;
     const mids=[...new Set(SIGN.map(s=>s.member_id))].filter(id=>!memberById(id));   // 묵는 팀 명단에 없는 사람(날짜가 바뀐 행사 등)은 따로 읽는다
-    if(mids.length){ const extra=await fetchIn('guest_members','id,event_seq,name_kr,name_en,seq_in_team,is_rep,member_grade,member_class,member_div','id',mids); extra.forEach(m=>{ EXTRA[String(m.id)]=m; }); }
+    if(mids.length){ const extra=await fetchIn('guest_members','id,event_seq,name_kr,name_en,seq_in_team,is_rep,member_grade,member_class,member_div','id',mids); if(stale()) return; extra.forEach(m=>{ EXTRA[String(m.id)]=m; }); }
     if(SEL!=null && !OUTS.some(o=>o.id===SEL)) SEL=null;
     render();
-  }catch(e){ toast(tx('fail')+': '+(e&&e.message||e),'err'); $('#olist').innerHTML=''; }
+  }catch(e){ if(stale()) return; toast(tx('fail')+': '+(e&&e.message||e),'err'); $('#olist').innerHTML=''; }
 }
 let EXTRA={};
-async function loadStay(){
-  if(STAY_D===D) return;
-  const {data:bs,error}=await supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax,status').lte('dep_date',D).gt('arr_date',D).neq('status','대기').order('dep_date').order('event_seq'); if(error) throw error;
+async function loadStay(d){
+  d=d||D;   // 조회에 쓰는 날짜를 고정 — 읽는 사이 전역 D 가 바뀌어도 섞이지 않게
+  if(STAY_D===d) return;
+  const {data:bs,error}=await supa.from('bookings').select('event_seq,event_no,rep_name,dep_date,arr_date,pax,status').lte('dep_date',d).gt('arr_date',d).neq('status','대기').order('dep_date').order('event_seq'); if(error) throw error;
   const seqs=(bs||[]).map(b=>b.event_seq);
   const gs=seqs.length?await fetchIn('guests','event_seq,accom,team_tag,group_code','event_seq',seqs):[];
   const gm=seqs.length?await fetchIn('guest_members','id,event_seq,name_kr,name_en,seq_in_team,is_rep,member_grade,member_class,member_div','event_seq',seqs):[];
-  const abs=await supa.from('golf_absentees').select('member_id,reason').eq('play_date',D); const ABS={}; (abs.data||[]).forEach(a=>{ ABS[String(a.member_id)]=a.reason||''; });
+  const abs=await supa.from('golf_absentees').select('member_id,reason').eq('play_date',d); const ABS={}; (abs.data||[]).forEach(a=>{ ABS[String(a.member_id)]=a.reason||''; });
   const G={}; gs.forEach(g=>{ G[g.event_seq]=g; });
+  if(d!==D) return;   // 읽는 사이 날짜가 바뀌었으면 버린다 — 앞 날짜 명단이 새 날짜 것으로 굳지 않게
   STAY=(bs||[]).map(b=>{ const g=G[b.event_seq]||{}; const members=gm.filter(m=>m.event_seq===b.event_seq).sort((a,c)=>(a.seq_in_team||99)-(c.seq_in_team||99)).map(m=>({...m,abs:ABS[String(m.id)]}));
     return {seq:b.event_seq, no:String(b.event_no||''), rep:b.rep_name||'', tag:g.team_tag||g.group_code||'', accom:g.accom||'', pax:b.pax||0, members}; });
-  STAY_D=D;
+  STAY_D=d;
 }
 function memberById(id){ for(const t of STAY){ const m=t.members.find(x=>String(x.id)===String(id)); if(m) return {...m,team:t}; } const e=EXTRA[String(id)]; return e?{...e,team:null}:null; }
 function teamOfSeq(seq){ return STAY.find(t=>String(t.seq)===String(seq))||null; }
@@ -299,7 +308,7 @@ function renderSign(sel){
   const rows=SIGN.filter(s=>s.outing_id===sel.id); $('#n-sign').textContent=rows.length;
   const byTeam={}; rows.forEach(s=>{ (byTeam[s.event_seq]=byTeam[s.event_seq]||[]).push(s); });
   const html=Object.keys(byTeam).map(seq=>{ const t=teamOfSeq(seq); const ms=byTeam[seq].map(s=>({s, m:memberById(s.member_id)}));
-    return `<div class="team" data-seq="${esc(seq)}"><div class="th"><span class="tag">${esc(t?t.tag:'')}</span><span class="rep">${esc(t?t.rep:'#'+seq)}</span><span class="acc">${esc(t?t.accom:'')}</span><span class="n">${ms.length}${lang()==='ja'?'名':lang()==='en'?'':'명'}${t?` / ${t.pax}`:''}</span></div>
+    return `<div class="team" data-seq="${esc(seq)}"><div class="th"><span class="tag">${esc(t?t.tag:'')}</span><span class="rep">${esc(t?pn(t.rep):'#'+seq)}</span><span class="acc">${esc(t?accomL(t.accom):'')}</span><span class="n">${ms.length}${lang()==='ja'?'名':lang()==='en'?'':'명'}${t?` / ${t.pax}`:''}</span></div>
       <div class="chips">${ms.map(({s,m})=>`<span class="mchip" data-mid="${esc(s.member_id)}">${esc(m?(m.name_kr||m.name_en||'?'):'?')}${m&&m.name_en?`<small>${esc(m.name_en)}</small>`:''}${s.signed_by==='QR'?`<small style="color:var(--accent2);font-weight:800" title="QR">QR</small>`:''}<button type="button" class="b-unsign" title="${esc(tx('signRemoved'))}">✕</button></span>`).join('')}</div></div>`; }).join('');
   box.innerHTML=`<div class="rsum">${esc(titleOf(sel))} · ${esc(tx('cnt',rows.length,sel.capacity||0))}</div>`+(html||`<div class="empty">${esc(tx('noSign'))}</div>`)
     +`<div class="acts"><button type="button" class="btn sm" id="btn-pick">${esc(tx('addSign'))}</button></div><div id="pickbox"></div>`;
@@ -310,7 +319,7 @@ function renderPick(sel){
   const q=PQ.trim().toLowerCase();
   const teams=STAY.filter(t=>!q||[t.tag,t.rep,t.no,t.accom,...t.members.map(m=>(m.name_kr||'')+' '+(m.name_en||''))].join(' ').toLowerCase().includes(q));
   box.innerHTML=`<div class="pick"><div class="ph"><b>${esc(tx('staying'))}</b> <span class="hint">${STAY.length}</span><input class="inp" id="pq" placeholder="${esc(tx('search'))}" value="${esc(PQ)}" autocomplete="off"><button type="button" class="btn sm ghost" id="btn-pick-qr" title="${esc(tx('qrHint'))}">${esc(tx('qrBtn'))}</button><button type="button" class="btn sm" id="btn-pick-save">${esc(tx('pickSave',0))}</button><button type="button" class="btn sm ghost" id="btn-pick-close">${esc(tx('pickCancel'))}</button></div>
-    <div class="list">${teams.length?teams.map(t=>`<div class="team" data-seq="${esc(t.seq)}"><div class="th"><span class="tag">${esc(t.tag)}</span><span class="rep">${esc(t.rep)}</span><span class="acc">${esc(t.accom)}</span><span class="n">${t.members.length} / ${t.pax}</span></div>
+    <div class="list">${teams.length?teams.map(t=>`<div class="team" data-seq="${esc(t.seq)}"><div class="th"><span class="tag">${esc(t.tag)}</span><span class="rep">${esc(pn(t.rep))}</span><span class="acc">${esc(accomL(t.accom))}</span><span class="n">${t.members.length} / ${t.pax}</span></div>
       <div class="chips">${t.members.map(m=>{ const done=signed.has(String(m.id)); const abs=!done&&m.abs; const mem=(window.SZCore&&SZCore.isMember)?SZCore.isMember(m):false;
         return `<label class="pm${done?' done':''}${abs?' abs':''}" title="${abs?esc(tx('absOther')+': '+m.abs):''}"><input type="checkbox" class="pm-chk" value="${esc(m.id)}" data-seq="${esc(t.seq)}" ${done?'checked disabled':''}> ${esc(m.name_kr||m.name_en||'?')}${mem?` <small>${esc(tx('member'))}</small>`:''}${done?` <small>${esc(tx('done'))}</small>`:''}</label>`; }).join('')}</div></div>`).join(''):`<div class="empty">${esc(tx('noStay'))}</div>`}</div></div>`;
   const pq=$('#pq'); if(pq){ pq.addEventListener('input',()=>{ PQ=pq.value; const at=pq.selectionStart; renderPick(sel); const n=$('#pq'); if(n){ n.focus(); try{ n.setSelectionRange(at,at); }catch(e){} } }); }
@@ -371,7 +380,7 @@ async function unsign(sel,mid){
 function printRoster(o){
   const P=tx('pv'); const rows=SIGN.filter(s=>s.outing_id===o.id); const byTeam={}; rows.forEach(s=>{ (byTeam[s.event_seq]=byTeam[s.event_seq]||[]).push(s); });
   let i=0; const trs=Object.keys(byTeam).map(seq=>{ const t=teamOfSeq(seq); return byTeam[seq].map(s=>{ const m=memberById(s.member_id); i++;
-    return `<tr><td class="c">${i}</td><td class="mono">${esc(t?t.tag:'')}</td><td>${esc(t?t.rep:'#'+seq)}</td><td><b>${esc(m?(m.name_kr||''):'')}</b>${m&&m.name_en?` <small>${esc(m.name_en)}</small>`:''}</td><td>${esc(t?t.accom:'')}</td><td class="c"><span class="box"></span></td><td>${esc(s.note||'')}</td></tr>`; }).join(''); }).join('');
+    return `<tr><td class="c">${i}</td><td class="mono">${esc(t?t.tag:'')}</td><td>${esc(t?pn(t.rep):'#'+seq)}</td><td><b>${esc(m?(m.name_kr||''):'')}</b>${m&&m.name_en?` <small>${esc(m.name_en)}</small>`:''}</td><td>${esc(t?accomL(t.accom,'ja'):'')}</td><td class="c"><span class="box"></span></td><td>${esc(s.note||'')}</td></tr>`; }).join(''); }).join('');
   const meta=[[P.date,o.outing_date],[P.meet,[hm(o.meet_time),o.meet_place].filter(Boolean).join(' · ')],[P.ret,hm(o.return_time)],[P.vehicle,o.vehicle],[P.cap,o.capacity?String(o.capacity):''],[P.fee,o.fee?yen(o.fee):'']].filter(x=>x[1]);
   const now=new Date(); const jp=window.__SO_JP_FONT||'';
   const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>outing_${o.outing_date}</title><style>${jp}
