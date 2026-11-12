@@ -113,11 +113,11 @@
   .band .bc b{display:block;font-size:calc(2.7vh*var(--z));font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .band .bc span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:calc(2.1vh*var(--z));color:var(--ink2);font-weight:600;white-space:pre-wrap;line-height:1.35}
   /* 리조트 안내(홍보 카드 격자 — 로비·월 로테이션 화면) */
-  .pgrid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(2,1fr);gap:1.4vw;align-content:start;overflow:hidden}
+  .pgrid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.4vw;align-content:start;overflow:hidden}
   .pgrid.one{grid-template-columns:1fr}
-  .pc{background:var(--panel);border:.12vh solid var(--line);border-left:.6vw solid var(--warm);border-radius:1.4vh;padding:2.2vh 2.2vw;min-height:0}
-  .pc .ttl{font-size:calc(4.2vh*var(--z));font-weight:800;color:var(--ink);word-break:keep-all}
-  .pc .bd{font-size:calc(3vh*var(--z));font-weight:600;color:var(--ink2);margin-top:.9vh;white-space:pre-wrap;line-height:1.45;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+  .pc{background:var(--panel);border:.12vh solid var(--line);border-left:.6vw solid var(--warm);border-radius:1.4vh;padding:2.2vh 2.2vw;min-height:0;min-width:0}
+  .pc .ttl{font-size:calc(4.2vh*var(--z));font-weight:800;color:var(--ink);word-break:keep-all;overflow-wrap:anywhere}
+  .pc .bd{font-size:calc(3vh*var(--z));font-weight:600;color:var(--ink2);margin-top:.9vh;white-space:pre-wrap;line-height:1.45;word-break:keep-all;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
   .pc.info{border-left-color:var(--acc)} .pc.info .ttl small{font-size:.6em;color:var(--muted);margin-left:1vw;font-weight:700}
   .pc.info .bd{-webkit-line-clamp:8;font-weight:700;color:var(--ink)} .pc.info .bd.ja{font-size:calc(2.3vh*var(--z));color:var(--muted);font-weight:600;margin-top:.6vh;-webkit-line-clamp:6}
   /* 숙소행 출발(로비 출발 안내) */
@@ -174,6 +174,9 @@
   .wx .h .ds{font-size:calc(2.7vh*var(--z));font-weight:700;color:var(--ink2)}
   .wx .h.day{grid-column:1/-1;display:flex;gap:2vw;align-items:center;justify-content:center;padding:1vh}
   .nts{display:flex;flex-direction:column;gap:1.2vh;flex:1;min-height:0;overflow:hidden}
+  #d-list{display:flex;flex-direction:column;gap:1.2vh;flex:1;min-height:0;overflow:hidden}
+  /* 카드가 많아 넘칠 때 = 2열(fitCards 가 붙인다). 쪽으로 넘기지 않고 한 화면에 */
+  #d-list.two,.nts.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.2vh 1.2vw;align-content:start}
   .nt{background:var(--panel);border:.12vh solid var(--line);border-radius:1.4vh;padding:1.8vh 2vw}
   .nt.pin{border-left:.5vw solid var(--acc)}
   .olist{display:flex;flex-direction:column;gap:2vh;flex:1;min-height:0;overflow:hidden}
@@ -311,7 +314,7 @@
     <div class="list" id="w-list"></div>
   </div>
   <!-- ── 로비: 출발 안내 ── -->
-  <div class="pane" id="p-depart"><div id="d-list" style="display:flex;flex-direction:column;gap:1.2vh;flex:1;min-height:0;overflow:hidden"></div></div>
+  <div class="pane" id="p-depart"><div id="d-list"></div></div>
   <!-- ── 로비·월: 신청제 행사(쇼핑·관광) 안내 ── -->
   <div class="pane" id="p-outing"><div class="olist" id="o-list"></div></div>
   <!-- ── 로비: 석식 요약 ── -->
@@ -402,6 +405,7 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','
 function jst(){ const n=new Date(); return new Date(n.getTime()+(n.getTimezoneOffset()+540)*60000); }   // 모니터 PC 시간대와 무관하게 JST
 function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function hhmm(){ const n=jst(); return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'); }
+function relHM(ts){ if(!ts) return ''; const d=new Date(ts); if(isNaN(d)) return ''; const j=new Date(d.getTime()+(d.getTimezoneOffset()+540)*60000); return String(j.getHours()).padStart(2,'0')+':'+String(j.getMinutes()).padStart(2,'0'); }   // 공개 시각(timestamptz — DB 는 UTC 로 준다) → JST HH:MM
 // 표시 날짜: ?date 우선, 없으면 오늘 — CUT_H 이후엔 내일(저녁이 끝난 뒤 내일 것을 미리). 로비·직원·월(식사·안내)은 항상 오늘.
 function targetDate(){
   const f=Q.get('date'); if(f&&/^\d{4}-\d{2}-\d{2}$/.test(f)) return f;
@@ -437,7 +441,7 @@ async function load(){
     if(SCREEN==='lobby') renderLobby(); else if(SCREEN==='wall') renderWall(); else if(SCREEN==='course') renderCourse(); else if(SCREEN==='office') renderOffice(); else if(SCREEN==='guide') renderGuide(); else render();
   }catch(e){
     setUpd(false);
-    if(!DATA){ const el=$({lobby:'#w-list',wall:'#wm-list',course:'#crs',office:'#kpi',guide:'#p-guide'}[SCREEN]||'#list'); el.innerHTML='<div class="none">데이터를 불러오지 못했습니다<br>データを取得できませんでした</div>'; if(SCREEN==='lobby'){ showPane('p-welcome'); } if(SCREEN==='wall'){ showPane('p-wmeal'); } if(SCREEN==='guide'){ PANES=['p-guide']; PI=0; showPane('p-guide'); } }
+    if(!DATA){ const el=$({lobby:'#w-list',wall:'#wm-list',course:'#crs',office:'#kpi',guide:'#p-guide'}[SCREEN]||'#list'); el.innerHTML='<div class="none">데이터를 불러오지 못했습니다<br>データを取得できませんでした</div>'; if(SCREEN==='lobby'){ showPane('p-welcome'); } if(SCREEN==='wall'){ showPane('p-wmeal'); } if(SCREEN==='course'){ showPane('p-course'); } if(SCREEN==='office'){ showPane('p-office'); } if(SCREEN==='dinner'){ showPane('p-dinner'); } if(SCREEN==='guide'){ PANES=['p-guide']; PI=0; showPane('p-guide'); } }
   }
 }
 
@@ -491,9 +495,9 @@ function renderDinnerPane(d, standalone){
   $('#p-dinner').classList.toggle('dense', rows.length>40);
   gridRows($('#list'), rows, '오늘 석식 명단이 없습니다<br>本日の夕食予約はありません');
   if(!standalone) return;
-  $('#tot').innerHTML=`<b>${d.units||0}</b>팀 · <b>${d.total||0}</b>명 <span style="color:var(--muted)">/ ${d.units||0}チーム · ${d.total||0}名</span>`
+  $('#tot').innerHTML=`<b>${esc(d.units||0)}</b>팀 · <b>${esc(d.total||0)}</b>명 <span style="color:var(--muted)">/ ${esc(d.units||0)}チーム · ${esc(d.total||0)}名</span>`
     +(split?` <span style="color:var(--muted)">· ${VENUE.restaurant.ko} <b>${sumPax('restaurant')}</b> · ${VENUE.convention.ko} <b>${sumPax('convention')}</b></span>`:'')
-    +(d.released?` <span style="color:var(--muted)">· 확정 ${esc(String(d.released_at||'').slice(11,16))}</span>`:'');
+    +(d.released?` <span style="color:var(--muted)">· 확정 ${esc(relHM(d.released_at))}</span>`:'');
   $('#pg').textContent='';
   showPane('p-dinner');
 }
@@ -541,8 +545,25 @@ function fitListWidth(list){
 
 // ── 로비: 화면 로테이션 ─────────────────────────────────────────────────
 const TITLES={ 'p-guide':['리조트 안내','リゾートのご案内'], 'p-office':['本日の運営状況','오늘 운영 현황'], 'p-course':['오늘의 라운딩','本日のスタート時刻'], 'p-welcome':['환영합니다','ようこそ'], 'p-depart':['출발 안내','ご出発のご案内'], 'p-dsum':['석식 안내','夕食のご案内'], 'p-weather':['날씨','天気'], 'p-notice':['안내','お知らせ'], 'p-wmeal':['오늘의 식사 안내','本日のお食事のご案内'], 'p-promo':['리조트 안내','リゾートのご案内'], 'p-dinner':['석식 명단','夕食のご案内（チーム別）'], 'p-outing':['오늘의 안내 · 신청 행사','本日のご案内 · お申込み行事'] };
+// 넘치는 카드 목록 맞춤 — 뒤쪽 카드(내일 편·숙소행 출발·뒤 공지)가 말없이 잘리지 않게, 쪽으로 넘기지 않고 한 화면에 맞춘다(Min 2026-10-26 「한 페이지에」):
+//  그 목록만 글자 배율(--z)을 줄인다(하한 55%). 카드가 many 장 이상이면 2열도 재 보고, 글자를 더 크게 둘 수 있는 쪽을 고른다(같으면 한 열).
+function fitCards(el, many){
+  if(!el) return; el.classList.remove('two'); el.style.removeProperty('--z');
+  if(!el.clientHeight) return;   // 숨은 화면 — 켜질 때 다시 잰다
+  // 넘침 = 목록 밖으로 나감(세로·가로) 또는 카드 안 글자가 카드 밖으로 나감(격자 줄이 눌린 경우 — 리조트 안내)
+  const over=()=>el.scrollHeight>el.clientHeight || el.scrollWidth>el.clientWidth+1 || [...el.children].some(c=>c.scrollHeight>c.clientHeight+1);
+  if(!over()) return;
+  const base=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--z'))||1, MIN=0.55;
+  const setZ=z=>{ if(z>=1) el.style.removeProperty('--z'); else el.style.setProperty('--z',String(base*z)); };
+  const best=()=>{ setZ(1); if(!over()) return 1; setZ(MIN); if(over()) return 0; let lo=MIN, hi=1; for(let i=0;i<6;i++){ const mid=(lo+hi)/2; setZ(mid); if(over()) hi=mid; else lo=mid; } return lo; };
+  const z1=best(); let z2=-1;
+  if(many && el.children.length>=many){ el.classList.add('two'); z2=best(); }
+  const two=z2>z1 || (z2===0&&z1===0);   // 둘 다 하한에서도 넘치면 더 많이 들어가는 2열
+  el.classList.toggle('two',two); setZ((two?z2:z1)||MIN);
+}
 function showPane(id){
   document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id===id));
+  if(id==='p-depart') fitCards($('#d-list'),5); if(id==='p-notice') fitCards($('#nts'),5); if(id==='p-promo') fitCards($('#pr-list'));
   if(id==='p-dinner' && SCREEN==='lobby' && DINNER) renderDinnerPane(DINNER,false);   // 보이는 상태에서 열 수·글자 맞춤
   document.querySelectorAll('#'+id+' .list').forEach(fitListWidth);   // 보이게 된 뒤에 폭 맞춤(숨긴 채 그린 명단)
   const t=TITLES[id]; if(t) $('#hd-title').innerHTML=`${esc(t[0])}<small>${esc(t[1])}</small>`;
@@ -550,15 +571,17 @@ function showPane(id){
   if(SCREEN==='guide') guideMedia(id);
 }
 // 안내·광고: 보이는 pane 의 동영상은 처음부터 재생하고 끝날 때까지(최대 VID_MAX초) 다음 화면으로 넘기지 않는다. 다른 pane 동영상은 멈춘다.
-let GUIDE_HOLD=0; const VID_MAX=90;
+let GUIDE_HOLD=0, GUIDE_VID=null; const VID_MAX=90;
 function guideMedia(id){
-  GUIDE_HOLD=0;
-  document.querySelectorAll('.pane.gp video').forEach(v=>{ if(v.closest('.pane').id!==id){ try{ v.pause(); }catch(e){} } });
-  const v=document.querySelector('#'+id+' video'); if(!v) return;
+  const v=document.querySelector('#'+id+' video');
+  if(v && v===GUIDE_VID && !v.ended && !v.paused && GUIDE_HOLD && Date.now()<GUIDE_HOLD) return;   // 자동 갱신(load)이 같은 화면을 다시 켠 것 — 재생 중인 동영상은 되감지 않고 hold 도 그대로 둔다
+  GUIDE_HOLD=0; GUIDE_VID=v||null;
+  document.querySelectorAll('.pane.gp video').forEach(o=>{ if(o.closest('.pane').id!==id){ try{ o.pause(); }catch(e){} } });
+  if(!v) return;
   try{ v.currentTime=0; const pr=v.play(); if(pr&&pr.catch) pr.catch(()=>{}); }catch(e){}
   const dur=(isFinite(v.duration)&&v.duration>0)?v.duration:VID_MAX;
   GUIDE_HOLD=Date.now()+Math.min(dur,VID_MAX)*1000;
-  v.onended=()=>{ GUIDE_HOLD=0; rotate(); };
+  v.onended=()=>{ GUIDE_HOLD=0; rotate(true); };
 }
 function renderLobby(){
   const d=DATA; if(!d) return;
@@ -596,7 +619,7 @@ function renderLobby(){
   // 공지
   const nts=Array.isArray(d.notices)?d.notices:[];
   $('#nts').innerHTML=nts.map(n=>`<div class="nt ${n.pinned?'pin':''}"><div class="ttl">${esc(n.title)}</div>${n.body?`<div class="bd">${esc(n.body)}</div>`:''}</div>`).join('');
-  $('#tot').innerHTML=`체크인 <b>${d.welcome_teams||0}</b>팀 · 석식 ${dn.released===false?'준비 중':`<b>${dn.total||0}</b>명`}`;
+  $('#tot').innerHTML=`체크인 <b>${esc(d.welcome_teams||0)}</b>팀 · 석식 ${dn.released===false?'준비 중':`<b>${esc(dn.total||0)}</b>명`}`;
   renderPromoBand(null);
   // 돌릴 화면 — 내용 없는 것은 뺀다
   const list=['p-welcome'];
@@ -613,7 +636,8 @@ function renderLobby(){
   const cur=PANES[PI]; PANES=paneFilter(list); PI=Math.max(0,PANES.indexOf(cur));
   showPane(PANES[PI]);
 }
-function rotate(){ if(!['lobby','wall','guide'].includes(SCREEN)||PANES.length<2) return; if(SCREEN==='guide'&&GUIDE_HOLD&&Date.now()<GUIDE_HOLD) return; PI=(PI+1)%PANES.length; showPane(PANES[PI]); }
+let ROT_AT=Date.now();   // 마지막으로 화면을 넘긴 시각 — 동영상 종료로 넘긴 직후의 화면도 ROT 초를 다 채운다(타이머는 1초마다 확인)
+function rotate(force){ if(!['lobby','wall','guide'].includes(SCREEN)||PANES.length<2) return; if(SCREEN==='guide'&&GUIDE_HOLD&&Date.now()<GUIDE_HOLD) return; if(force!==true&&Date.now()-ROT_AT<ROT*1000-300) return; ROT_AT=Date.now(); PI=(PI+1)%PANES.length; showPane(PANES[PI]); }
 // ?panes=welcome,dsum,… (주소 옵션 — 로비·월 로테이션에서 고른 화면만. 하나도 남지 않으면(그날 내용이 없어서) 전부 돌린다 — 빈 TV 는 없다.)
 const PANE_SEL=new Set((Q.get('panes')||'').split(',').map(s=>s.trim()).filter(Boolean));
 function paneFilter(list){ if(!PANE_SEL.size) return list; const f=list.filter(p=>PANE_SEL.has(p.replace(/^p-/,''))); return f.length?f:list; }
@@ -637,8 +661,8 @@ function renderOffice(){
     tile((un.n||0)>0?'warn':(ci.teams?'ok':''), '本日到着 部屋未割当','오늘 도착 방 미배정', `${un.n||0}<small>チーム</small>`, (un.n||0)>0?'部屋割当(room)で確認':'', un.tags),
     tile((kt.new||0)>0?'warn':'', '厨房 オーダー','주방 주문', `${kt.new||0}<small>待ち</small>`, `調理中 ${kt.accepted||0} · 完了 ${kt.done||0}`),
     tile(((tr.in_teams||0)>(tr.in_done||0)||(tr.out_teams||0)>(tr.out_done||0))?'warn':(tr.in_teams||tr.out_teams?'ok':''), '送迎 乗車確認','송영 승차 확인', `${tr.in_done||0}<small>/ ${tr.in_teams||0} 到着</small>`, `出発 ${tr.out_done||0} / ${tr.out_teams||0}チーム`),
-    tile(v?'':'warn', '夕食','석식', v?`${esc(v.ja)}`:'会場 未設定', `${[dn.start_time,dn.end_time].filter(Boolean).map(esc).join('〜')||'—'} · ${dn.units||0}チーム ${dn.total||0}名`),
-    tile('', 'ゴルフ 組合せ','골프 조편성', `${cs.n||0}<small>組 · ${cs.total||0}名</small>`, nextTee?`▶ 次のスタート ${nextTee}`:(cs.n?'本日のスタート終了':'組合せなし')),
+    tile(v?'':'warn', '夕食','석식', v?`${esc(v.ja)}`:'会場 未設定', `${[dn.start_time,dn.end_time].filter(Boolean).map(esc).join('〜')||'—'} · ${esc(dn.units||0)}チーム ${esc(dn.total||0)}名`),
+    tile('', 'ゴルフ 組合せ','골프 조편성', `${esc(cs.n||0)}<small>組 · ${esc(cs.total||0)}名</small>`, nextTee?`▶ 次のスタート ${nextTee}`:(cs.n?'本日のスタート終了':'組合せなし')),
   ].join('');
   $('#tot').innerHTML=`在館 <b>${st.teams||0}</b>チーム · <b>${st.pax||0}</b>名`;
   $('#pg').textContent='';
@@ -703,7 +727,7 @@ function paintCourse(d, box){
   const th=(ko,ja,cls)=>`<div class="th ${cls||''}">${ko}<span>${ja}</span></div>`;
   const gcols=['max-content','max-content','minmax(0,1fr)'].concat(HAS.hole?['max-content']:[],HAS.cart?['max-content']:[],HAS.lunch?['max-content']:[],['max-content']).join(' ');
   const cell=(g,nr)=>`<div class="tr${past(g)?' past':''}${g===nr?' next':''}"><div class="td tee">${esc(teeOf(g))}</div>`
-    +`<div class="td tag">${esc(g.tag||'')}</div><div class="td nm">${teamLabel(g)}${g.gno?`<i>${g.gno}조</i>`:''}</div>`
+    +`<div class="td tag">${esc(g.tag||'')}</div><div class="td nm">${teamLabel(g)}${g.gno?`<i>${esc(g.gno)}조</i>`:''}</div>`
     +`${HAS.hole?`<div class="td hl">${g.hole?'H'+esc(g.hole):''}</div>`:''}${HAS.cart?`<div class="td ct">${esc(g.cart||'')}${g.ev?'<b>EV</b>':''}</div>`:''}${HAS.lunch?`<div class="td lu">${lunchLabel(g.lunch)}</div>`:''}`
     +`<div class="td px"><b>${esc(g.pax)}</b><i>名</i></div></div>`;
   box.innerHTML=`<div class="ccols">${cols.map(x=>{ const nr=nextOf(x); const pax=x.rows.reduce((s,g)=>s+(Number(g.pax)||0),0);
@@ -721,7 +745,7 @@ function renderCourse(){
   $('#hd-date').innerHTML=(isTomorrow?'<b>내일 · 明日</b>':'<b>오늘 · 本日</b>')+dateLabel(d.date);
   renderPromoBand(d.promos);   // 전기카트 안내 등(공지 보드 홍보, 화면=코스)
   const r=paintCourse(d,$('#crs'));
-  $('#tot').innerHTML=r.hidden?'':`<b>${d.n||0}</b>조 · <b>${d.total||0}</b>명 <span style="color:var(--muted)">/ ${d.n||0}組 · ${d.total||0}名</span>${d.released?` <span style="color:var(--muted)">· 확정 ${esc(String(d.released_at||'').slice(11,16))}</span>`:''}`;
+  $('#tot').innerHTML=r.hidden?'':`<b>${esc(d.n||0)}</b>조 · <b>${esc(d.total||0)}</b>명 <span style="color:var(--muted)">/ ${esc(d.n||0)}組 · ${esc(d.total||0)}名</span>${d.released?` <span style="color:var(--muted)">· 확정 ${esc(relHM(d.released_at))}</span>`:''}`;
   $('#pg').textContent=(r.nextRow&&r.now?`▶ ${r.nextTee} 곧 출발 · まもなくスタート`:'');
   showPane('p-course');
 }
@@ -811,7 +835,7 @@ function renderWall(){
   const nts=Array.isArray(d.notices)?d.notices:[];
   $('#nts').innerHTML=nts.map(n=>`<div class="nt ${n.pinned?'pin':''}"><div class="ttl">${esc(n.title)}</div>${n.body?`<div class="bd">${esc(n.body)}</div>`:''}</div>`).join('');
   const dn=d.dinner||{};
-  $('#tot').innerHTML=`석식 ${dn.released===false?'준비 중':`<b>${dn.total||0}</b>명`}${(cr&&!cr.hidden&&COURSE)?` · 라운딩 <b>${COURSE.n||0}</b>조 <b>${COURSE.total||0}</b>명`:''}`;
+  $('#tot').innerHTML=`석식 ${dn.released===false?'준비 중':`<b>${esc(dn.total||0)}</b>명`}${(cr&&!cr.hidden&&COURSE)?` · 라운딩 <b>${esc(COURSE.n||0)}</b>조 <b>${esc(COURSE.total||0)}</b>명`:''}`;
   $('#pg').textContent=(cr&&cr.nextRow&&cr.now)?`▶ ${cr.nextTee} 곧 출발 · まもなくスタート`:'';
   const list=['p-wmeal'];
   if(cr && (cr.hidden || (cr.rows&&cr.rows.length))) list.push('p-course');   // 조가 있거나 「준비 중」을 알려야 할 때
@@ -840,7 +864,10 @@ async function loadWeather(){
     if(!d||!d.hourly) throw new Error('wx');
     WX=d; WXAT=Date.now();
     renderWeather(); if(DATA){ if(SCREEN==='wall') renderWall(); else renderLobby(); }
-  }catch(e){ /* 날씨 실패는 그 화면만 빠진다 */ }
+  }catch(e){ /* 날씨 실패는 그 화면만 빠진다 */
+    // 계속 실패하면 옛 예보가 「지금·오늘」로 남는다 → 받은 지 3시간이 넘으면 버려 날씨 화면을 로테이션에서 빼고, 그 전에는 「지금」 칸만 현재 시각으로 다시 맞춘다.
+    if(WX){ if(Date.now()-WXAT>3*60*60*1000){ WX=null; if(DATA){ if(SCREEN==='wall') renderWall(); else renderLobby(); } } else renderWeather(); }
+  }
 }
 function renderWeather(){
   const H=WX.hourly, D=WX.daily||{};
@@ -864,7 +891,7 @@ let PAGE_TAG=null;
 async function checkUpdate(){ try{ const r=await fetch(location.pathname,{method:'HEAD',cache:'no-store'}); if(!r.ok) return; const tag=r.headers.get('etag')||r.headers.get('last-modified')||''; if(!tag) return; if(PAGE_TAG===null){ PAGE_TAG=tag; return; } if(tag!==PAGE_TAG){ location.reload(); } }catch(e){} }
 checkUpdate(); setInterval(checkUpdate, 10*60*1000);
 load(); setInterval(load,REFRESH*1000);
-loadWeather(); setInterval(loadWeather,5*60*1000); setInterval(rotate,ROT*1000);
+loadWeather(); setInterval(loadWeather,5*60*1000); setInterval(rotate,1000);
 keepAwake(); document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ keepAwake(); load(); } });
 // 화면을 한 번 클릭하면 전체화면(키오스크 설정이 없는 PC 용)
 document.addEventListener('click',()=>{ try{ if(!document.fullscreenElement) document.documentElement.requestFullscreen(); }catch(e){} });
