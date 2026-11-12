@@ -72,6 +72,12 @@
   .cd .ln3.over .l{color:var(--err)}
   .cd.sel{border-color:var(--accent);background:var(--accentSoft);box-shadow:0 0 0 2px var(--accent) inset}
   .cd .ln i{font-style:normal;color:var(--muted)}
+  /* 폰 폭 — 달력 7칸이 내용 폭만큼 버텨 화면이 가로로 밀리던 것(390px 에서 517~1099px). 칸을 화면에 맞추고 보유·사용·잔여는 세로로 쌓는다 */
+  @media (max-width:640px){
+    .cal{grid-template-columns:repeat(7,minmax(0,1fr));gap:2px}
+    .cd{padding:3px 2px;min-height:0;overflow:hidden} .cd .tm{font-size:9px;letter-spacing:-.3px;overflow-wrap:anywhere} .cd.none .tm{display:none}   /* 라운딩 없는 날의 글자는 접는다(칸이 흐린 것으로 구분된다) */
+    .cd .ln3{flex-direction:column;gap:0;font-size:9px;letter-spacing:-.2px} .cd .ln3 span{overflow-wrap:anywhere} .cd .ln3 i{margin-right:1px}
+  }
   .cd .ln.over b{color:var(--err)}
   .cd .un{font-size:10px;font-weight:800;color:var(--err)}
   .cd.today{border-color:var(--accent2);box-shadow:0 0 0 1px var(--accent2)}
@@ -101,7 +107,7 @@
   .uchip.off{color:var(--muted);text-decoration:line-through;background:transparent;border-style:dashed}
   .urow{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
   .urow .inp{flex:1;min-width:200px;padding:4px 8px;font-size:12px}
-  .memo{width:120px;padding:4px 6px;font-size:12px}
+  .memo{width:104px;padding:4px 6px;font-size:12px}
   .src{padding:4px 6px;font-size:12px}
   .bdg{font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:99px;white-space:nowrap}
   .bdg.ok{background:var(--accentSoft);color:#234d2f;border:1px solid #b4cda0}
@@ -125,15 +131,17 @@
     .panel{border:none;box-shadow:none;padding:0 0 8px;margin-bottom:8px;break-inside:avoid}
     table.t{font-size:10.5pt}
     .qty,.nos,.memo,.src{border:none;background:transparent;font-size:10.5pt}
-    @page{size:A4 landscape;margin:10mm}
   }
+  @page{size:A4 landscape;margin:10mm}   /* 최상위에 둔다 — @media print 안에 있으면 인쇄 창이 용지 기본값(가로)으로 읽지 않는다 */
 
   /* ── 팀 칸 — 체크박스·태그·배지·버튼 간격 정리(Min 2026-08) ─────────── */
-  .tcell{display:flex;align-items:center;gap:7px;min-width:238px}
+  /* 표가 틀보다 넓어 대수·메모·요금 열이 가로 스크롤 뒤에 가려지던 것(2026-11 검수) — 틀이 좁을 때만 버튼·배지·홀수 표기를 아래 줄로 접는다(넓으면 종전처럼 한 줄) */
+  .tcell{display:flex;align-items:center;flex-wrap:wrap;gap:3px 7px;min-width:0}
+  table.t td.wr{white-space:normal}
   .tcell .pick{margin:0 3px 0 0;width:14px;height:14px;accent-color:var(--accent);cursor:pointer;flex:none}
   .tcell .tag{margin-right:1px}
   .tcell .amark{display:inline-block}
-  .tcell .btns{margin-left:auto;padding-left:12px;display:flex;align-items:center;gap:5px;flex:none}
+  .tcell .btns{margin-left:auto;padding-left:6px;display:flex;align-items:center;gap:5px;flex:none}
   .tcell .btn{flex:none}
   /* 사전신청 ○/× */
   .gbadge{display:inline-block;font-family:var(--mono,monospace);font-size:9.5px;font-weight:800;color:#fff;
@@ -181,7 +189,7 @@
   .cxbox .row{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #f0d8d2;font-size:12.5px}
   .cxbox .row:first-of-type{border-top:0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.9">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.0">
 </head>
 <body data-so-area="cart">
 <div class="topbar so-bar">
@@ -212,7 +220,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=69"></script><!-- 라운딩 일정·출발지 판정 단일 진실원 -->
-<script src="../assets/saizen-ops.js?v=39.9"></script>
+<script src="../assets/saizen-ops.js?v=40.0"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -225,12 +233,12 @@ const L={
     date:'日付', today:'今日', loading:'読み込み中…', loadFail:'読み込み失敗',
     sqlTitle:'カートのテーブルがまだ作られていません',
     sqlBody:'この画面は <code>cart_types</code>・<code>cart_bookings</code> を使います。Supabase の SQL Editor で <b>ops/hub/sql/93_cart.sql</b> を実行してください（1回だけ・冪等）。実行後この画面を再読込すると、電動36・ガソリン2人乗り27・4人乗り48 が入った状態で開きます。',
-    sqlRetry:'↻ 実行後 再読込', saveOk:n=>`${n}件 保存`, saveFail:'保存失敗',
+    sqlRetry:'↻ 実行後 再読込', saveOk:n=>`${n}件 保存`, saveFail:'保存失敗', roNoSave:'保存されませんでした（閲覧専用アカウントは変更できません）',
     noRound:'この日にラウンドするチームはありません。', save:'💾 変更を保存', print:'🖨 印刷', reload:'↻ 再読込',
     stockTitle:'保有・使用・残数', own:'保有', use:'使用', left:'残', unit:'台', feeEach:n=>`1台1日 ¥${n.toLocaleString()}`,
     tblTitle:'チーム別 申請', dirty:n=>`未保存 ${n}件`,
     thTeam:'タグコード', thRep:'代表', thAccom:'宿泊', thPax:'人数', thElig:'事前申請', thCourse:'コース', thTee:'ティ',
-    thSrc:'申請区分', thNos:'組のカート', thMemo:'メモ', thFee:'料金', thTotal:'計',
+    thSrc:'申請区分', thNos:'組のカート', thMemo:'メモ', memoNeedQty:'先に台数を入れるとメモを書けます', thFee:'料金', thTotal:'計',
     feeFree:'無料', feeFreeT:'入国日（仁川便の初日）・帰国日（釜山便の最終日）のラウンドはカート無料です',
     srcPre:'事前', srcOnsite:'現場',
     eligOk:'可', eligCond:'可（やまなみCC日）', eligNo:'不可',
@@ -242,9 +250,9 @@ const L={
       +'<b>電動カートの有料事前申請</b>は<b>やまなみリゾートゴルフクラブ利用時のみ</b> — やまなみ/久住ヒルズ/志津の宿は常に可、'
       +'<b>ガンジーホテルは平日が九重高原CCなので、やまなみCCの日(週末・祝日・入国日)のみ</b>可です。<b>現場申請</b>はいつでも可。'
       +'コース・ティ時刻は<b>ゴルフ組編成</b>で保存された値を読み込みます(未編成なら空欄)。',
-    autoCfDone:n=>`${n}件を自動確定しました（精算に請求が入ります）`, teamUnit:'チーム', grpMark:'チーム', grpT:'同じ運営チーム — 手配書の묶기 / 備考「팀:」で連結', secReq:'申請チーム', secNoReq:'未申請チーム', secNoReqHint:'この日ラウンドするが申請なし — 申請漏れの確認用', scopeSplit:(a,b)=>`申請 ${a} / 未申請 ${b}`, showAllTeams:'この日の全チーム', oxNoT:'事前申請の記載なし',
+    autoCfDone:n=>`${n}件を自動確定しました（精算に請求が入ります）`, teamUnit:'チーム', qPh:'タグコード・代表者・宿泊・行事番号で検索', paxUnit:'名', typeEn:{electric:'Electric cart',gas2:'Gas cart (2-seater)',gas4:'Gas cart (4-seater)'}, grpMark:'チーム', grpT:'同じ運営チーム — 手配書の묶기 / 備考「팀:」で連結', secReq:'申請チーム', secNoReq:'未申請チーム', secNoReqHint:'この日ラウンドするが申請なし — 申請漏れの確認用', scopeSplit:(a,b)=>`申請 ${a} / 未申請 ${b}`, showAllTeams:'この日の全チーム', oxNoT:'事前申請の記載なし',
     courseT:'コースを直接指定できます（規則より優先）', courseFix:'手動', courseFixT:'手動で指定したコースです',
-    courseMark:c=>`コースを ${c} に変更（保存を押してください）`, courseSql:'99_play_course.sql の実行が必要です',
+    courseMark:c=>`コースを ${c} に変更しました（保存しました）`, courseSql:'99_play_course.sql の実行が必要です',
     nosT:'組ごとのカート(種別・番号)は<コース割当表>が割り当てます — ここでは表示のみ。番号の登録は下の「カート番号 登録」', nosNone:'未割当',
     unitsTitle:'カート番号 登録(種別ごと)', unitsDesc:'実際のカート番号を種別ごとに登録します(例 1-36 や 1,2,5-9)。登録した番号を<b>コース割当表</b>が組ごとに1台ずつ配ります(電動申請チーム=電動 · 2名以下=2人乗り · 3名以上=4人乗り)。故障・整備中のカートは番号を押して<b>使用不可</b>に(取り消し線) — その日は配られません。',
     unitsReg:(n,off)=>`登録 ${n}台${off?` · 使用不可 ${off}`:''}`, unitsRegT:'保有数は「カート番号 登録」の使用可能な番号の数です', unitsNone:'未登録 — 下に番号を入れて保存', unitsPh:'例 1-36 または 1,2,5-9,12',
@@ -275,12 +283,12 @@ const L={
     kindElec:'電動(事前)', kindGas:'ガソリン',
     thCxScope:'キャンセル範囲', cxScopeT:'この日だけ／全期間（残りのラウンド全部）', cxCancelBtn:'閉じる', cxTitle:'カートのキャンセル', cxQty:'台数', cxQtyBulk:'（チームごとに この台数まで）',
     cxScope:'範囲', cxDay:'この日だけ', cxAll:'全期間（残りのラウンド全部）', cxAllHint:n=>`この日を含む ${n} 日分`,
-    cxDoneAll:(a,b)=>`この日 ${a}台・他の日 ${b}台をキャンセル（保存を押してください）`,
+    cxDoneAll:(a,b)=>`この日 ${a}台をキャンセル・残りのラウンド ${b}日にも適用（保存しました）`,
     cxSect:(t,n)=>`この日のキャンセル ${t}チーム · ${n}台`, cxUndoDone:'キャンセルを戻しました',
     pickT:'一括キャンセルの対象に選ぶ', pickN:n=>`選択 ${n}チーム`, pickClear:'選択解除', cxBulk:'選択をキャンセル',
     cxBtn:'キャンセル', cxT:'現地でキャンセルされた台数を申請から差し引き、キャンセルとして記録します',
     cxAsk:m=>`キャンセルする台数（申請 ${m}台）`, cxBad:'台数を確認してください',
-    cxDone:(n)=>`${n}台をキャンセルにしました（保存を押してください）`, cxNone:'この行に申請がありません',
+    cxDone:(n)=>`${n}台をキャンセルにしました（保存しました）`, popBlocked:'ポップアップがブロックされました — ブラウザのアドレスバーでこのサイトのポップアップを許可してください', cxNone:'この行に申請がありません',
     cxUndo:'キャンセル取消', cxUndoT:'キャンセル分を申請に戻します', thCx:'キャンセル', sumReq:'申請', sumCx:'キャンセル',
     sqlCx:'⚠ この画面は cart_bookings.cancelled 列を使います — ops/hub/sql/95_cart_cancel.sql を1回実行してください。',
     noteStay:'※ 事前申請は<b>確定した状態</b>で届きます。現地でキャンセルされたら<b>現場キャンセル</b>で記録してください。連泊でご案内していますが<b>1泊だけの利用</b>も可能です。',
@@ -294,12 +302,12 @@ const L={
     date:'날짜', today:'오늘', loading:'불러오는 중…', loadFail:'로드 실패',
     sqlTitle:'카트 테이블이 아직 만들어지지 않았습니다',
     sqlBody:'이 화면은 <code>cart_types</code>·<code>cart_bookings</code> 테이블을 씁니다. Supabase SQL Editor에서 <b>ops/hub/sql/93_cart.sql</b>을 한 번 실행해 주세요(멱등이라 여러 번 실행해도 안전). 실행 뒤 이 화면을 새로고침하면 전기 36 · 가솔린 2인승 27 · 4인승 48이 들어간 상태로 열립니다.',
-    sqlRetry:'↻ 실행했습니다 · 다시 불러오기', saveOk:n=>`${n}건 저장`, saveFail:'저장 실패',
+    sqlRetry:'↻ 실행했습니다 · 다시 불러오기', saveOk:n=>`${n}건 저장`, saveFail:'저장 실패', roNoSave:'저장되지 않았습니다(보기 전용 계정은 수정할 수 없습니다)',
     noRound:'이 날 라운딩하는 팀이 없습니다.', save:'💾 변경 저장', print:'🖨 인쇄', reload:'↻ 새로고침',
     stockTitle:'보유 · 사용 · 잔여', own:'보유', use:'사용', left:'잔여', unit:'대', feeEach:n=>`1대 1일 ¥${n.toLocaleString()}`,
     tblTitle:'팀별 신청', dirty:n=>`미저장 ${n}건`,
     thTeam:'태그코드', thRep:'대표', thAccom:'숙소', thPax:'인원', thElig:'사전신청', thCourse:'코스', thTee:'티오프',
-    thSrc:'신청구분', thNos:'조별 카트', thMemo:'메모', thFee:'요금', thTotal:'계',
+    thSrc:'신청구분', thNos:'조별 카트', thMemo:'메모', memoNeedQty:'대수를 먼저 넣으면 메모를 적을 수 있습니다', thFee:'요금', thTotal:'계',
     feeFree:'무료', feeFreeT:'입국일(인천출발 첫날)·귀국일(부산출발 마지막날) 라운딩은 카트 요금을 받지 않습니다',
     srcPre:'사전', srcOnsite:'현장',
     eligOk:'가능', eligCond:'가능(야마나미CC일)', eligNo:'불가',
@@ -311,9 +319,9 @@ const L={
       +'<b>전기카트 유료 사전신청</b>은 <b>야마나미 리조트 골프클럽 이용 시에만</b> 가능합니다 — 야마나미·쿠주힐즈·시즈노야도는 항상 가능, '
       +'<b>간지호텔은 평일이 구주고원CC라 야마나미CC를 쓰는 날(주말·공휴일·입국일)만</b> 가능합니다. <b>현장 신청</b>은 언제나 가능합니다. '
       +'코스·티오프는 <b>골프 조편성</b>에서 저장한 값을 읽어옵니다(미편성이면 빈칸).',
-    autoCfDone:n=>`${n}건 자동 확정(정산에 청구가 잡힙니다)`, teamUnit:'팀', grpMark:'팀', grpT:'같은 운영팀(수배서 묶기 / 비고 「팀:」)', secReq:'신청 팀', secNoReq:'미신청 팀', secNoReqHint:'그날 라운딩하지만 신청 없음 — 누락 확인용', scopeSplit:(a,b)=>`신청 ${a} / 미신청 ${b}`, showAllTeams:'그날 전체 팀', oxNoT:'사전신청 표기 없음',
+    autoCfDone:n=>`${n}건 자동 확정(정산에 청구가 잡힙니다)`, teamUnit:'팀', qPh:'태그코드·대표자·숙소·행사번호로 검색', paxUnit:'명', typeEn:{electric:'Electric cart',gas2:'Gas cart (2-seater)',gas4:'Gas cart (4-seater)'}, grpMark:'팀', grpT:'같은 운영팀(수배서 묶기 / 비고 「팀:」)', secReq:'신청 팀', secNoReq:'미신청 팀', secNoReqHint:'그날 라운딩하지만 신청 없음 — 누락 확인용', scopeSplit:(a,b)=>`신청 ${a} / 미신청 ${b}`, showAllTeams:'그날 전체 팀', oxNoT:'사전신청 표기 없음',
     courseT:'코스를 직접 지정할 수 있습니다(규칙보다 우선)', courseFix:'수기', courseFixT:'수기로 지정한 코스입니다',
-    courseMark:c=>`코스를 ${c} 로 바꿨습니다(저장을 눌러 주세요)`, courseSql:'99_play_course.sql 실행이 필요합니다',
+    courseMark:c=>`코스를 ${c} 로 바꿨습니다(저장했습니다)`, courseSql:'99_play_course.sql 실행이 필요합니다',
     nosT:'조별 카트(종류·번호)는 <코스 배정표>가 배분합니다 — 여기서는 표시만. 번호 등록은 아래 「카트 번호 등록」', nosNone:'미배정',
     unitsTitle:'카트 번호 등록(종류별)', unitsDesc:'실제 카트 번호를 종류별로 등록합니다(예 1-36 또는 1,2,5-9). 등록한 번호를 <b>코스 배정표</b>가 조마다 1대씩 배분합니다(전기 신청 팀=전기 · 2명 이하=2인승 · 3명 이상=4인승). 고장·정비 중인 카트는 번호를 눌러 <b>사용 불가</b>로(취소선) — 그날 배분에서 빠집니다.',
     unitsReg:(n,off)=>`등록 ${n}대${off?` · 사용 불가 ${off}`:''}`, unitsRegT:'보유는 「카트 번호 등록」의 사용 가능한 번호 수입니다', unitsNone:'미등록 — 아래에 번호를 넣고 저장', unitsPh:'예 1-36 또는 1,2,5-9,12',
@@ -344,12 +352,12 @@ const L={
     kindElec:'전기(사전)', kindGas:'가솔린',
     thCxScope:'취소 범위', cxScopeT:'이 날짜만 / 전 기간(남은 라운딩 전부)', cxCancelBtn:'닫기', cxTitle:'카트 취소', cxQty:'대수', cxQtyBulk:'(팀마다 이 대수까지)',
     cxScope:'범위', cxDay:'이 날짜만', cxAll:'전 기간(남은 라운딩 전부)', cxAllHint:n=>`이 날짜 포함 ${n}일치`,
-    cxDoneAll:(a,b)=>`이 날짜 ${a}대 · 다른 날짜 ${b}대 취소(저장을 눌러 주세요)`,
+    cxDoneAll:(a,b)=>`이 날짜 ${a}대 취소 · 남은 라운딩 ${b}일에도 적용(저장했습니다)`,
     cxSect:(t,n)=>`이 날짜 취소 ${t}팀 · ${n}대`, cxUndoDone:'취소를 되돌렸습니다',
     pickT:'일괄 취소 대상으로 선택', pickN:n=>`선택 ${n}팀`, pickClear:'선택 해제', cxBulk:'선택 팀 취소',
     cxBtn:'취소', cxT:'현장에서 취소된 대수를 사전신청에서 빼고 취소로 기록합니다',
     cxAsk:m=>`취소할 대수 (사전신청 ${m}대)`, cxBad:'대수를 확인해 주세요',
-    cxDone:(n)=>`${n}대를 취소로 옮겼습니다(저장을 눌러 주세요)`, cxNone:'이 행에는 신청이 없습니다',
+    cxDone:(n)=>`${n}대를 취소로 옮겼습니다(저장했습니다)`, popBlocked:'팝업이 차단되었습니다 — 브라우저 주소창에서 이 사이트의 팝업을 허용해 주세요', cxNone:'이 행에는 신청이 없습니다',
     cxUndo:'취소 되돌리기', cxUndoT:'취소분을 사전신청으로 되돌립니다', thCx:'취소', sumReq:'사전신청', sumCx:'취소',
     sqlCx:'⚠ 이 화면은 cart_bookings.cancelled 컬럼을 씁니다 — ops/hub/sql/95_cart_cancel.sql 을 한 번 실행해 주세요.',
     noteStay:'※ 사전 신청은 <b>확정된 상태</b>로 옵니다. 현장에서 취소되면 <b>현장 취소</b>로 기록해 주세요. 연박으로 안내드리지만 <b>단박 사용</b>도 가능합니다.',
@@ -363,12 +371,12 @@ const L={
     date:'Date', today:'Today', loading:'Loading…', loadFail:'Load failed',
     sqlTitle:'The cart tables have not been created yet',
     sqlBody:'This screen uses <code>cart_types</code> and <code>cart_bookings</code>. Run <b>ops/hub/sql/93_cart.sql</b> once in the Supabase SQL Editor (it is idempotent). Reload afterwards and it opens with electric 36, gasoline 2-seater 27 and 4-seater 48 already set.',
-    sqlRetry:'↻ I ran it · reload', saveOk:n=>`Saved ${n}`, saveFail:'Save failed',
+    sqlRetry:'↻ I ran it · reload', saveOk:n=>`Saved ${n}`, saveFail:'Save failed', roNoSave:'Not saved (read-only accounts cannot make changes)',
     noRound:'No team plays golf on this date.', save:'💾 Save changes', print:'🖨 Print', reload:'↻ Reload',
     stockTitle:'Stock · in use · remaining', own:'Stock', use:'In use', left:'Left', unit:'', feeEach:n=>`¥${n.toLocaleString()} per cart/day`,
     tblTitle:'Requests by team', dirty:n=>`${n} unsaved`,
     thTeam:'Tag code', thRep:'Rep', thAccom:'Lodging', thPax:'Pax', thElig:'Pre-booking', thCourse:'Course', thTee:'Tee',
-    thSrc:'Type', thNos:'Group carts', thMemo:'Note', thFee:'Fee', thTotal:'Total',
+    thSrc:'Type', thNos:'Group carts', thMemo:'Note', memoNeedQty:'Enter a cart count first to add a note', thFee:'Fee', thTotal:'Total',
     feeFree:'Free', feeFreeT:'Rounds on the arrival day (ICN teams) and the departure day (PUS teams) carry no cart fee',
     srcPre:'Pre', srcOnsite:'On-site',
     eligOk:'Yes', eligCond:'Yes (Yamanami CC day)', eligNo:'No',
@@ -380,9 +388,9 @@ const L={
       +'<b>Paid pre-booking of electric carts</b> requires playing <b>Yamanami Resort Golf Club</b> — Yamanami, Kuju Hills and Shizu-no-Yado always qualify; '
       +'<b>The Guernsey Hotel plays Kuju Kogen CC on weekdays</b>, so only Yamanami CC days (weekends, holidays, arrival day) qualify. On-site requests are always fine. '
       +'Course and tee time are read from the <b>golf grouping</b> screen (blank if not yet grouped).',
-    autoCfDone:n=>`Auto-confirmed ${n} (charged to the folio)`, teamUnit:' teams', grpMark:'team', grpT:'Same operating team (sheet grouping / remark)', secReq:'Requested', secNoReq:'No request', secNoReqHint:'Rounding today but no request — check for missed entries', scopeSplit:(a,b)=>`requested ${a} / none ${b}`, showAllTeams:'all teams that day', oxNoT:'No pre-request noted',
+    autoCfDone:n=>`Auto-confirmed ${n} (charged to the folio)`, teamUnit:' teams', qPh:'Search by tag code, lead guest, lodging or event no.', paxUnit:'', typeEn:{electric:'Electric cart',gas2:'Gas cart (2-seater)',gas4:'Gas cart (4-seater)'}, grpMark:'team', grpT:'Same operating team (sheet grouping / remark)', secReq:'Requested', secNoReq:'No request', secNoReqHint:'Rounding today but no request — check for missed entries', scopeSplit:(a,b)=>`requested ${a} / none ${b}`, showAllTeams:'all teams that day', oxNoT:'No pre-request noted',
     courseT:'Pick the course directly (overrides the rule)', courseFix:'manual', courseFixT:'Course set manually',
-    courseMark:c=>`Course set to ${c} (press Save)`, courseSql:'Run 99_play_course.sql first',
+    courseMark:c=>`Course set to ${c} (saved)`, courseSql:'Run 99_play_course.sql first',
     nosT:'Per-group carts (type · number) are assigned on the course sheet — display only here. Register numbers below under “Cart numbers”', nosNone:'none',
     unitsTitle:'Cart numbers (registry by type)', unitsDesc:'Register the real cart numbers per type (e.g. 1-36 or 1,2,5-9). The <b>course sheet</b> hands one registered cart to each group (EV-request teams = electric · ≤2 players = 2-seater · 3+ = 4-seater). Click a number to mark a broken cart <b>unavailable</b> (struck through) — it is skipped that day.',
     unitsReg:(n,off)=>`${n} registered${off?` · ${off} unavailable`:''}`, unitsRegT:'Stock = available numbers in the registry', unitsNone:'none yet — enter numbers below and save', unitsPh:'e.g. 1-36 or 1,2,5-9,12',
@@ -413,12 +421,12 @@ const L={
     kindElec:'Electric (pre)', kindGas:'Gasoline',
     thCxScope:'Cancel scope', cxScopeT:'This date only / whole stay', cxCancelBtn:'Close', cxTitle:'Cancel carts', cxQty:'Qty', cxQtyBulk:'(up to this per team)',
     cxScope:'Scope', cxDay:'This date only', cxAll:'Whole stay (all remaining rounds)', cxAllHint:n=>`${n} day(s) incl. today`,
-    cxDoneAll:(a,b)=>`Cancelled ${a} today, ${b} other days (press Save)`,
+    cxDoneAll:(a,b)=>`Cancelled ${a} today, also applied to ${b} other round day(s) (saved)`,
     cxSect:(t,n)=>`Cancelled today — ${t} team(s) · ${n}`, cxUndoDone:'Cancellation undone',
     pickT:'select for bulk cancel', pickN:n=>`${n} selected`, pickClear:'Clear', cxBulk:'Cancel selected',
     cxBtn:'Cancel', cxT:'Move carts cancelled at the resort out of the request and record them as cancelled',
     cxAsk:m=>`How many to cancel (requested ${m})`, cxBad:'Check the number',
-    cxDone:(n)=>`${n} moved to cancelled (press save)`, cxNone:'No request on this row',
+    cxDone:(n)=>`${n} moved to cancelled (saved)`, popBlocked:'Pop-up blocked — allow pop-ups for this site in the browser address bar', cxNone:'No request on this row',
     cxUndo:'Undo cancel', cxUndoT:'Move cancelled carts back into the request', thCx:'Cancelled', sumReq:'Requested', sumCx:'Cancelled',
     sqlCx:'⚠ This screen uses cart_bookings.cancelled — run ops/hub/sql/95_cart_cancel.sql once.',
     noteStay:'※ Pre-bookings arrive <b>already confirmed</b>. If cancelled at the resort, record it with <b>Cancel on site</b>. Single-night use is allowed as well.',
@@ -435,6 +443,13 @@ function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'
 function todayISO(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function shiftDay(iso,n){const d=new Date(iso+'T00:00:00');d.setDate(d.getDate()+n);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
+// 보기 전용(read_areas) 계정인지 — RLS 가 update·delete 는 0행(오류 없음)·insert 는 거부라, 그대로 쓰면 성공 토스트만 뜨고 DB 는 그대로다. 연결할 때 한 번 확인해 RO 에 둔다(room.html isReadOnly 와 같은 판정).
+let RO=false;
+async function isReadOnly(){ try{
+  if(!window.__so_meAccess||!window.SZCore||!SZCore.areaAllowed) return false;
+  const acc=await __so_meAccess(); if(!acc) return false;
+  return SZCore.areaAllowed(acc,(document.body.getAttribute('data-so-area')||'').split(/[\s,]+/).filter(Boolean))!=='write';
+}catch(e){ return false; } }
 
 // 코스 코드 → 표기(조편성에서 저장한 야마나미CC 내 3코스)
 const COURSE_NAME={aso:'阿蘇',sobo:'祖母',kuju:'久住'};
@@ -474,6 +489,7 @@ async function connect(){
     if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
       $('#content').innerHTML='<div class="panel"><div class="deny">'+tx('loginNeedTitle')+'<small>'+tx('loginNeedSub')+'</small></div></div>'; return; }
     setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
+    RO=await isReadOnly();
     renderUI(); loadMonth(); load();
   }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
 }
@@ -526,7 +542,7 @@ function renderUI(){
       <div id="warn"></div>
       <div id="recheck" class="noprint"></div>
       <h3 style="margin-top:14px">${tx('tblTitle')} <span class="cnt" id="tbl-cnt"></span> <span class="cnt" id="tbl-qc" style="font-weight:700;color:var(--accent2)"></span></h3>
-      <div style="margin:0 0 9px"><input class="inp" id="tbl-q" type="search" autocomplete="off" placeholder="🔎 태그코드·대표자·숙소·행사번호" style="width:100%;max-width:420px"></div>
+      <div style="margin:0 0 9px"><input class="inp" id="tbl-q" type="search" autocomplete="off" placeholder="${esc(tx('qPh'))}" style="width:100%;max-width:420px"></div>
       <div style="overflow:auto"><div id="tbl"></div></div>
       <div class="desc noprint" style="margin-top:11px">${tx('deskNote')}<br>${tx('noteStay')}</div>
     </div>
@@ -563,8 +579,10 @@ function markCalendar(){
 
 
 
+let _loadSeq=0, _monthSeq=0;   // 불러오기 순번 — 날짜·월을 연달아 바꾸면 낡은 응답은 버린다(room.html _loadSeq 와 같은 방식)
 async function load(){
   if(!supa) return;
+  const _my=++_loadSeq, _stale=()=>_my!==_loadSeq;
   $('#stat').textContent=tx('loading');
   const dl=$('#d-label'); if(dl) dl.textContent=SZCore.mdWd(DATE,lang());
   const dw=$('#d-wd'); if(dw) dw.textContent=SZCore.mdWd(DATE,lang());
@@ -572,6 +590,7 @@ async function load(){
     // 1) 카트 종류(보유 대수)
     const ct=await supa.from('cart_types').select('*').eq('active',true).order('sort_order');
     if(ct.error) throw ct.error;
+    if(_stale()) return;
     TYPES=visibleTypes(ct.data); ALLTYPES=(ct.data||[]).slice(); GCARTS={};
     await loadUnits();
     // 2) 그 날짜에 체류 중인 팀(입국<=날짜<=귀국) — 라운딩 여부는 규칙으로 거른다
@@ -588,6 +607,7 @@ async function load(){
         .lte('dep_date',DATE).is('arr_date',null).neq('status','대기');
       NODATE=nd||[];
     }catch(e){}
+    if(_stale()) return;
     const seqs=(bs.data||[]).map(b=>b.event_seq);
     if(!seqs.length){ ROWS=[]; DIRTY.clear(); $('#stat').textContent=''; renderStock(); renderTable(); renderUnits(); return; }
     // 3) 팀 정보(숙소·그룹코드) · 대표 항공편 · 조편성 · 카트 배정
@@ -596,9 +616,11 @@ async function load(){
     //   「인원이 바뀌었다」는 확인용 배지만 띄운다(Min 2026-08, 팀단위 배차라 자동변경은 보류).
     const EARLYN={};
     for(let i=0;i<seqs.length;i+=200){ const ch=seqs.slice(i,i+200);
-      const {data:gs}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,pax').in('event_seq',ch);
+      const {data:gs,error:gse}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,pax').in('event_seq',ch);
+      if(gse) throw gse;   // ⚠ 숙소·인원을 못 읽은 채 넘어가면 코스·대수 판정이 틀린 값으로 자동 확정·자동 조정이 저장한다 — 실패는 실패로 끝낸다
       (gs||[]).forEach(g=>GM[g.event_seq]=g);
-      const {data:ps}=await supa.from('passengers').select('event_seq,seq_in_team,origin,dep_flight,ret_flight').in('event_seq',ch).order('seq_in_team');
+      const {data:ps,error:pse}=await supa.from('passengers').select('event_seq,seq_in_team,origin,dep_flight,ret_flight').in('event_seq',ch).order('seq_in_team');
+      if(pse) throw pse;
       (ps||[]).forEach(p=>{ if(!PX[p.event_seq]) PX[p.event_seq]=p; });
       const {data:em}=await supa.from('guest_members').select('event_seq,actual_dep').in('event_seq',ch);
       (em||[]).forEach(m=>{ const d=m.actual_dep?String(m.actual_dep).slice(0,10):'';
@@ -606,6 +628,7 @@ async function load(){
     }
     let {data:gg,error:ge}=await supa.from('golf_groups').select('event_seq,course_code,tee_time,cart_no,cart_type,slot_no').eq('play_date',DATE).order('slot_no',{nullsFirst:false});
     if(ge && /cart_type/i.test(ge.message||'')) ({data:gg}=await supa.from('golf_groups').select('event_seq,course_code,tee_time,cart_no,slot_no').eq('play_date',DATE).order('slot_no',{nullsFirst:false}));   // SQL 147 미적용
+    if(_stale()) return;
     (gg||[]).forEach(g=>{ if(g.event_seq==null) return; if(!GG[g.event_seq]) GG[g.event_seq]=g;
       (GCARTS[g.event_seq]=GCARTS[g.event_seq]||[]).push({course:g.course_code||'',tee:g.tee_time||'',no:g.cart_no||'',type:g.cart_type||''}); });
     const {data:cb,error:cbe}=await supa.from('cart_bookings').select('*').eq('play_date',DATE);
@@ -613,21 +636,26 @@ async function load(){
     (cb||[]).forEach(x=>{ (CB[x.event_seq]=CB[x.event_seq]||{})[x.cart_code]=x; });
     // 팀 묶음 — 手配書에서 묶은 운영팀(print_overrides.team_group) 또는 비고의 「팀:」 라벨.
     //   같은 묶음 팀은 카트도 같이 움직이므로 이 표에서도 한눈에 보이게 한다(Min 2026-08).
+    if(_stale()) return;
     TG={};
     try{
       for(let i=0;i<seqs.length;i+=200){ const ch=seqs.slice(i,i+200);
         const {data:po}=await supa.from('print_overrides').select('event_seq,team_group').in('event_seq',ch);
+        if(_stale()) return;
         (po||[]).forEach(x=>{ if(x.team_group) TG[x.event_seq]=String(x.team_group); });
       }
     }catch(e){}
     // 묶은 팀은 대표팀 코드+팀번호로 통일 표기(手配書·航空カバー·네임택과 같은 코드)
     const GT=(window.__so_groupTags? await __so_groupTags(supa,seqs) : {});
     // 코스 수기 지정(99_play_course) — 규칙보다 우선. 테이블 미적용이면 조용히 무시.
+    if(_stale()) return;
     PC={};
     try{ const {data:pc,error:pe}=await supa.from('play_course').select('event_seq,course').eq('play_date',DATE);
+      if(_stale()) return;
       if(!pe) (pc||[]).forEach(x=>{ PC[x.event_seq]=x.course; }); }catch(e){}
 
     // 4) 라운딩하는 팀만 남긴다
+    if(_stale()) return;
     ROWS=[]; SKIP=[]; PENDC={};
     (bs.data||[]).forEach(b=>{
       const g=GM[b.event_seq]||{}; const p=PX[b.event_seq]||{};
@@ -675,7 +703,7 @@ async function load(){
         }
       }
       ROWS.push({
-        seq:b.event_seq, tag:GT[b.event_seq]||g.team_tag||g.group_code||'', rep:b.rep_name||'', accom,
+        seq:b.event_seq, date:DATE, tag:GT[b.event_seq]||g.team_tag||g.group_code||'', rep:b.rep_name||'', accom,
         pax:g.pax||b.pax||0, dep:b.dep_date, arr:b.arr_date, isPus,
         elec:_elecKind==='sure', elecKind:_elecKind, remarkLocal:_remarkAll,
         grp:(TG[b.event_seq]||b.team_label||''),        // 팀 묶음(手配書 묶기 또는 비고 「팀:」)
@@ -701,12 +729,13 @@ async function load(){
       ||String(a.tee||'zz').localeCompare(String(b.tee||'zz'))
       ||String(a.tag).localeCompare(String(b.tag)));
     DIRTY.clear();
-    $('#stat').textContent=`${ROWS.length}${lang()==='en'?' teams':'팀'}`;
+    $('#stat').textContent=`${ROWS.length}${tx('teamUnit')}`;
     renderStock(); renderTable(); renderUnits();
     autoAdjust();           // 인원이 바뀐 팀의 대수를 규칙에 맞게 자동 조정(사람이 정한 값은 제외)
     autoConfirm();          // 규칙대로 계산된 신청을 자동 확정 → 정산 청구까지 자동으로 이어진다
 
   }catch(e){
+    if(_stale()) return;
     $('#stat').textContent=tx('loadFail');
     // 테이블 미생성(93_cart.sql 미실행)은 '오류'가 아니라 '설치 안내'로 보여준다.
     const msg=String(e&&e.message||e);
@@ -721,6 +750,9 @@ async function load(){
       const tb=$('#tbl'); if(tb) tb.innerHTML='';
       return;
     }
+    // 실패하면 앞 날짜의 표를 남기지 않는다 — 남아 있으면 그 표에서 고친 값이 지금 날짜로 저장된다
+    ROWS=[]; SKIP=[]; DIRTY.clear();
+    ['#stock','#tbl','#recheck','#list-skip'].forEach(s=>{ const el=$(s); if(el) el.innerHTML=''; });
     toast(tx('loadFail')+': '+msg,'err');
   }
 }
@@ -739,7 +771,7 @@ function renderStock(){
   box.innerHTML=TYPES.map(t=>{
     const use=usedOf(t.code), own=ownOf(t), left=own-use;
     return `<div class="st">
-      <h4>${esc(lang()==='ja'?t.name_ja:t.name_ko)}</h4>
+      <h4>${esc(tName(t))}</h4>
       <div class="nums">
         <div class="n"><span>${tx('own')}</span><b>${own}</b></div>
         <div class="n use"><span>${tx('use')}</span><b>${use}</b></div>
@@ -754,13 +786,13 @@ function renderStock(){
   box.querySelectorAll('[data-own]').forEach(el=>el.addEventListener('change',()=>saveOwn(el.dataset.own,Math.max(0,+el.value||0))));
   const w=$('#warn'); if(w){
     const over=TYPES.filter(t=>usedOf(t.code)>ownOf(t));
-    w.innerHTML=over.length?over.map(t=>`<div class="warnbox">${esc(tx('overWarn')(lang()==='ja'?t.name_ja:t.name_ko,ownOf(t)))}</div>`).join(''):'';
+    w.innerHTML=over.length?over.map(t=>`<div class="warnbox">${esc(tx('overWarn')(tName(t),ownOf(t)))}</div>`).join(''):'';
   }
 }
 
 async function saveOwn(code,n){
   try{
-    const {error}=await supa.from('cart_types').update({total_count:n}).eq('code',code);
+    const {data:_u,error}=await supa.from('cart_types').update({total_count:n}).eq('code',code).select('code'); if(!error && !(_u&&_u.length)) throw new Error(tx('roNoSave'));
     if(error) throw error;
     const t=TYPES.find(x=>x.code===code); if(t) t.total_count=n;
     renderStock(); renderTable(); toast(tx('saveOk')(1),'ok');
@@ -795,7 +827,7 @@ function renderUnits(){
     const chips=all.length?all.map(u=>`<button type="button" class="uchip${u.active===false?' off':''}" data-utog="${esc(t.code)}|${esc(u.no)}" title="${esc(u.active===false?tx('unitsOnT'):tx('unitsOffT'))}${u.note?' · '+esc(u.note):''}">${esc(u.no)}</button>`).join('')
       :`<span class="cnt" style="color:var(--muted)">${esc(tx('unitsNone'))}</span>`;
     return `<div class="ublk" data-ucode="${esc(t.code)}">
-      <h4>${esc(lang()==='ja'?t.name_ja:t.name_ko)} <span class="cnt">${esc(tx('unitsReg')(all.length,off))}</span></h4>
+      <h4>${esc(tName(t))} <span class="cnt">${esc(tx('unitsReg')(all.length,off))}</span></h4>
       <div class="uchips">${chips}</div>
       <div class="urow"><input class="inp" type="text" data-ulist="${esc(t.code)}" placeholder="${esc(tx('unitsPh'))}" value="${esc(all.map(u=>u.no).join(', '))}">
         <button class="btn sm ghost" type="button" data-usave="${esc(t.code)}">${esc(tx('unitsSave'))}</button></div>
@@ -807,7 +839,7 @@ async function toggleUnit(code,no){
   const u=unitsOf(code).find(x=>String(x.no)===String(no)); if(!u) return;
   const next=!(u.active!==false);
   try{
-    const {error}=await supa.from('cart_units').update({active:next}).eq('cart_code',code).eq('no',no);
+    const {data:_u,error}=await supa.from('cart_units').update({active:next}).eq('cart_code',code).eq('no',no).select('no'); if(!error && !(_u&&_u.length)) throw new Error(tx('roNoSave'));
     if(error) throw error;
     u.active=next; await syncTypeCount(code);
     renderUnits(); renderStock(); toast(next?tx('unitsOn')(no):tx('unitsOff')(no),'ok');
@@ -819,6 +851,7 @@ async function saveUnits(code,text){
   const cur=unitsOf(code).map(u=>String(u.no));
   const add=list.filter(n=>!cur.includes(n)), del=cur.filter(n=>!list.includes(n));
   if(!add.length && !del.length){ toast(tx('unitsSame'),'warn'); return; }
+  if(RO){ toast(tx('roNoSave'),'warn'); return; }
   if(!confirm(tx('unitsSaveAsk')(list.length,add.length,del.length))) return;
   try{
     if(del.length){ for(let i=0;i<del.length;i+=200){ const {error}=await supa.from('cart_units').delete().eq('cart_code',code).in('no',del.slice(i,i+200)); if(error) throw error; } }
@@ -886,7 +919,7 @@ function renderPickBar(){
 // 그 팀이 라운딩하는 날짜들(오늘 이후만) — 전 기간 취소 대상
 function teamRoundDates(r){
   return SZCore.golfRows({dep:r.dep,arr:r.arr,accom:r.accom}, r.isPus)
-    .map(x=>x.date).filter(d=>d>=DATE);
+    .map(x=>x.date).filter(d=>d>=(r.date||DATE));
 }
 // 취소 적용. 이 날짜분은 화면에서 바로 반영(저장 대상), 다른 날짜는 DB에 즉시 기록한다.
 
@@ -970,7 +1003,7 @@ let AUTOCF=false;
 //  요금(cart_sync_charge)은 대수를 바꾸면 트리거가 알아서 다시 계산한다.
 let ADJUSTING=false;
 async function autoAdjust(){
-  if(!supa || ADJUSTING) return;
+  if(!supa || ADJUSTING || RO) return;
   const targets=ROWS.filter(r=>r.autoFix && !DIRTY.has(r.seq));
   if(!targets.length) return;
   ADJUSTING=true;
@@ -985,12 +1018,13 @@ async function autoAdjust(){
       r.orig=JSON.stringify({qty:r.qty,src:r.src,memo:r.memo}); r.autoFix=null; });
     renderStock(); renderTable();
     toast(tx('adjDone')(targets.length),'ok');
+    loadMonth();   // 달력도 조정된 대수로
   }catch(e){ console.warn('autoAdjust', e && e.message || e); }
   finally{ ADJUSTING=false; }
 }
 
 async function autoConfirm(){
-  if(!supa || AUTOCF) return;
+  if(!supa || AUTOCF || RO) return;
   const targets=ROWS.filter(r=>r.auto && !DIRTY.has(r.seq) && TYPES.some(t=>(+r.qty[t.code]||0)>0));
   if(!targets.length) return;
   AUTOCF=true;
@@ -1032,7 +1066,7 @@ function renderRecheck(){
     <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px;line-height:1.55">${tx('chkDesc')}</div>
     ${list.map(r=>`<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 10px;margin-bottom:5px;font-size:12.5px">
       <span class="tag">${esc(r.tag)}</span><b>${esc(r.rep)}</b>
-      <span class="cnt">${r.pax}${lang()==='en'?'':'명'} · ${esc(accomL(r.accom))}</span>
+      <span class="cnt">${r.pax}${esc(tx('paxUnit'))} · ${esc(accomL(r.accom))}</span>
       <span style="color:#8a2a1c;background:#fbeeeb;border:1px solid #e3bdb4;border-radius:6px;padding:2px 8px">${esc(r.remarkLocal||'')}</span>
       <button class="btn xs ghost" type="button" data-disp="${r.seq}" style="margin-left:auto">${esc(tx('dispBtn'))}</button>
     </div>`).join('')}
@@ -1043,10 +1077,17 @@ function renderRecheck(){
 function renderTable(){
   renderRecheck();
   const box=$('#tbl'); if(!box) return;
+  // 저장 뒤 재조회로 표가 통째로 다시 그려져도 치던 칸(포커스·커서·아직 저장 안 된 글자)을 잃지 않게 기억해 둔다(같은 날짜일 때만)
+  const _ae=document.activeElement, _atr=(_ae && box.contains(_ae) && _ae.matches('input.qty,input.memo'))?_ae.closest('tr[data-seq]'):null;
+  const _keep=(_atr && box.dataset.d===DATE)?{seq:_atr.dataset.seq, sel:(_ae.dataset.q?`[data-q="${_ae.dataset.q}"]`:'[data-f="memo"]'), val:_ae.value, typed:_ae.value!==_ae.defaultValue, s:_ae.selectionStart, e:_ae.selectionEnd}:null;
+  box.dataset.d=DATE;
   // 신청 팀이 수십이면 눈으로 못 찾는다 — 공용 행 검색(한 번만 결선, 재렌더는 자동 재적용)
   if(!window._cartSearchWired && window.__so_rowSearch && $('#tbl-q')){
     window._cartSearchWired=true;
-    __so_rowSearch('#tbl-q','#tbl','tbody tr',{count:'#tbl-qc',label:n=>n+'팀'});
+    __so_rowSearch('#tbl-q','#tbl','tbody tr',{count:'#tbl-qc',label:n=>n+tx('teamUnit'),skip:'tr.sum',
+      // 접힌 「미신청 팀」 안에서 걸린 행은 건수만 뜨고 안 보였다 → 검색어가 있고 그 안에 걸린 행이 있으면 펼친다
+      onFilter:q=>{ document.querySelectorAll('#tbl tr.sum').forEach(r=>{ r.style.display=q?'none':''; });   // 검색 중에는 합계 줄을 숨긴다 — 합계는 전 팀 기준이라 걸러 낸 줄과 맞지 않는다
+        const d=document.querySelector('#tbl details.noreq'); if(d && q && !d.open && [...d.querySelectorAll('tbody tr')].some(tr=>tr.style.display!=='none')) d.open=true; }});
   }
   $('#tbl-cnt').textContent = DIRTY.size?tx('dirty')(DIRTY.size):'';
   const LIST=ROWS.filter(isReqRow);          // 신청 팀
@@ -1060,33 +1101,33 @@ function renderTable(){
       + SKIP.map(x=>`<div>${esc(x.tag||'-')} ${esc(x.rep||'')} <span style="color:var(--muted)">— ${esc(tx('skipWhy')[x.why]||tx('skipWhy').none)}</span></div>`).join('')
       + `</div></details>` : '';
   if(!ROWS.length){ box.innerHTML=`<div class="cnt" style="color:var(--muted);padding:10px 0">${tx('noRound')}</div>`; return; }
-  const th=TYPES.map(t=>`<th>${esc(lang()==='ja'?t.name_ja:t.name_ko)}</th>`).join('');
+  const th=TYPES.map(t=>`<th>${esc(tName(t))}</th>`).join('');
   const rowHtml=r=>{ const i=ROWS.indexOf(r);
     // 입국일·귀국일 라운딩은 카트 무료(Min 2026-08) — 배정은 그대로, 요금만 0.
     const freeDay=SZCore.cartFreeDay(r,DATE);
     const fee=freeDay?0:TYPES.reduce((s,t)=>s+(+r.qty[t.code]||0)*(+t.fee_yen||0),0);
     const gc=r.grpCourse?`${COURSE_NAME[r.grpCourse]||r.grpCourse}`:'';
-    return `<tr data-i="${i}" class="${DIRTY.has(r.seq)?'dirty':''}">
+    return `<tr data-i="${i}" data-seq="${r.seq}" class="${DIRTY.has(r.seq)?'dirty':''}">
       <td class="l"><div class="tcell"><input type="checkbox" class="pick noprint" data-pick="${i}"${PICK.has(r.seq)?' checked':''} title="${esc(tx('pickT'))}"><span class="tag">${esc(r.tag)}</span>`
       +grpBadge(r)+`<span class="amark">${r.auto?`<span class="bdg" style="opacity:.65">${esc(tx('autoMark'))}</span>`:''}</span>`
       +`<span class="btns"><button class="btn xs ghost noprint" type="button" data-disp="${r.seq}" title="${esc(tx('dispT'))}">${esc(tx('dispBtn'))}</button>`
       +`<button class="btn xs ghost noprint" type="button" data-cx="${i}" title="${esc(tx('cxT'))}" style="color:var(--err);border-color:#e3bdb4">${esc(tx('cxBtn'))}</button>`
       +(r.cx?`<span class="bdg no" title="${esc(tx('thCx'))}">${esc(tx('thCx'))} ${r.cx}</span>`:'')+`</span></div></td>
-      <td class="l">${esc(r.rep)}</td>
+      <td class="l">${esc(r.rep)}<span hidden>${esc(r.seq)}</span></td>
       <td class="l">${esc(accomL(r.accom))}</td>
-      <td>${r.pax}${r.earlyN?`<span class="bdg no" title="${esc(tx('paxEarlyT')(r.earlyN))}">${esc(tx('paxEarly')(r.earlyN))}</span>`:''}`
+      <td class="wr">${r.pax}${r.earlyN?`<span class="bdg no" title="${esc(tx('paxEarlyT')(r.earlyN))}">${esc(tx('paxEarly')(r.earlyN))}</span>`:''}`
       +`${r.mismatch?`<span class="bdg no mm" title="${esc(tx('mmT')(r.pax,r.mismatch.cur,r.mismatch.rule)+' '+tx('mmManualT'))}">${esc(tx('mmBadge')(r.mismatch.cur,r.mismatch.rule))}</span>`
         +`<button class="btn xs ghost noprint" type="button" data-mmfix="${i}" title="${esc(tx('mmT')(r.pax,r.mismatch.cur,r.mismatch.rule))}">${esc(tx('mmFix'))}</button>`:''}</td>
       <td><span class="ox ${(r.elec||(+r.qty.electric||0)>0)?'y':'n'}" title="${esc((r.elec?tx('elecReqT'):(r.elecKind==='maybe'?tx('elecMaybeT'):tx('oxNoT')))+(r.remarkLocal?' — '+r.remarkLocal:''))}">${(r.elec||(+r.qty.electric||0)>0)?'○':'×'}</span></td>
-      <td><select class="inp course-sel ${r.ruleCourse==='九重高原CC'?'kuju':''}" data-course="${i}" title="${esc(tx('courseT'))}">
+      <td class="wr"><select class="inp course-sel ${r.ruleCourse==='九重高原CC'?'kuju':''}" data-course="${i}" title="${esc(tx('courseT'))}">
             ${COURSES.map(c=>`<option value="${esc(c)}"${r.ruleCourse===c?' selected':''}>${esc(c)}</option>`).join('')}
           </select><small style="color:var(--muted)"> ${esc(r.holesLabel||(r.holes+'H'))}</small>
           ${r.courseFixed?`<span class="bdg" style="opacity:.7" title="${esc(tx('courseFixT'))}">${esc(tx('courseFix'))}</span>`:''}
           ${gc?`<div class="cnt" style="font-weight:600">${esc(tx('courseGrp'))}: ${esc(gc)}</div>`:''}</td>
       <td class="tee">${esc(r.tee||'-')}</td>
-      <td class="l">${cartCell(r)}</td>
+      <td class="l wr">${cartCell(r)}</td>
       ${TYPES.map(t=>`<td><input class="inp qty" type="number" min="0" data-q="${t.code}" value="${+r.qty[t.code]||0}"></td>`).join('')}
-      <td><input class="inp memo" type="text" data-f="memo" value="${esc(r.memo)}"></td>
+      <td><input class="inp memo" type="text" data-f="memo" value="${esc(r.memo)}"${(TYPES.some(t=>(+r.qty[t.code]||0)>0)||+r.cx>0)?'':` disabled title="${esc(tx('memoNeedQty'))}"`}></td>
       <td class="tee">${freeDay?`<span class="bdg ok" title="${esc(tx('feeFreeT'))}">${esc(tx('feeFree'))}</span>`:(fee?('¥'+fee.toLocaleString()):'-')}</td>
     </tr>`;
   };
@@ -1158,13 +1199,23 @@ function renderTable(){
     r.qty[code.code]=(+r.qty[code.code]||0)+r.cx; r.cx=0;
     mark(r); renderStock(); renderTable();
   }));
+  // 치던 칸으로 포커스·커서를 돌려놓는다. 재조회 사이에 더 친 글자는 새 칸에 옮겨 다시 저장 대상으로 올린다
+  if(_keep){
+    const el=box.querySelector(`tr[data-seq="${_keep.seq}"] ${_keep.sel}`);
+    if(el && !el.disabled){
+      const dt=el.closest('details'); if(dt) dt.open=true;
+      el.focus({preventScroll:true});
+      if(_keep.typed && el.value!==_keep.val){ el.value=_keep.val; el.dispatchEvent(new Event('input',{bubbles:true})); }
+      try{ if(_keep.s!=null) el.setSelectionRange(_keep.s,_keep.e); }catch(e){}
+    }
+  }
 }
 // 現地手配書를 팝업으로 — dispatch.html 딥링크(?ym=&seq=)가 그 팀 인쇄 미리보기까지 열어준다.
 function openDispatch(seq){
   const ym=DATE.slice(0,7);
   const w=window.open(`dispatch.html?ym=${encodeURIComponent(ym)}&seq=${encodeURIComponent(seq)}`,
     'saizen_dispatch','width=1180,height=900,scrollbars=yes,resizable=yes');
-  if(w) w.focus(); else toast(tx('saveFail'),'err');
+  if(w) w.focus(); else toast(tx('popBlocked'),'err');
 }
 
 // ⚠ 저장 방식(Min 2026-08 롤백): 카트 표는 **고치면 바로 저장**한다.
@@ -1186,17 +1237,19 @@ function mark(r){
 // 지정한 행만 즉시 저장(취소 팝업 등). 전체 [변경 저장]과 같은 규칙을 쓴다.
 async function persistRows(rows, okMsg){
   if(!supa || !rows || !rows.length) return;
+  if(RO){ toast(tx('roNoSave'),'warn'); return; }
   const by=curUser()||null;
   const ups=[], dels=[], far=[];
+  const D=rows[0].date||DATE;   // 행을 불러온 날짜에 저장한다 — 0.7초 지연 저장이 도는 사이 화면 날짜가 바뀌어도 새 날짜로 새지 않게
   for(const r of rows){
     TYPES.forEach(t=>{
       const q=+r.qty[t.code]||0;
       const cxq=(t===TYPES[0])?(+r.cx||0):0;
-      if(q>0||cxq>0) ups.push({play_date:DATE,event_seq:r.seq,cart_code:t.code,qty:q,cancelled:cxq,source:r.src||'pre',note:r.memo||null,created_by:by,auto_qty:(r.autoQty!==false)});
+      if(q>0||cxq>0) ups.push({play_date:D,event_seq:r.seq,cart_code:t.code,qty:q,cancelled:cxq,source:r.src||'pre',note:r.memo||null,created_by:by,auto_qty:(r.autoQty!==false)});
       else dels.push({seq:r.seq,code:t.code});
     });
     if(r.cxScope==='all' && (+r.cx||0)>0){
-      for(const d of teamRoundDates(r).filter(x=>x!==DATE)){
+      for(const d of teamRoundDates(r).filter(x=>x!==D)){
         try{
           const {data:ex}=await supa.from('cart_bookings').select('*').eq('play_date',d).eq('event_seq',r.seq);
           const cur=(ex||[])[0];
@@ -1222,7 +1275,7 @@ async function persistRows(rows, okMsg){
       if(error) throw error;
     }
     for(const d of dels){
-      const {error}=await supa.from('cart_bookings').delete().eq('play_date',DATE).eq('event_seq',d.seq).eq('cart_code',d.code);
+      const {error}=await supa.from('cart_bookings').delete().eq('play_date',D).eq('event_seq',d.seq).eq('cart_code',d.code);
       if(error) throw error;
     }
     if(far.length){
@@ -1232,6 +1285,7 @@ async function persistRows(rows, okMsg){
     rows.forEach(r=>DIRTY.delete(r.seq));
     toast(okMsg||tx('saveOk')(rows.length),'ok');
     await load();
+    loadMonth();   // 달력의 사용·잔여도 방금 저장한 값으로 맞춘다
   }catch(e){ toast(tx('saveFail')+': '+(e.message||e),'err'); }
 }
 
@@ -1242,6 +1296,7 @@ async function persistRows(rows, okMsg){
 // ════════════════════════════════════════════════════════════════════════
 async function loadMonth(){
   if(!supa) return;
+  const _my=++_monthSeq;
   const ms=$('#m-stat'); if(ms) ms.textContent=tx('mLoading');
   const ml=$('#m-label'); if(ml) ml.textContent=YM;
   try{
@@ -1251,21 +1306,28 @@ async function loadMonth(){
     }
     const b=ymBounds(YM);
     const bs=await paged((a,z)=>supa.from('bookings')
-      .select('event_seq,rep_name,dep_date,arr_date,origin,airline,pax,remark_local')
+      .select('event_seq,rep_name,dep_date,arr_date,origin,airline,pax,remark,remark_local')
       .lte('dep_date',b.to).gte('arr_date',b.from).neq('status','대기').order('event_seq').range(a,z));
     if(bs.error) throw bs.error;
     const seqs=(bs.data||[]).map(x=>x.event_seq);
     const GM={}, PX={};
     for(let i=0;i<seqs.length;i+=200){ const ch=seqs.slice(i,i+200);
-      const {data:gs}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,pax').in('event_seq',ch);
+      const {data:gs,error:gse}=await supa.from('guests').select('event_seq,group_code,team_tag,accom,pax').in('event_seq',ch);
+      if(gse) throw gse;
       (gs||[]).forEach(g=>GM[g.event_seq]=g);
-      const {data:ps}=await supa.from('passengers').select('event_seq,seq_in_team,origin,dep_flight,ret_flight').in('event_seq',ch).order('seq_in_team');
+      const {data:ps,error:pse}=await supa.from('passengers').select('event_seq,seq_in_team,origin,dep_flight,ret_flight').in('event_seq',ch).order('seq_in_team');
+      if(pse) throw pse;
       (ps||[]).forEach(p=>{ if(!PX[p.event_seq]) PX[p.event_seq]=p; });
     }
     const GTM=(window.__so_groupTags? await __so_groupTags(supa,seqs) : {});
+    const PCM={};   // seq|date → 수기 지정 코스(99_play_course). 표가 없거나 못 읽으면 규칙 코스로 본다
+    try{ const pcm=await paged((a,z)=>supa.from('play_course').select('event_seq,play_date,course')
+      .gte('play_date',b.from).lte('play_date',b.to).order('play_date').order('event_seq').range(a,z));
+      if(!pcm.error) (pcm.data||[]).forEach(x=>{ PCM[x.event_seq+'|'+x.play_date]=x.course; }); }catch(e){}
     const cbAll=await paged((a,z)=>supa.from('cart_bookings').select('*')
       .gte('play_date',b.from).lte('play_date',b.to).order('play_date').range(a,z));
     if(cbAll.error) throw cbAll.error;
+    if(_my!==_monthSeq) return;   // 낡은 응답(그 사이 월이 바뀌었거나 다시 불렀다)
     const CB={};   // seq|date → {code:qty}
     (cbAll.data||[]).forEach(x=>{ const k=x.event_seq+'|'+x.play_date;
       (CB[k]=CB[k]||{})[x.cart_code]=(CB[k][x.cart_code]||0)+(+x.qty||0); });
@@ -1280,15 +1342,18 @@ async function loadMonth(){
         .filter(r=>r.date>=b.from && r.date<=b.to);
       if(!rows.length) return;
       const pax=g.pax||bk.pax||0;
-      const elec=SZCore.wantsElectricCart(bk.remark_local||'');
+      const _rmk=[bk.remark_local,bk.remark].filter(Boolean).join(' / ');   // 일별 목록과 같은 판정 — 비고·현지비고 둘 다 본다
+      const elec=SZCore.wantsElectricCart(_rmk);
       const t={ seq:bk.event_seq, tag:GTM[bk.event_seq]||g.team_tag||g.group_code||'', rep:bk.rep_name||'', accom, pax, elec,
                 days:rows.map(r=>r.date), planned:{}, saved:{}, missing:[],
                 // 요금 대상 대수(입국일·귀국일 무료분 제외) · 무료 대수
                 billable:{}, freeQty:0 };
       const team0={dep:bk.dep_date, arr:bk.arr_date};
       rows.forEach(r=>{
-        const courseOk = (r.course==='やまなみCC');
+        const courseOk = ((PCM[bk.event_seq+'|'+r.date]||r.course)==='やまなみCC');   // 수기 지정 코스 우선(일별과 동일)
         let plan=SZCore.cartPlan(pax, elec&&courseOk);
+        const _rq=(elec&&courseOk)?SZCore.cartQtyFromRemark(_rmk):null;   // 비고에 적힌 대수가 있으면 그 숫자(일별과 동일)
+        if(plan && plan.code==='electric' && _rq) plan.qty=_rq;
         if(plan && !SHOW_CODES.includes(plan.code)) plan=null;      // 표시 대상 외(가솔린)는 집계하지 않음
         const got0=CB[bk.event_seq+'|'+r.date]||null;
         let got=null;
@@ -1315,12 +1380,15 @@ async function loadMonth(){
     if(ms) ms.textContent=`${MTEAMS.length}${lang()==='en'?' teams':(lang()==='ja'?'チーム':'팀')}`;
     renderMonth();
   }catch(e){
+    if(_my!==_monthSeq) return;
     if(ms) ms.textContent=tx('loadFail');
     toast(tx('loadFail')+': '+String(e&&e.message||e),'err');
   }
 }
 
-function typeName(code){ const t=TYPES.find(x=>x.code===code); return t?(lang()==='ja'?t.name_ja:t.name_ko):code; }
+// 카트 종류 이름 — cart_types 에는 일본어·한국어 이름만 있다. 영어 화면은 사전(typeEn)으로 표시하고, 사전에 없는 종류는 한국어 이름 그대로.
+function tName(t){ return lang()==='ja'?t.name_ja:(lang()==='en'?((tx('typeEn')||{})[t.code]||t.name_ko):t.name_ko); }
+function typeName(code){ const t=TYPES.find(x=>x.code===code); return t?tName(t):code; }
 function feeOf(qty){ return TYPES.reduce((s,t)=>s+(+qty[t.code]||0)*(+t.fee_yen||0),0); }
 
 function renderMonth(){
@@ -1405,7 +1473,12 @@ function applyStatic(){
   if(supa){ setConn(tx('connOk'),'ok'); if(btn) btn.textContent=tx('connectedBtn'); }
   else { setConn(tx('notConn'),''); if(btn) btn.textContent=tx('connect'); }
 }
-window.onSaizenLangChange=function(){ applyStatic(); if(supa){ renderUI(); $('#d-pick').value=DATE; renderStock(); renderTable(); } };
+// 언어 전환 = renderUI() 가 #content 를 통째로 다시 만든다 → 달력·카트 번호 등록·날짜/월 라벨·팀 수도 다시 채우고, 검색은 새 입력칸에 다시 결선한다(DB 는 다시 읽지 않는다)
+window.onSaizenLangChange=function(){ applyStatic(); if(supa){ renderUI(); window._cartSearchWired=false; $('#d-pick').value=DATE;
+  const _wd=SZCore.mdWd(DATE,lang()); const _dl=$('#d-label'); if(_dl) _dl.textContent=_wd; const _dw=$('#d-wd'); if(_dw) _dw.textContent=_wd;
+  const _ml=$('#m-label'); if(_ml) _ml.textContent=YM; const _ms=$('#m-stat'); if(_ms) _ms.textContent=MTEAMS.length+tx('teamUnit');
+  $('#stat').textContent=ROWS.length?ROWS.length+tx('teamUnit'):'';
+  renderStock(); renderTable(); renderUnits(); renderMonth(); renderPickBar(); } };
 
 $('#btn-connect').addEventListener('click',connect);
 applyStatic();
