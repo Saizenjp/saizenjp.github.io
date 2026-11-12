@@ -116,6 +116,7 @@
   .cell .pv .pu{font-size:10.5px;font-weight:700;font-family:var(--sans);color:var(--text2);margin-left:2px}
   .cell .io{font-size:10.5px;font-weight:700;margin-top:3px;display:flex;gap:6px;flex-wrap:wrap}
   .cell .io .i{color:#2f7d4f}.cell .io .o{color:#8a5a12}
+  .calsum{display:flex;flex-wrap:wrap;gap:3px 14px;font-size:11.5px;font-weight:700;color:var(--text2);margin:-3px 0 10px}
   .ylist{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
   .ycard{border:1px solid var(--border);border-radius:10px;padding:11px 13px;background:var(--surface);text-decoration:none;color:inherit;display:block}
   .ycard:hover{border-color:var(--accent)}
@@ -125,7 +126,7 @@
   .ycard .bar{height:7px;background:var(--surface3);border-radius:99px;overflow:hidden;margin-top:7px}
   .ycard .bar i{display:block;height:100%;background:var(--accent)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.5">
 </head>
 <body data-so-area="stats_mgmt staycal">
 <div class="topbar so-bar">
@@ -153,7 +154,7 @@
 <div class="ctrlbar">
   <label id="t-period">기간</label>
   <input class="inp" id="d-from" type="date" style="width:150px">
-  <span style="color:var(--muted)">~</span>
+  <span style="color:var(--muted)" id="t-tilde">~</span>
   <input class="inp" id="d-to" type="date" style="width:150px">
   <button class="btn sm" id="btn-run" type="button">조회</button>
   <span style="width:8px"></span>
@@ -177,7 +178,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=70"></script>
-<script src="../assets/saizen-ops.js?v=40.4"></script>
+<script src="../assets/saizen-ops.js?v=40.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, DATA=null;
@@ -192,7 +193,8 @@ const L={
     thYm:'出発月', thPrev:'以前', thDelta:'増減', trSame:'変動なし',
     trNote:'出発月が基準です。「現在」は実際の予約をその場で数え、「以前」はその日の0時に記録した数字です。「変わったチーム」は登録記録から読みます。',
     trLoading:'推移を読み込み中…', trFail:'推移の取得に失敗',
-    calNights:n=>`延べ ${n}人泊`, calPeak:(d,n)=>`最多 ${d} ${n}名`, calPeakShort:n=>`最多 ${n}名`, calTeams:n=>`${n}チーム`,
+    srv:{'(미지정)':'(未指定)','(등급미상)':'(等級不明)','(기타)':'(その他)','(없음)':'(なし)','일반':'一般','확정':'確定','견적':'見積','대기':'待機','정산':'精算','라운딩':'ラウンド','식음':'飲食','숙박':'宿泊','골프샵':'ゴルフショップ','기타':'その他'},
+    calNights:n=>`延べ ${n}人泊`, calPeak:(d,n)=>`最多 ${d} ${n}名`, calPeakShort:n=>`最多 ${n}名`, calTeams:n=>`${n}チーム`, calIn:(t,n)=>`🛬 ${t}チーム·${n}名`, calOut:(t,n)=>`🛫 ${t}チーム·${n}名`, calAvg:n=>`1日平均 ${n}名`, calStayDays:n=>`宿泊のある日 ${n}日`,
     calNote:'大きい数字=その夜に泊まる人数 · 🛬チェックイン · 🛫チェックアウト(チーム·人数)。色が濃いほど多い。日付を押すとフロントデスク。',
     navHome:'ホーム', step:'経営統計', connIdle:'未接続', connecting:'接続中…', connOk:'接続済', connFail:'接続失敗', connect:'接続', connectedBtn:'✓ 接続済',
     connHint:'代表・部署長向けの月/年 統合統計(送客・売上・稼働率・顧客構成)。読み取り専用集計。',
@@ -216,7 +218,8 @@ const L={
     thYm:'출발 월', thPrev:'이전', thDelta:'증감', trSame:'변동 없음',
     trNote:'출발 월 기준입니다. 「지금」은 실제 예약을 바로 세고, 「이전」은 그날 자정에 찍어 둔 기록입니다. 「바뀐 팀」은 등록(엠클릭 업로드) 기록에서 읽습니다.',
     trLoading:'추이 불러오는 중…', trFail:'추이 조회 실패',
-    calNights:n=>`연 ${n}인박`, calPeak:(d,n)=>`최다 ${d} ${n}명`, calPeakShort:n=>`최다 ${n}명`, calTeams:n=>`${n}팀`,
+    srv:{},
+    calNights:n=>`연 ${n}인박`, calPeak:(d,n)=>`최다 ${d} ${n}명`, calPeakShort:n=>`최다 ${n}명`, calTeams:n=>`${n}팀`, calIn:(t,n)=>`🛬 ${t}팀·${n}명`, calOut:(t,n)=>`🛫 ${t}팀·${n}명`, calAvg:n=>`하루 평균 ${n}명`, calStayDays:n=>`묵은 날 ${n}일`,
     calNote:'큰 숫자 = 그날 밤 묵는 인원 · 🛬 체크인 · 🛫 체크아웃(팀·인원). 색이 진할수록 많습니다. 날짜를 누르면 그날 프론트 데스크로.',
     navHome:'홈', step:'경영 통계', connIdle:'미연결', connecting:'연결 중…', connOk:'연결됨', connFail:'연결 실패', connect:'연결', connectedBtn:'✓ 연결됨',
     connHint:'대표·부서장용 월/연 통합 통계(입도·매출·가동률·고객구성). 읽기 전용 집계.',
@@ -240,7 +243,8 @@ const L={
     thYm:'Departure month', thPrev:'Before', thDelta:'Change', trSame:'no change',
     trNote:'By departure month. "Now" counts live bookings; "Before" is the figure recorded at midnight that day. "Teams that changed" comes from the import log.',
     trLoading:'Loading trend…', trFail:'Could not load the trend',
-    calNights:n=>`${n} person-nights`, calPeak:(d,n)=>`peak ${d} ${n}`, calPeakShort:n=>`peak ${n}`, calTeams:n=>`${n} teams`,
+    srv:{'(미지정)':'(unassigned)','(등급미상)':'(grade unknown)','(기타)':'(other)','(없음)':'(none)','일반':'General','확정':'Confirmed','견적':'Quote','대기':'Waitlist','정산':'Settled','라운딩':'Round','식음':'F&B','숙박':'Lodging','골프샵':'Pro shop','기타':'Other'},
+    calNights:n=>`${n} person-nights`, calPeak:(d,n)=>`peak ${d} ${n}`, calPeakShort:n=>`peak ${n}`, calTeams:n=>`${n} teams`, calIn:(t,n)=>`🛬 ${t} teams·${n}`, calOut:(t,n)=>`🛫 ${t} teams·${n}`, calAvg:n=>`avg ${n}/night`, calStayDays:n=>`${n} days with guests`,
     calNote:'Big number = guests staying that night · 🛬 check-ins · 🛫 check-outs (teams·guests). Darker = busier. Click a date for that day at the front desk.',
     navHome:'Home', step:'Exec Stats', connIdle:'Not connected', connecting:'Connecting…', connOk:'Connected', connFail:'Connect failed', connect:'Connect', connectedBtn:'✓ Connected',
     connHint:'Monthly/yearly consolidated stats for execs (arrivals, revenue, occupancy, customer mix). Read-only aggregation.',
@@ -277,6 +281,8 @@ function applyStatic(){
   if(!supa){ setConn(tx('connIdle')); $('#btn-connect').textContent=tx('connect'); }
 }
 
+// 서버(exec_stats·booking_trend)가 한국어로 돌려주는 값을 화면 언어로 — 고정 문구·구분은 사전 srv, 숙소명은 SZCore.accomLabel, 모르는 값(회원 등급명 등)은 원문 그대로
+function srv(v){ const s=String(v==null?'':v), m=tx('srv')||{}; if(m[s]!==undefined) return m[s]; return (window.SZCore&&SZCore.accomLabel)?SZCore.accomLabel(s,lang()):s; }
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
 function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
@@ -321,6 +327,7 @@ async function connect(){
   }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connect');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
 }
 
+let _runSeq=0;   // 기간 칩·◀▶ 연타 — 마지막 요청의 응답만 쓴다
 async function run(){
   if(CAL_ONLY) return;   // 캘린더 전용 권한은 집계(금액)를 부르지 않는다
   if(!supa){ toast(tx('connFail'),'warn'); return; }
@@ -331,7 +338,9 @@ async function run(){
   //  (랜딩 「체류 캘린더」= ?view=cal 로 들어와 캘린더를 그린 직후, 자동 연결의 run() 이 같은 #content 를 요약으로 덮어
   //   경영통계가 떠 보이던 버그 — Min 2026-10-27 「체류 캘린더 누르면 경영통계로 넘어가네」)
   if(VIEW==='sum') $('#content').innerHTML=`<div class="deny">${tx('loading')}</div>`;
+  const my=++_runSeq;
   const {data,error}=await supa.rpc('exec_stats',{p_from:f,p_to:t});
+  if(my!==_runSeq) return;   // 늦게 도착한 이전 기간 응답은 버린다
   if(error){
     const msg=/권한|permission/i.test(error.message)?tx('noAuth'):(tx('loadFail')+': '+error.message);
     DATA=null; if(VIEW==='sum') $('#content').innerHTML=`<div class="deny" style="color:var(--err)">${esc(msg)}</div>`; return;
@@ -375,7 +384,7 @@ function render(){
 
   // 숙소별
   const accom=(d.by_accom||[]);
-  const accomRows=accom.map(a=>`<tr><td>${esc(a.accom)}</td><td>${num(a.teams)}</td><td>${num(a.pax)}</td><td class="mono">${yen(a.b2b)}</td></tr>`).join('');
+  const accomRows=accom.map(a=>`<tr><td>${esc(srv(a.accom))}</td><td>${num(a.teams)}</td><td>${num(a.pax)}</td><td class="mono">${yen(a.b2b)}</td></tr>`).join('');
   const accomPanel=`<div class="panel"><h3>${tx('byAccom')}</h3><table class="t"><thead><tr><th>${tx('thAccom')}</th><th>${tx('thTeam')}</th><th>${tx('thPax')}</th><th>${tx('thB2B')}</th></tr></thead><tbody>${accomRows||''}</tbody></table></div>`;
 
   // 출발지
@@ -390,7 +399,7 @@ function render(){
 
   // 고객 구성
   const grades=(d.members&&d.members.by_grade)||[];
-  const gradeRows=grades.map(g=>`<tr><td>${esc(g.grade)}</td><td>${num(g.persons)}</td></tr>`).join('');
+  const gradeRows=grades.map(g=>`<tr><td>${esc(srv(g.grade))}</td><td>${num(g.persons)}</td></tr>`).join('');
   const custPanel=`<div class="panel"><h3>${tx('custMix')}</h3>
     <div class="split">
       ${(d.members&&d.members.member)?`<div class="seg" style="width:${memPct}%;background:var(--accent)">${tx('member')} ${num(d.members.member)}</div>`:''}
@@ -401,7 +410,7 @@ function render(){
 
   // 현장 매출 구성 (카테고리 + 현금/카드)
   const cats=(d.onsite_by_cat||[]);
-  const catRows=cats.map(c=>`<tr><td>${esc(c.category)}</td><td class="mono">${yen(c.amount)}</td></tr>`).join('');
+  const catRows=cats.map(c=>`<tr><td>${esc(srv(c.category))}</td><td class="mono">${yen(c.amount)}</td></tr>`).join('');
   const pcTot=(tot.cash||0)+(tot.card||0)+(tot.unset||0)||1;
   const payPanel=`<div class="panel"><h3>${tx('onsiteRev')}</h3>
     <div style="font-size:11.5px;color:var(--text2);font-weight:700;margin-bottom:4px">${tx('payMix')}</div>
@@ -415,7 +424,7 @@ function render(){
   // 가동률(시설별)
   const facs=(occ.by_facility||[]);
   const facRows=facs.map(f=>{ const p=(f.avail>0)?Math.round((f.occupied||0)/f.avail*100):0;
-    return `<tr><td>${esc(f.facility||'-')}</td><td>${num(f.occupied)}</td><td>${num(f.avail)}</td><td class="mono">${p}%</td></tr>`;}).join('');
+    return `<tr><td>${esc(srv(f.facility||'-'))}</td><td>${num(f.occupied)}</td><td>${num(f.avail)}</td><td class="mono">${p}%</td></tr>`;}).join('');
   const occPanel=`<div class="panel"><h3>${tx('occTitle')}</h3><table class="t"><thead><tr><th>${tx('thFac')}</th><th>${tx('thUsed')}</th><th>${tx('thAvail')}</th><th>${tx('thPct')}</th></tr></thead>
     <tbody><tr style="font-weight:800;background:var(--surface2)"><td>${tx('occAll')}</td><td>${num(occ.occupied)}</td><td>${num(occ.avail)}</td><td class="mono">${occPct}%</td></tr>
     <tr style="color:var(--muted)"><td>${tx('occAsg')}</td><td>${num(occ.assigned)}</td><td>${num(occ.avail)}</td><td class="mono">${asgPct}%</td></tr>${facRows}</tbody></table>
@@ -449,7 +458,7 @@ async function calLoad(){
   let rows=[], from=0;
   for(;;){
     const {data,error}=await supa.from('bookings').select('event_seq,pax,dep_date,arr_date,status')
-      .lt('dep_date',t).gt('arr_date',f).neq('status','대기')
+      .lte('dep_date',t).gte('arr_date',f).neq('status','대기')
       .order('event_seq').range(from,from+999);
     if(error) throw error;
     rows=rows.concat(data||[]);
@@ -513,19 +522,23 @@ async function renderCal(){
     const monTot=Object.keys(day).reduce((s,k)=>s+day[k].pax,0);
     const monTeams=new Set(rows.filter(b=>String(b.dep_date).slice(0,7)===`${CALY}-${pad(CALM+1)}`).map(b=>b.event_seq)).size;
     const peak=Object.keys(day).sort((a,b)=>day[b].pax-day[a].pax)[0];
+    const dayVals=Object.values(day), sumOf=k=>dayVals.reduce((s,x)=>s+x[k],0);   // 월 합계 줄(.calsum) — 달력 칸 항목(체크인·체크아웃)의 총계 + 하루 평균 + 묵은 날
     body=`<div class="panel">
       <h3>${tx('calH')}<span class="c">${tx('calNights',num(monTot))} · ${tx('calTeams',num(monTeams))} · ${tx('calPeak',peak?peak.slice(5):'-',num(peak?day[peak].pax:0))}</span></h3>
+      <div class="calsum"><span>${tx('calIn',num(sumOf('ciT')),num(sumOf('ci')))}</span><span>${tx('calOut',num(sumOf('coT')),num(sumOf('co')))}</span><span>${tx('calAvg',num(Math.round(monTot/lastD)))}</span><span>${tx('calStayDays',num(dayVals.filter(x=>x.pax>0).length))}</span></div>
       <div class="cal">${cells}</div>
       <div class="note">${tx('calNote')}</div></div>`;
   } else {
     // 연 보기 — 월별 연인원(인원×박수)·팀수·최다 인원
     const byM={};
-    for(let m=0;m<12;m++) byM[m]={nights:0,peak:0,teams:new Set()};
+    for(let m=0;m<12;m++) byM[m]={nights:0,peak:0,teams:new Set(),ci:0,ciT:0,co:0,coT:0};
     Object.keys(day).forEach(k=>{
       const m=Number(k.slice(5,7))-1, v=day[k];
       byM[m].nights+=v.pax; if(v.pax>byM[m].peak) byM[m].peak=v.pax;
+      byM[m].ci+=v.ci; byM[m].ciT+=v.ciT; byM[m].co+=v.co; byM[m].coT+=v.coT;
     });
-    rows.forEach(b=>{ const m=Number(String(b.dep_date).slice(5,7))-1; if(byM[m]) byM[m].teams.add(b.event_seq); });
+    rows.forEach(b=>{ if(String(b.dep_date).slice(0,4)!==String(CALY)) return;   // 전년도 입국(해 넘김) 팀은 올해 달의 팀 수에 넣지 않는다
+      const m=Number(String(b.dep_date).slice(5,7))-1; if(byM[m]) byM[m].teams.add(b.event_seq); });
     const maxN=Math.max(1,...Object.values(byM).map(x=>x.nights));
     const cards=Object.keys(byM).map(m=>{
       const v=byM[m], mm=Number(m)+1;
@@ -533,6 +546,7 @@ async function renderCal(){
         <div class="ym">${CALY}-${pad(mm)}</div>
         <div class="big">${num(v.nights)}<span style="font-size:12px;color:var(--text2)">${tx('uNight')||'인박'}</span></div>
         <div class="sub">${tx('calTeams',num(v.teams.size))} · ${tx('calPeakShort',num(v.peak))}</div>
+        <div class="sub">${tx('calIn',num(v.ciT),num(v.ci))} · ${tx('calOut',num(v.coT),num(v.co))}</div>
         <div class="bar"><i style="width:${Math.round(v.nights/maxN*100)}%"></i></div></a>`;
     }).join('');
     const yTot=Object.values(byM).reduce((s,v)=>s+v.nights,0);
@@ -611,7 +625,7 @@ function renderTrend(){
   const cmp=(rows,keyName,label)=>`<div class="panel"><h3>${esc(label)}</h3>
     <table class="t"><thead><tr><th>${esc(keyName)}</th><th>${esc(tx('thTeam'))}</th><th>${esc(tx('thPax'))}</th><th>${esc(tx('thDelta'))}</th></tr></thead><tbody>
     ${(rows||[]).slice().sort((a,b)=>(b.pax||0)-(a.pax||0)).map(r=>{ const d=(r.pax||0)-(r.prev_pax||0);
-      return `<tr><td>${esc(r.status||r.accom||'-')}</td><td class="mono">${(r.teams||0)}</td>
+      return `<tr><td>${esc(srv(r.status||r.accom||'-'))}</td><td class="mono">${(r.teams||0)}</td>
         <td class="mono">${(r.pax||0).toLocaleString('ja-JP')}</td>
         <td class="mono ${dcls(d)}">${hasBase?(d===0?esc(tx('trSame')):dnum(d)):'-'}</td></tr>`; }).join('')}
     </tbody></table></div>`;
@@ -642,6 +656,9 @@ function setView(v){
   $('#v-sum').classList.toggle('on',v==='sum');
   $('#v-cal').classList.toggle('on',v==='cal');
   { const c=$('#v-trend'); if(c) c.classList.toggle('on',v==='trend'); }
+  // 기간 줄(라벨·날짜칸·조회·이전/다음 달·빠른 칩)과 기간 라벨은 요약 보기 전용 — 캘린더·추이는 화면 안의 자체 ◀▶·월 칩으로 움직인다
+  ['t-period','d-from','t-tilde','d-to','btn-run','t-prevm','t-nextm','rangelbl'].forEach(id=>{ const e=document.getElementById(id); if(e) e.style.display=(v==='sum'?'':'none'); });
+  document.querySelectorAll('.chip[data-q]').forEach(e=>{ e.style.display=(v==='sum'?'':'none'); });
   if(v==='cal'){
     if(CALY==null){ const n=new Date(); CALY=n.getFullYear(); CALM=n.getMonth(); }
     if(supa) renderCal();

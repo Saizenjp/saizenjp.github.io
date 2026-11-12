@@ -72,7 +72,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.4">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.5">
 </head>
 <body data-so-area="roomstats">
 <div class="topbar so-bar">
@@ -103,7 +103,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=70"></script><!-- 회원 판정(3컬럼 OR)·박수→층 규칙 단일 진실원 -->
-<script src="../assets/saizen-ops.js?v=40.4"></script>
+<script src="../assets/saizen-ops.js?v=40.5"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -142,6 +142,7 @@ const L={
     rsvRange:'予約日', rsvGo:'照会', rsvClear:'解除',
     c5Rsv:'予約日', c5Team:'チーム', c5Rep:'代表', c5Dep:'入国', c5Nights:'泊', c5Mem:'会員', c5Grades:'入った等級', c5Dlx:'デラックス', c5Who:'スタンダード等の会員(部屋)', btnXlsx5:'⬇ 通知用 xlsx(連絡先付き)', xlsxLib:'Excel ライブラリを読み込めませんでした — 通信を確認してページを再読込してください', xlsxNone:'期間を絞ってから出力してください', xlsxDone:n=>`${n}名を出力しました`, xh:{rsv:'予約日',seq:'行事番号',tag:'タグ',rep:'代表',dep:'入国',nights:'泊',name:'会員名',birth:'生年',room:'部屋',type:'客室タイプ',grade:'実質等級',phone:'本人連絡先',repPhone:'代表連絡先'}, xsNon:'スタンダード等', xsAll:'会員全員',
     t5none:'この期間の予約に、やまなみホテル棟の会員割当はありません。',
+    t5yr:y=>`※ 上の「対象年」${y}年に入国する予約の中だけを探します。ほかの年に入国する予約(例: 2027優先予約 = 2027年入国)は、上の ◀ ▶ で対象年を変えてください。`,
     t5sum:(t,m,d)=>`予約 ${t}件 · 会員 ${m}名 · デラックス ${d}名`,
     t5ok:'✅ この期間の会員は全員デラックスに入っています。',
     t5bad:(n,p)=>`⚠ ${n}名がデラックスに入れていません(${p}%)`,
@@ -181,6 +182,7 @@ const L={
     rsvRange:'예약일', rsvGo:'조회', rsvClear:'해제',
     c5Rsv:'예약일', c5Team:'팀', c5Rep:'대표', c5Dep:'입국', c5Nights:'박', c5Mem:'회원', c5Grades:'받은 등급', c5Dlx:'디럭스', c5Who:'스탠다드 등 회원(방)', btnXlsx5:'⬇ 통보용 xlsx(연락처 포함)', xlsxLib:'엑셀 라이브러리를 불러오지 못했습니다 — 연결을 확인하고 페이지를 새로고침해 주세요', xlsxNone:'예약 기간을 먼저 좁혀 주세요', xlsxDone:n=>`${n}명을 내보냈습니다`, xh:{rsv:'예약일',seq:'행사번호',tag:'태그',rep:'대표',dep:'입국',nights:'박',name:'회원명',birth:'생년',room:'방',type:'객실타입',grade:'실질등급',phone:'본인 연락처',repPhone:'대표 연락처'}, xsNon:'스탠다드 등', xsAll:'회원 전체',
     t5none:'이 기간 예약에는 야마나미 호텔동 회원 배정이 없습니다.',
+    t5yr:y=>`※ 위쪽 「대상 연도」 ${y}년에 입국하는 예약 안에서만 찾습니다. 다른 해에 입국하는 예약(예: 2027 우선예약 = 2027년 입국)은 위의 ◀ ▶ 로 대상 연도를 바꿔 주세요.`,
     t5sum:(t,m,d)=>`예약 ${t}건 · 회원 ${m}명 · 디럭스 ${d}명`,
     t5ok:'✅ 이 기간 회원은 전원 디럭스에 들어갔습니다.',
     t5bad:(n,p)=>`⚠ ${n}명이 디럭스를 못 받았습니다(${p}%)`,
@@ -220,6 +222,7 @@ const L={
     rsvRange:'Booking date', rsvGo:'Look up', rsvClear:'Clear',
     c5Rsv:'Booked', c5Team:'Team', c5Rep:'Rep', c5Dep:'Arrival', c5Nights:'Nights', c5Mem:'Members', c5Grades:'Grades', c5Dlx:'Deluxe', c5Who:'Non-deluxe members (room)', btnXlsx5:'⬇ Notify list xlsx (with phone)', xlsxLib:'Excel library failed to load — check the connection and reload the page', xlsxNone:'Narrow the booking-date range first', xlsxDone:n=>`Exported ${n} members`, xh:{rsv:'Booked',seq:'Event',tag:'Tag',rep:'Rep',dep:'Arrival',nights:'Nights',name:'Member',birth:'Birth',room:'Room',type:'Room type',grade:'Grade',phone:'Phone',repPhone:'Rep phone'}, xsNon:'Non-deluxe', xsAll:'All members',
     t5none:'No Yamanami hotel-block member assignments among bookings in this range.',
+    t5yr:y=>`Note: only bookings arriving in the target year above (${y}) are searched. For bookings arriving in another year (e.g. 2027 priority bookings arrive in 2027), change the year with ◀ ▶ above.`,
     t5sum:(t,m,d)=>`${t} bookings · ${m} members · ${d} in deluxe`,
     t5ok:'✅ Every member from this range got a deluxe room.',
     t5bad:(n,p)=>`⚠ ${n} member(s) did not get deluxe (${p}%)`,
@@ -281,11 +284,11 @@ async function paged(qf){
     out.push(...(data||[])); if(!data||data.length<1000) break; from+=1000; }
   return {data:out};
 }
-async function pagedIn(table,cols,col,vals){
+async function pagedIn(table,cols,col,vals,pk){   // pk = 그 표의 PK 열 — 같은 event_seq 행이 쪽(1000행) 경계에 걸려도 순서가 고정되게 정렬 끝에 붙인다(guests 는 event_seq 가 PK 라 생략)
   const out=[];
   for(let i=0;i<vals.length;i+=200){
     const chunk=vals.slice(i,i+200);
-    const r=await paged((a,b)=>supa.from(table).select(cols).in(col,chunk).order(col).range(a,b));
+    const r=await paged((a,b)=>{ let q=supa.from(table).select(cols).in(col,chunk).order(col); if(pk) q=q.order(pk); return q.range(a,b); });
     if(r.error) return r; out.push(...r.data);
   }
   return {data:out};
@@ -329,8 +332,10 @@ function renderUI(){
   $('#rsv-xlsx').addEventListener('click',downloadRangeXlsx);
 }
 
+let _loadSeq=0;   // 연도 ◀▶ 연타·첫 집계 중 전환 — 마지막 요청만 화면에 반영한다
 async function load(){
   if(!supa) return;
+  const my=++_loadSeq;
   $('#y-label').textContent=YEAR; $('#stat').textContent=tx('loading');
   const from=`${YEAR}-01-01`, to=`${YEAR}-12-31`;
   try{
@@ -338,6 +343,7 @@ async function load(){
     const bs=await paged((a,b)=>supa.from('bookings')
       .select('event_seq,reserved_at,dep_date,arr_date,rep_name').gte('dep_date',from).lte('dep_date',to).neq('status','대기').order('event_seq').range(a,b));
     if(bs.error) throw bs.error;
+    if(my!==_loadSeq) return;   // 그 사이 다른 연도를 눌렀다 — 이 응답은 버린다
     const BMAP={}; (bs.data||[]).forEach(x=>BMAP[x.event_seq]=x);
     const seqs=Object.keys(BMAP).map(Number);
     if(!seqs.length){ DATA=null; $('#stat').textContent=tx('noData'); ['#kpis','#tbl1','#tbl2','#tbl3','#tbl4','#tbl5'].forEach(s=>{const e=$(s); if(e)e.innerHTML='';}); return; }
@@ -345,12 +351,12 @@ async function load(){
     const invR=await paged((a,b)=>supa.from('room_inventory').select('id,facility,zone,room_no,room_type').order('id').range(a,b));
     if(invR.error) throw invR.error;
     const INV={}; (invR.data||[]).forEach(i=>INV[i.id]=i);
-    const rmR=await pagedIn('rooms','event_seq,member_id,inventory_id,room_no,check_in,check_out','event_seq',seqs);
+    const rmR=await pagedIn('rooms','event_seq,member_id,inventory_id,room_no,check_in,check_out','event_seq',seqs,'id');
     if(rmR.error) throw rmR.error;
-    const gmR=await pagedIn('guest_members','id,event_seq,passenger_id,name_kr,seq_in_team,is_rep,member_grade,member_class,member_div','event_seq',seqs);
+    const gmR=await pagedIn('guest_members','id,event_seq,passenger_id,name_kr,seq_in_team,is_rep,member_grade,member_class,member_div','event_seq',seqs,'id');
     if(gmR.error) throw gmR.error;
     const GM={}; (gmR.data||[]).forEach(m=>GM[m.id]=m);
-    const pxR=await pagedIn('passengers','id,event_seq,name_kr,birth_yymmdd,phone','event_seq',seqs);   // 대표 표시(is_rep)는 승객 표에 없다 — 명단(guest_members)에 있다
+    const pxR=await pagedIn('passengers','id,event_seq,name_kr,birth_yymmdd,phone','event_seq',seqs,'id');   // 대표 표시(is_rep)는 승객 표에 없다 — 명단(guest_members)에 있다
     if(pxR.error) throw pxR.error;
     const PX={}; (pxR.data||[]).forEach(p=>PX[p.id]=p);
     // 대표 연락처(통보용) = 「대표」 열(예약의 대표고객)과 같은 사람의 연락처. 명단의 is_rep 는 그 달을 다시 등록하기 전까지 첫 줄일 수 있어,
@@ -394,10 +400,12 @@ async function load(){
         roomType: inv.room_type||'', phone:(px&&px.phone)||'', repPhone: REPPH[r.event_seq]||'', tag: TAG[r.event_seq]||''   // ⑤ 통보용(연락처·실제 타입)
       });
     });
+    if(my!==_loadSeq) return;
     DATA={rows, stays, dlxSupply};
     $('#stat').textContent=`${rows.length}`;
     renderAll();
-  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
+  }catch(e){ if(my!==_loadSeq) return; DATA=null; renderAll();   // 실패하면 이전 연도 표를 새 연도 이름 아래 남기지 않는다
+    $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
 
 function renderAll(){
@@ -534,7 +542,8 @@ function renderRange(){
   if(!DATA||!DATA.rows.length){ box.innerHTML=''; return; }
   const {from,to}=RSV;
   const rows=DATA.rows.filter(r=> r.rsv && (!from||r.rsv>=from) && (!to||r.rsv<=to));
-  if(!rows.length){ box.innerHTML=`<div class="lgd">${esc(tx('t5none'))}</div>`; return; }
+  const yrNote=`<div class="lgd">${esc(tx('t5yr')(YEAR))}</div>`;   // ⑤ 는 위쪽 대상 연도(입국 연도)로 읽어 온 예약 안에서만 좁힌다 — 그 사실을 화면에 적는다
+  if(!rows.length){ box.innerHTML=yrNote+`<div class="lgd">${esc(tx('t5none'))}</div>`; return; }
   // 사람 단위(같은 사람이 여러 번 묵어도 이 구간 예약 안에서만)
   const byPerson={};
   rows.forEach(r=>{ const p=byPerson[r.key]||(byPerson[r.key]={name:r.name,grades:{},stays:0});
@@ -566,7 +575,7 @@ function renderRange(){
     </tr>`;
   }).join('');
   box.innerHTML =
-    `<div class="lgd">${esc(tx('t5sum')(teams.length,people.length,dlxPeople))}</div>`
+    yrNote+`<div class="lgd">${esc(tx('t5sum')(teams.length,people.length,dlxPeople))}</div>`
     +(noDlx.length?`<div class="warnbox">${esc(tx('t5bad')(noDlx.length,pct))}</div>`:`<div class="okbox">${esc(tx('t5ok'))}</div>`)
     +(noDlx.length?`<div class="lgd" style="margin-top:9px">${esc(tx('t5list'))}</div>
       <div class="namelist">${noDlx.map(p=>`<span class="nm">${esc(p.name||'-')}<small>${p.stays}× · ${GRADES.filter(g=>p.grades[g]).map(g=>esc(tx(GKEY[g]))).join('/')}</small></span>`).join('')}</div>`:'')
