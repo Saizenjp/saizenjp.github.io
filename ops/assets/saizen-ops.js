@@ -2510,7 +2510,12 @@
   //  각 페이지가 만드는 오버레이(모달)를 공통으로 닫아준다. 페이지가 자체 ESC 처리를
   //  갖고 있으면 그쪽이 먼저 동작하고(캡처 아님), 남은 것만 여기서 정리한다.
   //  ⚠ 화면 chrome(로그인 카드·권한 차단·토스트·상단바·서랍)은 절대 닫지 않는다.
-  var ESC_KEEP = ['so-guard', 'so-login', 'so-bar', 'so-footer', 'so-totop', 'ua-drawer'];
+  //  ⚠ 진행 중 표시(running-modal)·로그인 안내(login-notice)도 ESC 로 닫지 않는다.
+  var ESC_KEEP = ['so-guard', 'so-login', 'so-bar', 'so-footer', 'so-totop', 'ua-drawer', 'running-modal', 'login-notice'];
+  //  처음부터 문서에 있던 창(정적 창)은 화면이 display 로 여닫는다 — 지우면 새로고침 전까지 다시 열 수 없다(2026-11 검수:
+  //  POS 의 QR·확인·워크인 창, 행사 QR 창, 데이터 등록의 실패·중복·완료 창이 ESC 한 번에 사라졌다).
+  //  → 정적 창은 지우지 않는다. 인라인 display 로 열린 것만 같은 방식(display:none)으로 닫고, 클래스로 여닫는 것은 그 화면의 닫기에 맡긴다.
+  var _escStatic = null;
   function _escKeep(el) {
     if (el.id === 'toast') return true;
     for (var i = 0; i < ESC_KEEP.length; i++) {
@@ -2519,6 +2524,7 @@
     return false;
   }
   function mountEscClose() {
+    try { _escStatic = new WeakSet(Array.prototype.slice.call(document.body ? document.body.children : [])); } catch (x) { _escStatic = null; }
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       var nodes = document.body ? document.body.children : [];
@@ -2533,7 +2539,10 @@
         if (r.width < window.innerWidth * 0.5 || r.height < window.innerHeight * 0.5) continue;
         top = el;   // 문서상 마지막 = 가장 위
       }
-      if (top) { top.remove(); }
+      if (!top) return;
+      if (_escStatic && _escStatic.has(top)) {
+        if (top.style.display && top.style.display !== 'none') top.style.display = 'none';   // 정적 창 = 숨기기만(지우지 않는다)
+      } else { top.remove(); }
     });
   }
 

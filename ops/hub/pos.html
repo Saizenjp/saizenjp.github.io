@@ -264,7 +264,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.8">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=38.9">
 </head>
 <body data-so-area="pos_front pos_golf pos_restaurant">
 <script>(function(){ var o=new URLSearchParams(location.search).get('outlet')||''; var M={front:'pos_front',golf:'pos_golf',restaurant:'pos_restaurant'}; if(M[o]) document.body.setAttribute('data-so-area',M[o]); })();</script>
@@ -457,7 +457,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=69"></script>
-<script src="../assets/saizen-ops.js?v=38.8"></script>
+<script src="../assets/saizen-ops.js?v=38.9"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -653,6 +653,9 @@ function taxKeyOf(l){ return SZCore.taxParse(SZCore.taxKey(l?l.tax_rate:null, l?
 function taxMark(l){ const T=taxKeyOf(l); if(T.key==='taxable:10') return ''; return `<span class="cl-tax${T.rate===8?' r8':''}">${escP(T.rate===8?'※':SZCore.taxLabel(T.key,lang()))}</span>`; }
 function isoToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function ymOf(iso){ return String(iso||'').slice(0,7); }
+//  DB 는 timestamptz 를 UTC 로 돌려주고, 시간대 없는 필터 값도 UTC 로 읽는다 → 「그날」 범위와 시각 표시는 JST 로 바꿔서 쓴다.
+function jstDayStart(iso,add){ const dt=new Date(iso+'T00:00:00+09:00'); if(add) dt.setUTCDate(dt.getUTCDate()+add); return dt.toISOString(); }   // 그날 JST 0시(add=1 → 다음 날 0시)의 UTC ISO
+function jstOf(ts){ const dt=new Date(ts||''); return isNaN(dt)?'':dt.toLocaleString('sv-SE',{timeZone:'Asia/Tokyo'}); }   // 'YYYY-MM-DD HH:MM:SS' (JST)
 function toast(msg,cls){
   const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:'');
   t.textContent=msg; $('#toast').appendChild(t);
@@ -828,6 +831,7 @@ function backToTeams(){
 }
 // 팀 없이 주문 화면(메뉴+장바구니)을 연다 = 기본 화면
 function showOrderView(){
+  if(custShownSeq!=null) pushCustomerDisplay(null);   // 팀이 풀리면(새로고침·날짜 이동·워크인 수납 뒤) 손님 화면도 비운다
   state.team=null; state.folioId=null; state.roster=[]; state.payerSel=new Set(); state.payerMode='team';
   state.runningGross=0; state.folioIds=[]; state.folioOwner={}; state.memberFolio={};
   $('#team-view').style.display='none';
@@ -880,6 +884,8 @@ function teamBySeq(seq){ return state.teams.find(x=>x.event_seq===seq); }
 // 회원 판정은 공유 모듈(saizen-core.js)이 단일 진실원 — 3컬럼 OR(회원 우선) 위임.
 // 이름 표기 — 일본어 화면이면 가타카나(표시 전용, 검색은 원문·가타카나 둘 다)
 function pn(kr,en){ return window.__so_pname?__so_pname(kr,en):(kr||en||''); }
+// 대표자 표시 — 한글 이름만 가타카나로(워크인 이름·영문·한자는 그대로: 읽기 변환이 첫 글자를 姓 으로 잘라 버린다)
+function repL(tm){ const r=(tm&&tm.rep)||''; return (isWalkin(tm)||!/[가-힣]/.test(r))?r:pn(r,''); }
 function posIsMember(m){ return SZCore.isMember(m); }
 function fmtMD(iso){ if(!iso||iso==='-') return '-'; const p=String(iso).slice(0,10).split('-'); return p.length===3?`${+p[1]}/${+p[2]}`:iso; }
 function teamCardEl(tm){
@@ -889,8 +895,8 @@ function teamCardEl(tm){
   const b=document.createElement('button'); b.type='button'; b.className='team-btn'+(act?' active-team':'');
   if(!act) b.style.borderLeftColor=col;   // 숙소색 좌측 보더(주문중은 골드 유지)
   b.innerHTML=`<div class="ttag">${teamTag(tm)}${act?`<span class="tactive">${t('po_active')}</span>`:''}</div>
-    <div class="trep">${escP(tm.rep||'')}</div>
-    <div class="tmeta"><span class="tac" style="background:${col}1f;color:${col}">${escP(tm.accom||'')}</span> · ${tm.pax}${t('po_cntPpl')} · #${teamNo(tm)}${tm.checkin?` · <span class="tdate">${fmtMD(tm.checkin)} ${t('po_checkin')}</span>`:''}</div>
+    <div class="trep">${escP(repL(tm))}</div>
+    <div class="tmeta"><span class="tac" style="background:${col}1f;color:${col}">${escP(accomL(tm.accom))}</span> · ${tm.pax}${t('po_cntPpl')} · #${teamNo(tm)}${tm.checkin?` · <span class="tdate">${fmtMD(tm.checkin)} ${t('po_checkin')}</span>`:''}</div>
     ${room?`<div class="troom" style="color:${col}">${room}</div>`:`<div class="tnoroom">${tx('unassigned')}</div>`}`;
   b.addEventListener('click',()=>confirmTeam(tm));   // 수기 선택 → "이 팀 맞습니까?" 확인(오과금 방지)
   return b;
@@ -900,7 +906,7 @@ function headEl(txt){ const h=document.createElement('div'); h.className='tg-hea
 // 숙소별 색상 헤더(시인성)
 function accomHeadEl(acc, n){ const col=accomColor(acc); const h=document.createElement('div'); h.className='tg-head';
   h.style.color=col; h.style.borderLeft='4px solid '+col; h.style.paddingLeft='9px';
-  h.innerHTML=`${escP(acc||'-')} · ${n}${t('po_cntTeam')}`; return h; }
+  h.innerHTML=`${escP(accomL(acc)||'-')} · ${n}${t('po_cntTeam')}`; return h; }
 
 function renderTeams(){
   const box=$('#team-grid'); box.innerHTML='';
@@ -926,7 +932,7 @@ function renderTeams(){
         const isMem=posIsMember(m);
         const btn=document.createElement('button'); btn.type='button'; btn.className='mhit';
         btn.innerHTML=`<span class="mh-name">${escP(pn(m.name_kr,m.name_en)||'-')}${isMem?`<span class="mh-mem">${tx('member')}</span>`:''}</span>`
-          +`<span class="mh-team">${teamTag(tm)} · ${escP(pn(tm.rep,''))} · #${teamNo(tm)}${tm.accom?(' · '+escP(tm.accom)):''}${roomLabel(tm.event_seq)?(' · '+roomLabel(tm.event_seq)):''}</span>`;
+          +`<span class="mh-team">${teamTag(tm)} · ${escP(pn(tm.rep,''))} · #${teamNo(tm)}${tm.accom?(' · '+escP(accomL(tm.accom))):''}${roomLabel(tm.event_seq)?(' · '+roomLabel(tm.event_seq)):''}</span>`;
         btn.addEventListener('click',()=>confirmTeam(tm));
         wrap.appendChild(btn);
       });
@@ -980,6 +986,7 @@ function escP(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;'
 
 // ── 팀 선택 → 주문 뷰 ──
 async function selectTeam(tm){
+  if(custShownSeq!=null && String(custShownSeq)!==String(tm.event_seq)) pushCustomerDisplay(null);   // 다른 팀으로 바꾸면 앞 팀 계산서를 손님 화면에서 내린다(backToTeams 와 같은 규칙)
   state.team=tm; state.venue='__all__';   // 장바구니는 유지(메뉴 먼저 담고 계산에서 팀 선택)
   state.folioId=null; state.memberFolio={}; state.payerMode='split'; state.payerSel=new Set();   // 기본=개인 지정 모드(Min)
   // 이 팀의 모든 folio(팀+개인) 누적 = 러닝 합계. 팀/개인 열린 folio id 캐시.
@@ -1004,8 +1011,8 @@ async function selectTeam(tm){
   $('#order-view').style.display='';
   $('#btn-back').style.display='';
   $('#oh-tag').textContent=teamTag(tm);
-  $('#oh-rep').textContent=(tm.rep||'');
-  { const sb=$('#oh-sub'); if(sb) sb.textContent=[tm.accom||'', tm.pax?(tm.pax+tx('confPplUnit')):'', '#'+teamNo(tm)].filter(Boolean).join('  ·  '); }
+  $('#oh-rep').textContent=repL(tm);
+  { const sb=$('#oh-sub'); if(sb) sb.textContent=[accomL(tm.accom), tm.pax?(tm.pax+tx('confPplUnit')):'', '#'+teamNo(tm)].filter(Boolean).join('  ·  '); }
   { const oh=document.querySelector('.order-head'); if(oh) oh.classList.remove('none'); }
   $('#oh-run').textContent=yen(state.runningGross);
   const rl=$('#run-list'); if(rl){ rl.style.display='none'; rl.innerHTML=''; }
@@ -1017,14 +1024,16 @@ async function selectTeam(tm){
 // ── 장바구니 보존 — 태블릿이 꺼지거나 새로고침돼도, 전송에 실패해도 담은 것이 남는다.
 //   네트워크가 끊긴 채로 주문을 담아 두었다가 연결되면 그대로 [주문 전송]을 다시 누르면 된다.
 const POS_CART_KEY='saizen_pos_cart';
+let _cartRestoreTried=false;   // 부팅 때 restoreCart 가 돌기 전에는 빈 장바구니로 저장분을 지우지 않는다(showOrderView→renderCart→saveCart 가 먼저 돈다)
 function saveCart(){
   try{
-    if(!state.cart.length){ localStorage.removeItem(POS_CART_KEY); return; }
+    if(!state.cart.length){ if(_cartRestoreTried) localStorage.removeItem(POS_CART_KEY); return; }
     localStorage.setItem(POS_CART_KEY, JSON.stringify({
       d:state.date, seq:(state.team?state.team.event_seq:null), cart:state.cart }));
   }catch(e){}
 }
 async function restoreCart(){
+  _cartRestoreTried=true;
   try{
     const r=JSON.parse(localStorage.getItem(POS_CART_KEY)||'null');
     if(!r || r.d!==state.date || !Array.isArray(r.cart) || !r.cart.length) return;
@@ -1444,7 +1453,7 @@ async function sendCart(){
             const share=base+(i<rem?1:0); if(share<=0) return;
             const T=taxKeyOf(l), tax=taxOf(share,T.rate);
             rows.push({ folio_id:folioOf[mid], event_seq:state.team.event_seq, member_id:mid,
-              category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:'')+` (${k}인 분할)`,
+              category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:'')+` (1/${k})`,
               qty:1, unit_price:share, amount:share-tax, tax, tax_rate:T.rate, tax_class:T.cls, service_charge:0, link_ref:'menu:'+l.id, created_by:by });
           });
         }
@@ -1503,7 +1512,7 @@ async function dayRefresh(){
   const vs=outletVenues();
   let q=supa.from('charges')
     .select('id,event_seq,charged_at,description,qty,unit_price,amount,tax,source,link_ref,created_by,member_id')
-    .gte('charged_at', d+'T00:00:00').lt('charged_at', d+'T23:59:59.999')
+    .gte('charged_at', jstDayStart(d)).lt('charged_at', jstDayStart(d,1))
     .eq('voided',false).order('charged_at',{ascending:false});
   if(vs) q=q.in('source', vs);
   const {data,error}=await q;
@@ -1519,7 +1528,7 @@ function dayStationOf(c){
 function dayRender(rows){
   const box=$('#day-list');
   if(!rows.length){ box.innerHTML=`<div class="empty-hint" style="padding:10px">${escP(tx('dayEmpty'))}</div>`; return; }
-  const hhmm=(iso)=>{ const t2=String(iso||''); const m=t2.match(/T(\d{2}):(\d{2})/); return m?`${m[1]}:${m[2]}`:''; };
+  const hhmm=(iso)=>jstOf(iso).slice(11,16);   // JST 시:분
   const teamOf=(seq)=>{ const tm=(state.teams||[]).find(x=>String(x.event_seq)===String(seq));
     return tm?teamTag(tm):('#'+seq); };
   let sum=0, qty=0;
@@ -1547,7 +1556,7 @@ function stopKoPoll(){ if(koTimer){clearInterval(koTimer);koTimer=null;} }
 async function koRefresh(){
   if(!supa) return;
   const {data,error}=await supa.from('kitchen_tickets').select('*')
-    .gte('created_at', isoToday()+'T00:00:00').order('created_at',{ascending:true});
+    .gte('created_at', jstDayStart(isoToday())).order('created_at',{ascending:true});
   if(error) return;
   koRender(data||[]);
 }
@@ -1605,8 +1614,8 @@ function confirmTeam(tm){
   const room=roomLabel(tm.event_seq);
   $('#conf-title').textContent=tx('confTitle');
   $('#conf-tag').textContent=teamTag(tm);
-  $('#conf-rep').textContent=(tm.rep||'')+tx('confHonor');
-  $('#conf-sub').textContent=[tm.accom||'', tm.pax+tx('confPplUnit'), room||tx('unassigned'), '#'+teamNo(tm)].filter(Boolean).join(' · ');
+  $('#conf-rep').textContent=repL(tm)+tx('confHonor');
+  $('#conf-sub').textContent=[accomL(tm.accom), tm.pax+tx('confPplUnit'), room||tx('unassigned'), '#'+teamNo(tm)].filter(Boolean).join(' · ');
   $('#conf-roster-lab').textContent=tx('confRoster');
   $('#conf-roster').innerHTML=rosterByRoomHTML(mem);   // 어느 방에 누가 있는지까지
   $('#conf-hint').textContent=tx('confHint');
@@ -1703,7 +1712,7 @@ function qrFind(v){
   teams.slice(0,12).forEach(tm=>{
     const b=document.createElement('button'); b.type='button'; b.className='qrhit';
     b.innerHTML=`<b>${teamTag(tm)}</b> ${escP(pn(tm.rep,''))}`
-      +`<span>${escP(tm.accom||'')} · ${tm.pax}${t('po_cntPpl')}${roomLabel(tm.event_seq)?(' · '+roomLabel(tm.event_seq)):''}</span>`;
+      +`<span>${escP(accomL(tm.accom))} · ${tm.pax}${t('po_cntPpl')}${roomLabel(tm.event_seq)?(' · '+roomLabel(tm.event_seq)):''}</span>`;
     b.addEventListener('click',()=>{ closeScan(); confirmTeam(tm); });
     box.appendChild(b);
   });
@@ -1765,6 +1774,14 @@ $('#qr-modal').addEventListener('click',e=>{ if(e.target.id==='qr-modal') closeS
 $('#conf-yes').addEventListener('click',()=>{ const tm=_confTm; $('#conf-modal').style.display='none'; _confTm=null; if(tm) selectTeam(tm); });
 $('#conf-no').addEventListener('click',closeConfirm);
 $('#conf-modal').addEventListener('click',e=>{ if(e.target.id==='conf-modal') closeConfirm(); });
+// ESC — 세 창은 display 로 여닫는 정적 요소다. 닫을 때 카메라·리더기 정리가 필요하므로 여기서 먼저(캡처 단계) 닫고 공용 ESC 처리를 막는다.
+window.addEventListener('keydown',e=>{
+  if(e.key!=='Escape') return;
+  const open=id=>{ const el=$(id); return !!(el && el.style.display && el.style.display!=='none'); };
+  if(open('#conf-modal')){ e.preventDefault(); closeConfirm(); }
+  else if(open('#qr-modal')){ e.preventDefault(); closeScan(); }
+  else if(open('#wi-modal')){ e.preventDefault(); closeWalkinModal(); }
+},true);
 // 날짜 이동(◀▶·오늘) — 기본은 오늘, 백데이트/사전 조회용
 function shiftPosDay(delta){
   const cur=$('#date-pick').value||isoToday();
@@ -1797,7 +1814,7 @@ async function toggleRunList(){
   let sum=0;
   const body=rows.map(c=>{
     const gross=Number(c.amount||0)+Number(c.tax||0); sum+=gross;
-    const d=String(c.created_at||'').slice(5,10).replace('-','/');
+    const d=jstOf(c.created_at).slice(5,10).replace('-','/');
     return `<tr><td class="who">${escP(d)}</td><td>${escP(c.description||'')}</td>`
       +`<td class="num">${c.qty||1}</td><td class="num">${yen(gross)}</td>`
       +`<td class="who">${escP(c.member_id?nameOf(c.member_id):tx('runTeamCol'))}${c.created_by?' · '+escP(c.created_by):''}</td></tr>`;
