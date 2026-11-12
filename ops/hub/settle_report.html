@@ -119,7 +119,7 @@
   .box .bd h4.sub{margin:12px 0 6px;font-size:12.5px;font-weight:800;color:var(--text2)}
   .box .bd .note{margin-top:8px;font-size:11px;color:var(--muted);line-height:1.5}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.4">
 <style>
   @page{size:A4;margin:12mm}
   @media print{
@@ -136,6 +136,11 @@
     table.t th{background:#eaf0f7;color:#1a2540}
     table.t tr.today td{background:#eaf0f7}
     .grid2{break-inside:avoid}
+    /* 일별·월별 표(10열)는 A4 세로 폭에 맞춘다 — 가로 스크롤 상자(.bd)는 인쇄에서 넘친 열이 잘린다 */
+    .box.w10 .bd{overflow:visible;padding:8px 6px}
+    .box.w10 table.t th{font-size:8.5px;padding:3px 2px;white-space:normal}
+    .box.w10 table.t td{font-size:9.5px;padding:3px 2px}
+    .box.w10 .badge{font-size:8.5px;padding:1px 4px}
     .kpis{grid-template-columns:repeat(3,1fr)}
   }
 </style>
@@ -191,7 +196,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=69"></script>
-<script src="../assets/saizen-ops.js?v=39.3"></script>
+<script src="../assets/saizen-ops.js?v=39.4"></script>
 <script>
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
@@ -199,6 +204,7 @@ let UNIT='day';            // day | week | month | year
 let BASE=null;             // 기준 날짜 'YYYY-MM-DD' (주=이 날이 든 월~일, 월=이 달, 연=이 해)
 let DATA=null;             // settle_report 결과
 let LOADING=false;
+let LOAD_SEQ=0;             // 요청 순번 — 단위·날짜를 연달아 바꾸면 요청이 겹친다(마지막 것만 반영)
 const CATS=['라운딩','식음','숙박','골프샵','기타'];   // 고정 5종(Min 확정)
 
 // ── i18n(ja 기본 · ko · en) ───────────────────────────────────────────────
@@ -362,7 +368,9 @@ async function load(){
   const r=rangeOf(UNIT,BASE);
   LOADING=true; $('#report').innerHTML=`<div class="empty">${esc(tx('loading'))}</div>`;
   $('#btn-print').disabled=true; $('#btn-xlsx').disabled=true;
+  const my=++LOAD_SEQ;
   const {data,error}=await supa.rpc('settle_report',{p_from:r.from, p_to:r.to});
+  if(my!==LOAD_SEQ) return;   // 낡은 응답(기다리는 사이 다른 단위·날짜를 다시 요청함) — 버린다
   LOADING=false;
   if(error){ DATA=null; $('#report').innerHTML=`<div class="empty">${esc(tx('loadFail')+error.message)}</div>`; return; }
   DATA=data||null; render();
@@ -447,7 +455,7 @@ function daysHTML(days, today){
   const rows=days.map(d=>{ const cls=[d.d===today?'today':'', d.d>today?'future':'', 'clk'].filter(Boolean).join(' ');
     return `<tr class="${cls}" data-d="${esc(d.d)}"><td class="l">${esc(md(d.d))} (${esc(wdName(d.d))})</td><td>${yen(d.gross)}</td><td>${yen(d.cash)}</td><td>${yen(d.card)}</td><td>${yen(d.pay)}</td><td>${num(d.set_n)}</td><td class="${Number(d.ar_end||0)>0?'neg':''}">${yen(d.ar_end)}</td><td>${num(d.ci_teams)} / ${num(d.ci_pax)}</td><td>${num(d.co_teams)} / ${num(d.co_pax)}</td><td class="l">${closedCell(d)}</td></tr>`; }).join('');
   const t=DATA.totals||{};
-  return `<div class="box"><h3>${esc(tx('sDays'))}<span class="cnt">${esc(tx('clDaysClosed', num(t.closed_days), num(t.past_days)))}</span></h3><div class="bd">
+  return `<div class="box w10"><h3>${esc(tx('sDays'))}<span class="cnt">${esc(tx('clDaysClosed', num(t.closed_days), num(t.past_days)))}</span></h3><div class="bd">
     <table class="t"><thead><tr><th class="l">${esc(tx('thDate'))}</th><th>${esc(tx('thSales'))}</th><th>${esc(tx('thCash'))}</th><th>${esc(tx('thCard'))}</th><th>${esc(tx('thPay'))}</th><th>${esc(tx('thSettled'))}</th><th>${esc(tx('thAr'))}</th><th>${esc(tx('thCi'))} (${esc(tx('uTeam'))}/${esc(tx('uPax'))})</th><th>${esc(tx('thCo'))} (${esc(tx('uTeam'))}/${esc(tx('uPax'))})</th><th class="l">${esc(tx('thClosed'))}</th></tr></thead>
     <tbody>${rows}<tr class="tot"><td class="l">${esc(tx('thTotal'))}</td><td>${yen(t.gross)}</td><td>${yen(t.cash)}</td><td>${yen(t.card)}</td><td>${yen(t.pay)}</td><td>${num(t.set_n)}</td><td>${yen(t.ar_end)}</td><td>${num(t.ci_teams)} / ${num(t.ci_pax)}</td><td>${num(t.co_teams)} / ${num(t.co_pax)}</td><td class="l"></td></tr></tbody></table></div></div>`;
 }
@@ -455,7 +463,7 @@ function monthsHTML(buckets, today){
   const rows=buckets.map(b=>{ const cls=[b.ym===today.slice(0,7)?'today':'', b.ym>today.slice(0,7)?'future':'', 'clk'].filter(Boolean).join(' ');
     return `<tr class="${cls}" data-ym="${esc(b.ym)}"><td class="l">${esc(tx('monthLbl',b.ym))}</td><td>${yen(b.gross)}</td><td>${yen(b.cash)}</td><td>${yen(b.card)}</td><td>${yen(b.pay)}</td><td>${num(b.set_n)}</td><td class="${b.ar_end>0?'neg':''}">${yen(b.ar_end)}</td><td>${num(b.ci_teams)} / ${num(b.ci_pax)}</td><td>${num(b.co_teams)} / ${num(b.co_pax)}</td><td>${b.past?`${num(b.closed)} / ${num(b.past)}`:''}</td></tr>`; }).join('');
   const t=DATA.totals||{};
-  return `<div class="box"><h3>${esc(tx('sMonths'))}<span class="cnt">${esc(tx('clDaysClosed', num(t.closed_days), num(t.past_days)))}</span></h3><div class="bd">
+  return `<div class="box w10"><h3>${esc(tx('sMonths'))}<span class="cnt">${esc(tx('clDaysClosed', num(t.closed_days), num(t.past_days)))}</span></h3><div class="bd">
     <table class="t"><thead><tr><th class="l">${esc(tx('thMonth'))}</th><th>${esc(tx('thSales'))}</th><th>${esc(tx('thCash'))}</th><th>${esc(tx('thCard'))}</th><th>${esc(tx('thPay'))}</th><th>${esc(tx('thSettled'))}</th><th>${esc(tx('thAr'))}</th><th>${esc(tx('thCi'))} (${esc(tx('uTeam'))}/${esc(tx('uPax'))})</th><th>${esc(tx('thCo'))} (${esc(tx('uTeam'))}/${esc(tx('uPax'))})</th><th>${esc(tx('thClosed'))}</th></tr></thead>
     <tbody>${rows}<tr class="tot"><td class="l">${esc(tx('thTotal'))}</td><td>${yen(t.gross)}</td><td>${yen(t.cash)}</td><td>${yen(t.card)}</td><td>${yen(t.pay)}</td><td>${num(t.set_n)}</td><td>${yen(t.ar_end)}</td><td>${num(t.ci_teams)} / ${num(t.ci_pax)}</td><td>${num(t.co_teams)} / ${num(t.co_pax)}</td><td>${num(t.closed_days)} / ${num(t.past_days)}</td></tr></tbody></table></div></div>`;
 }
@@ -573,7 +581,7 @@ async function downloadXlsx(){
     line(tx('kWalkin')+' '+tx('uTeam'), N(t.wk_teams)); line(tx('kWalkin')+' '+tx('uPax'), N(t.wk_pax));
     line(tx('kClosedDays'), `${N(t.closed_days)} / ${N(t.past_days)}`);
     if(UNIT==='day'){ const d=days[0]||{}; line(tx('kStay'), N(d.stay_pax), false, tx('uPax'));
-      if(d.closed){ line(tx('clDone'), `${tsShort(d.closed.closed_at)} · ${d.closed.closed_by||'-'}`); if(d.closed.cash_counted!=null){ line(tx('clCash'), N(d.closed.cash_counted), true); line(tx('clDiff'), N(d.closed.cash_counted)-N(d.cash), true); } if(d.closed.note) line(tx('clNote'), d.closed.note); }
+      if(d.closed){ line(tx('clDone'), `${tsShort(d.closed.closed_at)} · ${d.closed.closed_by||'-'}`); if(d.closed.cash_counted!=null){ line(tx('clCash'), N(d.closed.cash_counted), true); line(tx('clDiff'), N(d.closed.cash_counted)-N(d.cash), true); } if(d.closed.note) line(tx('clNote'), d.closed.note); if(isDrift(d)){ const s=d.closed.snap||{}; line(tx('clDrift'), tx('clDriftDetail', yen(s.gross), yen(d.gross), yen(s.pay), yen(d.pay))); } }
       else line(tx('thClosed'), d.d>r.today?tx('clFuture'):tx('clOpen')); }
     // 区分別(税込만) + 税率別(세액=계산서·세율별 1회 버림)
     const w2=wb.addWorksheet('区分別'); w2.columns=[{width:18},{width:10},{width:14},{width:13},{width:14}];
@@ -598,7 +606,7 @@ async function downloadXlsx(){
       title(w4, ttl, 12); head(w4,3,[isY?tx('thMonth'):tx('thDate'),tx('thSales'),tx('thCash'),tx('thCard'),tx('thPay'),tx('thSettled'),tx('thAr'),tx('thCi')+' '+tx('uTeam'),tx('thCi')+' '+tx('uPax'),tx('thCo')+' '+tx('uTeam'),tx('thCo')+' '+tx('uPax'),tx('thClosed')]);
       let r4=4;
       const rows=isY?monthBuckets(days):days;
-      rows.forEach(d=>{ const lbl=isY?d.ym:`${d.d} (${wdName(d.d)})`; const closed=isY?`${d.closed} / ${d.past}`:(d.closed?tx('clDone'):(d.d>r.today?'':tx('clOpen')));
+      rows.forEach(d=>{ const lbl=isY?d.ym:`${d.d} (${wdName(d.d)})`; const closed=isY?`${d.closed} / ${d.past}`:(d.closed?(isDrift(d)?tx('clDrift'):tx('clDone')):(d.d>r.today?'':tx('clOpen')));
         put(w4,r4,[lbl,N(d.gross),N(d.cash),N(d.card),N(d.pay),N(d.set_n),N(d.ar_end),N(d.ci_teams),N(d.ci_pax),N(d.co_teams),N(d.co_pax),closed],[1,2,3,4,6]); r4++; });
       put(w4,r4,[tx('thTotal'),N(t.gross),N(t.cash),N(t.card),N(t.pay),N(t.set_n),N(t.ar_end),N(t.ci_teams),N(t.ci_pax),N(t.co_teams),N(t.co_pax),`${N(t.closed_days)} / ${N(t.past_days)}`],[1,2,3,4,6],true);
     }

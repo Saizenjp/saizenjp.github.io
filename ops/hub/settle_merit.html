@@ -64,6 +64,7 @@
   table.list tr.sec td{background:var(--surface3);font-weight:800;color:var(--accent);font-size:12px}
   table.list tr.tot td{background:#eef1e6;font-weight:800}
   table.list input.rem{width:100%;border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:11px;font-family:inherit}
+  table.list .rem-p{display:none}   /* 인쇄 전용 비고 글자(화면에서는 입력칸) */
   .ded-grid{display:grid;grid-template-columns:150px 130px 1fr 170px 34px;gap:6px;align-items:center;margin-bottom:6px}
   .ded-grid .hd{font-size:10px;color:var(--muted)}
   .ded-grid input,.ded-grid select{border:1px solid var(--border2);border-radius:5px;padding:5px 7px;font-size:12px}
@@ -74,6 +75,7 @@
   .ded-x{background:#f7e6e2;border:1px solid #e3bdb4;color:var(--err);border-radius:5px;cursor:pointer;font-size:12px;padding:4px 8px}
   /* 인쇄 — 화면 chrome·컨트롤 숨기고 정산표(요약·차감·명세)만 깔끔히 */
   .print-only{display:none}
+  @page{size:A4 landscape;margin:10mm}   /* @page 는 항상 최상위에 — @media print 안에 두면 인쇄 창이 용지 기본값으로 읽지 않는다(CLAUDE.md 2026-10-27 규칙) */
   @media print{
     .topbar,.conn,.page-help,.no-print,.ded-x,#btn-add-ded{display:none!important}
     .print-only{display:block!important;margin-bottom:10px}
@@ -83,14 +85,19 @@
     .panel h3{font-size:13px}
     table.list{font-size:10px}
     .ded-row input{border:none!important;background:transparent!important;padding:2px 0!important}
-    @page{size:A4 landscape;margin:10mm}
+    /* 명세표(18열)를 A4 가로 폭에 맞춘다 — 머리글 줄바꿈 허용·여백 축소, 비고는 입력칸 대신 글자(줄바꿈)로 */
+    table.list th{white-space:normal;padding:4px 3px}
+    table.list td{padding:3px 3px}
+    table.list th:last-child{min-width:110px}
+    table.list input.rem{display:none}
+    table.list .rem-p{display:inline;word-break:break-all}
   }
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
   .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.3">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.4">
 </head>
 <body data-so-area="settle_merit">
 <div class="topbar so-bar">
@@ -121,11 +128,12 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=69"></script>
-<script src="../assets/saizen-ops.js?v=39.3"></script>
+<script src="../assets/saizen-ops.js?v=39.4"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DEDS=[], EXTRAS={}, EXLIST=[];
 let WAITN=0, WAITPAX=0;   // 청구에서 제외한 대기 예약(팀·인원)
+let LOADERR=false;         // 이 달 자료를 못 읽었다 — 표·차감을 비우고 표 자리에 「로드 실패 + 다시 불러오기」
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
 //  단가 표는 saizen-core(SZCore.accomRate) 하나뿐이다 — 여기에 사본을 두면 계약이 바뀔 때
 //  한쪽만 고쳐져 화면에 보이는 단가와 실제 계산 금액이 어긋난다.
@@ -146,9 +154,9 @@ const L={
     preConn:'接続すると表示されます。',
     panelFilter:'月選択 · フィルター', lodging:'宿泊施設', all:'全体', print:'🖨 印刷', xlsx:'⬇ Excel',
     panelSummary:'宿泊施設別サマリー', panelDed:'控除項目', dedHint:'— クーポン・前納等(¥)。Supabase保存(月別共有)', addDed:'＋ 項目追加',
-    listSearchPh:'🔎 検索 — タグコード・代表者・宿泊施設・イベント番号', listHit:n=>`${n}件`, panelDetail:'精算明細',
+    listSearchPh:'🔎 検索 — イベント番号・代表者・宿泊施設', listHit:n=>`${n}件`, panelDetail:'精算明細',
     rate:'単価', perPaxNight:'/人/泊', cntLabel:'件数', lodgeFee:'宿泊費', transFee:'送迎費', subtotal:'合計',
-    noData:'表示するデータなし', loading:'読み込み中…', noMonthData:'当月のデータなし', loadFail:'読み込み失敗',
+    noData:'表示するデータなし', loading:'読み込み中…', noMonthData:'当月のデータなし', loadFail:'読み込み失敗', reloadBtn:'再読み込み',
     cntN:n=>n+'件', cntPaxN:(c,p)=>c+'件 / '+p+'名', detailNoData:'データなし',
     waitExcl:(n,p)=>`⚠ 待機予約 ${n}件(${p}名)は請求から除外`,
     grossB2B:'総売上(B2B)', dedTotal:'控除合計', net:'精算額(Net)', lodgeTrans:'宿泊 / 送迎', cntPax:'件数 / 人数',
@@ -158,10 +166,10 @@ const L={
     dedAmtPh:'例: 5000', dedLabelPh:'例: 春シーズンクーポン', dedTargetPh:'例: 260501-97866 / 山田',
     secLine:(a,c,p,t)=>'◎ '+a+' — '+c+'件 · '+p+'名 · '+t,
     totalTotal:'合計 Total', remarkPh:'備考',
-    remarkSaved:'備考保存', remarkFail:'備考保存失敗', addFail:'追加失敗', editFail:'修正失敗', delFail:'削除失敗',
+    remarkSaved:'備考保存', remarkFail:'備考保存失敗', addFail:'追加失敗', editFail:'修正失敗', delFail:'削除失敗', amtInvalid:'金額は数字で入力してください(保存していません)', delConfirm:'この行を削除しますか？(元に戻せません)',
     xlsxNoData:'データなし', xlsxFail:'ExcelJS 読み込み失敗', xlsxDone:'xlsx ダウンロード',
     paxWarnV:(l,b)=>'名簿 '+l+'/予約 '+b, paxWarnTitle:'名簿人数と予約人数が異なります — 大きい値で請求',
-    rateWarn:'単価未登録',
+    rateWarn:'単価未登録', exTypes:{'별채 사전신청비':'別棟事前申請費','싱글차지':'シングルチャージ','룸업그레이드':'ルームアップグレード','추가라운드':'追加ラウンド','기타':'その他'},
     // 区分(status)·会員権区分(memberType) 표시
     hdrs:['No','イベント番号','区分','会員権区分','代表者名','英文名','出発日','到着日','泊数','人数','施設','部屋タイプ','料金(¥/人/泊)','宿泊費(¥)','送迎費(¥)','その他(¥)','合計(¥)','備考'],
     panelExtra:'加算/控除(その他)', extraHint:'— 別棟事前申請費・シングルチャージ等をチーム単位で。合計に反映', extraSearchPh:'イベント番号・代表者で検索', extraAddBtn:'＋ チームに追加', extraEmpty:'項目なし。上で検索してチームを選び追加。', exColTeam:'チーム', exColType:'種別', exColSign:'加算/控除', exColAmt:'金額(¥)', exColNote:'内容', signAdd:'加算(+)', signSub:'控除(−)', extraTotal:'その他合計', pickTeam:'チーム選択', noMatch:'一致なし' },
@@ -173,9 +181,9 @@ const L={
     preConn:'연결 후 표시됩니다.',
     panelFilter:'월 선택 · 필터', lodging:'숙소', all:'전체', print:'🖨 인쇄', xlsx:'⬇ 엑셀',
     panelSummary:'숙소별 요약', panelDed:'차감 항목', dedHint:'— 쿠폰·선납 등(¥). Supabase 저장(월별 공유)', addDed:'＋ 항목 추가',
-    listSearchPh:'🔎 검색 — 태그코드·대표자·숙소·행사번호', listHit:n=>`${n}건`, panelDetail:'정산 명세',
+    listSearchPh:'🔎 검색 — 행사번호·대표자·숙소', listHit:n=>`${n}건`, panelDetail:'정산 명세',
     rate:'단가', perPaxNight:'/인/박', cntLabel:'건수', lodgeFee:'숙박비', transFee:'송영비', subtotal:'합계',
-    noData:'표시할 데이터 없음', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', loadFail:'로드 실패',
+    noData:'표시할 데이터 없음', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', loadFail:'로드 실패', reloadBtn:'다시 불러오기',
     cntN:n=>n+'건', cntPaxN:(c,p)=>c+'건 / '+p+'명', detailNoData:'데이터 없음',
     waitExcl:(n,p)=>`⚠ 대기 예약 ${n}팀(${p}명)은 청구에서 제외`,
     grossB2B:'총 매출(B2B)', dedTotal:'차감 합계', net:'정산액(Net)', lodgeTrans:'숙박 / 송영', cntPax:'건수 / 인원',
@@ -185,10 +193,10 @@ const L={
     dedAmtPh:'예: 5000', dedLabelPh:'예: 봄 시즌 쿠폰', dedTargetPh:'예: 260501-97866 / 홍길동',
     secLine:(a,c,p,t)=>'◎ '+a+' — '+c+'건 · '+p+'명 · '+t,
     totalTotal:'合計 Total', remarkPh:'비고',
-    remarkSaved:'비고 저장', remarkFail:'비고 저장 실패', addFail:'추가 실패', editFail:'수정 실패', delFail:'삭제 실패',
+    remarkSaved:'비고 저장', remarkFail:'비고 저장 실패', addFail:'추가 실패', editFail:'수정 실패', delFail:'삭제 실패', amtInvalid:'금액은 숫자로 입력하세요(저장하지 않았습니다)', delConfirm:'이 줄을 삭제할까요? (되돌릴 수 없습니다)',
     xlsxNoData:'데이터 없음', xlsxFail:'ExcelJS 로드 실패', xlsxDone:'xlsx 다운로드',
     paxWarnV:(l,b)=>'명단 '+l+'/예약 '+b, paxWarnTitle:'명단 인원과 예약 인원이 다릅니다 — 큰 값으로 청구',
-    rateWarn:'단가 미등록',
+    rateWarn:'단가 미등록', exTypes:{},
     hdrs:['No','이벤트번호','구분','회원권구분','대표자명','영문명','출발일','도착일','박수','인원','시설','객실타입','단가(¥/인/박)','숙박비(¥)','송영비(¥)','기타(¥)','합계(¥)','비고'],
     panelExtra:'가산/차감 (기타)', extraHint:'— 별채 사전신청비·싱글차지 등을 팀 단위로. 합계에 반영', extraSearchPh:'행사번호·대표고객 검색', extraAddBtn:'＋ 팀에 추가', extraEmpty:'항목이 없습니다. 위에서 검색해 팀을 고르고 추가하세요.', exColTeam:'팀', exColType:'유형', exColSign:'가산/차감', exColAmt:'금액(¥)', exColNote:'내용', signAdd:'가산(+)', signSub:'차감(−)', extraTotal:'기타 합계', pickTeam:'팀 선택', noMatch:'검색 결과 없음' },
   en:{ step:'B2B Settlement (Merit)', navHome:'← Home',
@@ -199,9 +207,9 @@ const L={
     preConn:'Shown after connecting.',
     panelFilter:'Month · Filter', lodging:'Lodging', all:'All', print:'🖨 Print', xlsx:'⬇ Excel',
     panelSummary:'Summary by lodging', panelDed:'Deductions', dedHint:'— coupons / prepayments (¥). Saved in Supabase (shared per month)', addDed:'＋ Add item',
-    listSearchPh:'🔎 Search — tag code, rep, lodging, event no.', listHit:n=>`${n}`, panelDetail:'Settlement details',
+    listSearchPh:'🔎 Search — event no., rep, lodging', listHit:n=>`${n}`, panelDetail:'Settlement details',
     rate:'Unit price', perPaxNight:'/pax/night', cntLabel:'Count', lodgeFee:'Lodging', transFee:'Transfer', subtotal:'Total',
-    noData:'No data to show', loading:'Loading…', noMonthData:'No data for this month', loadFail:'Load failed',
+    noData:'No data to show', loading:'Loading…', noMonthData:'No data for this month', loadFail:'Load failed', reloadBtn:'Reload',
     cntN:n=>n+' items', cntPaxN:(c,p)=>c+' items / '+p+' ppl', detailNoData:'No data',
     waitExcl:(n,p)=>`⚠ ${n} waitlisted (${p} ppl) excluded from billing`,
     grossB2B:'Gross (B2B)', dedTotal:'Deduction total', net:'Net', lodgeTrans:'Lodging / Transfer', cntPax:'Items / Pax',
@@ -211,10 +219,10 @@ const L={
     dedAmtPh:'e.g. 5000', dedLabelPh:'e.g. spring coupon', dedTargetPh:'e.g. 260501-97866 / Hong',
     secLine:(a,c,p,t)=>'◎ '+a+' — '+c+' items · '+p+' ppl · '+t,
     totalTotal:'合計 Total', remarkPh:'Remarks',
-    remarkSaved:'Remark saved', remarkFail:'Remark save failed', addFail:'Add failed', editFail:'Edit failed', delFail:'Delete failed',
+    remarkSaved:'Remark saved', remarkFail:'Remark save failed', addFail:'Add failed', editFail:'Edit failed', delFail:'Delete failed', amtInvalid:'Enter the amount in digits (not saved)', delConfirm:'Delete this line? (cannot be undone)',
     xlsxNoData:'No data', xlsxFail:'ExcelJS load failed', xlsxDone:'xlsx downloaded',
     paxWarnV:(l,b)=>'roster '+l+'/booked '+b, paxWarnTitle:'Roster pax differs from booked pax — billed at the larger value',
-    rateWarn:'Unit price not set',
+    rateWarn:'Unit price not set', exTypes:{'별채 사전신청비':'Annex request fee','싱글차지':'Single charge','룸업그레이드':'Room upgrade','추가라운드':'Extra round','기타':'Other'},
     hdrs:['No','Event No.','Status','Membership','Rep name','Eng name','Departure','Arrival','Nights','Pax','Facility','Room type','Rate(¥/pax/nt)','Lodging(¥)','Transfer(¥)','Etc.(¥)','Total(¥)','Remarks'],
     panelExtra:'Add / deduct (Etc.)', extraHint:'— annex-request fee, single charge, etc., per team. Reflected in total', extraSearchPh:'Search by event no. / rep name', extraAddBtn:'＋ Add to team', extraEmpty:'No items. Search above to pick a team and add.', exColTeam:'Team', exColType:'Type', exColSign:'Add/Deduct', exColAmt:'Amount(¥)', exColNote:'Note', signAdd:'Add(+)', signSub:'Deduct(−)', extraTotal:'Etc. total', pickTeam:'Pick team', noMatch:'No match' }
 };
@@ -340,12 +348,12 @@ function renderUI(){
     </div>
     <div class="panel">
       <h3>${esc(tx('panelDetail'))} <span class="cnt" id="list-qc" style="font-weight:700;color:var(--accent2)"></span></h3>
-      <div style="margin:0 0 9px"><input class="inp" id="list-q" type="search" autocomplete="off"
+      <div class="no-print" style="margin:0 0 9px"><input class="inp" id="list-q" type="search" autocomplete="off"
         placeholder="${esc(tx('listSearchPh'))}" style="width:100%;max-width:420px"></div>
       <div style="overflow:auto"><table class="list" id="list"><thead></thead><tbody></tbody></table></div>
     </div>`;
     // 긴 명세표는 눈으로 못 찾는다 — 공용 행 검색(재렌더돼도 자동 재적용)
-  if(window.__so_rowSearch) __so_rowSearch('#list-q','#list tbody','tr',{count:'#list-qc',label:n=>tx('listHit')(n)});
+  if(window.__so_rowSearch) __so_rowSearch('#list-q','#list tbody','tr',{count:'#list-qc',label:n=>tx('listHit')(n),skip:'tr.sec,tr.tot',onFilter:q=>{ document.querySelectorAll('#list tbody tr.sec,#list tbody tr.tot').forEach(r=>{ r.style.display=q?'none':''; }); }});
 $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
   $('#btn-xlsx').addEventListener('click',downloadXlsx);
@@ -354,12 +362,13 @@ $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   const exs=$('#ex-search'); if(exs){ exs.addEventListener('input',onExSearch); exs.addEventListener('focus',onExSearch);
     document.addEventListener('click',e=>{ if(!e.target.closest('#ex-search')&&!e.target.closest('#ex-picks')){ const p=$('#ex-picks'); if(p)p.style.display='none'; } }); }
 }
-function printReport(){
+function fillPrintHead(){
   const ph=$('#print-head');
   if(ph) ph.innerHTML=`<div style="font-size:18px;font-weight:800;color:#1a2540">現地精算表 — ${YM}</div>`
     +`<div style="font-size:11px;color:#555">アソ ヤマナミリゾート ／ 株式会社SaiZen · 発行 ${today()}</div>`;
-  window.print();
 }
+function printReport(){ fillPrintHead(); window.print(); }
+window.addEventListener('beforeprint',fillPrintHead);   // Ctrl+P·브라우저 메뉴 인쇄, 월 이동 뒤에도 머리글(대상 월·발행일)이 지금 상태로 찍히게
 function renderAccomChips(){
   const accoms=[...new Set(ROWS.map(r=>r.accom).filter(Boolean))].sort((a,b)=>accIdx(a)-accIdx(b));
   const box=$('#accomchips'); if(!box)return;
@@ -368,14 +377,17 @@ function renderAccomChips(){
   box.querySelectorAll('.chip[data-a]').forEach(c=>c.addEventListener('click',()=>{ const a=c.dataset.a; if(a==='__all'){ACCOMSEL.clear();}else{ACCOMSEL.has(a)?ACCOMSEL.delete(a):ACCOMSEL.add(a);} renderAccomChips(); renderAll(); }));
 }
 
+let LOAD_SEQ=0;   // 월 이동(◀▶)을 연달아 누르면 load 가 겹친다 — 마지막 요청만 화면에 반영하고 낡은 응답은 버린다
 async function load(){
   if(!supa)return;
+  const ym=YM, my=++LOAD_SEQ, stale=()=>my!==LOAD_SEQ;
   $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-xlsx').disabled=true; { const p=$('#btn-print'); if(p)p.disabled=true; }
   try{
     //  대기 포함 조회 → 아래에서 뺀다. 몇 팀을 뺐는지 화면에 적어야 하므로 여기서는 전부 읽는다.
     const {data:bsAll,error:e1}=await supa.from('bookings')
       .select('event_seq,event_no,status,member_type,rep_name,dep_date,arr_date,nights_label,product_name,pax')
-      .eq('session_ym',YM) /* 대기: 아래 filter 로 제외(WAITN 표시용으로 전부 읽음) */;
+      .eq('session_ym',ym) /* 대기: 아래 filter 로 제외(WAITN 표시용으로 전부 읽음) */;
+    if(stale())return;
     if(e1)throw e1;
     //  ⚠ 대기 예약은 청구에서 뺀다 — 메리트투어가 만실이어도 받아 두는 예약이고
     //    **출국 전까지 정리되는** 예약이라 실제로 오지 않는다. 넣으면 안 온 손님을 청구하게 된다.
@@ -385,33 +397,43 @@ async function load(){
     WAITN=(bsAll||[]).length-bs.length;
     WAITPAX=(bsAll||[]).filter(b=>String(b.status||'').trim()==='대기').reduce((n,b)=>n+(Number(b.pax)||0),0);
     const seqs=bs.map(b=>b.event_seq);
-    if(!seqs.length){ ROWS=[]; DEDS=[]; EXTRAS={}; EXLIST=[]; $('#stat').textContent=tx('noMonthData'); ACCOMSEL.clear(); renderAccomChips(); renderAll(); return; }
+    if(!seqs.length){ LOADERR=false; ROWS=[]; DEDS=[]; EXTRAS={}; EXLIST=[]; $('#stat').textContent=tx('noMonthData'); ACCOMSEL.clear(); renderAccomChips(); renderAll(); return; }
     // guests(accom), passengers(실제 인원·英文名), settle_remarks(비고)
     const GMAP={}, PCNT={}, ENG={}, REM={};
     for(let i=0;i<seqs.length;i+=200){
       const chunk=seqs.slice(i,i+200);
-      const {data:gs}=await supa.from('guests').select('event_seq,accom').in('event_seq',chunk);
+      const {data:gs,error:eG}=await supa.from('guests').select('event_seq,accom').in('event_seq',chunk);
+      if(eG)throw eG;
+      if(stale())return;
       (gs||[]).forEach(g=>{GMAP[g.event_seq]=g.accom;});
       let pg=0;
       for(;;){
         const {data,error}=await supa.from('passengers').select('event_seq,name_en,seq_in_team').in('event_seq',chunk).order('event_seq').order('seq_in_team').range(pg,pg+999);
+        if(stale())return;
         if(error)throw error;
         (data||[]).forEach(p=>{ PCNT[p.event_seq]=(PCNT[p.event_seq]||0)+1; if(ENG[p.event_seq]==null && p.name_en) ENG[p.event_seq]=p.name_en; });
         if(!data||data.length<1000)break; pg+=1000;
       }
     }
     // 비고 (settle_remarks)
-    const {data:rms}=await supa.from('settle_remarks').select('event_seq,remark').in('event_seq',seqs);
+    const {data:rms,error:eR}=await supa.from('settle_remarks').select('event_seq,remark').in('event_seq',seqs);
+    if(eR)throw eR;   // 실패를 「비고 없음」으로 그리지 않는다(빈칸에 새로 적으면 기존 비고를 덮어쓴다)
+    if(stale())return;
     (rms||[]).forEach(x=>{REM[x.event_seq]=x.remark||'';});
     // 차감 (settle_deductions, 월별)
-    const {data:dd}=await supa.from('settle_deductions').select('*').eq('session_ym',YM).order('sort_no').order('created_at');
-    DEDS=(dd||[]).map(d=>({...d}));
+    const {data:dd,error:eD}=await supa.from('settle_deductions').select('*').eq('session_ym',ym).order('sort_no').order('created_at');
+    if(stale())return;
+    if(eD)throw eD;   // 실패를 「차감 0」으로 그리지 않는다(정산액이 차감 없이 표시·인쇄된다)
+    const dedsNew=(dd||[]).map(d=>({...d}));
     // 팀별 가산/차감(기타) — settle_extras (이 달 팀들)
-    EXTRAS={}; EXLIST=[];
-    try{
-      const {data:ex}=await supa.from('settle_extras').select('*').in('event_seq',seqs).order('sort_no').order('created_at');
-      (ex||[]).forEach(x=>{ (EXTRAS[x.event_seq]=EXTRAS[x.event_seq]||[]).push(x); EXLIST.push(x); });
-    }catch(_){}
+    const exMap={}, exList=[];
+    {
+      const {data:ex,error:eX}=await supa.from('settle_extras').select('*').in('event_seq',seqs).order('sort_no').order('created_at');
+      if(eX && !['42P01','PGRST205'].includes(String(eX.code||''))) throw eX;   // 표 없음(SQL 44 미적용)만 넘어간다 — 그 밖의 실패는 「항목 없음」으로 그리지 않는다
+      (ex||[]).forEach(x=>{ (exMap[x.event_seq]=exMap[x.event_seq]||[]).push(x); exList.push(x); });
+    }
+    if(stale())return;   // 낡지 않았을 때만 전역(DEDS·EXTRAS·ROWS)을 한꺼번에 바꾼다
+    LOADERR=false; DEDS=dedsNew; EXTRAS=exMap; EXLIST=exList;
     ROWS=(bs||[]).map((b,i)=>{
       const pp=parseProduct(b.product_name);
       const accom=GMAP[b.event_seq]||pp.accom||'';
@@ -435,7 +457,10 @@ async function load(){
     $('#stat').textContent=tx('cntN')(ROWS.length)
       + (WAITN? ' · '+tx('waitExcl')(WAITN,WAITPAX) : '');
     renderAccomChips(); renderAll();
-  }catch(e){ $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
+  }catch(e){ if(stale())return;
+    //  못 읽은 달의 화면에 앞 달 표·차감을 남기지 않는다(달 이름만 바뀌고 표는 앞 달이면 잘못 읽는다)
+    LOADERR=true; ROWS=[]; DEDS=[]; EXTRAS={}; EXLIST=[]; WAITN=0; WAITPAX=0; ACCOMSEL.clear(); renderAccomChips(); renderAll();
+    $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+((e&&e.message)||e),'err'); }
 }
 
 function visibleRows(){ return ROWS.filter(r=>ACCOMSEL.size===0||ACCOMSEL.has(r.accom)); }
@@ -454,7 +479,7 @@ function renderAll(){
       <div class="sr"><span>${esc(tx('transFee'))}</span><span class="v">${yen(tr)}</span></div>
       ${ex?`<div class="sr"><span>${esc(tx('extraTotal'))}</span><span class="v">${ex<0?'- ':'+ '}${yen(Math.abs(ex))}</span></div>`:''}
       <div class="sr tot"><span>${esc(tx('subtotal'))}</span><span class="v">${yen(tot)}</span></div></div>`;
-  }).join('')||`<div class="cnt" style="color:var(--muted)">${esc(tx('noData'))}</div>`;
+  }).join('')||`<div class="cnt" style="color:var(--muted)">${esc(tx(LOADERR?'loadFail':'noData'))}</div>`;
   // 차감·합계
   const dedT=DEDS.reduce((s,d)=>s+(Number(d.amount)||0),0);
   $('#grand').innerHTML=`
@@ -469,12 +494,15 @@ function renderAll(){
   const thead=$('#list thead'), tbody=$('#list tbody');
   const HDRS=tx('hdrs');
   thead.innerHTML='<tr>'+HDRS.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr>';
-  if(!rows.length){ tbody.innerHTML=`<tr><td colspan="${HDRS.length}" class="c" style="color:var(--muted);padding:24px">${esc(tx('detailNoData'))}</td></tr>`; return; }
+  if(!rows.length){
+    if(LOADERR){ tbody.innerHTML=`<tr><td colspan="${HDRS.length}" class="c" style="color:var(--red);padding:24px">${esc(tx('loadFail'))} <button class="btn sm ghost" id="btn-reload" type="button" style="margin-left:8px">${esc(tx('reloadBtn'))}</button></td></tr>`;
+      const rb=$('#btn-reload'); if(rb) rb.addEventListener('click',()=>load()); return; }
+    tbody.innerHTML=`<tr><td colspan="${HDRS.length}" class="c" style="color:var(--muted);padding:24px">${esc(tx('detailNoData'))}</td></tr>`; return; }
   const sorted=rows.slice().sort((a,b)=>accIdx(a.accom)-accIdx(b.accom)||(a.dep||'').localeCompare(b.dep||''));
   let prev='', html='';
   sorted.forEach((r,i)=>{
     if(r.accom!==prev){ prev=r.accom; const g=sorted.filter(x=>x.accom===r.accom);
-      html+=`<tr class="sec"><td colspan="${HDRS.length}">${esc(tx('secLine')(r.accom,g.length,g.reduce((a,x)=>a+x.pax,0),yen(g.reduce((a,x)=>a+x.total,0))))}</td></tr>`; }
+      html+=`<tr class="sec"><td colspan="${HDRS.length}">${esc(tx('secLine')(accomL(r.accom),g.length,g.reduce((a,x)=>a+x.pax,0),yen(g.reduce((a,x)=>a+x.total,0))))}</td></tr>`; }
     html+=`<tr>
       <td class="c">${i+1}</td><td class="mono">${esc(r.eventNo)}</td><td class="c">${esc(r.status)}</td><td class="mono">${esc(r.memberType)}</td>
       <td style="font-weight:600">${esc(r.repName)}</td><td class="mono">${esc(r.engName)}</td>
@@ -483,12 +511,12 @@ function renderAll(){
       <td class="num">${r.rate?yen(r.rate):(r.rateWarn?`<span style="font-size:9px;font-weight:800;color:var(--err)">⚠${esc(tx('rateWarn'))}</span>`:'-')}</td><td class="num">${r.stay?yen(r.stay):'-'}</td><td class="num">${r.transport?yen(r.transport):'-'}</td>
       <td class="num" style="${r.extra<0?'color:var(--err)':(r.extra>0?'color:#2f7d4f':'')}">${r.extra?((r.extra<0?'- ':'+ ')+yen(Math.abs(r.extra))):'-'}</td>
       <td class="num" style="font-weight:700;color:var(--accent2)">${r.total?yen(r.total):'-'}</td>
-      <td><input class="rem" value="${esc(r.remark)}" data-seq="${r.seq}" placeholder="${esc(tx('remarkPh'))}"></td>
+      <td><input class="rem" value="${esc(r.remark)}" data-seq="${r.seq}" placeholder="${esc(tx('remarkPh'))}"><span class="rem-p">${esc(r.remark)}</span></td>
     </tr>`;
   });
   html+=`<tr class="tot"><td colspan="13" style="text-align:right">${esc(tx('totalTotal'))}</td><td class="num">${yen(stayT)}</td><td class="num">${yen(transT)}</td><td class="num">${extraT?((extraT<0?'- ':'+ ')+yen(Math.abs(extraT))):'-'}</td><td class="num">${yen(totalT)}</td><td></td></tr>`;
   tbody.innerHTML=html;
-  tbody.querySelectorAll('input.rem').forEach(inp=>inp.addEventListener('change',()=>saveRemark(Number(inp.dataset.seq),inp.value)));
+  tbody.querySelectorAll('input.rem').forEach(inp=>inp.addEventListener('change',()=>{ const s=inp.nextElementSibling; if(s) s.textContent=inp.value; saveRemark(Number(inp.dataset.seq),inp.value); }));
 }
 
 async function saveRemark(seq,val){
@@ -500,7 +528,7 @@ async function saveRemark(seq,val){
 // ── 차감 항목 CRUD (settle_deductions) ──
 function renderDeds(){
   const el=$('#ded-rows'); if(!el)return;
-  if(!DEDS.length){ el.innerHTML=`<div class="cnt" style="color:var(--muted);padding:6px 0">${esc(tx('dedEmpty'))}</div>`; return; }
+  if(!DEDS.length){ el.innerHTML=`<div class="cnt" style="color:var(--muted);padding:6px 0">${esc(tx(LOADERR?'loadFail':'dedEmpty'))}</div>`; return; }
   el.innerHTML=`<div class="ded-grid"><div class="hd">${esc(tx('dedColType'))}</div><div class="hd">${esc(tx('dedColAmt'))}</div><div class="hd">${esc(tx('dedColLabel'))}</div><div class="hd">${esc(tx('dedColTarget'))}</div><div></div></div>`
     + DEDS.map(d=>`<div class="ded-grid" data-id="${d.id}">
         <select data-f="dtype">${DED_TYPES.map(t=>`<option value="${esc(t)}" ${d.dtype===t?'selected':''}>${esc(dedTypeLabel(t))}</option>`).join('')}</select>
@@ -515,18 +543,24 @@ function renderDeds(){
   el.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>removeDed(b.dataset.del)));
 }
 async function addDed(){
+  if(LOADERR){ toast(tx('loadFail'),'err'); return; }   // 못 읽은 달에는 새 줄을 넣지 않는다(이미 있는 줄이 안 보이는 상태)
   try{ const {data,error}=await supa.from('settle_deductions').insert({session_ym:YM,dtype:'보증금 예약 쿠폰',amount:0,updated_by:curUser(),sort_no:DEDS.length}).select().single();
     if(error)throw error; DEDS.push(data); renderDeds(); renderAll(); }
   catch(e){ toast(tx('addFail')+': '+e.message,'err'); }
 }
 async function updateDed(id,field,val){
   const d=DEDS.find(x=>String(x.id)===String(id)); if(!d)return;
+  if(field==='amount'){ val=String(val).normalize('NFKC');   // 全角 숫자·全角 마이너스(일본어 IME) → 반각
+    if(val.trim()!=='' && !/[0-9]/.test(val)){ toast(tx('amtInvalid'),'err'); renderDeds(); return; } }   // 숫자가 없으면 저장하지 않고 원래 값으로 되돌린다
+  const prev=d[field];
   d[field]=field==='amount'?(parseInt(String(val).replace(/[^0-9-]/g,''),10)||0):val;
   try{ const {error}=await supa.from('settle_deductions').update({[field]:d[field],updated_by:curUser()}).eq('id',id); if(error)throw error;
     if(field==='amount') renderAll(); else renderDeds(); }
-  catch(e){ toast(tx('editFail')+': '+e.message,'err'); }
+  catch(e){ d[field]=prev; toast(tx('editFail')+': '+e.message,'err'); renderAll(); }   // 저장 실패 → 화면 값·합계도 원래대로
 }
 async function removeDed(id){
+  const d0=DEDS.find(x=>String(x.id)===String(id));
+  if(d0 && (Number(d0.amount)||d0.label||d0.target) && !confirm(tx('delConfirm'))) return;   // 내용이 있는 줄은 확인 뒤 삭제(빈 줄은 바로)
   try{ const {error}=await supa.from('settle_deductions').delete().eq('id',id); if(error)throw error;
     DEDS=DEDS.filter(x=>String(x.id)!==String(id)); renderAll(); }
   catch(e){ toast(tx('delFail')+': '+e.message,'err'); }
@@ -551,11 +585,11 @@ function onExSearch(){
 }
 function renderExtras(){
   const el=$('#ex-rows'); if(!el)return;
-  if(!EXLIST.length){ el.innerHTML=`<div class="cnt" style="color:var(--muted);padding:6px 0">${esc(tx('extraEmpty'))}</div>`; return; }
+  if(!EXLIST.length){ el.innerHTML=`<div class="cnt" style="color:var(--muted);padding:6px 0">${esc(tx(LOADERR?'loadFail':'extraEmpty'))}</div>`; return; }
   el.innerHTML=`<div class="ex-grid"><div class="hd">${esc(tx('exColTeam'))}</div><div class="hd">${esc(tx('exColType'))}</div><div class="hd">${esc(tx('exColSign'))}</div><div class="hd">${esc(tx('exColAmt'))}</div><div class="hd">${esc(tx('exColNote'))}</div><div></div></div>`
     + EXLIST.map(x=>`<div class="ex-grid" data-id="${x.id}">
         <div class="ex-team" title="${esc(extraTeamLabel(x.event_seq))}" style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(extraTeamLabel(x.event_seq))}</div>
-        <select data-f="etype">${EXTRA_TYPES.map(t=>`<option value="${esc(t)}" ${x.etype===t?'selected':''}>${esc(t)}</option>`).join('')}</select>
+        <select data-f="etype">${EXTRA_TYPES.map(t=>`<option value="${esc(t)}" ${x.etype===t?'selected':''}>${esc(tx('exTypes')[t]||t)}</option>`).join('')}</select>
         <select data-f="is_add"><option value="1" ${x.is_add?'selected':''}>${esc(tx('signAdd'))}</option><option value="0" ${!x.is_add?'selected':''}>${esc(tx('signSub'))}</option></select>
         <input data-f="amount" type="text" value="${esc(x.amount||'')}" style="text-align:right;font-family:var(--mono)">
         <input data-f="note" value="${esc(x.note||'')}">
@@ -566,20 +600,26 @@ function renderExtras(){
   el.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>removeExtra(b.dataset.del)));
 }
 async function addExtra(seq){
+  if(LOADERR){ toast(tx('loadFail'),'err'); return; }
   try{ const {data,error}=await supa.from('settle_extras').insert({event_seq:seq,etype:EXTRA_TYPES[0],is_add:true,amount:0,note:'',session_ym:YM,updated_by:curUser(),sort_no:EXLIST.length}).select().single();
     if(error)throw error; EXLIST.push(data); recomputeExtras(); renderAll(); }
   catch(e){ toast(tx('addFail')+': '+e.message,'err'); }
 }
 async function updateExtra(id,field,val){
   const x=EXLIST.find(e=>String(e.id)===String(id)); if(!x)return;
-  if(field==='amount') x.amount=parseInt(String(val).replace(/[^0-9]/g,''),10)||0;
+  const prev=x[field];
+  if(field==='amount'){ val=String(val).normalize('NFKC');   // 全角 숫자(일본어 IME) → 반각
+    if(val.trim()!=='' && !/[0-9]/.test(val)){ toast(tx('amtInvalid'),'err'); renderExtras(); return; }   // 숫자가 없으면 저장하지 않고 원래 값으로 되돌린다
+    x.amount=parseInt(val.replace(/[^0-9]/g,''),10)||0; }
   else if(field==='is_add') x.is_add=(String(val)==='1');
   else x[field]=val;
   try{ const {error}=await supa.from('settle_extras').update({[field]:x[field],updated_by:curUser()}).eq('id',id); if(error)throw error;
     recomputeExtras(); renderAll(); }
-  catch(e){ toast(tx('editFail')+': '+e.message,'err'); }
+  catch(e){ x[field]=prev; recomputeExtras(); toast(tx('editFail')+': '+e.message,'err'); renderAll(); }   // 저장 실패 → 화면 값·합계도 원래대로
 }
 async function removeExtra(id){
+  const x0=EXLIST.find(e=>String(e.id)===String(id));
+  if(x0 && (Number(x0.amount)||x0.note) && !confirm(tx('delConfirm'))) return;   // 내용이 있는 줄은 확인 뒤 삭제(빈 줄은 바로)
   try{ const {error}=await supa.from('settle_extras').delete().eq('id',id); if(error)throw error;
     EXLIST=EXLIST.filter(e=>String(e.id)!==String(id)); recomputeExtras(); renderAll(); }
   catch(e){ toast(tx('delFail')+': '+e.message,'err'); }
@@ -618,8 +658,8 @@ async function downloadXlsx(){
   xlmTotalRow(ws1,r,['合計','',rows.reduce((a,x)=>a+x.pax,0),rows.reduce((a,x)=>a+x.stay,0),rows.reduce((a,x)=>a+x.transport,0),rows.reduce((a,x)=>a+x.total,0)]); r++;
   // 차감·정산액
   const dedT=DEDS.reduce((s,d)=>s+(Number(d.amount)||0),0); const grossT=rows.reduce((a,x)=>a+x.total,0);
-  if(DEDS.length){ r++; xlmSection(ws1,r,'▌ 차감 항목',COL); r++;
-    xlmHeader(ws1,r,['유형','금액(¥)','항목','대상','','']); r++;
+  if(DEDS.length){ r++; xlmSection(ws1,r,'▌ 控除項目',COL); r++;
+    xlmHeader(ws1,r,['種別','金額(¥)','項目内容','対象','','']); r++;
     DEDS.forEach((d,di)=>{ xlmDataRow(ws1,r,[d.dtype||'',Number(d.amount)||0,d.label||'',d.target||'','',''],di%2===0,{numCols:[2]}); r++; });
   }
   const extraTx=rows.reduce((a,x)=>a+x.extra,0); const grossBase=grossT-extraTx;
@@ -637,7 +677,8 @@ async function downloadXlsx(){
       xlmSection(ws2,r,'▌ '+rec.accom+'  —  '+g.length+'件 / '+g.reduce((a,x)=>a+x.pax,0)+'名 / ¥'+g.reduce((a,x)=>a+x.total,0).toLocaleString(),COL2); r++; prev=rec.accom; }
     xlmDataRow(ws2,r,[i+1,rec.eventNo,rec.status,rec.memberType,rec.repName,rec.engName,rec.dep,rec.arr,rec.nights,rec.pax,rec.accom,rec.roomType,rec.rate,rec.stay,rec.transport,rec.extra||0,rec.total,rec.remark||''],i%2===0,{numCols:[13,14,15,16,17],centerCols:[1,3,9,10],boldCols:[5]}); r++; });
   xlmTotalRow(ws2,r,['','','','','合計','','','','',rows.reduce((a,x)=>a+x.pax,0),'','','',rows.reduce((a,x)=>a+x.stay,0),rows.reduce((a,x)=>a+x.transport,0),rows.reduce((a,x)=>a+x.extra,0),rows.reduce((a,x)=>a+x.total,0),'']);
-  const suffix=ACCOMSEL.size?('_'+[...ACCOMSEL].join('-')):'';
+  const ACC_EN={'야마나미리조트':'Yamanami','쿠주힐즈':'Kuju','간지호텔':'Ganji','시즈노야도 료칸':'Shizu'};   // 다운로드 파일명은 영문만(회사 PC 가 한글 파일명을 차단)
+  const suffix=ACCOMSEL.size?('_'+[...ACCOMSEL].sort((a,b)=>accIdx(a)-accIdx(b)).map(a=>ACC_EN[a]||(window.SZCore&&SZCore.accomPrefix&&SZCore.accomPrefix(a))||'X').join('-')):'';
   const buf=await wb.xlsx.writeBuffer(); const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`Genchi_Seisan${suffix}_${YM}.xlsx`;
   document.body.appendChild(a); a.click(); setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},500);
