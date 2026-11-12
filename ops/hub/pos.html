@@ -264,7 +264,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=39.1">
 </head>
 <body data-so-area="pos_front pos_golf pos_restaurant">
 <script>(function(){ var o=new URLSearchParams(location.search).get('outlet')||''; var M={front:'pos_front',golf:'pos_golf',restaurant:'pos_restaurant'}; if(M[o]) document.body.setAttribute('data-so-area',M[o]); })();</script>
@@ -457,7 +457,7 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=69"></script>
-<script src="../assets/saizen-ops.js?v=39.0"></script>
+<script src="../assets/saizen-ops.js?v=39.1"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -494,7 +494,7 @@ const L={
     paAll:'全体', paNone:'解除',
     catRoom:'ルーム',
     promptAmount:'金額(円·税込·最終価格)を入力してください', needAmount:'金額を入力してください', promptDesc:'内容を入力してください',
-    ticketFail:e=>'厨房チケット発行失敗(請求は完了): '+e,
+    ticketFail:e=>'厨房チケット発行失敗(請求は完了): '+e, sendingWait:'送信中です。完了するまでお待ちください',
     splitN:n=>'個人 '+n+'名', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n}品目 ${amt} 送信${kn?` · 厨房 ${kn}件`:''}`,
     sendFail:e=>'送信失敗: '+e+' — カートはそのまま残っています。つながってから[注文送信]をもう一度押してください', cartRestored:n=>`前回のカート ${n}件を戻しました`,
     koTitle:'注文状況', allVenues:'全体',
@@ -531,7 +531,7 @@ const L={
     paAll:'전체', paNone:'해제',
     catRoom:'룸',
     promptAmount:'금액(엔, 税込·최종가)을 입력하세요', needAmount:'금액을 입력하세요', promptDesc:'내역을 입력하세요',
-    ticketFail:e=>'주방 티켓 발행 실패(청구는 완료): '+e,
+    ticketFail:e=>'주방 티켓 발행 실패(청구는 완료): '+e, sendingWait:'전송 중입니다. 끝날 때까지 기다려 주세요',
     splitN:n=>'개인 '+n+'명', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n}품목 ${amt} 전송됨${kn?` · 주방 ${kn}건`:''}`,
     sendFail:e=>'전송 실패: '+e+' — 장바구니는 그대로 있습니다. 연결되면 [주문 전송]을 다시 누르세요', cartRestored:n=>`이전 장바구니 ${n}건을 되살렸습니다`,
     koTitle:'주문 현황', allVenues:'전체',
@@ -568,7 +568,7 @@ const L={
     paAll:'All', paNone:'Clear',
     catRoom:'Room',
     promptAmount:'Enter amount (JPY, tax-incl. final price)', needAmount:'Enter an amount', promptDesc:'Enter a description',
-    ticketFail:e=>'Kitchen ticket failed (charge done): '+e,
+    ticketFail:e=>'Kitchen ticket failed (charge done): '+e, sendingWait:'Sending… please wait until it finishes',
     splitN:n=>n+' people', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n} items ${amt} sent${kn?` · kitchen ${kn}`:''}`,
     sendFail:e=>'Send failed: '+e+' — your cart is still here. Press [Send order] again once you are back online', cartRestored:n=>`Restored ${n} item(s) from your last cart`,
     koTitle:'Order status', allVenues:'All',
@@ -605,6 +605,7 @@ function outletLabel(o){ return tx(OUTLETS[o].labelKey); }
 //  그 부서로 남아 부서별 실적이 저절로 맞는다(누가 입력했는지는 created_by 에 남는다).
 function switchOutlet(o){
   if(!OUTLETS[o] || o===state.outlet) return;
+  if(state.sending){ toast(tx('sendingWait'),'warn'); return; }   // 전송 중 매장 전환은 장바구니를 비워 티켓이 빠진다
   if(state.cart&&state.cart.length && !confirm(tx('otSwitchWarn'))) return;
   state.cart=[]; state.outlet=o;
   state.venue='__all__'; state.grp=null; state.sub='__all__';
@@ -723,6 +724,9 @@ async function loadTeams(){
     session_ym:x.session_ym||ymOf(d), rep:x.bookings?.rep_name||'', event_no:x.bookings?.event_no||'',
     checkin:(x.bookings?.dep_date||''),
   })).sort((a,b)=>(a.accom||'').localeCompare(b.accom||'')||(a.rep||'').localeCompare(b.rep||''));
+  // 당일 손님(워크인)은 bookings 에 없다 — walkins 를 같은 모양으로 붙인다(settle.html 과 같은 방식). 표가 없거나 읽기 실패면 건너뛴다.
+  try{ const {data:wk}=await supa.from('walkins').select('event_seq,walk_date,name,pax').eq('walk_date',d);
+    (wk||[]).forEach(w=>state.teams.push(walkinTeam(w))); }catch(e){}
   // 現地手配書에서 묶은 팀은 대표팀 코드+팀번호로 표시(인쇄물과 같은 코드).
   //   ⚠ charges·kitchen_tickets 에 **저장하는 team_tag 는 원래 코드 그대로**(teamTagRaw) — 표시만 통일한다.
   state.uni=(window.__so_groupTags? await __so_groupTags(supa, state.teams.map(t=>t.event_seq)) : {});
@@ -841,6 +845,7 @@ function showOrderView(){
   $('#oh-rep').textContent=tx('noTeamHead');
   { const sb=$('#oh-sub'); if(sb) sb.textContent=''; }
   { const oh=document.querySelector('.order-head'); if(oh) oh.classList.add('none'); }
+  { const rb=$('#btn-run-list'); if(rb) rb.style.display='none'; }   // 팀이 없으면 누적 내역 버튼을 숨긴다(글자 없는 빈 버튼으로 보였다)
   $('#oh-run').textContent=yen(0);
   const rl=$('#run-list'); if(rl){ rl.style.display='none'; rl.innerHTML=''; }
   renderVenueTabs(); renderGrpTabs(); renderSubChips(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); updateSendBtn();
@@ -855,6 +860,7 @@ function updateSendBtn(){
     b.innerHTML=t('po_send')+'<span class="sbt">'+escP(teamTag(state.team))+'</span>';
     b.disabled=!state.cart.length;
   }
+  if(state.sending) b.disabled=true;   // 전송 중에는 장바구니를 다시 그려도 버튼을 켜지 않는다(겹쳐 보내기 방지)
   const bk=$('#btn-back'); if(bk){ bk.style.display=state.team?'':'none'; bk.textContent=tx('changeTeam'); }
 }
 
@@ -880,7 +886,8 @@ function updateCustBtn(){
   b.style.background = on?'var(--accent)':''; b.style.color = on?'#fff':'';
 }
 
-function teamBySeq(seq){ return state.teams.find(x=>x.event_seq===seq); }
+//  그날 목록에서만 찾는 동기 판. (같은 이름의 async teamBySeq 가 아래에 있어 그쪽이 이기고, 동기 호출부가 Promise 를 받던 것을 분리)
+function teamInList(seq){ return state.teams.find(x=>String(x.event_seq)===String(seq)); }
 // 회원 판정은 공유 모듈(saizen-core.js)이 단일 진실원 — 3컬럼 OR(회원 우선) 위임.
 // 이름 표기 — 일본어 화면이면 가타카나(표시 전용, 검색은 원문·가타카나 둘 다)
 function pn(kr,en){ return window.__so_pname?__so_pname(kr,en):(kr||en||''); }
@@ -913,13 +920,13 @@ function renderTeams(){
   const q=(state.teamQ||'').trim().toLowerCase();
   const ac=$('#active-cnt');
   const acbox=$('#pos-accom'); if(acbox) acbox.style.display=(q||state.showList)?'flex':'none';
-  const pool=state.teams.filter(tm=>accomPass(tm.accom));   // 숙소 토글 필터
+  const pool=state.teams.filter(tm=>tm.walkin||accomPass(tm.accom));   // 숙소 토글 필터(워크인은 숙소가 없어 항상 통과)
 
   if(q){   // ── 검색: 팀 + 일행(동명이인은 팀으로 구분) ──
     const teamHits=pool
       .filter(tm=>((tm.group_code||'')+' '+(tm.team_tag||'')+' '+(((state.uni||{})[tm.event_seq])||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')+' '+(tm.accom||'')+' '+roomsOf(tm.event_seq).join(' ')).toLowerCase().includes(q))
       .slice().sort((a,b)=>(state.activeSeqs.has(b.event_seq)?1:0)-(state.activeSeqs.has(a.event_seq)?1:0));
-    const memHits=state.members.filter(m=>{const tm=teamBySeq(m.event_seq);return tm&&accomPass(tm.accom)&&((m.name_kr||'')+' '+(m.name_en||'')+' '+pn(m.name_kr,m.name_en)).toLowerCase().includes(q);});
+    const memHits=state.members.filter(m=>{const tm=teamInList(m.event_seq);return tm&&accomPass(tm.accom)&&((m.name_kr||'')+' '+(m.name_en||'')+' '+pn(m.name_kr,m.name_en)).toLowerCase().includes(q);});
     $('#team-cnt').innerHTML=`${t('po_secTeam')} ${teamHits.length} · ${t('po_secMember')} ${memHits.length}`;
     if(ac) ac.textContent='';
     if(!teamHits.length && !memHits.length){ box.innerHTML='<div class="empty-hint">'+t('po_emptyTeams')+'</div>'; return; }
@@ -928,7 +935,7 @@ function renderTeams(){
       box.appendChild(headEl(`${t('po_secMember')} · ${t('po_dupHint')}`));
       const wrap=document.createElement('div'); wrap.className='mhit-list';
       memHits.slice(0,80).forEach(m=>{
-        const tm=teamBySeq(m.event_seq); if(!tm) return;
+        const tm=teamInList(m.event_seq); if(!tm) return;
         const isMem=posIsMember(m);
         const btn=document.createElement('button'); btn.type='button'; btn.className='mhit';
         btn.innerHTML=`<span class="mh-name">${escP(pn(m.name_kr,m.name_en)||'-')}${isMem?`<span class="mh-mem">${tx('member')}</span>`:''}</span>`
@@ -987,12 +994,14 @@ function escP(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;'
 // ── 팀 선택 → 주문 뷰 ──
 async function selectTeam(tm){
   if(custShownSeq!=null && String(custShownSeq)!==String(tm.event_seq)) pushCustomerDisplay(null);   // 다른 팀으로 바꾸면 앞 팀 계산서를 손님 화면에서 내린다(backToTeams 와 같은 규칙)
+  const _my=state._selSeq=(state._selSeq||0)+1;   // 겹친 호출(같은 카드가 두 번 읽힘 등)은 마지막 것만 상태를 쓴다
   state.team=tm; state.venue='__all__';   // 장바구니는 유지(메뉴 먼저 담고 계산에서 팀 선택)
   state.folioId=null; state.memberFolio={}; state.payerMode='split'; state.payerSel=new Set();   // 기본=개인 지정 모드(Min)
   // 이 팀의 모든 folio(팀+개인) 누적 = 러닝 합계. 팀/개인 열린 folio id 캐시.
   state.runningGross=0; state.folioIds=[]; state.folioOwner={};
   const {data}=await supa.from('v_folio_balance').select('folio_id,gross_total,status,subject,member_id')
     .eq('event_seq',tm.event_seq);
+  if(_my!==state._selSeq) return;   // 더 늦게 시작한 선택이 있다 — 낡은 응답은 버린다(누적 금액을 두 번 더하지 않게)
   (data||[]).forEach(f=>{
     state.runningGross+=Number(f.gross_total||0);
     state.folioIds.push(f.folio_id); state.folioOwner[f.folio_id]=f.member_id||null;
@@ -1005,6 +1014,7 @@ async function selectTeam(tm){
     const {data:gm}=await supa.from('guest_members')
       .select('id,seq_in_team,name_kr,name_en,is_rep,member_grade,member_class,member_div')
       .eq('event_seq',tm.event_seq).order('seq_in_team',{ascending:true});
+    if(_my!==state._selSeq) return;
     state.roster=gm||[];
   }
   $('#team-view').style.display='none';
@@ -1016,7 +1026,7 @@ async function selectTeam(tm){
   { const oh=document.querySelector('.order-head'); if(oh) oh.classList.remove('none'); }
   $('#oh-run').textContent=yen(state.runningGross);
   const rl=$('#run-list'); if(rl){ rl.style.display='none'; rl.innerHTML=''; }
-  const rb=$('#btn-run-list'); if(rb) rb.textContent=tx('runShow');
+  const rb=$('#btn-run-list'); if(rb){ rb.textContent=tx('runShow'); rb.style.display=''; }
   renderVenueTabs(); renderGrpTabs(); renderSubChips(); renderMenu(); renderPayer(); renderCart(); updateCustBtn(); updateSendBtn(); renderWalkinPay();
   if(state.cart.length) toast(tx('teamPicked')(teamTag(tm)),'ok');   // 메뉴 먼저 담고 계산에서 고른 경우
 }
@@ -1049,6 +1059,10 @@ async function restoreCart(){
 //  bookings 에 넣지 않는다(step1 월 동기화가 「파일에 없는 팀」으로 지운다) — walkins 테이블 + 전용 번호대 9,900,001+.
 //  주문은 팀과 같은 흐름(charges·kitchen_tickets)이고, 결제만 그 자리에서 받는다.
 function isWalkin(tm){ return !!(tm && tm.walkin); }
+//  walkins 행 → 팀과 같은 모양(walkinOpen 이 만드는 것과 동일). 프론트에서 접수한 당일 손님·새로고침 뒤 재선택용.
+function walkinTeam(w){ const d=String(w.walk_date||'').slice(0,10);
+  return { event_seq:w.event_seq, walkin:true, team_tag:tx('wiTag'), group_code:tx('wiTag'), accom:'', pax:Number(w.pax)||1,
+    session_ym:ymOf(d||state.date||isoToday()), rep:w.name||tx('wiTag'), event_no:'W'+w.event_seq, checkin:d }; }
 function openWalkinModal(){
   if(!supa){ toast(tx('needConn'),'warn'); return; }
   $('#wi-title').textContent=tx('wiTitle');
@@ -1310,8 +1324,8 @@ function renderMenu(){
   const card=(m)=>{
     const b=document.createElement('button'); b.type='button'; b.className='menu-btn';
     b.innerHTML=`<span class="mcat cat-${m.category}"></span>
-      ${m.code?`<span class="mcode">${m.code}</span>`:''}
-      <div><div class="mja">${m.name_ja||''}</div>${m.name_ko?`<div class="mko">${m.name_ko}</div>`:''}</div>
+      ${m.code?`<span class="mcode">${escP(m.code)}</span>`:''}
+      <div><div class="mja">${escP(m.name_ja||'')}</div>${m.name_ko?`<div class="mko">${escP(m.name_ko)}</div>`:''}</div>
       <div class="mprice">${Number(m.unit_price)>0?yen(m.unit_price):t('po_manualPrice')}</div>
       ${stLabel(m.station)?`<span class="mst st-${escP(m.station)}">${escP(stLabel(m.station))}</span>`:''}`;
     b.addEventListener('click',()=>addToCart(m));
@@ -1328,6 +1342,7 @@ function renderMenu(){
 
 // ── 카트 ──
 function addToCart(m){
+  if(state.sending){ toast(tx('sendingWait'),'warn'); return; }   // 전송 중에 담으면 청구 없이 주방 티켓만 나간다 — 끝날 때까지 잠근다
   let price=Number(m.unit_price||0), desc=m.name_ja||m.name_ko||'';
   if(price<=0){ // 기타(수동) — 금액·내역 직접 입력
     const v=prompt(tx('promptAmount'),'');
@@ -1350,25 +1365,26 @@ function addToCart(m){
   toast(tx('cartAdded')(lang()==='ko'?(m.name_ko||desc):desc, line?line.qty:1),'ok');   // 무엇이 몇 개 담겼는지 바로 안내
 }
 function changeQty(key,delta){
+  if(state.sending){ toast(tx('sendingWait'),'warn'); return; }
   const l=state.cart.find(x=>x.key===key); if(!l) return;
   l.qty+=delta; if(l.qty<=0) state.cart=state.cart.filter(x=>x.key!==key);
   renderCart(key);
 }
-function removeLine(key){ state.cart=state.cart.filter(x=>x.key!==key); renderCart(); }
+function removeLine(key){ if(state.sending){ toast(tx('sendingWait'),'warn'); return; } state.cart=state.cart.filter(x=>x.key!==key); renderCart(); }
 
 function renderCart(hitKey){
   const body=$('#cart-body'); body.innerHTML='';
   if(!state.cart.length){ body.innerHTML='<div class="cart-empty">'+t('po_cartEmpty')+'</div>'; }
   else state.cart.forEach(l=>{
     const row=document.createElement('div'); row.className='cart-line'+(l.key===hitKey?' hit':'');
-    row.innerHTML=`<div class="cl-name">${l.name_ja}${taxMark(l)}${l.name_ko?` <span class="cl-ko">${l.name_ko}</span>`:''}`
+    row.innerHTML=`<div class="cl-name">${escP(l.name_ja)}${taxMark(l)}${l.name_ko?` <span class="cl-ko">${escP(l.name_ko)}</span>`:''}`
       +(stLabel(l.station)?`<span class="cl-st st-${escP(l.station)}">${escP(stLabel(l.station))}</span>`:'')
       +`</div>
       <div class="qtybox">
-        <button class="qbtn" data-minus="${l.key}">−</button>
+        <button class="qbtn" data-minus="${escP(l.key)}">−</button>
         <span class="qn">${l.qty}</span>
-        <button class="qbtn" data-plus="${l.key}">＋</button>
-        <button class="cl-rm" data-rm="${l.key}">✕</button>
+        <button class="qbtn" data-plus="${escP(l.key)}">＋</button>
+        <button class="cl-rm" data-rm="${escP(l.key)}">✕</button>
       </div>
       <div class="cl-price">${yen(l.unit_price)} × ${l.qty}</div>
       <div class="cl-sum">${yen(l.unit_price*l.qty)}</div>`;
@@ -1430,6 +1446,8 @@ async function ensureMemberFolio(memberId){
 async function sendCart(){
   if(!state.cart.length) return;
   if(!state.team){ openScan(); return; }   // 팀이 없으면 QR/검색부터(Min 2026-08 되돌림)
+  if(state.sending) return;   // 이미 전송 중 — 겹쳐 보내지 않는다
+  state.sending=true;
   $('#btn-send').disabled=true;
   try{
     const by=opBy();
@@ -1477,7 +1495,7 @@ async function sendCart(){
       station:l.station, item_name:l.name_ja, qty:l.qty, created_by:by }));
     if(tickets.length){
       const {error:te}=await supa.from('kitchen_tickets').insert(tickets);
-      if(te) toast(tx('ticketFail')(te.message),'warn');
+      if(te){ toast(tx('ticketFail')(te.message),'warn'); tickets.length=0; }   // 실패한 티켓을 아래 성공 문구의 「주방 N건」에 세지 않는다
     }
     const total=rows.reduce((s,r)=>s+r.amount+r.tax,0);
     const who=state.payerMode==='split'?tx('splitN')(state.payerSel.size):tx('payTeam');
@@ -1488,6 +1506,8 @@ async function sendCart(){
     koRefreshAny();   // 방금 보낸 주문이 아래 목록에 바로 뜨도록(티켓 없는 매점 품목도)
   }catch(e){
     toast(tx('sendFail')(e.message),'err'); $('#btn-send').disabled=false;
+  }finally{
+    state.sending=false; updateSendBtn();   // 성공·실패·중간 return 모두 잠금 해제(버튼은 장바구니 기준으로 다시 계산)
   }
 }
 
@@ -1569,19 +1589,19 @@ function koRender(rows){
   const list=$('#ko-list');
   if(!rows.length){ list.innerHTML='<div class="empty-hint" style="padding:10px">'+t('ki_empty')+'</div>'; $('#ko-meta').textContent=''; return; }
   const nNew=rows.filter(r=>r.status==='new').length, nAcc=rows.filter(r=>r.status==='accepted').length;
-  $('#ko-meta').innerHTML=`${t('ki_waiting')} ${nNew} · ${nAcc}`;
+  $('#ko-meta').innerHTML=`${t('ki_waiting')} ${nNew} · ${t('ki_cooking')} ${nAcc}`;
   const groups={};
   // 묶은 팀은 통일 코드로 표시(티켓에 저장된 태그는 원래 코드)
-  rows.forEach(r=>{ const tm=teamBySeq(r.event_seq);
+  rows.forEach(r=>{ const tm=teamInList(r.event_seq);
     const k=((state.uni||{})[r.event_seq])||r.team_tag||('#'+((tm&&tm.event_no)||r.event_seq));
     (groups[k]=groups[k]||[]).push(r); });
   let html='';
   Object.keys(groups).forEach(team=>{
     html+=`<div style="margin:8px 0;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface)">
-      <div style="font-weight:800;color:var(--accent);font-family:var(--mono);margin-bottom:5px">${team}</div>`;
+      <div style="font-weight:800;color:var(--accent);font-family:var(--mono);margin-bottom:5px">${escP(team)}</div>`;
     groups[team].forEach(r=>{
       html+=`<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px">
-        <span style="flex:1">${r.item_name} <b style="color:var(--accent2)">×${Number(r.qty)}</b></span>${koBadge(r.status)}</div>`;
+        <span style="flex:1">${escP(r.item_name)} <b style="color:var(--accent2)">×${Number(r.qty)}</b></span>${koBadge(r.status)}</div>`;
     });
     html+='</div>';
   });
@@ -1693,6 +1713,8 @@ async function teamBySeq(seq){
       .eq('event_seq',seq).neq('bookings.status','대기').limit(1);
     if(g&&g.length){ const x=g[0]; return {event_seq:x.event_seq,team_tag:x.team_tag,group_code:x.group_code,accom:x.accom,pax:x.pax,
       session_ym:x.session_ym||ymOf(state.date||isoToday()),rep:x.bookings?.rep_name||'',event_no:x.bookings?.event_no||'',checkin:x.bookings?.dep_date||''}; }
+    const {data:wk}=await supa.from('walkins').select('event_seq,walk_date,name,pax').eq('event_seq',seq).limit(1);   // 예약에 없으면 당일 손님(워크인)
+    if(wk&&wk.length) return walkinTeam(wk[0]);
   }catch(e){}
   return null;
 }
@@ -1701,12 +1723,12 @@ function qrFind(v){
   const q=String(v||'').trim().toLowerCase(); const box=$('#qr-hits'); if(!box) return 0;
   box.innerHTML='';
   if(!q){ return 0; }
-  const teams=state.teams.filter(tm=>((tm.group_code||'')+' '+(tm.team_tag||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')+' '+roomsOf(tm.event_seq).join(' ')).toLowerCase().includes(q));
+  const teams=state.teams.filter(tm=>((tm.group_code||'')+' '+(tm.team_tag||'')+' '+(((state.uni||{})[tm.event_seq])||'')+' '+(tm.rep||'')+' '+(tm.event_no||'')+' '+roomsOf(tm.event_seq).join(' ')).toLowerCase().includes(q));
   const seen=new Set(teams.map(x=>x.event_seq));
   state.members.forEach(m=>{
     if(seen.has(m.event_seq)) return;
     if(!((m.name_kr||'')+' '+(m.name_en||'')+' '+pn(m.name_kr,m.name_en)).toLowerCase().includes(q)) return;
-    const tm=teamBySeq(m.event_seq); if(tm){ seen.add(tm.event_seq); teams.push(tm); }
+    const tm=teamInList(m.event_seq); if(tm){ seen.add(tm.event_seq); teams.push(tm); }
   });
   if(!teams.length) return 0;
   teams.slice(0,12).forEach(tm=>{
@@ -1805,7 +1827,7 @@ async function toggleRunList(){
   box.innerHTML=`<div class="empty">${escP(tx('runLoading'))}</div>`;
   const {data,error}=await supa.from('charges')
     .select('id,created_at,description,qty,unit_price,amount,tax,member_id,created_by')
-    .eq('event_seq',state.team.event_seq).order('created_at',{ascending:true});
+    .eq('event_seq',state.team.event_seq).eq('voided',false).order('created_at',{ascending:true});
   if(error){ box.innerHTML=`<div class="empty">${escP(error.message)}</div>`; return; }
   const rows=data||[];
   if(!rows.length){ box.innerHTML=`<div class="empty">${escP(tx('runEmpty'))}</div>`; return; }
@@ -1831,7 +1853,7 @@ $('#btn-cust-display').addEventListener('click',()=>{
 });
 $('#team-q') && $('#team-q').addEventListener('input',e=>{ state.teamQ=e.target.value; renderTeams(); });
 $('#btn-send').addEventListener('click',sendCart);
-$('#ko-refresh').addEventListener('click',koRefresh);
+$('#ko-refresh').addEventListener('click',()=>koRefreshAny());   // 「오늘 주문」 보기에서도 그 표를 다시 읽는다
 $('#date-pick').value=isoToday();
 applyStatic();
 applyOutlet(); renderOutletTabs();
