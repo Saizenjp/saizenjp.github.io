@@ -43,7 +43,7 @@ create table if not exists bookings (
   pax            int           not null default 0,      -- 예약 컬럼 단독 (취소 반영 안 함 · v13.4 규칙)
   sales_amount   numeric(14,0) default 0,               -- 판매금액
   unpaid_amount  numeric(14,0) default 0,               -- 미수금액
-  remark         text,                                  -- 비고 원문 ("1-1/팀(안명순, 전정숙)/…")
+  remark         text,                                  -- 비고 원문 ("1-1/팀(홍길동, 김철수)/…")
   team_label     text,                                  -- 비고에서 파싱한 팀명
   session_ym     text,                                  -- 월별 세션 "2026-06"
   synced_at      timestamptz   not null default now(),  -- 메리트투어 → 허브 적재 시각
@@ -87,10 +87,10 @@ create trigger trg_passengers_updated before update on passengers
 
 -- ── 3) member_codes : 그룹코드 참조테이블 ───────────────────────────────────
 --  · 한 코드(DAウ)에 여러 회원이 묶일 수 있음 → (code, member_key) 복합 PK
---  · member_key = 이름 + 생년6자리 (예: "이정은620120")
+--  · member_key = 이름 + 생년6자리 (예: "홍길동700101")
 create table if not exists member_codes (
   code           text          not null,                -- 그룹코드 "DAあ"
-  member_key     text          not null,                -- "황보관현590611"
+  member_key     text          not null,                -- "홍길동700101"
   member_class   text,                                  -- 다이아몬드/골드/EWRC/특별 …
   name_kr        text,                                  -- 성명
   is_learned     boolean       not null default false,  -- v13.4 학습 마스터 누적분 여부

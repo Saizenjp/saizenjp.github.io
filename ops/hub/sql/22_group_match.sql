@@ -17,7 +17,7 @@ language sql security definer set search_path = public stable as $$
 $$;
 grant execute on function match_group_codes(text[]) to authenticated;
 
--- 확인:  select * from match_group_codes(array['황보관현590611']);
+-- 확인:  select * from match_group_codes(array['홍길동700101']);
 -- ============================================================================
 --  끝.
 -- ============================================================================

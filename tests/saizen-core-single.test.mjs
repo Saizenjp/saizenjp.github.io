@@ -21,7 +21,7 @@ test('전원형만 자동 — 「전원 싱글」·「N명 싱글」(N=인원)',
   assert.equal(sp('1-5/3인 싱글', 3, []).kind, 'all');
   assert.equal(sp('싱글룸 4개', 4, []).kind, 'all');
   // 인원과 개수가 어긋나면 전원형이 아니다
-  assert.equal(sp('*이희주님예약건/ 싱글 4방 확정', 8, []).kind, 'unsure');
+  assert.equal(sp('*머버서님예약건/ 싱글 4방 확정', 8, []).kind, 'unsure');
   assert.equal(sp('1-12/ 4명 싱글룸희망', 6, []).kind, 'unsure');
 });
 
@@ -35,25 +35,25 @@ test('대기·불가·만실·취소가 함께 있으면 확정된 요청이 아
 
 test('체류 일부만 싱글이면 수기', () => {
   assert.equal(sp('4박 특이건\n3박 싱글룸 결제 완료', 1, []).kind, 'part');
-  assert.equal(sp('김수진님 4박 후 채원선님 3박 싱글룸 현지결제', 3, []).kind, 'part');
+  assert.equal(sp('가나다님 4박 후 고노도님 3박 싱글룸 현지결제', 3, []).kind, 'part');
   assert.equal(sp('8/2-8/5 야마나미 숙박 (싱글)\n8/5-8/9 시즈노야도 트리플룸 숙박', 1, []).kind, 'part');
 });
 
 test('이름은 문장에서 뽑지 않고 **명단과 대조**한다 — 오탐이 없다', () => {
-  const roster = [{ id: 1, name: '조철기' }, { id: 2, name: '유경옥' }, { id: 3, name: '김철수' }];
-  const r = sp('싱글룸 2개: 조철기, 유경옥 / 싱글룸 현지지불\n전기카트 신청', 4, roster);
+  const roster = [{ id: 1, name: '허거너' }, { id: 2, name: '파하가' }, { id: 3, name: '김철수' }];
+  const r = sp('싱글룸 2개: 허거너, 파하가 / 싱글룸 현지지불\n전기카트 신청', 4, roster);
   assert.equal(r.kind, 'names');
-  assert.deepEqual(r.names.map(x => x.name), ['조철기', '유경옥']);
+  assert.deepEqual(r.names.map(x => x.name), ['허거너', '파하가']);
   // 적힌 이름이 그 팀 명단에 없으면(다른 팀 사람) 이름으로 확정하지 않는다
-  assert.equal(sp('전기카트 신청입니다.\n싱글룸 : 홍승국님', 2, [{ id: 1, name: '조부영' }]).kind, 'unsure');
+  assert.equal(sp('전기카트 신청입니다.\n싱글룸 : 모보소님', 2, [{ id: 1, name: '터퍼허' }]).kind, 'unsure');
   // 싱글과 무관한 줄의 이름은 잡지 않는다
   assert.equal(sp('김철수님 카트 신청\n싱글룸 1개', 4, [{ id: 3, name: '김철수' }]).kind, 'unsure');
 });
 
 test('트윈·트리플이 섞이면 전원형이라도 사람이 본다', () => {
   assert.equal(sp('1-13  /싱글2,트윈1/쿠폰사용', 4, []).kind, 'unsure');
-  const r = sp('전원 싱글룸\n싱글룸\n임채병, 정희용\n트윈룸\n배호경, 박효근', 4,
-    [{ id: 1, name: '임채병' }, { id: 2, name: '정희용' }]);
+  const r = sp('전원 싱글룸\n싱글룸\n버서어, 커터퍼\n트윈룸\n아자차, 바사아', 4,
+    [{ id: 1, name: '버서어' }, { id: 2, name: '커터퍼' }]);
   assert.equal(r.kind, 'names');
   assert.equal(r.mixed, true);   // 모순 표시 — 화면이 경고한다
 });
@@ -66,7 +66,7 @@ test('개수만 있고 누구인지 없으면 수기 — 지금 현장이 보류
 
 //  싱글 「방 수」만 뽑기 — 누가 쓸지는 현장에서 정해도 몇 방인지는 계약된 수량이다(Min 2026-08).
 test('singleCount — 비고에 적힌 싱글 방 수', () => {
-  assert.equal(SZCore.singleCount('PUS1-8/선발권 확인 / *이희주님예약건/전체회원가/ 싱글 4방 확정'), 4);
+  assert.equal(SZCore.singleCount('PUS1-8/선발권 확인 / *머버서님예약건/전체회원가/ 싱글 4방 확정'), 4);
   assert.equal(SZCore.singleCount('싱글룸 4개'), 4);
   assert.equal(SZCore.singleCount('싱글 2실'), 2);
   assert.equal(SZCore.singleCount('シングル4室'), 4);
@@ -104,26 +104,26 @@ test('singleTentative — 아직 확정이 아닌 요청은 그 낱말을 돌려
 //  객실 여유 현황 「싱글 신청」 줄 — singleCount 가 못 읽는 실제 비고 표기까지(Min 2026-09, 9~11월 실측 표본)
 test('singleRequested — 숫자·전원·이름 나열·못 읽음', () => {
   const r = (t, pax) => SZCore.singleRequested(t, pax);
-  assert.deepEqual(r('싱글룸 6개 사용(신팀장님 확인) 비용현지지불\nㄴ홍순배,정용식,이승천', 8), { n: 6, how: 'num' });
+  assert.deepEqual(r('싱글룸 6개 사용(신팀장님 확인) 비용현지지불\nㄴ로모보,저처커,더러머', 8), { n: 6, how: 'num' });
   assert.deepEqual(r('2인 싱글룸 요청 (현지지불입니다)', 4), { n: 2, how: 'num' });
   assert.deepEqual(r('2싱글 + 1트윈입니다.', 4), { n: 2, how: 'num' });                 // 단위 없는 숫자
   assert.deepEqual(r('1싱글 사용 // 비용 현지결제입니다.', 3), { n: 1, how: 'num' });
   assert.deepEqual(r('싱글룸 1룸 12층으로 요청(비용 현지지불)', 3), { n: 1, how: 'num' });   // 「룸」 단위
   assert.deepEqual(r('전원 싱글룸', 4), { n: 4, how: 'all' });
-  assert.deepEqual(r('임채병팀 전원 싱글룸\n\n전원 싱글룸\n임채병, 정희용, 김윤영', 10), { n: 10, how: 'all' });
+  assert.deepEqual(r('버서어팀 전원 싱글룸\n\n전원 싱글룸\n버서어, 커터퍼, 나다라', 10), { n: 10, how: 'all' });
   assert.deepEqual(r('전원싱글룸 요청(신팀장님 확인)', 3), { n: 3, how: 'all' });
   assert.deepEqual(r('4명 전원싱글룸/전기카트 신청', 4), { n: 4, how: 'num' });          // 숫자가 있으면 숫자 우선
-  assert.deepEqual(r('싱글룸: 서윤연,박호율\n호텔 숙박 희망', 4), { n: 2, how: 'names' });
-  assert.deepEqual(r('싱글자: 박영애', 4), { n: 1, how: 'names' });
-  assert.deepEqual(r('싱글룸 : 옥영애', 3), { n: 1, how: 'names' });
+  assert.deepEqual(r('싱글룸: 차카타,마바사\n호텔 숙박 희망', 4), { n: 2, how: 'names' });
+  assert.deepEqual(r('싱글자: 라마바', 4), { n: 1, how: 'names' });
+  assert.deepEqual(r('싱글룸 : 타파하', 3), { n: 1, how: 'names' });
   assert.deepEqual(r('싱글룸 김장원', 3), { n: 1, how: 'names' });
-  assert.deepEqual(r('장혜정,백자영님 싱글룸 사용\n추가요금 현지결제 요청드립니다.', 4), { n: 2, how: 'names' });
-  assert.deepEqual(r('유성준님 싱글룸배정 (비용현지지불입니다)', 4), { n: 1, how: 'names' });
-  assert.deepEqual(r('싱글룸 사용자 / 이동현,홍명숙(신팀장님 확인)', 4), { n: 2, how: 'names' });
-  assert.deepEqual(r('싱글사용자 조승재\n\n※전원 리조트 요청', 6), { n: 1, how: 'names' });   // 「전원」이 싱글 옆이 아니면 전원 아님
-  assert.deepEqual(r('방배정\n트윈 룸\n이영인 정재훈\n정봉호 송병석\n\n싱글 룸\n홍석남\n홍승현\n방상석\n황정섭\n전원 air 별도', 8), { n: 4, how: 'names' });  // 머리줄 아래 이름
+  assert.deepEqual(r('서어저,자차카님 싱글룸 사용\n추가요금 현지결제 요청드립니다.', 4), { n: 2, how: 'names' });
+  assert.deepEqual(r('하가나님 싱글룸배정 (비용현지지불입니다)', 4), { n: 1, how: 'names' });
+  assert.deepEqual(r('싱글룸 사용자 / 너더러,노도로(신팀장님 확인)', 4), { n: 2, how: 'names' });
+  assert.deepEqual(r('싱글사용자 퍼허거\n\n※전원 리조트 요청', 6), { n: 1, how: 'names' });   // 「전원」이 싱글 옆이 아니면 전원 아님
+  assert.deepEqual(r('방배정\n트윈 룸\n러머버 처커터\n어저처 카타파\n\n싱글 룸\n도로모\n보소오\n사아자\n소오조\n전원 air 별도', 8), { n: 4, how: 'names' });  // 머리줄 아래 이름
   assert.deepEqual(r('싱글룸 :', 4), { n: 0, how: 'none' });                              // 수량 없음 → ?
-  assert.deepEqual(r('팀:이규호,김정선\n싱글룸 요청', 4), { n: 0, how: 'none' });
+  assert.deepEqual(r('팀:거너더,다라마\n싱글룸 요청', 4), { n: 0, how: 'none' });
   assert.deepEqual(r('싱글룸 현지에서 배정예정', 4), { n: 0, how: 'none' });
   assert.deepEqual(r('전기카트 신청입니다.', 4), { n: 0, how: '' });                       // 싱글 언급 없음·짝수
   assert.deepEqual(r('전기카트 신청입니다.', 5), { n: 1, how: 'odd' });                    // 홀수 팀 = 남는 한 명 싱글 1방

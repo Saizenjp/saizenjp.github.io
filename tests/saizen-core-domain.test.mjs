@@ -151,10 +151,10 @@ test('mealOffsite', () => {
 });
 
 // ── 영문 로마자 → 가타카나 후리가나(여권 철자대로, 유성음) ───────────────────
-test('nameYomiEn: 영문 철자대로 후리가나(강병욱 KANG BYONG UK → カン/ビョンウク)', () => {
-  assert.deepEqual(SZ.nameYomiEn('KANG BYONG UK'), { sur: 'カン', given: 'ビョンウク' });
+test('nameYomiEn: 영문 철자대로 후리가나(남궁병욱 NAMGUNG BYONG UK → ナムグン/ビョンウク)', () => {
+  assert.deepEqual(SZ.nameYomiEn('NAMGUNG BYONG UK'), { sur: 'ナムグン', given: 'ビョンウク' });
   // 유성 자음: BONG→ボン·JAE→ジェ·DONG→ドン·GYU→ギュ (한글기반 무성음 아님)
-  assert.equal(SZ.nameYomiEn('JEONG SANG DONG').given, 'サンドン');
+  assert.equal(SZ.nameYomiEn('HONG SANG DONG').given, 'サンドン');
   assert.equal(SZ.nameYomiEn('BAE JUN GYU').given, 'ジュンギュ');
   // 종성 ng→ン, k→ク, m→ム
   assert.equal(SZ.romajiToKana('KANG'), 'カン');

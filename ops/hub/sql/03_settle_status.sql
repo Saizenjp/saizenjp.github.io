@@ -51,7 +51,7 @@ join bookings b on b.event_seq = g.event_seq
 left join transactions t on t.event_seq = g.event_seq
 group by g.event_seq, g.team_tag, g.group_code, b.rep_name, g.accom, g.pax, b.sales_amount, g.session_ym;
 
--- ── 개인별 룸차지 상세 뷰 (정산서에 "전정숙님 싱글차지 — 선불완료" 표기용) ──
+-- ── 개인별 룸차지 상세 뷰 (정산서에 "홍길동님 싱글차지 — 선불완료" 표기용) ──
 drop view if exists v_folio_lines;
 create view v_folio_lines as
 select

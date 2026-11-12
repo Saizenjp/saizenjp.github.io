@@ -219,7 +219,7 @@ step1 은 `guest_members` 를 **`(event_seq, seq_in_team)` 충돌키로 upsert**
 
 | 팀 | 사실 | 해석 |
 |---|---|---|
-| #92294 | passengers 4명(**김용미 740901 · 김용미 730514** 동명이인) → guest_members 3명(seq **1,3,4**) | 동명이인이 한 자리로 합쳐지며 **행 하나가 사라지고 결번**이 생겼다 |
+| #92294 | passengers 4명(**이름이 같고 생년이 다른 두 사람** — 동명이인) → guest_members 3명(seq **1,3,4**) | 동명이인이 한 자리로 합쳐지며 **행 하나가 사라지고 결번**이 생겼다 |
 | #30012382 | passengers **8행**(836~839 + 898~901, 엠클릭이 같은 팀에 **No 를 다시 부여**) / guest_members 4행 | passengers 는 `id` upsert 라 옛 행이 **남고**, guest_members 는 같은 자리 1~4 를 **덮어썼다** |
 | #93670 | passengers 4행(862·863·864 + **927**) / guest_members 3행 | 위와 같은 유형 |
 
