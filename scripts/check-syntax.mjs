@@ -32,7 +32,10 @@ for (const f of files) {
   matches.forEach((m, i) => {
     //  JS 가 아닌 <script> 는 건너뛴다 — 구조화 데이터(application/ld+json)·템플릿 등.
     //  JSON-LD 를 JS 로 파싱하면 `"@context":` 가 라벨로 읽혀 무조건 문법 오류가 난다.
-    const type = /\btype\s*=\s*["']?([^"'\s>]+)/i.exec(m[0])?.[1]?.toLowerCase();
+    //  ⚠ 여는 태그에서만 type 을 읽는다 — 본문까지 보면 스크립트 안의 `type="button"` 같은 글자를
+    //    type 속성으로 읽어 그 스크립트를 통째로 건너뛴다(2026-11 검수: 49개 중 35개가 검사되지 않고 있었다).
+    const openTag = m[0].slice(0, m[0].indexOf('>') + 1);
+    const type = /\btype\s*=\s*["']?([^"'\s>]+)/i.exec(openTag)?.[1]?.toLowerCase();
     const isJs = !type || /^(text\/javascript|application\/javascript|module)$/.test(type);
     if (!isJs) return;
     const code = m[1];
