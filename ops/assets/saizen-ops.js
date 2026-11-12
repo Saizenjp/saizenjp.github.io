@@ -1581,7 +1581,8 @@
       var info = {};
       for (i = 0; i < need.length; i += 200) {
         var ch = need.slice(i, i + 200);
-        r = await supa.from('guests').select('event_seq,group_code,team_tag,bookings!inner(dep_date)').in('event_seq', ch);
+        /* 대기 팀의 입국일·기준코드는 읽지 않는다(묶음 안에서 빈 값으로 자리만 차지) — 手配書·네임택·항공커버·키 슬립의 묶음 조회와 같은 규칙 */
+        r = await supa.from('guests').select('event_seq,group_code,team_tag,bookings!inner(dep_date)').in('event_seq', ch).neq('bookings.status', '대기');
         (r.data || []).forEach(function (x) { info[x.event_seq] = { dep: (x.bookings || {}).dep_date || '', tag: x.group_code || x.team_tag || '' }; });
         r = await supa.from('guest_members').select('event_seq,person_tag,seq_in_team').in('event_seq', ch).order('seq_in_team');
         (r.data || []).forEach(function (x) { var e = info[x.event_seq]; if (e && !e.ptag && x.person_tag) e.ptag = x.person_tag; });

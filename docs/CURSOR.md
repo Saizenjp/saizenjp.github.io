@@ -10,7 +10,7 @@ Claude Code(터미널/웹)와 똑같은 저장소를 Cursor에서도 열어 AI�
 1. Cursor를 설치하고 **이 폴더(`saizenjp.github.io`)를 엽니다**.
 2. Cursor가 자동으로 아래 규칙 파일을 읽습니다(따로 할 것 없음):
    - `.cursor/rules/saizen-core.mdc` — **항상 적용**되는 핵심 규칙(한국어 응답·디자인 색·검증·배포·보안).
-   - `.cursor/rules/ops-changes.mdc` — `ops/` 파일을 만질 때 자동 적용되는 체크리스트(i18n·권한·SQL·캐시).
+   - `.cursor/rules/ops-changes.mdc` — `ops/` 파일을 만질 때 자동 적용되는 요약(i18n·권한·SQL·캐시). 본문은 `.claude/skills/saizen-ops-change/SKILL.md` 하나입니다.
    - `AGENTS.md` / `CLAUDE.md` — 프로젝트 전체 설명(정본).
 3. 덕분에 Cursor의 AI도 **한국어로 답하고, 우리 규칙(색·검증·배포·키 보안)을 지키며** 작업합니다.
 
@@ -27,7 +27,8 @@ Claude Code(터미널/웹)와 똑같은 저장소를 Cursor에서도 열어 AI�
 - **검증** — 고친 뒤 문법 검사·테스트를 대신 돌려줍니다.
 
 ### 잘 안 맞거나 조심할 일
-- **DB 마이그레이션 실행**(`ops/hub/sql`)은 결과를 되돌리기 어렵습니다 → 실행 전 꼭 확인하고, 멱등(여러 번 돌려도 안전)하게.
+- **DB 마이그레이션 실행**(`ops/hub/sql`)은 결과를 되돌리기 어렵습니다 → 실행 전 꼭 확인하고, 새 파일은 멱등(여러 번 돌려도 안전)하게 씁니다.
+  **이미 적용된 옛 번호 파일은 다시 실행하지 않습니다** — 05·06 은 객실 마스터·방배정을 지우고, 뒤 번호가 같은 함수·정책을 다시 정의해서 앞 번호를 다시 돌리면 옛 정의로 되돌아갑니다. 적용 상태는 `ops/hub/sql/00_VERIFY.sql` 로 확인합니다.
 - **정산·요금 관련 변경**은 돈이 걸리므로, 바꾸기 전에 "어떻게 청구에 반영되는지" 먼저 물어보세요.
 - 큰 구조 변경보다는 **한 번에 하나씩** 시키는 게 안전합니다.
 
@@ -40,8 +41,9 @@ Claude Code(터미널/웹)와 똑같은 저장소를 Cursor에서도 열어 AI�
    ```bash
    npm run verify
    ```
-   - `node scripts/check-syntax.mjs` (모든 화면의 스크립트 문법 검사)
-   - 단위 테스트(`tests/`)
+   - `node scripts/check-syntax.mjs` (모든 화면의 스크립트 문법·공용 헬퍼 정의·버튼 핸들러·색 폴백 검사)
+   - `node scripts/check-i18n.mjs` (언어 전환 검사) · `node scripts/check-wait.mjs` (대기 예약 제외 검사) · `node scripts/check-tracked.mjs` (올라가는 파일 검사 — 데이터 파일·비밀값)
+   - 단위 테스트(`tests/` — 판정 로직과 위 검사 스크립트 자체의 회귀 테스트)
 3. 통과하면 **커밋·배포**(Git): `main`에 올리면 약 1분 뒤 라이브(`https://saizenjp.github.io/`)에 반영됩니다.
 4. 라이브에서 직접 눈으로 확인.
 
@@ -52,9 +54,13 @@ Claude Code(터미널/웹)와 똑같은 저장소를 Cursor에서도 열어 AI�
 ## 4. 자주 쓰는 명령 (Cursor 안 터미널에서)
 
 ```bash
-npm run verify                         # 커밋 전 필수: 문법 + 테스트
+npm run verify                         # 커밋 전 필수: 문법 + 언어 전환 + 대기 예약 제외 + 추적 파일 + 단위 테스트
 node scripts/check-syntax.mjs          # 전 HTML 스크립트 문법만
-git add -A && git commit -m "설명"     # 변경 기록
+git status --short                     # 올라갈 파일 확인(엑셀·PDF 같은 데이터 파일이 섞이지 않았는지)
+git add -u                             # 이미 추적 중인 파일의 변경을 모두 담는다(새 파일·데이터 파일은 담기지 않는다) — git add -A 는 쓰지 않는다
+git add ops/hub/새화면.html            # 새로 만든 파일이 있으면 그 경로만 따로 적는다
+git commit -m "설명"                   # 변경 기록
+git status --short                     # 남은 줄이 있으면 올라가지 않은 파일이다 — 올릴 파일인지 확인한다(공용 파일을 고치면 ?v= 때문에 화면 파일 수십 개가 함께 바뀐다. 일부만 올리면 화면과 공용 스크립트가 어긋난다)
 git push origin HEAD:main              # 배포(라이브 반영)
 ```
 
@@ -68,7 +74,7 @@ git push origin HEAD:main              # 배포(라이브 반영)
 | `ops/hub/*.html` | 각 운영 화면(방배정 room, 정산 settle, POS, 주방 kitchen, 夕食 dinner, 시즈노야도 shizu …) |
 | `ops/assets/saizen-ops.js` | 공유 로직·i18n·설명서(SO_HELP)·권한 가드 |
 | `ops/assets/saizen-core.js` | 순수 규칙(회원판정·식수·단가 등) 단일 진실원 |
-| `ops/hub/sql/NN_*.sql` | Supabase 마이그레이션(번호순·멱등) |
+| `ops/hub/sql/NN_*.sql` | Supabase SQL 기록(번호순 — 새 파일은 멱등하게, 옛 번호 파일은 다시 실행하지 않음) |
 | `CLAUDE.md` | **프로젝트 전체 규칙·도메인·변경 이력(정본)** |
 | `.cursor/rules/` | Cursor가 자동으로 따르는 규칙 |
 

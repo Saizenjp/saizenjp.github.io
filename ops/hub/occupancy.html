@@ -177,7 +177,7 @@
     table.oc th,table.oc td,.lgd i,.una-box,.una-box *,table.dt th,table.dt td,table.dt td *{-webkit-print-color-adjust:exact;print-color-adjust:exact}   /* 범례·상세 표(폐쇄 줄)·미배정 상자도 색 유지 */
   }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.7">
 </head>
 <body data-so-area="occupancy">
 <div class="topbar so-bar">
@@ -209,7 +209,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=70"></script>
-<script src="../assets/saizen-ops.js?v=40.6"></script>
+<script src="../assets/saizen-ops.js?v=40.7"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -511,7 +511,7 @@ async function load(){
       // 묶은 팀(現地手配書)은 대표팀 코드+팀번호로 표시 — 인쇄물과 같은 코드
       try{ const GT=(window.__so_groupTags? await __so_groupTags(supa,seqs) : {});
         if(stale()) return; Object.keys(GT).forEach(k=>{ if(TEAM[k]) TEAM[k].tag=GT[k]; }); }catch(e){}
-      const bs=await pagedIn('bookings','event_seq,rep_name,status','event_seq',seqs);
+      const bs=await pagedIn('bookings','event_seq,rep_name,status','event_seq',seqs) /* 대기 포함: status 를 읽어 대기 팀의 방 행을 사용 집계에서 뺀다(isWait) */;
       if(stale()) return;
       if(bs.error) throw bs.error;
       (bs.data||[]).forEach(b=>{ const t=(TEAM[b.event_seq]=TEAM[b.event_seq]||{tag:'',accom:''});
@@ -525,7 +525,7 @@ async function load(){
     const HAS_RT=await (async()=>{ try{ const r=await supa.from('bookings').select('room_type',{count:'exact',head:true}); return !r.error; }catch(e){ return false; } })();   // 엠클릭 룸타입 열(SQL 163)
     const RB=await paged((a,b)=>supa.from('bookings')
       .select('event_seq,pax,dep_date,arr_date,rep_name,status,remark,remark_local,product_name'+(HAS_RT?',room_type':''))
-      .lte('dep_date',to).gt('arr_date',from).order('event_seq').range(a,b)) /* 대기 포함: 「대기 예약」 줄로 따로 보이고, 사용 집계는 isWait 로 뺀다 */;
+      .lte('dep_date',to).gt('arr_date',from).order('event_seq').range(a,b)) /* 대기 제외: 바로 아래 filter(RBOOK)로 뺀다 — 「대기 예약」 줄은 아래의 별도 조회가 읽는다 */;
     if(stale()) return;
     if(RB.error) throw RB.error;
     const RBOOK=(RB.data||[]).filter(b=>!String(b.status||'').includes('대기'));
@@ -636,7 +636,7 @@ async function load(){
     WAIT={};
     const wb=await paged((a,b)=>supa.from('bookings')
       .select('event_seq,pax,dep_date,arr_date,rep_name')
-      .eq('status','대기').lte('dep_date',to).gt('arr_date',from).order('event_seq').range(a,b));
+      .eq('status','대기').lte('dep_date',to).gt('arr_date',from).order('event_seq').range(a,b)) /* 대기 포함: 「대기 예약」 줄에 보일 대기 팀만 읽는다(사용 집계에는 넣지 않는다) */;
     if(stale()) return;
     if(wb.error) throw wb.error;
     const wseqs=(wb.data||[]).map(x=>x.event_seq);

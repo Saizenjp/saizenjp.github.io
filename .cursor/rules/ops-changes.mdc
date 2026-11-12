@@ -5,42 +5,14 @@ globs: ops/**/*.html,ops/assets/*.js,ops/assets/*.css,ops/hub/sql/*.sql
 
 # /ops/ 변경 표준 절차
 
-상세는 `.claude/skills/saizen-ops-change/SKILL.md`. 해당되는 항목만 그대로 따른다.
+본문은 `.claude/skills/saizen-ops-change/SKILL.md` 하나다(같은 내용을 두 벌로 두면 한쪽만 고쳐져 어긋난다).
+`ops/` 파일을 고치기 전에 그 파일을 열어 해당하는 절을 따른다. 아래는 절 목록과 가장 자주 빠뜨리는 것만이다.
 
-## 1. i18n (가장 자주 깨지는 부분)
-- **로컬 전용 키에 `data-i18n`을 쓰지 않는다.** 전역 `applyLang()`이 부팅 때 모든 `data-i18n`을 자기 사전으로 덮어쓰고, **없는 키는 `t()`가 키 문자열 그대로 반환**해 화면에 키가 노출된다.
-  - 로컬 키 → 마크업에 `id="t-..."` + 로컬 `applyStatic()`에서 `$('#t-...').textContent=tx('key')` (frontdesk/stats/shizu 패턴).
-  - `data-i18n`은 **전역 사전에 실제 있는 키**(`navHome`·`ix_*`·`bd_*` 등)에만.
-- 로컬 사전 `const L={ja:{},ko:{},en:{}}` — **3개 국어 키 패리티 동일**. `tx(k)`는 현재언어→ja 폴백.
-- 언어 토글 훅: `window.onSaizenLangChange=function(){ applyStatic(); if(상태) render(); };`
-- 일본어 기본. **인쇄 산출물은 일본어 유지**.
-
-## 2. 새 페이지 chrome
-`docs/ops-page-skeleton.html`을 복사해 시작(공통 chrome `.topbar/.conn/.btn/.inp/.pill/#toast/.so-lang`은 각 페이지 inline — 중앙 css에 없음).
-- `<body data-so-area="<영역>">` (권한 가드). `<script src="../assets/saizen-ops.js?v=현재버전">`를 인라인 스크립트 **앞**에. `saizen-core.js` 필요 시 함께.
-
-## 3. 권한 영역(새 영역 만들 때)
-- 페이지 `<body data-so-area="키">` → `guardPage()`가 미로그인=로그인카드 / 권한없음=차단. admin=전 통과, manager/staff=지정 영역만.
-- **admin.html**에 영역 등록(AREA_KEYS + DEPTS + `a_<키>`/`ac_<키>` 3개국어). **랜딩 ops/index.html** 카드 `data-area="키"` + `ix_*` 3개국어.
-
-## 4. Supabase SQL / RLS
-- `ops/hub/sql/NN_*.sql` 번호순·**멱등**(`if not exists`, `drop policy if exists` 후 create). 적용=`mcp__Supabase__apply_migration`(project `wzfmloivrolpwpiuyhbs`) **+ 파일로도 저장**.
-- 금액·PII 민감 테이블은 영역 제한 RLS. 함수는 `security definer set search_path=public`.
-- **`ops/hub/sql/00_VERIFY.sql`에 새 객체 점검 행 추가**.
-- ⚠ `charges` 쓰기 RLS=`settle`·`pos`뿐. 다른 영역에서 청구를 만들어야 하면 **SECURITY DEFINER 트리거/RPC**로(예: 58 夕食별주, 59 싱글차지 → charges).
-
-## 5. 설명서(SO_HELP)
-- saizen-ops.js `SO_HELP`(ko 원문)에 `'<파일>.html'` 추가 + `SO_HELP_TR`에 같은 키 `{ja,en}`. 기능 바꾸면 설명서도 같이 고친다(누락 잦음).
-
-## 6. 캐시 버전 범프 (공유 asset 변경 시 필수)
-`saizen-ops.js`/`.css` 또는 `saizen-core.js`를 바꿨으면 **모든 ops 페이지 `?v=` 동일 값으로 인상**:
-```bash
-OLD=14.98; NEW=14.99
-grep -rl "v=$OLD" ops --include='*.html' | while read f; do \
-  sed -i "s/saizen-ops\.js?v=$OLD/saizen-ops.js?v=$NEW/g; s/saizen-ops\.css?v=$OLD/saizen-ops.css?v=$NEW/g" "$f"; done
-grep -rl "v=$OLD" ops --include='*.html' | wc -l   # 0 이어야 함
-```
-페이지 단독(인라인) 변경이면 범프 불필요(HTML은 직접 배포).
-
-## 7. 검증·배포
-`node scripts/check-syntax.mjs` + `node --check ops/assets/saizen-ops.js` 통과 → `main` 커밋·푸시.
+- §1 i18n — 로컬 전용 키에 `data-i18n` 을 쓰지 않는다(`id="t-..."` + 로컬 `applyStatic()`). 로컬 사전은 ja/ko/en 키가 같아야 한다.
+- §2 새 페이지 — `docs/ops-page-skeleton.html` 을 복사해 시작한다.
+- §3 권한 영역 — 마스터(admin)만 전 화면 통과, 매니저·일반은 지정된 영역만. 새 키 등록 순서 = `SZCore.AREA_TREE` → 새 번호 SQL 의 `area_tree` 재시드 + `00_VERIFY.sql` → `tests/saizen-core-areas.test.mjs` → `admin.html` 라벨 3개 언어 → 랜딩 카드.
+- §4 SQL — 새 번호 파일로 멱등하게 쓰고 **Min 승인 뒤 적용**, 같은 내용을 파일로 저장, `00_VERIFY.sql` 갱신. **이미 적용된 옛 번호 파일은 다시 실행하지 않는다.** 새 RPC 는 `revoke … from public, anon` 뒤 `grant`(비로그인이 부르는 RPC 는 예외 — SKILL §4).
+- §5 설명서(SO_HELP ko + SO_HELP_TR ja/en) — 기능을 바꾸면 같이 고친다.
+- §6 캐시 버전 — 공유 asset 을 바꾸면 전 화면의 `?v=` 를 한 값으로 올린다(`saizen-core.js` 는 따로).
+- §7 검증 — `npm run verify` + `node --check ops/assets/saizen-ops.js`.
+- §8 배포 — 검증 통과 뒤 `main`.
