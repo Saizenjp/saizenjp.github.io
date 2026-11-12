@@ -897,7 +897,7 @@ const L={
     closureManageTitle:'🔒 客室閉鎖(ロック) 管理',
     closureDesc:'特定の客室を <b>期間指定</b> で閉じます(例: 代表使用中・点検)。閉鎖期間は自動・手動割当が止まり、カードに理由が表示されます。<b>終了日含む</b>。',
     closureNone:'現在読み込んだ期間に閉鎖はありません。',
-    closureRoom:'客室', closureFrom:'開始日', closureTo:'終了日', closureReason:'理由',
+    closureRoom:'客室', closureSearchPh:'部屋番号・施設名で絞り込み', closureNoHit:'該当する客室がありません', closureFrom:'開始日', closureTo:'終了日', closureReason:'理由',
     closureReasonPh:'例: 代表使用中 / 使用しない / 点検', closureAdd:'＋ 閉鎖追加', closureListTitle:'閉鎖・ロック中の客室',
     closureLockPerm:'🔒 永久ロック(錠)', closureUnlock:'ロック解除', closurePeriodTag:'期間閉鎖',
     del:'削除', pickRoom:'客室を選択してください', pickRange:'期間を入力してください', toAfterFrom:'終了日は開始日以降にしてください',
@@ -1154,7 +1154,7 @@ const L={
     closureManageTitle:'🔒 객실 폐쇄(잠금) 관리',
     closureDesc:'특정 객실을 <b>기간 지정</b>해 닫습니다(예: 대표님 사용 중·점검). 폐쇄 기간엔 자동·수기 배정이 막히고 카드에 사유가 표시됩니다. <b>종료일 포함</b>.',
     closureNone:'현재 불러온 기간에 폐쇄가 없습니다.',
-    closureRoom:'객실', closureFrom:'시작일', closureTo:'종료일', closureReason:'사유',
+    closureRoom:'객실', closureSearchPh:'객실 번호·숙소로 찾기', closureNoHit:'맞는 객실이 없습니다', closureFrom:'시작일', closureTo:'종료일', closureReason:'사유',
     closureReasonPh:'예: 대표님 사용 중 / 사용 안 함 / 점검', closureAdd:'＋ 폐쇄 추가', closureListTitle:'폐쇄·잠금 중인 객실',
     closureLockPerm:'🔒 영구 잠금(자물쇠)', closureUnlock:'잠금 해제', closurePeriodTag:'기간 폐쇄',
     del:'삭제', pickRoom:'객실을 선택하세요', pickRange:'기간을 입력하세요', toAfterFrom:'종료일은 시작일 이후여야 합니다',
@@ -1409,7 +1409,7 @@ const L={
     closureManageTitle:'🔒 Room closure (lock) management',
     closureDesc:'Close a specific room for a <b>specified period</b> (e.g., chairman in use · inspection). During closure, auto/manual assignment is blocked and the reason shows on the card. <b>End date inclusive</b>.',
     closureNone:'No closures in the currently loaded period.',
-    closureRoom:'Room', closureFrom:'Start date', closureTo:'End date', closureReason:'Reason',
+    closureRoom:'Room', closureSearchPh:'Filter by room no. or lodging', closureNoHit:'No matching room', closureFrom:'Start date', closureTo:'End date', closureReason:'Reason',
     closureReasonPh:'e.g.: chairman in use / not used / inspection', closureAdd:'＋ Add closure', closureListTitle:'Closed · locked rooms',
     closureLockPerm:'🔒 Permanent lock', closureUnlock:'Unlock', closurePeriodTag:'Period closure',
     del:'Delete', pickRoom:'Please select a room', pickRange:'Please enter a period', toAfterFrom:'End date must be on or after the start date',
@@ -1903,7 +1903,9 @@ async function loadDay(){
   {
     let cloErr='';
     try{
-      const cl=await supa.from('room_closures').select('*').gte('to_date',from).order('from_date');
+      //  전달에 도착해 이 달까지 묵는 팀도 재배치·수기 배정 대상이다 → 그 팀 체류 앞부분에 걸친(전달에 끝난) 폐쇄도 읽어야 가드가 선다.
+      const cloFrom=state.guests.reduce((a,g)=>(g.dep && g.dep<a)?g.dep:a, from);
+      const cl=await supa.from('room_closures').select('*').gte('to_date',cloFrom).order('from_date');
       if(!cl.error) state.closures=cl.data||[];
       else if(!(String(cl.error.code||'')==='PGRST205' || String(cl.error.code||'')==='42P01' || /could not find the table|relation .* does not exist/i.test(String(cl.error.message||'')))) cloErr=cl.error.message||'error';   // 표가 아직 없는 DB 만 「폐쇄 없음」
     }catch(e){ cloErr=String((e&&e.message)||e); }
@@ -4851,10 +4853,18 @@ let _soloSpans=[];
 function isSoloRoom(invId,dep,arr){
   return _soloSpans.some(x=>x.id===invId && overlaps(dep,arr,x.ci,x.co));
 }
-function pickRoom(pool,dep,arr,need,pending,occ){
+// 그 방에 그 기간 **다른 팀**이 이미 있는가(occ=수기·D-7 확정·다른 달 배정 + 이번 배치 pending)
+function roomHasOtherTeam(invId,dep,arr,seq,pending,occ){
+  const hit=r=>r.inventory_id===invId && String(r.event_seq)!==String(seq) && overlaps(dep,arr,r.check_in,r.check_out);
+  return (occ||state.rooms).some(hit) || (pending||[]).some(hit);
+}
+// soloSeq(선택) = 1인 단독·한 동 통째로 넣는 팀의 event_seq. 주면 다른 팀이 이미 든 방은 건너뛴다 —
+//   _soloSpans 는 이번 실행분만 기억하므로, 수기·확정·다른 달 팀이 혼자 쓰는 2인실에 남의 팀 1명이 합방되던 것을 막는다.
+function pickRoom(pool,dep,arr,need,pending,occ,soloSeq){
   for(const inv of pool){
     if(roomClosure(inv.id,dep,arr)) continue;   // 기간 폐쇄된 방은 자동배정 제외
     if(isSoloRoom(inv.id,dep,arr)) continue;    // 싱글로 잡아 둔 방
+    if(soloSeq!=null && roomHasOtherTeam(inv.id,dep,arr,soloSeq,pending,occ)) continue;   // 남의 팀이 든 방에는 끼우지 않는다
     // ⚠ 자동배정은 **정원(capacity)** 까지만 채운다(Min 2026-08).
     //   간지호텔처럼 초과 배정을 허용(차단선 max_capacity)하는 방이라도, 3인 합방은
     //   트리플 요청이 있을 때 **수기로** 넣는 것이지 자동으로 밀어넣을 일이 아니다.
@@ -4970,8 +4980,8 @@ function placeSingles(g,list,primaryPool,fallbackPool,label,pending,holds,occ,fl
   if(!list||!list.length) return;
   const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq));
   for(const m of list){
-    let inv=pickRoom(primaryPool,g.dep,g.arr,1,pending,occ);
-    if(!inv && fallbackPool && fallbackPool!==primaryPool) inv=pickRoom(fallbackPool,g.dep,g.arr,1,pending,occ);
+    let inv=pickRoom(primaryPool,g.dep,g.arr,1,pending,occ,g.event_seq);
+    if(!inv && fallbackPool && fallbackPool!==primaryPool) inv=pickRoom(fallbackPool,g.dep,g.arr,1,pending,occ,g.event_seq);
     if(!inv){ holds.push(mkHold(tx('holdNoRoom',gc,mName(m),'',label),g,'noRoom')); continue; }
     pending.push(mkRow(g,m,inv));
     _soloSpans.push({id:inv.id, ci:g.dep, co:g.arr});   // 이 방은 그 기간 이 사람 전용
@@ -4984,7 +4994,7 @@ function placeSingles(g,list,primaryPool,fallbackPool,label,pending,holds,occ,fl
 function placeUnit(g,roster,pool,label,pending,holds,occ){
   if(!roster||!roster.length) return false;
   const gc=teamGroupCode(g.event_seq)||(tx('teamPrefix')+evNo(g.event_seq));
-  const inv=pickRoom(pool,g.dep,g.arr,roster.length,pending,occ);
+  const inv=pickRoom(pool,g.dep,g.arr,roster.length,pending,occ,g.event_seq);
   if(!inv){ holds.push(mkHold(tx('holdNoUnit',gc,roster.length,label)+' — '+noRoomWhy([pool],g.dep,g.arr,roster.length,pending,occ),g,'noRoom')); return false; }
   roster.forEach(m=>pending.push(mkRow(g,m,inv)));
   _soloSpans.push({id:inv.id, ci:g.dep, co:g.arr});   // 이 동은 그 기간 이 팀 전용
@@ -5006,7 +5016,7 @@ function placeLeftovers(g, route, leftovers, flr, pending, holds, occ, floorOrde
   for(const m of leftovers){
     let inv=pickRoom(sg,g.dep,g.arr,1,pending,occ);                       // 허용 층 싱글
     if(!inv) inv=pickRoom(sgAll,g.dep,g.arr,1,pending,occ);               // 전층 싱글(층 넘기 허용)
-    if(!inv && !hasSingleType && genPool) inv=pickRoom(genPool,g.dep,g.arr,1,pending,occ); // 싱글 타입 자체가 없는 시설만 트윈 대체
+    if(!inv && !hasSingleType && genPool) inv=pickRoom(genPool,g.dep,g.arr,1,pending,occ,g.event_seq); // 싱글 타입 자체가 없는 시설만 트윈 대체
     if(!inv){ holds.push(mkHold(tx('holdOddLeft',gc,mName(m)),g,'oddLeft')); continue; }
     pending.push(mkRow(g,m,inv));
   }
@@ -5210,6 +5220,7 @@ async function autoAssign(){
         for(const inv of pool){
           if(left<=0) break;
           if(used.includes(inv.id)) continue;
+          if(roomClosure(inv.id,g.dep,g.arr)) continue;   // 기간 폐쇄된 방은 자동배정 제외(pickRoom 과 같은 규칙)
           if(isSoloRoom(inv.id,g.dep,g.arr)) continue;   // 2027 소보 테라스가 통째로 잡은 동(남은 침대에 남을 안 넣는다)
           const cap=inv.max_capacity||inv.capacity;
           const free=cap-dbUsedFor(inv,g.dep,g.arr,occ,pending);
@@ -5221,7 +5232,7 @@ async function autoAssign(){
           // 소보로 다 못 담으면 아소별장 한 동에 통째로 시도(8인 1동)
           // 아소별장은 관내별장 예약이 **딱 8명**일 때만 자동 배정한다(Min 2026-08).
           const aso=(roster.length===8)
-            ? asoPool.find(inv=>((inv.max_capacity||inv.capacity)-dbUsedFor(inv,g.dep,g.arr,occ,pending))>=8) : null;
+            ? asoPool.find(inv=>!roomClosure(inv.id,g.dep,g.arr) && ((inv.max_capacity||inv.capacity)-dbUsedFor(inv,g.dep,g.arr,occ,pending))>=8) : null;
           if(!aso) return;                                          // 둘 다 안 되면 호텔로
           roster.forEach(m=>pending.push(mkRow(g,m,aso)));
           pl.done=true; dropHolds(g.event_seq); console.info(tx('soboNote',gc,roster.length));
@@ -5284,7 +5295,7 @@ async function autoAssign(){
         //        → 회원2+일반2 팀이 (회원,일반)×2가 되어 디럭스 2실을 쓰고 일반 2명이 디럭스에 들어갔다.
         //  현재: 회원끼리 먼저 묶어 디럭스(→일반은 디럭스에 안 들어감).
         //        회원이 홀수로 남을 때만 그 1명이 일반 1명과 디럭스를 같이 쓴다(회원3+일반1 → 디럭스 2실).
-        //        동행 일반도 없이 회원 1명만 남으면 보류(수기).
+        //        동행 일반도 없이 회원 1명만 남으면 홀수 잔여(leftovers) → 싱글 객실(placeLeftovers, 없으면 보류).
         const mems=roster.filter(m=>isMember(m)), gens=roster.filter(m=>!isMember(m));
         const memberPairs=[], generalPairs=[], leftovers=[];
         let mi=0, gi=0;
@@ -5334,7 +5345,7 @@ async function autoAssign(){
         console.warn('배정 제외(호수 없음):',bad);
       }
     }
-    if(!pending.length && !autoSnap.length){ toast(tx('autoNoTarget',holds.length),'warn'); return; }
+    if(!pending.length && !autoSnap.length){ if(_loadSeq===_seq0){ state.lastHolds=holds.slice(); updateHoldsBtn(); } toast(tx('autoNoTarget',holds.length),'warn'); return; }   // 보류만 남은 경우에도 사유 버튼을 띄운다
 
     // ── 차등 적용(diff) — 계산 결과가 이전과 같은 배정은 DB를 건드리지 않는다 ──────
     //   같은 사람·같은 방·같은 기간이면 그대로 둔다. 지울 것과 새로 넣을 것만 처리 →
@@ -5392,12 +5403,12 @@ async function autoAssign(){
     keepRows.forEach(r=>pushRoomRow(r));   // 유지되는 배정은 원래 id 그대로 화면에 되돌린다
     if(dropIds.length){
       const derr=await deleteRoomsByIds(dropIds);
-      if(derr){toast(tx('autoClearFail',derr.message),'err');return;}
+      if(derr){toast(tx('autoClearFail',derr.message),'err');await resyncRoomsAfterFail();return;}
     }
     let data=[];
     if(addRows.length){
       const ins=await insertRoomsChunked(addRows,(done,total)=>autoBusyBar(true,Math.round(done/total*100),done,total));
-      if(ins.error){toast(tx('autoSaveFail',ins.error.message),'err');return;}
+      if(ins.error){toast(tx('autoSaveFail',ins.error.message),'err');await resyncRoomsAfterFail();return;}
       data=ins.data||[];
       data.forEach(r=>pushRoomRow(r));
     }
@@ -5449,6 +5460,15 @@ async function autoAssign(){
 
 
 
+// 자동배정 저장이 도중에 실패하면 화면 상태(state.rooms)가 DB 와 어긋난다 — 지우려던 행은 화면에서만 빠져 있고,
+//   이미 들어간 청크는 화면에 없다. DB 에서 다시 읽어 맞춘다(loadDay 는 자동배정을 다시 돌리므로 쓰지 않는다).
+async function resyncRoomsAfterFail(){
+  try{
+    const rr=await pagedInSeq('rooms','*',state.guests.map(g=>g.event_seq));
+    if(!rr.error) state.rooms=dedupeById(rr.data||[]);
+  }catch(e){}
+  rebuildAssignMap(); render();
+}
 // ── rooms 대량 삭제/삽입은 청크로 (in() URL 길이·body 한계 회피) ──
 async function deleteRoomsByIds(ids){
   for(let i=0;i<ids.length;i+=50){
@@ -5730,7 +5750,9 @@ function openClosureModal(){
   const today=(d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'))(new Date());   // 현장 날짜 — UTC 로 뽑으면 09시 전에는 어제가 기본값이 된다
   const invs=(state.inventory||[]).slice().sort((a,b)=>String(a.facility).localeCompare(String(b.facility))||(a.sort_order||0)-(b.sort_order||0));
   if(!invs.length){toast(tx('closeLoadInv'),'warn');return;}
-  const opts=invs.map(r=>`<option value="${r.id}">${_lsEsc(r.facility)} · ${_lsEsc(r.room_no)}${r.zone?(' ('+_lsEsc(r.zone)+')'):''}</option>`).join('');
+  const optRows=invs.map(r=>({id:r.id, text:r.facility+' · '+r.room_no+(r.zone?(' ('+r.zone+')'):'')}));
+  const optHtml=rows=>rows.map(o=>`<option value="${o.id}">${_lsEsc(o.text)}</option>`).join('');
+  const opts=optHtml(optRows);
   // ① 카드 자물쇠로 잠근 영구 잠금 객실(room_inventory.active=false) — 날짜 없음
   const lockRows=(state.inventory||[]).filter(r=>r.active===false)
     .slice().sort((a,b)=>String(a.facility).localeCompare(String(b.facility))||(a.sort_order||0)-(b.sort_order||0)).map(r=>{
@@ -5758,9 +5780,11 @@ function openClosureModal(){
     <h2>${tx('closureManageTitle')}</h2>
     <div class="mbody">
       <p style="font-size:12px;color:var(--text2);margin-bottom:12px">${tx('closureDesc')}</p>
-      <div class="mrow"><div><label>${tx('closureRoom')} *</label></div><select class="inp" id="cl-inv">${opts}</select></div>
-      <div class="mrow"><div><label>${tx('closureFrom')} *</label></div><input class="inp" id="cl-from" type="date" value="${today}"></div>
-      <div class="mrow"><div><label>${tx('closureTo')} *</label></div><input class="inp" id="cl-to" type="date" value="${today}"></div>
+      <div class="mrow" style="grid-template-columns:1fr"><div><label>${tx('closureRoom')} *</label>
+        <input class="inp" id="cl-q" type="search" autocomplete="off" placeholder="${_lsEsc(tx('closureSearchPh'))}" style="width:100%;margin-top:4px">
+        <select class="inp" id="cl-inv" style="width:100%;margin-top:4px">${opts}</select></div></div>
+      <div class="mrow" style="grid-template-columns:1fr 150px"><div><label>${tx('closureFrom')} *</label></div><input class="inp" id="cl-from" type="date" value="${today}"></div>
+      <div class="mrow" style="grid-template-columns:1fr 150px"><div><label>${tx('closureTo')} *</label></div><input class="inp" id="cl-to" type="date" value="${today}"></div>
       <div class="mrow" style="grid-template-columns:1fr"><div><label>${tx('closureReason')}</label><input class="inp" id="cl-reason" type="text" placeholder="${tx('closureReasonPh')}" style="width:100%;margin-top:4px"></div></div>
       <div style="margin-top:6px"><button class="btn sm" id="cl-add" type="button">${tx('closureAdd')}</button></div>
       <div style="margin-top:14px"><div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:2px">${tx('closureListTitle')}</div>${list}</div>
@@ -5771,6 +5795,14 @@ function openClosureModal(){
   bg.querySelector('#cl-close').addEventListener('click',()=>bg.remove());
   bg.addEventListener('click',e=>{if(e.target===bg)bg.remove();});
   bg.querySelector('#cl-add').addEventListener('click',()=>saveClosure(bg));
+  // 객실 검색 — 162개 목록을 방 번호·숙소 글자로 좁힌다(고른 방이 결과에 남아 있으면 그대로 둔다)
+  bg.querySelector('#cl-q').addEventListener('input',e=>{
+    const kw=String(e.target.value||'').trim().toLowerCase();
+    const sel=bg.querySelector('#cl-inv'); const cur=sel.value;
+    const rows=kw?optRows.filter(o=>o.text.toLowerCase().includes(kw)):optRows;
+    sel.innerHTML=rows.length?optHtml(rows):`<option value="" disabled selected>${_lsEsc(tx('closureNoHit'))}</option>`;
+    if(rows.some(o=>String(o.id)===String(cur))) sel.value=cur;
+  });
   bg.querySelectorAll('[data-del-clo]').forEach(b=>b.addEventListener('click',()=>delClosure(b.dataset.delClo)));
   bg.querySelectorAll('[data-unlock-inv]').forEach(b=>b.addEventListener('click',()=>unlockInv(b.dataset.unlockInv)));
 }
