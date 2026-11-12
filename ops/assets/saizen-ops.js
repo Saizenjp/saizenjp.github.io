@@ -1607,7 +1607,7 @@
   //  실제 인쇄물 — A4 위쪽이 손님용, 절취선 아래가 控え(보관용)
   function rcPrint(o, R, plang) {
     var P = RC_PRINT[plang] || RC_PRINT.ko;
-    var today = new Date().toISOString().slice(0, 10);
+    var today = global.__so_ts(new Date()).slice(0, 10);   // 発行日 = 현장(브라우저) 날짜 — toISOString() 은 UTC 라 09시 전에는 하루 전이 찍혔다
     var amount = Math.round(Number(o.amount) || 0);
     var buckets = rcBuckets(o, amount);
     var tax = buckets.reduce(function (s, b) { return s + b.tax; }, 0), net = amount - tax;
@@ -1630,7 +1630,7 @@
       + '.toolbar button{padding:8px 18px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;background:#15803d;color:#fff}'
       + '.toolbar button.c{background:#999}'
       + '.sheet{width:210mm;min-height:297mm;margin:16px auto;background:#fff;padding:14mm 16mm}'
-      + '.rc{border:1.2pt solid #111;padding:11mm 12mm;height:128mm;display:flex;flex-direction:column}'
+      + '.rc{border:1.2pt solid #111;padding:11mm 12mm;min-height:128mm;display:flex;flex-direction:column}'
       + '.rc h2{font-size:30pt;font-weight:800;letter-spacing:12px;text-align:center;margin-bottom:2mm}'
       + '.rc .no{display:flex;justify-content:flex-end;gap:8mm;font-size:9.5pt;color:#333;margin-bottom:6mm}'
       + '.rc .to{font-size:15pt;font-weight:800;border-bottom:1pt solid #111;padding:0 2mm 2mm;margin-bottom:7mm;min-height:9mm}'
