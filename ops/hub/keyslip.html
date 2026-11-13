@@ -61,7 +61,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=40.9">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.0">
 </head>
 <body data-so-area="keyslip">
 <div class="topbar so-bar">
@@ -92,7 +92,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=70"></script><!-- 공유 도메인 규칙(숙소 라벨·박수 등) -->
-<script src="../assets/saizen-ops.js?v=40.9"></script>
+<script src="../assets/saizen-ops.js?v=41.0"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -113,6 +113,8 @@ const L={
     previewCap:n=>`※ 一覧は150件まで表示 · 印刷は全体 ${n}枚`,
     unassigned:(n,names)=>`⚠ 当月チェックインで<b>部屋未割当</b>のチームが ${n} 件あります(ラベルは出ません): ${names}`,
     noPrintList:'印刷する部屋がありません', popupBlocked:'ポップアップブロック — 許可が必要',
+    tagBtn:'キーホルダー ラベル(65×25mm)', tagBtnT:'ルームキーのキーホルダーに貼るラベル(宿泊者名・階・グループコード・部屋番号)。A4 1枚に33面・切り取り線つき。',
+    tagPvTitle:'キーホルダー ラベル 印刷プレビュー', tagPvMeta:(n,p)=>`65×25mm · 1枚 33面 · ${n}枚 · ${p}ページ`, tagPvHint:'寸法どおりに出すため 印刷倍率は100%',
     pvTitle:'ルームキー ラベル 印刷プレビュー', pvMeta:(s,n,p)=>`${s} · ${n}枚 · ${p}ページ`, pvPrint:'印刷', pvClose:'閉じる' },
   ko:{ step:'룸키 라벨 인쇄', home:'← 홈',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결·재시도',
@@ -129,6 +131,8 @@ const L={
     previewCap:n=>`※ 목록은 150건까지 표시 · 인쇄는 전체 ${n}장`,
     unassigned:(n,names)=>`⚠ 이번 달 체크인인데 <b>방 미배정</b>인 팀이 ${n}건 있습니다(라벨이 안 나옵니다): ${names}`,
     noPrintList:'인쇄할 방이 없음', popupBlocked:'팝업 차단 — 허용 필요',
+    tagBtn:'키홀더 라벨(65×25mm)', tagBtnT:'룸키 키홀더에 붙이는 라벨(투숙자 이름·층·그룹코드·방 번호). A4 한 장에 33면·자르는 점선 포함.',
+    tagPvTitle:'키홀더 라벨 인쇄 미리보기', tagPvMeta:(n,p)=>`65×25mm · 1장 33면 · ${n}장 · ${p}페이지`, tagPvHint:'크기가 정확히 나오도록 인쇄 배율은 100%',
     pvTitle:'룸키 라벨 인쇄 미리보기', pvMeta:(s,n,p)=>`${s} · ${n}장 · ${p}페이지`, pvPrint:'인쇄', pvClose:'닫기' },
   en:{ step:'Room key labels', home:'← Home',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
@@ -145,6 +149,8 @@ const L={
     previewCap:n=>`※ List shows up to 150 · printing all ${n}`,
     unassigned:(n,names)=>`⚠ ${n} team(s) check in this month with <b>no room assigned</b> (no slip will print): ${names}`,
     noPrintList:'No rooms to print', popupBlocked:'Popup blocked — allow it',
+    tagBtn:'Key holder labels (65×25mm)', tagBtnT:'Labels to stick on the room key holder (occupant names, floor, group code, room no). 33 per A4 sheet with cut lines.',
+    tagPvTitle:'Key holder label print preview', tagPvMeta:(n,p)=>`65×25mm · 33 per sheet · ${n} labels · ${p} pages`, tagPvHint:'Print at 100% scale so the size is exact',
     pvTitle:'Room key label print preview', pvMeta:(s,n,p)=>`${s} · ${n} labels · ${p} pages`, pvPrint:'Print', pvClose:'Close' }
 };
 function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
@@ -250,6 +256,7 @@ function renderUI(){
         <span style="flex:1"></span>
         <span class="cnt" id="stat"></span>
         <button class="btn" id="btn-print" type="button" disabled>${tx('printBtn')}</button>
+        <button class="btn ghost" id="btn-tag" type="button" disabled title="${esc(tx('tagBtnT'))}">${tx('tagBtn')}</button>
       </div>
       <div class="row" style="margin-top:10px">
         <span class="cnt" style="min-width:62px">${tx('lodging')}</span>
@@ -276,6 +283,7 @@ function renderUI(){
   $('#ym-prev').addEventListener('click',()=>{YM=shiftYM(YM,-1);load();});
   $('#ym-next').addEventListener('click',()=>{YM=shiftYM(YM,1);load();});
   $('#btn-print').addEventListener('click',printLabels);
+  $('#btn-tag').addEventListener('click',()=>printKeyTags());
 }
 
 function renderCatChips(){
@@ -330,7 +338,7 @@ let _loadSeq=0;   // 달을 연달아 넘기면 앞 달 응답이 나중에 와�
 async function load(){
   if(!supa) return;
   const _my=++_loadSeq; const _stale=()=>_my!==_loadSeq;
-  $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true;
+  $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true; { const _bt=$('#btn-tag'); if(_bt) _bt.disabled=true; }
   const from=ymFirst(YM), to=ymLast(YM);
   try{
     // 1) 그 달에 체크인하는 방배정(rooms 1행=1명)
@@ -339,6 +347,12 @@ async function load(){
       .gte('check_in',from).lte('check_in',to).order('id').range(a,b));
     if(rr.error) throw rr.error;
     const rooms=rr.data||[];
+    // 1.5) 객실의 층(room_inventory.zone = 「9층」) — 키홀더 라벨의 「9층」 표기용
+    const invIds=[...new Set(rooms.map(r=>r.inventory_id).filter(v=>v!=null))];
+    const iv=invIds.length? await pagedIn('room_inventory','id,zone','id',invIds) : {data:[]};
+    if(iv.error) throw iv.error;
+    const zmap={}; (iv.data||[]).forEach(x=>{ zmap[x.id]=x.zone||''; });
+    if(_stale()) return;
     // 2) 팀(guests+bookings) — 그 달 체크인 팀 + 미배정 점검용으로 그 달 입국 팀도 함께
     const gs=await paged((a,b)=>supa.from('guests')
       .select('event_seq,group_code,team_tag,accom,bookings!inner(rep_name,dep_date,arr_date,origin,airline)')
@@ -371,7 +385,7 @@ async function load(){
       const g=gmap[r.event_seq]||{};
       if(!byKey[k]) byKey[k]={
         eventSeq:r.event_seq, seqs:[], codeBySeq:{},
-        roomNo:r.room_no||'', facility:r.facility||'',
+        roomNo:r.room_no||'', facility:r.facility||'', zone:zmap[r.inventory_id]||'',
         ci:r.check_in, co:r.check_out,
         code:g.group_code||g.team_tag||'', rep:(g.bookings&&g.bookings.rep_name)||'',
         // 룸키 라벨의 숙소 = 실제로 배정된 객실의 시설(rooms.facility).
@@ -518,6 +532,7 @@ function stayText(l){ return `${mdw(l.ci)}~${mdw(l.co)}`; }
 function renderPreview(){
   const list=filtered();
   $('#btn-print').disabled=!list.length;
+  { const _bt=$('#btn-tag'); if(_bt) _bt.disabled=!list.length; }
   $('#prev-cnt').textContent=list.length?tx('sheets')(list.length):'';
   const box=$('#prev');
   if(!list.length){ box.innerHTML='<div class="cnt" style="color:var(--muted);padding:10px 0">'+tx('noList')+'</div>'; return; }
@@ -681,6 +696,100 @@ function printLabels(){
   }
   window.addEventListener('load',ksFit);
   window.addEventListener('beforeprint',ksFit);
+  <\/script>
+  </body></html>`;
+  const w=window.open('','_blank'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
+  w.document.write(html); w.document.close();
+}
+
+// ── 키홀더 라벨(65×25mm) — 룸키 키홀더에 붙이는 라벨(Min 2026-11-13: 손으로 써 붙이던 것)
+//   내용 = 투숙자 이름(님) · 층 · 그룹코드 · 방 번호(호). 손님이 보는 것이라 **한국어 고정**(화면 언어와 무관).
+//   칸은 정확히 65×25mm 여야 하므로 축소하지 않는다 — 3열×11행 = 195×275mm 라 A4 사방 여백(7.5·11mm) 안에 든다.
+const KT={w:65,h:25,cols:3,rows:11};
+function ktFloor(l){
+  const m=String(l.zone||'').match(/^(\d+)\s*층$/); if(m) return m[1];
+  //  층 정보를 못 읽은 호텔동 객실 — 방 번호 규칙(13xx=3층 … 22xx=12층)으로
+  const n=String(l.roomNo||'').trim();
+  if(/^\d{4}$/.test(n)){ const f=Math.floor(Number(n)/100)-10; if(f>=3&&f<=12) return String(f); }
+  return '';
+}
+function ktRoom(no){ const t=String(no==null?'':no).trim(); return /^\d+$/.test(t)? t+'호' : t; }
+function ktCode(l){ return String(l.code||'').replace(/-[A-Za-z]+\d*$/,''); }   // 「DFや-Y1」 → 「DFや」
+function ktNameLines(l){
+  const a=(l.members||[]).map(m=>String(m.name_kr||m.name_en||'').trim()).filter(Boolean).map(n=>n+'님');
+  if(a.length<=4) return a;                       // 한 줄에 한 사람(3·4명은 글자를 줄여 네 줄까지)
+  return [a[0], '외 '+(a.length-1)+'명'];
+}
+function ktList(){ return filtered().slice().sort((a,b)=>String(a.ci).localeCompare(String(b.ci))||roomCmp(a.roomNo,b.roomNo)); }
+function printKeyTags(){
+  const list=ktList();
+  if(!list.length){ toast(tx('noPrintList'),'err'); return; }
+  const PER=KT.cols*KT.rows;
+  const pages=[]; for(let i=0;i<list.length;i+=PER){ const pg=list.slice(i,i+PER); while(pg.length<PER) pg.push(null); pages.push(pg); }
+  const cell=l=>{ if(!l) return '<div class="kt-cell kt-empty"></div>';
+    const fl=ktFloor(l), code=ktCode(l), lines=ktNameLines(l);
+    return `<div class="kt-cell"><div class="kt-names n${lines.length}">${lines.map(n=>`<span>${esc(n)}</span>`).join('')}</div>
+      <div class="kt-right"><div class="kt-top">${fl?`<span class="kt-fl">${esc(fl)}층</span>`:''}${code?`<span class="kt-code">${esc(code)}</span>`:''}</div>
+        <div class="kt-room">${esc(ktRoom(l.roomNo))}</div></div></div>`; };
+  const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>Key holder labels — ${esc(YM)}</title>
+  <style>${window.__SO_JP_FONT||''}
+  @page{size:A4 portrait;margin:0}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{font-family:'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR','Meiryo',sans-serif;background:#f5f5f5;color:#111}
+  .kt-toolbar{position:sticky;top:0;background:#fff;padding:14px 20px;box-shadow:0 2px 8px rgba(0,0,0,.1);display:flex;align-items:center;gap:16px;z-index:100}
+  .kt-toolbar h1{font-size:16px;font-weight:700}.kt-toolbar .meta{font-size:11px;color:#666}
+  .kt-toolbar button{padding:8px 20px;background:#15803D;color:#fff;border:none;border-radius:5px;font-size:13px;font-weight:600;cursor:pointer}
+  .kt-toolbar .kt-close{background:#999}
+  .kt-container{padding:20px}
+  .kt-page{width:210mm;height:297mm;margin:0 auto 20px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;
+    box-shadow:0 2px 8px rgba(0,0,0,.15);page-break-after:always;break-after:page}
+  .kt-page:last-child{page-break-after:auto;break-after:auto}
+  .kt-grid{display:grid;grid-template-columns:repeat(${KT.cols},${KT.w}mm);grid-auto-rows:${KT.h}mm}
+  .kt-cell{width:${KT.w}mm;height:${KT.h}mm;border:.4pt dashed #9a9a9a;padding:1.5mm 2.4mm;overflow:hidden;
+    display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:2mm;align-items:stretch}
+  .kt-empty{background:#fafafa}
+  .kt-names{min-width:0;height:100%;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:.7mm;
+    font-size:16pt;font-weight:800;line-height:1.1;white-space:nowrap;letter-spacing:-.01em}
+  .kt-names span{display:block;max-width:100%;overflow:hidden}
+  .kt-names.n3{font-size:13pt;gap:.4mm}.kt-names.n4{font-size:11pt;gap:.2mm;line-height:1.05}
+  .kt-right{display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:.7mm;max-width:36mm;min-width:0;white-space:nowrap}
+  .kt-top{display:flex;align-items:baseline;gap:1.6mm;max-width:36mm;overflow:hidden}
+  .kt-fl{font-size:14pt;font-weight:800}
+  .kt-code{font-size:10pt;font-weight:800;color:#1A4D8F;font-family:Consolas,'SZJpMono',monospace}
+  .kt-room{font-size:17pt;font-weight:900;line-height:1.05;max-width:36mm;overflow:hidden}
+  @media print{html,body{background:#fff}.kt-toolbar{display:none}.kt-container{padding:0}
+    .kt-page{margin:0 auto;box-shadow:none}
+    .kt-cell{-webkit-print-color-adjust:exact;print-color-adjust:exact}.kt-empty{background:#fff}}
+  </style></head><body>
+  <div class="kt-toolbar"><h1>${esc(tx('tagPvTitle'))}</h1>
+    <div class="meta">${esc(tx('tagPvMeta')(list.length,pages.length))} · ${esc(YM)} · ${esc(tx('tagPvHint'))}</div>
+    <div style="flex:1"></div>
+    <button onclick="window.print()">${esc(tx('pvPrint'))}</button>
+    <button class="kt-close" onclick="window.close()">${esc(tx('pvClose'))}</button>
+  </div>
+  <div class="kt-container">${pages.map(pg=>`<div class="kt-page"><div class="kt-grid">${pg.map(cell).join('')}</div></div>`).join('')}</div>
+  <script>
+  // 긴 이름·긴 방 이름은 칸에 들어갈 때까지 글자만 줄인다(실제 폭을 재서)
+  function ktFit(){
+    document.querySelectorAll('.kt-cell').forEach(function(c){
+      ['.kt-room','.kt-top'].forEach(function(sel){
+        var r=c.querySelector(sel); if(!r) return; r.style.fontSize='';
+        var kids=sel==='.kt-top'?r.children:[r], sc=1;
+        for(var i=0;i<50 && r.scrollWidth>r.clientWidth+0.5;i++){ sc-=0.03;
+          for(var j=0;j<kids.length;j++){ kids[j].style.fontSize=''; var b=parseFloat(getComputedStyle(kids[j]).fontSize); kids[j].style.fontSize=(b*sc)+'px'; } }
+      });
+      var n=c.querySelector('.kt-names'); if(!n) return; n.style.fontSize='';
+      var px=parseFloat(getComputedStyle(n).fontSize);
+      //  가로 — 넘치는 줄만 줄인다(긴 이름 한 명 때문에 같은 방 사람 이름까지 작아지지 않게)
+      Array.prototype.forEach.call(n.children,function(sp){ sp.style.fontSize=''; var q=px;
+        for(var m=0;m<70 && sp.scrollWidth>sp.clientWidth+0.5;m++){ q-=0.5; sp.style.fontSize=q+'px'; } });
+      //  세로 — 그래도 넘치면 전 줄을 함께
+      for(var k=0;k<70 && n.scrollHeight>n.clientHeight+0.5;k++){ px-=0.5; n.style.fontSize=px+'px';
+        Array.prototype.forEach.call(n.children,function(sp){ if(sp.style.fontSize && parseFloat(sp.style.fontSize)>px) sp.style.fontSize=''; }); }
+    });
+  }
+  window.addEventListener('load',ktFit);
+  window.addEventListener('beforeprint',ktFit);
   <\/script>
   </body></html>`;
   const w=window.open('','_blank'); if(!w){ toast(tx('popupBlocked'),'err'); return; }
