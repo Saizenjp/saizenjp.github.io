@@ -116,6 +116,9 @@
   .cell .pv .pu{font-size:10.5px;font-weight:700;font-family:var(--sans);color:var(--text2);margin-left:2px}
   .cell .io{font-size:10.5px;font-weight:700;margin-top:3px;display:flex;gap:6px;flex-wrap:wrap}
   .cell .io .i{color:#2f7d4f}.cell .io .o{color:#8a5a12}
+  .accbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:-4px 0 12px}
+  .accbar .al{font-size:11.5px;font-weight:800;color:var(--text2);margin-right:2px}
+  .accbar .cn{font-family:var(--mono);font-size:11px;font-weight:700;opacity:.8;margin-left:4px}
   .calsum{display:flex;flex-wrap:wrap;gap:3px 14px;font-size:11.5px;font-weight:700;color:var(--text2);margin:-3px 0 10px}
   .ylist{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
   .ycard{border:1px solid var(--border);border-radius:10px;padding:11px 13px;background:var(--surface);text-decoration:none;color:inherit;display:block}
@@ -126,7 +129,7 @@
   .ycard .bar{height:7px;background:var(--surface3);border-radius:99px;overflow:hidden;margin-top:7px}
   .ycard .bar i{display:block;height:100%;background:var(--accent)}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.1">
 </head>
 <body data-so-area="stats_mgmt staycal">
 <div class="topbar so-bar">
@@ -178,14 +181,14 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=70"></script>
-<script src="../assets/saizen-ops.js?v=41.0"></script>
+<script src="../assets/saizen-ops.js?v=41.1"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, DATA=null;
 
 // ── i18n (한·일 직원 공용. ja 기본) ──
 const L={
-  ja:{ calH:'滞在カレンダー', vSum:'サマリー', vCal:'カレンダー', calYH:y=>`${y}年 月別`, calMonth:'月', calYear:'年', calToday:'今日',
+  ja:{ calH:'滞在カレンダー', vSum:'サマリー', vCal:'カレンダー', calYH:y=>`${y}年 月別`, calMonth:'月', calYear:'年', calToday:'今日', calAccLbl:'宿泊先', calAccAll:'全体', calAccNone:'宿泊先 未設定',
     vTrend:'予約推移', trH:'予約推移', trCompare:'比較', trDays:n=>`${n}日前と比べて`,
     trBase:d=>`基準 ${d}`, trNoBase:'比較できる過去の記録がまだありません — 毎日0時に1行ずつ記録します。明日から増減が出ます。',
     trMonths:'月別', trDaily:'日別推移', trStatus:'区分別', trAccom:'宿泊施設別', trChanges:'この期間に変わったチーム',
@@ -195,7 +198,7 @@ const L={
     trLoading:'推移を読み込み中…', trFail:'推移の取得に失敗',
     srv:{'(미지정)':'(未指定)','(등급미상)':'(等級不明)','(기타)':'(その他)','(없음)':'(なし)','일반':'一般','확정':'確定','견적':'見積','대기':'待機','정산':'精算','라운딩':'ラウンド','식음':'飲食','숙박':'宿泊','골프샵':'ゴルフショップ','기타':'その他'},
     calNights:n=>`延べ ${n}人泊`, calPeak:(d,n)=>`最多 ${d} ${n}名`, calPeakShort:n=>`最多 ${n}名`, calTeams:n=>`${n}チーム`, calIn:(t,n)=>`🛬 ${t}チーム·${n}名`, calOut:(t,n)=>`🛫 ${t}チーム·${n}名`, calAvg:n=>`1日平均 ${n}名`, calStayDays:n=>`宿泊のある日 ${n}日`,
-    calNote:'大きい数字=その夜に泊まる人数 · 🛬チェックイン · 🛫チェックアウト(チーム·人数)。色が濃いほど多い。日付を押すとフロントデスク。',
+    calNote:'大きい数字=その夜に泊まる人数 · 🛬チェックイン · 🛫チェックアウト(チーム·人数)。色が濃いほど多い。日付を押すとフロントデスク。上の宿泊先チップ = その宿泊先だけを数える(複数選択可 · 数字はこの期間の延べ人泊) · 「全体」= 全宿泊先の合計。マスにカーソルを置くと宿泊先別の人数。',
     navHome:'ホーム', step:'経営統計', connIdle:'未接続', connecting:'接続中…', connOk:'接続済', connFail:'接続失敗', connect:'接続', connectedBtn:'✓ 接続済',
     connHint:'代表・部署長向けの月/年 統合統計(送客・売上・稼働率・顧客構成)。読み取り専用集計。',
     period:'期間', run:'照会', qThisMonth:'今月', qThisYear:'今年', qLastYear:'昨年', qLast12:'直近12ヶ月', prevMonth:'前月', nextMonth:'翌月',
@@ -210,7 +213,7 @@ const L={
     occNote:'稼働率は予約基準です — その期間に重なる泊のみを数えます。「配室済み」は客室割当の進み具合で、稼働率そのものではありません。施設別は客室割当のある分だけなので、割当が済んでいない月は低く出ます。',
     noteCalc:'※ 送客=現地チェックイン(dep)基準・人数=予約人数。B2B=人数×泊数×施設単価+人数×¥6,000。現地売上=charges(取消除く・JST)。稼働率=予約人泊(期間に重なる泊のみ)÷(稼働客室定員×期間日数)。「待機」予約は客室を占有しないため除外。',
  },
-  ko:{ calH:'체류 캘린더', vSum:'요약', vCal:'캘린더', calYH:y=>`${y}년 월별`, calMonth:'월', calYear:'연', calToday:'오늘',
+  ko:{ calH:'체류 캘린더', vSum:'요약', vCal:'캘린더', calYH:y=>`${y}년 월별`, calMonth:'월', calYear:'연', calToday:'오늘', calAccLbl:'숙소', calAccAll:'전체', calAccNone:'숙소 미지정',
     vTrend:'예약 추이', trH:'예약 추이', trCompare:'비교', trDays:n=>`${n}일 전 대비`,
     trBase:d=>`기준 ${d}`, trNoBase:'비교할 지난 기록이 아직 없습니다 — 매일 자정에 한 줄씩 쌓입니다. 내일부터 증감이 나옵니다.',
     trMonths:'월별', trDaily:'일별 추이', trStatus:'구분별', trAccom:'숙소별', trChanges:'이 기간에 바뀐 팀',
@@ -220,7 +223,7 @@ const L={
     trLoading:'추이 불러오는 중…', trFail:'추이 조회 실패',
     srv:{},
     calNights:n=>`연 ${n}인박`, calPeak:(d,n)=>`최다 ${d} ${n}명`, calPeakShort:n=>`최다 ${n}명`, calTeams:n=>`${n}팀`, calIn:(t,n)=>`🛬 ${t}팀·${n}명`, calOut:(t,n)=>`🛫 ${t}팀·${n}명`, calAvg:n=>`하루 평균 ${n}명`, calStayDays:n=>`묵은 날 ${n}일`,
-    calNote:'큰 숫자 = 그날 밤 묵는 인원 · 🛬 체크인 · 🛫 체크아웃(팀·인원). 색이 진할수록 많습니다. 날짜를 누르면 그날 프론트 데스크로.',
+    calNote:'큰 숫자 = 그날 밤 묵는 인원 · 🛬 체크인 · 🛫 체크아웃(팀·인원). 색이 진할수록 많습니다. 날짜를 누르면 그날 프론트 데스크로. 위 숙소 칩 = 그 숙소만 셉니다(여러 개 가능 · 칩의 숫자는 이 기간 연인박) · 「전체」 = 모든 숙소 합계. 칸에 마우스를 올리면 숙소별 인원.',
     navHome:'홈', step:'경영 통계', connIdle:'미연결', connecting:'연결 중…', connOk:'연결됨', connFail:'연결 실패', connect:'연결', connectedBtn:'✓ 연결됨',
     connHint:'대표·부서장용 월/연 통합 통계(입도·매출·가동률·고객구성). 읽기 전용 집계.',
     period:'기간', run:'조회', qThisMonth:'이번 달', qThisYear:'올해', qLastYear:'작년', qLast12:'최근 12개월', prevMonth:'이전 달', nextMonth:'다음 달',
@@ -235,7 +238,7 @@ const L={
     occNote:'가동률은 예약 기준입니다 — 그 기간에 겹치는 밤만 셉니다. 「방배정된 분」은 배정 작업이 얼마나 진행됐는지를 보여줄 뿐 가동률이 아닙니다. 시설별 표는 방배정된 것만 세므로 배정이 덜 된 달은 낮게 나옵니다.',
     noteCalc:'※ 입도=현지 체크인(dep) 기준·인원=예약 인원. B2B=인원×박수×숙소단가+인원×¥6,000. 현장 매출=charges(취소 제외·JST). 전기카트처럼 앞으로 쓸 날짜로 잡힌 청구는 「이 중 예정」으로 따로 표시. 가동률=예약 인박(기간에 겹치는 밤만)÷(가동 객실 정원×기간 일수). 대기 예약은 방을 잡지 않으므로 제외.',
  },
-  en:{ calH:'Stay calendar', vSum:'Summary', vCal:'Calendar', calYH:y=>`${y} by month`, calMonth:'Month', calYear:'Year', calToday:'Today',
+  en:{ calH:'Stay calendar', vSum:'Summary', vCal:'Calendar', calYH:y=>`${y} by month`, calMonth:'Month', calYear:'Year', calToday:'Today', calAccLbl:'Lodging', calAccAll:'All', calAccNone:'No lodging set',
     vTrend:'Booking trend', trH:'Booking trend', trCompare:'Compare', trDays:n=>`vs ${n} days ago`,
     trBase:d=>`baseline ${d}`, trNoBase:'No past record to compare yet — one row is saved every midnight. Changes appear from tomorrow.',
     trMonths:'By month', trDaily:'Daily trend', trStatus:'By status', trAccom:'By lodging', trChanges:'Teams that changed',
@@ -245,7 +248,7 @@ const L={
     trLoading:'Loading trend…', trFail:'Could not load the trend',
     srv:{'(미지정)':'(unassigned)','(등급미상)':'(grade unknown)','(기타)':'(other)','(없음)':'(none)','일반':'General','확정':'Confirmed','견적':'Quote','대기':'Waitlist','정산':'Settled','라운딩':'Round','식음':'F&B','숙박':'Lodging','골프샵':'Pro shop','기타':'Other'},
     calNights:n=>`${n} person-nights`, calPeak:(d,n)=>`peak ${d} ${n}`, calPeakShort:n=>`peak ${n}`, calTeams:n=>`${n} teams`, calIn:(t,n)=>`🛬 ${t} teams·${n}`, calOut:(t,n)=>`🛫 ${t} teams·${n}`, calAvg:n=>`avg ${n}/night`, calStayDays:n=>`${n} days with guests`,
-    calNote:'Big number = guests staying that night · 🛬 check-ins · 🛫 check-outs (teams·guests). Darker = busier. Click a date for that day at the front desk.',
+    calNote:'Big number = guests staying that night · 🛬 check-ins · 🛫 check-outs (teams·guests). Darker = busier. Click a date for that day at the front desk. Lodging chips above = count only those lodgings (multi-select · chip number = person-nights in this period) · “All” = every lodging. Hover a cell for the per-lodging split.',
     navHome:'Home', step:'Exec Stats', connIdle:'Not connected', connecting:'Connecting…', connOk:'Connected', connFail:'Connect failed', connect:'Connect', connectedBtn:'✓ Connected',
     connHint:'Monthly/yearly consolidated stats for execs (arrivals, revenue, occupancy, customer mix). Read-only aggregation.',
     period:'Period', run:'Run', qThisMonth:'This month', qThisYear:'This year', qLastYear:'Last year', qLast12:'Last 12 months', prevMonth:'Prev month', nextMonth:'Next month',
@@ -443,6 +446,11 @@ function render(){
 //  칸이 진할수록 사람이 많다(성수기가 한눈에). 날짜를 누르면 그날 프론트 데스크.
 //  연 보기는 12개월을 한 화면에 — 월별 연인원(인원×박수)·팀수·최다 인원.
 let VIEW='sum', CALY=null, CALM=null, CALMODE='month', CALROWS=null, CALKEY='';
+//  숙소 칩(Min 2026-11-13): 「전체」 = 모든 숙소 합계 / 숙소 칩 = 고른 숙소만(여러 개 가능). 달·연을 옮겨도 고른 숙소는 유지한다.
+let CALACC={}, CALSEL=new Set(), CALSEQ=0;
+const CAL_ACC_ORDER=['야마나미리조트','쿠주힐즈','간지호텔','시즈노야도 료칸'];
+function calAccOf(b){ return CALACC[b.event_seq]||''; }
+function calAccLabel(a){ return a ? srv(a) : tx('calAccNone'); }
 function calFirstLast(){
   if(CALMODE==='year') return [CALY+'-01-01', CALY+'-12-31'];
   const f=new Date(CALY,CALM,1), t=new Date(CALY,CALM+1,0);
@@ -464,17 +472,24 @@ async function calLoad(){
     rows=rows.concat(data||[]);
     if(!data||data.length<1000) break; from+=1000;
   }
-  CALROWS=rows; CALKEY=key; return rows;
+  // 숙소 = guests.accom(팀마다 1행) — 못 읽으면 「숙소 없음」으로 그리지 않고 실패로 끝낸다
+  const acc={}, seqs=rows.map(b=>b.event_seq);
+  for(let i=0;i<seqs.length;i+=300){
+    const {data,error}=await supa.from('guests').select('event_seq,accom').in('event_seq',seqs.slice(i,i+300));
+    if(error) throw error;
+    (data||[]).forEach(g=>{ acc[g.event_seq]=g.accom||''; });
+  }
+  CALACC=acc; CALROWS=rows; CALKEY=key; return rows;
 }
 // 날짜별 집계 {스테이 인원, 체크인 팀·인원, 체크아웃 팀·인원}
 function calDays(rows,f,t){
   const day={};
-  const add=(d)=>day[d]=day[d]||{pax:0,teams:0,ci:0,ciT:0,co:0,coT:0};
+  const add=(d)=>day[d]=day[d]||{pax:0,teams:0,ci:0,ciT:0,co:0,coT:0,by:{}};
   for(let d=new Date(f+'T00:00:00'); iso(d)<=t; d.setDate(d.getDate()+1)) add(iso(d));
   rows.forEach(b=>{
     const n=Number(b.pax)||0;
     for(let d=new Date(b.dep_date+'T00:00:00'); iso(d)<b.arr_date; d.setDate(d.getDate()+1)){
-      const k=iso(d); if(day[k]){ day[k].pax+=n; day[k].teams++; }   // 그날 '밤' 묵는 인원·팀
+      const k=iso(d); if(day[k]){ day[k].pax+=n; day[k].teams++; const a=calAccOf(b); day[k].by[a]=(day[k].by[a]||0)+n; }   // 그날 '밤' 묵는 인원·팀(+숙소별)
     }
     if(day[b.dep_date]){ day[b.dep_date].ci+=n; day[b.dep_date].ciT++; }
     if(day[b.arr_date]){ day[b.arr_date].co+=n; day[b.arr_date].coT++; }
@@ -484,11 +499,23 @@ function calDays(rows,f,t){
 async function renderCal(){
   const box=$('#content'); if(!box) return;
   box.innerHTML=`<div class="deny">${tx('loading')}</div>`;
-  let rows;
+  let rows; const my=++CALSEQ;
   try{ rows=await calLoad(); }
-  catch(e){ box.innerHTML=`<div class="deny" style="color:var(--err)">${esc(tx('loadFail')+': '+e.message)}</div>`; return; }
+  catch(e){ if(my!==CALSEQ) return; box.innerHTML=`<div class="deny" style="color:var(--err)">${esc(tx('loadFail')+': '+e.message)}</div>`; return; }
+  if(my!==CALSEQ) return;   // 달·연을 연달아 넘기면 늦게 온 앞 응답은 버린다
   const [f,t]=calFirstLast();
-  const day=calDays(rows,f,t);
+  // 숙소 칩 — 숫자는 그 기간의 연인박(전체 기준). 고른 숙소가 이 기간에 없어도 칩은 남긴다(0).
+  const dayAll=calDays(rows,f,t), accN={};
+  Object.values(dayAll).forEach(v=>Object.keys(v.by).forEach(a=>{ accN[a]=(accN[a]||0)+v.by[a]; }));
+  CALSEL.forEach(a=>{ if(accN[a]===undefined) accN[a]=0; });
+  const accList=Object.keys(accN).sort((a,b)=>{ const ai=CAL_ACC_ORDER.indexOf(a), bi=CAL_ACC_ORDER.indexOf(b); return (ai<0?(a?8:9):ai)-(bi<0?(b?8:9):bi) || a.localeCompare(b); });
+  const allN=Object.values(accN).reduce((x,y)=>x+y,0);
+  const accBar=`<div class="accbar"><span class="al">${tx('calAccLbl')}</span>
+    <button class="chip${CALSEL.size?'':' on'}" data-acc-all="1" type="button">${tx('calAccAll')}<span class="cn">${num(allN)}</span></button>
+    ${accList.map(a=>`<button class="chip${CALSEL.has(a)?' on':''}" data-acc="${esc(a)}" type="button">${esc(calAccLabel(a))}<span class="cn">${num(accN[a])}</span></button>`).join('')}</div>`;
+  if(CALSEL.size) rows=rows.filter(b=>CALSEL.has(calAccOf(b)));
+  const day=CALSEL.size?calDays(rows,f,t):dayAll;
+  const byTip=v=>accList.filter(a=>v.by[a]).map(a=>calAccLabel(a)+' '+num(v.by[a])+tx('uPpl')).join('\n');   // 칸 툴팁 — 그날 밤 숙소별 인원
   const label = CALMODE==='year' ? `${CALY}` : `${CALY}-${pad(CALM+1)}`;
   const bar=`<div class="calbar">
     <button class="chip" id="c-prev" type="button">◀</button>
@@ -509,11 +536,11 @@ async function renderCal(){
     for(let i=0;i<pad0;i++) cells+=`<div class="cell pad"></div>`;
     const today=iso(new Date());
     for(let d=1; d<=lastD; d++){
-      const k=`${CALY}-${pad(CALM+1)}-${pad(d)}`, v=day[k]||{pax:0,teams:0,ci:0,ciT:0,co:0,coT:0};
+      const k=`${CALY}-${pad(CALM+1)}-${pad(d)}`, v=day[k]||{pax:0,teams:0,ci:0,ciT:0,co:0,coT:0,by:{}};
       const w=new Date(CALY,CALM,d).getDay();
       const a=v.pax?(0.10+0.55*(v.pax/max)):0;    // 인원이 많을수록 진하게
       cells+=`<a class="cell${w===0?' sun':(w===6?' sat':'')}${k===today?' today':''}" href="frontdesk.html?date=${k}"
-        style="background:rgba(100,117,72,${a.toFixed(3)})" title="${esc(k)}">
+        style="background:rgba(100,117,72,${a.toFixed(3)})" title="${esc(k+(v.pax?'\n'+byTip(v):''))}">
         <div class="dn">${d}</div>
         <div class="pv">${v.pax?num(v.pax):''}${v.pax?`<span class="pu">${tx('uPpl')}${v.teams?` · ${num(v.teams)}${tx('uTeam')}`:''}</span>`:''}</div>
         <div class="io">${v.ciT?`<span class="i">🛬${v.ciT}·${v.ci}</span>`:''}${v.coT?`<span class="o">🛫${v.coT}·${v.co}</span>`:''}</div>
@@ -554,7 +581,11 @@ async function renderCal(){
       <div class="ylist">${cards}</div>
       <div class="note">${tx('calNote')}</div></div>`;
   }
-  box.innerHTML=bar+body;
+  box.innerHTML=bar+accBar+body;
+  box.querySelectorAll('.accbar .chip').forEach(c=>c.addEventListener('click',()=>{
+    if(c.dataset.accAll) CALSEL.clear(); else { const a=c.dataset.acc; if(CALSEL.has(a)) CALSEL.delete(a); else CALSEL.add(a); }
+    renderCal();   // 같은 기간은 받아 둔 예약을 다시 쓴다(조회 없음)
+  }));
   const go=(dy,dm)=>{ if(CALMODE==='year'){ CALY+=dy; } else { CALM+=dm; if(CALM<0){CALM=11;CALY--;} if(CALM>11){CALM=0;CALY++;} } CALROWS=null; renderCal(); };
   $('#c-prev').addEventListener('click',()=>go(-1,-1));
   $('#c-next').addEventListener('click',()=>go(1,1));
