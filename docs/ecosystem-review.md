@@ -68,7 +68,7 @@ menu_items ◀─ menu(품목·세율) · cart_types/cart_units ◀─ cart(카�
 | 領収書 | 완료(수입인지 판정 포함) |
 | 경감세율 8% | 완료(P1 세율 구분·버림) |
 | 결제수단 QR·IC | **그대로 현금/카드 2종**(payments.method check) — 단말 확정 뒤 |
-| 안 쓰는 표 | app_secrets·key_bindings·shizu_onsen·shizu_water_fill·rounds·dining 정리 완료 / cart_units 는 이제 사용 / **남은 것**: `fee_rules`(2행, 코드 참조 없음) · 백업표 `_bak_golf_*_20261025` 2개(검수 끝나면 삭제 후보) |
+| 안 쓰는 표 | app_secrets·key_bindings·shizu_onsen·shizu_water_fill·rounds·dining 정리 완료 / cart_units 는 이제 사용 / **남은 것**: `fee_rules`(2행, 코드 참조 없음) · 백업표 `_bak_golf_*_20261025` 2개는 삭제(SQL 170) |
 
 ---
 

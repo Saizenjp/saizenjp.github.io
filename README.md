@@ -9,7 +9,7 @@
 /ops/index.html        카드 랜딩(권한별 노출)
 /ops/hub/*.html        화면 37개(파일 하나 = 화면 하나) — admin, aircover, audit, bill, board, cart, course, dinner, dispatch, frontdesk, groupcodes, housekeeping, inventory, keyslip, kitchen, menu, nametag, notice, occupancy, outings, partner_ops, pos, pos_customer, qrcards, room, roomstats, settle, settle_merit, settle_report, shizu, signage, stats, staychart, step1, transfer, visitor_stats, watchlist
 /ops/assets/           saizen-ops.js(공통 chrome·i18n·권한·헬퍼) · saizen-ops.css · saizen-core.js(순수 도메인 규칙, Node 테스트 공유) · qrcode-generator.js
-/ops/hub/sql/          Supabase SQL 기록 01~169(번호순 · Min 승인 뒤 MCP/SQL Editor 로 적용) · 00_VERIFY.sql(적용 상태 점검) · 00_DATA_AUDIT.sql
+/ops/hub/sql/          Supabase SQL 기록 01~170(번호순 · Min 승인 뒤 MCP/SQL Editor 로 적용) · 00_VERIFY.sql(적용 상태 점검) · 00_DATA_AUDIT.sql
                        새 파일은 멱등하게 쓴다. 이미 적용된 옛 번호 파일은 다시 실행하지 않는다(05·06 은 객실 마스터·방배정을 지우고, 뒤 번호가 같은 함수·정책을 다시 정의했다)
 /ops/edge-functions/   translate-remarks/index.ts — 비고 일본어 번역(DeepL) 함수의 소스(시즈 예약표가 부른다). 배포는 Supabase 쪽에서 따로 한다(CI 는 함수를 배포하지 않는다) · DEEPL_API_KEY 가 없으면 화면은 원문을 그대로 보인다
 /assets/               로고 SVG
