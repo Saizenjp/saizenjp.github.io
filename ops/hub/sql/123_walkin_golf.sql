@@ -10,7 +10,7 @@
 --  2026-11-12 기록 보충: ②③④ 는 적용 당시 이 파일에 개요(주석)만 있고 본문은 DB 에만 있었다.
 --   운영 DB 의 정의(pg_get_functiondef · pg_get_triggerdef · pg_policies)를 그대로 옮겨 적었다 —
 --   다시 실행해도 운영 DB 는 바뀌지 않는다(같은 정의).
---  남은 정리(168, 승인 대기): 옛 4인자 walkin_open(120)·옛 정책 walkins_write/walkins_update(120) 삭제.
+--  남은 정리(168 — 2026-11-13 적용): 옛 4인자 walkin_open(120)·옛 정책 walkins_write/walkins_update(120) 삭제.
 -- ============================================================================
 
 -- ① 골프 정보 — 조편성에 필요한 최소한만
@@ -46,7 +46,7 @@ create trigger trg_ot_cleanup_walkins after delete on public.walkins
 -- ③ walkin_open 확장 — 권한에 front·golf 추가 + 골프 인자 4개
 --    (p_name, p_pax, p_venue, p_date, p_holes, p_tee, p_course, p_phone)
 --    ※ 120 의 4인자 판(p_date, p_name, p_pax, p_venue)은 따로 남아 있다 — 인자 이름이 겹쳐, 4개만 보내면
---       서버가 어느 쪽인지 고르지 못한다. 화면은 8인자 판에만 있는 인자를 같이 보낸다. 옛 판 삭제는 168.
+--       서버가 어느 쪽인지 고르지 못한다. 화면은 8인자 판에만 있는 인자를 같이 보낸다. 옛 판은 168 에서 삭제했다(2026-11-13 적용).
 CREATE OR REPLACE FUNCTION public.walkin_open(p_name text DEFAULT NULL::text, p_pax integer DEFAULT 1, p_venue text DEFAULT NULL::text, p_date date DEFAULT NULL::date, p_holes integer DEFAULT NULL::integer, p_tee text DEFAULT NULL::text, p_course text DEFAULT NULL::text, p_phone text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -76,7 +76,7 @@ revoke execute on function public.walkin_open(text, integer, text, date, integer
 grant  execute on function public.walkin_open(text, integer, text, date, integer, text, text, text) to authenticated;
 
 -- ④ walkins 쓰기 권한에 front·golf 추가(등록 화면이 프론트로 가므로)
---    ※ 120 의 옛 정책 walkins_write·walkins_update(pos·settle)는 아래 정책의 부분집합으로 남아 있다(동작 차이 없음) — 삭제는 168.
+--    ※ 120 의 옛 정책 walkins_write·walkins_update(pos·settle)는 아래 정책의 부분집합으로 남아 있었다(동작 차이 없음) — 168 에서 삭제했다(2026-11-13 적용).
 drop policy if exists walkins_ins on public.walkins;
 create policy walkins_ins on public.walkins for insert to authenticated
   with check (has_any_area(array['pos','settle','front','golf']));
