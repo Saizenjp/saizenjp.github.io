@@ -603,3 +603,21 @@ test('hangulToKana: ㄷ·ㅌ + ㅘㅙㅚㅝㅞㅟ 는 다른 행과 같은 합�
   assert.equal(SZ.hangulToKana('괴'), 'クェ');
   assert.equal(SZ.hangulToKana('권'), 'クォン');
 });
+// Min 2026-11-13 「X 표시는 쿠쥬 고겐 CC 라운딩 불가 일정 — 간지호텔 숙박이라도 이 날짜에는 야마나미에서 라운딩」(2027 阿蘇やまなみブロック日 표)
+test('golfRows: 九重高原CC 휴장일(2027)은 간지호텔 평일이어도 やまなみCC', () => {
+  const gz = { accom: '간지호텔', dep: '2027-07-18', arr: '2027-07-24' };
+  assert.deepEqual(SZ.golfRows(gz, false).map(r => [r.date.slice(5), r.course, r.note]), [
+    ['07-18', 'やまなみCC', '入国日'], ['07-19', 'やまなみCC', '祝日'],
+    ['07-20', 'やまなみCC', '九重高原CC休場 +9Hサービス対象'], ['07-21', 'やまなみCC', '九重高原CC休場 +9Hサービス対象'],
+    ['07-22', 'やまなみCC', '九重高原CC休場 +9Hサービス対象'], ['07-23', '九重高原CC', '+9Hサービス対象']]);
+  // 표의 평일 X 전부(주말·공휴일 X 는 원래 やまなみCC)
+  ['2027-05-19', '2027-07-20', '2027-07-21', '2027-07-22', '2027-07-27', '2027-07-28', '2027-07-29',
+   '2027-08-09', '2027-08-10', '2027-08-12', '2027-08-13'].forEach(d => {
+    assert.equal(SZ.kogenClosed(d), true, d);
+    assert.equal(SZ.usesYamanamiCC({ accom: '간지호텔', dep: '2027-01-01', arr: '2027-12-31' }, false, d), true, d);
+  });
+  // X 가 없는 평일은 그대로 九重高原CC · 휴장일 목록은 간지호텔에만 쓰인다
+  assert.equal(SZ.kogenClosed('2027-07-23'), false);
+  assert.equal(SZ.usesYamanamiCC({ accom: '간지호텔', dep: '2027-01-01', arr: '2027-12-31' }, false, '2027-08-16'), false);
+  assert.equal(SZ.golfRows({ accom: '야마나미리조트', dep: '2027-07-19', arr: '2027-07-21' }, false)[1].note, '+9Hサービス対象');
+});
