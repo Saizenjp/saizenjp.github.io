@@ -621,3 +621,12 @@ test('golfRows: 九重高原CC 휴장일(2027)은 간지호텔 평일이어도 �
   assert.equal(SZ.usesYamanamiCC({ accom: '간지호텔', dep: '2027-01-01', arr: '2027-12-31' }, false, '2027-08-16'), false);
   assert.equal(SZ.golfRows({ accom: '야마나미리조트', dep: '2027-07-19', arr: '2027-07-21' }, false)[1].note, '+9Hサービス対象');
 });
+
+test('mealPlan: 九重高原CC 휴장일(2027 평일)에 야마나미에서 치는 간지 팀 = 야마나미 라운딩 중식(cont)', () => {
+  const t = { accom: '간지호텔', dep: '2027-07-18', arr: '2027-07-24', isPus: false };
+  assert.equal(SZ.mealPlan(t, '2027-07-20').lunchKind, 'cont');   // 휴장(화)
+  assert.equal(SZ.mealPlan(t, '2027-07-22').lunchKind, 'cont');   // 휴장(목)
+  assert.equal(SZ.mealPlan(t, '2027-07-23').lunchKind, '');       // 구주고원 영업(금) — 종전대로
+  const y = { accom: '야마나미 리조트', dep: '2027-07-18', arr: '2027-07-24', isPus: false };
+  assert.equal(SZ.mealPlan(y, '2027-07-23').lunchKind, 'cont');   // 야마나미 팀은 원래 cont
+});

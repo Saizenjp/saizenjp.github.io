@@ -1948,6 +1948,8 @@
       if (isIn && isWTS && !isPus) lunchKind = 'arr';
       else if (isIn && isSatSun && accom === '간지호텔') lunchKind = 'arr';
       else if (isOut && isWTS && isPus) lunchKind = 'cont';
+      // 九重高原CC 휴장일(평일)은 간지 팀도 야마나미CC 라운딩 → 야마나미 라운딩 중식과 동일(Min 2026-11-17)
+      else if (isMid && accom === '간지호텔' && !isNonWorkday(date) && kogenClosed(date)) lunchKind = 'cont';
     }
     var dinner = (dep <= date && arr > date);
     return { breakfast: breakfast, lunchKind: lunchKind, dinner: dinner };
