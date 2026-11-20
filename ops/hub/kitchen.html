@@ -82,7 +82,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.7">
 </head>
 <body data-so-area="kds">
 <script>(function(){ if(new URLSearchParams(location.search).get('view')==='front') document.body.setAttribute('data-so-area','kds_front'); })();</script>
@@ -129,8 +129,8 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-core.js?v=72"></script><!-- 묶음 통일 태그 계산(SZCore) -->
-<script src="../assets/saizen-ops.js?v=41.6"></script>
+<script src="../assets/saizen-core.js?v=73"></script><!-- 묶음 통일 태그 계산(SZCore) -->
+<script src="../assets/saizen-ops.js?v=41.7"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 주방 화면(KDS)  · docs 정산명세(04) Phase 3
@@ -200,7 +200,7 @@ function chime(){
 
 function toast(msg,cls){
   const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:'');
-  t.textContent=msg; $('#toast').appendChild(t);
+  t.textContent=msg; $('#toast').appendChild(t);if(window.__so_toastKeep&&window.__so_toastKeep(t))return;
   setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2400);
 }
 var _connKey=null,_connCls='';   // 마지막 연결 상태(사전 키) — 언어를 바꾸면 applyStatic 이 다시 쓴다
@@ -222,7 +222,9 @@ async function connect(){
     supa=window.supabase.createClient(url,key);
     const {error}=await supa.from('kitchen_tickets').select('id',{count:'exact',head:true});
     if(error) throw error;
-    setConn('connectedTxt','ok'); toast(tx('connOkToast'),'ok');
+    setConn('connectedTxt','ok');
+    document.querySelectorAll('#toast .so-toast-keep[data-conn]').forEach(x=>x.remove());
+    toast(tx('connOkToast'),'ok');
     btn.textContent=tx('connectedBtn'); btn.classList.add('connected'); btn.disabled=false;
     await refresh(); startPoll();
   }catch(e){
@@ -230,6 +232,8 @@ async function connect(){
     // 네트워크 끊김(fetch 실패)에는 SQL·키 안내 대신 자동 재연결 안내 — 주방 직원이 할 수 없는 조치를 10초마다 띄우지 않는다
     const net=/failed to fetch|networkerror|load failed/i.test(String((e&&e.message)||''));
     toast(tx('connFailToast')+': '+e.message+' '+tx(net?'connNetHint':'connFailHint'),'err');
+    /* 연결 실패 안내에 표시를 단다 — 다시 연결되면 이것만 걷는다(실패 토스트는 눌러야 닫히므로, 두면 연결된 뒤에도 실패로 보인다) */
+    { const k=document.querySelector('#toast .so-toast-keep'); if(k) k.setAttribute('data-conn','1'); }
     btn.textContent=tx('connFailBtn'); btn.disabled=false; supa=null;
   }
 }

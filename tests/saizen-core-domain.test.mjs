@@ -80,17 +80,22 @@ test('allowedFloors: 지정층(3·4·7박)', () => {
   assert.deepEqual(SZ.allowedFloors(7, () => []), [11, 10, 7, 4]);
 });
 
-test('allowedFloors: 유동층(그 외 박수) — 비었거나 같은 박수만', () => {
-  // 2박: 모든 유동층 비어 있음 → 12·8·5 전부
+test('allowedFloors: 그 외 박수 — 층에 든 박수와 관계없이 12 → 8 → 5층 순서', () => {
+  // Min 2026-11-20: 「한 층에는 한 가지 박수만」 규칙을 없앴다 — 층의 점유(박수)를 보지 않는다
+  assert.deepEqual(SZ.allowedFloors(2), [12, 8, 5]);
   assert.deepEqual(SZ.allowedFloors(2, () => []), [12, 8, 5]);
-  // 8층에 같은 2박이 이미 있음 → 여전히 허용
+  // 8층에 같은 2박이 있어도, 다른 박수(3박)가 있어도 8층을 빼지 않는다
   assert.deepEqual(SZ.allowedFloors(2, f => f === 8 ? [2] : []), [12, 8, 5]);
-  // 8층에 다른 박수(3박)가 있음 → 8 제외(혼합 금지)
-  assert.deepEqual(SZ.allowedFloors(2, f => f === 8 ? [3] : []), [12, 5]);
-  // 12층에 2가지 박수 섞임 → 제외
-  assert.deepEqual(SZ.allowedFloors(5, f => f === 12 ? [5, 3] : []), [8, 5]);
-  // Set 입력도 허용
-  assert.deepEqual(SZ.allowedFloors(2, f => f === 5 ? new Set([4]) : new Set()), [12, 8]);
+  assert.deepEqual(SZ.allowedFloors(2, f => f === 8 ? [3] : []), [12, 8, 5]);
+  // 12층에 박수가 섞여 있어도 12층부터
+  assert.deepEqual(SZ.allowedFloors(5, f => f === 12 ? [5, 3] : []), [12, 8, 5]);
+  assert.deepEqual(SZ.allowedFloors(2, f => f === 5 ? new Set([4]) : new Set()), [12, 8, 5]);
+  // 3·4·7박이 아니면 전부 같은 순서
+  [1, 2, 5, 6, 8, 10].forEach(n => assert.deepEqual(SZ.allowedFloors(n), [12, 8, 5]));
+  // 돌려준 배열을 호출부가 고쳐도(싱글 층 순서가 5층을 덧붙인다) 상수는 그대로
+  const a = SZ.allowedFloors(2); a.push(99);
+  assert.deepEqual(SZ.allowedFloors(2), [12, 8, 5]);
+  assert.deepEqual(SZ.FLOOR_FLEX, [12, 8, 5]);
 });
 
 // ── 조기 퇴실 식수 경계 ──────────────────────────────────────────────────────
@@ -633,4 +638,47 @@ test('mealPlan: 九重高原CC 휴장일(2027 평일)에 야마나미에서 치�
   assert.equal(SZ.mealPlan({ accom: '간지호텔', dep: '2027-07-16', arr: '2027-07-20', isPus: false }, '2027-07-20').lunchKind, '');   // 휴장(화) 귀국일 — 종전대로
   const y = { accom: '야마나미 리조트', dep: '2027-07-18', arr: '2027-07-24', isPus: false };
   assert.equal(SZ.mealPlan(y, '2027-07-23').lunchKind, 'cont');   // 야마나미 팀은 원래 cont
+});
+// Min 2026-11-20(검수 결정) — 코스 배정표·전기카트 표에서 사람이 고른 골프장(play_course)을 송영표·중식 식수·現地手配書도 따른다
+test('golfRows·mealPlan: 골프장 수기 지정(play_course)이 규칙보다 우선 — 휴장일과 같은 결과, note 는 구분', () => {
+  const gz = { accom: '간지호텔', dep: '2026-11-18', arr: '2026-11-24' };   // 수 입국 ~ 화 귀국(인천편)
+  const fix = { '2026-11-20': 'やまなみCC' };                                // 금(평일) — 규칙은 九重高原CC
+  const rule = SZ.golfRows(gz, false);
+  assert.deepEqual(SZ.golfRows(gz, false, fix).map(r => [r.date.slice(5), r.course, r.note]), [
+    ['11-18', 'やまなみCC', '入国日'], ['11-19', '九重高原CC', '+9Hサービス対象'],
+    ['11-20', 'やまなみCC', 'やまなみCC手動指定 +9Hサービス対象'], ['11-21', 'やまなみCC', '週末'],
+    ['11-22', 'やまなみCC', '週末'], ['11-23', 'やまなみCC', '祝日']]);
+  const moved = SZ.golfRows(gz, false, fix)[2];
+  assert.equal(moved.fixed, true); assert.equal(moved.ruleCourse, '九重高原CC'); assert.equal(moved.holes, 18);
+  assert.ok(/\+9H/.test(moved.note));                                       // 평일 27H(18+9) 판정은 그대로
+  assert.notEqual(moved.note, '九重高原CC休場 +9Hサービス対象');               // 휴장일(규칙이 돌림)과 문구가 다르다
+  // 지정이 없거나 · 규칙과 같은 값이거나 · 모르는 값이면 종전 결과 그대로
+  assert.deepEqual(SZ.golfRows(gz, false, null), rule);
+  assert.deepEqual(SZ.golfRows(gz, false, {}), rule);
+  assert.deepEqual(SZ.golfRows(gz, false, { '2026-11-19': '九重高原CC', '2026-11-21': 'やまなみCC' }), rule);
+  assert.deepEqual(SZ.golfRows(gz, false, { '2026-11-20': 'その他' }), rule);
+  // 라운딩이 없는 날(인천편 귀국일)은 지정이 있어도 행을 만들지 않는다
+  assert.equal(SZ.golfRows(gz, false, { '2026-11-24': 'やまなみCC' }).length, rule.length);
+  // 반대 방향(전기카트 표의 코스 선택) — 휴장일로 계산된 날을 사람이 九重高原CC 로 되돌린 경우
+  const cl = SZ.golfRows({ accom: '간지호텔', dep: '2027-07-18', arr: '2027-07-24' }, false, { '2027-07-20': '九重高原CC' })[2];
+  assert.deepEqual([cl.course, cl.note, cl.ruleCourse], ['九重高原CC', '九重高原CC手動指定 +9Hサービス対象', 'やまなみCC']);
+  assert.equal(SZ.usesYamanamiCC(gz, false, '2026-11-20'), false);
+  assert.equal(SZ.usesYamanamiCC(gz, false, '2026-11-20', fix), true);
+  // 중식 — 야마나미로 옮긴 평일(체류 중간)은 야마나미 라운딩 중식(cont). 휴장일 규칙과 같은 조건(평일·체류 중간·간지호텔).
+  const t = { accom: '간지호텔', dep: '2026-11-18', arr: '2026-11-24', isPus: false };
+  assert.equal(SZ.mealPlan(t, '2026-11-20').lunchKind, '');                     // 지정 없음 = 구주고원 → 종전대로
+  assert.equal(SZ.mealPlan(t, '2026-11-20', 'やまなみCC').lunchKind, 'cont');
+  assert.equal(SZ.mealPlan(t, '2026-11-20', '九重高原CC').lunchKind, '');
+  assert.equal(SZ.mealPlan(t, '2026-11-20', '').lunchKind, '');
+  assert.equal(SZ.mealPlan(t, '2026-11-21', 'やまなみCC').lunchKind, '');         // 주말 — 평일에만 적용
+  assert.equal(SZ.mealPlan(t, '2026-11-18', 'やまなみCC').lunchKind, 'arr');      // 입국일(수·인천) 규칙은 그대로
+  assert.equal(SZ.mealPlan(t, '2026-11-24', 'やまなみCC').lunchKind, '');         // 귀국일 규칙은 그대로
+  assert.equal(SZ.mealPlan({ accom: '시즈노야도 료칸', dep: '2026-11-18', arr: '2026-11-24', isPus: false }, '2026-11-20', 'やまなみCC').lunchKind, '');   // 간지호텔에만 적용
+  // 휴장일(규칙이 야마나미)을 사람이 九重高原CC 로 되돌리면 중식도 빠진다
+  const c = { accom: '간지호텔', dep: '2027-07-18', arr: '2027-07-24', isPus: false };
+  assert.equal(SZ.mealPlan(c, '2027-07-20').lunchKind, 'cont');
+  assert.equal(SZ.mealPlan(c, '2027-07-20', 'やまなみCC').lunchKind, 'cont');
+  assert.equal(SZ.mealPlan(c, '2027-07-20', '九重高原CC').lunchKind, '');
+  // 야마나미 숙박 팀의 중식은 지정과 무관하게 종전대로(이번 결정의 범위 밖)
+  assert.equal(SZ.mealPlan({ accom: '야마나미리조트', dep: '2026-11-18', arr: '2026-11-24', isPus: false }, '2026-11-20', '九重高原CC').lunchKind, 'cont');
 });

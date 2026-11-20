@@ -97,7 +97,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.7">
 </head>
 <body data-so-area="settle_merit">
 <div class="topbar so-bar">
@@ -127,8 +127,8 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=72"></script>
-<script src="../assets/saizen-ops.js?v=41.6"></script>
+<script src="../assets/saizen-core.js?v=73"></script>
+<script src="../assets/saizen-ops.js?v=41.7"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DEDS=[], EXTRAS={}, EXLIST=[];
@@ -159,7 +159,7 @@ const L={
     noData:'表示するデータなし', loading:'読み込み中…', noMonthData:'当月のデータなし', loadFail:'読み込み失敗', reloadBtn:'再読み込み',
     cntN:n=>n+'件', cntPaxN:(c,p)=>c+'件 / '+p+'名', detailNoData:'データなし',
     waitExcl:(n,p)=>`⚠ 待機予約 ${n}件(${p}名)は請求から除外`,
-    grossB2B:'総売上(B2B)', dedTotal:'控除合計', net:'精算額(Net)', lodgeTrans:'宿泊 / 送迎', cntPax:'件数 / 人数',
+    grossB2B:'総売上(B2B)', dedTotal:'控除合計', net:'精算額(Net)', dedHidden:'施設を選択中は控除・精算額を表示しません', lodgeTrans:'宿泊 / 送迎', cntPax:'件数 / 人数',
     cntPaxV:(c,p)=>c+'件 / '+p+'名',
     dedEmpty:'控除項目がありません。[＋ 項目追加]を押して追加してください。',
     dedColType:'種別', dedColAmt:'控除金額(¥)', dedColLabel:'項目内容', dedColTarget:'対象グループ/顧客',
@@ -186,7 +186,7 @@ const L={
     noData:'표시할 데이터 없음', loading:'불러오는 중…', noMonthData:'해당 월 데이터 없음', loadFail:'로드 실패', reloadBtn:'다시 불러오기',
     cntN:n=>n+'건', cntPaxN:(c,p)=>c+'건 / '+p+'명', detailNoData:'데이터 없음',
     waitExcl:(n,p)=>`⚠ 대기 예약 ${n}팀(${p}명)은 청구에서 제외`,
-    grossB2B:'총 매출(B2B)', dedTotal:'차감 합계', net:'정산액(Net)', lodgeTrans:'숙박 / 송영', cntPax:'건수 / 인원',
+    grossB2B:'총 매출(B2B)', dedTotal:'차감 합계', net:'정산액(Net)', dedHidden:'숙소를 고른 동안에는 차감·정산액을 표시하지 않습니다', lodgeTrans:'숙박 / 송영', cntPax:'건수 / 인원',
     cntPaxV:(c,p)=>c+'건 / '+p+'명',
     dedEmpty:'차감 항목이 없습니다. [＋ 항목 추가]를 눌러 추가하세요.',
     dedColType:'유형', dedColAmt:'차감 금액(¥)', dedColLabel:'항목 내용', dedColTarget:'대상 그룹/고객',
@@ -212,7 +212,7 @@ const L={
     noData:'No data to show', loading:'Loading…', noMonthData:'No data for this month', loadFail:'Load failed', reloadBtn:'Reload',
     cntN:n=>n+' items', cntPaxN:(c,p)=>c+' items / '+p+' ppl', detailNoData:'No data',
     waitExcl:(n,p)=>`⚠ ${n} waitlisted (${p} ppl) excluded from billing`,
-    grossB2B:'Gross (B2B)', dedTotal:'Deduction total', net:'Net', lodgeTrans:'Lodging / Transfer', cntPax:'Items / Pax',
+    grossB2B:'Gross (B2B)', dedTotal:'Deduction total', net:'Net', dedHidden:'Deductions and Net are not shown while a lodging is selected', lodgeTrans:'Lodging / Transfer', cntPax:'Items / Pax',
     cntPaxV:(c,p)=>c+' items / '+p+' ppl',
     dedEmpty:'No deductions. Press [＋ Add item] to add.',
     dedColType:'Type', dedColAmt:'Amount (¥)', dedColLabel:'Item', dedColTarget:'Target group/customer',
@@ -258,7 +258,7 @@ function refreshConn(){
 }
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);if(window.__so_toastKeep&&window.__so_toastKeep(t))return;setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
 function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
 function thisYM(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
@@ -485,11 +485,13 @@ function renderAll(){
   $('#grand').innerHTML=`
     <div class="g"><span class="gl">${esc(tx('grossB2B'))}</span><span class="gv">${yen(stayT+transT)}</span></div>
     ${extraT?`<div class="g"><span class="gl">${esc(tx('extraTotal'))}</span><span class="gv" style="color:${extraT<0?'#ff9d8a':'#9be08a'}">${extraT<0?'- ':'+ '}${yen(Math.abs(extraT))}</span></div>`:''}
-    <div class="g"><span class="gl">${esc(tx('dedTotal'))}</span><span class="gv" style="color:#ff9d8a">- ${yen(dedT)}</span></div>
-    <div class="g"><span class="gl">${esc(tx('net'))}</span><span class="gv net">${yen(totalT-dedT)}</span></div>
+    ${ACCOMSEL.size?`<div class="g" style="max-width:300px"><span class="gl no-print" style="font-size:12px;font-weight:700;opacity:1">${esc(tx('dedHidden'))}</span><span class="gl print-only" style="font-size:12px;font-weight:700;opacity:1;margin-bottom:0">${esc(L.ja.dedHidden)}</span></div>`:`<div class="g"><span class="gl">${esc(tx('dedTotal'))}</span><span class="gv" style="color:#ff9d8a">- ${yen(dedT)}</span></div>
+    <div class="g"><span class="gl">${esc(tx('net'))}</span><span class="gv net">${yen(totalT-dedT)}</span></div>`}
     <div class="g"><span class="gl">${esc(tx('lodgeTrans'))}</span><span class="gv" style="font-size:14px">${yen(stayT)} / ${yen(transT)}</span></div>
     <div class="g"><span class="gl">${esc(tx('cntPax'))}</span><span class="gv" style="font-size:14px">${tx('cntPaxV')(rows.length,paxT)}</span></div>`;
   renderDeds(); renderExtras();
+  /* 차감은 숙소로 나뉘지 않는다 — 숙소를 고른 동안에는 인쇄에 차감 항목 패널을 넣지 않는다(화면의 입력 패널은 그대로) */
+  { const dr=$('#ded-rows'), dp=dr&&dr.closest('.panel'); if(dp) dp.classList.toggle('no-print',ACCOMSEL.size>0); }
   // 명세 테이블
   const thead=$('#list thead'), tbody=$('#list tbody');
   const HDRS=tx('hdrs');
@@ -658,15 +660,17 @@ async function downloadXlsx(){
   xlmTotalRow(ws1,r,['合計','',rows.reduce((a,x)=>a+x.pax,0),rows.reduce((a,x)=>a+x.stay,0),rows.reduce((a,x)=>a+x.transport,0),rows.reduce((a,x)=>a+x.total,0)]); r++;
   // 차감·정산액
   const dedT=DEDS.reduce((s,d)=>s+(Number(d.amount)||0),0); const grossT=rows.reduce((a,x)=>a+x.total,0);
-  if(DEDS.length){ r++; xlmSection(ws1,r,'▌ 控除項目',COL); r++;
+  if(DEDS.length && !ACCOMSEL.size){ r++; xlmSection(ws1,r,'▌ 控除項目',COL); r++;
     xlmHeader(ws1,r,['種別','金額(¥)','項目内容','対象','','']); r++;
     DEDS.forEach((d,di)=>{ xlmDataRow(ws1,r,[d.dtype||'',Number(d.amount)||0,d.label||'',d.target||'','',''],di%2===0,{numCols:[2]}); r++; });
   }
   const extraTx=rows.reduce((a,x)=>a+x.extra,0); const grossBase=grossT-extraTx;
   xlmTotalRow(ws1,r,['総売上(B2B)','','','','',grossBase]); r++;
   if(extraTx){ xlmTotalRow(ws1,r,['その他(加算/控除)','','','','',extraTx]); r++; }
-  xlmTotalRow(ws1,r,['控除 合計','','','','',-dedT]); r++;
-  xlmTotalRow(ws1,r,['精算額(Net)','','','','',grossT-dedT]);
+  /* 차감은 숙소로 나뉘지 않는다 — 숙소를 고른 파일에는 차감·정산액 대신 안내 한 줄(파일은 일본어 고정) */
+  if(ACCOMSEL.size){ xlmSection(ws1,r,L.ja.dedHidden,COL); }
+  else { xlmTotalRow(ws1,r,['控除 合計','','','','',-dedT]); r++;
+    xlmTotalRow(ws1,r,['精算額(Net)','','','','',grossT-dedT]); }
   // 시트2: 精算明細
   const COL2=18; const ws2=wb.addWorksheet('精算明細',{views:[{state:'frozen',ySplit:3}],pageSetup:A4L});
   xlColWidths(ws2,[5,12,8,10,16,22,11,11,6,5,16,12,12,12,12,12,12,22]);

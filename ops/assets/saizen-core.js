@@ -972,7 +972,10 @@
   var KOGEN_CLOSED_SET = new Set(KOGEN_CLOSED);
   function kogenClosed(date) { return KOGEN_CLOSED_SET.has(String(date).slice(0, 10)); }
   // team={dep,arr,accom} · isPus=귀국편이 부산인지 → [{date,course,holes,note}]
-  function golfRows(team, isPus) {
+  //  fix(선택) = 그 팀의 골프장 수기 지정(play_course) { 'YYYY-MM-DD': 'やまなみCC' | '九重高原CC' } — 규칙보다 우선(Min 2026-11-20).
+  //   규칙과 다른 날만 course 를 바꾸고 fixed=true · ruleCourse(규칙 코스)를 남긴다. note 는 「○○CC手動指定 …」 —
+  //   휴장일(규칙이 돌림)의 「九重高原CC休場 …」 과 구분한다. 홀수(+9H) 판정은 그대로, 라운딩이 없는 날에는 행을 만들지 않는다.
+  function golfRows(team, isPus, fix) {
     var rows = []; if (!team || !team.dep || !team.arr) return rows;
     var cur = parseLocalDate(team.dep), end = parseLocalDate(team.arr);
     if (!cur || !end || isNaN(cur) || isNaN(end)) return rows;
@@ -987,11 +990,18 @@
         rows.push({ date: ds, course: course, holes: 18, note: nw ? (isJpHoliday(ds) ? '祝日' : '週末') : (shut ? '九重高原CC休場 +9Hサービス対象' : '+9Hサービス対象') });
       }
     }
+    if (fix) rows.forEach(function (r) {
+      var c = fix[r.date];
+      if ((c === 'やまなみCC' || c === '九重高原CC') && c !== r.course) {
+        r.ruleCourse = r.course; r.course = c; r.fixed = true;
+        r.note = c + '手動指定 ' + String(r.note || '').replace(/^九重高原CC休場 /, '');
+      }
+    });
     return rows;
   }
-  // 그 날짜에 야마나미CC에서 라운딩하는가(= 전기카트 사전신청 가능 조건)
-  function usesYamanamiCC(team, isPus, date) {
-    var r = golfRows(team, isPus).find(function (x) { return x.date === String(date).slice(0, 10); });
+  // 그 날짜에 야마나미CC에서 라운딩하는가(= 전기카트 사전신청 가능 조건) · fix = golfRows 와 같은 수기 지정(선택)
+  function usesYamanamiCC(team, isPus, date, fix) {
+    var r = golfRows(team, isPus, fix).find(function (x) { return x.date === String(date).slice(0, 10); });
     return !!(r && r.course === 'やまなみCC');
   }
 
@@ -1841,17 +1851,14 @@
   // ── 청소 효율 박수→층 배정 규칙 (야마나미 호텔동, 실제 층 zone 3~12) ─────
   //  같은 층 = 같은 박수(퇴실일)로 맞춰 청소를 한 번에.
   //   · 3·4박 → 9·6·3층 / 7박 → 11·10·7·4층 (지정층 고정)
-  //   · 그 외 박수 → 유동층 12·8·5 중 '비었거나 같은 박수만 있는' 층(혼합 금지)
+  //   · 그 외 박수 → 12 → 8 → 5층 순서. 「한 층에는 한 가지 박수만」 규칙은 없앴다(Min 2026-11-20) —
+  //     같은 실행 안에서는 적용되지 않았고, 점유를 읽는 범위(보는 달)에 따라 결과가 달라졌다.
   var FLOOR_FIXED = { 3: [9, 6, 3], 4: [9, 6, 3], 7: [11, 10, 7, 4] };
   var FLOOR_FLEX = [12, 8, 5];
-  // nights 팀이 들어갈 수 있는 층(우선순위 순). getNightSet(floor)=그 층의 현재 박수들(Set|배열).
-  function allowedFloors(nights, getNightSet) {
+  // nights 팀이 먼저 쓰는 층(우선순위 순). 그 층에 지금 어떤 박수가 들어 있는지는 보지 않는다.
+  function allowedFloors(nights) {
     if (FLOOR_FIXED[nights]) return FLOOR_FIXED[nights].slice();
-    return FLOOR_FLEX.filter(function (f) {
-      var raw = (getNightSet ? getNightSet(f) : null) || [];
-      var set = (raw instanceof Set) ? raw : new Set(raw);
-      return set.size === 0 || (set.size === 1 && set.has(nights));
-    });
+    return FLOOR_FLEX.slice();
   }
 
   // ── 조기 퇴실(개인 actual_dep) 식수 차감 ────────────────────────────────
@@ -1931,7 +1938,9 @@
   function mealOffsite(accom) { return MEAL_OFFSITE_SET.has(accom); }
   // team={accom,dep,arr,isPus(귀국 PUS 여부)}, date='YYYY-MM-DD'
   //  → {breakfast:bool, lunchKind:''|'arr'|'cont', dinner:bool}. (pax·제외·조기퇴실·업그레이드는 호출부)
-  function mealPlan(team, date) {
+  //  fixCourse(선택) = 그날 그 팀의 골프장 수기 지정(play_course). 간지호텔 체류 중간 평일의 중식만 바뀐다(Min 2026-11-20):
+  //   やまなみCC 로 옮긴 날 = 야마나미 라운딩 중식(휴장일과 같다) · 九重高原CC 로 되돌린 휴장일 = 중식 없음.
+  function mealPlan(team, date, fixCourse) {
     var accom = team.accom, dep = team.dep, arr = team.arr, isPus = !!team.isPus;
     var wd = parseLocalDate(date).getDay();
     var isWTS = (wd === 3 || wd === 4 || wd === 0);   // 수·목·일
@@ -1949,7 +1958,7 @@
       else if (isIn && isSatSun && accom === '간지호텔') lunchKind = 'arr';
       else if (isOut && isWTS && isPus) lunchKind = 'cont';
       // 九重高原CC 휴장일(평일)은 간지 팀도 야마나미CC 라운딩 → 야마나미 라운딩 중식과 동일(Min 2026-11-17)
-      else if (isMid && accom === '간지호텔' && !isNonWorkday(date) && kogenClosed(date)) lunchKind = 'cont';
+      else if (isMid && accom === '간지호텔' && !isNonWorkday(date) && ((fixCourse === 'やまなみCC' || fixCourse === '九重高原CC') ? fixCourse === 'やまなみCC' : kogenClosed(date))) lunchKind = 'cont';
     }
     var dinner = (dep <= date && arr > date);
     return { breakfast: breakfast, lunchKind: lunchKind, dinner: dinner };

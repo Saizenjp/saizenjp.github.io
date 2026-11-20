@@ -77,7 +77,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.7">
 </head>
 <body data-so-area="dinner">
 <div class="topbar so-bar">
@@ -107,8 +107,8 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=72"></script>
-<script src="../assets/saizen-ops.js?v=41.6"></script>
+<script src="../assets/saizen-core.js?v=73"></script>
+<script src="../assets/saizen-ops.js?v=41.7"></script>
 <script>
 const $=s=>document.querySelector(s);
 // ── i18n: 화면 chrome 전용(印刷 산출물·도메인 데이터는 미번역) ──
@@ -228,6 +228,7 @@ let REL={};     // 날짜 → {mode:'snapshot'|'hidden', payload, released_at, r
 let HAS_REL=true;   // SQL 148 미적용이면 안내만
 let TVEN={};    // 'YYYY-MM-DD|event_seq' → venue — 팀별 석식 장소(dinner_team_venue, SQL 145). 날짜 장소 위에 덮는 예외.
 const VOPEN=new Set();   // 「팀별」을 펼친 날짜
+let PCF={};     // 'YYYY-MM-DD|event_seq' → 골프장 수기 지정(play_course, SQL 99) — 간지 팀 평일 중식 판정(SZCore.mealPlan)에 쓴다
 let _loadSeq=0;   // load() 순번 표식 — 월 ◀▶ 를 연달아 눌러 로드가 겹치면 낡은 응답을 버린다
 function curUser(){ try{ return (window.__so_getUser&&__so_getUser())||''; }catch(e){ return ''; } }
 const ACCOM_ORDER=['간지호텔','시즈노야도 료칸','쿠주힐즈','야마나미리조트'];
@@ -258,13 +259,13 @@ function addonsForDate(date){
   return ADDONS.filter(a=>a.order_date===date).map(a=>{
     const t=TEAMS.find(x=>String(x.seq)===String(a.event_seq));
     const u=t?unitOf[String(t.seq)]:null;
-    return Object.assign({}, a, {tag:u?u.tag:(t?teamDisplayTag(t):''), pax:(t?parseInt(t.pax,10)||0:0), accom:(t&&t.accom)||'', repName:(t&&t.repName)||''});
+    return Object.assign({}, a, {tag:u?u.tag:(t?teamDisplayTag(t):''), pax:(t?parseInt(t.pax,10)||0:0), accom:(u?u.accom:(t&&t.accom))||'', repName:(t&&t.repName)||''});
   }).filter(a=> !_accomSet || _accomSet.has(a.accom))
     .sort((x,y)=> (x.kind==='allergy'?1:0)-(y.kind==='allergy'?1:0) || String(x.tag).localeCompare(String(y.tag)) || x.id-y.id);
 }
 //  別注 줄 끝의 「누구 것」 — 「코드 N名」. 코드와 인원을 붙여 쓰면 「Y 4名」이 「Y4名」(묶음 번호)처럼, 「Y1 4名」이 「Y14名」으로 읽힌다.
 function addonWho(a){ return `${a.tag||''} ${parseInt(a.pax,10)||0}名`; }
-function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);if(window.__so_toastKeep&&window.__so_toastKeep(t))return;setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
 function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
 function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
 function thisYM(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
@@ -638,7 +639,7 @@ async function load(){
     if(e1)throw e1;
     if(_stale())return;
     const seqs=(bs||[]).map(b=>b.event_seq);
-    if(!seqs.length){ TEAMS=[]; ADDONS=[]; EARLY={}; OVR={}; VENUE={}; TVEN={}; REL={}; renderVenue(); fillAddonDates(); renderAddonList(); $('#stat').textContent=tx('statNoData'); DATESEL.clear();ACCOMSEL.clear(); renderDateChips();renderAccomChips();renderPreview(); return; }
+    if(!seqs.length){ TEAMS=[]; ADDONS=[]; EARLY={}; OVR={}; VENUE={}; TVEN={}; REL={}; PCF={}; renderVenue(); fillAddonDates(); renderAddonList(); $('#stat').textContent=tx('statNoData'); DATESEL.clear();ACCOMSEL.clear(); renderDateChips();renderAccomChips();renderPreview(); return; }
     // guests(accom·tag), passengers(rep origin), guest_members(rep tag·name)
     const GMAP={}, REP={}, ORI={};
     const _EARLY={};   // event_seq → [조기퇴실 실제일…] (개인별 actual_dep) — 식수 차감용. 지역 변수에 모아 마지막에 한 번에 전역으로(겹친 로드가 섞이지 않게)
@@ -683,8 +684,15 @@ async function load(){
       if(adErr)throw adErr;   // 못 읽으면 별주·알레르기 줄이 빠진 채 인쇄된다
       (ad||[]).forEach(a=>{ a.order_date=fmtDate(a.order_date); _ADDONS.push(a); });
     }
+    // 골프장 수기 지정(play_course, SQL 99) — 간지 팀을 평일에 야마나미로 옮긴 날은 야마나미 라운딩 중식(구주고원 휴장일과 같다)
+    const _PCF={};
+    for(let i=0;i<seqs.length;i+=400){ const chunk=seqs.slice(i,i+400);
+      const {data:pc,error:pcErr}=await supa.from('play_course').select('play_date,event_seq,course').in('event_seq',chunk);
+      if(pcErr)throw pcErr;   // 못 읽으면 옮긴 팀의 중식이 빠진 식수로 인쇄된다
+      (pc||[]).forEach(x=>{ _PCF[fmtDate(x.play_date)+'|'+x.event_seq]=x.course; });
+    }
     if(_stale())return;   // 더 새 로드가 시작됨 → 이 응답은 버림
-    EARLY=_EARLY; OVR=_OVR; ADDONS=_ADDONS;
+    EARLY=_EARLY; OVR=_OVR; ADDONS=_ADDONS; PCF=_PCF;
     TEAMS=(bs||[]).map(b=>{ const g=GMAP[b.event_seq]||{}; const r=REP[b.event_seq]||{}; const o=ORI[b.event_seq]||{}; const ov=OVR[b.event_seq]||{};
       const origin=(o.byRep?o.origin:'')||o.origin||b.origin||'';
       const basePax=b.pax||g.pax||0;
@@ -711,7 +719,7 @@ async function load(){
     fillAddonDates(); toggleAddonKind(); renderAddonList();
   }catch(e){ if(_stale())return;
     // 못 읽은 달에 앞 달의 팀·장소·별주를 남기지 않는다 — 남아 있으면 날짜 칩을 눌러 앞 달 자료로 인쇄·저장하게 된다
-    TEAMS=[]; ADDONS=[]; EARLY={}; OVR={}; VENUE={}; TVEN={}; REL={}; DATESEL.clear(); ACCOMSEL.clear();
+    TEAMS=[]; ADDONS=[]; EARLY={}; OVR={}; VENUE={}; TVEN={}; REL={}; PCF={}; DATESEL.clear(); ACCOMSEL.clear();
     try{ renderVenue(); fillAddonDates(); renderAddonList(); renderDateChips(); renderAccomChips(); renderPreview(); }catch(_){}
     $('#btn-print').disabled=true; {const x=$('#btn-xlsx'); if(x)x.disabled=true;}
     $('#stat').textContent=tx('statFail'); toast(tx('loadFail')+': '+e.message,'err'); }
@@ -925,18 +933,22 @@ function mealCounts(date){
     const base=parseInt(t.pax,10)||0; if(!base) return;
     const bPax=Math.max(0, base-goneEarly(t.seq,date,'b'));   // 朝食 실인원
     const lPax=Math.max(0, base-goneEarly(t.seq,date,'l'));   // 昼食 실인원
-    const plan=SZCore.mealPlan(t, date);                       // {breakfast, lunchKind, dinner}
+    const plan=SZCore.mealPlan(t, date, PCF[date+'|'+t.seq]);   // {breakfast, lunchKind, dinner} — 골프장 수기 지정이 있으면 그 골프장 기준
     if(plan.breakfast) breakfastN+=bPax;
     if(plan.lunchKind){ if(plan.lunchKind==='arr')lunchArrICN+=lPax; else lunchContinue+=lPax; }
   });
-  // 석식 = 그날 묵는 전원(dep<=date<arr) − 조기퇴실 − 夕食除外 팀 − 업그레이드 인분(기본메뉴 안 나감)
+  // 석식 = 夕食オーダー 명단 기준(2026-11-20 Min 결정 — 2층 석식 모니터 signage_dinner 와 같은 규칙).
+  //   팀 수 = 명단 줄 수(묶음 team_group = 1줄) · 인원 = 명단에 실린 인원(묶음에 섞인 다른 숙소 팀 포함) − 조기퇴실 − 업그레이드 인분(기본메뉴 안 나감).
+  //   명단 = dinnerUnitsOn(date): 夕食除外·전원 조기퇴실 팀 제외, 숙소 필터는 묶음 대표의 숙소 기준. 朝·昼 식수는 위 그대로(팀 숙소 기준).
   let dinnerN=0, teamCnt=0, exDinnerN=0, exTeamCnt=0, upN=0;
-  TEAMS.forEach(t=>{ if(_accomSet&&!_accomSet.has(t.accom))return; if(!(t.dep<=date&&t.arr>date))return;
-    const pax=Math.max(0,(parseInt(t.pax,10)||0)-goneEarly(t.seq,date,'d'));   // 夕食 실인원
-    if(t.excluded){ exDinnerN+=pax; exTeamCnt++; return; }
-    if(!pax) return;                                          // 전원 조기퇴실 → 표시 안 함
-    const up=Math.min(pax, upQtyFor(date,t.seq)); upN+=up;   // 업그레이드 인분만큼 기본 차감
-    dinnerN+=Math.max(0,pax-up); teamCnt++; });
+  dinnerUnitsOn(date).forEach(u=>{ teamCnt++;
+    u.teams.forEach(x=>{
+      const pax=Math.max(0,(parseInt(x.pax,10)||0)-goneEarly(x.seq,date,'d'));
+      const up=Math.min(pax, upQtyFor(date,x.seq)); upN+=up;
+      dinnerN+=Math.max(0,pax-up); }); });
+  // 夕食除外 팀은 명단에 없다 — 종전대로 팀 숙소 기준으로 따로 센다(인쇄 하단 「夕食除外 Nチーム」 줄과 같은 집합)
+  TEAMS.forEach(t=>{ if(!t.excluded) return; if(_accomSet&&!_accomSet.has(t.accom))return; if(!(t.dep<=date&&t.arr>date))return;
+    exDinnerN+=Math.max(0,(parseInt(t.pax,10)||0)-goneEarly(t.seq,date,'d')); exTeamCnt++; });
   return {breakfastN, lunchN:lunchContinue+lunchArrICN, lunchArrICN, dinnerN, teamCnt, exDinnerN, exTeamCnt, upN};
 }
 

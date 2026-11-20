@@ -217,7 +217,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.7">
 </head>
 <body data-so-area="frontdesk">
 <div class="topbar so-bar">
@@ -266,8 +266,8 @@
 </main>
 
 <div id="toast"></div>
-<script src="../assets/saizen-core.js?v=72"></script>
-<script src="../assets/saizen-ops.js?v=41.6"></script>
+<script src="../assets/saizen-core.js?v=73"></script>
+<script src="../assets/saizen-ops.js?v=41.7"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null;
@@ -476,7 +476,7 @@ function applyStatic(){
   const none=$('#t-none'); if(none) none.innerHTML=tx('detailNone');
   refreshConn();
 }
-function toast(msg,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.textContent=msg;$('#toast').appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2400);}
+function toast(msg,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.textContent=msg;$('#toast').appendChild(t);if(window.__so_toastKeep&&window.__so_toastKeep(t))return;setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2400);}
 function isoToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function ymOf(d){return (d||'').slice(0,7);}
 function shiftDay(delta){const d=new Date($('#day-pick').value||isoToday());d.setDate(d.getDate()+delta);$('#day-pick').value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;if(supa)load();}
@@ -1051,7 +1051,7 @@ async function addPaymentFD(t,btn){
 //   収入印紙 판정에 **현금 수령액**이 필요해 payments 를 그때 읽는다(목록엔 합계만 있다).
 async function openReceiptFD(t){
   if(!window.__so_receipt){ toast(tx('rcLoadFail'),'err'); return; }
-  let paid=Math.round(Number(t.paid)||0), cash=0;
+  let paid=Math.round(Number(t.paid)||0), cash=0, unk=false;
   try{
     const {data:fs,error:fe}=await supa.from('folios').select('id').eq('event_seq',t.seq); if(fe) throw fe;
     const ids=(fs||[]).map(f=>f.id);
@@ -1061,8 +1061,8 @@ async function openReceiptFD(t){
       paid=Math.round(live.reduce((s,p)=>s+Number(p.amount||0),0));
       cash=Math.round(live.filter(p=>p.method==='현금').reduce((s,p)=>s+Number(p.amount||0),0));
     }
-  }catch(e){ toast(tx('rcLoadFail'),'warn'); }   // 합계(t.paid)로라도 진행 — 발행 자체는 막지 않는다
-  __so_receipt({ tag:t.tag||t.tagOrig||'', repName:t.rep||'', no:t.no!=null?t.no:t.seq, paid, cash });
+  }catch(e){ unk=true; toast(tx('rcLoadFail'),'warn'); }   // 합계(t.paid)로라도 진행 — 발행 자체는 막지 않는다
+  __so_receipt({ tag:t.tag||t.tagOrig||'', repName:t.rep||'', no:t.no!=null?t.no:t.seq, paid, cash, payUnknown:unk });
 }
 // ── 당일 골프 손님(워크인) 접수 ─────────────────────────────────────────
 //  Min 확인: 워크인은 전부 골프를 치러 오는 손님이다(밥만 먹고 가는 손님은 없다).
@@ -1081,7 +1081,7 @@ const DG_CATS=['라운딩','식음','골프샵','숙박','기타'];
 const DG_PRESET=[
   {k:'dgPreRound', cat:'라운딩'},                       // 점심 포함 라운딩
   {k:'dgPre9',     cat:'라운딩'},                       // 9홀 추가
-  {k:'dgPreLunch', cat:'식음'}                          // 점심
+  {k:'dgPreLunch', cat:'식음', venue:'restaurant'}      // 점심 — 레스토랑 매출(Min 2026-11-20)
 ];
 let DGMENU=null;
 async function dgLoadMenu(){
@@ -1179,18 +1179,19 @@ function openDayGolf(){
     const m=(DGMENU||[]).find(x=>String(x.id)===String(selMi.value)); if(!m) return;
     inName.value=(m.name_ko||m.name_ja||''); inPrice.value=Number(m.unit_price)||0;
     if(m.category) inCat.value=m.category;
-    inName.dataset.mid=m.id; inName.dataset.ja=(m.name_ja||m.name_ko||''); inName.dataset.venue=m.venue||'';
+    inName.dataset.mid=m.id; inName.dataset.ja=(m.name_ja||m.name_ko||''); inName.dataset.venue=m.venue||''; delete inName.dataset.pv;
     inQty.focus();
   });
   bg.querySelectorAll('.dgchip').forEach(b=>b.addEventListener('click',()=>{
     const p=DG_PRESET[+b.dataset.p]; if(!p) return;
     inCat.value=p.cat; inName.value=tx(p.k); inPrice.value=''; inQty.value=1;
-    delete inName.dataset.mid; delete inName.dataset.ja; delete inName.dataset.venue;
+    delete inName.dataset.mid; delete inName.dataset.ja; delete inName.dataset.venue; delete inName.dataset.pv;
+    if(p.venue) inName.dataset.pv=p.venue;
     selMi.value=''; inPrice.focus();
   }));
   function clearAddRow(){
     inName.value=''; inPrice.value=''; inQty.value=1; selMi.value='';
-    delete inName.dataset.mid; delete inName.dataset.ja; delete inName.dataset.venue;
+    delete inName.dataset.mid; delete inName.dataset.ja; delete inName.dataset.venue; delete inName.dataset.pv;
   }
   function renderPicked(){
     const sum=picked.reduce((s,p)=>s+p.price*p.qty,0);
@@ -1212,9 +1213,11 @@ function openDayGolf(){
     if(!nm){ toast(tx('dgNeedName'),'warn'); inName.focus(); return; }
     if(!(price>=0)||inPrice.value===''){ toast(tx('dgNeedPrice'),'warn'); inPrice.focus(); return; }
     const q=Math.max(1,Math.round(Number(inQty.value||1)));
+    //  직접 입력 항목의 매장(charges.source) — 메뉴에서 가져온 것은 그 메뉴의 매장 그대로.
+    //   라운딩 = golf(21차) · 「점심」 바로가기 = restaurant · 골프샵 구분 = proshop · 그 밖(식음·숙박·기타) = front(Min 2026-11-20 — 종전에는 라운딩 말고 전부 proshop)
     const pre=DG_PRESET.find(p=>tx(p.k)===nm);   // 바로가기 문구 그대로면 그 항목 — 청구 품명은 화면 언어와 무관하게 일본어로 남긴다(御請求書·손님 청구 화면)
     picked.push({ id:inName.dataset.mid||null, name:nm, nameJa:inName.dataset.ja||(pre?(L.ja[pre.k]||nm):nm),
-      price, qty:q, category:inCat.value||'기타', venue:inName.dataset.venue||(inCat.value==='라운딩'?'golf':'proshop') });   // 라운딩 요금 = 골프 매출(코스 배정표 [9홀 추가] golf_add_charge 와 같은 source) — 프로샵 매출로 잡히지 않게
+      price, qty:q, category:inCat.value||'기타', venue:inName.dataset.venue||(inCat.value==='라운딩'?'golf':((pre&&pre.venue)||inName.dataset.pv||(inCat.value==='골프샵'?'proshop':'front'))) });   // 라운딩 요금 = 골프 매출(코스 배정표 [9홀 추가] golf_add_charge 와 같은 source) — 프로샵 매출로 잡히지 않게
     clearAddRow(); renderPicked(); inName.focus();
   });
   [inName,inPrice,inQty].forEach(el=>el.addEventListener('keydown',e=>{

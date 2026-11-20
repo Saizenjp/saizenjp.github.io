@@ -119,6 +119,10 @@
   .order-head .ot .osub{font-size:12.5px;color:var(--text2);font-weight:700}
   .order-head .orun{margin-left:auto;font-size:13px;color:var(--text2);font-weight:700}
   .order-head .orun b{font-family:var(--mono);color:var(--text);font-size:16px}
+  /* 손님 확인 화면에 이미 떠 있는 계산서 알림(새로고침 전·다른 기기에서 띄운 것) — 한 번 눌러 끈다 */
+  .cust-remote{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--warn);border-left:6px solid var(--warn);border-radius:10px;padding:8px 14px;margin-bottom:12px;font-size:14px}
+  .cust-remote .cdr-tag{font-family:var(--mono);font-weight:800;font-size:16px;color:var(--accent)}
+  .cust-remote .btn{margin-left:auto;min-height:44px}
 
   #btn-send .sbt{display:block;font-family:var(--mono);font-size:13px;font-weight:800;opacity:.92;margin-top:2px;letter-spacing:.4px}
   /* 전송처 — 탭·메뉴 카드·장바구니에 같은 말로. 주방은 주황, 바는 남색 */
@@ -252,6 +256,25 @@
   .payer-act button:hover{border-color:var(--accent);color:var(--accent)}
   /*  손가락으로 누르는 화면 — 눌리는 것은 모두 44px 이상(태블릿 기준, Min 2026-08).
       마우스로만 쓰는 좁은 화면에서는 이 값이 과할 수 있으나, POS 는 태블릿이 기준이다. */
+  /*  가로 태블릿(2단 배치 · 폭 1280 미만): 지불 방식 영역이 길어 장바구니가 화면보다 길어지고 [주문 전송]이 화면 밖으로 밀렸다.
+      장바구니 전체를 화면 높이 안에 가두고(붙는 자리 top:74px 기준) 지불 방식·담은 품목은 그 안에서 따로 스크롤한다.
+      body 가 zoom:1.1(saizen-ops.css)이라 vh 도 1.1배로 그려진다 → 1.1 로 나눈다. 눌리는 것은 44px 이상 그대로.
+      1280 이상·1단(880 이하) 배치는 건드리지 않는다. */
+  @media (min-width:881px) and (max-width:1279px){
+    .cart{display:flex;flex-direction:column;max-height:calc(100vh / 1.1 - 82px);max-height:calc(100dvh / 1.1 - 82px);overflow-y:auto}
+    .cart > h3{flex:none;padding:8px 15px}
+    .payer{flex:0 1 auto;min-height:52px;max-height:calc(30vh / 1.1);overflow-y:auto;padding:7px 11px}
+    .payer-mode{margin-bottom:6px}
+    .pm{min-height:44px;padding:8px;font-size:14px}
+    .proom{margin-bottom:6px}
+    .proom-h{min-height:44px;padding:6px 12px;font-size:17px;margin-bottom:5px}
+    .payer-roster{gap:6px;margin-bottom:5px}
+    .pchip{min-height:44px;min-width:96px;padding:6px 12px;font-size:14.5px}
+    .payer-act{margin-top:6px}
+    .cart-body{flex:1 1000 auto;min-height:96px;max-height:none}
+    .cart-foot{flex:none;padding:9px 13px}
+    .cart-foot .btn.big{padding:10px 20px}
+  }
 
   #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90vw}
   .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:11px 20px;font-size:14px;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.16);animation:popUp .2s;text-align:center;min-width:220px}
@@ -264,7 +287,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.7">
 </head>
 <body data-so-area="pos_front pos_golf pos_restaurant">
 <script>(function(){ var o=new URLSearchParams(location.search).get('outlet')||''; var M={front:'pos_front',golf:'pos_golf',restaurant:'pos_restaurant'}; if(M[o]) document.body.setAttribute('data-so-area',M[o]); })();</script>
@@ -310,6 +333,8 @@
 </div>
 
 <div class="wrap">
+  <!-- 손님 확인 화면에 이미 떠 있는 계산서 알림(renderCustRemote 가 채운다) -->
+  <div class="cust-remote" id="cust-remote" style="display:none"></div>
   <!-- 1단계: 팀 선택 -->
   <div id="team-view">
     <div class="sec-title"><span data-i18n="po_pickTeam"></span> <span class="cnt" id="team-cnt"></span></div>
@@ -456,8 +481,8 @@
   </div>
 </div>
 
-<script src="../assets/saizen-core.js?v=72"></script>
-<script src="../assets/saizen-ops.js?v=41.6"></script>
+<script src="../assets/saizen-core.js?v=73"></script>
+<script src="../assets/saizen-ops.js?v=41.7"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
@@ -485,6 +510,7 @@ const L={
     qrHidWait:'カードをリーダーにかざしてください', qrHidWaitSub:'読み取ると そのチームが自動で選ばれます', qrUseCam:'📷 カメラで読み取る', qrScanning:'QRをかざしてください…', qrNoMatch:'該当チームなし(無効なQR)', qrTeamGone:'そのチームが見つかりません', qrMatched:t=>`${t} を選択しました`, qrEmpty:'コードを入力してください', qrTagDup:'タグコードが重複 — 一覧から選択してください', confTitle:'このチームで合っていますか？', confHonor:'様', confPplUnit:'名', confRoster:'名簿（お名前をご確認ください）', confHint:'お客様のお名前・部屋番号をご確認のうえ進めてください。', confYes:'✓ はい、このチームです', confNo:'いいえ',
     custOnTitle:'このチームの請求を客先確認画面に表示/解除', custShow:'🖥 お客様画面表示', custHide:'🖥 表示を消す',
     custShown:'お客様画面に表示しました', custCleared:'お客様画面を消しました', custFail:e=>'お客様画面表示失敗: '+e,
+    custOther:'お客様画面に別のチームを表示中', custStill:'お客様画面に表示中', custOff:'表示を消す', custUnknown:'お客様画面の状態を確認できませんでした', custRecheck:'再確認', custNoRow:'反映されませんでした（権限をご確認ください）',
     teamFallback:s=>'チーム'+s, member:'会', unassigned:'未配室',
     runShow:'📋 累計の明細', runHide:'✕ 明細を閉じる', runLoading:'読込中…', runEmpty:'まだ注文がありません。',
     runTh:['日付','内容','数量','金額','担当'], runTeamCol:'チーム共通', runTotal:'累計',
@@ -522,6 +548,7 @@ const L={
     qrHidWait:'손님 카드를 리더기에 대세요', qrHidWaitSub:'읽히면 그 팀이 자동으로 선택됩니다', qrUseCam:'📷 카메라로 읽기', qrScanning:'QR을 비춰주세요…', qrNoMatch:'해당 팀 없음(무효 QR)', qrTeamGone:'그 팀을 찾을 수 없습니다', qrMatched:t=>`${t} 선택됨`, qrEmpty:'코드를 입력하세요', qrTagDup:'태그코드 중복 — 목록에서 선택하세요', confTitle:'이 팀이 맞습니까?', confHonor:' 님', confPplUnit:'명', confRoster:'명단(이름을 확인하세요)', confHint:'손님 이름·방번호를 확인한 뒤 진행하세요.', confYes:'✓ 예, 이 팀이 맞습니다', confNo:'아니오',
     custOnTitle:'이 팀 계산서를 손님 확인 화면에 표시/해제', custShow:'🖥 손님 화면 표시', custHide:'🖥 표시 끄기',
     custShown:'손님 화면에 표시했습니다', custCleared:'손님 화면을 비웠습니다', custFail:e=>'손님 화면 표시 실패: '+e,
+    custOther:'손님 화면에 다른 팀 표시 중', custStill:'손님 화면에 표시 중', custOff:'표시 끄기', custUnknown:'손님 화면 상태를 확인하지 못했습니다', custRecheck:'다시 확인', custNoRow:'반영되지 않았습니다(권한을 확인하세요)',
     teamFallback:s=>'팀'+s, member:'회', unassigned:'미배정',
     runShow:'📋 누적 내역', runHide:'✕ 내역 닫기', runLoading:'불러오는 중…', runEmpty:'아직 주문이 없습니다.',
     runTh:['날짜','내역','수량','금액','담당'], runTeamCol:'팀 공통', runTotal:'누적',
@@ -559,6 +586,7 @@ const L={
     qrHidWait:'Hold the guest card to the reader', qrHidWaitSub:'The team is selected automatically once it reads', qrUseCam:'📷 Use the camera', qrScanning:'Hold the QR to the camera…', qrNoMatch:'No matching team (invalid QR)', qrTeamGone:'That team was not found', qrMatched:t=>`${t} selected`, qrEmpty:'Enter a code', qrTagDup:'Tag code is ambiguous — pick from the list', confTitle:'Is this the right team?', confHonor:'', confPplUnit:' ppl', confRoster:'Roster (please check the name)', confHint:'Confirm the guest name and room number before proceeding.', confYes:'✓ Yes, this team', confNo:'No',
     custOnTitle:'Show/clear this team’s bill on the customer display', custShow:'🖥 Show customer display', custHide:'🖥 Turn off',
     custShown:'Shown on customer display', custCleared:'Customer display cleared', custFail:e=>'Customer display failed: '+e,
+    custOther:'Customer display is showing another team', custStill:'Customer display is showing', custOff:'Turn off', custUnknown:'Could not check the customer display', custRecheck:'Check again', custNoRow:'Nothing was changed (check your permissions)',
     teamFallback:s=>'Team'+s, member:'M', unassigned:'No room',
     runShow:'📋 Charges', runHide:'✕ Close', runLoading:'Loading…', runEmpty:'No orders yet.',
     runTh:['Date','Item','Qty','Amount','By'], runTeamCol:'Team', runTotal:'Total',
@@ -659,7 +687,7 @@ function jstDayStart(iso,add){ const dt=new Date(iso+'T00:00:00+09:00'); if(add)
 function jstOf(ts){ const dt=new Date(ts||''); return isNaN(dt)?'':dt.toLocaleString('sv-SE',{timeZone:'Asia/Tokyo'}); }   // 'YYYY-MM-DD HH:MM:SS' (JST)
 function toast(msg,cls){
   const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:'');
-  t.textContent=msg; $('#toast').appendChild(t);
+  t.textContent=msg; $('#toast').appendChild(t);if(window.__so_toastKeep&&window.__so_toastKeep(t))return;
   setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);
 }
 var _connKey=null,_connCls='';   // 마지막 연결 상태(사전 키) — 언어를 바꾸면 applyStatic 이 다시 쓴다
@@ -715,6 +743,7 @@ async function loadMenu(){
 async function loadTeams(){
   if(!supa){toast(tx('needConn'),'warn');return;}
   const d=$('#date-pick').value||isoToday(); state.date=d; $('#date-pick').value=d;
+  loadCustRemote();   /* 손님 화면에 이미 떠 있는 계산서 확인(새로고침 전·다른 기기에서 띄운 것) — 목록 로드를 기다리게 하지 않는다 */
   const {data,error}=await supa.from('guests')
     .select('event_seq,team_tag,group_code,accom,pax,session_ym,bookings!inner(event_no,rep_name,dep_date,arr_date)')
     .lte('bookings.dep_date',d).gt('bookings.arr_date',d).neq('bookings.status','대기');
@@ -833,6 +862,7 @@ function backToTeams(){
   $('#team-view').style.display='';
   $('#btn-back').style.display='none';
   renderTeams();
+  updateCustBtn();   /* 팀에서 나왔다 — 손님 화면에 아직 떠 있으면 「표시 중」 띠로 다시 그린다 */
 }
 // 팀 없이 주문 화면(메뉴+장바구니)을 연다 = 기본 화면
 function showOrderView(){
@@ -868,20 +898,71 @@ function updateSendBtn(){
 // ── 손님 확인 화면(pos_customer.html) 연동 — 이 팀 계산서를 손님 태블릿에 표시 ──
 const POS_STATION=new URLSearchParams(location.search).get('station')||'main';
 let custShownSeq=null;
+/*  손님 화면에 지금 실제로 떠 있는 팀(DB pos_display 의 이 계산대 줄).
+    custShownSeq 는 「이 화면이 이번에 띄운 것」만 안다 — 새로고침 전에 띄웠거나 다른 기기(프론트 데스크 포함)에서 띄운 계산서는 모른다.
+    custRemote: null=아직 모름(읽는 중·쓰는 중) · {known:false}=읽기 실패(「없음」으로 보지 않는다) · {known:true,seq,tm}=읽은 값(seq null=떠 있는 것 없음). */
+let custRemote=null, _custRd=0;
+async function loadCustRemote(){
+  if(!supa) return;
+  const my=++_custRd;
+  let next;
+  try{
+    const {data,error}=await supa.from('pos_display').select('event_seq').eq('station',POS_STATION).maybeSingle();
+    if(error) throw error;
+    const seq=(data&&data.event_seq!=null)?data.event_seq:null;
+    next={known:true, seq:seq, tm:(seq!=null?await teamBySeq(seq):null)};
+  }catch(e){ next={known:false}; }
+  if(my!==_custRd) return;   /* 그 사이 이 화면에서 표시를 바꿨거나 더 늦은 조회가 있다 — 낡은 응답은 버린다 */
+  custRemote=next; updateCustBtn();
+}
+/* 손님 화면에 떠 있다고 보는 팀 — DB 에서 읽은 값이 있으면 그것, 없으면 이 화면이 마지막으로 띄운 것 */
+function custOnSeq(){ return (custRemote&&custRemote.known)?custRemote.seq:custShownSeq; }
+/* 「손님 화면에 (다른 팀) 표시 중」 띠 — 지금 고른 팀이 아닌 계산서가 떠 있을 때만. 이름은 싣지 않고 팀 코드만(카운터 화면에 남의 팀 이름을 띄우지 않는다). */
+function renderCustRemote(){
+  const box=$('#cust-remote'); if(!box) return;
+  const r=custRemote;
+  if(!r){ box.style.display='none'; box.innerHTML=''; return; }
+  if(!r.known){
+    box.innerHTML=`<b>${escP(tx('custUnknown'))}</b><button type="button" class="btn ghost sm" id="cust-remote-re">${escP(tx('custRecheck'))}</button>`;
+    box.style.display='';
+    box.querySelector('#cust-remote-re').addEventListener('click',()=>loadCustRemote());
+    return;
+  }
+  if(r.seq==null || (state.team && String(state.team.event_seq)===String(r.seq))){ box.style.display='none'; box.innerHTML=''; return; }
+  box.innerHTML=`<b>${escP(tx(state.team?'custOther':'custStill'))}</b><span class="cdr-tag">${escP(r.tm?teamTag(r.tm):('#'+r.seq))}</span>`
+    +`<button type="button" class="btn ghost sm" id="cust-remote-off">${escP(tx('custOff'))}</button>`;
+  box.style.display='';
+  box.querySelector('#cust-remote-off').addEventListener('click',async e=>{
+    const b=e.currentTarget, was=r.seq; b.disabled=true;
+    /* 띠는 화면을 열 때 읽은 값이라 낡았을 수 있다 — 누르는 순간 다시 읽어, 띠에 적힌 그 팀이 아직 떠 있을 때만 내린다
+       (그 사이 다른 기기가 새로 띄운 다른 팀 계산서는 내리지 않고 띠만 그 팀으로 고친다). 다시 읽지 못했으면 예전처럼 내린다. */
+    await loadCustRemote();
+    const now=custRemote;
+    if(now&&now.known&&now.seq==null){ toast(tx('custCleared'),'ok'); return; }
+    if(now&&now.known&&String(now.seq)!==String(was)){ toast(tx('custOther'),'warn'); return; }
+    await pushCustomerDisplay(null); b.disabled=false;
+  });
+}
 async function pushCustomerDisplay(seq){
   if(!supa) return;
   try{
-    const {error}=await supa.from('pos_display').upsert(
+    ++_custRd; custRemote=null;   /* 진행 중인 조회가 이 쓰기 결과를 덮지 않게 — 끝날 때까지는 「모름」 */
+    const {data,error}=await supa.from('pos_display').upsert(
       {station:POS_STATION, event_seq:seq, updated_by:(window.__so_getUser&&__so_getUser())||null, updated_at:new Date().toISOString()},
-      {onConflict:'station'});
+      {onConflict:'station'}).select('station');
     if(error) throw error;
-    custShownSeq=seq; updateCustBtn();
+    if(!data||!data.length) throw new Error(tx('custNoRow'));   /* 반영된 줄이 없으면 실패로 알린다 */
+    custShownSeq=seq;
+    custRemote={known:true, seq:seq, tm:(seq!=null?(teamInList(seq)||(state.team&&String(state.team.event_seq)===String(seq)?state.team:null)):null)};
+    updateCustBtn();
     toast(seq?tx('custShown'):tx('custCleared'),'ok');
-  }catch(e){ toast(tx('custFail')(e.message),'err'); }
+  }catch(e){ toast(tx('custFail')(e.message),'err'); loadCustRemote(); }
 }
 function updateCustBtn(){
+  renderCustRemote();
   const b=$('#btn-cust-display'); if(!b) return;
-  const on=!!(state.team && custShownSeq===state.team.event_seq);
+  const cur=custOnSeq();
+  const on=!!(state.team && cur!=null && String(cur)===String(state.team.event_seq));
   b.textContent = on?tx('custHide'):tx('custShow');
   b.title = tx('custOnTitle');
   b.style.background = on?'var(--accent)':''; b.style.color = on?'#fff':'';
@@ -1859,7 +1940,8 @@ async function toggleRunList(){
 $('#btn-run-list').addEventListener('click',toggleRunList);
 $('#btn-cust-display').addEventListener('click',()=>{
   if(!state.team) return;
-  const on=custShownSeq===state.team.event_seq;
+  const cur=custOnSeq();
+  const on=(cur!=null && String(cur)===String(state.team.event_seq));
   pushCustomerDisplay(on?null:state.team.event_seq);
 });
 $('#team-q') && $('#team-q').addEventListener('input',e=>{ state.teamQ=e.target.value; renderTeams(); });

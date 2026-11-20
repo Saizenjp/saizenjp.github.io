@@ -112,7 +112,7 @@
   .foot b{color:var(--text2)}
   .foot code{font-family:var(--mono);font-size:11px;background:var(--surface3);padding:1px 6px;border-radius:4px;color:var(--text2)}
 </style>
-<link rel="stylesheet" href="assets/saizen-ops.css?v=41.6">
+<link rel="stylesheet" href="assets/saizen-ops.css?v=41.7">
 </head>
 <body>
 <div class="topbar so-bar">
@@ -547,8 +547,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/saizen-core.js?v=72"></script>
-<script src="assets/saizen-ops.js?v=41.6"></script>
+<script src="assets/saizen-core.js?v=73"></script>
+<script src="assets/saizen-ops.js?v=41.7"></script>
 <script>
 // ── 랜딩 게이트: 미로그인=안내 / 로그인=허용 카드만 표시 ──
 (function(){
@@ -728,15 +728,27 @@
           .then(function(r){ return {ym:ym,ppl:(r&&r.count)}; }).catch(function(){ return {ym:ym,ppl:null}; });
       })).then(function(pplArr){
         var pplBy={}; pplArr.forEach(function(o){ pplBy[o.ym]=o.ppl; });
+        // 달이 늘수록 띠가 길어진다 → 이번 달(리조트 JST)에 가까운 REG_NEAR 개 달만 펼쳐 두고 나머지는 [더 보기]로 접는다(Min 2026-11-20).
+        //   거리가 같으면 앞으로 올 달이 먼저. 접을 달이 하나뿐이면 줄 수가 줄지 않으므로 접지 않는다. YYYY-MM 꼴이 아닌 값은 접는 쪽.
+        var REG_NEAR=6, nearSet=Object.create(null), regOpen=false;
+        var ymNo=function(s){ var m=/^(\d{4})-(\d{2})$/.exec(String(s)); return m?(+m[1])*12+(+m[2]):null; };
+        var nowNo=ymNo(new Date().toLocaleString('sv-SE',{timeZone:'Asia/Tokyo'}).slice(0,7));
+        var ymDist=function(ym){ var n=ymNo(ym); return (n==null||nowNo==null)?Infinity:Math.abs(n-nowNo); };
+        (yms.length<=REG_NEAR+1 ? yms : yms.slice().sort(function(a,b){ var d=ymDist(a)-ymDist(b); return d?d:(a<b?1:-1); }).slice(0,REG_NEAR)).forEach(function(ym){ nearSet[ym]=1; });
         var draw=function(){
-        var html=yms.map(function(ym){
+        var chipOf=function(ym){
           var info=infoBy[ym]; var who='', ts='';
           if(info){ var d=new Date(info.uploaded_at); ts=' · <span style="color:var(--muted)">'+p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+'</span>'; who=info.uploaded_by?(' · '+_rsEsc(info.uploaded_by)):''; }
           var cnt=' · <b style="color:#127a3b">'+(teams[ym]||0).toLocaleString()+'</b>'+t('ix_teamUnit')+(pplBy[ym]!=null?' <b style="color:#127a3b">'+pplBy[ym].toLocaleString()+'</b>'+t('ix_pplUnit'):'');
           return '<span style="background:#fff;border:1px solid #b6e6c8;border-radius:99px;padding:3px 11px">'
                + '<b style="font-family:var(--mono)">'+_rsEsc(ym)+'</b>'+who+ts+cnt+'</span>';
-        }).join('');
-        var box=document.getElementById('reg-strip-list'); if(box){ box.innerHTML=html; document.getElementById('reg-strip').style.display='flex'; }
+        };
+        var near=yms.filter(function(ym){ return nearSet[ym]; }), rest=yms.filter(function(ym){ return !nearSet[ym]; });
+        var html=near.map(chipOf).join('');
+        if(rest.length) html+='<details class="so-fold" id="reg-more" style="flex:1 1 100%"'+(regOpen?' open':'')+'><summary style="font-weight:700;color:var(--text2)">'+t('ix_regMore')+' <span class="so-fsum">'+rest.length+t('ix_regMoreUnit')+'</span></summary>'
+          +'<span class="so-fbody" style="display:flex;flex-wrap:wrap;gap:6px 12px">'+rest.map(chipOf).join('')+'</span></details>';
+        var box=document.getElementById('reg-strip-list'); if(box){ box.innerHTML=html; document.getElementById('reg-strip').style.display='flex';
+          var dm=document.getElementById('reg-more'); if(dm) dm.addEventListener('toggle',function(){ regOpen=dm.open; }); }
         };
         __redraw.reg=draw; draw();
       });

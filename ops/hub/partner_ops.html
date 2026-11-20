@@ -17,7 +17,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 수배 목록</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=72"></script>
+<script src="../assets/saizen-core.js?v=73"></script>
 <style>
   /* ── 공통 chrome (docs/ops-page-skeleton.html 정본 — 통째 복사) ── */
   :root{
@@ -229,7 +229,7 @@
   @media (min-width:1400px) and (max-width:1799px){ .cols:not(.nosel) .lt .cdp{display:none} }
   .detail textarea.inp{width:100%;min-height:64px}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.6">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.7">
 </head>
 <body data-so-area="partner_kumamoto partner_trial">
 <div class="topbar so-bar">
@@ -298,7 +298,7 @@
 
 <div id="toast"></div>
 
-<script src="../assets/saizen-ops.js?v=41.6"></script>
+<script src="../assets/saizen-ops.js?v=41.7"></script>
 <script>
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -448,7 +448,7 @@ function applyStatic(){
   $('#q').placeholder=tx('q');
 }
 window.onSaizenLangChange=function(){ applyStatic(); renderAll(); };
-function toast(msg,cls){ const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.textContent=msg; $('#toast').appendChild(t); setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); },2600); }
+function toast(msg,cls){ const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.textContent=msg; $('#toast').appendChild(t);if(window.__so_toastKeep&&window.__so_toastKeep(t))return; setTimeout(()=>{ t.style.opacity='0'; t.style.transition='.3s'; setTimeout(()=>t.remove(),300); },2600); }
 function setConn(t,c){ const e=$('#conn-state'); e.textContent=t; e.className='pill'+(c?' '+c:''); }
 function who(){ try{ return (window.__so_getUser&&__so_getUser())||null; }catch(e){ return null; } }
 async function logChange(id,action,label,changes){ try{ await supa.from('change_log').insert({entity:'partner_ops',entity_id:String(id),action,label,changes:changes||null,changed_by:who()}); }catch(e){} }
@@ -588,8 +588,13 @@ async function commitDraft(){
   if(patch.assign) patch.assign=pruneAssign(t,assignOf(patch));   // 명단에서 빠진 사람의 옛 지정은 저장하지 않는다
   const prevParty=(OPS[t.seq]||{}).party||null;
   if(!(await saveOps(t.seq,patch,'save',true))) ok=false;
-  if(ok&&!d.ops.party&&prevParty){ const rest=TEAMS.filter(x=>x.seq!==t.seq&&Number(ops(x.seq).party)===Number(prevParty)); if(rest.length===1) await saveOps(rest[0].seq,{party:null},'party',true); }   // 묶음을 풀어 한 팀만 남으면 그 팀의 묶음 번호도 지운다
-  if(ok&&d.ops.party&&(Number(d.ops.party)!==Number(prevParty))){ const v=Number(d.ops.party); await saveOps(v,{party:Math.min(v,t.seq)},'party',true); await saveOps(t.seq,{party:Math.min(v,t.seq)},'party',true); }
+  if(ok&&!d.ops.party&&prevParty){ const rest=TEAMS.filter(x=>x.seq!==t.seq&&Number(ops(x.seq).party)===Number(prevParty)); if(rest.length===1) await saveOps(rest[0].seq,{party:null},'party',true); else if(rest.length>1&&Number(prevParty)===t.seq){ const n=Math.min.apply(null,rest.map(x=>x.seq)); for(const x of rest) await saveOps(x.seq,{party:n},'party',true); } }   // 묶음을 풀어 한 팀만 남으면 그 팀의 묶음 번호도 지운다 · 번호 주인 팀이 빠지고 둘 이상 남으면 남은 팀 중 작은 번호로 바꿔 적는다(빠진 팀의 번호가 남의 묶음 번호로 남지 않게)
+  if(ok&&d.ops.party&&(Number(d.ops.party)!==Number(prevParty))){ const v=Number(d.ops.party), old=Number(prevParty)||0, pOf=s=>Number(ops(s).party)||0, pv=pOf(v);
+    /* 묶음 합류 규칙(2026-11-20 결정) — 고른 팀이 이미 묶여 있으면 그 묶음에 합류한다(기존 상대는 그대로 · 셋 이상 허용). 고른 팀은 혼자고 이 팀이 묶여 있으면 고른 팀이 이 팀의 묶음에 들어온다. 둘 다 혼자면 작은 쪽 event_seq(다른 묶음이 이미 쓰는 번호면 큰 쪽). */
+    const used=n=>TEAMS.some(x=>x.seq!==t.seq&&x.seq!==v&&pOf(x.seq)===n), lo=Math.min(v,t.seq), hi=Math.max(v,t.seq), np=pv||old||(used(lo)&&!used(hi)?hi:lo);
+    if(pv&&old&&pv!==old){ const rest=TEAMS.filter(x=>x.seq!==t.seq&&pOf(x.seq)===old); if(rest.length===1) await saveOps(rest[0].seq,{party:null},'party',true); else if(rest.length>1&&old===t.seq){ const n=Math.min.apply(null,rest.map(x=>x.seq)); for(const x of rest) await saveOps(x.seq,{party:n},'party',true); } }   /* 다른 묶음으로 옮겨 가서 옛 묶음에 한 팀만 남으면 그 팀의 묶음 번호도 지운다(풀기와 같은 규칙) */
+    if(pv!==np) await saveOps(v,{party:np},'party',true);
+    await saveOps(t.seq,{party:np},'party',true); }
   for(const id of d.golfDel){ const {error}=await supa.from('partner_golf').delete().eq('id',id); if(error){ toast(tx('saveFail')+': '+error.message,'err'); ok=false; } else { GOLF[t.seq]=(GOLF[t.seq]||[]).filter(r=>r.id!==id); logChange(t.seq,'golf_del',String(id)); } }
   for(const r of d.golf){ if(r._ph) continue; const row=clean(r); if(!HAS_GAUTO) delete row.auto; const saved=(GOLF[t.seq]||[]).find(x=>x.id===r.id); if(row.id<0) delete row.id; else if(!rowChanged(saved,row)) continue; const sv=await saveGolf(row); if(!sv) ok=false; else r.id=sv.id; }   // 들어간 새 줄은 초안에도 진짜 id 를 되쓴다 — 일부 실패 뒤 다시 [저장]할 때 같은 줄을 또 넣지 않게
   for(const id of d.dispDel){ const {error}=await supa.from('partner_dispatch').delete().eq('id',id); if(error){ toast(tx('saveFail')+': '+error.message,'err'); ok=false; } else { DISP[t.seq]=(DISP[t.seq]||[]).filter(r=>r.id!==id); logChange(t.seq,'dispatch_del',String(id)); } }
