@@ -13,7 +13,7 @@
  *                  (그래서 README.pdf.md · jquery.csv.js 같은 이름도 걸린다 — 일부러 두는 파일이면 ALLOW 에 적는다).
  *  ② 비밀값 꼴     파일 본문의 sb_secret_ 키 · Supabase 접근 토큰(sbp_ · sbp_oauth_) · service_role JWT · PRIVATE KEY 블록
  *                  · GitHub 토큰 · npm 토큰 · 비밀번호가 든 DB 접속 주소 · DeepL 키
- *                  (「sb_secret_」 라는 낱말만 적은 문장, 자리표시자([YOUR-PASSWORD] · ${DB_PASS} · xxxx…), 로컬 기본 계정
+ *                  (「sb_secret_」 라는 낱말만 적은 문장, 자리표시자([YOUR-PASSWORD] · ${DB_PASS} · xxxx… — 괄호로 감쌌어도 안쪽이 이름·낱말이 아니면 값이다), 로컬 기본 계정
  *                   postgres:postgres@127.0.0.1, 화면·공용 스크립트에 내장된 publishable 키는 걸리지 않는다)
  *
  *  보는 파일: git 저장소의 맨 위 폴더에서 돌리면 추적 중인 파일과, 아직 추적 전이지만 무시되지 않아
@@ -23,7 +23,7 @@
  *            파일 이름이 UTF-8 이 아니면(다른 PC 에서 푼 압축의 한글 이름) 그 이름으로는 열 수 없다 → 건너뛰지 않고 문제로 알린다.
  *  보지 못하는 것: 사진(여권·명단을 찍은 jpg·png — 이름으로는 가릴 수 없다) · 데이터가 든 .sql·.json·.txt
  *            · pptx(안내 자료 1개가 올라가 있다) · 목록에 없는 확장자
- *            · 두 줄로 쪼개거나 이어 붙이거나 한 번 더 인코딩한 비밀값 · 이미 지난 커밋(git 기록).
+ *            · 두 줄로 쪼개거나 이어 붙이거나 한 번 더 인코딩한 비밀값 · 괄호로 감싼, 글자만으로 된 DB 비밀번호([hunter] — 이름과 가를 수 없다) · 이미 지난 커밋(git 기록).
  *  ALLOW 는 이름 검사만 건너뛴다 — 본문의 비밀값 꼴은 ALLOW 로 넘길 수 없다(문서의 예시는 자리표시자로 적는다:
  *            [YOUR-TOKEN] · ${TOKEN} · 같은 글자만 이어 적은 xxxx… · 0000…).
  *  외부 의존성 0(노드 빌트인만).   실행:  node scripts/check-tracked.mjs   (저장소 루트에서)
@@ -68,9 +68,37 @@ function badName(path) {
 
 /* 비밀값 꼴 — 값 자체는 출력하지 않는다(CI 기록도 공개된다) */
 /* 자리표시자 — 값이 아니라 「여기에 넣으세요」 라고 적은 글( [YOUR-PASSWORD] · <password> · ${DB_PASS} · $DB_PASS · %s · *** · xxxx · YOUR_PASSWORD · password ) */
-const PLACEHOLDER = /^(?:\[[^\]]*\]|<[^>]*>|\$\{[^}]*\}|\{\{?[^}]*\}?\}|%[sd]|\*{3,}|x{3,}|your[-_a-z0-9]*|(?:my|db|database|postgres|supabase)?[-_]?(?:pass(?:word)?|pw|secret)|changeme|example|placeholder)$/i;
+const PLACE_WORD = /^(?:%[sd]|\*{3,}|x{3,}|your[-_a-z0-9]*|(?:my|db|database|postgres|supabase)?[-_]?(?:pass(?:word)?|pw|secret)|changeme|example|placeholder)$/i;
+/* 감싼 글( [ ] · < > · {{ }} · { } · ${ } ) — 감쌌다고 다 자리표시자가 아니다. 접속 주소 틀의 [YOUR-PASSWORD] 에서 괄호는 두고
+   안쪽만 진짜 비밀번호로 바꾼 꼴( postgres:[진짜값]@… )이 있다. 안쪽이 이름·낱말일 때만 자리표시자다:
+   빈 것 · 숫자만(${1}) · 숫자 없는 대문자 이름(YOUR-PASSWORD · DB_PASS) · ASCII 가 아닌 글만(비밀번호)
+   · 숫자 없는 설정 경로(cfg.password · .Values.dbPassword) · 위의 자리표시자 낱말.
+   글자만으로 된 진짜 비밀번호([hunter])는 이름과 가를 수 없어 넘어간다(머리말 「보지 못하는 것」). */
+const WRAPPED = /^(?:\[([^\]]*)\]|<([^>]*)>|\{\{([^{}]*)\}\}|\{([^{}]*)\}|\$\{([^{}]*)\})$/;
+const PLACE_NAME = /^(?:\d*|[A-Z]+(?:[-_][A-Z]+)*|[^\x00-\x7f]+|\.?[A-Za-z_$]+(?:\.[A-Za-z_$]+)*)$/;
+/* ${ } 의 안쪽은 참조도 받는다 — 숫자가 든 환경 변수 이름(${DB_PASS_2} · ${process.env.DB_PASS_2}) · 없으면 오류(${DB_PASS:?…})
+   · 함수로 감싼 참조(${encodeURIComponent(pw)}) */
+const SH_REF = /^(?:[A-Za-z_$]+\.)*[A-Z_][A-Z0-9_]*(?::?\?[^{}]*)?$/;
+/* ${DB_PASS:-기본값} — 변수가 없으면 기본값이 곧 비밀번호다. 기본값을 꺼내 그것으로 판정한다 */
+const SH_DEFAULT = /^\$\{[A-Za-z_][A-Za-z0-9_]*:?[-=+]([^{}]*)\}$/;
+function isPlaceholder(pw) {
+  const w = WRAPPED.exec(pw);
+  if (!w) return PLACE_WORD.test(pw);
+  let inner = w.slice(1).find((x) => x !== undefined);
+  if (w[5] !== undefined) {
+    for (let c; (c = /^[A-Za-z_$][\w$.]*\((.*)\)$/.exec(inner));) inner = c[1];
+    if (SH_REF.test(inner)) return true;
+  }
+  return PLACE_NAME.test(inner) || PLACE_WORD.test(inner);
+}
 const ENV_REF = /^\$[A-Z_][A-Z0-9_]*$/;      /* $DB_PASS — 대문자 환경 변수 이름만($ 로 시작하는 진짜 비밀번호와 가른다) */
 const LOCAL_HOST = /^(?:localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)$/i;
+/* 비밀번호 자리의 글이 진짜 값인가 — 자리표시자·환경 변수 참조·로컬 기본 계정은 값이 아니다 */
+function dbPwIsValue(pw, host) {
+  const d = SH_DEFAULT.exec(pw);
+  if (d) { pw = d[1]; if (!pw) return false; }      /* ${DB_PASS:-} — 기본값이 비었다 */
+  return !isPlaceholder(pw) && !ENV_REF.test(pw) && !(LOCAL_HOST.test(host) && /^(?:postgres|password)$/i.test(pw));
+}
 /* ok(m) 이 거짓이면 그 일치는 자리표시자·기본값이라 넘어간다 */
 const varied = (s) => new Set(String(s).replace(/[-_]/g, '')).size > 2;      /* xxxx… · 0000… 처럼 같은 글자만 이어 적은 예시는 값이 아니다 */
 const SECRETS = [
@@ -80,8 +108,8 @@ const SECRETS = [
   { name: '개인키 블록(PRIVATE KEY)', re: /-----BEGIN (?:[A-Z0-9]{1,20} ){0,6}PRIVATE KEY(?: BLOCK)?-----/g },
   { name: 'GitHub 토큰', re: /(?<![A-Za-z0-9_])(?:gh[pousr]_([A-Za-z0-9]{36,255})|github_pat_([A-Za-z0-9_]{60,255}))/g, ok: (m) => varied(m[1] || m[2]) },
   { name: 'npm 토큰', re: /(?<![A-Za-z0-9_])npm_([A-Za-z0-9]{36})(?![A-Za-z0-9])|_authToken\s*=\s*(?!\$\{)([^\s$"']{20,200})/g, ok: (m) => varied(m[1] || m[2]) },
-  { name: '비밀번호가 든 DB 접속 주소', re: /postgres(?:ql)?:\/\/[A-Za-z0-9._-]{1,80}:([^\s@\/'"`<>]{4,200})@([A-Za-z0-9.-]{4,200})/g,
-    ok: (m) => !PLACEHOLDER.test(m[1]) && !ENV_REF.test(m[1]) && !(LOCAL_HOST.test(m[2]) && /^(?:postgres|password)$/i.test(m[1])) },
+  { name: '비밀번호가 든 DB 접속 주소', re: /postgres(?:ql)?:\/\/[A-Za-z0-9._-]{1,80}:([^\s@\/'"`]{4,200})@([A-Za-z0-9.-]{4,200})/g,      /* < > 도 비밀번호 글자로 받는다 — <진짜값> 꼴이 판정까지 오게 */
+    ok: (m) => dbPwIsValue(m[1], m[2]) },
   { name: 'DeepL 키', re: /(?<![0-9a-f-])([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):fx(?![a-z0-9])/g, ok: (m) => varied(m[1]) },
 ];
 /* JWT 는 세 토막(머리.본문.서명) — 본문을 base64url 로 풀어 role 이 service_role 인 것만 잡는다(anon 키는 공개값) */

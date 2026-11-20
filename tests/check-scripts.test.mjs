@@ -4,7 +4,7 @@
 //  사례의 이름·코드는 모두 지어낸 값이다. 비밀값 꼴은 실행 중에 이어 붙여 만든다(이 파일에는 그 꼴이 없다).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, unlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, unlinkSync, truncateSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { spawnSync, spawn } from 'node:child_process';
@@ -699,17 +699,22 @@ test('추적 파일 검사: 비밀값 꼴 — 값은 출력하지 않고, 자리
     ['비밀번호가 든 DB 주소', ['비밀번호가 든 DB 접속 주소'], PG + 'postgres:Sup3rS3cretPw@db.example.com:5432/postgres\n', 'src/db.txt'],
     ['$ 로 시작하는 진짜 비밀번호', ['비밀번호가 든 DB 접속 주소'], PG + 'u:$tr0ngPw9@db.example.com/x\n', 'src/db2.txt'],
     ['로컬이 아닌 호스트의 기본 비밀번호', ['비밀번호가 든 DB 접속 주소'], PG + 'postgres:postgres@db.example.com/x\n', 'src/db3.txt'],
+    ['괄호로 감쌌어도 안쪽이 진짜 값이면 잡는다([ ] · < > · { } · ${변수:-값})', [1, 2, 3, 4].map((n) => `wrapped.txt:${n} — 비밀값 꼴: 비밀번호가 든 DB 접속 주소`),
+      ['[Tr0ub4dor9x]', '<Tr0ub4dor9x>', '{Tr0ub4dor9x}', '${DB_PASS:-Tr0ub4dor9x}'].map((pw) => PG + 'postgres:' + pw + '@db.example.com/x\n').join(''), 'src/wrapped.txt'],
     ['anon JWT 는 공개값', [], `const t = '${jwt('anon')}';\n`, 'ok/anon.js'],
     ['낱말만 적은 문장·자리표시자', [], '규칙: sb_secret_ 로 시작하는 키는 넣지 않는다. 예: ' + PG + 'postgres:[YOUR-PASSWORD]@db.example.com\n', 'ok/words.md'],
     ['같은 글자만 이어 적은 예시', [], 'sb_' + 'secret_' + 'x'.repeat(30) + '\n', 'ok/placeholder.md'],
     ['같은 글자만 이어 적은 토큰 예시(sbp_ · ghp_ · npm_ · DeepL)', [], 'sb' + 'p_' + '0'.repeat(40) + '\n' + 'gh' + 'p_' + 'x'.repeat(36) + '\n' + 'np' + 'm_' + 'X'.repeat(36) + '\n' + 'key=' + '00000000-0000-0000-0000-000000000000' + ':fx\n', 'ok/token-example.md'],
     ['DB 주소 — 환경 변수·로컬 기본 계정', [], PG + 'u:${DB_PASS}@db.example.com/x\n' + PG + 'u:$DB_PASS@db.example.com/x\n' + PG + 'postgres:postgres@127.0.0.1:54322/postgres\n', 'ok/db.md'],
+    ['DB 주소 — 감싼 자리표시자·참조([이름] · <낱말> · {{설정 경로}} · ${변수} · ${변수:-자리표시자})', [],
+      ['[YOUR-PASSWORD]', '<password>', '${process.env.DB_PASS}', '{{.Values.dbPassword}}', '${DB_PASS}', '[DB-PASSWORD-HERE]', '<비밀번호>', '${1}', '${DB_PASS_2}', '${encodeURIComponent(pw)}', '${DB_PASS:-changeme}'].map((pw) => PG + 'postgres:' + pw + '@db.example.com/x\n').join('')
+        + PG + 'postgres:${DB_PASS:-postgres}@127.0.0.1:54322/postgres\n', 'ok/wrapped.md'],
     ['.npmrc 의 환경 변수 참조', [], '//registry.npmjs.org/:_auth' + 'Token=${NPM_TOKEN}\n', 'ok/.npmrc'],
     ['UUID 는 DeepL 키가 아니다', [], 'id=12345678-90ab-cdef-1234-567890abcdef\n', 'ok/uuid.txt'],
     ['공개키 블록은 아니다', [], '-----BEGIN PUBLIC KEY-----\n', 'ok/pub.txt'],
   ]);
   assert.equal(r.status, 1);
-  assert.match(r.err, /✗ 올리면 안 되는 파일·비밀값 18건/);
+  assert.match(r.err, /✗ 올리면 안 되는 파일·비밀값 22건/);
   assert.ok(!r.err.includes(FAKE_KEY) && !r.out.includes(FAKE_KEY), '비밀값 자체는 출력하지 않는다');
   assert.match(r.out, /폴더를 걸었습니다/);
   assert.match(r.err, /본문 검사는 ALLOW 로 건너뛸 수 없습니다/);
@@ -728,7 +733,7 @@ test('추적 파일 검사: git 저장소에서는 추적 파일·추적 전 파
       'gone.txt': `k = ${FAKE_KEY}\n`,
       'ignored.csv': 'x',
       'untracked.pdf': 'x',
-      'untracked.txt': 'ok\n',
+      'untracked.txt': `k = ${FAKE_KEY}\n`,      /* 추적 전 파일은 이름만이 아니라 본문도 본다 */
       'sub/inner.csv': 'x',
     };
     writeTree(dir, files);
@@ -739,10 +744,12 @@ test('추적 파일 검사: git 저장소에서는 추적 파일·추적 전 파
     const r = report(spawnSync(process.execPath, [SCRIPT('check-tracked.mjs')], { cwd: dir, encoding: 'utf8' }), files);
     assert.equal(r.status, 1);
     assert.match(r.out, /추적 파일 5개 · 추적 전 파일 3개/);
-    assert.deepEqual(r.flagged, ['gone.txt', 'staged.txt', 'sub/inner.csv', 'tracked.xlsx', 'untracked.pdf']);
+    assert.deepEqual(r.flagged, ['gone.txt', 'staged.txt', 'sub/inner.csv', 'tracked.xlsx', 'untracked.pdf', 'untracked.txt']);
     assert.match(r.of('staged.txt')[0], /색인에 올라간 내용 — 작업 폴더의 파일과 다릅니다/);
     assert.match(r.of('gone.txt')[0], /색인에 올라간 내용 — 작업 폴더에는 없는 파일입니다/);
     assert.match(r.of('untracked.pdf')[0], /아직 추적 전/);
+    assert.equal(r.of('untracked.txt').length, 1);
+    assert.match(r.of('untracked.txt')[0], /untracked\.txt:1 — 비밀값 꼴: Supabase secret key.*아직 추적 전/);
     assert.doesNotMatch(r.of('tracked.xlsx')[0], /아직 추적 전/);
     assert.ok(!r.err.includes(FAKE_KEY));
     /* 저장소의 맨 위가 아닌 폴더에서 돌리면 git 목록 대신 그 폴더를 걷는다(.gitignore 를 따르지 않는다) */
@@ -782,6 +789,24 @@ test('추적 파일 검사: UTF-8 이 아닌 파일 이름 · git 이 거부한 
       rmSync(join(dir, '.git'), { force: true });
     }
   } finally { try { unlinkSync(bad); } catch { /* 없으면 그만 */ } rmSync(dir, { recursive: true, force: true }); }
+});
+test('추적 파일 검사: 크기 한도를 넘는 파일 — 조용히 건너뛰지 않고 문제로 알린다', () => {
+  const lim = /const MAX_SCAN = (\d+) \* 1024 \* 1024;/.exec(readFileSync(SCRIPT('check-tracked.mjs'), 'utf8'));
+  assert.ok(lim, 'check-tracked.mjs 에서 MAX_SCAN 을 찾지 못했습니다');
+  const mb = Number(lim[1]);
+  const dir = mkdtempSync(join(tmpdir(), 'szbig-'));
+  try {
+    const files = { 'big.bin': '', 'small.txt': 'ok\n' };
+    writeTree(dir, files);
+    truncateSync(join(dir, 'big.bin'), mb * 1024 * 1024 + 1);      /* 한도보다 1바이트 큰 파일 — 내용 없이 길이만 늘린다(구멍 난 파일이라 디스크를 거의 쓰지 않는다) */
+    const r = report(spawnSync(process.execPath, [SCRIPT('check-tracked.mjs')], { cwd: dir, encoding: 'utf8' }), files);
+    assert.equal(r.status, 1, r.out);
+    assert.deepEqual(r.flagged, ['big.bin']);
+    assert.equal(r.of('big.bin').length, 1);
+    assert.match(r.of('big.bin')[0], new RegExp(`^✗ big\\.bin — ${mb}MB: 너무 커서 본문을 검사하지 못했습니다`));
+    assert.match(r.out, /본문 검사 1개\(/, '큰 파일은 「본문 검사」 수에 넣지 않는다');
+    assert.match(r.err, /✗ 올리면 안 되는 파일·비밀값 1건/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 test('추적 파일 검사: 깨끗한 폴더는 통과한다', () => {
   const r = runIn('check-tracked.mjs', { 'a.html': '<p>x</p>\n', 'b/c.js': 'var x = 1;\n' });
