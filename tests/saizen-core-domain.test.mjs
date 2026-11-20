@@ -627,6 +627,10 @@ test('mealPlan: 九重高原CC 휴장일(2027 평일)에 야마나미에서 치�
   assert.equal(SZ.mealPlan(t, '2027-07-20').lunchKind, 'cont');   // 휴장(화)
   assert.equal(SZ.mealPlan(t, '2027-07-22').lunchKind, 'cont');   // 휴장(목)
   assert.equal(SZ.mealPlan(t, '2027-07-23').lunchKind, '');       // 구주고원 영업(금) — 종전대로
+  assert.equal(SZ.mealPlan(t, '2027-07-19').lunchKind, '');       // 휴장이지만 공휴일(월) — 평일에만 적용
+  assert.equal(SZ.mealPlan({ accom: '시즈노야도 료칸', dep: '2027-07-18', arr: '2027-07-24', isPus: false }, '2027-07-20').lunchKind, '');   // 간지호텔에만 적용
+  assert.equal(SZ.mealPlan({ accom: '간지호텔', dep: '2027-07-20', arr: '2027-07-24', isPus: false }, '2027-07-20').lunchKind, '');   // 휴장(화) 입국일 — 체류 중간일에만 적용
+  assert.equal(SZ.mealPlan({ accom: '간지호텔', dep: '2027-07-16', arr: '2027-07-20', isPus: false }, '2027-07-20').lunchKind, '');   // 휴장(화) 귀국일 — 종전대로
   const y = { accom: '야마나미 리조트', dep: '2027-07-18', arr: '2027-07-24', isPus: false };
   assert.equal(SZ.mealPlan(y, '2027-07-23').lunchKind, 'cont');   // 야마나미 팀은 원래 cont
 });

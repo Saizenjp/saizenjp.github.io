@@ -119,7 +119,7 @@
   .box .bd h4.sub{margin:12px 0 6px;font-size:12.5px;font-weight:800;color:var(--text2)}
   .box .bd .note{margin-top:8px;font-size:11px;color:var(--muted);line-height:1.5}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.6">
 <style>
   @page{size:A4;margin:12mm}
   @media print{
@@ -197,7 +197,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=72"></script>
-<script src="../assets/saizen-ops.js?v=41.5"></script>
+<script src="../assets/saizen-ops.js?v=41.6"></script>
 <script>
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
@@ -351,7 +351,9 @@ function applyStatic(){
   $('#t-note').textContent=tx('noteRules');
   const cb=$('#btn-connect'); if(cb&&!supa) cb.textContent=tx('connectBtn');
 }
-window.onSaizenLangChange=function(){ applyStatic(); if(DATA) render(); else renderLabel(); };
+window.onSaizenLangChange=function(){ applyStatic();
+  if(LOADING){ renderLabel(); $('#report').innerHTML=`<div class="empty">${esc(tx('loading'))}</div>`; return; }   // 조회 중에는 앞 화면의 자료로 다시 그리지 않는다(버튼이 켜져 옛 자료가 인쇄·엑셀로 나간다)
+  if(DATA) render(); else renderLabel(); };
 
 // ── 입력 동기화 ──
 function syncInputs(){
@@ -621,7 +623,7 @@ async function downloadXlsx(){
     if(UNIT!=='year'){
       const w5=wb.addWorksheet('未精算'); w5.columns=[{width:12},{width:16},{width:13},{width:14},{width:14},{width:14},{width:12}];
       title(w5, ttl, 7); head(w5,3,[tx('thTeam'),tx('thRep'),tx('thCoDate'),tx('thGrossT'),tx('thPaid'),tx('thBalance'),tx('thStatus')]);
-      let r5=4; (DATA.unsettled||[]).forEach(u=>{ const bal=N(u.balance); put(w5,r5,[u.tag||'',(u.walkin?tx('unWalkin')+' ':'')+(u.rep_name||''),u.co_date||'',N(u.gross),N(u.paid),bal,bal>0?tx('unDue'):(bal<0?tx('unOver'):tx('unPaid'))],[3,4,5]); r5++; });
+      let r5=4; (DATA.unsettled||[]).forEach(u=>{ const bal=N(u.balance); put(w5,r5,[u.tag||'',(u.walkin&&u.rep_name!=='ウォークイン'?tx('unWalkin')+' ':'')+(u.rep_name||''),u.co_date||'',N(u.gross),N(u.paid),bal,bal>0?tx('unDue'):(bal<0?tx('unOver'):tx('unPaid'))],[3,4,5]); r5++; });
       if(r5===4) put(w5,4,[tx('unNone')]);
     }
     // B2B 参考
@@ -663,7 +665,7 @@ function bookChecks(D){
   return rows;
 }
 async function downloadCloseBook(){
-  if(!DATA||UNIT!=='month') return;
+  if(!DATA||UNIT!=='month'||LOADING) return;
   if(!window.ExcelJS){ toast(tx('xlsxFail')+'ExcelJS','err'); return; }
   const NAVY='FF1A2540', SOFT='FFEAF0F7', LINE='FFB9C4D6', WARN='FFFDECEA';
   const bAll=()=>{ const st={style:'thin',color:{argb:LINE}}; return {top:st,left:st,bottom:st,right:st}; };
@@ -747,7 +749,7 @@ async function downloadCloseBook(){
     // ⑥ 未精算
     const w5=wb.addWorksheet('未精算'); w5.columns=[{width:14},{width:22},{width:12},{width:14},{width:14},{width:14},{width:10}];
     title(w5, `未精算チェックアウト ${ymJ}`, 7, sub); head(w5,3,['チーム','代表','アウト日','請求','入金','残高','状態']);
-    let r5=4; (D.unsettled||[]).forEach(u=>{ const bal=N(u.balance); put(w5,r5,[u.tag||'',(u.walkin?'ウォークイン ':'')+(u.rep_name||''),u.co_date||'',N(u.gross),N(u.paid),bal,bal>0?'未収':(bal<0?'過入金':'未締め')],[3,4,5],{warn:bal!==0}); r5++; });
+    let r5=4; (D.unsettled||[]).forEach(u=>{ const bal=N(u.balance); put(w5,r5,[u.tag||'',(u.walkin&&u.rep_name!=='ウォークイン'?'ウォークイン ':'')+(u.rep_name||''),u.co_date||'',N(u.gross),N(u.paid),bal,bal>0?'未収':(bal<0?'過入金':'未締め')],[3,4,5],{warn:bal!==0}); r5++; });
     if(r5===4) w5.getCell('A4').value=L.ja.unNone;
     // ⑦ B2B 参考
     const b=D.b2b||{}; const w6=wb.addWorksheet('B2B参考'); w6.columns=[{width:12},{width:12},{width:16},{width:16},{width:16}];

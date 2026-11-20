@@ -28,6 +28,7 @@
   .btn:disabled{opacity:.5;cursor:default}
   .btn.sm{font-size:12px;padding:5px 11px}
   .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:var(--accentSoft)}
   .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
   .conn .hint{font-size:11px;color:var(--muted)}
@@ -61,7 +62,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fdf6e7;color:#6b5312}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.5">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.6">
 </head>
 <body data-so-area="keyslip">
 <div class="topbar so-bar">
@@ -92,7 +93,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=72"></script><!-- 공유 도메인 규칙(숙소 라벨·박수 등) -->
-<script src="../assets/saizen-ops.js?v=41.5"></script>
+<script src="../assets/saizen-ops.js?v=41.6"></script>
 <script>
 const $=s=>document.querySelector(s);
 
@@ -334,11 +335,16 @@ function renderAccomChips(){
   }));
 }
 
+let LOADST='';   // 'loading' | 'fail' | 'ok' — 지금 화면의 목록이 YM 달의 것인가(언어를 바꿔도 같은 판정)
 let _loadSeq=0;   // 달을 연달아 넘기면 앞 달 응답이 나중에 와서 새 달 화면을 덮는다 → 낡은 응답은 버린다(room.html 과 같은 방식)
+function clearLists(){ LABELS=[]; UNASSIGNED=[]; SELCATS.clear(); SELDATES.clear(); SELACCOMS.clear(); ORIGINSEL='all';
+  renderCatChips(); renderOriginChips(); renderDayChips(); renderAccomChips(); renderUnassigned(); renderPreview(); }
 async function load(){
   if(!supa) return;
   const _my=++_loadSeq; const _stale=()=>_my!==_loadSeq;
   $('#ym-label').textContent=YM; $('#stat').textContent=tx('loading'); $('#btn-print').disabled=true; { const _bt=$('#btn-tag'); if(_bt) _bt.disabled=true; }
+  //  앞 달 목록을 남기지 않는다 — 읽는 중·읽기 실패 뒤에 칩을 누르면 인쇄 버튼이 다시 켜져, 새 달 이름으로 앞 달 라벨(룸키·키홀더)이 인쇄됐다
+  LOADST='loading'; clearLists();
   const from=ymFirst(YM), to=ymLast(YM);
   try{
     // 1) 그 달에 체크인하는 방배정(rooms 1행=1명)
@@ -498,8 +504,9 @@ async function load(){
       ACCOM_DEFAULT.forEach(a=>{ if(have.has(a)) SELACCOMS.add(a); }); }
     if(!LABELS.length){ $('#stat').textContent=tx('noMonthData'); }
     else $('#stat').textContent=tx('cntRooms')(LABELS.length,new Set(LABELS.map(l=>l.eventSeq)).size);
+    LOADST='ok';
     renderCatChips(); renderOriginChips(); renderDayChips(); renderAccomChips(); renderUnassigned(); renderPreview();
-  }catch(e){ if(_stale()) return; $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
+  }catch(e){ if(_stale()) return; LOADST='fail'; clearLists(); $('#stat').textContent=tx('loadFail'); toast(tx('loadFail')+': '+e.message,'err'); }
 }
 
 function renderUnassigned(){
@@ -710,7 +717,7 @@ const KT={w:61,h:21,cols:3,rows:13};
 function ktFloor(l){
   const m=String(l.zone||'').match(/^(\d+)\s*층$/); if(m) return m[1];
   //  층 정보를 못 읽은 호텔동 객실 — 방 번호 규칙(13xx=3층 … 22xx=12층)으로
-  const n=String(l.roomNo||'').trim();
+  const n=String(l.roomNo||'').trim().replace(/\s*호$/,'');   // 방 번호는 「1512호」 꼴로 저장된다
   if(/^\d{4}$/.test(n)){ const f=Math.floor(Number(n)/100)-10; if(f>=3&&f<=12) return String(f); }
   return '';
 }
@@ -811,7 +818,8 @@ window.onSaizenLangChange=function(){ applyStatic(); if(supa){ renderUI();
   // renderUI 가 달 표시·건수 칸을 빈 채로 다시 만든다 → 다시 채우고, 투숙자 이름도 새 언어 표기로 다시 만든다
   $('#ym-label').textContent=YM||'';
   LABELS.forEach(l=>{ l.names=(l.members||[]).map(m=>(window.__so_pname?__so_pname(m.name_kr,m.name_en):(m.name_kr||m.name_en||''))).filter(Boolean); });
-  $('#stat').textContent=LABELS.length?tx('cntRooms')(LABELS.length,new Set(LABELS.map(l=>l.eventSeq)).size):tx('noMonthData');
+  //  읽는 중·읽기 실패 상태는 「없음」·건수로 덮지 않는다
+  $('#stat').textContent=LOADST==='fail'?tx('loadFail'):LOADST==='loading'?tx('loading'):(LABELS.length?tx('cntRooms')(LABELS.length,new Set(LABELS.map(l=>l.eventSeq)).size):tx('noMonthData'));
   renderCatChips(); renderOriginChips(); renderDayChips(); renderAccomChips(); renderUnassigned(); renderPreview(); } };
 
 $('#btn-connect').addEventListener('click',connect);

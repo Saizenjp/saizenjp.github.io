@@ -189,7 +189,7 @@ for (const { path, badEnc, untracked } of entries) {
 if (git) {
   const goneSet = new Set(gone);
   for (const path of new Set([...git.dirty, ...gone])) {
-    const r = spawnSync('git', ['show', ':' + path], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
+    const r = spawnSync('git', ['show', ':0:' + path], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });      /* 단계 0 을 적는다 — 「3:15 메모.txt」 처럼 이름이 「숫자:」 로 시작하면 git 이 앞 숫자를 병합 단계로 읽는다 */
     if (r.status === 0 && r.stdout) scanBody(path, r.stdout, goneSet.has(path) ? ' (색인에 올라간 내용 — 작업 폴더에는 없는 파일입니다)' : ' (색인에 올라간 내용 — 작업 폴더의 파일과 다릅니다. git add 를 다시 하세요)');
     else if (goneSet.has(path)) problems.push(`✗ ${path} — 작업 폴더에 없고 색인에서도 읽지 못해 본문을 검사하지 못했습니다.`);
   }

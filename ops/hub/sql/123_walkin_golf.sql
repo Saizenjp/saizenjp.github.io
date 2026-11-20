@@ -45,8 +45,8 @@ create trigger trg_ot_cleanup_walkins after delete on public.walkins
 
 -- ③ walkin_open 확장 — 권한에 front·golf 추가 + 골프 인자 4개
 --    (p_name, p_pax, p_venue, p_date, p_holes, p_tee, p_course, p_phone)
---    ※ 120 의 4인자 판(p_date, p_name, p_pax, p_venue)은 따로 남아 있다 — 인자 이름이 겹쳐, 4개만 보내면
---       서버가 어느 쪽인지 고르지 못한다. 화면은 8인자 판에만 있는 인자를 같이 보낸다. 옛 판은 168 에서 삭제했다(2026-11-13 적용).
+--    ※ 120 의 4인자 판(p_date, p_name, p_pax, p_venue)은 따로 남아 있었다 — 인자 이름이 겹쳐, 4개만 보내면
+--       서버가 어느 쪽인지 고르지 못했다. 화면은 8인자 판에만 있는 인자를 같이 보낸다. 옛 판은 168 에서 삭제했다(2026-11-13 적용).
 CREATE OR REPLACE FUNCTION public.walkin_open(p_name text DEFAULT NULL::text, p_pax integer DEFAULT 1, p_venue text DEFAULT NULL::text, p_date date DEFAULT NULL::date, p_holes integer DEFAULT NULL::integer, p_tee text DEFAULT NULL::text, p_course text DEFAULT NULL::text, p_phone text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
