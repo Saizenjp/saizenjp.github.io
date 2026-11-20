@@ -281,7 +281,7 @@ from (
   union all select 170,'170 보안 정리','public 에 RLS 가 꺼진 표 0개(백업 표 포함)', case when not exists(select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p') and not c.relrowsecurity) then '✅ 0개' else '🔴 '||(select string_agg(c.relname, ', ') from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p') and not c.relrowsecurity)||' — RLS 를 켜거나 지운다 (170)' end
   union all select 170,'170 보안 정리','audit_prune 권한 확인(활성 마스터만 — coalesce)', case when exists(select 1 from pg_proc where proname='audit_prune' and prosrc like '%if not coalesce((select role = ''admin''%') then '✅ 적용' else '🔴 미적용 (170)' end
   union all select 170,'170 보안 정리','take_booking_snapshot 로그인 사용자 실행 불가', case when coalesce(not has_function_privilege('authenticated', to_regprocedure('public.take_booking_snapshot(date)')::oid, 'execute'), false) then '✅ 회수됨' else '🔴 실행 가능 또는 함수 없음 (170)' end
-  union all select 171,'171 코스 화면 당일 손님','_signage_course_live 가 walkins 이름을 읽고 전기카트 대수 = qty', case when exists(select 1 from pg_proc where proname='_signage_course_live' and prosrc like '%left join walkins w%' and prosrc like '%is_walkin%' and prosrc not like '%coalesce(cb.cancelled,0)%') then '✅ 적용' else '❌ 미적용 (171 — Min 승인 뒤 적용)' end
+  union all select 171,'171 코스 화면 당일 손님','_signage_course_live 가 walkins 이름을 읽고 전기카트 대수 = qty', case when exists(select 1 from pg_proc where proname='_signage_course_live' and prosrc like '%left join walkins w%' and prosrc like '%is_walkin%' and prosrc not like '%coalesce(cb.cancelled,0)%') then '✅ 적용' else '❌ 미적용 (171)' end
 ) t
 order by ord, 항목;
 

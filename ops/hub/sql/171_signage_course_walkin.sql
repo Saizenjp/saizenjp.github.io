@@ -1,6 +1,9 @@
 -- 171_signage_course_walkin.sql — 손님용 코스 화면(실시간)에 당일 골프 손님의 이름을 낸다 + 전기카트 대수 식 정정
 --
--- ⚠ 파일만 — 적용 전. Min 승인 뒤 적용한다(MCP apply_migration 또는 SQL Editor). 다시 실행해도 같은 결과(create or replace).
+-- ✅ 적용 완료 — 2026-11-20(Min 「sql 171 적용해」, MCP apply_migration). 다시 실행해도 같은 결과(create or replace).
+--    적용 뒤 확인(읽기 전용): 00_VERIFY 171 식 통과 · security definer·search_path 그대로 · 실행 권한 anon 없음 / authenticated 있음 ·
+--    anon 실행 가능 security definer 수 15 그대로 · 오늘부터 사흘치 결과(조 수·인원·조 목록 해시)가 적용 전과 같다
+--    (당일 손님·취소 기록이 아직 0건이라 달라지는 표시가 없는 것이 맞다 — 당일 손님 이름이 나오는 경로는 첫 접수 때 확인된다).
 --
 -- 왜
 --   ① SQL 168(2026-11-13 적용) 뒤로 당일 골프 손님(walkins) 조가 golf_groups 에 저장된다. 그런데 손님용 코스 화면의
