@@ -5176,7 +5176,9 @@ async function autoAssign(){
                      : (_sp.kind==='names' ? (_sp.names||[]).map(x=>x&&x.id).filter(id=>roster.some(m=>m.id===id)) : []);
         if(_sgIds.length && route.floorOnly){
           const _set=new Set(_sgIds);
-          plans.push({g,route,roster,floorOrder,gc,singles:roster.filter(m=>_set.has(m.id)),sp:_sp}); continue;
+          //  룸타입이 「싱글」(2027~)인 팀은 비고가 일부 이름만 적었어도 전원 1인 1실 — 적히지 않은 사람이 트윈에 둘씩 들어가지 않게(룸타입이 예약의 설정값)
+          const _rtAll=!!(window.SZCore&&SZCore.roomTypeSingles&&(SZCore.roomTypeSingles(g.room_type, roster.length, g.dep)||{}).kind==='all');
+          plans.push({g,route,roster,floorOrder,gc,singles:_rtAll?roster.slice():roster.filter(m=>_set.has(m.id)),sp:_rtAll?{kind:'all',src:'roomtype'}:_sp}); continue;
         }
         //  「현지에서 배정예정」처럼 **누가 쓸지만** 현장에서 정하는 건은 따로 모은다 —
         //  당일 아침에 이 분류만 열어 0으로 맞추면 된다(Min 2026-08).
@@ -5192,7 +5194,8 @@ async function autoAssign(){
       const _rt=(window.SZCore&&SZCore.roomTypeSingles)?SZCore.roomTypeSingles(g.room_type, roster.length, g.dep):null;   // g.dep(입국일) 2027~ 만 — 2026 예약은 null
       if(_rt && _rt.kind==='all'){
         //  룸타입 「싱글」은 트윈으로 가지 않는다. 비고가 막힌 것으로 읽히면 자동으로 정하지 않고 보류한다(사람이 비고를 본다) — 이전에는 보류 없이 트윈에 둘씩 들어갔다
-        if(_spBlk){ holds.push(mkHold(tx('holdSingle',gc)+' — '+tx('sgWhyRt',g.room_type)+' · '+tx('sgWhyRtBlk'),g,'single',{kind:'unsure'})); continue; }
+        //  (혼자 온 손님은 둘씩 들어갈 일이 없다 — 아래 전원 1인 1실 경로로 싱글 객실에)
+        if(_spBlk && roster.length>1){ holds.push(mkHold(tx('holdSingle',gc)+' — '+tx('sgWhyRt',g.room_type)+' · '+tx('sgWhyRtBlk'),g,'single',{kind:'unsure'})); continue; }
         if(route.floorOnly){ plans.push({g,route,roster,floorOrder,gc,singles:roster.slice(),sp:{kind:'all',src:'roomtype'}}); continue; }
         holds.push(mkHold(tx('holdSingle',gc)+' — '+tx('sgWhyRt',g.room_type)+' · '+tx('sgWhyAll'),g,'single',{kind:'all'})); continue;
       }
@@ -5438,6 +5441,7 @@ async function autoAssign(){
         ? SZCore.singlePlan((g.remark_local||'')+'\n'+(g.remark||''), g.pax, [])
         : null;
       if(sp && sp.kind!=='blocked') return;                      // 아직 싱글 요청이 살아 있다
+      { const _r=(window.SZCore&&SZCore.roomTypeSingles)?SZCore.roomTypeSingles(g.room_type,(state.members[g.event_seq]||[]).length,g.dep):null; if(_r&&_r.kind==='all') return; }   // 룸타입 「싱글」(2027~) = 1인 1실이 맞다
       const rows=state.rooms.filter(r=>r.event_seq===g.event_seq);
       if(rows.length<2) return;                                  // 방이 하나면 1인 1실인지 알 수 없다
       if(rows.some(r=>r.assign_source==='auto' && !frozenRow(r))) return;   // auto = 이번에 알아서 정리됨
