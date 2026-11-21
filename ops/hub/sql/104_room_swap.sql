@@ -10,6 +10,7 @@
 --    · 권한 = admin 또는 room 영역(rooms 쓰기 권한과 동일선).
 --    · 정원 = 교환 후 양쪽 모두 정원 이내여야 한다(초과면 예외로 전부 롤백).
 --  멱등(create or replace). ⚠ Supabase SQL Editor 수동 실행(또는 MCP). 103 이후.
+--  ⚠ 권한 확인 줄은 174 가 대체한다(area_expand — 자식 키 room_assign 인정) — 이 파일을 다시 실행했다면 174 도 다시 실행한다.
 -- ============================================================================
 
 create or replace function room_swap(p_a_ids uuid[], p_b_ids uuid[])

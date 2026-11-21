@@ -17,7 +17,7 @@
 --  멱등(create or replace). ⚠ Supabase SQL Editor 수동 실행 / MCP 적용.
 --  ⚠ 아래 shizu_place 본문은 옛 판이다 — 169_shizu_place_atomic.sql 이 대체한다(운영 DB 는 169 본문).
 --     이 파일의 shizu_place 를 다시 실행하면 「이동이 실패할 때 기존 방배정이 사라지는」 동작으로 되돌아간다.
---     shizu_unassign 은 이 파일이 그대로 정본이다.
+--     shizu_unassign 은 이 파일이 그대로 정본이다(권한 확인 줄만 174 가 area_expand 로 바꾼다 — 이 파일을 다시 실행했다면 174 도 다시 실행한다).
 -- ============================================================================
 
 create or replace function shizu_place(p_rows jsonb)

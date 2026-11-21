@@ -97,7 +97,7 @@
   .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.7">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.8">
 </head>
 <body data-so-area="settle_merit">
 <div class="topbar so-bar">
@@ -128,7 +128,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=73"></script>
-<script src="../assets/saizen-ops.js?v=41.7"></script>
+<script src="../assets/saizen-ops.js?v=41.8"></script>
 <script>
 const $=s=>document.querySelector(s);
 let supa=null, YM=null, ROWS=[], ACCOMSEL=new Set(), DEDS=[], EXTRAS={}, EXLIST=[];
@@ -166,7 +166,7 @@ const L={
     dedAmtPh:'例: 5000', dedLabelPh:'例: 春シーズンクーポン', dedTargetPh:'例: 260501-97866 / 山田',
     secLine:(a,c,p,t)=>'◎ '+a+' — '+c+'件 · '+p+'名 · '+t,
     totalTotal:'合計 Total', remarkPh:'備考',
-    remarkSaved:'備考保存', remarkFail:'備考保存失敗', addFail:'追加失敗', editFail:'修正失敗', delFail:'削除失敗', amtInvalid:'金額は数字で入力してください(保存していません)', delConfirm:'この行を削除しますか？(元に戻せません)',
+    remarkSaved:'備考保存', remarkFail:'備考保存失敗', addFail:'追加失敗', editFail:'修正失敗', delFail:'削除失敗', amtInvalid:'金額は数字で入力してください(保存していません)', delConfirm:'この行を削除しますか？(元に戻せません)', notSaved:'保存されていません — 閲覧専用のアカウントか、すでに削除された行です(再読み込みしてください)',
     xlsxNoData:'データなし', xlsxFail:'ExcelJS 読み込み失敗', xlsxDone:'xlsx ダウンロード',
     paxWarnV:(l,b)=>'名簿 '+l+'/予約 '+b, paxWarnTitle:'名簿人数と予約人数が異なります — 大きい値で請求',
     rateWarn:'単価未登録', exTypes:{'별채 사전신청비':'別棟事前申請費','싱글차지':'シングルチャージ','룸업그레이드':'ルームアップグレード','추가라운드':'追加ラウンド','기타':'その他'},
@@ -193,7 +193,7 @@ const L={
     dedAmtPh:'예: 5000', dedLabelPh:'예: 봄 시즌 쿠폰', dedTargetPh:'예: 260501-97866 / 홍길동',
     secLine:(a,c,p,t)=>'◎ '+a+' — '+c+'건 · '+p+'명 · '+t,
     totalTotal:'合計 Total', remarkPh:'비고',
-    remarkSaved:'비고 저장', remarkFail:'비고 저장 실패', addFail:'추가 실패', editFail:'수정 실패', delFail:'삭제 실패', amtInvalid:'금액은 숫자로 입력하세요(저장하지 않았습니다)', delConfirm:'이 줄을 삭제할까요? (되돌릴 수 없습니다)',
+    remarkSaved:'비고 저장', remarkFail:'비고 저장 실패', addFail:'추가 실패', editFail:'수정 실패', delFail:'삭제 실패', amtInvalid:'금액은 숫자로 입력하세요(저장하지 않았습니다)', delConfirm:'이 줄을 삭제할까요? (되돌릴 수 없습니다)', notSaved:'저장되지 않았습니다 — 보기 전용 계정이거나 이미 지워진 줄입니다(다시 불러오세요)',
     xlsxNoData:'데이터 없음', xlsxFail:'ExcelJS 로드 실패', xlsxDone:'xlsx 다운로드',
     paxWarnV:(l,b)=>'명단 '+l+'/예약 '+b, paxWarnTitle:'명단 인원과 예약 인원이 다릅니다 — 큰 값으로 청구',
     rateWarn:'단가 미등록', exTypes:{},
@@ -219,7 +219,7 @@ const L={
     dedAmtPh:'e.g. 5000', dedLabelPh:'e.g. spring coupon', dedTargetPh:'e.g. 260501-97866 / Hong',
     secLine:(a,c,p,t)=>'◎ '+a+' — '+c+' items · '+p+' ppl · '+t,
     totalTotal:'合計 Total', remarkPh:'Remarks',
-    remarkSaved:'Remark saved', remarkFail:'Remark save failed', addFail:'Add failed', editFail:'Edit failed', delFail:'Delete failed', amtInvalid:'Enter the amount in digits (not saved)', delConfirm:'Delete this line? (cannot be undone)',
+    remarkSaved:'Remark saved', remarkFail:'Remark save failed', addFail:'Add failed', editFail:'Edit failed', delFail:'Delete failed', amtInvalid:'Enter the amount in digits (not saved)', delConfirm:'Delete this line? (cannot be undone)', notSaved:'Not saved — this account is view-only, or the line was already deleted (reload)',
     xlsxNoData:'No data', xlsxFail:'ExcelJS load failed', xlsxDone:'xlsx downloaded',
     paxWarnV:(l,b)=>'roster '+l+'/booked '+b, paxWarnTitle:'Roster pax differs from booked pax — billed at the larger value',
     rateWarn:'Unit price not set', exTypes:{'별채 사전신청비':'Annex request fee','싱글차지':'Single charge','룸업그레이드':'Room upgrade','추가라운드':'Extra round','기타':'Other'},
@@ -556,14 +556,14 @@ async function updateDed(id,field,val){
     if(val.trim()!=='' && !/[0-9]/.test(val)){ toast(tx('amtInvalid'),'err'); renderDeds(); return; } }   // 숫자가 없으면 저장하지 않고 원래 값으로 되돌린다
   const prev=d[field];
   d[field]=field==='amount'?(parseInt(String(val).replace(/[^0-9-]/g,''),10)||0):val;
-  try{ const {error}=await supa.from('settle_deductions').update({[field]:d[field],updated_by:curUser()}).eq('id',id); if(error)throw error;
+  try{ const {data:hit,error}=await supa.from('settle_deductions').update({[field]:d[field],updated_by:curUser()}).eq('id',id).select('id'); if(error)throw error; if(!hit||!hit.length) throw new Error(tx('notSaved'));
     if(field==='amount') renderAll(); else renderDeds(); }
   catch(e){ d[field]=prev; toast(tx('editFail')+': '+e.message,'err'); renderAll(); }   // 저장 실패 → 화면 값·합계도 원래대로
 }
 async function removeDed(id){
   const d0=DEDS.find(x=>String(x.id)===String(id));
   if(d0 && (Number(d0.amount)||d0.label||d0.target) && !confirm(tx('delConfirm'))) return;   // 내용이 있는 줄은 확인 뒤 삭제(빈 줄은 바로)
-  try{ const {error}=await supa.from('settle_deductions').delete().eq('id',id); if(error)throw error;
+  try{ const {data:hit,error}=await supa.from('settle_deductions').delete().eq('id',id).select('id'); if(error)throw error; if(!hit||!hit.length) throw new Error(tx('notSaved'));
     DEDS=DEDS.filter(x=>String(x.id)!==String(id)); renderAll(); }
   catch(e){ toast(tx('delFail')+': '+e.message,'err'); }
 }
@@ -615,14 +615,14 @@ async function updateExtra(id,field,val){
     x.amount=parseInt(val.replace(/[^0-9]/g,''),10)||0; }
   else if(field==='is_add') x.is_add=(String(val)==='1');
   else x[field]=val;
-  try{ const {error}=await supa.from('settle_extras').update({[field]:x[field],updated_by:curUser()}).eq('id',id); if(error)throw error;
+  try{ const {data:hit,error}=await supa.from('settle_extras').update({[field]:x[field],updated_by:curUser()}).eq('id',id).select('id'); if(error)throw error; if(!hit||!hit.length) throw new Error(tx('notSaved'));
     recomputeExtras(); renderAll(); }
   catch(e){ x[field]=prev; recomputeExtras(); toast(tx('editFail')+': '+e.message,'err'); renderAll(); }   // 저장 실패 → 화면 값·합계도 원래대로
 }
 async function removeExtra(id){
   const x0=EXLIST.find(e=>String(e.id)===String(id));
   if(x0 && (Number(x0.amount)||x0.note) && !confirm(tx('delConfirm'))) return;   // 내용이 있는 줄은 확인 뒤 삭제(빈 줄은 바로)
-  try{ const {error}=await supa.from('settle_extras').delete().eq('id',id); if(error)throw error;
+  try{ const {data:hit,error}=await supa.from('settle_extras').delete().eq('id',id).select('id'); if(error)throw error; if(!hit||!hit.length) throw new Error(tx('notSaved'));
     EXLIST=EXLIST.filter(e=>String(e.id)!==String(id)); recomputeExtras(); renderAll(); }
   catch(e){ toast(tx('delFail')+': '+e.message,'err'); }
 }

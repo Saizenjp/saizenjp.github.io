@@ -4,6 +4,7 @@
 --  46에서 me_access·admin_list_users를 재생성하며 name/dept/title 컬럼이 빠진 회귀 보정.
 --  admin_set_access는 read_areas 포함 단일 7-arg로 통일(중복 오버로드 제거 → 모호성 방지).
 --  멱등. ⚠ Supabase SQL Editor 수동 실행(46 이후).
+--  ⚠ admin_set_access 는 174 가 대체한다(본인 마스터 강등 거부) — 이 파일을 다시 실행하면 그 확인이 빠진다.
 -- ============================================================================
 
 -- me_access: role·areas·read_areas + name·dept·title 전체 반환

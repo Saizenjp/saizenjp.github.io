@@ -7,6 +7,7 @@
 --  해결: 각 insert를 행별 서브트랜잭션(begin…exception…end)으로 감싸 정원초과·제약위반
 --   행만 건너뛰고 나머지는 그대로 배정. 반환값 = 실제 배정된 인원 수(클라가 미배정 표기).
 --  멱등(create or replace). ⚠ 수동/MCP 적용.
+--  ⚠ 권한 확인 줄은 174 가 대체한다(area_expand — 자식 키 인정) — 이 파일을 다시 실행했다면 174 도 다시 실행한다.
 -- ============================================================================
 
 create or replace function shizu_assign_rooms(p_rows jsonb, p_clear_from date default null, p_clear_to date default null)

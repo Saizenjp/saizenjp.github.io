@@ -11,6 +11,7 @@
 --  ⚠ 77 의 shizu_place 정의는 다시 실행하지 않는다 — 옛 본문으로 되돌아간다. shizu_unassign 은 77 그대로.
 --  권한: 로그인 전용(118·119 와 같은 상태 — public·anon 회수, authenticated 부여).
 --  확인: 00_VERIFY 77행 = 본문이 「begin 바로 다음에 delete」인지 본다.
+--  ⚠ 권한 확인 줄은 174 가 대체한다(area_expand — 자식 키 shizu_sheet 인정) — 이 파일을 다시 실행했다면 174 도 다시 실행한다.
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.shizu_place(p_rows jsonb)

@@ -1,4 +1,5 @@
 -- 44_settle_extras.sql — 現地精算表 팀별 가산/차감(기타) 항목 (MCP 적용 완료)
+-- ⚠ 읽기(select) 정책은 174 가 대체한다(has_any_read_area — 「보기」 권한) — 이 파일을 다시 실행하면 쓰기 권한자만 읽게 된다.
 -- 메리트에서 더/덜 받을 것(별채 사전신청비·싱글차지 등)을 팀 단위로 붙여 합계에 반영.
 create table if not exists settle_extras (
   id uuid primary key default gen_random_uuid(),

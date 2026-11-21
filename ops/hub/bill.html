@@ -118,7 +118,7 @@
 
 <script>
 // ── 손님 셀프 결제내역(QR) — 비로그인(anon). 토큰(?t=)으로 guest_bill RPC 호출 ──
-//   탭 = 오늘 라운딩(guest_today 125) / 신청 행사(guest_outings·guest_outing_set 155 — 팀원 이름을 눌러 신청·취소, Min 2026-10-27 「QR로도 신청」) / 결제 내역
+//   탭 = 오늘 라운딩(guest_today 125 · 골프장 수기 지정 course_fix = 176) / 신청 행사(guest_outings·guest_outing_set 155 — 팀원 이름을 눌러 신청·취소, Min 2026-10-27 「QR로도 신청」) / 결제 내역
 const SB_URL='https://wzfmloivrolpwpiuyhbs.supabase.co';
 const SB_KEY='sb_publishable_W76Uh3D9gRPjPoxHwl-LYw_dR9BIj6L';   // publishable(공개·내장 안전)
 const $=s=>document.querySelector(s);
@@ -221,11 +221,18 @@ function tabsHtml(){
 
 // ── 오늘 라운딩 ──
 //  홀수(9/18/27)는 담당자 지정이 있으면 그것, 없으면 SZCore.golfRows 규칙(단일 진실원).
+//  골프장은 수기 지정(play_course)이 규칙보다 우선 — guest_today(SQL 176)가 날짜별 course_fix 로 준다(코스 배정표·전기카트·송영표와 같은 골프장).
+//   SQL 176 적용 전 서버는 course_fix 를 주지 않는다 → fix 가 비어 종전(규칙)과 같다.
+function courseFixMap(){
+  const fix={};
+  ((TODAY&&Array.isArray(TODAY.days))?TODAY.days:[]).forEach(d=>{ if(d&&d.date&&d.course_fix) fix[String(d.date).slice(0,10)]=String(d.course_fix); });
+  return fix;
+}
 function golfRowFor(date){
   try{
     if(!TODAY||!window.SZCore) return null;
     const isPus=SZCore.isPus(TODAY.origin||'', TODAY.dep_flight||'');
-    return SZCore.golfRows({dep:TODAY.dep_date,arr:TODAY.arr_date,accom:TODAY.accom}, isPus)
+    return SZCore.golfRows({dep:TODAY.dep_date,arr:TODAY.arr_date,accom:TODAY.accom}, isPus, courseFixMap())
       .find(r=>r.date===date)||null;
   }catch(e){ return null; }
 }
