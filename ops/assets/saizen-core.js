@@ -1975,7 +1975,7 @@
 
   // ── 식수 규칙 (朝/昼/夕, 숙소 그룹별) ───────────────────────────────────────
   //  /app/ 와 dinner.html 에 중복됐던 핵심 규칙의 단일 진실원.
-  //  OFFSITE(간지·시즈)=요일 규칙 / 그 외(야마나미·쿠주)=체류 규칙.
+  //  OFFSITE(간지·시즈)=요일 규칙(인천편 입국일 중식만 요일 무관 — 2026-11-21) / 그 외(야마나미·쿠주)=체류 규칙.
   var MEAL_OFFSITE = ['간지호텔', '시즈노야도 료칸'];
   var MEAL_OFFSITE_SET = new Set(MEAL_OFFSITE);
   function mealOffsite(accom) { return MEAL_OFFSITE_SET.has(accom); }
@@ -1997,8 +1997,9 @@
       else if (isIn && !isPus) lunchKind = 'arr';
       else if (isOut && isPus) lunchKind = 'cont';
     } else {
-      if (isIn && isWTS && !isPus) lunchKind = 'arr';
-      else if (isIn && isSatSun && accom === '간지호텔') lunchKind = 'arr';
+      // 인천편 입국일 = 요일과 무관하게 중식 arr — 첫날은 모든 팀이 야마나미CC 라운딩·카츠카레(Min 2026-11-21 「그렇게 수정해」, 이전엔 수·목·일만)
+      if (isIn && !isPus) lunchKind = 'arr';
+      else if (isIn && isSatSun && accom === '간지호텔') lunchKind = 'arr';   // 간지 토·일 입국(부산편 포함) — 종전 규칙 그대로
       else if (isOut && isWTS && isPus) lunchKind = 'cont';
       // 九重高原CC 휴장일(평일)은 간지 팀도 야마나미CC 라운딩 → 야마나미 라운딩 중식과 동일(Min 2026-11-17)
       else if (isMid && accom === '간지호텔' && !isNonWorkday(date) && ((fixCourse === 'やまなみCC' || fixCourse === '九重高原CC') ? fixCourse === 'やまなみCC' : kogenClosed(date))) lunchKind = 'cont';

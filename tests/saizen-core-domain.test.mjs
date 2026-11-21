@@ -144,6 +144,18 @@ test('mealPlan: OFFSITE 간지(요일 규칙)', () => {
   assert.equal(SZ.mealPlan(t2, '2026-07-04').lunchKind, 'arr');
 });
 
+test('mealPlan: OFFSITE 인천편 입국일은 요일과 무관하게 중식 arr(첫날 야마나미CC 라운딩·카츠카레 — Min 2026-11-21)', () => {
+  // 07-06 월 / 07-07 화 / 07-03 금 / 07-04 토
+  for (const d of ['2026-07-06', '2026-07-07', '2026-07-03', '2026-07-04']) {
+    assert.equal(SZ.mealPlan({ accom: '간지호텔', dep: d, arr: '2026-07-10', isPus: false }, d).lunchKind, 'arr', '간지 ' + d);
+    assert.equal(SZ.mealPlan({ accom: '시즈노야도 료칸', dep: d, arr: '2026-07-10', isPus: false }, d).lunchKind, 'arr', '시즈 ' + d);
+  }
+  // 부산편 입국일은 라운딩이 없다 — 시즈 = 중식 없음(간지 토·일은 종전 규칙대로 arr)
+  assert.equal(SZ.mealPlan({ accom: '시즈노야도 료칸', dep: '2026-07-06', arr: '2026-07-10', isPus: true }, '2026-07-06').lunchKind, '');
+  assert.equal(SZ.mealPlan({ accom: '간지호텔', dep: '2026-07-06', arr: '2026-07-10', isPus: true }, '2026-07-06').lunchKind, '');
+  assert.equal(SZ.mealPlan({ accom: '간지호텔', dep: '2026-07-04', arr: '2026-07-10', isPus: true }, '2026-07-04').lunchKind, 'arr');
+});
+
 test('mealPlan: OFFSITE 시즈 귀국 수목일 PUS → 조식O·중식 cont', () => {
   const t = { accom: '시즈노야도 료칸', dep: '2026-06-29', arr: '2026-07-01', isPus: true }; // 07-01 수(WTS)
   assert.deepEqual(SZ.mealPlan(t, '2026-07-01'), { breakfast: true, lunchKind: 'cont', dinner: false });
@@ -634,7 +646,7 @@ test('mealPlan: 九重高原CC 휴장일(2027 평일)에 야마나미에서 치�
   assert.equal(SZ.mealPlan(t, '2027-07-23').lunchKind, '');       // 구주고원 영업(금) — 종전대로
   assert.equal(SZ.mealPlan(t, '2027-07-19').lunchKind, '');       // 휴장이지만 공휴일(월) — 평일에만 적용
   assert.equal(SZ.mealPlan({ accom: '시즈노야도 료칸', dep: '2027-07-18', arr: '2027-07-24', isPus: false }, '2027-07-20').lunchKind, '');   // 간지호텔에만 적용
-  assert.equal(SZ.mealPlan({ accom: '간지호텔', dep: '2027-07-20', arr: '2027-07-24', isPus: false }, '2027-07-20').lunchKind, '');   // 휴장(화) 입국일 — 체류 중간일에만 적용
+  assert.equal(SZ.mealPlan({ accom: '간지호텔', dep: '2027-07-20', arr: '2027-07-24', isPus: false }, '2027-07-20').lunchKind, 'arr');   // 휴장(화) 입국일 — 휴장 규칙(cont)이 아니라 입국 규칙(인천편 입국일 = arr, 2026-11-21)
   assert.equal(SZ.mealPlan({ accom: '간지호텔', dep: '2027-07-16', arr: '2027-07-20', isPus: false }, '2027-07-20').lunchKind, '');   // 휴장(화) 귀국일 — 종전대로
   const y = { accom: '야마나미 리조트', dep: '2027-07-18', arr: '2027-07-24', isPus: false };
   assert.equal(SZ.mealPlan(y, '2027-07-23').lunchKind, 'cont');   // 야마나미 팀은 원래 cont
