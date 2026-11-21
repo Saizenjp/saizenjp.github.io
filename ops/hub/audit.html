@@ -80,7 +80,7 @@
   .gok{display:inline-block;background:var(--accentSoft);color:var(--ok);border:1px solid #b4cda0;border-radius:5px;padding:1px 8px;font-size:11px;font-weight:800}
   .gsum{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=42.1">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=42.2">
 </head>
 <body data-so-area="admin">
 <div class="topbar so-bar">
@@ -128,7 +128,7 @@
 </div>
 
 <div id="toast"></div>
-<script src="../assets/saizen-ops.js?v=42.1"></script>
+<script src="../assets/saizen-ops.js?v=42.2"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 데이터 검수(마스터 전용). 82_data_audit.sql 의 data_audit() RPC 호출.
@@ -146,8 +146,10 @@ const CHECKS=['seq_gap','count_mismatch','dup_tag','orphan_room','room_over','me
   'course_check',         // 코스 모니터 인원 = 조 재계산(136)
   'office_check',
   'golf_dup',             // 조편성 중복·자리 충돌(143)
+  'golf_two_groups',      // 같은 사람이 같은 날 두 조(183)
   'settle_check','settle_close_drift',
   'tax_rate_check',
+  'pay_mix_check',        // 경영 통계 현금/카드/미입금 = 입금·청구 재계산(187)
   'partner_block_over','partner_single_norate'];   // 구마모토 시내·트라이얼 수배 목록 — 호텔 블록 초과 밤·싱글 요금 미정(160)      // 세율별 세액 검산(158)   // 정산 보고서 검산 · 마감 후 변경(156)            // 조편성 중복·자리 충돌(143)        // 직원 모니터 체크인·재실 인원 = 예약 재계산(137)
 
 const L={
@@ -181,9 +183,10 @@ const L={
     f_placeholder_stale:'対処: その月を再登録(step1)すると、名前が付いた席は自動で引き継ぎます。人数が減ってなくなった席(無記名の行がそのまま残る場合)は再登録では整理されないので、開発に連絡してください。',
     n_dinner_check:'案内モニターの夕食合計 = 再計算', d_dinner_check:'ロビー・2Fモニターが出す今日の夕食人数(signage_dinner)を、別の形の集計(宿泊中−除外−早期退室)で計算し直して照合。', f_dinner_check:'不一致なら開発に連絡(モニターの人数が夕食オーダーとずれる)。',
     n_lobby_check:'ロビーモニターの到着・出発人数 = 再計算', d_lobby_check:'ロビーの歓迎板(本日チェックイン)と出発案内(本日・明日の帰国便)の人数を、予約・名簿から別の形で計算し直して照合。', f_lobby_check:'不一致なら開発に連絡。',
-    n_course_check:'コースモニターの人数 = 組の再計算', d_course_check:'コース入口モニターが出す本日の組合せ人数(signage_course)を、保存された組・不参加から別の形で計算し直して照合。', f_course_check:'不一致なら開発に連絡。',
+    n_course_check:'コースモニターの人数 = 組の再計算', d_course_check:'コース入口モニターの本日の組合せ人数(お客様向け画面の公開・非表示に関係ないリアルタイムの値)を、保存された組・不参加から別の形で計算し直して照合。', f_course_check:'不一致なら開発に連絡。',
     n_office_check:'スタッフモニターの人数 = 再計算', d_office_check:'事務所モニターが出す本日のチェックイン人数・在館人数(signage_office)を予約から別の形で計算し直して照合。', f_office_check:'不一致なら開発に連絡。',
     n_golf_dup:'組合せの重複・同じ枠の衝突', d_golf_dup:'同じ日・同じチーム・同じメンバーの組が2つ以上、または同じコース・同じ枠に組が2つ以上(直近1週間以降)。コース割当表の名簿が二重に見える原因。', f_golf_dup:'コース割当表でその日を開くと上に赤い帯が出る → [整理] で重複を削除し衝突を空き枠へ移す。',
+    n_golf_two_groups:'同じ人が同じ日に2つの組', d_golf_two_groups:'同じお客様(名簿の1人)が同じ日に2つ以上の組に入っている(直近1週間以降)。印刷物・お客様画面に名前が2回出て、人数も2回数えられる。', f_golf_two_groups:'対処: コース割当表でその日を開き、表示されたタグのお客様をどちらか一方の組から外して保存する。',
     n_stat_pax:'予約人数 ≠ 名簿', d_stat_pax:'予約の人数(bookings.pax)と実際の名簿(passengers)が合わない。B2B精算は名簿と予約の大きい方で請求するため、ずれは過少/過大請求の元。',
     f_stat_pax:'対処: Mクリックの予約人数か名簿を確認して再import。',
     n_stat_nights:'滞在泊数 ≠ 商品名の「N泊」', d_stat_nights:'到着日−出発日の泊数と、商品名(nights_label)の「N泊」が合わない。B2B請求の泊数根拠が二つあり食い違う。',
@@ -201,6 +204,7 @@ const L={
     n_partner_block_over:'手配リスト ホテルブロック超過', d_partner_block_over:'熊本市内・トライアルのホテルで、夜ごとのツイン使用数が確保ブロックを超えている夜(今日から120日)。手配リストのブロック表示の赤いマスと同じ数になるはず。超過分は追加確保か別ホテルへ。', f_partner_block_over:'対処: 手配リストのブロック表示で赤いマスの夜を開き、超過分を別途予約したか確認する(追加確保または別ホテルへ)。ブロックは確保数であり上限ではないので、手配済みならそのままでよい。',
     n_partner_single_norate:'手配リスト シングル料金未設定', d_partner_single_norate:'シングル部屋があるのにシングル料金(チーム入力も料金表も)が無いチーム。シングルはブロック外なので料金を決める。', f_partner_single_norate:'対処: 手配リストでそのチームを開いてシングル料金を入力するか、基本設定の料金表にシングル料金を登録する。',
     n_tax_rate_check:'税率別 消費税の検算', d_tax_rate_check:'当月の税率別(10%・8%・非課税・不課税)消費税を、報告書(伝票・税率ごとの累計差分)と「伝票・税率ごとの月末累計税額−月初前累計税額」の直接合計で比べます。1円でも違えば不一致。税率・区分の組合せ違反も数えます(158)。', f_tax_rate_check:'0が正常。不一致なら税率別の集計か税率・区分の組合せが食い違っている — 開発に連絡。',
+    n_pay_mix_check:'経営統計 現金/カードの検算', d_pay_mix_check:'当月の経営統計の現金・カード(実際の入金を手段別に)と未入金(請求−入金)を、請求(charges)・入金(payments、取消を除く)を時刻の境界で直接合計した値と照合します。現金+カードが当月の入金全体と同じかも見ます(現金・カード以外の入金手段があるとずれる)(187)。', f_pay_mix_check:'0が正常。不一致なら経営統計の入金・請求の集計か時間帯の扱いが食い違っている — 開発に連絡。',
     f_member_dup:'対処: ①Mクリック会員管理で正しい生年を確認 ②誤っている予約の生年を修正 ③再import(step1) ④その後に残った古い行を削除。⚠ 先に行だけ消すと、次のimportでその方のコードが一致せず「コード未保有」に戻り、別コードが振られる恐れがあります。',
     // 묶음 그룹코드 조회
     gTitle:'グループコード照会', gBtn:'照会', gAll:'全グループ点検', gPh:'コード・代表者・行事番号',
@@ -243,9 +247,10 @@ const L={
     f_placeholder_stale:'조치: 그 달을 다시 등록(step1)하면 이름을 얻은 자리는 자동으로 이어받습니다. 인원이 줄어 없어진 자리(무기명 줄이 그대로 남는 경우)는 재등록으로 정리되지 않으니 개발에 알리세요.',
     n_dinner_check:'안내 모니터 석식 합계 = 재계산', d_dinner_check:'로비·2층 모니터가 내보내는 오늘 석식 인원(signage_dinner)을 다른 모양의 집계(묵는 팀 − 제외 − 조기퇴실)로 다시 계산해 대조합니다.', f_dinner_check:'불일치면 개발에 알리세요(모니터 인원이 夕食オーダー와 어긋납니다).',
     n_lobby_check:'로비 모니터 도착·출발 인원 = 재계산', d_lobby_check:'로비 환영판(오늘 체크인)과 출발 안내(오늘·내일 귀국 便)의 인원을 예약·명단에서 다른 모양으로 다시 계산해 대조합니다.', f_lobby_check:'불일치면 개발에 알리세요.',
-    n_course_check:'코스 모니터 인원 = 조 재계산', d_course_check:'코스 입구 모니터가 내보내는 오늘 조편성 인원(signage_course)을 저장된 조·불참에서 다른 모양으로 다시 계산해 대조합니다.', f_course_check:'불일치면 개발에 알리세요.',
+    n_course_check:'코스 모니터 인원 = 조 재계산', d_course_check:'코스 입구 모니터의 오늘 조편성 인원(손님 화면 공개·숨김과 상관없는 실시간 값)을 저장된 조·불참에서 다른 모양으로 다시 계산해 대조합니다.', f_course_check:'불일치면 개발에 알리세요.',
     n_office_check:'직원 모니터 인원 = 재계산', d_office_check:'사무실 모니터가 내보내는 오늘 체크인 인원·재실 인원(signage_office)을 예약에서 다른 모양으로 다시 계산해 대조합니다.', f_office_check:'불일치면 개발에 알리세요.',
     n_golf_dup:'조편성 중복·자리 충돌', d_golf_dup:'같은 날·같은 팀·같은 조원의 조가 2개 이상이거나, 같은 코스·같은 슬롯에 조가 2개 이상(최근 1주 이후). 코스 배정표 명단이 두 번 보이는 원인입니다.', f_golf_dup:'코스 배정표에서 그 날을 열면 위에 빨간 띠가 뜹니다 → [정리]로 중복을 지우고 충돌 조를 빈 자리로 옮깁니다.',
+    n_golf_two_groups:'같은 사람이 같은 날 두 조', d_golf_two_groups:'같은 손님(명단 1명)이 같은 날 조 2개 이상에 들어 있습니다(최근 1주 이후). 인쇄물·손님 화면에 이름이 두 번 나오고 인원도 두 번 셉니다.', f_golf_two_groups:'조치: 코스 배정표에서 그 날을 열어, 표본에 나온 태그의 손님을 한쪽 조에서 빼고 저장합니다.',
     n_stat_pax:'예약 인원 ≠ 명단', d_stat_pax:'예약 인원(bookings.pax)과 실제 명단(passengers)이 다릅니다. B2B 정산은 명단과 예약 중 큰 쪽으로 청구하므로, 어긋나면 과소/과다 청구의 씨앗입니다.',
     f_stat_pax:'조치: 엠클릭의 예약 인원 또는 명단을 확인해 재임포트.',
     n_stat_nights:'체류 박수 ≠ 상품명의 「N박」', d_stat_nights:'도착일−출발일 박수와 상품명(nights_label)의 「N박」이 다릅니다. B2B 청구의 박수 근거가 둘이라 어긋나면 어느 쪽이 맞는지 확인이 필요합니다.',
@@ -263,6 +268,7 @@ const L={
     n_partner_block_over:'수배 목록 호텔 블록 초과', d_partner_block_over:'구마모토 시내·트라이얼 호텔에서 밤마다 트윈 사용 수가 확보 블록을 넘는 밤(오늘부터 120일). 수배 목록 블록 띠의 빨간 칸 수와 같아야 합니다. 초과분은 추가 확보 또는 다른 호텔로.', f_partner_block_over:'조치: 수배 목록 블록 띠에서 빨간 칸의 밤을 열어 초과분을 따로 예약했는지 확인합니다(추가 확보 또는 다른 호텔로). 블록은 확보 수량이지 상한이 아니므로 수배가 끝났으면 그대로 두어도 됩니다.',
     n_partner_single_norate:'수배 목록 싱글 요금 미정', d_partner_single_norate:'싱글 객실이 있는데 싱글 요금(팀 입력도 요금표도)이 없는 팀. 싱글은 블록 밖이라 요금을 정해야 합니다.', f_partner_single_norate:'조치: 수배 목록에서 그 팀을 열어 싱글 요금을 입력하거나, 기본 설정의 요금표에 싱글 요금을 등록합니다.',
     n_tax_rate_check:'세율별 소비세 검산', d_tax_rate_check:'이번 달 세율별(10%·8%·비과세·불과세) 소비세를 보고서(계산서·세율별 누적 차분)와 「계산서·세율별 월말 누적 세액 − 월초 전 누적 세액」 직접 합으로 대조합니다. 1엔이라도 다르면 불일치. 세율·구분 조합 위반 행도 셉니다(158).', f_tax_rate_check:'0이 정상. 어긋나면 세율별 집계나 세율·구분 조합이 서로 다른 것 — 개발에 알리세요.',
+    n_pay_mix_check:'경영 통계 현금/카드 검산', d_pay_mix_check:'이번 달 경영 통계의 현금·카드(실제 입금을 수단별로)와 미입금(청구 − 입금)을 청구(charges)·입금(payments, 취소 제외)을 시각 경계로 직접 더한 값과 대조합니다. 현금+카드가 이번 달 입금 전체와 같은지도 봅니다(현금·카드 밖의 입금 수단이 있으면 어긋난다)(187).', f_pay_mix_check:'0이 정상. 어긋나면 경영 통계의 입금·청구 집계나 시간대 처리가 서로 다른 것 — 개발에 알리세요.',
     f_member_dup:'조치: ①엠클릭 회원관리에서 올바른 생년 확인 ②틀린 예약의 생년을 수정 ③재임포트(step1) ④그 뒤 남은 옛 행을 삭제. ⚠ 행부터 지우면 다음 임포트에서 그분 코드가 매칭되지 않아 「코드 미보유」로 돌아가고 다른 코드가 배정될 수 있습니다.',
     gTitle:'묶음 그룹코드 조회', gBtn:'조회', gAll:'전체 묶음 점검', gPh:'코드 · 대표자 · 행사번호',
     gDesc:'묶은 팀의 「통일코드·순번」을 로드 범위와 무관하게 그룹 전원 기준으로 계산해 보여줍니다. 現地手配書·航空カバー가 인쇄하는 값과 같습니다.',
@@ -302,9 +308,10 @@ const L={
     f_placeholder_stale:'Fix: re-register that month (step1) and seats that received a name are reused automatically. Seats that disappeared because the party got smaller (the unnamed rows simply remain) are not cleaned up by re-registering — tell the developer.',
     n_dinner_check:'Signage dinner total = recomputed', d_dinner_check:'Recomputes tonight’s dinner head-count shown on the lobby / 2F monitors (signage_dinner) with a differently shaped query (staying − excluded − early departures) and compares.', f_dinner_check:'If they differ, tell the developer (the monitor would disagree with the dinner order).',
     n_lobby_check:'Lobby signage arrivals/departures = recomputed', d_lobby_check:'Recomputes the lobby welcome board (today’s check-ins) and departures pane (today/tomorrow outbound flights) head-counts from bookings and rosters with a different query and compares.', f_lobby_check:'If they differ, tell the developer.',
-    n_course_check:'Course signage head-count = recomputed', d_course_check:'Recomputes today’s tee-sheet head-count shown on the course entrance monitor (signage_course) from saved groups and absentees with a different query and compares.', f_course_check:'If they differ, tell the developer.',
+    n_course_check:'Course signage head-count = recomputed', d_course_check:'Recomputes today’s tee-sheet head-count for the course entrance monitor (the live count, regardless of whether the guest screen is published or hidden) from saved groups and absentees with a different query and compares.', f_course_check:'If they differ, tell the developer.',
     n_office_check:'Staff monitor head-counts = recomputed', d_office_check:'Recomputes today’s check-in and in-house head-counts shown on the office monitor (signage_office) from bookings with a different query and compares.', f_office_check:'If they differ, tell the developer.',
     n_golf_dup:'Duplicate groups / slot collisions', d_golf_dup:'Two or more groups for the same day, team and members, or two groups in the same course slot (last week onward). This is why the course sheet shows names twice.', f_golf_dup:'Open that day on the course sheet; a red bar appears → [Fix] deletes duplicates and moves collisions to a free slot.',
+    n_golf_two_groups:'Same guest in two groups on one day', d_golf_two_groups:'One guest (one roster entry) is in two or more groups on the same day (last week onward). The name appears twice on prints and guest screens and is counted twice.', f_golf_two_groups:'Fix: open that day on the course sheet, remove the tagged guest from one of the groups and save.',
     n_stat_pax:'Booked pax ≠ roster', d_stat_pax:'Booked pax (bookings.pax) differs from the actual roster (passengers). B2B billing uses the larger of the two, so a gap seeds under/over-billing.',
     f_stat_pax:'Fix: check pax or roster in the booking system and re-import.',
     n_stat_nights:'Stay nights ≠ product “N泊”', d_stat_nights:'Nights from dates (arrival−departure) differ from the “N泊” in the product name. Two sources for B2B billing nights disagree.',
@@ -322,6 +329,7 @@ const L={
     n_partner_block_over:'Arrangement list: hotel block exceeded', d_partner_block_over:'Nights (next 120 days) where twins used at a Kumamoto city · Trial hotel exceed the blocked count. Should equal the red cells in the arrangement list block strip. Book extra rooms or another hotel.', f_partner_block_over:'Fix: open the red nights in the arrangement list block strip and check that the extra rooms were booked separately (book more or use another hotel). The block is a reserved quantity, not a cap, so nothing more is needed once arranged.',
     n_partner_single_norate:'Arrangement list: single rate missing', d_partner_single_norate:'Teams with single rooms but no single rate (neither team input nor rate card). Singles are outside the block, so a rate must be set.', f_partner_single_norate:'Fix: open the team in the arrangement list and enter the single rate, or register a single rate in the rate card under default settings.',
     n_tax_rate_check:'Tax-by-rate check', d_tax_rate_check:'Compares this month\'s consumption tax per rate (10% · 8% · exempt · non-taxable) between the report (cumulative difference per folio and rate) and a direct sum of "folio-rate tax at month end minus tax before month start". Any 1-yen gap is a mismatch; rate/class combination violations are counted too (158).', f_tax_rate_check:'0 is normal. A mismatch means the per-rate totals or a rate/class combination disagree — tell the developer.',
+    n_pay_mix_check:'Exec stats cash/card check', d_pay_mix_check:'Compares cash, card and unpaid (charges minus receipts) for this month in the exec stats with a direct sum of charges and payments (excl. voided) over timestamp bounds. Also checks that cash + card equals all receipts this month (a payment method other than cash or card breaks it) (187).', f_pay_mix_check:'0 is normal. A mismatch means the exec stats receipt or charge totals or the timezone handling disagree — tell the developer.',
     f_member_dup:'Fix: (1) confirm the correct birth date in the member master, (2) correct it on the wrong booking, (3) re-import (step1), (4) only then delete the leftover row. ⚠ Deleting the row first breaks the match on the next import — the member falls back to “no code” and may be given a different one.',
     n_room_over:'Room over capacity', d_room_over:'Guests assigned to one room on the same night exceed its maximum capacity (double-booking). Assignments that checked out more than 7 days ago are not counted.',
     f_room_over:'Fix: Check the room in room.html and reassign. Capacity guard prevents new ones (0 is normal).',
