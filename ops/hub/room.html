@@ -520,7 +520,7 @@
   .tl-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--text2);padding:8px 4px 2px}
   .tl-legend .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:middle}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.9">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=42.0">
 </head>
 <body data-so-area="room_assign">
 <div class="topbar so-bar">
@@ -650,7 +650,7 @@
 <div id="toast"></div>
 
 <script src="../assets/saizen-core.js?v=74"></script>
-<script src="../assets/saizen-ops.js?v=41.9"></script>
+<script src="../assets/saizen-ops.js?v=42.0"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — STEP 2 호텔 방배정 모듈
@@ -926,6 +926,8 @@ const L={
     ecoFollowTitle:(n,d)=>(n||'')+'様 早期退室('+d+') — 精算/返金の確認',
     cancelFail:e=>'キャンセル失敗: '+e, assignCancelled:'割当をキャンセルしました',
     roNoWrite:'閲覧専用のアカウントです。割当の変更はできません。',
+    rpcNoPerm:'権限がないため保存されませんでした', rpcNotFound:'名簿・チームが見つかりません(再読み込みしてください)', rpcBadDate:'退室日が滞在期間の外です', rpcBadArg:e=>'入力値が正しくありません — '+e,
+    feeClearFail:(rno,e)=>`${rno} の追加料金(シングルチャージ・別棟 事前申請費)を削除できませんでした。精算画面で確認してください: ${e}`,
     singleChargeFailToast:e=>'料金記録失敗: '+e,
   },
   ko:{
@@ -1181,6 +1183,8 @@ const L={
     ecoFollowTitle:(n,d)=>(n||'')+'님 조기 퇴실('+d+') — 정산/환불 확인',
     cancelFail:e=>'취소 실패: '+e, assignCancelled:'배정 취소됨',
     roNoWrite:'보기 전용 계정입니다. 배정을 변경할 수 없습니다.',
+    rpcNoPerm:'권한이 없어 저장하지 않았습니다', rpcNotFound:'명단·팀을 찾지 못했습니다(새로고침해 주세요)', rpcBadDate:'퇴실일이 체류 기간 밖입니다', rpcBadArg:e=>'입력값이 맞지 않습니다 — '+e,
+    feeClearFail:(rno,e)=>`${rno} 추가요금(싱글차지·별채 사전신청비)을 지우지 못했습니다. 정산 화면에서 확인해 주세요: ${e}`,
     singleChargeFailToast:e=>'요금 기록 실패: '+e,
   },
   en:{
@@ -1436,6 +1440,8 @@ const L={
     ecoFollowTitle:(n,d)=>(n||'')+' early checkout ('+d+') — settlement/refund check',
     cancelFail:e=>'Cancel failed: '+e, assignCancelled:'Assignment cancelled',
     roNoWrite:'This account is view-only. Assignments cannot be changed.',
+    rpcNoPerm:'Not saved — no permission', rpcNotFound:'Guest or team not found (please reload)', rpcBadDate:'The departure date is outside the stay', rpcBadArg:e=>'Invalid input — '+e,
+    feeClearFail:(rno,e)=>`Could not remove the extra charge (single charge / annex pre-application fee) for ${rno}. Please check on the settlement screen: ${e}`,
     singleChargeFailToast:e=>'Charge record failed: '+e,
   }
 };
@@ -4221,6 +4227,44 @@ async function createFollowup(seq, area, kind, title, detail, link){
   try{ const {error}=await supa.from('followups').insert({ event_seq:seq, area, kind, title, detail:detail||null, link:link||null, created_by:_curUser()||null }); return !error; }
   catch(e){ return false; }
 }
+// ── 방배정 권한으로 쓰는 세 가지(SQL 178) ──
+//   조기 퇴실(guest_members.actual_dep·사유)·싱글차지·별채 온천 사전신청비(transactions)는 표 쓰기 권한(RLS)이 명단 등록(step1)·정산(settle·pos)이라
+//   방배정 권한만 받은 계정은 직접 쓰면 0행·거부로 실패했다 → 서버 함수(room_set_early_checkout·room_fee_record·room_fee_clear)가
+//   방배정 권한을 보고 그 열·그 두 항목만 쓴다. 함수가 아직 없을 때(SQL 178 적용 전 배포 — PGRST202, 또는 그 함수 이름이 든 42883)만
+//   옛 직접 쓰기로 돌아간다. 함수 안에서 난 다른 오류(다른 함수가 없다는 42883 포함)는 실패로 알린다.
+//   돌려주는 값 = { n: 반영 행 수, error } — 부른 쪽은 error 와 n 을 같이 본다(0행을 성공으로 알리지 않는다).
+function rpcMissing(e, fn){ return !!e && (e.code==='PGRST202' || (e.code==='42883' && String(e.message||'').indexOf(fn)>=0)); }
+function rpcErrMsg(e){
+  if(!e) return '';
+  if(e.code==='42501') return tx('rpcNoPerm');
+  if(e.code==='P0002') return tx('rpcNotFound');
+  if(e.code==='22008') return tx('rpcBadDate');
+  if(e.code==='22023') return tx('rpcBadArg', e.message||'');
+  return e.message||String(e);
+}
+async function setEarlyDep(mid, d, reason){
+  const {data,error}=await supa.rpc('room_set_early_checkout',{p_member:mid, p_date:d||null, p_reason:d?(reason||null):null});
+  if(!rpcMissing(error,'room_set_early_checkout')) return {n:error?0:(Number(data)||0), error:error||null};
+  const r=await supa.from('guest_members').update({actual_dep:d||null,actual_dep_reason:d?(reason||null):null}).eq('id',mid).select('id');
+  return {n:(r.data||[]).length, error:r.error||null};
+}
+async function recordRoomFee(row, roomNo){
+  const {data,error}=await supa.rpc('room_fee_record',{p_kind:row.category, p_seq:row.event_seq, p_member:row.member_id||null, p_room_no:roomNo,
+    p_nights:row.qty, p_unit:row.unit_price, p_prepaid:row.settle_status==='prepaid_merit', p_desc:row.description});
+  if(!rpcMissing(error,'room_fee_record')) return {n:(!error&&data)?1:0, error:error||null};
+  const r=await supa.from('transactions').insert(row);
+  return {n:r.error?0:1, error:r.error||null};
+}
+//  mid 를 주면 그 사람의 행만 지운다(별채 사전신청비 — 같은 별채 방의 다른 사람 신청비까지 지워지던 것). 싱글차지는 고른 대상자가 방 주인과 다를 수 있어 mid 없이.
+//  roomNo 는 객실 마스터 이름 그대로(inv.room_no) — 서버가 마스터에 없는 이름은 거부한다.
+async function clearRoomFee(kind, seq, roomNo, mid){
+  const {data,error}=await supa.rpc('room_fee_clear',{p_kind:kind, p_seq:seq, p_room_no:roomNo, p_member:mid||null});
+  if(!rpcMissing(error,'room_fee_clear')) return {n:error?0:(Number(data)||0), error:error||null};
+  let q=supa.from('transactions').delete().eq('event_seq',seq).eq('category',kind).like('description',`%${roomNo}%`);
+  if(mid) q=q.eq('member_id',mid);
+  const r=await q;
+  return {n:null, error:r.error||null};
+}
 async function earlyCheckout(roomId, opts){
   const row=state.rooms.find(r=>r.id===roomId);
   if(!row || row.member_id==null){ toast(tx('splitOnlyMember'),'warn'); return; }
@@ -4231,8 +4275,8 @@ async function earlyCheckout(roomId, opts){
   if(m && m.actual_dep){
     if(!confirm(tx('ecoCancelConfirm',name,m.actual_dep))) return;
     const prevDep=m.actual_dep;
-    const {data:uC,error}=await supa.from('guest_members').update({actual_dep:null,actual_dep_reason:null}).eq('id',m.id).select('id');
-    if(error || !(uC&&uC.length)){ toast(tx('ecoFail',error?error.message:tx('ecoNoRow')),'err'); return; }
+    const {n:nC,error}=await setEarlyDep(m.id,null,null);
+    if(error || !nC){ toast(tx('ecoFail',error?rpcErrMsg(error):tx('ecoNoRow')),'err'); return; }
     patchMember(m.id,{actual_dep:null,actual_dep_reason:null});
     // 방 자동 복구: 조기퇴실로 단축됐던 방(check_out===퇴실일)을 원래 퇴실일(팀 도착일)로 되돌림.
     //  정원 트리거가 충돌(그 침대를 다른 배정이 차지)을 막으면 복구 실패 → 수기 재배정 안내.
@@ -4256,8 +4300,8 @@ async function earlyCheckout(roomId, opts){
   const reason=(opts && opts.reason!=null) ? String(opts.reason).trim()
     : (prompt(tx('ecoReasonPrompt',name),'')||'').trim();
   // 1) actual_dep 기록
-  const {data:u0,error:e0}=await supa.from('guest_members').update({actual_dep:d,actual_dep_reason:reason||null}).eq('id',row.member_id).select('id');
-  if(e0 || !(u0&&u0.length)){ toast(tx('ecoFail',e0?e0.message:tx('ecoNoRow')),'err'); return; }   // RLS 로 0행이면 오류 없이 돌아온다 → 방을 줄이기 전에 멈춘다
+  const {n:n0,error:e0}=await setEarlyDep(row.member_id,d,reason);
+  if(e0 || !n0){ toast(tx('ecoFail',e0?rpcErrMsg(e0):tx('ecoNoRow')),'err'); return; }   // RLS 로 0행이면 오류 없이 돌아온다 → 방을 줄이기 전에 멈춘다
   patchMember(row.member_id,{actual_dep:d,actual_dep_reason:reason||null});
   // 2) 그 사람 방 단축/해제 (분할 다건도 모두 반영)
   for(const rr of memberRooms(row.member_id)){
@@ -4614,12 +4658,12 @@ async function assignMembers(memberIds, inv, opts={}){
 // 별채 온천 사전신청 추가요금(¥2,000/박/인) 1건 기록
 async function recordByeolche(g, inv, nights, m){
   if(!(nights>0)) return;
-  try{ const {error:eB}=await supa.from('transactions').insert({
+  try{ const {n:nB,error:eB}=await recordRoomFee({
     event_seq:g.event_seq, member_id:m.id, category:'byeolche_charge',
     description:`별채 온천 사전신청비 (${inv.room_no}, ${nights}박)`,
     qty:nights, unit_price:BYEOLCHE_FEE, amount:BYEOLCHE_FEE*nights, currency:'JPY',
     posted_by:'front', settle_status:'onsite'
-  }); if(eB){ toast(tx('sfFail',eB.message),'err'); return; } toast(tx('bzRecorded',(BYEOLCHE_FEE*nights).toLocaleString(),mName(m)),'ok'); }catch(e){}
+  }, inv.room_no); if(eB || !nB){ toast(tx('sfFail',eB?rpcErrMsg(eB):tx('noRowChanged')),'err'); return; } toast(tx('bzRecorded',(BYEOLCHE_FEE*nights).toLocaleString(),mName(m)),'ok'); }catch(e){}
 }
 
 // 수기로 별채에 배정했을 때: 온천 사전신청 인원만 골라 +2,000/박 기록(체크 안 하면 미기록)
@@ -5555,14 +5599,14 @@ function openSingleFeeModal(g, inv, nights, roomId, preMember){
     const prepaid=bg.querySelector('#sf-prepaid').checked;
     const settle=prepaid?'prepaid_merit':'onsite';
     const memberName=mName(members.find(m=>m.id===memberId));
-    const {error:te}=await supa.from('transactions').insert({
+    const {n:tn,error:te}=await recordRoomFee({
       event_seq:g.event_seq, member_id:memberId, category:'single_charge',
       description:`싱글차지 ${memberName?memberName+' ':''}(${inv.facility} ${inv.room_no}, ${nights}박)`,
       qty:nights, unit_price:FEE_SINGLE[inv.facility], amount, currency:'JPY',
       posted_by:'front', settle_status:settle
-    });
+    }, inv.room_no);
     bg.remove();
-    if(te){toast(tx('sfFail',te.message),'err');return;}
+    if(te || !tn){toast(tx('sfFail',te?rpcErrMsg(te):tx('noRowChanged')),'err');return;}
     toast(prepaid?tx('sfOkPrepaid',amount.toLocaleString()):tx('sfOkOnsite',amount.toLocaleString()),'ok');
   });
 }
@@ -5579,16 +5623,14 @@ async function unassign(roomId, opts){
   // 연동 추가요금 정리(같은 팀·해당 객실 설명 매칭)
   if(row){
     const inv=invById(row.inventory_id);
+    let _feeErr=null;   // 지우지 못하면 청구가 남는다 — 예전에는 결과를 보지 않아 조용히 넘어갔다(방배정 권한만 있으면 0행)
     if(inv && FEE_SINGLE[inv.facility] && row.assigned_pax===1){
-      await supa.from('transactions').delete()
-        .eq('event_seq',row.event_seq).eq('category','single_charge')
-        .like('description',`%${inv.room_no}%`);
+      const {error:eF}=await clearRoomFee('single_charge', row.event_seq, inv.room_no, null); if(eF) _feeErr=eF;
     }
     if(inv && inv.facility==='시즈노야도 료칸' && inv.zone==='별채'){
-      await supa.from('transactions').delete()
-        .eq('event_seq',row.event_seq).eq('category','byeolche_charge')
-        .like('description',`%${inv.room_no}%`);
+      const {error:eF}=await clearRoomFee('byeolche_charge', row.event_seq, inv.room_no, row.member_id); if(eF) _feeErr=eF;
     }
+    if(_feeErr) toast(tx('feeClearFail', inv.room_no, rpcErrMsg(_feeErr)),'warn');
   }
   state.rooms=state.rooms.filter(r=>r.id!==roomId);
   if(opts.silent) return snap;     // 일괄 호출(unassignMember)에서 모아서 처리
@@ -5633,8 +5675,8 @@ async function cancelEcoByMember(mid){
   if(!supa) return;
   const m=memberById(mid); if(!m||!m.actual_dep){ return; }
   if(!confirm(tx('ecoUnassignedConfirm', mName(m), m.actual_dep))) return;
-  const {error}=await supa.from('guest_members').update({actual_dep:null,actual_dep_reason:null}).eq('id',mid);
-  if(error){ toast(tx('ecoFail',error.message),'err'); return; }
+  const {n:nU,error}=await setEarlyDep(mid,null,null);
+  if(error || !nU){ toast(tx('ecoFail',error?rpcErrMsg(error):tx('ecoNoRow')),'err'); return; }   // 0행(권한 없음)을 성공으로 알리던 것
   patchMember(mid,{actual_dep:null,actual_dep_reason:null});
   logAssign('조기퇴실 취소', `${m.name_kr||''}(${teamGroupCode(m.event_seq)||evNo(m.event_seq)||''}) — 미배정 상태 해제`);
   render(); toast(tx('ecoCanceled',mName(m)),'ok');

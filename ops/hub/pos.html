@@ -287,7 +287,7 @@
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
   .empty-hint{font-size:13px;color:var(--muted);text-align:center;padding:30px 0}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=41.9">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=42.0">
 </head>
 <body data-so-area="pos_front pos_golf pos_restaurant">
 <script>(function(){ var o=new URLSearchParams(location.search).get('outlet')||''; var M={front:'pos_front',golf:'pos_golf',restaurant:'pos_restaurant'}; if(M[o]) document.body.setAttribute('data-so-area',M[o]); })();</script>
@@ -482,12 +482,13 @@
 </div>
 
 <script src="../assets/saizen-core.js?v=74"></script>
-<script src="../assets/saizen-ops.js?v=41.9"></script>
+<script src="../assets/saizen-ops.js?v=42.0"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 간이 POS(주문 입력)  · docs 정산명세(04) Phase 2
 //  · 팀 선택(오늘 체크인 목록 탭) → 메뉴 그리드 탭 → 카트 → 전송 → folio charges 적재.
-//  · 외부 POS 연동 없음. v1: charges 직접 적재(restaurant_orders 생략).
+//  · 외부 POS 연동 없음. 전송 = RPC pos_submit_order(SQL 180 — 계산서 확인 + 청구 줄 + 주방 티켓을 한 트랜잭션 · 같은 전송은 두 번 넣지 않음).
+//    함수가 없는 DB(SQL 180 적용 전)만 종전처럼 charges·kitchen_tickets 직접 적재(restaurant_orders 생략).
 // ════════════════════════════════════════════════════════════════════════
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let supa=null;
@@ -523,6 +524,8 @@ const L={
     ticketFail:e=>'厨房チケット発行失敗(請求は完了): '+e, sendingWait:'送信中です。完了するまでお待ちください',
     splitN:n=>'個人 '+n+'名', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n}品目 ${amt} 送信${kn?` · 厨房 ${kn}件`:''}`,
     sendFail:e=>'送信失敗: '+e+' — カートはそのまま残っています。つながってから[注文送信]をもう一度押してください', cartRestored:n=>`前回のカート ${n}件を戻しました`,
+    dupSent:'同じ注文はすでに届いていました — 二重には入れていません', sendNoRow:'請求が保存されませんでした(権限をご確認ください)', sendDenied:'POSの権限がありません — 管理者に「POS」の権限を依頼してください',
+    keyMismatch:'同じ送信キーで別の内容が届いたためサーバーが止めました(何も入っていません) — カートを確認してください。もう一度押すと新しい注文として送ります',
     koTitle:'注文状況', allVenues:'全体',
     stKitchen:'厨房へ', stBar:'バーへ',
     roomPick:'この部屋につける', roomPickOff:'外す', roomPickT:'この部屋の代表お一人につけます(2人で割ると同じ品目が2行になります)',
@@ -561,6 +564,8 @@ const L={
     ticketFail:e=>'주방 티켓 발행 실패(청구는 완료): '+e, sendingWait:'전송 중입니다. 끝날 때까지 기다려 주세요',
     splitN:n=>'개인 '+n+'명', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n}품목 ${amt} 전송됨${kn?` · 주방 ${kn}건`:''}`,
     sendFail:e=>'전송 실패: '+e+' — 장바구니는 그대로 있습니다. 연결되면 [주문 전송]을 다시 누르세요', cartRestored:n=>`이전 장바구니 ${n}건을 되살렸습니다`,
+    dupSent:'같은 주문이 이미 들어가 있었습니다 — 두 번 넣지 않았습니다', sendNoRow:'청구가 저장되지 않았습니다(권한을 확인하세요)', sendDenied:'POS 권한이 없습니다 — 관리자에게 「POS」 권한을 요청하세요',
+    keyMismatch:'같은 전송 표식으로 다른 내용이 와서 서버가 막았습니다(아무것도 들어가지 않았습니다) — 장바구니를 확인하세요. 다시 누르면 새 주문으로 보냅니다',
     koTitle:'주문 현황', allVenues:'전체',
     stKitchen:'주방으로', stBar:'바로',
     roomPick:'이 방으로', roomPickOff:'해제', roomPickT:'이 방 대표 1명에게 답니다(2명으로 나누면 같은 품목이 두 줄로 찍힙니다)',
@@ -599,6 +604,8 @@ const L={
     ticketFail:e=>'Kitchen ticket failed (charge done): '+e, sendingWait:'Sending… please wait until it finishes',
     splitN:n=>n+' people', sendToast:(tag,who,n,amt,kn)=>`${tag} · ${who} · ${n} items ${amt} sent${kn?` · kitchen ${kn}`:''}`,
     sendFail:e=>'Send failed: '+e+' — your cart is still here. Press [Send order] again once you are back online', cartRestored:n=>`Restored ${n} item(s) from your last cart`,
+    dupSent:'This order had already arrived — it was not added twice', sendNoRow:'No charge was saved (check your permissions)', sendDenied:'No POS permission — ask an admin for the POS area',
+    keyMismatch:'The server blocked this send because the same send key came with different contents (nothing was saved) — check the cart; pressing again sends it as a new order',
     koTitle:'Order status', allVenues:'All',
     stKitchen:'to kitchen', stBar:'to bar',
     roomPick:'Charge to room', roomPickOff:'Clear', roomPickT:'Charges to the room\'s first guest (splitting by 2 prints each item twice)',
@@ -1121,7 +1128,7 @@ function saveCart(){
   try{
     if(!state.cart.length){ if(_cartRestoreTried) localStorage.removeItem(POS_CART_KEY); return; }
     localStorage.setItem(POS_CART_KEY, JSON.stringify({
-      d:state.date, seq:(state.team?state.team.event_seq:null), cart:state.cart }));
+      d:state.date, seq:(state.team?state.team.event_seq:null), cart:state.cart, ok:(state.orderKey||null) }));   // ok = 보내다 끊긴 주문의 키·지불 방식·고른 사람(SQL 180) — 다시 보낼 때 같은 키
   }catch(e){}
 }
 async function restoreCart(){
@@ -1130,8 +1137,10 @@ async function restoreCart(){
     const r=JSON.parse(localStorage.getItem(POS_CART_KEY)||'null');
     if(!r || r.d!==state.date || !Array.isArray(r.cart) || !r.cart.length) return;
     state.cart=r.cart;
+    state.orderKey=(r.ok&&r.ok.sig&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(r.ok.key||'')))
+      ?{sig:String(r.ok.sig), key:String(r.ok.key), seq:r.ok.seq, pm:r.ok.pm, ps:(Array.isArray(r.ok.ps)?r.ok.ps.map(String):[])}:null;   // 보내다 끊긴 주문의 키(SQL 180)
     if(r.seq){ const tm=state.teams.find(x=>String(x.event_seq)===String(r.seq));
-      if(tm){ await selectTeam(tm); toast(tx('cartRestored')(r.cart.length),'ok'); return; } }
+      if(tm){ await selectTeam(tm); posRestorePayers(); toast(tx('cartRestored')(r.cart.length),'ok'); return; } }   // 지불 방식·고른 사람도 끊기기 전 그대로(같은 키로 다시 보내게 — SQL 180)
     renderCart(); updateSendBtn();
     toast(tx('cartRestored')(r.cart.length),'ok');
   }catch(e){}
@@ -1535,6 +1544,113 @@ async function ensureMemberFolio(memberId){
   if(error) throw error;
   state.memberFolio[memberId]=data.id; return data.id;
 }
+// ── 주문 키(SQL 180) — 같은 전송을 서버가 두 번 넣지 않게 하는 표식(uuid) ──
+//   보낼 내용(팀·지불 방식·고른 사람·장바구니 줄)이 그대로면 같은 키를 다시 쓴다 → 응답을 못 받고 다시 눌러도 한 번만 들어간다.
+//   내용이 바뀌면 새 키(= 새 주문). 성공하면 버린다. 장바구니와 함께 저장돼 새로고침 뒤에도 남는다(saveCart 의 ok).
+function posNewUuid(){
+  try{ if(window.crypto&&typeof crypto.randomUUID==='function') return crypto.randomUUID(); }catch(e){}
+  const b=new Uint8Array(16); crypto.getRandomValues(b);
+  b[6]=(b[6]&15)|64; b[8]=(b[8]&63)|128;   // RFC 4122 v4
+  const h=Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
+  return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
+}
+function posRpcMissing(e){ const c=e&&e.code; return c==='PGRST202'||c==='42883'; }   // 함수가 없는 DB(SQL 180 적용 전)만 옛 경로로
+//  지불할 사람 = 명단 순서(자리번호 순). 누른 순서와 상관없이 같은 사람이면 같은 순서 → 다시 보낼 때 같은 키(잔돈 +1엔도 명단 앞사람부터)
+function posPayerIds(){
+  const sel=state.payerSel, ids=(state.roster||[]).map(m=>String(m.id)).filter(id=>sel.has(id));
+  sel.forEach(id=>{ if(!ids.includes(String(id))) ids.push(String(id)); });
+  return ids;
+}
+//  새로고침 뒤 되살린 키(보내다 끊긴 주문)의 지불 방식·고른 사람을 그대로 되돌린다 — [주문 전송]만 다시 누르면 같은 키가 된다.
+//   selectTeam 이 기본값(개인 지정·아무도 안 고름)으로 되돌리기 때문. 명단에 없는 사람은 버리고, 남는 사람이 없으면 손대지 않는다.
+function posRestorePayers(){
+  const ok=state.orderKey, tm=state.team;
+  if(!ok||!tm||String(ok.seq)!==String(tm.event_seq)) return;
+  if(ok.pm==='team'){ state.payerMode='team'; state.payerSel=new Set(); }
+  else if(ok.pm==='split' && !isWalkin(tm)){
+    const have=new Set((state.roster||[]).map(m=>String(m.id)));
+    const ps=(ok.ps||[]).map(String).filter(id=>have.has(id));
+    if(!ps.length) return;
+    state.payerMode='split'; state.payerSel=new Set(ps);
+  } else return;
+  renderPayer(); updateSendBtn();
+}
+//  누적 금액을 DB 에서 다시 읽는다 — 중복 응답일 때(처음 전송이 이미 들어가 있다. 새로고침했다면 selectTeam 이 이미 그 금액을 셌다)
+async function posReloadRunning(seq){
+  const {data,error}=await supa.from('v_folio_balance').select('gross_total').eq('event_seq',seq);
+  if(error||!state.team||String(state.team.event_seq)!==String(seq)) return false;
+  state.runningGross=(data||[]).reduce((s,f)=>s+Number(f.gross_total||0),0); $('#oh-run').textContent=yen(state.runningGross);
+  return true;
+}
+//  서버 한 번(SQL 180 pos_submit_order) — 계산서 확인·개설 + 청구 줄 + 주방·바 티켓을 한 트랜잭션으로(하나라도 실패하면 아무것도 안 남는다).
+//   반환 {total,tickets,dup} · 함수가 없으면 null(옛 경로) · 다른 오류는 던진다(옛 경로로 다시 넣으면 두 번 들어갈 수 있다).
+async function posSubmitRpc(by, mids){
+  const tm=state.team;
+  const p_mode=state.payerMode==='split'?'split':'team';
+  const p_payers=p_mode==='split'?mids:[];
+  const p_lines=state.cart.map(l=>{ const T=taxKeyOf(l);
+    return { menu_id:(l.id==null?null:String(l.id)), category:l.category, source:l.venue||'etc', station:l.station||'none',
+      name:l.name_ja, qty:l.qty, unit_price:l.unit_price, tax_rate:T.rate, tax_class:T.cls }; });
+  const sig=JSON.stringify([tm.event_seq,p_mode,p_payers,p_lines]);
+  if(!state.orderKey||state.orderKey.sig!==sig) state.orderKey={sig, key:posNewUuid(), seq:tm.event_seq, pm:p_mode, ps:p_payers.slice()};
+  saveCart();   // 키를 장바구니와 함께 먼저 저장 — 응답 전에 끊겨 새로고침해도 같은 키로 다시 보낸다
+  const {data,error}=await supa.rpc('pos_submit_order',{ p_key:state.orderKey.key, p_seq:tm.event_seq, p_mode, p_payers, p_lines,
+    p_team_tag:teamTagRaw(tm), p_ym:tm.session_ym||null, p_by:by });
+  if(error){ if(posRpcMissing(error)) return null; throw error; }
+  const r=(typeof data==='string')?JSON.parse(data):(data||{});
+  if(!(Number(r.charges)>0)) throw new Error(tx('sendNoRow'));   // 반영 행 수 — 청구 줄 0 이면 성공으로 치지 않는다
+  if(r.team_folio) state.folioId=r.team_folio;
+  if(r.member_folios) Object.keys(r.member_folios).forEach(k=>{ state.memberFolio[k]=r.member_folios[k]; });
+  return { total:Number(r.total)||0, tickets:Number(r.tickets)||0, dup:!!r.duplicate };
+}
+//  옛 경로(SQL 180 적용 전 DB 전용) — 화면이 계산서를 확보하고 청구 줄·티켓을 따로 넣는다(종전 그대로).
+async function sendCartLegacy(by, mids){
+  let rows=[];
+  if(state.payerMode==='split'){
+    const folioOf={};
+    for(const mid of mids){ folioOf[mid]=await ensureMemberFolio(mid); }
+    const k=mids.length;
+    state.cart.forEach(l=>{
+      const gross=l.unit_price*l.qty;
+      if(k===1){
+        const mid=mids[0], T=taxKeyOf(l), tax=taxOf(gross,T.rate);
+        rows.push({ folio_id:folioOf[mid], event_seq:state.team.event_seq, member_id:mid,
+          category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:''),
+          qty:l.qty, unit_price:l.unit_price, amount:gross-tax, tax, tax_rate:T.rate, tax_class:T.cls, service_charge:0, link_ref:'menu:'+l.id, created_by:by });
+      } else {
+        const base=Math.floor(gross/k); let rem=gross-base*k;   // 잔돈은 앞 인원부터 +1엔
+        mids.forEach((mid,i)=>{
+          const share=base+(i<rem?1:0); if(share<=0) return;
+          const T=taxKeyOf(l), tax=taxOf(share,T.rate);
+          rows.push({ folio_id:folioOf[mid], event_seq:state.team.event_seq, member_id:mid,
+            category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:'')+` (1/${k})`,
+            qty:1, unit_price:share, amount:share-tax, tax, tax_rate:T.rate, tax_class:T.cls, service_charge:0, link_ref:'menu:'+l.id, created_by:by });
+        });
+      }
+    });
+  } else {
+    const folioId=await ensureFolio();
+    state.cart.forEach(l=>{
+      const gross=l.unit_price*l.qty, T=taxKeyOf(l), tax=taxOf(gross,T.rate);
+      rows.push({ folio_id:folioId, event_seq:state.team.event_seq, member_id:null,
+        category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:''),
+        qty:l.qty, unit_price:l.unit_price, amount:gross-tax, tax, tax_rate:T.rate, tax_class:T.cls, service_charge:0, link_ref:'menu:'+l.id, created_by:by });
+    });
+  }
+  if(!HAS_TAXCOL) rows.forEach(r=>{ delete r.tax_rate; delete r.tax_class; });   // SQL 158 미적용 DB — 컬럼이 없으면 보내지 않는다
+  const {error}=await supa.from('charges').insert(rows);
+  if(error) throw error;
+  // 주방(kitchen)·바(bar)행 모두 KDS 티켓 발행(none=매점은 미발행).
+  //  주방 화면=kitchen만 / 바·프론트 화면=kitchen+bar 전부. 조리는 분할 무관 풀 수량(팀 단위).
+  const tickets=state.cart.filter(l=>l.station==='kitchen'||l.station==='bar').map(l=>({
+    folio_id:state.folioId||null, event_seq:state.team.event_seq, team_tag:teamTagRaw(state.team),
+    station:l.station, item_name:l.name_ja, qty:l.qty, created_by:by }));
+  if(tickets.length){
+    const {error:te}=await supa.from('kitchen_tickets').insert(tickets);
+    if(te){ toast(tx('ticketFail')(te.message),'warn'); tickets.length=0; }   // 실패한 티켓을 아래 성공 문구의 「주방 N건」에 세지 않는다
+  }
+  return { total:rows.reduce((s,r)=>s+r.amount+r.tax,0), tickets:tickets.length, dup:false };
+}
 async function sendCart(){
   if(!state.cart.length) return;
   if(!state.team){ openScan(); return; }   // 팀이 없으면 QR/검색부터(Min 2026-08 되돌림)
@@ -1543,61 +1659,21 @@ async function sendCart(){
   $('#btn-send').disabled=true;
   try{
     const by=opBy();
-    let rows=[];
-    if(state.payerMode==='split'){
-      const mids=[...state.payerSel];
-      if(!mids.length){ toast(tx('pickPayer'),'warn'); $('#btn-send').disabled=false; return; }
-      const folioOf={};
-      for(const mid of mids){ folioOf[mid]=await ensureMemberFolio(mid); }
-      const k=mids.length;
-      state.cart.forEach(l=>{
-        const gross=l.unit_price*l.qty;
-        if(k===1){
-          const mid=mids[0], T=taxKeyOf(l), tax=taxOf(gross,T.rate);
-          rows.push({ folio_id:folioOf[mid], event_seq:state.team.event_seq, member_id:mid,
-            category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:''),
-            qty:l.qty, unit_price:l.unit_price, amount:gross-tax, tax, tax_rate:T.rate, tax_class:T.cls, service_charge:0, link_ref:'menu:'+l.id, created_by:by });
-        } else {
-          const base=Math.floor(gross/k); let rem=gross-base*k;   // 잔돈은 앞 인원부터 +1엔
-          mids.forEach((mid,i)=>{
-            const share=base+(i<rem?1:0); if(share<=0) return;
-            const T=taxKeyOf(l), tax=taxOf(share,T.rate);
-            rows.push({ folio_id:folioOf[mid], event_seq:state.team.event_seq, member_id:mid,
-              category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:'')+` (1/${k})`,
-              qty:1, unit_price:share, amount:share-tax, tax, tax_rate:T.rate, tax_class:T.cls, service_charge:0, link_ref:'menu:'+l.id, created_by:by });
-          });
-        }
-      });
-    } else {
-      const folioId=await ensureFolio();
-      state.cart.forEach(l=>{
-        const gross=l.unit_price*l.qty, T=taxKeyOf(l), tax=taxOf(gross,T.rate);
-        rows.push({ folio_id:folioId, event_seq:state.team.event_seq, member_id:null,
-          category:l.category, source:l.venue, description:l.name_ja+(l.qty>1?` ×${l.qty}`:''),
-          qty:l.qty, unit_price:l.unit_price, amount:gross-tax, tax, tax_rate:T.rate, tax_class:T.cls, service_charge:0, link_ref:'menu:'+l.id, created_by:by });
-      });
-    }
-    if(!HAS_TAXCOL) rows.forEach(r=>{ delete r.tax_rate; delete r.tax_class; });   // SQL 158 미적용 DB — 컬럼이 없으면 보내지 않는다
-    const {error}=await supa.from('charges').insert(rows);
-    if(error) throw error;
-    // 주방(kitchen)·바(bar)행 모두 KDS 티켓 발행(none=매점은 미발행).
-    //  주방 화면=kitchen만 / 바·프론트 화면=kitchen+bar 전부. 조리는 분할 무관 풀 수량(팀 단위).
-    const tickets=state.cart.filter(l=>l.station==='kitchen'||l.station==='bar').map(l=>({
-      folio_id:state.folioId||null, event_seq:state.team.event_seq, team_tag:teamTagRaw(state.team),
-      station:l.station, item_name:l.name_ja, qty:l.qty, created_by:by }));
-    if(tickets.length){
-      const {error:te}=await supa.from('kitchen_tickets').insert(tickets);
-      if(te){ toast(tx('ticketFail')(te.message),'warn'); tickets.length=0; }   // 실패한 티켓을 아래 성공 문구의 「주방 N건」에 세지 않는다
-    }
-    const total=rows.reduce((s,r)=>s+r.amount+r.tax,0);
-    const who=state.payerMode==='split'?tx('splitN')(state.payerSel.size):tx('payTeam');
-    toast(tx('sendToast')(teamTag(state.team),who,state.cart.length,yen(total),tickets.length),'ok');
-    state.runningGross+=total; $('#oh-run').textContent=yen(state.runningGross);
+    const mids=state.payerMode==='split'?posPayerIds():[];
+    if(state.payerMode==='split' && !mids.length){ toast(tx('pickPayer'),'warn'); $('#btn-send').disabled=false; return; }
+    const res=(await posSubmitRpc(by, mids)) || (await sendCartLegacy(by, mids));   // 서버 한 번(180) → 함수가 없을 때만 옛 경로
+    const who=state.payerMode==='split'?tx('splitN')(mids.length):tx('payTeam');
+    toast(tx('sendToast')(teamTag(state.team),who,state.cart.length,yen(res.total),res.tickets)+(res.dup?' — '+tx('dupSent'):''),'ok');
+    if(res.dup){ try{ await posReloadRunning(state.team.event_seq); }catch(_){} }   // 중복 = 처음 전송이 이미 들어가 있다 → 더하지 않고 DB 에서 다시 읽는다(새로고침 뒤라면 이미 셌다)
+    else { state.runningGross+=res.total; $('#oh-run').textContent=yen(state.runningGross); }
     { const box=$('#run-list'); if(box && box.style.display!=='none'){ box.style.display='none'; toggleRunList(); } }
+    state.orderKey=null;   // 이 주문은 끝났다 — 같은 것을 또 담아 보내면 새 주문이다
     state.cart=[]; renderCart(); renderWalkinPay();
     koRefreshAny();   // 방금 보낸 주문이 아래 목록에 바로 뜨도록(티켓 없는 매점 품목도)
   }catch(e){
-    toast(tx('sendFail')(e.message),'err'); $('#btn-send').disabled=false;
+    const msg=(e&&e.message)||String(e), mism=msg.indexOf('pos_order_key_mismatch')>=0;
+    if(mism){ state.orderKey=null; saveCart(); }   // 같은 키에 다른 내용(화면 버그 방어) — 서버는 아무것도 넣지 않았다. 이 키를 버려 다음 전송은 새 주문으로
+    toast(tx('sendFail')((e&&e.code==='42501')?tx('sendDenied'):(mism?tx('keyMismatch'):msg)),'err'); $('#btn-send').disabled=false;
   }finally{
     state.sending=false; updateSendBtn();   // 성공·실패·중간 return 모두 잠금 해제(버튼은 장바구니 기준으로 다시 계산)
   }
