@@ -1,5 +1,5 @@
 -- ============================================================================
---  SaiZen Hub — 설치 상태 종합 점검 (01~188)
+--  SaiZen Hub — 설치 상태 종합 점검 (01~188, 190)
 --  Supabase SQL Editor 에 붙여넣고 Run → 각 항목 ✅/❌ 한눈에.
 --  (to_regclass / information_schema 사용 → 객체가 없어도 에러 없이 동작)
 --  번호 메모: 43·44·120·121 은 같은 번호 파일이 두 개씩이다(서로 독립 — 안내는 파일 이름까지 적는다). 72 는 결번.
@@ -318,6 +318,7 @@ from (
   union all select 187,'187 경영 통계 검수 짝','data_audit 에 pay_mix_check(이번 달 현금·카드 = payments 재계산 · 현금+카드 = 입금 전체 · 미입금 = 청구 − 입금 재계산) · 로그인 전용', case when exists(select 1 from pg_proc p where p.oid = to_regprocedure('public.data_audit()') and p.prosrc like '%''pay_mix_check''%' and not has_function_privilege('anon', p.oid, 'execute') and has_function_privilege('authenticated', p.oid, 'execute')) then '✅ 있음' else '❌ 없음 (187) — [재검수]가 경영 통계 현금/카드/미입금을 대조하지 않는다' end
   union all select 188,'188 대표 줄','팀마다 대표 줄(guest_members.is_rep) 1개 · 예약 대표고객과 이름(띄어쓰기 무시)이 같은 첫 줄, 없으면 첫 줄(SZCore.repIndex 와 같은 규칙)', (select case when x.bad = 0 then '✅ 0팀' else '⚠ 규칙과 다른 팀 '||x.bad||' (188) — 그 달을 다시 등록하거나 188 ① 을 다시 실행' end from (select count(distinct event_seq) bad from (select g.event_seq, g.is_rep, row_number() over (partition by g.event_seq order by (coalesce(b.rep_name,'')<>'' and regexp_replace(coalesce(g.name_kr,''),'\s','','g') = regexp_replace(coalesce(b.rep_name,''),'\s','','g')) desc, g.seq_in_team, g.id) = 1 as want from guest_members g join bookings b on b.event_seq = g.event_seq) r where coalesce(r.is_rep,false) <> r.want) x)
   union all select 188,'188 정리','옛 정산 뷰 3개(v_folio_by_category·v_folio_lines·v_folio_summary)·빈 컬럼 charges.source_ref 없음 · 메모 표 정책·RPC(dispatch_set_memo·event_note_set)에 없는 영역 키 notes 없음 · 메모 표 정책 8개', case when to_regclass('public.v_folio_by_category') is null and to_regclass('public.v_folio_lines') is null and to_regclass('public.v_folio_summary') is null and not exists(select 1 from information_schema.columns where table_schema='public' and table_name='charges' and column_name='source_ref') and not exists(select 1 from pg_policies where schemaname='public' and (coalesce(qual,'') like '%notes}%' or coalesce(with_check,'') like '%notes}%')) and not exists(select 1 from pg_proc p where p.pronamespace='public'::regnamespace and p.prosrc like '%has_any_area(array[%''notes''%') and (select count(*) from pg_policies where schemaname='public' and tablename in ('event_notes','event_note_log')) = 8 then '✅ 적용' else '⚠ 미적용 (188) — 동작 영향 없음(정리 항목)' end
+  union all select 190,'190 발행자 표기','org_settings(발행자명·시설명·주소·전화·등록번호) · 읽기 로그인 · 쓰기 활성 관리자 · 등록번호 형식 T+13', case when to_regclass('public.org_settings') is null then '❌ 없음 (190) — 영수증·御請求書는 기본값으로 찍힌다' when coalesce((select value from org_settings where key='invoice_reg_no'),'') = '' then '⚠ 등록번호 미입력 — 권한 관리 화면 「発行者表記」에서 입력' else '✅ 적용 · 등록번호 '||(select value from org_settings where key='invoice_reg_no') end
 ) t
 order by ord, 항목;
 

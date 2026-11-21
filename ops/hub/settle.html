@@ -167,7 +167,7 @@
      왼쪽으로 밀렸다가 제자리로 튀었다(Min 2026-08). 세로 이동만 남긴다. */
   @keyframes popUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=42.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=42.3">
 </head>
 <body data-so-area="settle_onsite">
 <div class="topbar so-bar">
@@ -230,7 +230,7 @@
 
 <script src="../assets/qrcode-generator.js?v=1"></script>
 <script src="../assets/saizen-core.js?v=75"></script>
-<script src="../assets/saizen-ops.js?v=42.2"></script>
+<script src="../assets/saizen-ops.js?v=42.3"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 현장 정산(folio) 모듈  · docs 정산명세(04) Phase 1
@@ -1017,6 +1017,13 @@ const XLM={ navy:'FF1A2540', blue:'FF1A4D8F', soft:'FFEAF0F7', line:'FFB9C4D6', 
 function xFill(argb){ return {type:'pattern',pattern:'solid',fgColor:{argb}}; }
 function xBorderAll(){ const s={style:'thin',color:{argb:XLM.line}}; return {top:s,left:s,bottom:s,right:s}; }
 
+// 발행자 표기(적격청구서 — SQL 190 org_settings, 값은 saizen-ops 가 읽어 둔다 · 못 읽었으면 같은 기본값)
+//  main = 「株式会社SaiZen ／ アソ ヤマナミリゾート」 · sub = 주소 · TEL · 登録番号(값이 있을 때만)
+function issuerLines(){
+  const I=(window.__so_issuer&&window.__so_issuer())||{issuer_name_ja:'株式会社SaiZen',issuer_facility_ja:'アソ ヤマナミリゾート',issuer_address_ja:'〒869-2702 熊本県阿蘇郡産山村大字大利630',issuer_tel:'0967-25-2331',invoice_reg_no:''};
+  return { main:[I.issuer_name_ja,I.issuer_facility_ja].filter(Boolean).join(' ／ '),
+           sub:[I.issuer_address_ja, I.issuer_tel?('TEL '+I.issuer_tel):'', I.invoice_reg_no?('登録番号 '+I.invoice_reg_no):''].filter(Boolean).join('  ·  ') };
+}
 // ── 御請求書 HTML 미리보기 팝업(→ 인쇄). 즉시 엑셀 다운로드 대신 한 단계 거침. ──
 // ── 청구서 QR — 손님이 폰으로 찍으면 그 팀 청구내역(bill.html)이 열린다.
 //    최종 체크아웃 전날·정산 시점에 종이 없이 확인시키는 용도. 토큰은 주문 QR과 같은 것.
@@ -1146,7 +1153,8 @@ async function previewStatement(f){
     <button class="c" onclick="window.close()">✕ ${tx('closeXBtn')}</button></div>
   <div class="page">
     <div class="h1">御　請　求　書</div>
-    <div class="sub">アソ ヤマナミリゾート ／ 株式会社SaiZen</div>
+    <div class="sub">${esc(issuerLines().main)}</div>
+    <div class="sub" style="font-size:10.5px;margin-top:-2px">${esc(issuerLines().sub)}</div>
     ${qrHTML}
     <div class="info">
       <div><span class="lab">宛名 / 御一行</span> <b>${esc(ate)}</b></div>
@@ -1182,8 +1190,11 @@ async function exportStatement(f){
   const tt=ws.getCell('A1'); tt.value='御　請　求　書'; tt.font={bold:true,size:18,color:{argb:XLM.navy}};
   tt.alignment={horizontal:'center'};
   ws.mergeCells('A2:F2');
-  const sub=ws.getCell('A2'); sub.value='アソ ヤマナミリゾート ／ 株式会社SaiZen';
+  const sub=ws.getCell('A2'); sub.value=issuerLines().main;
   sub.font={size:10,color:{argb:XLM.blue}}; sub.alignment={horizontal:'center'};
+  ws.mergeCells('A3:F3');
+  const sub2=ws.getCell('A3'); sub2.value=issuerLines().sub;
+  sub2.font={size:9,color:{argb:XLM.blue}}; sub2.alignment={horizontal:'center'};
 
   const tag=tagUni(f.event_seq, f.team_tag);   // 손님에게 나가는 인쇄물 = 코드 하나만
   ws.getCell('A4').value='宛名 / 御一行'; ws.getCell('A4').font={bold:true,color:{argb:XLM.navy}};

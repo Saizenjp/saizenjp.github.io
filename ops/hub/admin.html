@@ -91,7 +91,7 @@
   .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
   .toast.warn{border-left-color:var(--warn);background:#fbf3e2;color:#7a5a16}
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=42.2">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=42.3">
 </head>
 <body data-so-area="admin">
 <div class="topbar so-bar">
@@ -125,6 +125,19 @@
     <div id="req-list"><div class="deny" id="t-req-loading" style="color:var(--muted)">読み込み中…</div></div>
   </div>
 
+  <div class="panel" id="iss-panel" style="display:none">
+    <h3 id="t-iss-h">発行者表記(領収書・御請求書)</h3>
+    <div class="desc" id="t-iss-desc"></div>
+    <div id="iss-form" style="display:grid;grid-template-columns:max-content 1fr;gap:8px 12px;align-items:center;max-width:640px">
+      <label id="t-iss-name" for="iss-issuer_name_ja">発行者名</label><input class="inp" id="iss-issuer_name_ja" maxlength="100">
+      <label id="t-iss-fac" for="iss-issuer_facility_ja">施設名</label><input class="inp" id="iss-issuer_facility_ja" maxlength="100">
+      <label id="t-iss-addr" for="iss-issuer_address_ja">住所</label><input class="inp" id="iss-issuer_address_ja" maxlength="200">
+      <label id="t-iss-tel" for="iss-issuer_tel">電話</label><input class="inp" id="iss-issuer_tel" maxlength="40">
+      <label id="t-iss-reg" for="iss-invoice_reg_no">登録番号</label><input class="inp" id="iss-invoice_reg_no" maxlength="14" placeholder="T1234567890123">
+    </div>
+    <div style="margin-top:10px"><button class="btn" id="iss-save">保存</button> <span class="hint" id="iss-msg"></span></div>
+  </div>
+
   <div class="panel">
     <h3 id="t-users-h">担当者権限管理</h3>
     <div class="desc" id="t-users-desc"></div>
@@ -134,7 +147,7 @@
 
 <div id="toast"></div>
 <script src="../assets/saizen-core.js?v=75"></script>
-<script src="../assets/saizen-ops.js?v=42.2"></script>
+<script src="../assets/saizen-ops.js?v=42.3"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 //  SaiZen Hub — 권한 관리(마스터 전용). 18_access_control.sql 의 RPC를 호출.
@@ -145,6 +158,7 @@ let supa=null, myRole=null, myUid=null, rows=[];
 // ── i18n (한·일 직원 공용. ja 기본) ──
 const L={
   ja:{
+    issH:'発行者表記(領収書・御請求書)', issDesc:'領収書・御請求書の発行者欄に出ます(適格請求書)。登録番号(T+13桁)を入れると「登録番号」行が付きます。', issName:'発行者名', issFac:'施設名', issAddr:'住所', issTel:'電話', issReg:'登録番号', issSave:'保存', issSaved:'保存しました — 次に開く領収書・御請求書から反映', issSaveFail:'保存できませんでした: ', issRegBad:'登録番号は T + 数字13桁です',
     step:'権限管理 · マスター', home:'← ホーム',
     connHint:'ログイン後、マスター(admin)のみ利用できます。',
     connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続 · 再試行',
@@ -204,6 +218,7 @@ const L={
     toastBlocked:'遮断しました', toastUnblocked:'解除しました', toastBlockFail:'処理失敗: ',
   },
   ko:{
+    issH:'발행자 표기(領収書・御請求書)', issDesc:'영수증·御請求書의 발행자 칸에 나옵니다(적격청구서). 등록번호(T+13자리)를 넣으면 「登録番号」 줄이 붙습니다.', issName:'발행자명', issFac:'시설명', issAddr:'주소', issTel:'전화', issReg:'등록번호', issSave:'저장', issSaved:'저장했습니다 — 다음에 여는 영수증·御請求書부터 반영', issSaveFail:'저장하지 못했습니다: ', issRegBad:'등록번호는 T + 숫자 13자리입니다',
     step:'권한 관리 · 마스터', home:'← 홈',
     connHint:'로그인 후 마스터(admin)만 사용할 수 있습니다.',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 · 재시도',
@@ -256,6 +271,7 @@ const L={
     toastBlocked:'차단됨', toastUnblocked:'차단 해제됨', toastBlockFail:'처리 실패: ',
   },
   en:{
+    issH:'Issuer details (receipts & invoices)', issDesc:'Printed in the issuer box of receipts (領収書) and invoices (御請求書) — qualified invoice. Enter the registration number (T + 13 digits) to add the 登録番号 line.', issName:'Issuer name', issFac:'Facility', issAddr:'Address', issTel:'Phone', issReg:'Registration no.', issSave:'Save', issSaved:'Saved — applies from the next receipt or invoice you open', issSaveFail:'Could not save: ', issRegBad:'Registration no. is T + 13 digits',
     step:'Access control · Master', home:'← Home',
     connHint:'After login, only the Master (admin) can use this page.',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Connect · retry',
@@ -439,6 +455,7 @@ async function connect(){
     }
     await load();
     await loadRequests();
+    await loadIssuerForm();
   }catch(e){
     setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null;
     toast(tx('toastConnFail')+e.message+tx('connFailHint'),'err');
@@ -584,6 +601,30 @@ async function handleReq(id,act){
   await loadRequests();
 }
 
+// ── 발행자 표기(적격청구서 — SQL 190 org_settings) ──
+//   마스터만 고친다(DB 정책도 활성 관리자만). 표가 없으면(190 미적용) 패널을 숨긴다.
+const ISS_KEYS=['issuer_name_ja','issuer_facility_ja','issuer_address_ja','issuer_tel','invoice_reg_no'];
+async function loadIssuerForm(){
+  const panel=$('#iss-panel'); if(!panel||!supa) return;
+  const {data,error}=await supa.from('org_settings').select('key,value').in('key',ISS_KEYS);
+  if(error){ panel.style.display='none'; return; }
+  const m={}; (data||[]).forEach(r=>m[r.key]=r.value||'');
+  ISS_KEYS.forEach(k=>{ const el=$('#iss-'+k); if(el) el.value=m[k]||''; });
+  panel.style.display='';
+}
+async function saveIssuer(){
+  const msg=$('#iss-msg'); const reg=($('#iss-invoice_reg_no').value||'').trim().toUpperCase();
+  if(reg && !/^T\d{13}$/.test(reg)){ msg.textContent=tx('issRegBad'); msg.style.color='var(--err)'; return; }
+  $('#iss-invoice_reg_no').value=reg;
+  const who=(window.__so_getUser&&__so_getUser())||null, now=new Date().toISOString();
+  const rowsU=ISS_KEYS.map(k=>({key:k, value:(($('#iss-'+k).value)||'').trim(), updated_at:now, updated_by:who}));
+  const {error}=await supa.from('org_settings').upsert(rowsU,{onConflict:'key'});
+  if(error){ msg.textContent=tx('issSaveFail')+error.message; msg.style.color='var(--err)'; return; }
+  if(window.__so_loadIssuer) window.__so_loadIssuer(true);
+  msg.textContent=tx('issSaved'); msg.style.color='var(--ok)';
+}
+document.addEventListener('DOMContentLoaded',()=>{ const b=$('#iss-save'); if(b) b.addEventListener('click',saveIssuer); });
+
 // 정적 라벨 적용(언어별)
 function applyStatic(){
   $('#t-step').textContent=tx('step');
@@ -598,6 +639,10 @@ function applyStatic(){
   $('#t-users-h').textContent=tx('usersTitle');
   $('#t-users-desc').innerHTML=tx('usersDesc');
   const ue=$('#t-users-empty'); if(ue) ue.textContent=tx('usersEmpty');
+  // 발행자 표기 패널
+  [['#t-iss-h','issH'],['#t-iss-name','issName'],['#t-iss-fac','issFac'],['#t-iss-addr','issAddr'],['#t-iss-tel','issTel'],['#t-iss-reg','issReg'],['#iss-save','issSave']]
+    .forEach(([sel,k])=>{ const el=$(sel); if(el) el.textContent=tx(k); });
+  const idsc=$('#t-iss-desc'); if(idsc) idsc.textContent=tx('issDesc');
   // 연결 상태 pill(연결 전만 기본값으로 갱신)
   const e=$('#conn-state'); if(e && !e.classList.contains('ok') && !e.classList.contains('err')) e.textContent=tx('notConn');
 }
