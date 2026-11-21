@@ -1418,8 +1418,10 @@
   //  ⚠ 싱글룸은 추가요금(대부분 현지지불)이라 잘못 잡으면 방배정만이 아니라 청구가 틀어진다.
   //    애매하면 언제나 사람에게 넘긴다.
   var SG_WORD  = /싱글|single|シングル|1인실|일인실|독방|독실/i;   // 「독실」도 싱글(Min 2026-09: 앞으로 5인 팀은 독실·싱글룸·1인실 등으로 꼭 적는다)
+  //  「확정이 아니다」 낱말 — SG_BLOCK(한국어)·SG_BLOCK2(일본어·외래어 표기) 둘 다 **싱글 구역**(_sgBlockText: 싱글이 적힌 절 + 다른 항목 이름이 없는 절)에서만 찾는다.
+  //   「전원 싱글룸 / 석식 1회 취소」의 취소는 석식 얘기라 싱글 요청에 영향이 없다(2026-11-21 Min — 2026-08 「글 전체에서 찾는다」를 바꿨다).
+  //   「싱글룸 요금 취소」「(입금 대기)」처럼 돈 얘기는 그 싱글의 것으로 본다(_SG_ITEM_X 에 돈 낱말이 없다 — 틀려도 종전 동작인 쪽).
   var SG_BLOCK = /대기|불가|어려울|어렵|만실|취소|보류/;
-  //  싱글이 적힌 절 안에서만 보는 「확정이 아니다」 낱말(일본어·외래어 표기) — 글 전체에서 찾는 SG_BLOCK 과 달리 다른 항목의 취소에는 걸리지 않는다
   var SG_BLOCK2 = /캔슬|켄슬|철회|웨이팅|キャンセル|取消|取り消し|不可|満室|待ち|保留|ウェイティング/;
   var SG_MIX   = /트윈|투윈|ツイン|더블|ダブル|트리플|トリプル/;
   var SG_ALL   = /전원|전부|모두|全員/;
@@ -1565,13 +1567,62 @@
     (names || []).forEach(function (n) { if (out.indexOf(n) < 0 && hits.some(function (f) { return f.ref === n; })) out.push(n); });   // 명단 순서(종전과 같다)
     return { hits: out, block: block, all: isAll && !isPart };
   }
+  //  한 줄을 싱글 절(싱글 낱말이 든 절 — 쉼표로 딸린 뒤 조각은 cl.ext 로 붙인다)과 나머지 절로 가른다(29차 규칙)
+  function _sgSplitLine(l) {
+    var sg = [], rest = [], lastSg = null;
+    _sgClauses(l).forEach(function (cl) {
+      if (SG_WORD.test(cl.main) || cl.parens.some(function (p) { return SG_WORD.test(p); })) { sg.push(cl); lastSg = cl; return; }
+      //  쉼표로 이어진 뒤 조각 — 다른 항목·다른 방 종류가 적혀 있지 않으면 앞 싱글 절에 딸린 말이다(「…, 가능할까요?」「…, 3일부터」「싱글룸: A, B 문의」)
+      if (lastSg && /[,，、]/.test(cl.sep) && !_SG_ITEM.test(cl.main) && !SG_MIX.test(cl.main)) {
+        var fr = cl.main + ' ' + cl.parens.filter(function (p) { return !_SG_ITEM.test(p); }).join(' ');
+        //  기간 말고 다른 글이 함께 있으면(「15일까지 회신 부탁」) 그 기간은 체류 얘기가 아니다
+        if (_SG_PERIOD.test(fr) && fr.replace(new RegExp(_SG_PERIOD.source, 'g'), '').replace(/[\s~\-〜.만사용이용のみ]/g, '')) fr = fr.replace(new RegExp(_SG_PERIOD.source, 'g'), ' ');
+        lastSg.ext = (lastSg.ext || '') + ' ' + fr;
+        return;
+      }
+      lastSg = null;
+      rest.push(cl);
+    });
+    return { sg: sg, rest: rest };
+  }
+  //  막는 낱말을 볼 때의 「다른 항목」 이름 = _SG_ITEM 에서 돈 낱말(카드·환불·쿠폰·결제·입금·잔금·요금·비용·금액·수수료)을 뺀 것.
+  //   「싱글룸 요금 취소」「전원 싱글룸\n추가요금 입금 대기」의 취소·대기는 그 싱글이 확정이 아니라는 말일 수 있다 → 막는 쪽(평소대로 둘씩 = 종전 동작)으로 본다.
+  var _SG_ITEM_X = /전기|카트|조식|중식|석식|식사|특식|도시락|캐디|송영|차량|픽업|샌딩|온천|항공|air|좌석|골프|라운딩|티타임|명단|여권|체크인|체크아웃|朝食|昼食|夕食|送迎|カート|ゴルフ/i;
+  //  글 한 조각에서 막는 낱말을 볼 부분 — 싱글 낱말이 있으면 그 앞(다른 항목이 없을 때만) + 싱글 낱말부터 다른 항목 이름 앞까지, 없으면 다른 항목 이름이 없을 때만 통째로
+  function _sgBlkCut(s) {
+    s = String(s || '');
+    var sm = SG_WORD.exec(s);
+    if (!sm) return _SG_ITEM_X.test(s) ? '' : s;
+    var pre = s.slice(0, sm.index), post = s.slice(sm.index), im = _SG_ITEM_X.exec(post.slice(sm[0].length));
+    if (im) post = post.slice(0, sm[0].length + im.index);
+    return (_SG_ITEM_X.test(pre) ? '' : pre) + post;
+  }
+  //  괄호 안도 절로 나눠 같은 규칙으로 — 「(카트 대기, 싱글 대기)」의 「싱글 대기」는 본다 · 「(석식 취소)」는 뺀다
+  function _sgBlkParen(p) {
+    return _sgClauses(String(p || '')).map(function (c) { return _sgBlkCut(c.main) + ' ' + c.parens.map(function (q) { return _sgBlkCut(q); }).join(' '); }).join(' ');
+  }
+  //  막는 낱말(SG_BLOCK·SG_BLOCK2)을 찾는 글 = 줄마다 ① 싱글 절: _sgBlkCut(본문) + 괄호(_sgBlkParen) + 쉼표로 딸린 덧말 ② 나머지 절: 다른 항목 이름이 없을 때만 본문 + 괄호.
+  //   「전원 싱글룸\n※불가능한 점 안내 완료」의 둘째 줄은 싱글 얘기를 이어 적은 덧말일 수 있어 종전대로 본다 · 「석식 1회 취소(환불 불가)」「(카트 대기)」처럼 다른 항목이 적힌 조각은 그 항목 얘기라 뺀다(2026-11-21 Min).
+  function _sgBlockText(t) {
+    var out = [];
+    String(t == null ? '' : t).split('\n').forEach(function (raw) {
+      var l = raw.trim();
+      if (!l) return;
+      var s = _sgSplitLine(l);
+      s.sg.forEach(function (cl) { out.push(_sgBlkCut(cl.main) + ' ' + cl.parens.map(function (p) { return _sgBlkParen(p); }).join(' ') + (cl.ext ? ' ' + cl.ext : '')); });
+      s.rest.forEach(function (cl) {
+        if (_SG_ITEM_X.test(cl.main)) return;
+        out.push(cl.main + ' ' + cl.parens.map(function (p) { return _sgBlkParen(p); }).join(' '));
+      });
+    });
+    return out;
+  }
   //  → {kind, why?, names?, n?, mixed?}
-  //   blocked 의 why: 'none' = 싱글 요청이 없다고 적혔다(「싱글룸 없음」) · 'block' = 대기·불가·취소 — 둘 다 평소대로 짝을 짓는다
+  //   blocked 의 why: 'none' = 싱글 요청이 없다고 적혔다(「싱글룸 없음」) · 'block' = 싱글 구역에 대기·불가·취소 — 둘 다 평소대로 짝을 짓는다
   //   unsure  의 why: 'ask' = 미정·문의·부정 꼴 · 'partial' = 일부·N명 중·제외 · 'who' = 수량만 있거나 누구인지 모른다
   function singlePlan(text, pax, names) {
     var t = _sgHalf(text), n0 = Number(pax) || 0;
     if (!SG_WORD.test(t)) return null;
-    if (SG_BLOCK.test(t)) return { kind: 'blocked', why: 'block' };
     //  「싱글룸 없음·사용 안함」을 뺀 나머지에 싱글 얘기가 없으면 요청이 아니다(대기·취소와 같은 취급 — 평소대로 짝을 짓는다)
     t = t.replace(_SG_NEG, ' ');
     if (!SG_WORD.test(t)) return { kind: 'blocked', why: 'none' };
@@ -1587,19 +1638,7 @@
       if (SG_HEAD.test(l)) { inSg = true; return; }
       if (inSg || SG_WORD.test(l)) sgTxt += l + ' ';
       if (SG_WORD.test(l)) {
-        var lastSg = null;
-        _sgClauses(l).forEach(function (cl) {
-          if (SG_WORD.test(cl.main) || cl.parens.some(function (p) { return SG_WORD.test(p); })) { sgCl.push(cl); lastSg = cl; return; }
-          //  쉼표로 이어진 뒤 조각 — 다른 항목·다른 방 종류가 적혀 있지 않으면 앞 싱글 절에 딸린 말이다(「…, 가능할까요?」「…, 3일부터」「싱글룸: A, B 문의」)
-          if (lastSg && /[,，、]/.test(cl.sep) && !_SG_ITEM.test(cl.main) && !SG_MIX.test(cl.main)) {
-            var fr = cl.main + ' ' + cl.parens.filter(function (p) { return !_SG_ITEM.test(p); }).join(' ');
-            //  기간 말고 다른 글이 함께 있으면(「15일까지 회신 부탁」) 그 기간은 체류 얘기가 아니다
-            if (_SG_PERIOD.test(fr) && fr.replace(new RegExp(_SG_PERIOD.source, 'g'), '').replace(/[\s~\-〜.만사용이용のみ]/g, '')) fr = fr.replace(new RegExp(_SG_PERIOD.source, 'g'), ' ');
-            lastSg.ext = (lastSg.ext || '') + ' ' + fr;
-            return;
-          }
-          lastSg = null;
-        });
+        _sgSplitLine(l).sg.forEach(function (cl) { sgCl.push(cl); });
         var parts = l.split(/[\/／■●◆※▶•]/), pi;
         for (pi = 0; pi < parts.length; pi++) {
           if (!SG_WORD.test(parts[pi])) continue;
@@ -1610,11 +1649,13 @@
       } else if (inSg) headLines.push(l);
     });
     sgTxt = sgTxt.trim();
-    var zones = sgCl.map(_sgZone);
+    var zones = sgCl.map(_sgZone), blk = _sgBlockText(t);
+    //  「싱글룸 2방 대기」「전원 싱글룸 (대기)」「전원 싱글룸\n※불가능한 점 안내」 — 싱글 구역에서만(「전원 싱글룸 / 석식 1회 취소」는 아니다 — 2026-11-21 Min). 종전처럼 체류 일부·미정 판정보다 먼저.
+    if (blk.some(function (z) { return SG_BLOCK.test(z); })) return { kind: 'blocked', why: 'block' };
     if (/\d+\s?박/.test(sgTxt) || /\d+\s?\/\s?\d+\s?[-~〜]\s?\d+\s?\/\s?\d+/.test(sgTxt)) return { kind: 'part' };              // 「2박만」「11/3~11/5」 = 체류 일부만 싱글
     if (zones.some(function (z) { return /\d+\s?일\s?(?:차|째)?\s?(?:부터|까지)|\d+\s?泊|\d+\s?日\s?(?:から|まで)/.test(z); })) return { kind: 'part' };   // 「3일부터」「2泊」 — 싱글 절 안에서만(다른 절의 「잔금 15일까지」는 아니다)
     var mixed = SG_MIX.test(t);
-    if (zones.some(function (z) { return SG_BLOCK2.test(z); })) return { kind: 'blocked', why: 'block' };                      // 「싱글룸 4개 캔슬」「シングル4室 キャンセル」
+    if (blk.some(function (z) { return SG_BLOCK2.test(z); })) return { kind: 'blocked', why: 'block' };                      // 「싱글룸 4개 캔슬」「シングル4室 キャンセル」
     //  「미정·문의·가능 여부 확인 요청」·부정 꼴 — 싱글 절(다른 항목이 아닌 괄호 포함)에 붙어 있으면 이름·전원이 적혀 있어도 사람이 본다
     if (zones.some(function (z, i) { var sm = SG_WORD.exec(z); return SG_ASK.test(z) || (sm && _SG_DOUBT.test(z.slice(sm.index))); })) return { kind: 'unsure', why: 'ask', mixed: mixed };
     // 명단 대조 — 후보(그 팀 사람)를 싱글이 적힌 조각에서 찾는다
@@ -1706,8 +1747,10 @@
   function singleTentative(text) {
     var t = String(text == null ? '' : text);
     if (!SG_WORD.test(t)) return '';
-    var m = t.match(SG_BLOCK);
-    return m ? m[0] : '';
+    //  singlePlan 과 같은 싱글 구역에서만 — 「싱글룸 4개 / 석식 1회 취소」는 확정 전 요청이 아니다(2026-11-21 Min)
+    var a = _sgBlockText(_sgHalf(t)), m, i;
+    for (i = 0; i < a.length; i++) { m = a[i].match(SG_BLOCK); if (m) return m[0]; }
+    return '';
   }
   var SG_ONSITE = /(현지|현장)\s*(에서)?\s*(배정|지정|결정)|(배정|지정|결정)\s*예정|現地\s*で\s*(割|決)/;
   function singleOnsite(text) {
