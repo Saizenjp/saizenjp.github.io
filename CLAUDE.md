@@ -132,7 +132,7 @@
 ## 9. Supabase 규약
 - **`file://` 차단** → `https://`(GitHub Pages) 또는 `http://localhost` 에서만 동작.
 - 마이그레이션은 번호순 `ops/hub/sql/NN_*.sql`. **새 파일은 멱등하게 작성**하고, **Min 승인 뒤 MCP `apply_migration`(또는 Supabase Dashboard SQL Editor — CLI 아님)으로 적용 + 같은 내용을 파일로 저장 + `00_VERIFY.sql` 에 점검 행 추가.** **이미 적용된 옛 번호 파일은 다시 실행하지 않는다** — 뒤 번호가 같은 함수·정책을 다시 정의했고, 05 는 객실 마스터를 지웠다 다시 넣으며 06 은 방배정(`rooms`)을 전부 비운다. 적용 상태는 `00_VERIFY.sql` 로 확인한다.
-- 클라이언트 키(publishable) + RLS: 로그인 전(anon)에는 지정된 RPC(손님 QR·안내 모니터)와 가입 요청 등록 등 극히 일부만 연다(목록은 `00_VERIFY.sql` 의 anon 점검 행). 로그인 후는 `user_access` 의 역할·영역 권한(`has_any_area`·`area_tree`)으로 쓰기와 민감 표 읽기를 가른다(SQL 17~19·46·138). `04_rls_anon.sql` 의 anon 전체 허용은 SQL 17 에서 없앴다. **`member_codes` 는 기본 1000행 제한** → `range()` **페이지네이션 필수**.
+- 클라이언트 키(publishable) + RLS: 로그인 전(anon)에는 지정된 RPC(손님 QR·안내 모니터)와 가입 요청 등록 등 극히 일부만 연다(목록은 `00_VERIFY.sql` 의 anon 점검 행). 로그인 후는 `user_access` 의 역할·영역 권한(`has_any_area`·`area_tree`)으로 쓰기와 민감 표 읽기를 가른다(SQL 17~19·46·138). `04_rls_anon.sql` 의 anon 전체 허용은 SQL 17 에서 없앴다. **새 표를 만들면 RESTRICTIVE 정책 `active_staff_only`(SQL 189 — 활성 권한 행이 있는 로그인 계정만)를 같이 단다**(00_VERIFY 189 줄이 빠진 표를 센다 · 예외는 user_access·access_requests). **`member_codes` 는 기본 1000행 제한** → `range()` **페이지네이션 필수**.
 - ⚠ **Supabase 키 명칭 변경(2025~)**: 구 **anon key → `sb_publishable_…`(Publishable key)**, 구 **service_role → `sb_secret_…`(Secret key)**. 신·구 동시 동작·권한 동일(레거시 JWT 키는 2026말 폐지 예정). 우리는 **publishable key**를 클라이언트에 사용(공개·내장 안전). **`sb_secret_`는 절대 프론트·저장소·채팅에 넣지 않는다.** 로그인 전=role `anon`, 로그인 후=role `authenticated`(RLS 17/18 그대로 유효).
 
 ## 10. i18n / 후리가나

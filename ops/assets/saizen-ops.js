@@ -1725,7 +1725,7 @@
 
   // ── 발행자 표기(적격청구서 — SQL 190 org_settings · Min 2026-11-21 「사이젠으로 표기·야마나미리조트 주소와 전화번호」) ──
   //    표가 없거나 아직 못 읽었어도 같은 기본값으로 찍는다. 등록번호(T+13)는 값이 들어온 뒤에만 「登録番号」 줄이 나온다.
-  var SO_ISSUER_DEFAULT = { issuer_name_ja: '株式会社SaiZen', issuer_facility_ja: 'あそ やまなみリゾート',
+  var SO_ISSUER_DEFAULT = { issuer_name_ja: '株式会社SaiZen', issuer_facility_ja: '阿蘇やまなみリゾートホテル&ゴルフ倶楽部',
     issuer_address_ja: '〒869-2702 熊本県阿蘇郡産山村大字大利630', issuer_tel: '0967-25-2331', invoice_reg_no: '' };
   var _issuer = Object.assign({}, SO_ISSUER_DEFAULT), _issuerP = null;
   function loadIssuer(force) {
