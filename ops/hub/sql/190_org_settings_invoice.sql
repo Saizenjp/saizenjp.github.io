@@ -4,8 +4,9 @@
 -- ----------------------------------------------------------------------------
 --  docs/06 P2. 영수증(領収書)·御請求書의 발행자 칸을 설정값으로 — 관리 화면(admin.html)에서 고친다.
 --  Min 결정(2026-11-21 「사이젠으로 표기해야하고 야마나미리조트 주소와 전화번호로」):
---    발행자 = 株式会社SaiZen · 시설 = アソ ヤマナミリゾート · 주소·전화 = 야마나미 리조트
+--    발행자 = 株式会社SaiZen · 시설 = あそ やまなみリゾート · 주소·전화 = 야마나미 리조트
 --    (〒869-2702 熊本県阿蘇郡産山村大字大利630 · TEL 0967-25-2331 — 공개된 시설 정보).
+--  시설명은 히라가나 표기(Min 2026-11-22 「가타카나가 아닌 히라가나 표기로」 — 「あそ やまなみリゾート」).
 --  등록번호(T+13자리)는 아직 받지 않았다 → 빈 값으로 두고, 들어가면 영수증·御請求書에 「登録番号」 줄이 나온다.
 --  표: org_settings(key 기본키, value, updated_at, updated_by) — 읽기 = 로그인(활성) 직원 · 쓰기 = 활성 관리자.
 --  화면은 이 표가 없거나 비어 있어도 같은 기본값(saizen-ops.js SO_ISSUER_DEFAULT)으로 찍는다.
@@ -45,7 +46,7 @@ alter table public.org_settings add constraint org_settings_reg_no_chk
 
 insert into public.org_settings(key, value, updated_by) values
   ('issuer_name_ja',     '株式会社SaiZen',                          '190'),
-  ('issuer_facility_ja', 'アソ ヤマナミリゾート',                     '190'),
+  ('issuer_facility_ja', 'あそ やまなみリゾート',                     '190'),
   ('issuer_address_ja',  '〒869-2702 熊本県阿蘇郡産山村大字大利630',     '190'),
   ('issuer_tel',         '0967-25-2331',                           '190'),
   ('invoice_reg_no',     '',                                       '190')
