@@ -1955,7 +1955,8 @@
     settle:  ['settle_onsite', 'settle_merit', 'settle_report'],   // settle_report=정산 보고서(일보·주보·월보·연보 + 일 마감, SQL 156, Min 2026-10-27)
     stats:   ['stats_mgmt', 'staycal'],
     shizu:   ['shizu_sheet', 'inv_shizu'],
-    partner: ['partner_kumamoto', 'partner_trial']   // 자회사 상품(SQL 159, Min 2026-10-30): 상품별로 담당자를 따로 지정 — 카드·페이지 노출 + partner_* 표 RLS 읽기
+    partner: ['partner_kumamoto', 'partner_trial'],   // 자회사 상품(SQL 159, Min 2026-10-30): 상품별로 담당자를 따로 지정 — 카드·페이지 노출 + partner_* 표 RLS 읽기
+    sales:   ['sales_fnb', 'sales_front', 'sales_golf']   // 부서별 매출(SQL 192, Min 2026-11-25 「부서장이 보게 · 별도 체크」): 부서장에게만 따로 체크 — dept_sales RPC 가 자식 키를 직접 본다(정산·관리자는 전 부서)
   };
   var AREA_PARENT = {};
   Object.keys(AREA_TREE).forEach(function (p) { AREA_TREE[p].forEach(function (c) { AREA_PARENT[c] = p; }); });

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamanami 운영 관리 · 부서별 매출</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef1ea; --surface:#ffffff; --surface2:#f6f8f2; --surface3:#e9ede1;
+    --border:#d6dccb; --border2:#bcc4ad; --text:#1f2a18; --text2:#566049; --muted:#8a937c;
+    --accent:#647548; --accent2:#9a7322; --accentSoft:#e4ecd9; --accentDeep:#4F5E38;
+    --ok:#2f7d4f; --warn:#9a7322; --err:#b13b2c; --mono:'SFMono-Regular',Consolas,Menlo,'SZJpMono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:3px solid var(--accent);padding:13px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(15,23,42,.06)}
+  .topbar .step{font-size:10.5px;font-weight:700;color:#fff;background:var(--accent2);border-radius:99px;padding:3px 11px}
+  .navhome{font-size:13px;color:var(--accent);text-decoration:none;font-weight:700}
+  .pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--text2);border:1px solid var(--border)}
+  .pill.ok{background:var(--accentSoft);color:var(--ok);border-color:#b4cda0}
+  .pill.err{background:#f7e6e2;color:var(--err);border-color:#e3bdb4}
+  input,select{font-family:inherit}
+  .inp{padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+  .btn{font-family:inherit;font-size:13px;font-weight:700;border-radius:7px;padding:7px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .btn:hover:not(:disabled){background:var(--accentDeep)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.sm{font-size:12px;padding:5px 11px}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .conn{padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .conn input{width:220px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;font-size:13px}
+  .conn .hint{font-size:11px;color:var(--muted)}
+  .wrap{max-width:1180px;margin:0 auto;padding:16px 20px 90px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .panel h3{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:4px}
+  .panel .desc{font-size:12px;color:var(--text2);margin:6px 0 11px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .ymctrl{display:flex;align-items:center;gap:6px}
+  .ymctrl b{font-size:15px;font-family:var(--mono);min-width:58px;text-align:center}
+  .cnt{font-size:12px;color:var(--text2);font-weight:700}
+  .deny{padding:40px 20px;text-align:center;color:var(--err);font-size:15px;font-weight:700}
+  .deny small{display:block;margin-top:8px;color:var(--muted);font-weight:500;font-size:12.5px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:4px}
+  .kpi{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:10px 12px}
+  .kpi .k{font-size:11px;color:var(--muted);font-weight:700}
+  .kpi .v{font-size:22px;font-weight:800;font-family:var(--mono);line-height:1.2;margin-top:2px}
+  .kpi.bad .v{color:var(--err)} .kpi.good .v{color:var(--ok)}
+  .kpi .s{font-size:11px;color:var(--text2);font-weight:600}
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  table.t th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:7px 9px;text-align:right;font-size:11px;color:var(--text2);font-weight:700;white-space:nowrap}
+  table.t th:first-child{text-align:left}
+  table.t td{border-bottom:1px solid var(--border);padding:6px 9px;text-align:right;font-family:var(--mono);white-space:nowrap}
+  table.t td:first-child{text-align:left;font-family:inherit;font-weight:700}
+  table.t tr:hover td{background:var(--surface2)}
+  table.t tr.hl td{background:#fdf6e7}
+  table.t tr.sum td{border-top:2px solid var(--border2);font-weight:800;background:var(--surface2)}
+  table.t td.z{color:var(--muted)}
+  table.t td.bad{color:var(--err);font-weight:800}
+  table.t td.good{color:var(--ok)}
+  .bar{display:inline-block;height:8px;border-radius:3px;background:var(--accent);vertical-align:middle;margin-left:6px;min-width:2px}
+  .bar.d{background:var(--accent2)} .bar.c{background:var(--muted)}
+  .lgd{font-size:11px;color:var(--muted);font-weight:600;margin-top:6px}
+  .warnbox{background:#fdf6e7;border:1px solid #e6d3a3;border-radius:9px;padding:9px 12px;font-size:12px;color:#6b5312;font-weight:600;margin-top:10px}
+  .okbox{background:var(--accentSoft);border:1px solid #b4cda0;border-radius:9px;padding:9px 12px;font-size:12px;color:#234d2f;font-weight:700;margin-top:10px}
+  .namelist{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;max-height:280px;overflow:auto}
+  .nm{font-size:12px;font-weight:700;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 9px}
+  .nm small{font-weight:600;color:var(--muted);margin-left:5px}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .toast.err{border-left-color:var(--err);background:#fbeeeb;color:#8a2a1c}
+  .toast.ok{border-left-color:var(--ok);background:var(--accentSoft);color:#234d2f}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .tabs button{font-family:inherit;font-size:14px;font-weight:700;padding:8px 18px;border-radius:9px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer}
+  .tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .chips button{font-family:inherit;font-size:12.5px;font-weight:700;padding:5px 12px;border-radius:99px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer}
+  .chips button.on{background:var(--accentSoft);color:var(--accentDeep);border-color:var(--accent)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:860px){ .grid2{grid-template-columns:1fr} }
+  td.l{text-align:left!important;font-family:inherit!important;font-weight:600;white-space:normal!important}
+  td.l small{display:block;color:var(--muted);font-weight:600;font-size:11px}
+</style>
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=42.7">
+</head>
+<body data-so-area="sales_fnb sales_front sales_golf settle">
+<!-- 부서별 매출(SQL 192, Min 2026-11-25 「매출도 부서장이 보게」「별도 체크로」) — 탭 = 볼 수 있는 부서만(sales_<부서> 또는 정산·관리자).
+     숫자는 서버 함수 dept_sales 가 정산 보고서와 같은 규칙(税込 합·취소 제외·JST 날짜)으로 계산한다. 데이터 검수 dept_sales_check 가 세 부서 합 = 원장 합을 매일 대조. -->
+<div class="topbar so-bar">
+  <a class="so-logo" href="../index.html" title="홈"><img class="so-logo-img" src="../../assets/logo-saizen-horizontal.svg" alt="SaiZen"></a>
+  <span class="step" id="t-step">部署別売上</span>
+  <a class="navhome" href="../index.html" id="t-home">← ホーム</a>
+  <div class="grow so-spacer"></div>
+  <div class="so-controls">
+    <div class="so-lang">
+      <button id="so-lang-ja" onclick="__so_setLang('ja')">日本語</button>
+      <button id="so-lang-ko" onclick="__so_setLang('ko')">한국어</button>
+      <button id="so-lang-en" onclick="__so_setLang('en')">EN</button>
+    </div>
+  </div>
+  <span class="pill" id="conn-state">未接続</span>
+</div>
+
+<div class="conn">
+  <input class="inp" id="sb-url" type="text" placeholder="Supabase Project URL" autocomplete="off">
+  <input class="inp" id="sb-key" type="password" placeholder="Publishable key" autocomplete="off">
+  <button class="btn sm" id="btn-connect" type="button">接続</button>
+  <span class="hint" id="t-connhint"></span>
+</div>
+
+<div class="wrap" id="content">
+  <div class="panel"><div class="deny" id="t-preconn" style="color:var(--muted)"></div></div>
+</div>
+
+<div id="toast"></div>
+<script src="../assets/saizen-core.js?v=77"></script>
+<script src="../assets/saizen-ops.js?v=42.7"></script>
+<script>
+const $=s=>document.querySelector(s);
+const L={
+  ja:{ step:'部署別売上', home:'← ホーム',
+    connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
+    notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', needLogin:'ログイン必要',
+    connHint:'部署(料飲・フロント・ゴルフ)ごとの売上を期間で集計します。読み取り専用。',
+    preConn:'接続すると表示されます。', loginNeedTitle:'ログインが必要です。', loginNeedSub:'中央のログインカードでログインしてから再接続してください。',
+    dFnb:'料飲(F&B)', dFront:'フロント', dGolf:'ゴルフ',
+    dFnbSub:'レストラン・宴会・バー', dFrontSub:'フロント販売・手入力の請求・客室・その他', dGolfSub:'ラウンド・カート・9ホール追加・ゴルフショップ',
+    noDept:'見られる部署の売上がありません。管理者に「部署別売上」の権限を依頼してください。',
+    pToday:'今日', pWeek:'今週', pMonth:'今月', pLastMonth:'先月', pYear:'今年', pFrom:'開始', pTo:'終了', pGo:'照会',
+    loading:'集計中…', loadFail:'読み込み失敗', noPerm:'この部署の売上を見る権限がありません。', badRange:'期間を確認してください(400日以内)。',
+    kTotal:'売上(税込)', kN:'件数', kAvg:'1日平均', kUnset:'未精算(チェックアウト前)', kDays:n=>`${n}日間`,
+    tDay:'日別', tSrc:'売り場別', tCat:'区分別', tItem:'品目別(上位50)', tTeam:'チーム別(上位20)',
+    cDate:'日付', cN:'件数', cGross:'売上(税込)', cSrc:'売り場', cCat:'区分', cItem:'品目', cQty:'数量', cTeam:'チーム', cShare:'構成比',
+    itemsMore:(a,b)=>`品目 ${b}種のうち上位 ${a}種`, empty:'この期間の売上はありません。',
+    note:'金額は精算報告書と同じ計算(税込・取消を除く・日本時間の日付)です。データ検収の「部署別売上の検算」が3部署の合計と全体の売上が同じかを毎日確かめます。',
+    src_golf:'ゴルフ(ラウンド・カート)', src_restaurant:'レストラン', src_front:'フロント', src_frontdesk:'フロント(手入力)', src_proshop:'ゴルフショップ', src_banquet:'宴会', src_bar:'バー', src_room:'客室', src_etc:'その他', 'src_(기타)':'その他',
+    cat_라운딩:'ラウンド', cat_식음:'料飲', cat_숙박:'宿泊', cat_골프샵:'ゴルフショップ', cat_기타:'その他' },
+  ko:{ step:'부서별 매출', home:'← 홈',
+    connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패·재시도',
+    notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', needLogin:'로그인 필요',
+    connHint:'부서(식음·프론트·골프)별 매출을 기간으로 집계합니다. 읽기 전용.',
+    preConn:'연결 후 표시됩니다.', loginNeedTitle:'로그인이 필요합니다.', loginNeedSub:'가운데 로그인 카드로 로그인한 뒤 다시 연결하세요.',
+    dFnb:'식음(F&B)', dFront:'프론트', dGolf:'골프',
+    dFnbSub:'레스토랑·연회·바', dFrontSub:'프론트 판매·수기 청구·객실·기타', dGolfSub:'라운딩·카트·9홀 추가·골프샵',
+    noDept:'볼 수 있는 부서 매출이 없습니다. 관리자에게 「부서별 매출」 권한을 요청하세요.',
+    pToday:'오늘', pWeek:'이번 주', pMonth:'이번 달', pLastMonth:'지난달', pYear:'올해', pFrom:'시작', pTo:'끝', pGo:'조회',
+    loading:'집계 중…', loadFail:'불러오기 실패', noPerm:'이 부서 매출을 볼 권한이 없습니다.', badRange:'기간을 확인하세요(400일 이내).',
+    kTotal:'매출(세금 포함)', kN:'건수', kAvg:'하루 평균', kUnset:'미정산(체크아웃 전)', kDays:n=>`${n}일간`,
+    tDay:'일별', tSrc:'매장별', tCat:'구분별', tItem:'품목별(상위 50)', tTeam:'팀별(상위 20)',
+    cDate:'날짜', cN:'건수', cGross:'매출(세금 포함)', cSrc:'매장', cCat:'구분', cItem:'품목', cQty:'수량', cTeam:'팀', cShare:'구성비',
+    itemsMore:(a,b)=>`품목 ${b}종 중 상위 ${a}종`, empty:'이 기간 매출이 없습니다.',
+    note:'금액은 정산 보고서와 같은 계산(세금 포함·취소 제외·일본 시간 날짜)입니다. 데이터 검수의 「부서별 매출 검산」이 세 부서 합과 전체 매출이 같은지 매일 확인합니다.',
+    src_golf:'골프(라운딩·카트)', src_restaurant:'레스토랑', src_front:'프론트', src_frontdesk:'프론트(수기)', src_proshop:'골프샵', src_banquet:'연회', src_bar:'바', src_room:'객실', src_etc:'기타', 'src_(기타)':'기타',
+    cat_라운딩:'라운딩', cat_식음:'식음', cat_숙박:'숙박', cat_골프샵:'골프샵', cat_기타:'기타' },
+  en:{ step:'Sales by department', home:'← Home',
+    connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
+    notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL · key required', needLogin:'Login required',
+    connHint:'Totals sales by department (F&B, Front, Golf) for a period. Read only.',
+    preConn:'Shown after connecting.', loginNeedTitle:'Please log in.', loginNeedSub:'Log in with the card in the middle, then connect again.',
+    dFnb:'F&B', dFront:'Front', dGolf:'Golf',
+    dFnbSub:'Restaurant · banquet · bar', dFrontSub:'Front sales · manual charges · rooms · other', dGolfSub:'Rounds · carts · 9-hole add-ons · pro shop',
+    noDept:'There are no department sales you can view. Ask an administrator for “Sales by department” access.',
+    pToday:'Today', pWeek:'This week', pMonth:'This month', pLastMonth:'Last month', pYear:'This year', pFrom:'From', pTo:'To', pGo:'Show',
+    loading:'Calculating…', loadFail:'Load failed', noPerm:'You do not have access to this department’s sales.', badRange:'Check the period (400 days max).',
+    kTotal:'Sales (incl. tax)', kN:'Count', kAvg:'Daily average', kUnset:'Unsettled (before check-out)', kDays:n=>`${n} days`,
+    tDay:'By day', tSrc:'By outlet', tCat:'By category', tItem:'By item (top 50)', tTeam:'By team (top 20)',
+    cDate:'Date', cN:'Count', cGross:'Sales (incl. tax)', cSrc:'Outlet', cCat:'Category', cItem:'Item', cQty:'Qty', cTeam:'Team', cShare:'Share',
+    itemsMore:(a,b)=>`Top ${a} of ${b} items`, empty:'No sales in this period.',
+    note:'Amounts use the same rules as the settlement report (tax included, cancellations excluded, Japan-time dates). The data review check “Department sales cross-check” confirms daily that the three departments add up to total sales.',
+    src_golf:'Golf (rounds · carts)', src_restaurant:'Restaurant', src_front:'Front desk', src_frontdesk:'Front desk (manual)', src_proshop:'Pro shop', src_banquet:'Banquet', src_bar:'Bar', src_room:'Rooms', src_etc:'Other', 'src_(기타)':'Other',
+    cat_라운딩:'Rounds', cat_식음:'F&B', cat_숙박:'Lodging', cat_골프샵:'Pro shop', cat_기타:'Other' }
+};
+function lang(){ return (window.SaizenOps&&SaizenOps.lang)||localStorage.getItem('saizen_lang')||'ja'; }
+function tx(k){ const d=L[lang()]||L.ja; return d[k]!==undefined?d[k]:(L.ja[k]!==undefined?L.ja[k]:k); }
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m,c){const t=document.createElement('div');t.className='toast'+(c?' '+c:'');t.textContent=m;$('#toast').appendChild(t);if(window.__so_toastKeep&&window.__so_toastKeep(t))return;setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},3200);}
+function setConn(t,c){const e=$('#conn-state');e.textContent=t;e.className='pill'+(c?' '+c:'');}
+function loadCreds(){$('#sb-url').value=localStorage.getItem('saizen_sb_url')||'';$('#sb-key').value=localStorage.getItem('saizen_sb_key')||'';}
+function yen(n){ return '¥'+Math.round(Number(n)||0).toLocaleString('ja-JP'); }
+function num(n){ return Math.round(Number(n)||0).toLocaleString('ja-JP'); }
+function lbl(prefix,k){ const v=tx(prefix+k); return v===prefix+k?k:v; }
+
+//  부서 = 서버 sales_dept_of 와 같은 세 묶음(SQL 192). 키 = 권한 sales_<부서>.
+const DEPTS=[{k:'fnb',t:'dFnb',s:'dFnbSub'},{k:'front',t:'dFront',s:'dFrontSub'},{k:'golf',t:'dGolf',s:'dGolfSub'}];
+let supa=null, ACC=null, DEPT=null, PER='month', RANGE={from:'',to:''}, DATA=null, _seq=0;
+
+//  JST 날짜(YYYY-MM-DD) — 기간 계산은 일본 시간
+function jstToday(){ return new Date(Date.now()+9*3600e3).toISOString().slice(0,10); }
+function addDays(ds,n){ const d=new Date(ds+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+function rangeOf(p){
+  const t=jstToday(), y=+t.slice(0,4), m=+t.slice(5,7);
+  if(p==='today') return {from:t,to:t};
+  if(p==='week'){ const wd=new Date(t+'T00:00:00Z').getUTCDay(); const mon=addDays(t,-((wd+6)%7)); return {from:mon,to:addDays(mon,6)}; }   // 월~일
+  if(p==='month'){ const f=t.slice(0,8)+'01'; const nx=m===12?`${y+1}-01-01`:`${y}-${String(m+1).padStart(2,'0')}-01`; return {from:f,to:addDays(nx,-1)}; }
+  if(p==='lastmonth'){ const py=m===1?y-1:y, pm=m===1?12:m-1; const f=`${py}-${String(pm).padStart(2,'0')}-01`; return {from:f,to:addDays(t.slice(0,8)+'01',-1)}; }
+  if(p==='year') return {from:`${y}-01-01`,to:`${y}-12-31`};
+  return RANGE;
+}
+function canSee(d){ if(!ACC||!window.SZCore||!SZCore.areaAllowed) return true; return !!SZCore.areaAllowed(ACC,['sales_'+d,'settle']); }
+function seeDepts(){ return DEPTS.filter(d=>canSee(d.k)); }
+
+async function connect(){
+  const url=$('#sb-url').value.trim(),key=$('#sb-key').value.trim();
+  if(!url||!key){setConn(tx('needUrlKey'),'err');return;}
+  localStorage.setItem('saizen_sb_url',url);localStorage.setItem('saizen_sb_key',key);
+  const btn=$('#btn-connect');btn.textContent=tx('connecting');btn.disabled=true;
+  try{
+    supa=window.supabase.createClient(url,key);
+    const {data:sess}=await supa.auth.getSession();
+    if(!sess||!sess.session){ setConn(tx('needLogin'),'err'); btn.textContent=tx('connect');btn.disabled=false;
+      $('#content').innerHTML='<div class="panel"><div class="deny">'+tx('loginNeedTitle')+'<small>'+tx('loginNeedSub')+'</small></div></div>'; return; }
+    setConn(tx('connOk'),'ok'); btn.textContent=tx('connectedBtn');btn.disabled=false;
+    try{ if(window.__so_meAccess) ACC=await __so_meAccess(); }catch(e){}
+    const ds=seeDepts(); const q=new URLSearchParams(location.search).get('dept');
+    DEPT=(ds.find(d=>d.k===q)||ds[0]||{}).k||null;
+    renderUI(); load();
+  }catch(e){ setConn(tx('connFail'),'err'); btn.textContent=tx('connFailBtn');btn.disabled=false; supa=null; toast(tx('connFail')+': '+e.message,'err'); }
+}
+
+function renderUI(){
+  const ds=seeDepts();
+  if(!ds.length){ $('#content').innerHTML=`<div class="panel"><div class="deny">${esc(tx('noDept'))}</div></div>`; return; }
+  if(!RANGE.from){ RANGE=rangeOf('month'); }
+  const pers=[['today','pToday'],['week','pWeek'],['month','pMonth'],['lastmonth','pLastMonth'],['year','pYear']];
+  $('#content').innerHTML=`
+    <div class="panel">
+      <div class="tabs" id="tabs">${ds.map(d=>`<button type="button" data-dept="${d.k}" class="${d.k===DEPT?'on':''}">${esc(tx(d.t))}</button>`).join('')}</div>
+      <div class="desc" id="dsub">${esc(tx((DEPTS.find(d=>d.k===DEPT)||{}).s||''))}</div>
+      <div class="row">
+        <div class="chips" id="pers">${pers.map(([k,t])=>`<button type="button" data-per="${k}" class="${PER===k?'on':''}">${esc(tx(t))}</button>`).join('')}</div>
+        <span style="flex:1"></span>
+        <label class="cnt">${esc(tx('pFrom'))} <input class="inp" type="date" id="p-from" lang="${lang()}" value="${esc(RANGE.from)}"></label>
+        <label class="cnt">${esc(tx('pTo'))} <input class="inp" type="date" id="p-to" lang="${lang()}" value="${esc(RANGE.to)}"></label>
+        <button class="btn sm" type="button" id="p-go">${esc(tx('pGo'))}</button>
+      </div>
+      <div class="kpis" id="kpis" style="margin-top:12px"></div>
+      <div class="lgd" style="margin-top:10px">${esc(tx('note'))}</div>
+    </div>
+    <div class="grid2">
+      <div class="panel"><h3>${esc(tx('tDay'))}</h3><div id="t-day"></div></div>
+      <div>
+        <div class="panel"><h3>${esc(tx('tSrc'))}</h3><div id="t-src"></div></div>
+        <div class="panel"><h3>${esc(tx('tCat'))}</h3><div id="t-cat"></div></div>
+      </div>
+    </div>
+    <div class="panel"><h3>${esc(tx('tItem'))} <span class="cnt" id="item-more"></span></h3><div id="t-item"></div></div>
+    <div class="panel"><h3>${esc(tx('tTeam'))}</h3><div id="t-team"></div></div>`;
+  $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('[data-dept]'); if(!b) return; DEPT=b.dataset.dept;
+    try{ const u=new URL(location.href); u.searchParams.set('dept',DEPT); history.replaceState(null,'',u); }catch(_){}
+    renderUI(); load(); });
+  $('#pers').addEventListener('click',e=>{ const b=e.target.closest('[data-per]'); if(!b) return; PER=b.dataset.per; RANGE=rangeOf(PER); renderUI(); load(); });
+  $('#p-go').addEventListener('click',()=>{ const f=$('#p-from').value, t=$('#p-to').value;
+    if(!f||!t||t<f){ toast(tx('badRange'),'err'); return; } PER='custom'; RANGE={from:f,to:t}; renderUI(); load(); });
+}
+
+async function load(){
+  if(!supa||!DEPT) return;
+  const my=++_seq; const k=$('#kpis'); if(k) k.innerHTML=`<div class="cnt">${esc(tx('loading'))}</div>`;
+  const {data,error}=await supa.rpc('dept_sales',{p_dept:DEPT,p_from:RANGE.from,p_to:RANGE.to});
+  if(my!==_seq) return;
+  if(error){ DATA=null; const m=(error.code==='42501'||/권한/.test(error.message||''))?tx('noPerm'):(error.code==='22023'?tx('badRange'):tx('loadFail')+': '+(error.message||''));
+    if(k) k.innerHTML=`<div class="deny">${esc(m)}</div>`; ['#t-day','#t-src','#t-cat','#t-item','#t-team'].forEach(s=>{const e=$(s); if(e) e.innerHTML='';}); return; }
+  DATA=data||{}; renderAll();
+}
+
+function table(head,rows){ return `<table class="t"><thead><tr>${head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`; }
+function bar(v,max){ const w=max>0?Math.max(2,Math.round(v/max*120)):0; return `<span class="bar" style="width:${w}px"></span>`; }
+function renderAll(){
+  if(!DATA) return;
+  const tot=DATA.total||{n:0,gross:0}, days=Math.max(1,Math.round((new Date(RANGE.to)-new Date(RANGE.from))/864e5)+1), G=Number(tot.gross)||0;
+  $('#kpis').innerHTML=[
+    {k:tx('kTotal'),v:yen(G),s:`${RANGE.from} 〜 ${RANGE.to}`},
+    {k:tx('kN'),v:num(tot.n),s:tx('kDays')(days)},
+    {k:tx('kAvg'),v:yen(G/days),s:''},
+    {k:tx('kUnset'),v:yen(DATA.unsettled),s:'',cls:Number(DATA.unsettled)>0?'bad':''}
+  ].map(x=>`<div class="kpi ${x.cls||''}"><div class="k">${esc(x.k)}</div><div class="v">${esc(x.v)}</div><div class="s">${esc(x.s)}</div></div>`).join('');
+  const empty=`<div class="cnt" style="padding:8px 0">${esc(tx('empty'))}</div>`;
+  const dd=DATA.by_day||[], mx=Math.max(0,...dd.map(x=>Number(x.gross)||0));
+  $('#t-day').innerHTML=dd.length?table([tx('cDate'),tx('cN'),tx('cGross')], dd.map(x=>`<tr><td>${esc(x.d)}</td><td>${num(x.n)}</td><td>${yen(x.gross)}${bar(Number(x.gross)||0,mx)}</td></tr>`)):empty;
+  const share=v=>G>0?(Math.round((Number(v)||0)/G*1000)/10)+'%':'';
+  const sr=DATA.by_source||[];
+  $('#t-src').innerHTML=sr.length?table([tx('cSrc'),tx('cN'),tx('cGross'),tx('cShare')], sr.map(x=>`<tr><td>${esc(lbl('src_',x.source))}</td><td>${num(x.n)}</td><td>${yen(x.gross)}</td><td>${share(x.gross)}</td></tr>`)):empty;
+  const ct=DATA.by_cat||[];
+  $('#t-cat').innerHTML=ct.length?table([tx('cCat'),tx('cN'),tx('cGross'),tx('cShare')], ct.map(x=>`<tr><td>${esc(lbl('cat_',x.category))}</td><td>${num(x.n)}</td><td>${yen(x.gross)}</td><td>${share(x.gross)}</td></tr>`)):empty;
+  const it=DATA.by_item||[];
+  $('#item-more').textContent=(DATA.items_total||0)>it.length?tx('itemsMore')(it.length,DATA.items_total):'';
+  $('#t-item').innerHTML=it.length?table(['#',tx('cItem'),tx('cQty'),tx('cN'),tx('cGross'),tx('cShare')], it.map((x,i)=>`<tr><td>${i+1}</td><td class="l">${esc(lang()==='ko'?x.ko:x.ja)}</td><td>${num(x.qty)}</td><td>${num(x.n)}</td><td>${yen(x.gross)}</td><td>${share(x.gross)}</td></tr>`)):empty;
+  const tm=DATA.by_team||[];
+  $('#t-team').innerHTML=tm.length?table(['#',tx('cTeam'),tx('cN'),tx('cGross'),tx('cShare')], tm.map((x,i)=>`<tr><td>${i+1}</td><td class="l">${esc(x.rep||'')}${x.tag?` · ${esc(x.tag)}`:''}<small>#${esc(x.no||x.event_seq)}</small></td><td>${num(x.n)}</td><td>${yen(x.gross)}</td><td>${share(x.gross)}</td></tr>`)):empty;
+}
+
+function applyStatic(){
+  const set=(s,k)=>{ const e=$(s); if(e) e.textContent=tx(k); };
+  set('#t-step','step'); set('#t-home','home'); set('#t-connhint','connHint'); set('#t-preconn','preConn');
+  const btn=$('#btn-connect');
+  if(supa){ setConn(tx('connOk'),'ok'); if(btn) btn.textContent=tx('connectedBtn'); }
+  else { setConn(tx('notConn'),''); if(btn) btn.textContent=tx('connect'); }
+}
+window.onSaizenLangChange=function(){ applyStatic(); if(supa){ renderUI(); renderAll(); } };
+
+$('#btn-connect').addEventListener('click',connect);
+applyStatic();
+loadCreds();
+if($('#sb-url').value && $('#sb-key').value){ connect(); }
+</script>
+</body>
+</html>
