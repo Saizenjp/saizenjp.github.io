@@ -586,3 +586,85 @@ test('lgcNo — 비고(현지 비고 먼저)에서 LGC 번호를 읽는다 · �
   assert.equal(C.lgcNo('호텔 LGC 블록 확인'), '');                           // 숫자 없는 LGC 는 번호가 아니다
   assert.equal(C.lgcNo(null, undefined), '');
 });
+
+// ── 요금 요일 4구분 · 인솔 날 구분(Min 2026-11-25 「평일 휴일로 나누지말고 월~목, 금, 토, 일」「인솔요금은 출·귀국일이나 라운딩 없는 날은 비용이 다를 수 있음」) ──
+test('partnerDayType — 호텔 밤 = 월~목 mt · 금 fri · 토 sat · 일 sun, 祝前日 밤 = 토 · 월~목 祝日 밤 = 일', () => {
+  assert.equal(C.partnerDayType('2026-11-04'), 'mt');     // 수
+  assert.equal(C.partnerDayType('2026-11-05'), 'mt');     // 목
+  assert.equal(C.partnerDayType('2026-11-06'), 'fri');
+  assert.equal(C.partnerDayType('2026-11-07'), 'sat');
+  assert.equal(C.partnerDayType('2026-11-08'), 'sun');
+  assert.equal(C.partnerDayType('2026-11-09'), 'mt');     // 월
+  assert.equal(C.partnerDayType('2026-11-02'), 'sat');    // 월요일 · 文化の日 전날(祝前日)
+  assert.equal(C.partnerDayType('2026-11-03'), 'sun');    // 화요일 祝日(다음 날은 평일)
+  assert.equal(C.partnerDayType('2026-12-31'), 'sat');    // 목요일 · 元日 전날
+  assert.equal(C.partnerDayType('2027-01-01'), 'fri');    // 금요일 祝日 — 금은 금(다음 날 토는 祝日 아님)
+  assert.equal(C.partnerDayType(''), 'mt');
+  // 4구분이 옛 2구분(wk/hi)과 어긋나지 않는다: mt ⇔ wk (옛 값을 fri·sat·sun = hi 로 옮기면 금액이 같다)
+  for (let d = new Date(2026, 10, 1); d < new Date(2027, 10, 1); d.setDate(d.getDate() + 1)) {
+    const ds = C.fmtDate(d); assert.equal(C.partnerDayType(ds) === 'mt', C.partnerNightType(ds) === 'wk', ds);
+  }
+});
+test('partnerGolfDay — 골프 = 월~목 mt · 금 fri · 토 sat · 일/祝日 sun (옛 wk = mt·fri)', () => {
+  assert.equal(C.partnerGolfDay('2026-11-05'), 'mt');
+  assert.equal(C.partnerGolfDay('2026-11-06'), 'fri');
+  assert.equal(C.partnerGolfDay('2026-11-07'), 'sat');
+  assert.equal(C.partnerGolfDay('2026-11-08'), 'sun');
+  assert.equal(C.partnerGolfDay('2026-11-03'), 'sun');    // 祝日
+  assert.equal(C.partnerGolfDay('2026-11-02'), 'mt');     // 祝前日이라도 골프는 그날 기준
+  for (let d = new Date(2026, 10, 1); d < new Date(2027, 10, 1); d.setDate(d.getDate() + 1)) {
+    const ds = C.fmtDate(d), n = C.partnerGolfDay(ds), o = C.partnerGolfType(ds);
+    assert.equal(o === 'wk' ? (n === 'mt' || n === 'fri') : n === o, true, ds);
+  }
+});
+test('partnerPrice — 경로 여러 개(새 칸 → 옛 칸) 는 줄 단위로: 좁은 줄의 옛 칸이 넓은 줄의 새 칸보다 앞선다', () => {
+  const rows = [
+    { id: 1, kind: 'hotel', ref_id: 7, from_date: null, to_date: null, prices: { twin: { mt: 100 } } },
+    { id: 2, kind: 'hotel', ref_id: 7, from_date: '2027-02-01', to_date: '2027-02-28', prices: { twin: { wk: 150 } } }];
+  assert.equal(C.partnerPrice(rows, 'hotel', 7, '2027-02-03', [['twin', 'mt'], ['twin', 'wk']]), 150);
+  assert.equal(C.partnerPrice(rows, 'hotel', 7, '2027-03-03', [['twin', 'mt'], ['twin', 'wk']]), 100);
+  assert.equal(C.partnerPrice(rows, 'hotel', 7, '2027-03-03', ['twin', 'mt']), 100);   // 한 경로(종전 꼴)도 그대로
+  assert.equal(C.partnerPrice(rows, 'hotel', 7, '2027-03-03', [['twin', 'sat'], ['twin', 'hi']]), null);
+});
+test('partnerQuote — 요일 4구분 요금(호텔·골프) · 옛 wk/hi 칸도 계속 읽는다', () => {
+  const rows = [
+    { id: 1, kind: 'hotel', ref_id: 7, prices: { twin: { mt: 100, fri: 150, sat: 200, sun: 120 }, single: { mt: 160, fri: 210, sat: 260, sun: 180 } } },
+    { id: 2, kind: 'golf', ref_id: 3, prices: { mt: 10, fri: 11, sat: 20, sun: 30 } },
+    { id: 3, kind: 'guide', ref_id: null, prices: { day: 5 } }];
+  // 월 11/9 ~ 월 11/16 = 7박(월화수목 금 토 일), 골프 코스 3 밤마다
+  const golf = ['2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15'].map(date => ({ date, courseId: 3 }));
+  const q = C.partnerQuote({ from: '2026-11-09', to: '2026-11-16', hotelId: 7, twin: 1, single: 1, pax: 3, golf }, rows);
+  assert.equal(q.golf, 10 * 4 + 11 + 20 + 30);
+  assert.equal(q.twin, (100 * 4 + 150 + 200 + 120) + q.golf + 5 * 7);
+  assert.equal(q.single, (160 * 4 + 210 + 260 + 180) + q.golf + 5 * 7);
+  assert.equal(q.complete, true);
+  // 옛 칸만 있는 줄 = 종전 금액(mt ← wk · fri/sat/sun ← hi · 골프 mt/fri ← wk)
+  const old = [{ id: 1, kind: 'hotel', ref_id: 7, prices: { twin: { wk: 100, hi: 200 } } }, { id: 2, kind: 'golf', ref_id: 3, prices: { wk: 10, sat: 20, sun: 30 } }];
+  const q2 = C.partnerQuote({ from: '2026-11-09', to: '2026-11-16', hotelId: 7, twin: 1, pax: 2, golf }, old);
+  assert.equal(q2.twin, (100 * 4 + 200 * 3) + (10 * 5 + 20 + 30)); assert.equal(q2.complete, true);
+  // 금 칸이 빈 새 줄 → 그 줄의 옛 칸도 없으면 빠진 칸(missing)
+  const q3 = C.partnerQuote({ from: '2026-11-13', to: '2026-11-14', hotelId: 7, twin: 1, pax: 2, golf: [] }, [{ id: 1, kind: 'hotel', ref_id: 7, prices: { twin: { mt: 100, sat: 200 } } }]);
+  assert.deepEqual(q3.missing, ['hotel:2026-11-13']);
+});
+test('partnerQuote — 인솔 = 날마다: 입국일 arr · 귀국일 dep · 라운딩 없는 날 noround · 그 밖 day (빈 칸: arr·noround = day, dep = 0)', () => {
+  const base = [{ id: 1, kind: 'hotel', ref_id: 7, prices: { twin: { mt: 100, fri: 100, sat: 100, sun: 100 } } }, { id: 2, kind: 'golf', ref_id: null, prices: { mt: 10, fri: 10, sat: 10, sun: 10 } }];
+  // 11/9(입국)~11/13(귀국) 4박, 라운딩 11/9·11/10·11/12 → 11/11 은 라운딩 없는 날
+  const o = { from: '2026-11-09', to: '2026-11-13', hotelId: 7, twin: 1, pax: 2, golf: [{ date: '2026-11-09' }, { date: '2026-11-10' }, { date: '2026-11-12' }] };
+  const all = C.partnerQuote(o, base.concat([{ id: 3, kind: 'guide', ref_id: null, prices: { day: 5, arr: 7, noround: 3, dep: 2 } }]));
+  assert.equal(all.guide, 7 + 5 + 3 + 5 + 2);
+  assert.deepEqual(all.guideDays, { arr: 1, day: 2, noround: 1, dep: 1 });
+  assert.equal(all.twin, 400 + 30 + all.guide);
+  const dayOnly = C.partnerQuote(o, base.concat([{ id: 3, kind: 'guide', ref_id: null, prices: { day: 5 } }]));
+  assert.equal(dayOnly.guide, 5 * 4);                     // 종전과 같다(밤마다 1일분 · 귀국일 0)
+  // 상품 줄의 빈 칸 → 그 줄의 day(같은 줄 안에서 먼저), 그 줄에 day 도 없으면 공통 줄
+  const brand = C.partnerQuote(Object.assign({ brand: 'trial' }, o), base.concat([
+    { id: 3, kind: 'guide', ref_id: null, prices: { day: 5, arr: 7, dep: 2 } },
+    { id: 4, kind: 'guide', ref_id: 2, prices: { day: 9 } }]));
+  assert.equal(brand.guide, 9 + 9 + 9 + 9 + 2);           // 귀국일은 트라이얼 줄에 dep 이 없어 공통 줄의 dep
+  // 1박: 입국일 + 귀국일
+  const one = C.partnerQuote({ from: '2026-11-09', to: '2026-11-10', hotelId: 7, twin: 1, pax: 2 }, base.concat([{ id: 3, kind: 'guide', ref_id: null, prices: { day: 5, arr: 7, dep: 2 } }]));
+  assert.equal(one.guide, 7 + 2); assert.deepEqual(one.guideDays, { arr: 1, day: 0, noround: 0, dep: 1 });
+  // 골프 날짜를 따로 주지 않으면(밤마다 1라운드) 라운딩 없는 날은 없다
+  const dflt = C.partnerQuote({ from: '2026-11-09', to: '2026-11-13', hotelId: 7, twin: 1, pax: 2 }, base.concat([{ id: 3, kind: 'guide', ref_id: null, prices: { day: 5, noround: 1 } }]));
+  assert.equal(dflt.guide, 5 * 4); assert.equal(dflt.guideDays.noround, 0);
+});

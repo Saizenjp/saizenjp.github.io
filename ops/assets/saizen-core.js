@@ -810,6 +810,23 @@
     var d = parseLocalDate(ds); if (isNaN(d)) return 'wk';
     var wd = d.getDay(); if (wd === 6) return 'sat'; if (wd === 0 || JP_HOLIDAYS.indexOf(fmtDate(d)) >= 0) return 'sun'; return 'wk';
   }
+  // 요일 4구분(Min 2026-11-25 「평일 휴일로 나누지말고 월~목, 금, 토, 일」) — 요금 칸 mt(월~목)·fri·sat·sun.
+  //   호텔 밤 partnerDayType: 祝前日 밤 = 'sat'(토요일 밤과 같은 「다음 날 쉬는 밤」) · 월~목 祝日 밤 = 'sun' · 그 밖은 요일 그대로.
+  //     → 'mt' 인 밤 = 옛 partnerNightType 'wk' 인 밤과 정확히 같다(옛 wk → mt, hi → fri·sat·sun 으로 옮기면 금액이 그대로).
+  //   골프 partnerGolfDay: 祝日 = 'sun' · 그 밖은 요일 그대로(옛 'wk' = mt·fri).
+  //   옛 칸(wk·hi)만 있는 줄도 계속 읽는다 — partnerQuote 가 같은 줄 안에서 새 칸 → 옛 칸 순으로 본다.
+  function partnerDayType(ds) {
+    var d = parseLocalDate(ds); if (isNaN(d)) return 'mt';
+    var nx = new Date(d); nx.setDate(nx.getDate() + 1); if (JP_HOLIDAYS.indexOf(fmtDate(nx)) >= 0) return 'sat';
+    var wd = d.getDay(); if (wd === 5) return 'fri'; if (wd === 6) return 'sat'; if (wd === 0) return 'sun';
+    if (JP_HOLIDAYS.indexOf(fmtDate(d)) >= 0) return 'sun';
+    return 'mt';
+  }
+  function partnerGolfDay(ds) {
+    var d = parseLocalDate(ds); if (isNaN(d)) return 'mt';
+    if (JP_HOLIDAYS.indexOf(fmtDate(d)) >= 0) return 'sun';
+    var wd = d.getDay(); return wd === 5 ? 'fri' : (wd === 6 ? 'sat' : (wd === 0 ? 'sun' : 'mt'));
+  }
   // ── 기간별 요금표(SQL 161 partner_rates) ───────────────────────────────────
   //  row = { id, kind:'hotel'|'golf'|'guide', ref_id(호텔 id / 코스 id / 인솔은 상품 번호 partnerBrandRef · null=공통), label, from_date, to_date(null=상시), prices:{…} }
   //    prices — hotel:{twin:{wk,hi},single:{wk,hi},triple:{wk,hi}} / golf:{wk,sat,sun} / guide:{day(1박당)} — 귀국일 요금(last)은 2026-11-11 Min 「귀국일 요금은 없애줘」로 폐지: 옛 줄에 값이 남아 있어도 읽지 않는다
@@ -840,11 +857,15 @@
     });
     return list;
   }
+  //  path = ['twin','mt'] 한 경로, 또는 [['twin','mt'],['twin','wk']] 여러 경로 — 여러 경로는 **줄 단위**로 본다(앞선 줄의 어느 경로든 값이 있으면 그 줄이 이긴다).
   function partnerPrice(rows, kind, refId, ds, path) {
-    var cands = partnerRateCands(rows, kind, refId, ds); path = Array.isArray(path) ? path : String(path || '').split('.').filter(Boolean);
+    var cands = partnerRateCands(rows, kind, refId, ds);
+    var paths = (Array.isArray(path) && path.length && Array.isArray(path[0])) ? path : [Array.isArray(path) ? path : String(path || '').split('.').filter(Boolean)];
     for (var i = 0; i < cands.length; i++) {
-      var v = cands[i].prices || {}; for (var j = 0; j < path.length && v != null; j++) v = v[path[j]];
-      if (v != null && v !== '' && isFinite(Number(v))) return Number(v);
+      for (var k = 0; k < paths.length; k++) {
+        var v = cands[i].prices || {}; for (var j = 0; j < paths[k].length && v != null; j++) v = v[paths[k][j]];
+        if (v != null && v !== '' && isFinite(Number(v))) return Number(v);
+      }
     }
     return null;
   }
@@ -858,7 +879,7 @@
     var num = function (v) { var n = Number(v); return isFinite(n) ? n : 0; };
     var from = String(o.from || '').slice(0, 10), to = String(o.to || '').slice(0, 10);
     var n = nightsBetween(from, to);
-    var empty = { ok: false, complete: false, missing: [], nights: 0, rounds: 0, twin: 0, single: 0, triple: 0, golf: 0, guide: 0, persons: 0, pax: num(o.pax), total: 0, roomsMatch: true };
+    var empty = { ok: false, complete: false, missing: [], nights: 0, rounds: 0, twin: 0, single: 0, triple: 0, golf: 0, guide: 0, guideDays: { arr: 0, day: 0, noround: 0, dep: 0 }, persons: 0, pax: num(o.pax), total: 0, roomsMatch: true };
     if (!(n > 0)) return empty;
     var nights = []; for (var i = 0; i < n; i++) { var d = parseLocalDate(from); d.setDate(d.getDate() + i); nights.push(fmtDate(d)); }
     var golfs = Array.isArray(o.golf) ? o.golf.filter(function (g) { return g && g.date; }).map(function (g) { return { date: String(g.date).slice(0, 10), courseId: g.courseId == null ? null : g.courseId }; })
@@ -869,25 +890,35 @@
     var hotelOf = function (type) {
       var sum = 0;
       nights.forEach(function (ds) {
-        var k = partnerNightType(ds), base;
+        var k = partnerDayType(ds), ko = partnerNightType(ds), base;
         if (type === 'single' && o.singleRate != null && o.singleRate !== '') base = num(o.singleRate);
         else {
-          base = partnerPrice(rows, 'hotel', hotelId, ds, [type, k]);
-          if (base == null && type === 'triple') base = partnerPrice(rows, 'hotel', hotelId, ds, ['twin', k]);   // 트리플 요금 없으면 트윈 요금
+          base = partnerPrice(rows, 'hotel', hotelId, ds, [[type, k], [type, ko]]);
+          if (base == null && type === 'triple') base = partnerPrice(rows, 'hotel', hotelId, ds, [['twin', k], ['twin', ko]]);   // 트리플 요금 없으면 트윈 요금
           if (base == null) { base = 0; if (type === 'twin') missing.push('hotel:' + ds); if (type === 'single' && sg > 0) missing.push('single:' + ds); }
         }
         sum += base + num(o.surcharge);
       });
       return sum;
     };
-    var golf = 0; golfs.forEach(function (g) { var p = partnerPrice(rows, 'golf', g.courseId, g.date, [partnerGolfType(g.date)]); if (p == null) { p = 0; missing.push('golf:' + g.date); } golf += p; });
+    var golf = 0; golfs.forEach(function (g) { var p = partnerPrice(rows, 'golf', g.courseId, g.date, [[partnerGolfDay(g.date)], [partnerGolfType(g.date)]]); if (p == null) { p = 0; missing.push('golf:' + g.date); } golf += p; });
     var gref = partnerBrandRef(o.brand);
-    var guide = 0; nights.forEach(function (ds) { guide += num(partnerPrice(rows, 'guide', gref, ds, ['day'])); });
+    //  인솔(Min 2026-11-25 「출·귀국일이나 라운딩 없는 날은 비용이 다를 수 있음」) = 입국일~귀국일 날마다:
+    //    첫날 arr · 마지막 날 dep · 그 사이 라운딩 없는 날 noround · 그 밖 day. 빈 칸: arr·noround = 같은 줄의 day(줄 단위) · dep = 없으면 0(종전 「귀국일 요금 없음」).
+    //    → day 만 적힌 줄은 종전과 같은 금액(밤마다 1일분).
+    var rdays = {}; golfs.forEach(function (g) { rdays[g.date] = 1; });
+    var guide = 0, gdays = { arr: 0, day: 0, noround: 0, dep: 0 };
+    for (var gi = 0; gi <= n; gi++) {
+      var gd = parseLocalDate(from); gd.setDate(gd.getDate() + gi); var gds = fmtDate(gd);
+      var gk = gi === 0 ? 'arr' : (gi === n ? 'dep' : (rdays[gds] ? 'day' : 'noround'));
+      gdays[gk]++;
+      guide += num(partnerPrice(rows, 'guide', gref, gds, gk === 'dep' ? [['dep']] : (gk === 'day' ? [['day']] : [[gk], ['day']])));
+    }
     var adj = num(o.adj);
     var pp = { twin: hotelOf('twin') + golf + guide + adj, single: hotelOf('single') + golf + guide + adj, triple: hotelOf('triple') + golf + guide + adj };
     var persons = tw * 2 + sg + tr * 3;
     return { ok: true, complete: missing.length === 0, missing: missing, nights: n, rounds: golfs.length, twin: pp.twin, single: pp.single, triple: pp.triple, golf: golf, guide: guide,
-      persons: persons, pax: pax, total: pp.twin * tw * 2 + pp.single * sg + pp.triple * tr * 3, roomsMatch: !pax || persons === pax };
+      guideDays: gdays, persons: persons, pax: pax, total: pp.twin * tw * 2 + pp.single * sg + pp.triple * tr * 3, roomsMatch: !pax || persons === pax };
   }
 
   // ── 비회원 F풀 코드 재사용 충돌 판정(30일 쿨다운) ──────────────────────────
@@ -2323,7 +2354,7 @@
     partnerSegment: partnerSegment,
     partnerAgency: partnerAgency,
     lgcNo: lgcNo,
-    partnerNightType: partnerNightType, partnerGolfType: partnerGolfType, partnerQuote: partnerQuote,
+    partnerNightType: partnerNightType, partnerGolfType: partnerGolfType, partnerDayType: partnerDayType, partnerGolfDay: partnerGolfDay, partnerQuote: partnerQuote,
     partnerRateRows: partnerRateRows, partnerRateCands: partnerRateCands, partnerPrice: partnerPrice,
     PARTNER_TRAVEL_MIN: PARTNER_TRAVEL_MIN, PARTNER_BUS_MIN: PARTNER_BUS_MIN, PARTNER_POINTS: PARTNER_POINTS,
     partnerAliasList: partnerAliasList, partnerFindNames: partnerFindNames, partnerRemarkPlan: partnerRemarkPlan,
