@@ -813,7 +813,7 @@
   // 요일 4구분(Min 2026-11-25 「평일 휴일로 나누지말고 월~목, 금, 토, 일」) — 요금 칸 mt(월~목)·fri·sat·sun.
   //   호텔 밤 partnerDayType: 祝前日 밤 = 'sat'(토요일 밤과 같은 「다음 날 쉬는 밤」) · 월~목 祝日 밤 = 'sun' · 그 밖은 요일 그대로.
   //     → 'mt' 인 밤 = 옛 partnerNightType 'wk' 인 밤과 정확히 같다(옛 wk → mt, hi → fri·sat·sun 으로 옮기면 금액이 그대로).
-  //   골프 partnerGolfDay: 祝日 = 'sun' · 그 밖은 요일 그대로(옛 'wk' = mt·fri).
+  //   골프 partnerGolfDay: 토 = 'sat'(祝日이어도) · 일/祝日 = 'sun' · 그 밖은 요일 그대로(옛 'wk' = mt·fri).
   //   옛 칸(wk·hi)만 있는 줄도 계속 읽는다 — partnerQuote 가 같은 줄 안에서 새 칸 → 옛 칸 순으로 본다.
   function partnerDayType(ds) {
     var d = parseLocalDate(ds); if (isNaN(d)) return 'mt';
@@ -824,8 +824,9 @@
   }
   function partnerGolfDay(ds) {
     var d = parseLocalDate(ds); if (isNaN(d)) return 'mt';
-    if (JP_HOLIDAYS.indexOf(fmtDate(d)) >= 0) return 'sun';
-    var wd = d.getDay(); return wd === 5 ? 'fri' : (wd === 6 ? 'sat' : (wd === 0 ? 'sun' : 'mt'));
+    var wd = d.getDay(); if (wd === 6) return 'sat';   // 토요일은 祝日이어도 토(옛 partnerGolfType 과 같다)
+    if (wd === 0 || JP_HOLIDAYS.indexOf(fmtDate(d)) >= 0) return 'sun';
+    return wd === 5 ? 'fri' : 'mt';
   }
   // ── 기간별 요금표(SQL 161 partner_rates) ───────────────────────────────────
   //  row = { id, kind:'hotel'|'golf'|'guide', ref_id(호텔 id / 코스 id / 인솔은 상품 번호 partnerBrandRef · null=공통), label, from_date, to_date(null=상시), prices:{…} }

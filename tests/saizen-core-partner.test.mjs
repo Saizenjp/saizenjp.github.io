@@ -601,7 +601,7 @@ test('partnerDayType — 호텔 밤 = 월~목 mt · 금 fri · 토 sat · 일 su
   assert.equal(C.partnerDayType('2027-01-01'), 'fri');    // 금요일 祝日 — 금은 금(다음 날 토는 祝日 아님)
   assert.equal(C.partnerDayType(''), 'mt');
   // 4구분이 옛 2구분(wk/hi)과 어긋나지 않는다: mt ⇔ wk (옛 값을 fri·sat·sun = hi 로 옮기면 금액이 같다)
-  for (let d = new Date(2026, 10, 1); d < new Date(2027, 10, 1); d.setDate(d.getDate() + 1)) {
+  for (let d = new Date(2025, 0, 1); d < new Date(2029, 0, 1); d.setDate(d.getDate() + 1)) {
     const ds = C.fmtDate(d); assert.equal(C.partnerDayType(ds) === 'mt', C.partnerNightType(ds) === 'wk', ds);
   }
 });
@@ -612,7 +612,8 @@ test('partnerGolfDay — 골프 = 월~목 mt · 금 fri · 토 sat · 일/祝日
   assert.equal(C.partnerGolfDay('2026-11-08'), 'sun');
   assert.equal(C.partnerGolfDay('2026-11-03'), 'sun');    // 祝日
   assert.equal(C.partnerGolfDay('2026-11-02'), 'mt');     // 祝前日이라도 골프는 그날 기준
-  for (let d = new Date(2026, 10, 1); d < new Date(2027, 10, 1); d.setDate(d.getDate() + 1)) {
+  assert.equal(C.partnerGolfDay('2028-04-29'), 'sat');    // 토요일 祝日 = 토(옛 규칙과 같다)
+  for (let d = new Date(2025, 0, 1); d < new Date(2029, 0, 1); d.setDate(d.getDate() + 1)) {
     const ds = C.fmtDate(d), n = C.partnerGolfDay(ds), o = C.partnerGolfType(ds);
     assert.equal(o === 'wk' ? (n === 'mt' || n === 'fri') : n === o, true, ds);
   }

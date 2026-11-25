@@ -3,7 +3,7 @@
 --  상태: 적용 전
 -- ----------------------------------------------------------------------------
 --  Min 2026-11-25 「전 호텔 공통값 이것도 없애고 각 개별적으로 등록」「평일 휴일로 나누지말고 월~목, 금, 토, 일」.
---  데이터만 바꾼다(표·함수 정의 변경 없음). 금액은 저장소에 적지 않는다(§3-2) — DB 안에서 옮긴다.
+--  데이터를 옮기고, 그 데이터를 읽는 검수 함수(data_audit) 한 조건만 고친다(표 정의 변경 없음). 금액은 저장소에 적지 않는다(§3-2) — DB 안에서 옮긴다.
 --
 --  ① 호텔 공통 줄(kind='hotel', ref_id 없음)을 호텔마다 한 줄씩 복사(기간·이름 그대로).
 --     칸 옮기기: 객실 종류(twin·single·triple)마다 wk → mt, hi → fri·sat·sun.
@@ -15,6 +15,8 @@
 --     골프장별 요금은 화면에서 그 골프장 줄에 적으면 공통보다 앞선다(종전 규칙).
 --  ③ 복사한 호텔 공통 줄 삭제 · 상품별 기본값(partner_settings 'partner_defaults' — 화면에서 없앤다) 삭제.
 --  ④ change_log 에 지운 줄·가산·기본값의 이전 값을 남긴다(되돌리기용).
+--  ⑤ data_audit 「싱글 요금 미정」(partner_single_norate, SQL 161)이 싱글 요금을 single.wk·hi 로만 찾던 것 → single 의 아무 칸(mt·fri·sat·sun·옛 wk·hi)
+--     (바꾸지 않으면 ① 뒤 싱글 요금이 있는 호텔도 「미정」으로 센다). 본문에 2번 나와야 한다.
 --  인솔(kind='guide')은 상품별 줄이라 그대로 — 새 칸(arr 입국일·noround 라운딩 없는 날·dep 귀국일)은 비어 있으면 종전 금액.
 --
 --  멱등: 호텔 공통 줄이 없으면 ①③ 은 할 일이 없고, ② 는 옛 칸(wk)이 남은 줄만 바꾼다. 호텔 지정 줄이 이미 있으면 멈춘다(복사한 공통 줄과 우선순위가 섞인다 — 먼저 확인).
@@ -58,7 +60,8 @@ begin
             from jsonb_each(r.prices) t),
          null, r.sort
   from partner_rates r cross join partner_hotels h
-  where r.kind = 'hotel' and r.ref_id is null;
+  where r.kind = 'hotel' and r.ref_id is null
+  order by h.id, r.id;   -- 새 id 를 옛 공통 줄 순서대로 — 같은 폭의 기간이 겹치면 id 큰 줄이 이기므로 순서를 지킨다
   get diagnostics v_ins_h = row_count;
 
   -- ② 골프: 줄은 그대로, 칸만(공통·골프장 지정 모두 — 옛 칸 wk 가 있는 줄)
@@ -84,6 +87,21 @@ begin
   raise notice '193: 호텔 공통 % 줄 삭제 · 호텔 % 줄 · 골프 % 줄 칸 옮김', v_del, v_ins_h, v_golf;
 end $m$;
 
+-- ── ⑤ data_audit 싱글 요금 판정 ─────────────────────────────────────────────────
+do $au$
+declare d text; n int;
+  old_t text := $q$(coalesce(nullif(r.prices->'single'->>'wk','')::int,0) > 0 or coalesce(nullif(r.prices->'single'->>'hi','')::int,0) > 0)$q$;
+  new_t text := $q$exists (select 1 from jsonb_each_text(case when jsonb_typeof(r.prices->'single') = 'object' then r.prices->'single' else '{}'::jsonb end) sv where coalesce(nullif(sv.value,'')::numeric,0) > 0)$q$;
+begin
+  if to_regprocedure('public.data_audit()') is null then raise notice '193 ⑤: data_audit 없음 — 건너뜀'; return; end if;
+  d := pg_get_functiondef('public.data_audit()'::regprocedure);
+  if position(new_t in d) > 0 and position(old_t in d) = 0 then raise notice '193 ⑤: 이미 바뀜'; return; end if;
+  n := (length(d) - length(replace(d, old_t, ''))) / length(old_t);
+  if n <> 2 then raise exception '193 ⑤: data_audit 의 싱글 요금 판정이 %번 — 2번이어야 한다(본문 확인)', n; end if;
+  execute replace(d, old_t, new_t);
+  raise notice '193 ⑤: data_audit 싱글 요금 판정 → 요일 4구분 칸도';
+end $au$;
+
 -- ── 적용 뒤 확인 ───────────────────────────────────────────────────────────────
 do $post$
 begin
@@ -99,5 +117,9 @@ begin
   if exists (select 1 from partner_rates r, jsonb_each(r.prices) t
               where r.kind = 'hotel' and jsonb_typeof(t.value) = 'object' and (t.value ? 'wk' and not t.value ? 'mt')) then
     raise exception '193: 옛 칸(wk)만 있는 호텔 줄이 있다';
+  end if;
+  if to_regprocedure('public.data_audit()') is not null
+     and (select prosrc from pg_proc where oid = 'public.data_audit()'::regprocedure) like '%''single''->>''wk''%' then
+    raise exception '193: data_audit 싱글 요금 판정이 아직 옛 칸(wk)이다';
   end if;
 end $post$;
