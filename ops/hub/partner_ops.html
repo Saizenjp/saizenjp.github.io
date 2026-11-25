@@ -17,7 +17,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yamanami 운영 관리 · 수배 목록</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/saizen-core.js?v=75"></script>
+<script src="../assets/saizen-core.js?v=76"></script>
 <style>
   /* ── 공통 chrome (docs/ops-page-skeleton.html 정본 — 통째 복사) ── */
   :root{
@@ -483,6 +483,8 @@ function repMember(t){ const ms=t.members||[]; return ms.find(m=>m.is_rep)||ms[0
 function portOf(origin,flight){ try{ return (window.SZCore&&SZCore.originPort)?SZCore.originPort(origin,flight):''; }catch(e){ return ''; } }
 function flightLine(t){ const m=repMember(t); if(!m) return {in:'',out:''}; const port=portOf(m.origin||t.origin,m.dep_flight||t.airline);
   return { in:[m.dep_flight,hhmm(m.loc_arr_time)?hhmm(m.loc_arr_time)+'着':'',port].filter(Boolean).join(' '), out:[m.ret_flight,hhmm(m.ret_dep_time)?hhmm(m.ret_dep_time)+'発':''].filter(Boolean).join(' ') }; }
+//  번호 줄 = 엠클릭 행사번호 + (LGC 에서 받아 이관한 예약이면) LGC 예약번호(Min 2026-11-25)
+function noLine(t){ return '#'+t.no+(t.lgc?' · '+t.lgc:''); }
 function visible(){ return TEAMS.filter(t=>!BR.size||BR.has(t.brand)); }
 function teamOf(seq){ return TEAMS.find(t=>t.seq===Number(seq))||null; }
 const LEGS=['in','golf_out','golf_back','out','other'];
@@ -708,7 +710,7 @@ async function load(){
     if(HAS_PASSPORT==null){ const pp=await supa.from('partner_members').select('passport_no',{count:'exact',head:true}); HAS_PASSPORT=!pp.error; }   // SQL 164(호텔 제출 명단 열) 적용 여부
     const ms=await fetchIn('partner_members','id,event_seq,seq_in_team,is_rep,name_kr,name_en,gender,dep_flight,ret_flight,origin,airline,dep_time,loc_arr_time,ret_dep_time,kor_arr_time'+(HAS_PASSPORT?',name_en_last,name_en_first,birth,passport_no,passport_exp,passport_country':''),'event_seq',seqs);
     const byTeam={}; ms.forEach(m=>{ (byTeam[m.event_seq]=byTeam[m.event_seq]||[]).push(m); });
-    TEAMS=(bs||[]).map(b=>({ seq:b.event_seq, brand:b.brand, no:String(b.event_no||b.event_seq), rep:b.rep_name||'', pax:Number(b.pax||0)||0, status:b.status,
+    TEAMS=(bs||[]).map(b=>({ seq:b.event_seq, brand:b.brand, no:String(b.event_no||b.event_seq), lgc:(window.SZCore&&SZCore.lgcNo)?SZCore.lgcNo(b.remark_local,b.remark):'', rep:b.rep_name||'', pax:Number(b.pax||0)||0, status:b.status,
       dep:String(b.seg_from||b.dep_date||'').slice(0,10), arr:String(b.seg_to||b.arr_date||'').slice(0,10), fullDep:String(b.dep_date||'').slice(0,10), fullArr:String(b.arr_date||'').slice(0,10),
       combo:!!b.combo, sure:b.seg_sure!==false, product:b.product_name||'', origin:b.origin||'', airline:b.airline||'', remark:b.remark||'', remark_local:b.remark_local||'', agency:b.agency||'',
       members:(byTeam[b.event_seq]||[]).sort((a,c)=>(a.seq_in_team||0)-(c.seq_in_team||0)) }));
@@ -903,7 +905,7 @@ function renderList(){
     return `<tr class="tm${SEL===t.seq?' sel':''}${isD?' dirty':''}${iss.some(i=>i.sev==='err')?' haserr':''}" data-seq="${t.seq}">
       <td class="nw"><span class="mono">${esc(mmdd(t.dep))}→${esc(mmdd(t.arr))}</span>${ddayHTML(t)}<small>${esc(tx('nights',nightsOf(t).length))}${t.sure?'':` <span class="bd warn" title="${esc(tx('unsureT'))}">${esc(tx('unsure'))}</span>`}</small></td>
       <td class="n">${t.pax}</td>
-      <td class="nw"><b>${esc(t.rep)}</b> <span class="bd brand">${esc(brandShort(t.brand))}</span>${t.combo?` <span class="bd info">${esc(tx('combo'))}</span>`:''}${isD?` <span class="bd warn">${esc(tx('unsavedBadge'))}</span>`:''}<small>${esc(agencyOf(t))}</small>${(t.remark||t.remark_local)?`<button class="rmkbtn${RMK_CLOSED.has(t.seq)?'':' on'}" data-act="rmk" data-seq="${t.seq}" type="button">${esc(tx(RMK_CLOSED.has(t.seq)?'rmkOpen':'rmkClose'))}</button>`:''}</td>
+      <td class="nw"><b>${esc(t.rep)}</b> <span class="bd brand">${esc(brandShort(t.brand))}</span>${t.combo?` <span class="bd info">${esc(tx('combo'))}</span>`:''}${isD?` <span class="bd warn">${esc(tx('unsavedBadge'))}</span>`:''}<small class="mono">${esc(noLine(t))}</small><small>${esc(agencyOf(t))}</small>${(t.remark||t.remark_local)?`<button class="rmkbtn${RMK_CLOSED.has(t.seq)?'':' on'}" data-act="rmk" data-seq="${t.seq}" type="button">${esc(tx(RMK_CLOSED.has(t.seq)?'rmkOpen':'rmkClose'))}</button>`:''}</td>
       <td class="iss">${iss.map(i=>`<span class="bd ${i.sev}">${esc(issLabel(i))}</span>`).join('')}</td>
       <td class="nw">${esc(hotelName(h)||(o.hotel_note||''))}${h&&h.block_twin>0&&o.use_block===false?` <span class="bd info">${esc(tx('blockOut'))}</span>`:''}<small>${esc(roomsText(o))}</small>${ph&&Number(o.hotel_id)!==ph.id?`<small class="sug">${esc(tx('remarkTag'))}: ${esc(hotelName(ph))}</small>`:''}</td>
       <td>${gl}<small>${g.length}/${nightsOf(t).length}</small></td>
@@ -958,7 +960,7 @@ function renderDetail(){
   const sameRmk=!!t.remark&&!!t.remark_local&&t.remark.trim()===t.remark_local.trim();
   const ph=hotelById(p.hotelId), say=[(ph&&Number(o.hotel_id)!==ph.id)?hotelName(ph):'', (!p.empty&&((Number(o.twin)||0)!==p.twin||(Number(o.single)||0)!==p.single||(Number(o.triple)||0)!==p.triple))?`${tx('twin')}${p.twin} ${tx('single')}${p.single}${p.triple?` ${tx('triple')}${p.triple}`:''}`:''].filter(Boolean).join(' · ');
   box.innerHTML=`
-    <h2>${esc(t.rep)} <small>${t.pax}名 · ${esc(mmdd(t.dep))}→${esc(mmdd(t.arr))} ${esc(tx('nights',nights.length))}${t.combo?` · ${esc(tx('combo'))} ${esc(mmdd(t.fullDep))}→${esc(mmdd(t.fullArr))}`:''}</small> <span class="bd brand">${esc(brandShort(t.brand))}</span>${t.sure?'':`<span class="bd warn" title="${esc(tx('unsureT'))}">${esc(tx('unsure'))}</span>`}<button class="dclose" data-act="closeDetail" type="button" title="${esc(tx('closeDetail'))}">✕</button></h2>
+    <h2>${esc(t.rep)} <small class="mono">${esc(noLine(t))}</small> <small>${t.pax}名 · ${esc(mmdd(t.dep))}→${esc(mmdd(t.arr))} ${esc(tx('nights',nights.length))}${t.combo?` · ${esc(tx('combo'))} ${esc(mmdd(t.fullDep))}→${esc(mmdd(t.fullArr))}`:''}</small> <span class="bd brand">${esc(brandShort(t.brand))}</span>${t.sure?'':`<span class="bd warn" title="${esc(tx('unsureT'))}">${esc(tx('unsure'))}</span>`}<button class="dclose" data-act="closeDetail" type="button" title="${esc(tx('closeDetail'))}">✕</button></h2>
     ${saveBarHTML(d)}
     ${mustHTML(t)}
     <div class="kv">
@@ -1260,7 +1262,7 @@ function popup(title, css, body){ const jp=window.__SO_JP_FONT||''; const html=`
 function printList(){
   const P=tx('pv'), vis=visible();
   const rows=inJa(()=>vis.map(t=>{ const o=ops(t.seq), h=hotelById(o.hotel_id), fl=flightLine(t), g=golf(t.seq).filter(r=>r.course_id||r.course_note), q=quoteFor(t);
-    return `<tr><td class="mono">${esc(mmdd(t.dep))}→${esc(mmdd(t.arr))}<small>${esc(wd(t.dep))}〜${esc(wd(addDays(t.arr,0)))}</small></td><td class="c">${nightsOf(t).length}</td><td class="c">${t.pax}</td><td><b>${esc(t.rep)}</b><small>${esc(brandShort(t.brand))}${t.combo?' · '+esc(P.period)+' '+esc(mmdd(t.fullDep))+'→'+esc(mmdd(t.fullArr)):''}</small></td><td>${esc(agencyOf(t))}</td>
+    return `<tr><td class="mono">${esc(mmdd(t.dep))}→${esc(mmdd(t.arr))}<small>${esc(wd(t.dep))}〜${esc(wd(addDays(t.arr,0)))}</small></td><td class="c">${nightsOf(t).length}</td><td class="c">${t.pax}</td><td><b>${esc(t.rep)}</b><small>${esc(noLine(t))}</small><small>${esc(brandShort(t.brand))}${t.combo?' · '+esc(P.period)+' '+esc(mmdd(t.fullDep))+'→'+esc(mmdd(t.fullArr)):''}</small></td><td>${esc(agencyOf(t))}</td>
       <td>IN ${esc(fl.in||'—')}<br>OUT ${esc(fl.out||'—')}</td><td>${esc(hotelName(h)||o.hotel_note||'')}<small>${esc(roomsText(o))}${o.hotel_note&&h?' · '+esc(o.hotel_note):''}</small></td>
       <td>${g.map(r=>`${esc(mmdd(r.play_date))} ${esc(courseName(courseById(r.course_id),true)||r.course_note||'')}${r.tee_time?' '+esc(r.tee_time):''}${r.holes?' '+esc(r.holes):''}${r.note?' <small>'+esc(r.note)+'</small>':''}`).join('<br>')}</td>
       <td>${esc(o.staff||'')}</td>
@@ -1303,7 +1305,7 @@ function printRoster(t){
   const blocks=as?`<div class="as"><h3>${esc(P.rooming)}</h3>${R.slots.map(x=>`<div><b>${esc(rl(x.key))}</b>${x.ids.map(en).join(' ／ ')||'—'}</div>`).join('')}</div>
      <div class="as"><h3>${esc(P.pairing)}</h3>${G.groups.map(x=>`<div><b>${x.no}${esc(P.grp)}</b>${x.ids.map(en).join(' ／ ')||'—'}</div>`).join('')}</div>`:'';
   return popup(`roster_${t.seq}`, `@page{size:A4 portrait;margin:14mm} td,th{font-size:10.5pt;padding:2mm 2.5mm} .meta{display:grid;grid-template-columns:auto 1fr;gap:1mm 6mm;font-size:10.5pt;margin:3mm 0 5mm} .meta b{color:#333} .as{margin-top:5mm;font-size:10.5pt;break-inside:avoid} .as h3{font-size:11pt;margin:0 0 1.5mm;border-bottom:1px solid #333;padding-bottom:1mm} .as div{padding:.8mm 0} .as b{display:inline-block;min-width:22mm}`,
-    `<h1>${esc(P.roster)} <small>${esc(t.rep)} 様 · ${t.pax}名</small></h1>
+    `<h1>${esc(P.roster)} <small>${esc(t.rep)} 様 · ${t.pax}名 · ${esc(noLine(t))}</small></h1>
      <div class="meta"><b>${esc(P.period)}</b><span>${esc(t.dep)}（${esc(wd(t.dep))}）〜 ${esc(t.arr)}（${esc(wd(t.arr))}） ${nightsOf(t).length}${esc(P.nights)}</span><b>${esc(P.agency)}</b><span>${esc(agencyOf(t))}</span>
        <b>${esc(P.hotel)}</b><span>${inJa(()=>esc(hotelName(h)||o.hotel_note||'—')+' '+esc(roomsText(o)))}</span><b>${esc(P.golf)}</b><span>${inJa(()=>g.map(r=>`${esc(mmdd(r.play_date))} ${esc(courseName(courseById(r.course_id))||r.course_note||'')} ${esc(r.tee_time||'')}`).join('<br>'))||'—'}</span><b>${esc(P.staff)}</b><span>${esc(o.staff||'')}</span></div>
      <table><thead><tr><th>${esc(P.no)}</th><th>${esc(P.name)}</th><th>${esc(P.gender)}</th>${as?`<th>${esc(P.room)}</th><th>${esc(P.grp)}</th>`:''}<th>${esc(P.note)}</th></tr></thead><tbody>${trs}</tbody></table>

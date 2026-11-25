@@ -399,6 +399,14 @@
     if (!AG_SUFFIX_ANY.test(name) || AG_SUFFIX_ONLY.test(name) || AG_TAIL_NO.test(name)) return '';
     return name;
   }
+  // LGC 예약번호 — LGC(현지 담당 회사)에서 받아 엠클릭으로 옮긴 예약은 비고 앞에 「LGC0001 / …」 로 적었다(Min 2026-11-11).
+  //  현지 비고(remark_local) → 비고(remark) 순으로 첫 「LGC + 숫자」를 「LGC0001」 꼴로 돌려준다. 없으면 ''.
+  var LGC_RE = /\bLGC[\s\-_]*([0-9]{1,8})/i;
+  function lgcNo(remarkLocal, remark) {
+    var srcs = [remarkLocal, remark];
+    for (var i = 0; i < srcs.length; i++) { var m = String(srcs[i] || '').match(LGC_RE); if (m) return 'LGC' + m[1]; }
+    return '';
+  }
   function partnerAgency(o) {
     o = o || {};
     var ex = String(o.explicit == null ? '' : o.explicit).trim(); if (ex) return ex;
@@ -2313,6 +2321,7 @@
     partnerLabel: partnerLabel,
     partnerSegment: partnerSegment,
     partnerAgency: partnerAgency,
+    lgcNo: lgcNo,
     partnerNightType: partnerNightType, partnerGolfType: partnerGolfType, partnerQuote: partnerQuote,
     partnerRateRows: partnerRateRows, partnerRateCands: partnerRateCands, partnerPrice: partnerPrice,
     PARTNER_TRAVEL_MIN: PARTNER_TRAVEL_MIN, PARTNER_BUS_MIN: PARTNER_BUS_MIN, PARTNER_POINTS: PARTNER_POINTS,

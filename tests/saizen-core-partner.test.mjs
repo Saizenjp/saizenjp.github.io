@@ -574,3 +574,15 @@ test('partnerFindNames — 영문 별칭의 글자 경계는 원문에서 본다
   const p = C.partnerRemarkPlan('Washington Hotel twin 2 / 11/5 KAO CC', { pax: 4, hotels: HOTELS, courses: COURSES, segFrom: '2026-11-04', segTo: '2026-11-08' });
   assert.equal(p.hotelId, 1); assert.deepEqual(p.golf.map(g => g.date.slice(5) + '@' + g.courseId + (g.explicit ? '' : '?')), ['11-05@4']);
 });
+
+// LGC 예약번호(Min 2026-11-25 「LGC 에서 받은 예약은 LGC 예약번호도 우리 번호 옆에」) — 엠클릭 이관 때 비고 앞에 「LGC0001 / …」 로 적었다.
+test('lgcNo — 비고(현지 비고 먼저)에서 LGC 번호를 읽는다 · 없거나 「예약번호없어」면 빈값', () => {
+  assert.equal(C.lgcNo('LGC0046 / 타우(트윈, 2방)'), 'LGC0046');
+  assert.equal(C.lgcNo('lgc 0112/워싱턴(싱글4방) / KE'), 'LGC0112');          // 소문자·띄어쓰기·붙여 쓴 / 도 같은 번호
+  assert.equal(C.lgcNo('LGC-0085 워싱턴 (2인 1실)'), 'LGC0085');
+  assert.equal(C.lgcNo('예약번호없어 / 토요코인(트윈,4방)'), '');
+  assert.equal(C.lgcNo('', 'LGC0099 / 아마넥'), 'LGC0099');                 // 현지 비고가 비면 비고에서
+  assert.equal(C.lgcNo('LGC0100 / 타우', 'LGC0001 / 다른 글'), 'LGC0100');    // 둘 다 있으면 현지 비고가 먼저
+  assert.equal(C.lgcNo('호텔 LGC 블록 확인'), '');                           // 숫자 없는 LGC 는 번호가 아니다
+  assert.equal(C.lgcNo(null, undefined), '');
+});
