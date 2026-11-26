@@ -1029,6 +1029,58 @@
     return null;
   }
 
+  // ── 레스토랑·연회장 테이블 자동 배정(SQL 197, Min 2026-11-26 「기본값대로 1단계 진행해」) ─────────────
+  //  units  = 그날 석식 단위(묶음) [{key, seqs:[행사번호…], pax(석식 인원), venue('restaurant'|'convention'|'')}]
+  //  tables = [{id, code, venue, seats, sort, active(false 면 제외)}]
+  //  taken  = {seq: [table_id…]} 오늘 이미 배정된 것(자동·수기 모두 — 그 단위는 건드리지 않고 그 테이블은 쓴 것으로)
+  //  prev   = {seq: [table_id…]} 전날 배정 — 연박 팀은 같은 장소·비어 있고·좌석이 모자라지 않으면 그 테이블을 먼저 이어 받는다
+  //  규칙: ① 이어 받기(인원 큰 순) ② 나머지는 인원 큰 순 — 들어가는 가장 작은 빈 테이블 → 없으면 빈 테이블을 큰 것부터 합침(같으면 순서 앞)
+  //        → 그래도 모자라면 배정하지 않고 unplaced(noTable). 자동 배정은 남과 한 테이블에 앉히지 않고 정원을 넘기지 않는다(수기는 가능 — 경고만).
+  //  결과 = { assign:[{seq, table_id}], unplaced:[{key, reason:'noVenue'|'noTable'}] }
+  function dinnerTablePlan(o) {
+    o = o || {};
+    var tables = (o.tables || []).filter(function (t) { return t && t.active !== false && Number(t.seats) > 0; });
+    var taken = o.taken || {}, prev = o.prev || {}, used = {}, assign = [], unplaced = [];
+    Object.keys(taken).forEach(function (s) { (taken[s] || []).forEach(function (id) { used[id] = 1; }); });
+    var units = (o.units || []).filter(function (u) { return !(u.seqs || []).some(function (s) { return (taken[s] || []).length; }); });
+    var byPax = function (a, b) { return (Number(b.pax) || 0) - (Number(a.pax) || 0) || String(a.key).localeCompare(String(b.key)); };
+    var tById = {}; tables.forEach(function (t) { tById[t.id] = t; });
+    var done = {};
+    var give = function (u, ids) { ids.forEach(function (id) { used[id] = 1; (u.seqs || []).forEach(function (s) { assign.push({ seq: s, table_id: id }); }); }); done[u.key] = 1; };
+    units.filter(function (u) { return u.venue; }).sort(byPax).forEach(function (u) {   // ① 이어 받기
+      var ids = []; (u.seqs || []).forEach(function (s) { (prev[s] || []).forEach(function (id) { if (ids.indexOf(id) < 0) ids.push(id); }); });
+      ids = ids.filter(function (id) { var t = tById[id]; return t && t.venue === u.venue && !used[id]; });
+      var seats = ids.reduce(function (a, id) { return a + Number(tById[id].seats); }, 0);
+      if (ids.length && seats >= (Number(u.pax) || 0)) give(u, ids);
+    });
+    units.slice().sort(byPax).forEach(function (u) {                                       // ② 나머지
+      if (done[u.key]) return;
+      if (!u.venue) { unplaced.push({ key: u.key, reason: 'noVenue' }); return; }
+      var pax = Number(u.pax) || 0;
+      var free = tables.filter(function (t) { return t.venue === u.venue && !used[t.id]; });
+      var bySize = function (a, b) { return Number(a.seats) - Number(b.seats) || (Number(a.sort) || 0) - (Number(b.sort) || 0); };
+      var one = free.slice().sort(bySize).filter(function (t) { return Number(t.seats) >= pax; })[0];
+      if (one) { give(u, [one.id]); return; }
+      var big = free.slice().sort(function (a, b) { return Number(b.seats) - Number(a.seats) || (Number(a.sort) || 0) - (Number(b.sort) || 0); });
+      var pickIds = [], sum = 0;
+      for (var i = 0; i < big.length && sum < pax; i++) { pickIds.push(big[i].id); sum += Number(big[i].seats); }
+      if (sum >= pax && pickIds.length) give(u, pickIds); else unplaced.push({ key: u.key, reason: 'noTable' });
+    });
+    return { assign: assign, unplaced: unplaced };
+  }
+  //  테이블별 사용 인원 — 한 팀이 여러 테이블이면 인원을 테이블 수로 나눠 센다. 결과 = {table_id: {used, seats, over, seqs}}
+  function dinnerTableUse(tables, assigns, paxBySeq) {
+    var nT = {}, out = {}; (assigns || []).forEach(function (a) { nT[a.seq] = (nT[a.seq] || 0) + 1; });
+    (tables || []).forEach(function (t) { out[t.id] = { used: 0, seats: Number(t.seats) || 0, over: false, seqs: [] }; });
+    (assigns || []).forEach(function (a) {
+      var o = out[a.table_id]; if (!o) return;
+      if (o.seqs.indexOf(a.seq) < 0) o.seqs.push(a.seq);
+      o.used += (Number((paxBySeq || {})[a.seq]) || 0) / (nT[a.seq] || 1);
+    });
+    Object.keys(out).forEach(function (k) { out[k].used = Math.round(out[k].used * 10) / 10; out[k].over = out[k].used > out[k].seats; });
+    return out;
+  }
+
   // ── 비회원 F풀 코드 재사용 충돌 판정(30일 쿨다운) ──────────────────────────
   //  두 팀 체류가 gapDays(기본 30) 이내면 '충돌'(같은 F코드 금지). 30일+ 지나면 재사용 허용.
   //  이유=① 턴오버 당일(퇴실=입실) 현장 동시존재 ② 한 달 내 같은 코드 재등장 → 네임택·식사 혼동.
@@ -2463,7 +2515,7 @@
     partnerSegment: partnerSegment,
     partnerAgency: partnerAgency,
     lgcNo: lgcNo,
-    partnerNightType: partnerNightType, partnerGolfType: partnerGolfType, partnerDayType: partnerDayType, partnerGolfDay: partnerGolfDay, invCodeNorm: invCodeNorm, invNumText: invNumText, invImportRows: invImportRows, invImportCheck: invImportCheck, invScanFind: invScanFind, partnerQuote: partnerQuote,
+    partnerNightType: partnerNightType, partnerGolfType: partnerGolfType, partnerDayType: partnerDayType, partnerGolfDay: partnerGolfDay, dinnerTablePlan: dinnerTablePlan, dinnerTableUse: dinnerTableUse, invCodeNorm: invCodeNorm, invNumText: invNumText, invImportRows: invImportRows, invImportCheck: invImportCheck, invScanFind: invScanFind, partnerQuote: partnerQuote,
     partnerRateRows: partnerRateRows, partnerRateCands: partnerRateCands, partnerPrice: partnerPrice,
     PARTNER_TRAVEL_MIN: PARTNER_TRAVEL_MIN, PARTNER_BUS_MIN: PARTNER_BUS_MIN, PARTNER_POINTS: PARTNER_POINTS,
     partnerAliasList: partnerAliasList, partnerFindNames: partnerFindNames, partnerRemarkPlan: partnerRemarkPlan,
