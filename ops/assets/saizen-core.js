@@ -1989,7 +1989,7 @@
     shizu:   ['shizu_sheet', 'inv_shizu'],
     partner: ['partner_kumamoto', 'partner_trial'],   // 자회사 상품(SQL 159, Min 2026-10-30): 상품별로 담당자를 따로 지정 — 카드·페이지 노출 + partner_* 표 RLS 읽기
     proshop: ['inv_proshop'],   // 골프샵(SQL 194, Min 2026-11-26 「골프샵은 골프 코스 관리 등과는 완전 별개」): golf 묶음과 따로 — 골프샵 재고
-    sales:   ['sales_fnb', 'sales_front', 'sales_golf']   // 부서별 매출(SQL 192, Min 2026-11-25 「부서장이 보게 · 별도 체크」): 부서장에게만 따로 체크 — dept_sales RPC 가 자식 키를 직접 본다(정산·관리자는 전 부서)
+    sales:   ['sales_fnb', 'sales_front', 'sales_golf', 'sales_proshop']   // sales_proshop = 골프샵 매출(SQL 195, Min 2026-11-26) · 부서별 매출(SQL 192, Min 2026-11-25 「부서장이 보게 · 별도 체크」): 부서장에게만 따로 체크 — dept_sales RPC 가 자식 키를 직접 본다(정산·관리자는 전 부서)
   };
   var AREA_PARENT = {};
   Object.keys(AREA_TREE).forEach(function (p) { AREA_TREE[p].forEach(function (c) { AREA_PARENT[c] = p; }); });

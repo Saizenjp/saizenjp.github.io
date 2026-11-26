@@ -47,20 +47,22 @@ test('체류 캘린더(staycal)만 있으면 경영통계(stats_mgmt)는 못 연
   assert.equal(C.areaAllowed(st, ['staycal']), 'write');
 });
 
-test('SQL seed(최신 area_tree 재시드 = 194) 와 AREA_TREE 가 같다', () => {
-  const sql = readFileSync(new URL('../ops/hub/sql/194_inv_proshop.sql', import.meta.url), 'utf8');
+test('SQL seed(최신 area_tree 재시드 = 195) 와 AREA_TREE 가 같다', () => {
+  const sql = readFileSync(new URL('../ops/hub/sql/195_sales_proshop.sql', import.meta.url), 'utf8');
   const blk = sql.slice(sql.indexOf('insert into public.area_tree'), sql.indexOf('on conflict (child)'));
   const seed = {};
   for (const m of blk.matchAll(/\('([a-z_]+)','([a-z_]+)'\)/g)) seed[m[1]] = m[2];
   const mine = {};
   Object.keys(C.AREA_TREE).forEach(p => C.AREA_TREE[p].forEach(c => { mine[c] = p; }));
   assert.deepEqual(seed, mine);
-  assert.equal(Object.keys(mine).length, 40);   // 159: partner_kumamoto·partner_trial(자회사 상품) · 192: sales_fnb·sales_front·sales_golf(부서별 매출) · 194: inv_proshop(골프샵 재고)
+  assert.equal(Object.keys(mine).length, 41);   // 195: sales_proshop(골프샵 매출)   // 159: partner_kumamoto·partner_trial(자회사 상품) · 192: sales_fnb·sales_front·sales_golf(부서별 매출) · 194: inv_proshop(골프샵 재고)
   // 골프샵은 골프 묶음과 별개(Min 2026-11-26): golf 권한으로는 골프샵 재고를 못 열고, proshop 권한으로는 코스·카트를 못 연다
   assert.equal(C.areaAllowed({ role: 'staff', areas: ['golf'], read_areas: [] }, ['inv_proshop']), null);
   assert.equal(C.areaAllowed({ role: 'staff', areas: ['proshop'], read_areas: [] }, ['inv_proshop']), 'write');
   assert.equal(C.areaAllowed({ role: 'staff', areas: ['inv_proshop'], read_areas: [] }, ['course', 'cart', 'inv_golf']), null);
-  assert.deepEqual(C.AREA_TREE.sales, ['sales_fnb', 'sales_front', 'sales_golf']);
+  assert.deepEqual(C.AREA_TREE.sales, ['sales_fnb', 'sales_front', 'sales_golf', 'sales_proshop']);
+  assert.equal(C.areaAllowed({ role: 'staff', areas: ['sales_proshop'], read_areas: [] }, ['sales_golf']), null);   // 골프샵 매출 ≠ 골프 매출
+  assert.equal(C.areaAllowed({ role: 'staff', areas: ['proshop'], read_areas: [] }, ['sales_proshop']), null);   // 골프샵 재고 권한으로는 매출을 못 본다
   // 부서별 매출: 그 부서 매출만 · 부모 sales → 세 부서 · 부서 화면 권한(golf·pos)만으로는 못 본다
   assert.equal(C.areaAllowed({ role: 'staff', areas: ['sales_golf'], read_areas: [] }, ['sales_golf']), 'write');
   assert.equal(C.areaAllowed({ role: 'staff', areas: ['sales_golf'], read_areas: [] }, ['sales_fnb']), null);
