@@ -111,6 +111,19 @@
   .foot{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted)}
   .foot b{color:var(--text2)}
   .foot code{font-family:var(--mono);font-size:11px;background:var(--surface3);padding:1px 6px;border-radius:4px;color:var(--text2)}
+  /* 묶음 바로가기(Min 2026-11-26 「바로가기만 진행해」) — 보이는 묶음이 5개 이상일 때만. 넓은 화면 = 왼쪽 고정 목록, 그 밖 = 위쪽 고정 칩 줄 */
+  .gnav{position:sticky;top:51px;z-index:20;display:flex;gap:6px;overflow-x:auto;background:var(--bg);padding:9px 2px 8px;margin:0 -2px;border-bottom:1px solid var(--border);scrollbar-width:none}
+  .gnav::-webkit-scrollbar{display:none}
+  .gnav[hidden]{display:none}
+  .gnav a{flex:0 0 auto;font-size:12px;font-weight:700;color:var(--text2);text-decoration:none;background:var(--surface);border:1px solid var(--border2);border-radius:99px;padding:5px 12px;white-space:nowrap}
+  .gnav a.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .gnav rt{display:none}
+  .wrap .group{scroll-margin-top:var(--gnavOff,110px)}
+  /* 본문 왼쪽에 자리가 있으면(넓은 화면) 왼쪽 고정 목록 — 위치는 JS 가 본문 가장자리를 재서 정한다(공용 배율 때문에 CSS 계산이 어긋난다) */
+  .gnav.side{position:fixed;top:78px;width:176px;flex-direction:column;gap:2px;overflow:visible;background:transparent;border:0;padding:0;margin:0}
+  .gnav.side a{border:0;background:transparent;border-radius:7px;padding:6px 10px;white-space:normal;line-height:1.35}
+  .gnav.side a.on{background:var(--accentSoft);color:var(--accent)}
+  body.gnav-side .wrap .group{scroll-margin-top:70px}
 </style>
 <link rel="stylesheet" href="assets/saizen-ops.css?v=43.1">
 </head>
@@ -687,6 +700,7 @@
       var np=document.getElementById('noperm-notice');
       if(np) np.style.display = seen ? 'none' : 'block';
       markCardBadges();   // 업데이트 N 뱃지(보이는 카드에)
+      buildGroupNav();    // 묶음 바로가기(보이는 묶음 기준)
     });
   }
   // ── 확인 필요(후속 조치) 미완료 건수 → 프론트데스크 딥링크 ──
@@ -704,8 +718,50 @@
   // 언어를 바꿔도 **JS 로 만든 띠**는 그대로 남는다(data-i18n 이 아니라 innerHTML 이라).
   //   → 각 띠가 '다시 그리는 함수'를 여기에 등록해 두고, 언어 전환 때 데이터 재조회 없이 다시 그린다.
   var __redraw={};
+  // ── 묶음 바로가기 — 보이는 묶음(권한으로 남은 것)만, 5개 이상일 때만. 이름은 묶음 제목(첫 span)의 글자 그대로(후리가나 rt 는 칩에서 숨긴다) ──
+  function buildGroupNav(){
+    var wrap=document.querySelector('.wrap'); if(!wrap) return;
+    var nav=document.getElementById('gnav');
+    var groups=[].filter.call(document.querySelectorAll('.wrap .group'),function(g){ return g.style.display!=='none' && g.querySelector('h3'); });
+    if(!nav){ nav=document.createElement('nav'); nav.id='gnav'; nav.className='gnav'; nav.setAttribute('aria-label','sections'); var first=wrap.querySelector('.group'); if(!first) return; wrap.insertBefore(nav,first); }
+    if(groups.length<5){ nav.hidden=true; nav.innerHTML=''; return; }
+    nav.hidden=false; nav.innerHTML='';
+    groups.forEach(function(g,i){
+      if(!g.id) g.id='grp-'+i;
+      var h=g.querySelector('h3'), src=h.querySelector('span')||h, lab=src.cloneNode(true);
+      [].forEach.call(lab.querySelectorAll('rt,rp'),function(x){ x.remove(); });
+      var a=document.createElement('a'); a.href='#'+g.id; a.textContent=(lab.textContent||'').trim(); a.dataset.g=g.id;
+      a.addEventListener('click',function(e){ e.preventDefault(); g.scrollIntoView({behavior:'smooth',block:'start'}); });
+      nav.appendChild(a);
+    });
+    layoutGroupNav(); markGroupNav();
+  }
+  function layoutGroupNav(){
+    var nav=document.getElementById('gnav'); if(!nav||nav.hidden){ document.body.classList.remove('gnav-side'); return; }
+    var g=document.querySelector('.wrap .group:not([style*="none"])')||document.querySelector('.wrap .group'); if(!g) return;
+    nav.classList.add('side'); nav.style.left='0px';
+    var r=nav.getBoundingClientRect(), z=(nav.offsetWidth?r.width/nav.offsetWidth:1)||1, room=g.getBoundingClientRect().left;
+    if(room >= r.width+28){ nav.style.left=((room-r.width-20)/z)+'px'; document.body.classList.add('gnav-side'); }
+    else {   // 칩 줄 — 위쪽 바(휴대폰에서는 두 줄)의 실제 높이 바로 아래에 붙인다
+      nav.classList.remove('side'); nav.style.left=''; document.body.classList.remove('gnav-side');
+      var tb=document.querySelector('.topbar'), h=tb?tb.offsetHeight:51; nav.style.top=h+'px';
+      document.documentElement.style.setProperty('--gnavOff',(h+nav.offsetHeight+8)+'px');
+    }
+  }
+  var __gnavR=0; window.addEventListener('resize',function(){ clearTimeout(__gnavR); __gnavR=setTimeout(function(){ layoutGroupNav(); markGroupNav(); },120); });
+  // 지금 보이는 묶음에 표시(스크롤 위치 기준) — 칩 줄은 표시된 칩이 보이게 옆으로 맞춘다
+  function markGroupNav(){
+    var nav=document.getElementById('gnav'); if(!nav||nav.hidden) return;
+    var cur=null, y=window.innerHeight*0.3;
+    [].forEach.call(nav.querySelectorAll('a'),function(a){ var g=document.getElementById(a.dataset.g); if(g && g.getBoundingClientRect().top<=y) cur=a; });
+    if(!cur) cur=nav.querySelector('a');
+    [].forEach.call(nav.querySelectorAll('a'),function(a){ a.classList.toggle('on',a===cur); });
+    if(cur && nav.scrollWidth>nav.clientWidth){ var l=cur.offsetLeft-nav.clientWidth/2+cur.offsetWidth/2; nav.scrollLeft=Math.max(0,l); }
+  }
+  var __gnavT=0; window.addEventListener('scroll',function(){ if(__gnavT) return; __gnavT=setTimeout(function(){ __gnavT=0; markGroupNav(); },80); },{passive:true});
   window.onSaizenLangChange=function(){
     Object.keys(__redraw).forEach(function(k){ try{ __redraw[k](); }catch(e){} });
+    try{ buildGroupNav(); }catch(e){}   // 바로가기 이름도 새 언어로
   };
 
   // ── 등록된 데이터 현황 — 월 목록은 실제 데이터(bookings.session_ym) 기준,
