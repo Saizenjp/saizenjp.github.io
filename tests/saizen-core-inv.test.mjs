@@ -67,3 +67,21 @@ test('invScanFind — 낱개 바코드 = 1, 박스 바코드 = 입수만큼, 없
   assert.equal(C.invScanFind(items, '000'), null);
   assert.equal(C.invScanFind(items, ''), null);
 });
+
+test('invImportCheck — 검수 반영: 같은 이름·다른 바코드는 새 품목 · 박스 입수 0 · 너무 큰 수 · 낱개/박스가 다른 품목 · 영어 「Initial stock」 · 숫자 셀 바코드 정밀도', () => {
+  const items = [{ id: 'a', name_ko: 'コーラ', barcode: '111', case_barcode: null }, { id: 'b', name_ko: 'ティー', barcode: null }, { id: 'c', name_ko: '水', barcode: '222' }];
+  const c = C.invImportCheck(items, [
+    { line: 2, name: 'コーラ', barcode: '333' },                  // 같은 이름이지만 바코드가 다르고 기존 품목엔 바코드가 있다 → 새 품목
+    { line: 3, name: 'ティー', barcode: '444' },                  // 기존 품목에 바코드가 없다 → 그 품목에 바코드를 붙인다(갱신)
+    { line: 4, name: '箱0', case_barcode: '555', case_qty: '0' },
+    { line: 5, name: '大', qty: C.invNumText('4901234567894') },  // JAN 을 재고 칸에 잘못 넣음 → 범위 밖
+    { line: 6, name: '混線', barcode: '111', case_barcode: '222', case_qty: '6' },
+    { line: 7, name: 'コーラ', barcode: '666' },                  // 파일 안 같은 이름이라도 바코드가 다르면 겹침 아님
+    { line: 8, name: '桁', barcode: null }]);                     // 숫자 셀 바코드가 정밀도를 잃음
+  assert.deepEqual(c.errors.map(e => [e.line, e.code]), [[4, 'caseQty'], [5, 'badNum'], [6, 'codeConflict'], [8, 'badCode']]);
+  assert.equal(c.add, 2); assert.equal(c.update, 1);
+  assert.deepEqual(C.invImportRows([['Item', 'Initial stock']]).map, { name: 0, qty: 1 });
+  const r = C.invImportRows([['品名', 'JAN'], ['A', 12345678901234567890]]);
+  assert.equal(r.rows[0].barcode, null);
+  assert.equal(C.invImportRows([['品名', 'JAN'], ['A', 4901234567894]]).rows[0].barcode, '4901234567894');
+});

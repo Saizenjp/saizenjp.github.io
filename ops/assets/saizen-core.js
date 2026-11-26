@@ -933,10 +933,10 @@
   //  숫자 칸 = 0 이상 숫자 문자열('1,200'→'1200', '１２'→'12') · 빈칸 '' · 숫자가 아니면 null(그 줄 오류)
   function invNumText(v) {
     if (v == null) return '';
-    if (typeof v === 'number') return isFinite(v) && v >= 0 ? String(v) : null;
+    if (typeof v === 'number') return isFinite(v) && v >= 0 && v < 1e9 ? String(v) : null;
     var s = _half(v).replace(/[,\s]/g, '');
     if (s === '') return '';
-    return /^[0-9]+(\.[0-9]+)?$/.test(s) ? s : null;
+    return (/^[0-9]+(\.[0-9]+)?$/.test(s) && Number(s) < 1e9) ? s : null;   // 서버 inv_import 와 같은 범위(0 이상 10억 미만)
   }
   //  머리글 → 칸(일·한·영). 정규화 = 반각·소문자·공백/괄호 앞뒤 공백 제거
   var INV_HDR = {
@@ -951,7 +951,7 @@
     barcode:      ['jan', 'janコード', 'バーコード', 'jan(バラ)', 'バーコード(バラ)', '바코드', '바코드(낱개)', '낱개바코드', 'barcode', 'barcode(piece)'],
     case_barcode: ['jan(箱)', '箱jan', '箱バーコード', 'ケースjan', 'バーコード(箱)', '바코드(박스)', '박스바코드', 'casebarcode', 'barcode(case)'],
     case_qty:     ['箱入数', '入数', 'ケース入数', '박스입수', '입수', 'caseqty'],
-    qty:          ['初期在庫', '在庫', '在庫数', '現在庫', '재고', '현재고', '초기재고', 'qty', 'stock']
+    qty:          ['初期在庫', '在庫', '在庫数', '現在庫', '재고', '현재고', '초기재고', 'qty', 'stock', 'initialstock']
   };
   function _hnorm(h) { return _half(h == null ? '' : h).toLowerCase().replace(/\s+/g, ''); }
   var INV_HDR_IDX = {}; Object.keys(INV_HDR).forEach(function (k) { INV_HDR[k].forEach(function (a) { INV_HDR_IDX[_hnorm(a)] = k; }); });
@@ -977,7 +977,7 @@
           var v = line[map[k]];
           if (v == null || String(v).trim() === '') return;
           any = true;
-          if (k === 'barcode' || k === 'case_barcode') o[k] = invCodeNorm(v);
+          if (k === 'barcode' || k === 'case_barcode') o[k] = (typeof v === 'number' && !Number.isSafeInteger(v)) ? null : invCodeNorm(v);   // 숫자 셀이 자릿수를 잃었다 → 오류(badCode)
           else if (k === 'par' || k === 'cost' || k === 'case_qty' || k === 'qty') o[k] = invNumText(v);
           else o[k] = String(v).trim();
         });
@@ -987,26 +987,27 @@
     return { headerRow: hr, map: map, unknown: unknown, rows: out };
   }
   //  미리보기 판정(서버 inv_import 와 같은 규칙) — items = 그 부서 품목. 결과 = { add, update, errors:[{line, code}], ok:[보낼 줄] }
-  //    code: noName(새 품목인데 이름 없음) · badNum(숫자 칸이 숫자 아님) · caseQty(박스 바코드에 입수 없음) · dupInFile(파일 안 같은 바코드/바코드 없는 같은 이름) · dupName(같은 이름 품목이 여럿)
+  //    code: noName(새 품목인데 이름 없음) · badNum(숫자 칸이 숫자 아님·범위 밖) · badCode(숫자 셀 바코드가 자릿수를 잃음) · caseQty(박스 바코드에 입수 없음·0)
+  //          · codeConflict(낱개·박스 바코드가 서로 다른 품목) · dupInFile(파일 안 같은 바코드/바코드 없는 같은 이름) · dupName(같은 이름 품목이 여럿)
+  //    이름으로 찾기: 줄에 바코드가 있으면 **바코드가 없는 품목만**(같은 이름의 다른 상품을 덮어쓰지 않게 — 서버와 같다)
   function invImportCheck(items, rows) {
     items = items || []; var add = 0, upd = 0, errors = [], ok = [], seenCode = {}, seenName = {};
-    var byCode = {}, byName = {};
-    items.forEach(function (it) {
-      [it.barcode, it.case_barcode].forEach(function (b) { b = invCodeNorm(b); if (b) byCode[b] = it; });
-      var n = String(it.name_ko || '').trim(); if (n) byName[n] = (byName[n] || 0) + 1;
-    });
+    var byCode = {};
+    items.forEach(function (it) { [it.barcode, it.case_barcode].forEach(function (b) { b = invCodeNorm(b); if (b) byCode[b] = it; }); });
     (rows || []).forEach(function (r) {
       var err = '';
       var name = String(r.name || '').trim(), bc = r.barcode || '', cbc = r.case_barcode || '';
       if (r.par === null || r.cost === null || r.qty === null || r.case_qty === null) err = 'badNum';
-      else if (cbc && !r.case_qty) err = 'caseQty';
+      else if (r.barcode === null || r.case_barcode === null) err = 'badCode';
+      else if (cbc && !(Number(r.case_qty) > 0)) err = 'caseQty';
+      else if (bc && cbc && byCode[bc] && byCode[cbc] && byCode[bc] !== byCode[cbc]) err = 'codeConflict';
       else if ((bc && seenCode[bc]) || (cbc && seenCode[cbc]) || (!bc && !cbc && name && seenName[name])) err = 'dupInFile';
       var hit = null;
       if (!err) {
         hit = (bc && byCode[bc]) || (cbc && byCode[cbc]) || null;
         if (!hit && name) {
-          if (byName[name] > 1) err = 'dupName';
-          else if (byName[name] === 1) hit = items.filter(function (it) { return String(it.name_ko || '').trim() === name; })[0];
+          var same = items.filter(function (it) { return String(it.name_ko || '').trim() === name && ((!bc && !cbc) || (!invCodeNorm(it.barcode) && !invCodeNorm(it.case_barcode))); });
+          if (same.length > 1) err = 'dupName'; else if (same.length === 1) hit = same[0];
         }
         if (!err && !hit && !name) err = 'noName';
       }

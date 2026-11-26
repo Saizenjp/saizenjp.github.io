@@ -54,6 +54,14 @@ language sql immutable set search_path = public as $$
 $$;
 revoke all on function public.inv_code_norm(text) from public, anon;
 grant execute on function public.inv_code_norm(text) to authenticated;
+--  이름 비교 = 앞뒤 공백(전각 공백·줄바꿈 포함) 제거 — 화면 미리보기(JS trim)와 같은 판정
+create or replace function public.inv_name_norm(p text) returns text
+language sql immutable set search_path = public as $$
+  select nullif(regexp_replace(coalesce(p, ''), '^[[:space:]　]+|[[:space:]　]+$', '', 'g'), '');
+$$;
+revoke all on function public.inv_name_norm(text) from public, anon;
+grant execute on function public.inv_name_norm(text) to authenticated;
+create index if not exists inv_items_dept_name_idx on public.inv_items(dept, public.inv_name_norm(name_ko));
 
 create or replace function public.inv_items_code_guard() returns trigger
 language plpgsql set search_path = public as $$
@@ -79,7 +87,8 @@ create trigger inv_items_code_guard before insert or update of barcode, case_bar
   for each row execute function public.inv_items_code_guard();
 
 -- ── ② 엑셀 일괄 등록 ──────────────────────────────────────────────────────────
---  p_rows = [{name, name_ja, category, unit, location, par, cost, supplier, barcode, case_barcode, case_qty, qty}] — 빈 칸은 없는 것으로 본다
+--  p_rows = [{name, name_ja, category, unit, location, par, cost, supplier, barcode, case_barcode, case_qty, qty, unit_default}] — 빈 칸은 없는 것으로 본다
+--    unit_default = 화면 언어의 기본 단위 — **새 품목에만** 쓴다(기존 품목의 단위는 파일에 적힌 때만 바뀐다)
 --  반환 = {inserted, updated, unchanged, suppliers_added, errors:[{row(1부터), msg}]}
 create or replace function public.inv_import(p_dept text, p_rows jsonb, p_by text default null)
 returns jsonb
@@ -89,7 +98,7 @@ declare
   v_err jsonb := '[]'::jsonb;
   v_name text; v_bc text; v_cbc text; v_cq numeric; v_par numeric; v_cost numeric; v_qty numeric; v_sname text;
   v_id uuid; v_sup uuid; v_n int; v_by text; v_claims jsonb; v_cur inv_items%rowtype; v_new inv_items%rowtype;
-  v_seen_codes text[] := '{}'; v_seen_names text[] := '{}';
+  v_seen_codes text[] := '{}'; v_seen_names text[] := '{}'; v_row_sup boolean;
   num_re constant text := '^-?[0-9]+(\.[0-9]+)?$';
 begin
   if p_dept is null or not exists (select 1 from area_tree t where t.child = 'inv_' || p_dept) then
@@ -108,9 +117,9 @@ begin
   v_by := left(coalesce(nullif(btrim(p_by), ''), nullif(v_claims -> 'user_metadata' ->> 'name', ''), nullif(v_claims ->> 'email', ''), 'import'), 100);
 
   for r in select value from jsonb_array_elements(p_rows) loop
-    i := i + 1;
+    i := i + 1; v_row_sup := false;
     begin
-      v_name := nullif(left(btrim(coalesce(r ->> 'name', '')), 200), '');
+      v_name := left(inv_name_norm(r ->> 'name'), 200);
       v_bc   := inv_code_norm(r ->> 'barcode');
       v_cbc  := inv_code_norm(r ->> 'case_barcode');
       -- 숫자 칸: 비었으면 null, 숫자가 아니면 그 줄 오류
@@ -126,6 +135,12 @@ begin
       if (v_par is not null and (v_par < 0 or v_par >= 1e9)) or (v_cost is not null and (v_cost < 0 or v_cost >= 1e9))
          or (v_qty is not null and (v_qty < 0 or v_qty >= 1e9)) then raise exception '숫자 범위 밖(0 이상)'; end if;
       if v_cbc is not null and v_cq is null then raise exception '박스 바코드에는 박스 입수가 필요하다'; end if;
+      if v_bc is not null and v_cbc is not null then
+        if exists (select 1 from inv_items a, inv_items b where a.dept = p_dept and b.dept = p_dept and a.id <> b.id
+                     and (a.barcode = v_bc or a.case_barcode = v_bc) and (b.barcode = v_cbc or b.case_barcode = v_cbc)) then
+          raise exception '낱개·박스 바코드가 서로 다른 품목에 걸려 있다';
+        end if;
+      end if;
       -- 같은 파일 안에서 겹침 — 뒤 줄이 앞 줄의 품목을 조용히 덮어쓰지 않게(바코드, 바코드 없는 줄은 이름)
       if (v_bc is not null and v_bc = any(v_seen_codes)) or (v_cbc is not null and v_cbc = any(v_seen_codes)) then
         raise exception '파일 안에 같은 바코드가 두 번(%)', coalesce(v_bc, v_cbc);
@@ -140,7 +155,7 @@ begin
         select s.id into v_sup from inv_suppliers s where s.dept = p_dept and btrim(s.name) = v_sname order by s.active desc limit 1;
         if v_sup is null then
           insert into inv_suppliers(dept, name) values (p_dept, v_sname) returning id into v_sup;
-          v_sup_new := v_sup_new + 1;
+          v_row_sup := true;
         end if;
       end if;
 
@@ -150,8 +165,11 @@ begin
         select it.id into v_id from inv_items it
          where it.dept = p_dept and (it.barcode in (v_bc, v_cbc) or it.case_barcode in (v_bc, v_cbc)) limit 1;
       end if;
+      --  이름으로 찾기: 줄에 바코드가 있으면 바코드가 없는 품목만(같은 이름의 다른 상품 — 사이즈·맛 — 을 덮어쓰지 않게)
       if v_id is null and v_name is not null then
-        select count(*), min(it.id::text)::uuid into v_n, v_id from inv_items it where it.dept = p_dept and btrim(it.name_ko) = v_name;
+        select count(*), min(it.id::text)::uuid into v_n, v_id from inv_items it
+         where it.dept = p_dept and inv_name_norm(it.name_ko) = v_name
+           and ((v_bc is null and v_cbc is null) or (it.barcode is null and it.case_barcode is null));
         if v_n > 1 then raise exception '같은 이름의 품목이 %개 — 바코드로 구분하세요', v_n; end if;
       end if;
 
@@ -159,7 +177,7 @@ begin
         if v_name is null then raise exception '품목명이 없다'; end if;
         insert into inv_items(dept, category, name_ko, name_ja, unit, location, par_level, current_qty, unit_cost, supplier_id, barcode, case_barcode, case_qty)
         values (p_dept, coalesce(nullif(btrim(r ->> 'category'), ''), '기타'), v_name, nullif(btrim(coalesce(r ->> 'name_ja', '')), ''),
-                coalesce(nullif(btrim(r ->> 'unit'), ''), '個'), nullif(btrim(coalesce(r ->> 'location', '')), ''),
+                coalesce(nullif(btrim(r ->> 'unit'), ''), nullif(btrim(r ->> 'unit_default'), ''), '個'), nullif(btrim(coalesce(r ->> 'location', '')), ''),
                 coalesce(v_par, 0), coalesce(v_qty, 0), v_cost, v_sup, v_bc, v_cbc, v_cq)
         returning id into v_id;
         if coalesce(v_qty, 0) > 0 then
@@ -195,7 +213,8 @@ begin
       v_err := v_err || jsonb_build_object('row', i, 'msg', left(sqlerrm, 200));
       continue;
     end;
-    -- 이 줄이 성공했을 때만 「본 것」에 넣는다(오류 줄의 바코드는 다음 줄을 막지 않는다)
+    -- 이 줄이 성공했을 때만 센다·「본 것」에 넣는다(오류 줄은 롤백되므로 그 거래처·바코드는 없는 것으로)
+    if v_row_sup then v_sup_new := v_sup_new + 1; end if;
     if v_bc  is not null then v_seen_codes := v_seen_codes || v_bc;  end if;
     if v_cbc is not null then v_seen_codes := v_seen_codes || v_cbc; end if;
     if v_bc is null and v_cbc is null and v_name is not null then v_seen_names := v_seen_names || v_name; end if;
@@ -236,6 +255,9 @@ begin
       v_cnt  := round((r ->> 'counted')::numeric, 2);
       if v_item is null or v_exp is null or v_cnt is null then raise exception '품목·읽은 값·센 값이 필요하다'; end if;
       if v_cnt < 0 or v_cnt >= 1e9 then raise exception '센 값은 0 이상'; end if;
+      select i.dept into v_dept from inv_items i where i.id = v_item;   -- 부서를 먼저 본다(다른 부서 품목은 잠그지 않는다)
+      if not found then raise exception '품목이 없다(이미 지워졌을 수 있다)'; end if;
+      if v_dept is distinct from p_dept then raise exception '다른 부서 품목'; end if;
       select i.current_qty, i.dept into v_cur, v_dept from inv_items i where i.id = v_item for update;
       if not found then raise exception '품목이 없다(이미 지워졌을 수 있다)'; end if;
       if v_dept is distinct from p_dept then raise exception '다른 부서 품목'; end if;
