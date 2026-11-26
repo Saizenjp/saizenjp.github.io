@@ -922,6 +922,112 @@
       guideDays: gdays, persons: persons, pax: pax, total: pp.twin * tw * 2 + pp.single * sg + pp.triple * tr * 3, roomsMatch: !pax || persons === pax };
   }
 
+  // ── 재고 1단계(SQL 196, Min 2026-11-26 「재고 관리를 모두 수기 입력 할 순 없으니까」) ───────────
+  //  바코드 정규화 = 공백 제거·전각→반각·대문자(서버 inv_code_norm 과 같다). 엑셀 숫자 셀(4901234567894)도 문자열로.
+  function _half(s) { return String(s).replace(/[！-～]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); }).replace(/　/g, ' '); }
+  function invCodeNorm(v) {
+    if (v == null) return '';
+    if (typeof v === 'number') return isFinite(v) ? String(Math.round(v)) : '';
+    return _half(v).replace(/\s+/g, '').toUpperCase();
+  }
+  //  숫자 칸 = 0 이상 숫자 문자열('1,200'→'1200', '１２'→'12') · 빈칸 '' · 숫자가 아니면 null(그 줄 오류)
+  function invNumText(v) {
+    if (v == null) return '';
+    if (typeof v === 'number') return isFinite(v) && v >= 0 ? String(v) : null;
+    var s = _half(v).replace(/[,\s]/g, '');
+    if (s === '') return '';
+    return /^[0-9]+(\.[0-9]+)?$/.test(s) ? s : null;
+  }
+  //  머리글 → 칸(일·한·영). 정규화 = 반각·소문자·공백/괄호 앞뒤 공백 제거
+  var INV_HDR = {
+    name:         ['品名', '品目名', '品目', '商品名', '품목명', '품목', '상품명', 'name', 'item', 'itemname'],
+    name_ja:      ['日本語名', '일본어명', '일본어 이름', 'nameja', 'japanesename'],
+    category:     ['区分', '分類', 'カテゴリ', 'カテゴリー', '구분', '분류', 'category'],
+    unit:         ['単位', '단위', 'unit'],
+    location:     ['保管場所', '場所', '보관위치', '위치', 'location'],
+    par:          ['適正在庫', '適正', '적정재고', '적정', 'par', 'parlevel'],
+    cost:         ['単価', '仕入単価', '原価', '단가', 'cost', 'unitcost'],
+    supplier:     ['仕入先', '取引先', '거래처', 'supplier'],
+    barcode:      ['jan', 'janコード', 'バーコード', 'jan(バラ)', 'バーコード(バラ)', '바코드', '바코드(낱개)', '낱개바코드', 'barcode', 'barcode(piece)'],
+    case_barcode: ['jan(箱)', '箱jan', '箱バーコード', 'ケースjan', 'バーコード(箱)', '바코드(박스)', '박스바코드', 'casebarcode', 'barcode(case)'],
+    case_qty:     ['箱入数', '入数', 'ケース入数', '박스입수', '입수', 'caseqty'],
+    qty:          ['初期在庫', '在庫', '在庫数', '現在庫', '재고', '현재고', '초기재고', 'qty', 'stock']
+  };
+  function _hnorm(h) { return _half(h == null ? '' : h).toLowerCase().replace(/\s+/g, ''); }
+  var INV_HDR_IDX = {}; Object.keys(INV_HDR).forEach(function (k) { INV_HDR[k].forEach(function (a) { INV_HDR_IDX[_hnorm(a)] = k; }); });
+  //  aoa = 시트의 줄 배열(SheetJS sheet_to_json header:1) → { headerRow(0부터, 못 찾으면 -1), map:{칸:열}, unknown:[모르는 머리글], rows:[{line(엑셀 줄 번호), …}] }
+  //  머리글 줄 = 위에서 10줄 안에 품목명 머리글이 있는 첫 줄. 숫자 칸은 invNumText(숫자가 아니면 null) · 바코드는 invCodeNorm.
+  function invImportRows(aoa) {
+    aoa = Array.isArray(aoa) ? aoa : [];
+    var hr = -1, map = {}, unknown = [];
+    for (var r = 0; r < Math.min(aoa.length, 10) && hr < 0; r++) {
+      var row = aoa[r] || [], m = {}, u = [];
+      for (var c = 0; c < row.length; c++) {
+        var raw = row[c]; if (raw == null || String(raw).trim() === '') continue;
+        var k = INV_HDR_IDX[_hnorm(raw)];
+        if (k && m[k] == null) m[k] = c; else u.push(String(raw).trim());
+      }
+      if (m.name != null) { hr = r; map = m; unknown = u; }
+    }
+    var out = [];
+    if (hr >= 0) {
+      for (var i = hr + 1; i < aoa.length; i++) {
+        var line = aoa[i] || [], o = { line: i + 1 }, any = false;
+        Object.keys(map).forEach(function (k) {
+          var v = line[map[k]];
+          if (v == null || String(v).trim() === '') return;
+          any = true;
+          if (k === 'barcode' || k === 'case_barcode') o[k] = invCodeNorm(v);
+          else if (k === 'par' || k === 'cost' || k === 'case_qty' || k === 'qty') o[k] = invNumText(v);
+          else o[k] = String(v).trim();
+        });
+        if (any) out.push(o);
+      }
+    }
+    return { headerRow: hr, map: map, unknown: unknown, rows: out };
+  }
+  //  미리보기 판정(서버 inv_import 와 같은 규칙) — items = 그 부서 품목. 결과 = { add, update, errors:[{line, code}], ok:[보낼 줄] }
+  //    code: noName(새 품목인데 이름 없음) · badNum(숫자 칸이 숫자 아님) · caseQty(박스 바코드에 입수 없음) · dupInFile(파일 안 같은 바코드/바코드 없는 같은 이름) · dupName(같은 이름 품목이 여럿)
+  function invImportCheck(items, rows) {
+    items = items || []; var add = 0, upd = 0, errors = [], ok = [], seenCode = {}, seenName = {};
+    var byCode = {}, byName = {};
+    items.forEach(function (it) {
+      [it.barcode, it.case_barcode].forEach(function (b) { b = invCodeNorm(b); if (b) byCode[b] = it; });
+      var n = String(it.name_ko || '').trim(); if (n) byName[n] = (byName[n] || 0) + 1;
+    });
+    (rows || []).forEach(function (r) {
+      var err = '';
+      var name = String(r.name || '').trim(), bc = r.barcode || '', cbc = r.case_barcode || '';
+      if (r.par === null || r.cost === null || r.qty === null || r.case_qty === null) err = 'badNum';
+      else if (cbc && !r.case_qty) err = 'caseQty';
+      else if ((bc && seenCode[bc]) || (cbc && seenCode[cbc]) || (!bc && !cbc && name && seenName[name])) err = 'dupInFile';
+      var hit = null;
+      if (!err) {
+        hit = (bc && byCode[bc]) || (cbc && byCode[cbc]) || null;
+        if (!hit && name) {
+          if (byName[name] > 1) err = 'dupName';
+          else if (byName[name] === 1) hit = items.filter(function (it) { return String(it.name_ko || '').trim() === name; })[0];
+        }
+        if (!err && !hit && !name) err = 'noName';
+      }
+      if (err) { errors.push({ line: r.line, code: err }); return; }
+      if (bc) seenCode[bc] = 1; if (cbc) seenCode[cbc] = 1; if (!bc && !cbc && name) seenName[name] = 1;
+      if (hit) upd++; else add++;
+      ok.push(r);
+    });
+    return { add: add, update: upd, errors: errors, ok: ok };
+  }
+  //  스캔한 코드 → { item, mult(낱개 1 · 박스 = 입수), isCase } · 없으면 null
+  function invScanFind(items, code) {
+    var c = invCodeNorm(code); if (!c) return null;
+    for (var i = 0; i < (items || []).length; i++) {
+      var it = items[i];
+      if (invCodeNorm(it.barcode) === c) return { item: it, mult: 1, isCase: false };
+      if (invCodeNorm(it.case_barcode) === c) return { item: it, mult: Number(it.case_qty) > 0 ? Number(it.case_qty) : 1, isCase: true };
+    }
+    return null;
+  }
+
   // ── 비회원 F풀 코드 재사용 충돌 판정(30일 쿨다운) ──────────────────────────
   //  두 팀 체류가 gapDays(기본 30) 이내면 '충돌'(같은 F코드 금지). 30일+ 지나면 재사용 허용.
   //  이유=① 턴오버 당일(퇴실=입실) 현장 동시존재 ② 한 달 내 같은 코드 재등장 → 네임택·식사 혼동.
@@ -2356,7 +2462,7 @@
     partnerSegment: partnerSegment,
     partnerAgency: partnerAgency,
     lgcNo: lgcNo,
-    partnerNightType: partnerNightType, partnerGolfType: partnerGolfType, partnerDayType: partnerDayType, partnerGolfDay: partnerGolfDay, partnerQuote: partnerQuote,
+    partnerNightType: partnerNightType, partnerGolfType: partnerGolfType, partnerDayType: partnerDayType, partnerGolfDay: partnerGolfDay, invCodeNorm: invCodeNorm, invNumText: invNumText, invImportRows: invImportRows, invImportCheck: invImportCheck, invScanFind: invScanFind, partnerQuote: partnerQuote,
     partnerRateRows: partnerRateRows, partnerRateCands: partnerRateCands, partnerPrice: partnerPrice,
     PARTNER_TRAVEL_MIN: PARTNER_TRAVEL_MIN, PARTNER_BUS_MIN: PARTNER_BUS_MIN, PARTNER_POINTS: PARTNER_POINTS,
     partnerAliasList: partnerAliasList, partnerFindNames: partnerFindNames, partnerRemarkPlan: partnerRemarkPlan,

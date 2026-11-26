@@ -96,12 +96,42 @@
   /* 페이지 설명서(접이식) */
   /* toast — 화면 하단 중앙 고정(흐름에 끼지 않게) */
   #toast{ position:fixed; bottom:60px; left:50%; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; gap:8px; align-items:center; max-width:90vw }
+  /* 재고 1단계(SQL 196): 바코드·일괄 등록·실사 */
+  .inv-tools{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:-4px 0 12px }
+  .scan-panel{ background:var(--surface); border:1px solid var(--border2); border-left:4px solid var(--accent); border-radius:11px; padding:10px 13px; margin-bottom:12px }
+  .scan-head{ display:flex; gap:10px; align-items:center; margin-bottom:8px } .scan-head b{ font-size:14px } .scan-head .grow{ flex:1 }
+  .scan-row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+  .seg{ display:inline-flex; border:1px solid var(--border2); border-radius:9px; overflow:hidden }
+  .seg button{ border:0; background:var(--surface); padding:7px 12px; font-weight:800; font-size:12.5px; color:var(--text2); cursor:pointer }
+  .seg button+button{ border-left:1px solid var(--border2) } .seg button.on{ background:var(--accent); color:#fff }
+  #scan-code{ flex:1; min-width:200px; font-family:var(--mono); font-size:15px }
+  .scan-new{ margin-top:9px; padding:9px 10px; border:1px dashed var(--warn); border-radius:9px; display:flex; gap:7px; flex-wrap:wrap; align-items:center; background:var(--surface2) }
+  .scan-new .code{ font-family:var(--mono); font-weight:800 }
+  .scan-new[hidden],.stk-box[hidden],.scan-panel[hidden]{ display:none }
+  .scan-log{ margin-top:8px; font-size:12.5px; max-height:180px; overflow:auto }
+  .scan-log div{ padding:3px 2px; border-bottom:1px dashed var(--border) } .scan-log .w{ color:var(--warn) } .scan-log .e{ color:var(--err) } .scan-log .o{ color:var(--ok) }
+  .stk-box{ margin-top:9px } .stk-box table{ width:100%; border-collapse:collapse; font-size:13px } .stk-box td,.stk-box th{ padding:5px 7px; border-bottom:1px solid var(--border); text-align:left }
+  .stk-box th{ font-size:11.5px; color:var(--text2) } .stk-box td.r,.stk-box th.r{ text-align:right } .stk-box input{ width:84px; text-align:right }
+  .stk-box tr.stale td{ background:var(--surface2) } .stk-box .stw{ color:var(--warn); font-weight:700; font-size:11.5px }
+  .stk-act{ display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap }
+  .bc{ display:block; font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:1px }
+  tr.hit td{ background:var(--accentSoft) }
+  .ov{ position:fixed; inset:0; background:rgba(15,20,30,.55); z-index:60; display:flex; align-items:center; justify-content:center; padding:16px }
+  .ov[hidden]{ display:none }
+  .ov-box{ background:var(--surface); border-radius:13px; padding:14px 16px; width:min(760px,100%); max-height:90vh; overflow:auto; box-shadow:0 12px 30px rgba(0,0,0,.3) }
+  .ov-box h3{ margin:0 0 8px; font-size:15px } .ov-box .acts{ display:flex; gap:8px; justify-content:flex-end; margin-top:12px }
+  .cam-box{ background:#000; border-radius:13px; padding:10px; width:min(560px,100%); text-align:center }
+  .cam-box video{ width:100%; max-height:62vh; border-radius:9px; background:#000 }
+  .cam-msg{ color:#fff; font-weight:700; font-size:13px; margin:8px 0; min-height:18px }
+  .imp-sum{ display:flex; gap:14px; flex-wrap:wrap; font-weight:800; margin:6px 0 10px } .imp-sum .e{ color:var(--err) }
+  .imp-err{ font-size:12.5px; color:var(--err); margin:4px 0 8px; max-height:140px; overflow:auto }
+  .imp-tbl{ width:100%; border-collapse:collapse; font-size:12px } .imp-tbl td,.imp-tbl th{ border-bottom:1px solid var(--border); padding:4px 6px; text-align:left; white-space:nowrap }
   .toast{ background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--accent); border-radius:9px; padding:10px 18px; font-size:13px; font-weight:600; color:var(--text); box-shadow:0 6px 18px rgba(0,0,0,.16); min-width:200px; text-align:center }
   .toast.err{ border-left-color:#b3473a; background:#fbeeeb; color:#8a2a1c }
   .toast.ok{ border-left-color:#3f7d4e; background:#e7efe1; color:#234d2f }
   .toast.warn{ border-left-color:#b8860b; background:#fbf3e2; color:#7a5a16 }
 </style>
-<link rel="stylesheet" href="../assets/saizen-ops.css?v=43.0">
+<link rel="stylesheet" href="../assets/saizen-ops.css?v=43.1">
 </head>
 <body data-so-area="inv_fnb inv_room inv_hk inv_golf inv_proshop inv_front inv_shizu settle">
 <!-- 페이지 가드 = 위 여섯 재고 영역(inv_*) 또는 정산(settle) 가운데 하나라도 있으면 통과(OR). 탭은 볼 수 있는 부서만(그 부서 inv_* 수정·보기 또는 정산·관리자 · Min 2026-11-25 「재고는 막고」), 쓰기 버튼은 그 부서 수정 권한이 있을 때만 보인다 — 아래 canWrite(). 이전에는 주소(?dept=)의 부서 키 하나로 좁혀 심어, 권한 없는 부서가 탭으로는 보이고 주소로는 막혔다(Min 2026-11-20). -->
@@ -138,6 +168,27 @@
   </div>
   <div class="inv-ro" id="inv-ro" style="display:none"></div>
 
+  <div class="inv-tools" id="inv-tools">
+    <button class="btn sm" id="btn-scan" type="button"></button>
+    <button class="btn sm ghost" id="btn-imp" type="button"></button>
+    <button class="btn sm ghost" id="btn-exp" type="button"></button>
+    <input type="file" id="imp-file" accept=".xlsx,.xls,.csv" hidden>
+  </div>
+  <!-- 바코드(SQL 196): 스캐너는 키보드처럼 코드+Enter 를 보낸다 → #scan-code 에 받는다. 카메라는 #cam-ov -->
+  <section class="scan-panel" id="scan-panel" hidden>
+    <div class="scan-head"><b id="t-scanh"></b><span class="hint grow" id="t-scanhint"></span><button class="btn sm ghost" id="scan-close" type="button">✕</button></div>
+    <div class="scan-row">
+      <div class="seg" id="scan-mode">
+        <button type="button" data-m="in" id="t-mIn"></button><button type="button" data-m="out" id="t-mOut"></button><button type="button" data-m="count" id="t-mCount"></button><button type="button" data-m="find" id="t-mFind"></button>
+      </div>
+      <label class="hint" for="scan-qty" id="t-scanqty"></label><input class="inp" id="scan-qty" type="text" inputmode="decimal" value="1" style="width:70px;text-align:right">
+      <input class="inp" id="scan-code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button class="btn sm" id="scan-cam" type="button"></button>
+    </div>
+    <div class="scan-new" id="scan-new" hidden></div>
+    <div class="stk-box" id="stk-box" hidden></div>
+    <div class="scan-log" id="scan-log"></div>
+  </section>
   <div class="catchips" id="catchips"></div>
 
   <div class="addrow">
@@ -183,16 +234,35 @@
 </div>
 
 <div id="toast"></div>
+<div class="ov" id="cam-ov" hidden><div class="cam-box"><video id="cam-video" playsinline muted autoplay></video><div class="cam-msg" id="cam-msg"></div><button class="btn sm" id="cam-close" type="button"></button></div></div>
+<div class="ov" id="imp-ov" hidden><div class="ov-box" id="imp-box"></div></div>
 
-<script src="../assets/saizen-core.js?v=80"></script>
-<script src="../assets/saizen-ops.js?v=43.0"></script>
+<script src="../assets/saizen-core.js?v=81"></script>
+<script src="../assets/saizen-ops.js?v=43.1"></script>
 <script>
 const $=s=>document.querySelector(s);
+const $$=s=>Array.from(document.querySelectorAll(s));
 let supa=null;
 
 // ── i18n (한·일 직원 공용. ja 기본) ──
 const L={
-  ja:{ step:'在庫・内部管理', connHint:'接続情報はこのブラウザにのみ保存されます。',
+  ja:{ bcScan:'バーコード', bcImp:'Excel一括登録', bcExp:'Excel書き出し', scanH:'バーコード', scanHint:'スキャナーで読む(またはコードを入力してEnter)・カメラも使えます',
+    mIn:'入庫', mOut:'使用', mCount:'棚卸', mFind:'検索', scanQty:'数量', scanPh:'ここでスキャン', scanCam:'カメラ', camClose:'閉じる',
+    camStart:'カメラを起動中…', camAim:'バーコードを枠の中に', camNo:'このブラウザではカメラが使えません(HTTPS・カメラの許可を確認)', camLib:'読み取り部品を読み込み中…', camLibFail:'読み取り部品を読み込めませんでした(ネット接続を確認)',
+    scanUnknown:'未登録のバーコード', scanNewH:'新しい品目として登録', scanNewName:'品目名', scanIsCase:'箱のバーコード(入数)', scanNewSave:'登録', scanNewCancel:'やめる',
+    scanNoWrite:'この部署の在庫を変更する権限がありません', scanFound:'見つかりました', scanBadQty:'数量は0より大きい数字で', scanCaseX:n=>`箱 ×${n}`,
+    stkH:'棚卸(数えた数)', stkEmpty:'スキャンするとここに数えた数が積み上がります(数字は直せます)', stkThItem:'品目', stkThBook:'帳簿', stkThCount:'数えた数', stkThDiff:'差',
+    stkApply:n=>`棚卸を反映(${n}品目)`, stkClear:'数えた数を消す', stkClearQ:'数えた数をすべて消しますか？', stkApplyQ:n=>`${n}品目の現在庫を数えた数に合わせます。よろしいですか？`,
+    stkStale:'数えている間に入出庫がありました — 帳簿を確認して、もう一度[反映]', stkDone:(a,u,s)=>`棚卸反映 ${a}品目 · 変化なし ${u}`+(s?` · 要確認 ${s}`:''), stkNotCounted:'数えていない品目は変えません',
+    impH:'Excel一括登録 — 確認', impFile:f=>`ファイル: ${f}`, impAdd:n=>`新規 ${n}`, impUpd:n=>`更新 ${n}`, impErr:n=>`エラー ${n}`, impUnknown:h=>`読まない列: ${h}`,
+    impNoHeader:'見出し行が見つかりません(「品名」列が必要です)。[Excel書き出し]の形式を使ってください', impGo:n=>`${n}行を登録`, impCancel:'やめる', impLine:n=>`${n}行目`,
+    impRule:'同じ品目 = バーコードが同じ → なければ同じ品名。既存品目は書いた欄だけ更新(空欄はそのまま)、現在庫は変えません(棚卸で)。仕入先名がなければ新しく作ります。',
+    impDone:r=>`登録 ${r.inserted} · 更新 ${r.updated} · 変化なし ${r.unchanged}`+(r.suppliers_added?` · 仕入先追加 ${r.suppliers_added}`:'')+(r.errors?` · エラー ${r.errors}`:''),
+    impBusy:(a,b)=>`登録中… ${a}/${b}`, impReadFail:'ファイルを読めませんでした: ', needSql196:'先にSQL 196(バーコード・一括登録)の適用が必要です',
+    eNoName:'品名がない(新規)', eBadNum:'数字の欄に数字以外', eCaseQty:'箱バーコードに入数がない', eDupInFile:'ファイル内で同じバーコード(または同じ品名)が2回', eDupName:'同じ名前の品目が複数 — バーコードで区別',
+    xH:['品名','区分','単位','保管場所','適正在庫','単価','仕入先','JAN(バラ)','JAN(箱)','箱入数','初期在庫','現在庫(参考)'], xNote:'初期在庫は新しい品目だけに使います(既存品目の在庫は棚卸で)。',
+    pEditBc:'バーコード(バラ) — 空欄=なし', pEditCbc:'箱のバーコード — 空欄=なし', pEditCq:'箱入数', dupCode:'このバーコードは同じ部署の別の品目に使われています',
+    step:'在庫・内部管理', connHint:'接続情報はこのブラウザにのみ保存されます。',
     connect:'接続', connecting:'接続中…', connectedBtn:'✓ 接続済', connFailBtn:'接続失敗・再試行',
     notConn:'未接続', connOk:'接続済', connFail:'接続失敗', needUrlKey:'URL・key必要', connectedToast:'Supabaseに接続しました',
     deptRoom:'客室', deptGolf:'ゴルフ/カート', deptFnb:'F&B', deptHk:'清掃/リネン', deptFront:'フロント/事務', deptShizu:'志津の宿', deptProshop:'ゴルフショップ', reload:'↻ 更新',
@@ -227,7 +297,23 @@ const L={
       +'<h4>現在庫・適正在庫・不足アラート</h4><ul><li><b>現在庫</b> = 今の保有数量。入庫・使用・棚卸でのみ変わります。</li><li><b>適正在庫</b> = 「これを下回ったら補充する」基準線。</li><li><b>不足判定</b>: <code>現在庫 ≤ 適正在庫</code> なら赤の<b>「不足」</b>バッジ(適正在庫を0にするとアラートなし)。現在庫0なら灰色の<b>「なし」</b>。</li><li>上部要約の<b>⚠ 不足 N</b> = その部署で不足している品目数。</li></ul>'
       +'<h4>入庫 / 使用 / 棚卸 — 計算方法</h4><ul><li><b>＋入庫</b>: 入力した数量だけ現在庫を<b>足します</b> (<code>現在庫 + N</code>)。</li><li><b>－使用</b>: 入力した数量だけ<b>引きます</b> (<code>現在庫 − N</code>)。</li><li><b>棚卸</b>: 実際に数えた数量を入力するとその値に<b>合わせます</b>。差分(=実際−既存)は<code>棚卸調整</code>として自動記録。</li><li>すべての変動は<b>最近の入出庫履歴</b>に<b>誰が・いつ・±数量・理由</b>で残ります(振り返り・監査用)。</li></ul>'
       +'<h4>💰 単価・仕入先(仕入管理 第1段階)</h4><b>品目に単価と仕入先</b>を持たせ、<b>入庫のたびに単価を記録</b>します(空欄なら数量のみ)。これで<b>在庫金額</b>(単価×現在庫)と<b>今月の仕入金額</b>(仕入先別・品目別)が出ます。単価が変わったら最新値が品目の基準単価になり、次回入庫の初期値になります。<b>使用・棚卸には金額を付けません</b>(仕入=入庫のみ)。仕入先は下の<b>🏷 仕入先</b>で追加・休止。<h4>権限・データ</h4>閲覧はログイン全員、<b>書き込み(追加・入出庫・修正)は厨房(F&amp;B)・客室エリア担当者</b>のみ可能です。保存先 — 品目=<code>inv_items</code>(現在庫)、変動記録=<code>inv_txns</code>(元帳)。※POS販売時の自動差引は次段階予定(現在は手動入出庫)。' },
-  ko:{ step:'재고 · 내부 관리', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
+  ko:{ bcScan:'바코드', bcImp:'엑셀 일괄 등록', bcExp:'엑셀 내려받기', scanH:'바코드', scanHint:'스캐너로 찍기(또는 코드를 넣고 Enter) · 카메라도 됩니다',
+    mIn:'입고', mOut:'사용', mCount:'실사', mFind:'찾기', scanQty:'수량', scanPh:'여기서 스캔', scanCam:'카메라', camClose:'닫기',
+    camStart:'카메라 켜는 중…', camAim:'바코드를 화면 가운데에', camNo:'이 브라우저에서는 카메라를 쓸 수 없습니다(HTTPS·카메라 허용 확인)', camLib:'읽기 부품 불러오는 중…', camLibFail:'읽기 부품을 불러오지 못했습니다(인터넷 연결 확인)',
+    scanUnknown:'등록되지 않은 바코드', scanNewH:'새 품목으로 등록', scanNewName:'품목명', scanIsCase:'박스 바코드(입수)', scanNewSave:'등록', scanNewCancel:'취소',
+    scanNoWrite:'이 부서 재고를 고칠 권한이 없습니다', scanFound:'찾았습니다', scanBadQty:'수량은 0보다 큰 숫자로', scanCaseX:n=>`박스 ×${n}`,
+    stkH:'실사(센 수량)', stkEmpty:'찍으면 여기에 센 수량이 쌓입니다(숫자는 고칠 수 있습니다)', stkThItem:'품목', stkThBook:'장부', stkThCount:'센 수량', stkThDiff:'차이',
+    stkApply:n=>`실사 반영(${n}품목)`, stkClear:'센 수량 지우기', stkClearQ:'센 수량을 모두 지울까요?', stkApplyQ:n=>`${n}품목의 현재고를 센 수량으로 맞춥니다. 진행할까요?`,
+    stkStale:'세는 동안 입출고가 있었습니다 — 장부를 확인하고 다시 [반영]', stkDone:(a,u,s)=>`실사 반영 ${a}품목 · 변화 없음 ${u}`+(s?` · 확인 필요 ${s}`:''), stkNotCounted:'세지 않은 품목은 바꾸지 않습니다',
+    impH:'엑셀 일괄 등록 — 확인', impFile:f=>`파일: ${f}`, impAdd:n=>`새로 ${n}`, impUpd:n=>`갱신 ${n}`, impErr:n=>`오류 ${n}`, impUnknown:h=>`읽지 않는 열: ${h}`,
+    impNoHeader:'머리글 줄을 찾지 못했습니다(「품목명」 열이 필요합니다). [엑셀 내려받기] 양식을 쓰세요', impGo:n=>`${n}줄 등록`, impCancel:'취소', impLine:n=>`${n}번째 줄`,
+    impRule:'같은 품목 = 바코드가 같음 → 없으면 같은 품목명. 기존 품목은 적은 칸만 갱신(빈 칸은 그대로)하고 현재고는 바꾸지 않습니다(실사로). 거래처 이름이 없으면 새로 만듭니다.',
+    impDone:r=>`등록 ${r.inserted} · 갱신 ${r.updated} · 변화 없음 ${r.unchanged}`+(r.suppliers_added?` · 거래처 추가 ${r.suppliers_added}`:'')+(r.errors?` · 오류 ${r.errors}`:''),
+    impBusy:(a,b)=>`등록 중… ${a}/${b}`, impReadFail:'파일을 읽지 못했습니다: ', needSql196:'먼저 SQL 196(바코드·일괄 등록) 적용이 필요합니다',
+    eNoName:'품목명이 없음(새 품목)', eBadNum:'숫자 칸에 숫자가 아닌 값', eCaseQty:'박스 바코드에 입수가 없음', eDupInFile:'파일 안에 같은 바코드(또는 같은 품목명)가 두 번', eDupName:'같은 이름 품목이 여럿 — 바코드로 구분',
+    xH:['품목명','구분','단위','보관 위치','적정재고','단가','거래처','바코드(낱개)','바코드(박스)','박스 입수','초기재고','현재고(참고)'], xNote:'초기재고는 새 품목에만 씁니다(기존 품목 재고는 실사로).',
+    pEditBc:'바코드(낱개) — 비우면 없음', pEditCbc:'박스 바코드 — 비우면 없음', pEditCq:'박스 입수', dupCode:'이 바코드는 같은 부서의 다른 품목에 쓰이고 있습니다',
+    step:'재고 · 내부 관리', connHint:'연결 정보는 이 브라우저에만 저장됩니다.',
     connect:'연결', connecting:'연결 중…', connectedBtn:'✓ 연결됨', connFailBtn:'연결 실패 · 재시도',
     notConn:'미연결', connOk:'연결됨', connFail:'연결 실패', needUrlKey:'URL·key 필요', connectedToast:'Supabase 연결됨',
     deptRoom:'객실', deptGolf:'골프/카트', deptFnb:'F&B', deptHk:'청소/린넨', deptFront:'프론트/사무', deptShizu:'시즈노야도', deptProshop:'골프샵', reload:'↻ 새로고침',
@@ -262,7 +348,23 @@ const L={
       +'<h4>현재고 · 적정재고 · 부족 알림</h4><ul><li><b>현재고</b> = 지금 보유한 수량. 입고·사용·실사로만 바뀝니다.</li><li><b>적정재고</b> = "이 밑으로 떨어지면 채워야 한다"는 기준선.</li><li><b>부족 판정</b>: <code>현재고 ≤ 적정재고</code> 이면 빨강 <b>「부족」</b> 뱃지 (적정재고를 0으로 두면 알림 안 함). 현재고 0이면 회색 <b>「없음」</b>.</li><li>상단 요약의 <b>⚠ 부족 N</b> = 그 부서에서 부족한 품목 수.</li></ul>'
       +'<h4>입고 / 사용 / 실사 — 계산 방식</h4><ul><li><b>＋입고</b>: 입력한 수량만큼 현재고를 <b>더합니다</b> (<code>현재고 + N</code>).</li><li><b>－사용</b>: 입력한 수량만큼 <b>뺍니다</b> (<code>현재고 − N</code>).</li><li><b>실사</b>: 실제로 세어본 수량을 입력하면 그 값으로 <b>맞춥니다</b>. 차이(=실제−기존)는 <code>실사조정</code>으로 자동 기록됩니다.</li><li>모든 변동은 <b>최근 입출고 이력</b>에 <b>누가·언제·±수량·사유</b>로 남습니다(되돌아보기·감사용).</li></ul>'
       +'<h4>💰 단가·거래처(사입 관리 1단계)</h4><b>품목에 단가와 거래처</b>를 두고, <b>입고할 때마다 단가를 기록</b>합니다(비우면 수량만). 그러면 <b>재고금액</b>(단가×현재고)과 <b>이번 달 사입 금액</b>(거래처별·품목별)이 나옵니다. 단가가 바뀌면 최신값이 품목 기준 단가가 되어 다음 입고의 기본값이 됩니다. <b>사용·실사에는 금액을 붙이지 않습니다</b>(사입=입고만). 거래처는 아래 <b>🏷 거래처</b>에서 추가·중지합니다.<h4>권한 · 데이터</h4>읽기는 로그인한 전원, <b>쓰기(추가·입출고·수정)는 주방(F&amp;B)·객실 영역 담당자</b>만 가능합니다. 저장 위치 — 품목=<code>inv_items</code>(현재고), 변동 기록=<code>inv_txns</code>(원장). ※POS 판매 시 자동 차감 연결은 다음 단계 예정(현재는 수동 입출고).' },
-  en:{ step:'Inventory · Internal', connHint:'Connection info is stored only in this browser.',
+  en:{ bcScan:'Barcode', bcImp:'Excel bulk import', bcExp:'Excel export', scanH:'Barcode', scanHint:'Scan with the scanner (or type the code and press Enter) · the camera also works',
+    mIn:'In', mOut:'Use', mCount:'Count', mFind:'Find', scanQty:'Qty', scanPh:'Scan here', scanCam:'Camera', camClose:'Close',
+    camStart:'Starting camera…', camAim:'Hold the barcode in the middle', camNo:'Camera not available in this browser (check HTTPS and camera permission)', camLib:'Loading the reader…', camLibFail:'Could not load the reader (check the connection)',
+    scanUnknown:'Unregistered barcode', scanNewH:'Register as a new item', scanNewName:'Item name', scanIsCase:'Case barcode (qty per case)', scanNewSave:'Register', scanNewCancel:'Cancel',
+    scanNoWrite:'No permission to change stock for this department', scanFound:'Found', scanBadQty:'Qty must be a number above 0', scanCaseX:n=>`case ×${n}`,
+    stkH:'Stocktake (counted)', stkEmpty:'Scanned counts build up here (you can edit the numbers)', stkThItem:'Item', stkThBook:'Book', stkThCount:'Counted', stkThDiff:'Diff',
+    stkApply:n=>`Apply stocktake (${n} items)`, stkClear:'Clear counts', stkClearQ:'Clear all counted quantities?', stkApplyQ:n=>`Set on-hand to the counted quantity for ${n} items?`,
+    stkStale:'Stock moved while you were counting — check the book value and Apply again', stkDone:(a,u,s)=>`Stocktake applied ${a} · unchanged ${u}`+(s?` · to check ${s}`:''), stkNotCounted:'Items you did not count are not changed',
+    impH:'Excel bulk import — review', impFile:f=>`File: ${f}`, impAdd:n=>`New ${n}`, impUpd:n=>`Update ${n}`, impErr:n=>`Errors ${n}`, impUnknown:h=>`Ignored columns: ${h}`,
+    impNoHeader:'No header row found (an “Item” column is required). Use the [Excel export] layout', impGo:n=>`Import ${n} rows`, impCancel:'Cancel', impLine:n=>`row ${n}`,
+    impRule:'Same item = same barcode → otherwise same name. Existing items get only the filled cells (blank cells stay) and on-hand is not changed (use stocktake). Unknown supplier names are created.',
+    impDone:r=>`Added ${r.inserted} · updated ${r.updated} · unchanged ${r.unchanged}`+(r.suppliers_added?` · suppliers added ${r.suppliers_added}`:'')+(r.errors?` · errors ${r.errors}`:''),
+    impBusy:(a,b)=>`Importing… ${a}/${b}`, impReadFail:'Could not read the file: ', needSql196:'SQL 196 (barcode · bulk import) must be applied first',
+    eNoName:'No item name (new item)', eBadNum:'Non-number in a number column', eCaseQty:'Case barcode without qty per case', eDupInFile:'Same barcode (or same name) twice in the file', eDupName:'Several items share this name — use barcodes',
+    xH:['Item','Category','Unit','Location','Par','Unit cost','Supplier','Barcode (piece)','Barcode (case)','Case qty','Initial stock','On hand (ref)'], xNote:'Initial stock is used only for new items (existing stock changes through stocktake).',
+    pEditBc:'Barcode (piece) — blank = none', pEditCbc:'Case barcode — blank = none', pEditCq:'Qty per case', dupCode:'This barcode is already used by another item in this department',
+    step:'Inventory · Internal', connHint:'Connection info is stored only in this browser.',
     connect:'Connect', connecting:'Connecting…', connectedBtn:'✓ Connected', connFailBtn:'Failed · retry',
     notConn:'Not connected', connOk:'Connected', connFail:'Connection failed', needUrlKey:'URL·key required', connectedToast:'Connected to Supabase',
     deptRoom:'Rooms', deptGolf:'Golf/Cart', deptFnb:'F&B', deptHk:'Housekeeping', deptFront:'Front/Office', deptShizu:'Shizu', deptProshop:'Golf shop', reload:'↻ Reload',
@@ -378,6 +480,11 @@ function applyStatic(){
   { const b=$('#btn-sup-add'); if(b) b.textContent=tx('supBtnAdd'); }
   { const h=$('#t-suph'); if(h) h.textContent=tx('supH'); }
   const emp=$('#t-empty'); if(emp) emp.textContent=tx('emptyConnect');
+  $('#btn-scan').textContent=tx('bcScan'); $('#btn-imp').textContent=tx('bcImp'); $('#btn-exp').textContent=tx('bcExp');
+  $('#t-scanh').textContent=tx('scanH'); $('#t-scanhint').textContent=tx('scanHint'); $('#t-scanqty').textContent=tx('scanQty');
+  $('#t-mIn').textContent=tx('mIn'); $('#t-mOut').textContent=tx('mOut'); $('#t-mCount').textContent=tx('mCount'); $('#t-mFind').textContent=tx('mFind');
+  $('#scan-code').placeholder=tx('scanPh'); $('#scan-cam').textContent=tx('scanCam'); $('#cam-close').textContent=tx('camClose');
+  if(!$('#scan-panel').hidden){ renderScanMode(); renderStk(); }
   refreshConn();
 }
 function toast(msg,cls){ const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.textContent=msg;
@@ -415,14 +522,20 @@ function thisYM(){ const d=new Date(Date.now()+9*3600*1000); return d.toISOStrin
 async function load(){
   if(!supa) return;
   try{
-    const { data:items, error:e1 }=await supa.from('inv_items').select('*').eq('dept',state.dept).order('category').order('sort_order').order('name_ko');
-    if(e1) throw e1;
-    state.items=items||[];
-    const ids=state.items.map(i=>i.id);
+    // 품목이 수천 개가 될 수 있다(엑셀 일괄 등록 — SQL 196) → 1000행씩 끝까지 읽는다(기본 1000행 제한)
+    const items=[];
+    for(let from=0;;from+=1000){
+      const { data, error:e1 }=await supa.from('inv_items').select('*').eq('dept',state.dept).order('category').order('sort_order').order('name_ko').order('id').range(from,from+999);
+      if(e1) throw e1;
+      items.push(...(data||[])); if(!data||data.length<1000) break;
+    }
+    state.items=items;
     state.txns=[];
-    if(ids.length){
-      const { data:txns }=await supa.from('inv_txns').select('*').in('item_id',ids).order('created_at',{ascending:false}).limit(30);
-      state.txns=txns||[];
+    if(items.length){
+      // 최근 이력 30건 — 품목 id 를 주소에 다 싣지 않고(수천 개면 주소가 넘친다) 품목의 부서로 거른다
+      let r=await supa.from('inv_txns').select('*, inv_items!inner(dept)').eq('inv_items.dept',state.dept).order('created_at',{ascending:false}).limit(30);
+      if(r.error && items.length<=200) r=await supa.from('inv_txns').select('*').in('item_id',items.map(i=>i.id)).order('created_at',{ascending:false}).limit(30);
+      state.txns=(r.data||[]);
     }
     // 거래처(부서별) — 없으면 조용히 빈 목록(SQL 109 미적용 환경 대비)
     state.sups=[];
@@ -533,7 +646,9 @@ function renderCatChips(){
 function isLow(i){ return num(i.par_level)>0 && num(i.current_qty)<=num(i.par_level); }
 function render(){
   setDeptBtns(); renderAddCats(); renderCatChips();
-  const cw=canWrite(state.dept);   /* 쓰기 권한 없는 부서 = 줄 버튼(입고·사용·실사·수정·삭제) 칸을 그리지 않는다 */
+  const cw=canWrite(state.dept);
+  $('#btn-imp').style.display=cw?'':'none';
+  if(!$('#scan-panel').hidden){ renderScanMode(); renderStk(); }   /* 쓰기 권한 없는 부서 = 줄 버튼(입고·사용·실사·수정·삭제) 칸을 그리지 않는다 */
   const rows=state.items.filter(i=>state.catFilter==='__all'||(i.category||'기타')===state.catFilter);
   const lowN=state.items.filter(isLow).length;
   const stockVal=state.items.reduce((a,i)=>a+num(i.unit_cost)*num(i.current_qty),0);
@@ -554,7 +669,7 @@ function render(){
     const low=isLow(i), zero=num(i.current_qty)<=0;
     const badge=zero?`<span class="st-badge st-zero">${tx('stZero')}</span>`:(low?`<span class="st-badge st-low">${tx('stLow')}</span>`:`<span class="st-badge st-ok">${tx('stOk')}</span>`);
     html+=`<tr class="${low?'low':''}" data-id="${i.id}">
-      <td><b>${esc(i.name_ko)}</b>${i.name_ja?` <span style="color:var(--muted);font-size:11px">${esc(i.name_ja)}</span>`:''}</td>
+      <td><b>${esc(i.name_ko)}</b>${i.name_ja?` <span style="color:var(--muted);font-size:11px">${esc(i.name_ja)}</span>`:''}${(i.barcode||i.case_barcode)?`<span class="bc">${esc(i.barcode||'')}${i.case_barcode?`${i.barcode?' · ':''}${esc(tx('scanCaseX')(fmtQ(i.case_qty||1)))} ${esc(i.case_barcode)}`:''}</span>`:''}</td>
       <td style="color:var(--text2)">${esc(i.location||'')}</td>
       <td style="color:var(--text2)">${esc(i.unit||'')}</td>
       <td style="text-align:right" class="qty">${fmtQ(i.current_qty)}</td>
@@ -697,10 +812,17 @@ async function editItem(it){
     const v=prompt(tx('pEditSup')(listTxt), cur);
     if(v!==null){ const n=pnum(v); sup=(n>=1&&n<=sups.length)?sups[n-1].id:null; }
   }
+  const patch={ name_ko:name.trim()||it.name_ko, par_level:num(par), location:loc.trim()||null, unit_cost:String(cost).trim()===''?null:num(cost), supplier_id:sup };
+  if('barcode' in it){   // SQL 196 뒤에만(칸이 있을 때) — 바코드·박스 바코드·박스 입수
+    const bc=prompt(tx('pEditBc'), it.barcode||''); if(bc===null) return;
+    const cbc=prompt(tx('pEditCbc'), it.case_barcode||''); if(cbc===null) return;
+    let cq=it.case_qty;
+    if(SZCore.invCodeNorm(cbc)){ const v=prompt(tx('pEditCq'), it.case_qty!=null?fmtQ(it.case_qty):''); if(v===null) return; const n=pnum(v); if(!(n>0)){ toast(tx('badNum'),'err'); return; } cq=n; }
+    patch.barcode=SZCore.invCodeNorm(bc)||null; patch.case_barcode=SZCore.invCodeNorm(cbc)||null; patch.case_qty=patch.case_barcode?cq:(it.case_qty==null?null:it.case_qty);
+  }
   try{
-    const { data, error }=await supa.from('inv_items').update({ name_ko:name.trim()||it.name_ko, par_level:num(par), location:loc.trim()||null,
-      unit_cost:String(cost).trim()===''?null:num(cost), supplier_id:sup }).eq('id',it.id).select('id');
-    if(error) throw error;
+    const { data, error }=await supa.from('inv_items').update(patch).eq('id',it.id).select('id');
+    if(error){ if(error.code==='23505'){ toast(tx('dupCode'),'err'); return; } throw error; }
     if(!data||!data.length){ toast(tx('noPerm'),'err'); return; }
     toast(tx('saved'),'ok'); await load();
   }catch(e){ toast(tx('saveFail')+e.message,'err'); }
@@ -713,6 +835,179 @@ async function delItem(it){
   catch(e){ toast(tx('delFail')+e.message,'err'); }
 }
 
+/* ── 바코드 · 실사 · 엑셀 일괄 등록(SQL 196, Min 2026-11-26) ───────────────────────────
+   스캐너 = 키보드처럼 코드+Enter → #scan-code. 카메라 = 안드로이드 Chrome 내장 BarcodeDetector, 없으면(아이패드 Safari 등)
+   barcode-detector 폴리필(버전 고정 + SRI)을 그때만 불러온다. 판정·엑셀 읽기는 SZCore(invScanFind·invImportRows·invImportCheck). */
+const BD_POLY={ src:'https://cdn.jsdelivr.net/npm/barcode-detector@3.2.3/dist/iife/ponyfill.js', sri:'sha384-ZQvvHKgw7Ktqkui5vapXokyfDpQcnXLZhR9hfFMh8rUQztTRNywKQdQ994308nhY' };
+const XLSX_SRC='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', EXCELJS_SRC='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js';
+function loadScript(src,sri){ return new Promise((res,rej)=>{ const sc=document.createElement('script'); sc.src=src; if(sri){ sc.integrity=sri; sc.crossOrigin='anonymous'; } sc.onload=()=>res(); sc.onerror=()=>rej(new Error('load fail')); document.head.appendChild(sc); }); }
+function rpcMissing(e,fn){ return !!e && (e.code==='PGRST202' || (e.code==='42883' && String(e.message||'').indexOf(fn)>=0)); }
+state.scan={ mode:'in', pending:null, busy:false };
+function stkKey(){ return 'saizen_inv_stk_'+state.dept; }
+function stkGet(){ try{ const v=JSON.parse(localStorage.getItem(stkKey())||'null'); return (v&&v.counts)?v:{counts:{}}; }catch(e){ return {counts:{}}; } }
+function stkPut(v){ try{ localStorage.setItem(stkKey(),JSON.stringify(v)); }catch(e){} }
+function scanLog(msg,cls){ const box=$('#scan-log'); const d=document.createElement('div'); if(cls) d.className=cls; const t=new Date(); d.textContent=`${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}  ${msg}`; box.prepend(d); while(box.children.length>40) box.lastChild.remove(); }
+function openScan(){ $('#scan-panel').hidden=false; renderScanMode(); renderStk(); setTimeout(()=>$('#scan-code').focus(),50); }
+function renderScanMode(){
+  const cw=canWrite(state.dept); if(!cw && state.scan.mode!=='find') state.scan.mode='find';
+  $$('#scan-mode button').forEach(b=>{ b.classList.toggle('on',b.dataset.m===state.scan.mode); b.disabled=(!cw && b.dataset.m!=='find'); });
+  $('#stk-box').hidden=state.scan.mode!=='count';
+}
+function setRowQty(it){ const tr=document.querySelector(`#inv-list tr[data-id="${it.id}"]`); if(tr){ const q=tr.querySelector('.qty'); if(q) q.textContent=fmtQ(it.current_qty); } }
+function focusRow(id){ $$('#inv-list tr.hit').forEach(t=>t.classList.remove('hit')); const tr=document.querySelector(`#inv-list tr[data-id="${id}"]`); if(tr){ tr.classList.add('hit'); tr.scrollIntoView({block:'center',behavior:'smooth'}); } }
+async function onScanCode(raw){
+  const code=SZCore.invCodeNorm(raw); if(!code||!supa) return;
+  const q=pnum($('#scan-qty').value); if(!(q>0)){ toast(tx('scanBadQty'),'err'); return; }
+  const hit=SZCore.invScanFind(state.items,code), mode=state.scan.mode;
+  if(!hit){ scanLog(`${tx('scanUnknown')}: ${code}`,'w'); showQuickNew(code); return; }
+  const it=hit.item, n=q*hit.mult, nm=it.name_ko+(hit.isCase?` (${tx('scanCaseX')(fmtQ(hit.mult))})`:'');
+  if(mode==='find'){ focusRow(it.id); scanLog(`${tx('scanFound')}: ${nm} — ${fmtQ(it.current_qty)} ${it.unit||''}`,'o'); return; }
+  if(!canWrite(state.dept)){ toast(tx('scanNoWrite'),'err'); return; }
+  if(mode==='count'){ stkAdd(it,n); scanLog(`${tx('mCount')} +${fmtQ(n)} ${nm}`,'o'); return; }
+  await scanMove(it, mode==='in'?n:-n, mode==='in'?'입고':'사용', nm);
+}
+async function scanMove(it,delta,reason,nm,retried){
+  if(reason==='사용' && -delta>num(it.current_qty) && !confirm(tx('confirmNeg')({cur:fmtQ(it.current_qty), q:fmtQ(-delta)}))) return;
+  const { data:mv, error }=await supa.rpc('inv_move',{ p_item:it.id, p_delta:delta, p_expect:num(it.current_qty), p_reason:reason, p_note:'barcode',
+    p_unit_cost:(reason==='입고'&&it.unit_cost!=null)?num(it.unit_cost):null, p_by:curUser()||null });
+  if(error){
+    if(!retried && String(error.message||'').indexOf('inv_stale')>=0){   // 다른 기기가 먼저 바꿨다 — 그 품목만 다시 읽고 한 번 더(변동량은 그대로라 안전)
+      const { data:fr }=await supa.from('inv_items').select('current_qty').eq('id',it.id).maybeSingle(); if(fr){ it.current_qty=fr.current_qty; return scanMove(it,delta,reason,nm,true); } }
+    scanLog(`${reasonLabel(reason)} ${nm}: ${(error.code==='42501'||error.code==='P0002')?tx('noPerm'):error.message}`,'e'); return;
+  }
+  it.current_qty=(mv&&mv.after!=null)?num(mv.after):num(it.current_qty)+delta; setRowQty(it);
+  scanLog(`${reasonLabel(reason)} ${delta>0?'+':''}${fmtQ(delta)} ${nm} → ${fmtQ(it.current_qty)}`,'o');
+}
+function showQuickNew(code){
+  const box=$('#scan-new');
+  if(!canWrite(state.dept)){ box.hidden=true; return; }
+  state.scan.pending=code;
+  box.innerHTML=`<b>${esc(tx('scanNewH'))}</b> <span class="code">${esc(code)}</span>
+    <input class="inp" id="qn-name" placeholder="${esc(tx('scanNewName'))}" style="flex:1;min-width:160px">
+    <select class="inp" id="qn-cat" style="width:130px">${DEPTS[state.dept].cats.map(c=>`<option value="${esc(c)}">${esc(catLabel(c))}</option>`).join('')}</select>
+    <input class="inp" id="qn-unit" placeholder="${esc(tx('phUnit'))}" style="width:70px">
+    <label class="hint"><input type="checkbox" id="qn-case"> ${esc(tx('scanIsCase'))}</label><input class="inp" id="qn-cq" inputmode="decimal" style="width:60px">
+    <button class="btn sm" id="qn-save" type="button">${esc(tx('scanNewSave'))}</button><button class="btn sm ghost" id="qn-cancel" type="button">${esc(tx('scanNewCancel'))}</button>`;
+  box.hidden=false; $('#qn-name').focus();
+  $('#qn-cancel').onclick=()=>{ box.hidden=true; state.scan.pending=null; $('#scan-code').focus(); };
+  $('#qn-name').onkeypress=e=>{ if(e.key==='Enter') $('#qn-save').click(); };
+  $('#qn-save').onclick=async()=>{
+    const name=$('#qn-name').value.trim(); if(!name){ toast(tx('needName'),'err'); return; }
+    const isCase=$('#qn-case').checked, cq=pnum($('#qn-cq').value);
+    if(isCase && !(cq>0)){ toast(tx('badNum'),'err'); return; }
+    const row={ dept:state.dept, category:$('#qn-cat').value, name_ko:name, unit:$('#qn-unit').value.trim()||tx('unitDefault'), current_qty:0, par_level:0 };
+    if(isCase){ row.case_barcode=code; row.case_qty=cq; } else row.barcode=code;
+    const { data, error }=await supa.from('inv_items').insert(row).select().single();
+    if(error){ toast(error.code==='23505'?tx('dupCode'):(tx('addFail')+error.message),'err'); return; }
+    state.items.push(data); box.hidden=true; state.scan.pending=null; render(); scanLog(`${tx('added')}: ${name}`,'o');
+    if(state.scan.mode!=='find') await onScanCode(code); $('#scan-code').focus();
+  };
+}
+/* 실사 — 센 수량을 이 기기에 모았다가(localStorage, 부서별) 한 번에 inv_stocktake. 장부(e) = 처음 센 때의 현재고 */
+function stkAdd(it,n){ const s=stkGet(); const c=s.counts[it.id]||{c:0,e:num(it.current_qty)}; c.c=Math.round((num(c.c)+n)*100)/100; s.counts[it.id]=c; stkPut(s); renderStk(); }
+function renderStk(){
+  const box=$('#stk-box'); if(box.hidden) return; const s=stkGet(), ids=Object.keys(s.counts), byId=Object.fromEntries(state.items.map(i=>[i.id,i]));
+  const rows=ids.map(id=>{ const it=byId[id], c=s.counts[id]; if(!it) return '';
+    const d=num(c.c)-num(c.e);
+    return `<tr data-sid="${esc(id)}"${c.stale?' class="stale"':''}><td>${esc(it.name_ko)}${c.stale?`<div class="stw">${esc(tx('stkStale'))}</div>`:''}</td><td class="r">${fmtQ(c.e)}</td>
+      <td class="r"><input class="inp" data-stk="${esc(id)}" inputmode="decimal" value="${fmtQ(c.c)}"></td><td class="r" style="color:${d<0?'var(--err)':(d>0?'var(--ok)':'var(--muted)')}">${d>0?'+':''}${fmtQ(d)}</td>
+      <td><button class="btn sm ghost" data-stkdel="${esc(id)}" type="button">✕</button></td></tr>`; }).join('');
+  box.innerHTML=`<b>${esc(tx('stkH'))}</b> <span class="hint">${esc(tx('stkNotCounted'))}</span>`+(ids.length?`<table><thead><tr><th>${esc(tx('stkThItem'))}</th><th class="r">${esc(tx('stkThBook'))}</th><th class="r">${esc(tx('stkThCount'))}</th><th class="r">${esc(tx('stkThDiff'))}</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="stk-act"><button class="btn sm" id="stk-apply" type="button">${esc(tx('stkApply')(ids.length))}</button><button class="btn sm ghost" id="stk-clear" type="button">${esc(tx('stkClear'))}</button></div>`:`<div class="hint" style="margin-top:6px">${esc(tx('stkEmpty'))}</div>`);
+  box.querySelectorAll('[data-stk]').forEach(inp=>inp.addEventListener('change',()=>{ const v=pnum(inp.value); if(!(v>=0)){ toast(tx('badNum'),'err'); renderStk(); return; } const s2=stkGet(); if(s2.counts[inp.dataset.stk]){ s2.counts[inp.dataset.stk].c=v; stkPut(s2); renderStk(); } }));
+  box.querySelectorAll('[data-stkdel]').forEach(b=>b.addEventListener('click',()=>{ const s2=stkGet(); delete s2.counts[b.dataset.stkdel]; stkPut(s2); renderStk(); }));
+  const ap=$('#stk-apply'); if(ap) ap.onclick=stkApply;
+  const cl=$('#stk-clear'); if(cl) cl.onclick=()=>{ if(confirm(tx('stkClearQ'))){ stkPut({counts:{}}); renderStk(); } };
+}
+async function stkApply(){
+  const s=stkGet(), ids=Object.keys(s.counts); if(!ids.length) return;
+  if(!confirm(tx('stkApplyQ')(ids.length))) return;
+  const payload=ids.map(id=>({ item:id, expect:num(s.counts[id].e), counted:num(s.counts[id].c) }));
+  const { data:r, error }=await supa.rpc('inv_stocktake',{ p_dept:state.dept, p_counts:payload, p_by:curUser()||null, p_note:null });
+  if(error){ toast(rpcMissing(error,'inv_stocktake')?tx('needSql196'):(error.code==='42501'?tx('noPerm'):(tx('actFail')+error.message)),'err'); return; }
+  await load();
+  const stale=(r&&r.stale)||[], skipped=(r&&r.skipped)||[], keep={};
+  // 반영·변화 없음은 비우고, 그 사이 입출고가 있었던 품목은 지금 장부로 바꿔 남긴다(확인 뒤 다시 반영)
+  stale.forEach(id=>{ const it=state.items.find(x=>x.id===id); if(it&&s.counts[id]) keep[id]=Object.assign({},s.counts[id],{e:num(it.current_qty),stale:true}); });
+  skipped.forEach(x=>{ if(s.counts[x.item]) keep[x.item]=s.counts[x.item]; scanLog(`${x.msg}`,'e'); });
+  stkPut({counts:keep}); renderStk();
+  toast(tx('stkDone')(r.applied||0, r.unchanged||0, stale.length+skipped.length), (stale.length||skipped.length)?'warn':'ok');
+}
+/* 카메라 */
+let CAM={ stream:null, det:null, run:false, last:'', lastAt:0 };
+async function getDetector(){
+  const FM=['ean_13','ean_8','upc_a','upc_e','code_128','code_39','itf','codabar','qr_code'];
+  if('BarcodeDetector' in window){ try{ const sup=await window.BarcodeDetector.getSupportedFormats(); if(sup&&sup.indexOf('ean_13')>=0) return new window.BarcodeDetector({formats:FM.filter(f=>sup.indexOf(f)>=0)}); }catch(e){} }
+  if(!(window.BarcodeDetectionAPI&&window.BarcodeDetectionAPI.BarcodeDetector)){ $('#cam-msg').textContent=tx('camLib'); await loadScript(BD_POLY.src,BD_POLY.sri); }
+  return new window.BarcodeDetectionAPI.BarcodeDetector({formats:FM});
+}
+async function openCam(){
+  const ov=$('#cam-ov'), msg=$('#cam-msg'); ov.hidden=false; msg.textContent=tx('camStart');
+  if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)){ msg.textContent=tx('camNo'); return; }
+  try{
+    CAM.det=await getDetector().catch(()=>{ throw new Error(tx('camLibFail')); });
+    CAM.stream=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }, audio:false });
+    const v=$('#cam-video'); v.srcObject=CAM.stream; await v.play(); msg.textContent=tx('camAim'); CAM.run=true; camLoop();
+  }catch(e){ msg.textContent=(e&&e.message&&e.message.indexOf(tx('camLibFail'))>=0)?tx('camLibFail'):tx('camNo'); }
+}
+async function camLoop(){
+  if(!CAM.run) return; const v=$('#cam-video');
+  try{ if(v.readyState>=2){ const res=await CAM.det.detect(v); const code=res&&res[0]&&res[0].rawValue;
+      if(code){ const now=Date.now(); if(code!==CAM.last||now-CAM.lastAt>1500){ CAM.last=code; CAM.lastAt=now; try{ navigator.vibrate&&navigator.vibrate(60); }catch(e){} $('#cam-msg').textContent=code; await onScanCode(code); } } } }catch(e){}
+  setTimeout(camLoop,180);
+}
+function closeCam(){ CAM.run=false; if(CAM.stream){ CAM.stream.getTracks().forEach(t=>t.stop()); CAM.stream=null; } $('#cam-ov').hidden=true; $('#scan-code').focus(); }
+/* 엑셀 — 내려받기(현재 목록 = 일괄 등록 양식) · 일괄 등록(미리보기 → inv_import 1000줄씩) */
+function catKey(v){ const t=String(v||'').trim(); if(!t) return ''; if(CATL[t]||DEPTS[state.dept].cats.includes(t)) return t; const k=Object.keys(CATL).find(k=>CATL[k].ja===t||CATL[k].en===t); return k||t; }
+async function exportXlsx(){
+  try{ if(!window.ExcelJS) await loadScript(EXCELJS_SRC); }catch(e){ toast(tx('camLibFail'),'err'); return; }
+  const wb=new ExcelJS.Workbook(), ws=wb.addWorksheet('inventory'), H=tx('xH');
+  ws.addRow(H); ws.getRow(1).font={bold:true};
+  state.items.forEach(i=>ws.addRow([i.name_ko||'', catLabel(i.category||'기타'), i.unit||'', i.location||'', num(i.par_level)||'', i.unit_cost!=null?num(i.unit_cost):'', supName(i.supplier_id)||'',
+    i.barcode||'', i.case_barcode||'', i.case_qty!=null?num(i.case_qty):'', '', num(i.current_qty)]));
+  [8,9].forEach(c=>{ ws.getColumn(c).numFmt='@'; ws.getColumn(c).width=18; }); ws.getColumn(1).width=32; ws.getColumn(2).width=14; ws.getColumn(7).width=16;
+  ws.addRow([]); ws.addRow([tx('xNote')]);
+  const buf=await wb.xlsx.writeBuffer(), d=new Date(Date.now()+9*3600*1000).toISOString().slice(0,10).replace(/-/g,'');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})); a.download=`inventory_${state.dept}_${d}.xlsx`; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },500);
+}
+async function onImpFile(f){
+  if(!f) return;
+  try{ if(!window.XLSX) await loadScript(XLSX_SRC); }catch(e){ toast(tx('camLibFail'),'err'); return; }
+  let parsed;
+  try{ const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; parsed=SZCore.invImportRows(XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''})); }
+  catch(e){ toast(tx('impReadFail')+(e.message||e),'err'); return; }
+  if(parsed.headerRow<0){ toast(tx('impNoHeader'),'err'); return; }
+  parsed.rows.forEach(r=>{ if(r.category) r.category=catKey(r.category); });
+  showImport(f.name, parsed, SZCore.invImportCheck(state.items, parsed.rows));
+}
+function showImport(fname, parsed, chk){
+  const EM={noName:'eNoName',badNum:'eBadNum',caseQty:'eCaseQty',dupInFile:'eDupInFile',dupName:'eDupName'};
+  const sample=chk.ok.slice(0,12).map(r=>`<tr><td>${r.line}</td><td>${esc(r.name||'')}</td><td>${esc(catLabel(r.category||''))}</td><td style="font-family:var(--mono)">${esc(r.barcode||'')}</td><td style="font-family:var(--mono)">${esc(r.case_barcode||'')}${r.case_qty?` ×${esc(r.case_qty)}`:''}</td><td>${esc(r.qty||'')}</td><td>${esc(r.cost||'')}</td></tr>`).join('');
+  $('#imp-box').innerHTML=`<h3>${esc(tx('impH'))}</h3><div class="hint">${esc(tx('impFile')(fname))}</div>
+    <div class="imp-sum"><span>${esc(tx('impAdd')(chk.add))}</span><span>${esc(tx('impUpd')(chk.update))}</span>${chk.errors.length?`<span class="e">${esc(tx('impErr')(chk.errors.length))}</span>`:''}</div>
+    ${parsed.unknown.length?`<div class="hint">${esc(tx('impUnknown')(parsed.unknown.join(', ')))}</div>`:''}
+    ${chk.errors.length?`<div class="imp-err">${chk.errors.slice(0,50).map(e=>`${esc(tx('impLine')(e.line))}: ${esc(tx(EM[e.code]||e.code))}`).join('<br>')}</div>`:''}
+    <div class="hint" style="margin:6px 0">${esc(tx('impRule'))}</div>
+    ${sample?`<table class="imp-tbl"><thead><tr><th>#</th><th>${esc(tx('xH')[0])}</th><th>${esc(tx('xH')[1])}</th><th>${esc(tx('xH')[7])}</th><th>${esc(tx('xH')[8])}</th><th>${esc(tx('xH')[10])}</th><th>${esc(tx('xH')[5])}</th></tr></thead><tbody>${sample}</tbody></table>`:''}
+    <div class="acts"><span class="hint" id="imp-st"></span><button class="btn sm ghost" id="imp-cancel" type="button">${esc(tx('impCancel'))}</button><button class="btn sm" id="imp-go" type="button" ${chk.ok.length?'':'disabled'}>${esc(tx('impGo')(chk.ok.length))}</button></div>`;
+  $('#imp-ov').hidden=false;
+  $('#imp-cancel').onclick=()=>{ $('#imp-ov').hidden=true; };
+  $('#imp-go').onclick=async()=>{
+    const go=$('#imp-go'); go.disabled=true; $('#imp-cancel').disabled=true;
+    const rows=chk.ok, tot={inserted:0,updated:0,unchanged:0,suppliers_added:0,errors:0}, errs=[];
+    for(let i=0;i<rows.length;i+=1000){
+      const chunk=rows.slice(i,i+1000); $('#imp-st').textContent=tx('impBusy')(i,rows.length);
+      const send=chunk.map(r=>{ const o={}; ['name','name_ja','category','unit','location','par','cost','supplier','barcode','case_barcode','case_qty','qty'].forEach(k=>{ if(r[k]!=null&&r[k]!=='') o[k]=String(r[k]); }); if(!o.unit) o.unit=tx('unitDefault'); return o; });
+      const { data:r, error }=await supa.rpc('inv_import',{ p_dept:state.dept, p_rows:send, p_by:curUser()||null });
+      if(error){ toast(rpcMissing(error,'inv_import')?tx('needSql196'):(error.code==='42501'?tx('noPerm'):(tx('addFail')+error.message)),'err'); break; }
+      ['inserted','updated','unchanged','suppliers_added'].forEach(k=>tot[k]+=num(r[k]));
+      (r.errors||[]).forEach(e=>errs.push(`${tx('impLine')(chunk[e.row-1]?chunk[e.row-1].line:e.row)}: ${e.msg}`));
+    }
+    tot.errors=errs.length; $('#imp-ov').hidden=true; await load();
+    toast(tx('impDone')(tot), errs.length?'warn':'ok'); errs.slice(0,30).forEach(m=>scanLog(m,'e')); if(errs.length) openScan();
+  };
+}
+
 // 언어 토글 시 정적 라벨 + 동적 목록 재렌더
 window.onSaizenLangChange=function(){ applyStatic(); if(supa){ render(); } else { setDeptBtns(); renderAddCats(); } };
 
@@ -723,6 +1018,14 @@ $('#btn-add').addEventListener('click',addItem);
 { const b=$('#btn-sup-add'); if(b) b.addEventListener('click',addSup); }
 { const e=$('#sup-name'); if(e) e.addEventListener('keypress',ev=>{ if(ev.key==='Enter') addSup(); }); }
 $('#add-name').addEventListener('keypress',e=>{ if(e.key==='Enter') addItem(); });
+$('#btn-scan').addEventListener('click',()=>{ const p=$('#scan-panel'); if(p.hidden) openScan(); else p.hidden=true; });
+$('#scan-close').addEventListener('click',()=>{ $('#scan-panel').hidden=true; });
+$('#scan-mode').addEventListener('click',e=>{ const b=e.target.closest('button[data-m]'); if(!b||b.disabled) return; state.scan.mode=b.dataset.m; renderScanMode(); renderStk(); $('#scan-code').focus(); });
+$('#scan-code').addEventListener('keydown',async e=>{ if(e.key!=='Enter') return; e.preventDefault(); const v=e.target.value; e.target.value=''; if(state.scan.busy) return; state.scan.busy=true; try{ await onScanCode(v); }finally{ state.scan.busy=false; } });
+$('#scan-cam').addEventListener('click',openCam); $('#cam-close').addEventListener('click',closeCam);
+$('#btn-exp').addEventListener('click',exportXlsx);
+$('#btn-imp').addEventListener('click',()=>{ const f=$('#imp-file'); f.value=''; f.click(); });
+$('#imp-file').addEventListener('change',e=>onImpFile(e.target.files&&e.target.files[0]));
 renderDeptTabs();
 (function init(){
   const d=new URLSearchParams(location.search).get('dept'); if(d&&DEPTS[d]) state.dept=d;
