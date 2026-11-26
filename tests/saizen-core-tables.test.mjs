@@ -55,3 +55,56 @@ test('dinnerTableUse — 테이블별 사용 인원(묶음·여러 테이블은 
   assert.deepEqual(use[2], { used: 4, seats: 4, over: false, seqs: [31] });
   assert.deepEqual(use[3], { used: 4, seats: 6, over: false, seqs: [31] });
 });
+
+// Min 2026-11-26 「8인 이상 팀은 컨벤션홀로 우선 배정돼 · 특식 주문팀은 테이블 위치도 조금 좋은 곳으로」
+const T2 = [
+  { id: 1, code: 'R1', venue: 'restaurant', seats: 4, sort: 1 },
+  { id: 2, code: 'R2', venue: 'restaurant', seats: 4, sort: 2, prime: true },
+  { id: 3, code: 'R3', venue: 'restaurant', seats: 6, sort: 3 },
+  { id: 4, code: 'R4', venue: 'restaurant', seats: 6, sort: 4, prime: true },
+  { id: 5, code: 'C1', venue: 'convention', seats: 10, sort: 1 }];
+
+test('dinnerTablePlan — 장소 후보(venues)를 앞에서부터: 8인 이상은 컨벤션 먼저, 자리가 없으면 레스토랑', () => {
+  const r = C.dinnerTablePlan({ tables: T2, units: [
+    { key: 'a', seqs: [11], pax: 9, venues: ['convention', 'restaurant'] },
+    { key: 'b', seqs: [21], pax: 8, venues: ['convention', 'restaurant'] }] });
+  assert.deepEqual(pick(r), ['11:5', '21:1', '21:3']);              // b 는 컨벤션이 차서 레스토랑(일반 자리 6+4 — 좋은 자리는 아껴 둔다)
+  assert.deepEqual(r.unplaced, []);
+});
+
+test('dinnerTablePlan — 특식 팀이 좋은 자리(prime)를 먼저 · 일반 팀은 좋은 자리를 피한다', () => {
+  const r = C.dinnerTablePlan({ tables: T2, units: [
+    { key: 'n', seqs: [11], pax: 4, venue: 'restaurant' },
+    { key: 's', seqs: [21], pax: 3, venue: 'restaurant', special: true }] });
+  assert.deepEqual(pick(r), ['11:1', '21:2']);
+  const r2 = C.dinnerTablePlan({ tables: T2, units: [{ key: 'n', seqs: [11], pax: 6, venue: 'restaurant' }] });
+  assert.deepEqual(pick(r2), ['11:3']);                             // 6석 일반이 있으면 6석 좋은 자리는 남긴다
+  const r3 = C.dinnerTablePlan({ tables: T2, taken: { 99: [3] }, units: [{ key: 'n', seqs: [11], pax: 6, venue: 'restaurant' }] });
+  assert.deepEqual(pick(r3), ['11:4']);                             // 일반이 모자라면 나눠 앉히기보다 좋은 자리 한 테이블
+});
+
+test('dinnerTablePlan — 특식 팀은 전날 테이블보다 좋은 자리가 먼저(전날도 좋은 자리면 그대로) · 일반 연박은 그대로 이어 받는다', () => {
+  const r = C.dinnerTablePlan({ tables: T2, prev: { 21: [1] }, units: [{ key: 's', seqs: [21], pax: 3, venue: 'restaurant', special: true }] });
+  assert.deepEqual(pick(r), ['21:2']);
+  const r2 = C.dinnerTablePlan({ tables: T2, prev: { 21: [4] }, units: [{ key: 's', seqs: [21], pax: 3, venue: 'restaurant', special: true }] });
+  assert.deepEqual(pick(r2), ['21:4']);
+  const r3 = C.dinnerTablePlan({ tables: T2, prev: { 21: [2] }, units: [{ key: 'n', seqs: [21], pax: 3, venue: 'restaurant' }] });
+  assert.deepEqual(pick(r3), ['21:2']);                             // 연박 일반 팀이 어제 좋은 자리였으면 오늘도 그대로(옮기지 않는다)
+  const r4 = C.dinnerTablePlan({ tables: T2, prev: { 21: [2] }, units: [
+    { key: 'n', seqs: [21], pax: 3, venue: 'restaurant' }, { key: 's', seqs: [31], pax: 4, venue: 'restaurant', special: true }] });
+  assert.deepEqual(pick(r4), ['21:2', '31:4']);                     // 특식 팀은 남은 좋은 자리로 — 연박 팀을 밀어내지 않는다
+});
+
+// 검토 2026-11-26: 그날 자동 줄을 매번 다시 계산(수기 줄은 그대로) — 지금 자동 테이블(cur)은 유지하되, 연박(전날 테이블)이 먼저
+test('dinnerTablePlan — 다시 계산해도 지금 자동 테이블(cur)을 유지한다 · 전날 테이블이 비면 그쪽으로 이어 붙인다', () => {
+  const units = [{ key: 'a', seqs: [11], pax: 3, venue: 'restaurant' }, { key: 'b', seqs: [21], pax: 4, venue: 'restaurant' }];
+  assert.deepEqual(pick(C.dinnerTablePlan({ tables: T2, units })), ['11:3', '21:1']);   // 처음 계산
+  const r = C.dinnerTablePlan({ tables: T2, units, cur: { 11: [1], 21: [3] } });
+  assert.deepEqual(pick(r), ['11:1', '21:3']);                      // 크기 순 규칙과 달라도 지금 자리를 바꾸지 않는다
+  const r2 = C.dinnerTablePlan({ tables: T2, units, cur: { 11: [1], 21: [3] }, prev: { 21: [1] } });
+  assert.deepEqual(pick(r2), ['11:3', '21:1']);                     // b 는 어제 R1 → 오늘도 R1(지금 자리보다 먼저), a 는 남은 일반 자리
+  const r3 = C.dinnerTablePlan({ tables: T2, units: [{ key: 's', seqs: [31], pax: 3, venue: 'restaurant', special: true }], cur: { 31: [1] } });
+  assert.deepEqual(pick(r3), ['31:2']);                             // 특식이 생기면 좋은 자리로
+  const r4 = C.dinnerTablePlan({ tables: T2, units: [{ key: 'a', seqs: [11], pax: 5, venue: 'restaurant' }], cur: { 11: [1] } });
+  assert.deepEqual(pick(r4), ['11:3']);                             // 인원이 늘어 지금 자리가 모자라면 다시
+});

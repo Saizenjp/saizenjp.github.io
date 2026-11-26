@@ -1034,37 +1034,57 @@
   //  tables = [{id, code, venue, seats, sort, active(false 면 제외)}]
   //  taken  = {seq: [table_id…]} 오늘 이미 배정된 것(자동·수기 모두 — 그 단위는 건드리지 않고 그 테이블은 쓴 것으로)
   //  prev   = {seq: [table_id…]} 전날 배정 — 연박 팀은 같은 장소·비어 있고·좌석이 모자라지 않으면 그 테이블을 먼저 이어 받는다
-  //  규칙: ① 이어 받기(인원 큰 순) ② 나머지는 인원 큰 순 — 들어가는 가장 작은 빈 테이블 → 없으면 빈 테이블을 큰 것부터 합침(같으면 순서 앞)
-  //        → 그래도 모자라면 배정하지 않고 unplaced(noTable). 자동 배정은 남과 한 테이블에 앉히지 않고 정원을 넘기지 않는다(수기는 가능 — 경고만).
+  //  unit.venues = 장소 후보(앞에서부터 — 8인 이상은 ['convention', 그날 장소], Min 2026-11-26) · 없으면 [unit.venue]
+  //  unit.special = 그날 특식(別注 추가·업그레이드) 팀 · table.prime = 좋은 자리(Min 2026-11-26 「특식 주문팀은 테이블 위치도 조금 좋은 곳으로」)
+  //  cur    = {seq: [table_id…]} 그날 지금의 자동 줄 — 그날을 다시 계산할 때 바뀔 이유가 없으면 그 자리를 유지한다(안정)
+  //  규칙: ① 이어 받기(인원 큰 순 — 특식 팀은 전날 테이블이 모두 좋은 자리일 때만) ①-2 지금 자동 자리 유지(같은 조건) ② 특식 팀(인원 큰 순) — 장소 후보마다 들어가는 가장 작은 빈 좋은 자리
+  //        ③ 나머지(인원 큰 순) — 장소 후보마다: 들어가는 가장 작은 빈 일반 자리 → 좋은 자리 한 테이블 → 빈 테이블 합치기(일반 먼저, 큰 것부터, 같으면 순서 앞)
+  //        → 어느 후보에도 못 앉히면 unplaced(noTable). 자동 배정은 남과 한 테이블에 앉히지 않고 정원을 넘기지 않는다(수기는 가능 — 경고만).
   //  결과 = { assign:[{seq, table_id}], unplaced:[{key, reason:'noVenue'|'noTable'}] }
   function dinnerTablePlan(o) {
     o = o || {};
     var tables = (o.tables || []).filter(function (t) { return t && t.active !== false && Number(t.seats) > 0; });
-    var taken = o.taken || {}, prev = o.prev || {}, used = {}, assign = [], unplaced = [];
+    var taken = o.taken || {}, prev = o.prev || {}, cur = o.cur || {}, used = {}, assign = [], unplaced = [];
     Object.keys(taken).forEach(function (s) { (taken[s] || []).forEach(function (id) { used[id] = 1; }); });
     var units = (o.units || []).filter(function (u) { return !(u.seqs || []).some(function (s) { return (taken[s] || []).length; }); });
+    var vOf = function (u) { var v = (u.venues && u.venues.length) ? u.venues : [u.venue]; return v.filter(function (x, i) { return x && v.indexOf(x) === i; }); };
     var byPax = function (a, b) { return (Number(b.pax) || 0) - (Number(a.pax) || 0) || String(a.key).localeCompare(String(b.key)); };
     var tById = {}; tables.forEach(function (t) { tById[t.id] = t; });
+    var srt = function (t) { return Number(t.sort) || 0; };
+    var bySize = function (a, b) { return Number(a.seats) - Number(b.seats) || srt(a) - srt(b); };
     var done = {};
     var give = function (u, ids) { ids.forEach(function (id) { used[id] = 1; (u.seqs || []).forEach(function (s) { assign.push({ seq: s, table_id: id }); }); }); done[u.key] = 1; };
-    units.filter(function (u) { return u.venue; }).sort(byPax).forEach(function (u) {   // ① 이어 받기
-      var ids = []; (u.seqs || []).forEach(function (s) { (prev[s] || []).forEach(function (id) { if (ids.indexOf(id) < 0) ids.push(id); }); });
-      ids = ids.filter(function (id) { var t = tById[id]; return t && t.venue === u.venue && !used[id]; });
-      var seats = ids.reduce(function (a, id) { return a + Number(tById[id].seats); }, 0);
-      if (ids.length && seats >= (Number(u.pax) || 0)) give(u, ids);
-    });
-    units.slice().sort(byPax).forEach(function (u) {                                       // ② 나머지
+    var free = function (v) { return tables.filter(function (t) { return t.venue === v && !used[t.id]; }); };
+    var single = function (list, pax) { return list.slice().sort(bySize).filter(function (t) { return Number(t.seats) >= pax; })[0]; };
+    var keep = function (src) { return function (u) {                                     // 전날(①)·지금(①-2) 테이블을 그대로 받을 수 있으면 받는다
       if (done[u.key]) return;
-      if (!u.venue) { unplaced.push({ key: u.key, reason: 'noVenue' }); return; }
+      var ids = []; (u.seqs || []).forEach(function (s) { (src[s] || []).forEach(function (id) { if (ids.indexOf(id) < 0) ids.push(id); }); });
+      if (!ids.length || ids.some(function (id) { var t = tById[id]; return !t || vOf(u).indexOf(t.venue) < 0 || used[id] || t.venue !== tById[ids[0]].venue; })) return;
+      if (u.special && ids.some(function (id) { return !tById[id].prime; })) return;          // 특식 팀은 좋은 자리로 옮길 기회를 먼저
+      var seats = ids.reduce(function (a, id) { return a + Number(tById[id].seats); }, 0);
+      if (seats >= (Number(u.pax) || 0)) give(u, ids);
+    }; };
+    var live = units.filter(function (u) { return vOf(u).length; }).sort(byPax);
+    live.forEach(keep(prev)); live.forEach(keep(cur));
+    units.filter(function (u) { return u.special && !done[u.key]; }).sort(byPax).forEach(function (u) {   // ② 특식 팀 → 좋은 자리
+      var pax = Number(u.pax) || 0, vs = vOf(u);
+      for (var i = 0; i < vs.length; i++) { var t = single(free(vs[i]).filter(function (x) { return x.prime; }), pax); if (t) { give(u, [t.id]); return; } }
+    });
+    units.slice().sort(byPax).forEach(function (u) {                                       // ③ 나머지
+      if (done[u.key]) return;
+      var vs = vOf(u);
+      if (!vs.length) { unplaced.push({ key: u.key, reason: 'noVenue' }); return; }
       var pax = Number(u.pax) || 0;
-      var free = tables.filter(function (t) { return t.venue === u.venue && !used[t.id]; });
-      var bySize = function (a, b) { return Number(a.seats) - Number(b.seats) || (Number(a.sort) || 0) - (Number(b.sort) || 0); };
-      var one = free.slice().sort(bySize).filter(function (t) { return Number(t.seats) >= pax; })[0];
-      if (one) { give(u, [one.id]); return; }
-      var big = free.slice().sort(function (a, b) { return Number(b.seats) - Number(a.seats) || (Number(a.sort) || 0) - (Number(b.sort) || 0); });
-      var pickIds = [], sum = 0;
-      for (var i = 0; i < big.length && sum < pax; i++) { pickIds.push(big[i].id); sum += Number(big[i].seats); }
-      if (sum >= pax && pickIds.length) give(u, pickIds); else unplaced.push({ key: u.key, reason: 'noTable' });
+      for (var i = 0; i < vs.length; i++) {
+        var f = free(vs[i]);
+        var one = single(f.filter(function (t) { return !t.prime; }), pax) || single(f.filter(function (t) { return t.prime; }), pax);
+        if (one) { give(u, [one.id]); return; }
+        var big = f.slice().sort(function (a, b) { return (a.prime ? 1 : 0) - (b.prime ? 1 : 0) || Number(b.seats) - Number(a.seats) || srt(a) - srt(b); });
+        var pickIds = [], sum = 0;
+        for (var k = 0; k < big.length && sum < pax; k++) { pickIds.push(big[k].id); sum += Number(big[k].seats); }
+        if (sum >= pax && pickIds.length) { give(u, pickIds); return; }
+      }
+      unplaced.push({ key: u.key, reason: 'noTable' });
     });
     return { assign: assign, unplaced: unplaced };
   }
