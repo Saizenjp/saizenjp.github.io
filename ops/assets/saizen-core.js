@@ -280,6 +280,36 @@
     if (p % 2 === 1) return { kind: 'odd', n: 1 };
     return { kind: 'mixed', n: 0 };
   }
+  // 2027 컴팩트 트윈 = 컴팩트 예약에만(Min 2026-11-28 「컴팩트는 컴팩트 예약에만 쓰게 바꿔줘 현지 비고란에 기재할거야」 · 「컴팩트 N실」로 수량까지).
+  //  2027년부터 컴팩트 트윈은 손님께 먼저 안내해 따로 판다 → 일반 트윈 예약·디럭스를 못 받은 회원은 컴팩트로 내려가지 않는다(방배정 room.html).
+  //  신호: 현지 비고 「컴팩트」(팀 전원) · 「컴팩트 N실」(N실 = 짝 N개) · 엠클릭 룸타입 「컴팩트」(팀 전원). 둘 다 있으면 비고의 수량이 먼저.
+  //  「컴팩트 불가·없음·아님·취소」·「0실」은 요청이 아니다. 입국일 2027-01-01 이후(roomTypeOn)만 — 2026 예약은 null(종전 규칙).
+  var COMPACT_RE = /컴팩트|콤팩트|compact|コンパクト/i;
+  var COMPACT_NO_RE = /(?:컴팩트|콤팩트|compact|コンパクト)\s*(?:트윈|twin|ツイン)?\s*(?:룸|room)?\s*(?:불가|없음|아님|취소|x\b|×|cancel)/i;
+  var COMPACT_N_RE = /(?:컴팩트|콤팩트|compact|コンパクト)\s*(?:트윈|twin|ツイン)?\s*(?:룸|room)?\s*[:：]?\s*(\d{1,2})\s*(?:실|室|개|룸|rooms?|객실)/i;
+  function compactRequest(remarkLocal, roomType, dep) {
+    if (!roomTypeOn(dep)) return null;
+    var t = String(remarkLocal == null ? '' : remarkLocal);
+    if (COMPACT_RE.test(t) && !COMPACT_NO_RE.test(t)) {
+      var m = t.match(COMPACT_N_RE);
+      if (m) { var n = parseInt(m[1], 10); return n > 0 ? { kind: 'n', n: n, src: 'remark' } : null; }
+      return { kind: 'all', src: 'remark' };
+    }
+    if (COMPACT_NO_RE.test(t)) return null;
+    if (COMPACT_RE.test(String(roomType == null ? '' : roomType))) return { kind: 'all', src: 'roomtype' };
+    return null;
+  }
+  //  짝 나누기 — 전원: 모든 짝이 컴팩트(회원도) · N실: 일반 짝부터 N개, 모자라면 회원 짝을 뒤에서부터(앞의 회원 짝이 디럭스를 지킨다).
+  //  결과 = {compact, member, general}(남은 회원 짝은 디럭스 패스, 일반 짝은 스탠다드 트윈 패스로).
+  function compactSplit(memberPairs, generalPairs, req) {
+    var mp = (memberPairs || []).slice(), gp = (generalPairs || []).slice();
+    if (!req) return { compact: [], member: mp, general: gp };
+    if (req.kind === 'all') return { compact: mp.concat(gp), member: [], general: [] };
+    var n = Math.max(0, Number(req.n) || 0), out = [];
+    while (n > 0 && gp.length) { out.push(gp.shift()); n--; }
+    while (n > 0 && mp.length) { out.push(mp.pop()); n--; }
+    return { compact: out, member: mp, general: gp };
+  }
   // 룸타입 열 → 시즈노야도 別棟(별채) 선호(「별채(개인온천O)」). 현지비고 키워드(SHZ_ANNEX_RE)와 OR 로 쓴다. dep(입국일) 2027~ 만(roomTypeOn).
   var ROOMTYPE_ANNEX_RE = /별채|別棟|離れ/;
   function roomTypeAnnex(rt, dep) { return roomTypeOn(dep) && ROOMTYPE_ANNEX_RE.test(String(rt == null ? '' : rt)); }
@@ -2527,7 +2557,7 @@
     b2bFees: b2bFees,
     accomFromProduct: accomFromProduct,
     saleTypeFromProduct: saleTypeFromProduct,
-    roomTypeSingles: roomTypeSingles, roomTypeAnnex: roomTypeAnnex, ROOMTYPE_ANNEX_RE: ROOMTYPE_ANNEX_RE, ROOMTYPE_FROM: ROOMTYPE_FROM, roomTypeOn: roomTypeOn,
+    roomTypeSingles: roomTypeSingles, roomTypeAnnex: roomTypeAnnex, ROOMTYPE_ANNEX_RE: ROOMTYPE_ANNEX_RE, ROOMTYPE_FROM: ROOMTYPE_FROM, roomTypeOn: roomTypeOn, compactRequest: compactRequest, compactSplit: compactSplit,
     PARTNER_BRANDS: PARTNER_BRANDS,
     partnerBrand: partnerBrand,
     partnerBrandDef: partnerBrandDef, partnerBrandRef: partnerBrandRef,
