@@ -59,8 +59,11 @@ test('compactRequest — 수량 표기 변형 · 숫자가 애매하면 unsure',
   assert.deepEqual(C.compactRequest('2실 컴팩트', '', D27), { kind: 'n', n: 2, src: 'remark' });
   assert.deepEqual(C.compactRequest('컴팩트 (2실)', '', D27), { kind: 'n', n: 2, src: 'remark' });
   assert.deepEqual(C.compactRequest('컴펙트 1실', '', D27), { kind: 'n', n: 1, src: 'remark' });
-  for (const t of ['컴팩트 2', '컴팩트 x2', '컴팩트 2명', '트윈1 컴팩트1', '컴팩트 1실 / 컴팩트 2실'])
+  for (const t of ['컴팩트 x2', '컴팩트 2명', '컴팩트트윈 2명', '컴팩트 1실 / 컴팩트 2실', '컴팩트 2박 3인', '트윈1 컴팩트'])
     assert.deepEqual(C.compactRequest(t, '', D27), { kind: 'unsure', src: 'remark' }, t);
+  // Min 2026-11-28 「트윈1,컴팩트1 이렇게면 각각 1실로 읽으면 돼」 — 단위 없는 숫자도 실 수, 트윈·스탠다드 수는 따로 둔다
+  for (const [t, n] of [['트윈1,컴팩트1', 1], ['트윈1 컴팩트1', 1], ['트윈 2, 컴팩트 1', 1], ['컴팩트 2', 2], ['스탠다드1/컴팩트트윈2', 2], ['컴팩트1 트윈1', 1]])
+    assert.deepEqual(C.compactRequest(t, '', D27), { kind: 'n', n, src: 'remark' }, t);
   assert.deepEqual(C.compactRequest('조식 7시 / 컴팩트 / 늦은 체크인', '', D27), { kind: 'all', src: 'remark' });
 });
 

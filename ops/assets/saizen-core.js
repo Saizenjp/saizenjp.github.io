@@ -285,7 +285,7 @@
   //  신호: 현지 비고 「컴팩트」(팀 전원) · 「컴팩트 N실」(N실 = 짝 N개) · 엠클릭 룸타입 「컴팩트」(팀 전원). 둘 다 있으면 비고의 수량이 먼저.
   //  「컴팩트 불가·없음·아님·취소」·「0실」은 요청이 아니다. 입국일 2027-01-01 이후(roomTypeOn)만 — 2026 예약은 null(종전 규칙).
   //  확실히 읽히는 표기만 자동으로 정하고, 애매하면 {kind:'unsure'}(방배정이 팀을 보류 — 사람이 비고를 본다. 싱글 요청과 같은 원칙).
-  //  (검토 2026-11-28: 「컴팩트 제외」「컴팩트→트윈 변경」「트윈1 컴팩트1」을 팀 전원 컴팩트로 넘겨짚어 회원까지 디럭스에서 빠지고 보류되었다.)
+  //  (검토 2026-11-28: 「컴팩트 제외」「컴팩트→트윈 변경」「컴팩트 2명」을 팀 전원 컴팩트로 넘겨짚어 회원까지 디럭스에서 빠지고 보류되었다.)
   //   · 비고를 「/ , ; · 줄바꿈」으로 나눈 조각 중 컴팩트가 든 조각만 본다.
   //   · 조각 전체가 「컴팩트(트윈)(룸) 불가·없음·아님·취소·X」 = 요청 아님(룸타입 「컴팩트」도 무시).
   //   · 그 밖의 부정·변경 말(불가·없음·아닌·제외·말고·안됨·변경·대신·→)이 있으면 unsure.
@@ -295,7 +295,10 @@
   var COMPACT_RE = new RegExp(COMPACT_W, 'i');
   var COMPACT_NO_RE = new RegExp('^\\s*' + COMPACT_W + '\\s*(?:트윈|twin|ツイン)?\\s*(?:룸|room)?\\s*(?:불가|없음|아님|취소|x|×|cancel)\\s*[.!。]?\\s*$', 'i');
   var COMPACT_NEG_RE = /불가|없음|아님|아닌|취소|제외|말고|안\s*됨|안\s*함|안\s*돼|변경|대신|→|->|cancel/i;
-  var COMPACT_N_RE = new RegExp(COMPACT_W + '(?:\\s*(?:트윈|twin|ツイン))?(?:\\s*(?:룸|room|객실))?\\s*(?:으로|로)?\\s*[:：(（]?\\s*(\\d{1,2})\\s*(?:실|室|개|룸|rooms?|객실)\\s*[)）]?', 'i');
+  //  「컴팩트 N실」「컴팩트N」「컴팩트트윈으로 2실」 — 단위가 없어도 실 수(Min 2026-11-28 「트윈1,컴팩트1 이렇게면 각각 1실로 읽으면 돼」). 뒤에 명·인·박 등이 오면 실 수가 아니다.
+  var COMPACT_N_RE = new RegExp(COMPACT_W + '(?:\\s*(?:트윈|twin|ツイン))?(?:\\s*(?:룸|room|객실))?\\s*(?:으로|로)?\\s*[:：(（]?\\s*(\\d{1,2})(?!\\d)(?!\\s*(?:명|인|분|박|일|시|pax|people))\\s*(?:실|室|개|룸|rooms?|객실)?\\s*[)）]?', 'i');
+  //  같은 조각의 다른 룸타입 수(「트윈1」「스탠다드 2실」)는 컴팩트 수와 따로 — 남은 숫자가 있으면 unsure
+  var COMPACT_OTHER_N_RE = /(?:스탠다드|스탠더드|디럭스|싱글|트윈|standard|deluxe|single|twin)\s*(?:트윈|twin)?\s*[:：]?\s*\d{1,2}\s*(?:실|室|개|룸|객실)?/gi;
   var COMPACT_N2_RE = new RegExp('(\\d{1,2})\\s*(?:실|室|개|객실)\\s*(?:은|는|을|를)?\\s*' + COMPACT_W, 'i');
   function compactRequest(remarkLocal, roomType, dep) {
     if (!roomTypeOn(dep)) return null;
@@ -305,9 +308,10 @@
       if (COMPACT_NO_RE.test(c)) { no = true; return; }
       if (COMPACT_NEG_RE.test(c)) { unsure = true; return; }
       var m = c.match(COMPACT_N_RE) || c.match(COMPACT_N2_RE);
-      var digits = (c.match(/\d+/g) || []).length;
-      if (m && digits === 1) { var n = parseInt(m[1], 10); if (n > 0) pos.push({ kind: 'n', n: n }); else no = true; return; }
-      if (digits) { unsure = true; return; }
+      var rest = m ? c.replace(m[0], ' ').replace(COMPACT_OTHER_N_RE, ' ') : c;   // 다른 룸타입 수는 컴팩트 수를 찾았을 때만 떼어 낸다(못 찾으면 숫자가 남아 unsure)
+      var digits = (rest.match(/\d+/g) || []).length;
+      if (m && !digits) { var n = parseInt(m[1], 10); if (n > 0) pos.push({ kind: 'n', n: n }); else no = true; return; }
+      if (digits || m) { unsure = true; return; }
       pos.push({ kind: 'all' });
     });
     if (unsure || pos.length > 1) return { kind: 'unsure', src: 'remark' };
