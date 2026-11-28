@@ -360,6 +360,8 @@ function wireSummary(scope){
 function AREA_CARDS_(k){ const v=tx('ac_'+k); return (v&&v!=='ac_'+k)?v:''; }
 // 마스터급 중요 영역 — 권한관리 목록에서 🔒 배지로 한눈에 구분(보통 마스터 본인에게만 부여).
 const HIGH_AREAS=new Set(['watch']);
+// 잠시 쓰지 않는 화면 — 권한관리 목록에서 체크 줄을 숨긴다(Min 2026-11-28 「방배정 통계 … 권한 관리에도 체크 빼줘」). 다시 쓸 때 여기서 빼면 된다. 권한 트리(SZCore.AREA_TREE·DB area_tree)는 그대로.
+const HIDDEN_AREAS=new Set(['roomstats']);
 // 부서(부서 단위로 카드를 묶어 한 번에 체크) — area 키는 그대로 카드별 저장
 const DEPTS=[
   ['dg_data',['step1','groupcodes']],
@@ -389,7 +391,7 @@ function buildAreas(checked, readChecked){
     const line=(k,cls)=>{const ac=cls==='child'?'':AREA_CARDS_(k);const hi=HIGH_AREAS.has(k)?`<span class="lvlm" title="${esc(tx('lvlMasterT'))}">${esc(tx('lvlMaster'))}</span>`:'';
       const nm=cls==='parent'?`${esc(AREA_LABEL_(k))} <span class="dnote">${esc(tx('parentAll'))}</span>`:esc(AREA_LABEL_(k));
       return `<label class="arealine ${cls||''}" data-line="${k}"><span class="aname">${nm}${hi}${ac?`<span class="areahint">${esc(ac)}</span>`:''}</span><span class="lvl"><span class="lw"><input type="checkbox" data-area="${k}" ${set.has(k)?'checked':''}> ${esc(tx('thEdit'))}</span><span class="lr"><input type="checkbox" data-read-area="${k}" ${rset.has(k)&&!set.has(k)?'checked':''}> ${esc(tx('thView'))}</span></span></label>`;};
-    const kids=keys.map(k=>TREE[k]?`<div class="pgrp" data-parent="${k}">${line(k,'parent')}<div class="pkids">${TREE[k].map(c=>line(c,'child')).join('')}</div></div>`:line(k,'')).join('');
+    const kids=keys.map(k=>TREE[k]?`<div class="pgrp" data-parent="${k}">${line(k,'parent')}<div class="pkids">${TREE[k].filter(c=>!HIDDEN_AREAS.has(c)).map(c=>line(c,'child')).join('')}</div></div>`:line(k,'')).join('');
     return `<div class="deptgrp">
         <label class="depthead"><input type="checkbox" data-deptall="${keys.join(',')}"> <b>${esc(tx(dlabKey))}</b> <span class="dnote">${esc(tx('deptAll'))}</span></label>
         <div class="deptkids">${kids}</div>
