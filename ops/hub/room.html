@@ -870,7 +870,7 @@ const L={
     holdsApplyNote:'チェックした方法だけを有効にして自動配置をやり直します。手動で入れた配置はそのまま残ります。',
     holdOddTeam:gc=>`${gc} 3名チーム 保留`, holdSingle:gc=>`${gc} シングル指定 — 手動配置`, holdNoFloor:(gc,n)=>`${gc} ${n}泊: 泊数ルールで可能な階なし(フレックス階満室) — 手動確認`,
     holdOddLeft:(gc,name)=>`${gc} ${name}: 奇数残り`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} 客室不足`, holdNoUnit:(gc,n,label)=>`${gc} ${n}名: ${label} 1棟が滞在中ずっと空いていない`, soboUnit:'ソボ5号(4名1棟)',
-    deluxe:'デラックス', byReservation:'予約種別', compactLbl:'コンパクトツイン(コンパクト予約)',
+    deluxe:'デラックス', byReservation:'予約種別', compactLbl:'コンパクトツイン(コンパクト予約)', holdCompactUnsure:(gc,t)=>`${gc}: コンパクトの記載を読み取れません — 手動で確認(「컴팩트」または「컴팩트 N실」なら自動) · ${t}`,
     autoNoTarget:n=>n?`自動割当対象なし · 保留 ${n}件`:'自動割当する未割当人員がいません',
     autoSaveFail:e=>'自動割当の保存に失敗: '+e,
     autoDone:(n,h)=>`自動割当 ${n}名 完了`+(h?` · 保留 ${h}件(上の「未割当 理由」ボタン)`:''),
@@ -1130,7 +1130,7 @@ const L={
     holdsApplyNote:'체크한 방법만 켜서 자동배정을 다시 돌립니다. 수기로 넣은 배정은 그대로 남습니다.',
     holdOddTeam:gc=>`${gc} 3명팀 보류`, holdSingle:gc=>`${gc} 싱글 지정 — 수기 배정`, holdNoFloor:(gc,n)=>`${gc} ${n}박: 박수 규칙 가능 층 없음(유동층 만석) — 수기 확인`,
     holdOddLeft:(gc,name)=>`${gc} ${name}: 홀수 잔여`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} 객실부족`, holdNoUnit:(gc,n,label)=>`${gc} ${n}명: ${label} 한 동이 체류 내내 비어 있지 않음`, soboUnit:'소보 5호(4인 1동)',
-    deluxe:'디럭스', byReservation:'예약종류', compactLbl:'컴팩트 트윈(컴팩트 예약)',
+    deluxe:'디럭스', byReservation:'예약종류', compactLbl:'컴팩트 트윈(컴팩트 예약)', holdCompactUnsure:(gc,t)=>`${gc}: 컴팩트 표기를 읽지 못함 — 수기 확인(「컴팩트」 또는 「컴팩트 N실」로 적으면 자동) · ${t}`,
     autoNoTarget:n=>n?`자동배정 대상 없음 · 보류 ${n}건`:'자동배정할 미배정 인원이 없습니다',
     autoSaveFail:e=>'자동배정 저장 실패: '+e,
     autoDone:(n,h)=>`자동배정 ${n}명 완료`+(h?` · 보류 ${h}건(위 「미배정 사유」 버튼)`:''),
@@ -1387,7 +1387,7 @@ const L={
     holdsApplyNote:'Re-runs auto-assign with only the ticked relaxations. Manual assignments stay untouched.',
     holdOddTeam:gc=>`${gc} 3-person team held`, holdSingle:gc=>`${gc} single requested — manual`, holdNoFloor:(gc,n)=>`${gc} ${n}n: no floor available by night-count rule (flex floors full) — manual check`,
     holdOddLeft:(gc,name)=>`${gc} ${name}: odd leftover`, holdNoRoom:(gc,a,b,label)=>`${gc} ${a}·${b}: ${label} not enough rooms`, holdNoUnit:(gc,n,label)=>`${gc} ${n} pax: no ${label} unit free for the whole stay`, soboUnit:'Sobo 5 (4-pax unit)',
-    deluxe:'Deluxe', byReservation:'Reservation type', compactLbl:'Compact twin (compact booking)',
+    deluxe:'Deluxe', byReservation:'Reservation type', compactLbl:'Compact twin (compact booking)', holdCompactUnsure:(gc,t)=>`${gc}: compact note unclear — check by hand (write 「컴팩트」 or 「컴팩트 N실」 for automatic) · ${t}`,
     autoNoTarget:n=>n?`No auto-assign target · held ${n}`:'No unassigned guests to auto-assign',
     autoSaveFail:e=>'Auto-assign save failed: '+e,
     autoDone:(n,h)=>`Auto-assign ${n} done`+(h?` · held ${h} (see the “unassigned — why” button)`:''),
@@ -5397,7 +5397,9 @@ async function autoAssign(){
       }
     };
     // 컴팩트 예약(2027~ 입국, 호텔동) — 현지 비고 「컴팩트」·「컴팩트 N실」 또는 엠클릭 룸타입 「컴팩트」(Min 2026-11-28)
-    plans.forEach(pl=>{ pl.compact=(pl.route&&pl.route.floorOnly&&pl.route.deluxe&&window.SZCore&&SZCore.compactRequest)?SZCore.compactRequest(pl.g.remark_local,pl.g.room_type,pl.g.dep):null; });
+    //   표기가 애매하면(unsure — 「컴팩트 제외」「트윈1 컴팩트1」 등) 넘겨짚지 않고 팀 전체 보류(사람이 현지 비고를 본다).
+    plans.forEach(pl=>{ pl.compact=(pl.route&&pl.route.floorOnly&&pl.route.deluxe&&window.SZCore&&SZCore.compactRequest)?SZCore.compactRequest(pl.g.remark_local,pl.g.room_type,pl.g.dep):null;
+      if(pl.compact&&pl.compact.kind==='unsure'){ holds.push(mkHold(tx('holdCompactUnsure',pl.gc,pl.compact.src==='roomtype'?(pl.g.room_type||''):(pl.g.remark_local||'')),pl.g,'etc')); pl.done=true; pl.compact=null; } });
     for(const plan of plans) placePlan(plan,'member');    // ① 회원 짝 먼저(전 팀, 예약순)
     for(const plan of plans) placePlan(plan,'general');   // ② 일반 짝(전 팀, 예약순)
     placeSobo();                                          // ③ 호텔이 다 차서 전원 미배정인 관내별장 팀만 소보별장(→8명이면 아소별장)로(Min 2026-09)

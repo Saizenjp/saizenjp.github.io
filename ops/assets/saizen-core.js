@@ -284,20 +284,38 @@
   //  2027년부터 컴팩트 트윈은 손님께 먼저 안내해 따로 판다 → 일반 트윈 예약·디럭스를 못 받은 회원은 컴팩트로 내려가지 않는다(방배정 room.html).
   //  신호: 현지 비고 「컴팩트」(팀 전원) · 「컴팩트 N실」(N실 = 짝 N개) · 엠클릭 룸타입 「컴팩트」(팀 전원). 둘 다 있으면 비고의 수량이 먼저.
   //  「컴팩트 불가·없음·아님·취소」·「0실」은 요청이 아니다. 입국일 2027-01-01 이후(roomTypeOn)만 — 2026 예약은 null(종전 규칙).
-  var COMPACT_RE = /컴팩트|콤팩트|compact|コンパクト/i;
-  var COMPACT_NO_RE = /(?:컴팩트|콤팩트|compact|コンパクト)\s*(?:트윈|twin|ツイン)?\s*(?:룸|room)?\s*(?:불가|없음|아님|취소|x\b|×|cancel)/i;
-  var COMPACT_N_RE = /(?:컴팩트|콤팩트|compact|コンパクト)\s*(?:트윈|twin|ツイン)?\s*(?:룸|room)?\s*[:：]?\s*(\d{1,2})\s*(?:실|室|개|룸|rooms?|객실)/i;
+  //  확실히 읽히는 표기만 자동으로 정하고, 애매하면 {kind:'unsure'}(방배정이 팀을 보류 — 사람이 비고를 본다. 싱글 요청과 같은 원칙).
+  //  (검토 2026-11-28: 「컴팩트 제외」「컴팩트→트윈 변경」「트윈1 컴팩트1」을 팀 전원 컴팩트로 넘겨짚어 회원까지 디럭스에서 빠지고 보류되었다.)
+  //   · 비고를 「/ , ; · 줄바꿈」으로 나눈 조각 중 컴팩트가 든 조각만 본다.
+  //   · 조각 전체가 「컴팩트(트윈)(룸) 불가·없음·아님·취소·X」 = 요청 아님(룸타입 「컴팩트」도 무시).
+  //   · 그 밖의 부정·변경 말(불가·없음·아닌·제외·말고·안됨·변경·대신·→)이 있으면 unsure.
+  //   · 「컴팩트(트윈)(룸·객실)(으로) N실·개·室·객실」 또는 「N실 컴팩트」 = N실 — 조각에 다른 숫자가 있으면 unsure. 숫자가 없으면 전원.
+  //   · 컴팩트 조각이 둘 이상 요청이면 unsure. 룸타입은 「컴팩트(트윈)」 단독만 전원, 다른 타입과 섞이면 unsure.
+  var COMPACT_W = '(?:컴팩트|콤팩트|컴펙트|콤펙트|compact|コンパクト)';
+  var COMPACT_RE = new RegExp(COMPACT_W, 'i');
+  var COMPACT_NO_RE = new RegExp('^\\s*' + COMPACT_W + '\\s*(?:트윈|twin|ツイン)?\\s*(?:룸|room)?\\s*(?:불가|없음|아님|취소|x|×|cancel)\\s*[.!。]?\\s*$', 'i');
+  var COMPACT_NEG_RE = /불가|없음|아님|아닌|취소|제외|말고|안\s*됨|안\s*함|안\s*돼|변경|대신|→|->|cancel/i;
+  var COMPACT_N_RE = new RegExp(COMPACT_W + '(?:\\s*(?:트윈|twin|ツイン))?(?:\\s*(?:룸|room|객실))?\\s*(?:으로|로)?\\s*[:：(（]?\\s*(\\d{1,2})\\s*(?:실|室|개|룸|rooms?|객실)\\s*[)）]?', 'i');
+  var COMPACT_N2_RE = new RegExp('(\\d{1,2})\\s*(?:실|室|개|객실)\\s*(?:은|는|을|를)?\\s*' + COMPACT_W, 'i');
   function compactRequest(remarkLocal, roomType, dep) {
     if (!roomTypeOn(dep)) return null;
-    var t = String(remarkLocal == null ? '' : remarkLocal);
-    if (COMPACT_RE.test(t) && !COMPACT_NO_RE.test(t)) {
-      var m = t.match(COMPACT_N_RE);
-      if (m) { var n = parseInt(m[1], 10); return n > 0 ? { kind: 'n', n: n, src: 'remark' } : null; }
-      return { kind: 'all', src: 'remark' };
-    }
-    if (COMPACT_NO_RE.test(t)) return null;
-    if (COMPACT_RE.test(String(roomType == null ? '' : roomType))) return { kind: 'all', src: 'roomtype' };
-    return null;
+    var pos = [], unsure = false, no = false;
+    String(remarkLocal == null ? '' : remarkLocal).split(/[\n\/;,·|]+/).forEach(function (c) {
+      if (!COMPACT_RE.test(c)) return;
+      if (COMPACT_NO_RE.test(c)) { no = true; return; }
+      if (COMPACT_NEG_RE.test(c)) { unsure = true; return; }
+      var m = c.match(COMPACT_N_RE) || c.match(COMPACT_N2_RE);
+      var digits = (c.match(/\d+/g) || []).length;
+      if (m && digits === 1) { var n = parseInt(m[1], 10); if (n > 0) pos.push({ kind: 'n', n: n }); else no = true; return; }
+      if (digits) { unsure = true; return; }
+      pos.push({ kind: 'all' });
+    });
+    if (unsure || pos.length > 1) return { kind: 'unsure', src: 'remark' };
+    if (pos.length) return pos[0].kind === 'n' ? { kind: 'n', n: pos[0].n, src: 'remark' } : { kind: 'all', src: 'remark' };
+    if (no) return null;
+    var rt = String(roomType == null ? '' : roomType);
+    if (!COMPACT_RE.test(rt)) return null;
+    return new RegExp('^\\s*' + COMPACT_W + '\\s*(?:트윈|twin|ツイン)?\\s*$', 'i').test(rt) ? { kind: 'all', src: 'roomtype' } : { kind: 'unsure', src: 'roomtype' };
   }
   //  짝 나누기 — 전원: 모든 짝이 컴팩트(회원도) · N실: 일반 짝부터 N개, 모자라면 회원 짝을 뒤에서부터(앞의 회원 짝이 디럭스를 지킨다).
   //  결과 = {compact, member, general}(남은 회원 짝은 디럭스 패스, 일반 짝은 스탠다드 트윈 패스로).

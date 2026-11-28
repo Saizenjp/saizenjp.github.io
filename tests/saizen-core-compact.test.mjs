@@ -43,3 +43,29 @@ test('compactSplit — 전원: 모든 짝이 컴팩트 · N실: 일반 짝부터
   assert.deepEqual(C.compactSplit(mp, gp, { kind: 'n', n: 9 }), { compact: [['g2', 'g3'], ['g4', 'g5'], ['m3', 'g1'], ['m1', 'm2']], member: [], general: [] });
   assert.deepEqual(C.compactSplit(mp, gp, null), { compact: [], member: mp, general: gp });
 });
+
+// 검토 2026-11-28: 확실히 읽히는 표기만 자동, 애매하면 unsure(팀 보류 — 사람이 비고를 본다). 전원으로 넘겨짚지 않는다.
+test('compactRequest — 부정·변경 표현은 unsure(보류) · 바로 붙은 「불가·없음·아님·취소」만 요청 아님', () => {
+  for (const t of ['컴팩트 배정 불가', '컴팩트는 불가', '컴팩트 아닌 스탠다드 트윈으로', '컴팩트 제외', '컴팩트 말고 트윈',
+    '컴팩트룸 안됨', '컴팩트→트윈 변경', '트윈으로 변경(기존 컴팩트)', '컴팩트 1실 불가', '컴팩트 1실 취소', '컴팩트 요청 없음'])
+    assert.deepEqual(C.compactRequest(t, '', D27), { kind: 'unsure', src: 'remark' }, t);
+  assert.equal(C.compactRequest('컴팩트 불가', '', D27), null);
+  assert.equal(C.compactRequest('컴팩트X', '', D27), null);
+});
+
+test('compactRequest — 수량 표기 변형 · 숫자가 애매하면 unsure', () => {
+  assert.deepEqual(C.compactRequest('컴팩트트윈으로 2실', '', D27), { kind: 'n', n: 2, src: 'remark' });
+  assert.deepEqual(C.compactRequest('컴팩트 객실 2실', '', D27), { kind: 'n', n: 2, src: 'remark' });
+  assert.deepEqual(C.compactRequest('2실 컴팩트', '', D27), { kind: 'n', n: 2, src: 'remark' });
+  assert.deepEqual(C.compactRequest('컴팩트 (2실)', '', D27), { kind: 'n', n: 2, src: 'remark' });
+  assert.deepEqual(C.compactRequest('컴펙트 1실', '', D27), { kind: 'n', n: 1, src: 'remark' });
+  for (const t of ['컴팩트 2', '컴팩트 x2', '컴팩트 2명', '트윈1 컴팩트1', '컴팩트 1실 / 컴팩트 2실'])
+    assert.deepEqual(C.compactRequest(t, '', D27), { kind: 'unsure', src: 'remark' }, t);
+  assert.deepEqual(C.compactRequest('조식 7시 / 컴팩트 / 늦은 체크인', '', D27), { kind: 'all', src: 'remark' });
+});
+
+test('compactRequest — 룸타입은 「컴팩트」 단독만 전원, 다른 타입과 섞이면 unsure', () => {
+  assert.deepEqual(C.compactRequest('', '컴팩트트윈', D27), { kind: 'all', src: 'roomtype' });
+  assert.deepEqual(C.compactRequest('', '트윈,컴팩트', D27), { kind: 'unsure', src: 'roomtype' });
+  assert.equal(C.compactRequest('컴팩트 불가', '컴팩트', D27), null);
+});

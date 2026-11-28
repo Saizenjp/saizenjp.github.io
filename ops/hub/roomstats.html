@@ -241,12 +241,14 @@ const LOW_GRADE_FLOOR=3;
 const TYPE_DOWNGRADE={'디럭스더블트윈':'트윈','디럭스트윈':'트윈','트윈':'컴팩트트윈'};
 const DELUXE_TYPES=['디럭스더블트윈','디럭스트윈'];
 function floorOf(inv){ const m=String(inv&&inv.zone||'').match(/^(\d+)층$/); return m?+m[1]:0; }
-function effType(inv){
+//  twin3=true(입국일 2027-01-01 이후 팀) → 3층 트윈은 트윈(room.html 자동배정과 같은 규칙, Min 2026-11-28)
+function effType(inv, twin3){
   const t=inv&&inv.room_type||'';
+  if(twin3 && t==='트윈') return t;
   return (floorOf(inv)===LOW_GRADE_FLOOR && TYPE_DOWNGRADE[t]) ? TYPE_DOWNGRADE[t] : t;
 }
-function gradeOf(inv){
-  const t=effType(inv);
+function gradeOf(inv, twin3){
+  const t=effType(inv, twin3);
   if(DELUXE_TYPES.includes(t)) return 'dlx';
   if(t==='트윈') return 'twin';
   if(t==='컴팩트트윈') return 'compact';
@@ -390,7 +392,7 @@ async function load(){
       const name=(window.__so_pname?__so_pname(nameKr,m.name_en):nameKr)||nameKr;
       const birth=(px&&px.birth_yymmdd)||'';
       rows.push({
-        eventSeq:r.event_seq, grade:gradeOf(inv), floor:floorOf(inv), roomNo:r.room_no,
+        eventSeq:r.event_seq, grade:gradeOf(inv, !!(window.SZCore&&SZCore.roomTypeOn&&SZCore.roomTypeOn(b.dep_date))), floor:floorOf(inv), roomNo:r.room_no,
         rsvM: b.reserved_at ? String(b.reserved_at).slice(0,7) : '',
         rsv: b.reserved_at ? String(b.reserved_at).slice(0,10) : '',
         rep: b.rep_name||'', dep: b.dep_date||'',
